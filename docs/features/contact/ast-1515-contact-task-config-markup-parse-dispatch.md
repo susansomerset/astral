@@ -319,3 +319,19 @@ Turn return `"reply"` may retain markup while Slack uses stripped text — low s
 **Slim gate:** REVIEW (Commit: 0f18b068) Pattern catalog pending; code PROCEED
 
 context_tokens≈42000
+
+## Resolution
+
+**2026-08-27 — Ada (resolve-child)**
+
+Radia **code-rubric revision=1** @ `0f18b068`: **no fix-now**. Code **PROCEED**.
+
+| Finding | Action |
+|---------|--------|
+| discuss — `pattern.core.contact-task-markup` catalog absent | Track-with-Archie per review; no product change in this ticket (child #1 introduces pattern inline; catalog draft is epic/parent follow-on). |
+| discuss — follow-up turn failure leaves no Slack reply | Plan-intentional (step 3g); UAT note for Susan — no code change. |
+| advisory — `out["reply"]` vs Slack stripped payload | Accepted; downstream uses `slack_post` / stripped path for user-visible text. |
+
+§9a dry-run: publish ref merges cleanly into `origin/dev`. `origin/ftr/AST-1414-estelle-endpoints` not on origin yet — ftr dry-run skipped.
+
+**Resolve commit:** `resolve(AST-1515): — clean` (docs-only Resolution section).
