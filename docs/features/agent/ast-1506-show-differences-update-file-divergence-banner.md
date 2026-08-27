@@ -252,3 +252,66 @@ Stages 1–2 delivered: warning copy rewritten; Show Differences modal via GET c
 - Statute `astral.seed.agent-tables-in-repo-json` lag on sibling AST-1505 — parent close-out, not AST-1506 blocking.
 
 **No fix-now or discuss findings on Katherine's banner implementation.**
+
+## Bug: AST-1511 — Show Differences modal does not scroll
+
+### As-is
+
+On Manage Agents or Manage Tasks, when the divergence warning is shown and the operator clicks **Show Differences**, the wide modal opens but the body does not scroll. Content below the first viewport (Susan saw only the first three differences) is clipped and unreachable.
+
+### To-be
+
+The **Show Differences** modal scrolls inside the dialog so the operator can review every section — rows only in database, rows only in file, and all changed-field tables — without closing the modal.
+
+### Repro
+
+1. Sign in as admin; open **Manage Tasks** (or **Manage Agents**) with live table diverged from repo JSON (multiple `changed_rows` and/or long field values — e.g. several task keys with `content` drift).
+2. Click **Show Differences** on the gold divergence banner.
+3. Observe the modal title **Differences — …** and the first diff sections render.
+4. Attempt to scroll (wheel, trackpad, or scrollbar) to rows/fields below the fold.
+5. **Actual:** no scroll; content below ~first three differences is not visible. **Expected:** modal body scrolls to reveal all diff sections.
+
+Component-test shape (Betty): mock `GET /api/admin/repo_json/compare/<tableKey>` with `changed_rows` length ≥ 4 (or tall `content` strings); after opening modal, assert a later row label (e.g. 4th `row_key`) is reachable via `scrollIntoView` / container `scrollTop` / `within(modal-body).getByText(...)` after scroll helper — no browser UAT required for make-fix.
+
+### Root cause
+
+AST-1506 Stage 1 renders the compare payload inside shared `Modal` with `size="wide"`. In `App.css`, `.modal-card--wide .modal-body` sets `overflow: hidden` and `padding: 0` so wide modals can host nested SideTabPanel layouts with their own scroll regions. The diff modal places content **directly** in `modal-body` with no inner scroll wrapper (unlike `.email-html-source`, which wraps content in `height: 100%; overflow: auto`). Tall diff output is clipped by the fixed `90vh` card.
+
+### Proposed change
+
+**File:** `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` only.
+
+1. Inside the **Show Differences** `<Modal … size="wide" showFooter={false}>`, wrap **all** body branches (loading, error, `diffData`, empty fallback) in one scroll container:
+
+   ```tsx
+   <div
+     style={{
+       padding: "20px",
+       height: "100%",
+       overflowY: "auto",
+       boxSizing: "border-box",
+     }}
+   >
+     {/* existing loading / error / diffData / empty content unchanged */}
+   </div>
+   ```
+
+2. Do **not** change `Modal.tsx`, `App.css`, compare API, button labels, Update/Revert handlers, or `size="wide"` (table needs horizontal room).
+
+3. **Done when:** With a compare payload taller than the viewport, the inner wrapper scrolls; header (title + ×) stays fixed; `cd src/ui/frontend && npx tsc -b --noEmit` passes.
+
+⚠️ **Decision:** Fix locally in the banner component (same pattern as `.email-html-source` inner scroll) rather than changing global `.modal-card--wide .modal-body` — avoids regressing SideTabPanel wide modals site-wide.
+
+### Blast radius
+
+- **Show Differences modal only** on Manage Agents / Manage Tasks — no other `Modal` call sites.
+- **AST-1506** Show/Update/Revert behavior and API wiring unchanged.
+- Betty may extend `test_RepoJsonDivergenceBanner.test.tsx` (AST-1511) for multi-row scroll reachability; engineer does not edit `tests/` or `docs/test-bible/**`.
+
+### What must still hold
+
+- Parent AST-1455 AC: **Show Differences** lists actual row and field differences for **that page's table only** (`tableKey` prop); must include rows beyond the first viewport when drift is large.
+- **Update file with table version** and **Revert to file** confirm/POST behavior unchanged (AST-1506 Boundaries).
+- Wide modal layout preserved for three-column Field / File / Database tables.
+- Per-cell `<pre>` scroll for long values (AST-1506 Stage 1) remains; this fix is modal-level scroll for many rows/sections.
+
