@@ -410,7 +410,7 @@ Four `contact_task_*` read handlers + `get_job_by_pattern`: candidate-scoped pat
 | --- | --- | --- |
 | Pattern / job / company / candidate reads + Style D | `src/core/tracker.py` | **`TestAst1518ContactTaskReads`** |
 
-**Broken / obsolete:** AST-1515 turn/dispatch tests that assumed `get_job_data` stayed `handler_unavailable` — revised to `create_contact_meteorite` (still sibling AST-1517).
+**Broken / obsolete:** AST-1515 `handler_unavailable` / turn fixtures — retargeted from `gazer_scrape` and `get_job_data` to `create_contact_meteorite` (gazer lands AST-1516; reads land this ticket; meteorite create still AST-1517). `[qa-handoff]` return: `test_dispatch_handler_unavailable_for_listed_key` must not pin `gazer_scrape`.
 
 **Integration:** none — do not invent new integration coverage.
 
