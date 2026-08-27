@@ -1521,6 +1521,37 @@ Parse/validate coded `[R<n>]` lines from Estelle **text** RESUME BRIEF section (
 
 ---
 
+### AST-1514 · AST-1460 (bug-repro)
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1514-advise-resume-brief-validation`. **Bug of:** AST-1507.
+
+Estelle emits coded advice as JSON `agent_payload` with `resume_brief` (string of `[R…]` lines) — not plain-text `RESUME BRIEF` headers. Pre-fix validate/parse only header-scan strings; `do_task` str-only gate skips dicts and persist gets `""`. Bug-repro must be **red** on pre-fix tree; green after make-fix JSON coerce + dict validate/persist.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate/parse JSON-string + dict | `src/core/candidate.py` | **`TestAst1514AdviseResumeBriefJsonPayload`** (bug-repro) |
+| `do_task` success + persist both shapes | `src/core/agent.py` | **`TestAst1514DoTaskResumeBriefJsonPersist`** (bug-repro) |
+
+**Broken / obsolete:** none — AST-1507 plain-text suites must still hold (`What must still hold`).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Candidate JSON/dict coerce (bug-repro): `tests/component/core/test_candidate.py::TestAst1514AdviseResumeBriefJsonPayload`
+2. Agent hop JSON-string + dict persist (bug-repro): `tests/component/core/test_agent.py::TestAst1514DoTaskResumeBriefJsonPersist`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1514AdviseResumeBriefJsonPayload \
+  tests/component/core/test_agent.py::TestAst1514DoTaskResumeBriefJsonPersist \
+  -q
+```
+
+**Pass criterion:** all six nodes red on pre-fix product; green after make-fix — `test-fix` verifies the flip. Not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1508 · AST-1460
 
 **Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
@@ -1589,7 +1620,7 @@ Revert AST-1460 hard contract: strip **`resume_advice_*`** / **`advice_adherence
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Notes config + epic keys retired | `src/utils/config.py` | **`TestAst1523NotesArtifactConfig`**; revised **`TestAst1270DraftJobResumeNestConfig`**, **`TestAst1271DeviationsArtifactConfig`** |
-| Freeform advise prompt (no `[R#]`) | `data/admin/agent_task.json` | **`TestAst1349ExperienceArrayContract::test_advise_prompt_freeform_resume_brief_contract`** |
+| Freeform advise prompt (no `[R#]`) | `data/admin/agent_task.json` | **`TestAst1349ExperienceArrayContract::test_advise_prompt_soft_numbered_resume_brief_contract`** (revised **AST-1524**) |
 | Nested draft + notes metadata | `src/core/candidate.py` | revised **`TestAst1270NestedDraftJobResumeContract`**; **`TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy`** |
 | Epic helpers removed | `src/core/candidate.py` | **`TestAst1523EpicCandidateHelpersRemoved`** |
 | Notes extract/persist/clear | `src/core/tracker.py` | **`TestAst1523NotesMetadataRetention`**; revised **`TestAst1270NestedResumePayloadBody`**; **`TestAst1523EpicHelpersRemoved`** |
@@ -1635,6 +1666,34 @@ Revert AST-1460 hard contract: strip **`resume_advice_*`** / **`advice_adherence
   tests/component/core/test_agent.py::TestAst1523DoTaskNotesPersist \
   tests/component/core/test_agent.py::TestAst1523AdviseFreeformSuccess \
   tests/component/core/test_agent.py::TestAst1523EpicAgentHooksRemoved \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1524 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1524-soft-numbered-prose-advise-draft-notes`.
+
+Prompt-only soft tighten after **AST-1523**: Estelle RESUME BRIEF uses **A./B./C.** numbered prose (not `[R#]`); Judith draft asks freeform **`notes`** to address each lettered item. No schema/validate/persist changes. UAT fixture whole-file twin lock.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Soft numbered advise RESUME BRIEF | `data/admin/agent_task.json` | **`TestAst1349ExperienceArrayContract::test_advise_prompt_soft_numbered_resume_brief_contract`** |
+| Draft lettered-notes prompt + uncoded sibling sections | `data/admin/agent_task.json` | **`TestAst1524SoftNumberedProsePrompts`** |
+| AST-756 fixture twin | `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits`** |
+
+**Broken / obsolete:** **`test_advise_prompt_freeform_resume_brief_contract`** — revised to **`test_advise_prompt_soft_numbered_resume_brief_contract`** (AST-1523 freeform baseline superseded by soft numbered prose).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_advise_prompt_soft_numbered_resume_brief_contract \
+  tests/component/core/test_candidate.py::TestAst1524SoftNumberedProsePrompts \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits \
   -q
 ```
 
