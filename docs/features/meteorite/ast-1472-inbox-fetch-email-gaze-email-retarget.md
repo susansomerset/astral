@@ -496,3 +496,7 @@ After the branch, always `_finalize_archive(mid, outcomes, ...)` when the branch
 
 **Overall:** CLEAN / PROCEED. No fix-now. [bug-repro] coverage lives on sibling gap AST-1522.
 **Next:** Review Posted → User Testing via do-all-the-things §3h (resolve-child skipped).
+
+## docs-acceptance — AST-1521
+
+Test/bible delivery for meteorite_email land+archive is owned by sibling gap **AST-1522** (Betty qa-fix / merge-tests). This product sub is docs-acceptance for merge-child — no fabricated `test(AST-1521)` / `merge-tests(AST-1521)`.
