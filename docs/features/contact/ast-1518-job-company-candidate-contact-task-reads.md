@@ -360,4 +360,19 @@ context_tokens≈40000
 
 ---
 
-```
+---
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` |
+| Tip | `303e905c` (cherry-pick of `61cd64ee`) |
+| Branch | `sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` |
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | `303e905c` | `get_job_by_pattern`, `_job_owned_by_candidate`, four `contact_task_*` read handlers + Style D |
+
+**Betty note:** component tests for pattern match, ownership refuse, hydrate, Style D deferred to qa-child.
