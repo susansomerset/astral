@@ -13,7 +13,7 @@ pytestmark = pytest.mark.skipif(
     reason="AST-1466 meteorite_email module not on this tip yet",
 )
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 
@@ -141,181 +141,8 @@ class TestAst1090RunMeteoriteEmail:
         trash.assert_not_called()
         create.assert_not_called()
 
-    @pytest.mark.asyncio
-    async def test_subject_url_create_then_archive(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._stub_stamp(monkeypatch)
-        monkeypatch.setattr(
-            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m2", matched=True)])
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_candidate",
-            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_message_html",
-            MagicMock(
-                return_value={
-                    "subject": "https://jobs.example.com/role-1",
-                    "html_body": "",
-                    "from_address": "a",
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            ge,
-            "_meteorite_fetch_link_visible_text",
-            AsyncMock(return_value=("visible text " * 20, "https://jobs.example.com/role-1")),
-        )
-        monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
-        create = MagicMock(return_value={"astral_job_id": "j1"})
-        archive = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
-        monkeypatch.setattr(ge, "archive_message", archive)
-        out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        assert out["total_passed"] == 1 and out["total_errors"] == 0
-        create.assert_called_once()
-        assert create.call_args.kwargs.get("job_link") == "https://jobs.example.com/role-1"
-        archive.assert_called_once_with("m2")
-
-    @pytest.mark.asyncio
-    async def test_all_duplicate_skips_still_archive(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._stub_stamp(monkeypatch)
-        monkeypatch.setattr(
-            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m3", matched=True)])
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_candidate",
-            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_message_html",
-            MagicMock(
-                return_value={
-                    "subject": "https://jobs.example.com/dup",
-                    "html_body": "",
-                    "from_address": "a",
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            ge,
-            "_meteorite_fetch_link_visible_text",
-            AsyncMock(return_value=("visible text " * 20, "https://jobs.example.com/dup")),
-        )
-        monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=True))
-        create = MagicMock()
-        archive = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
-        monkeypatch.setattr(ge, "archive_message", archive)
-        out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        assert out["total_passed"] == 1
-        create.assert_not_called()
-        archive.assert_called_once_with("m3")
-
-    @pytest.mark.asyncio
-    async def test_html_links_ruth_jobs_create(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        self._stub_stamp(monkeypatch)
-        monkeypatch.setattr(
-            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m4", matched=True)])
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_candidate",
-            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_message_html",
-            MagicMock(return_value={"subject": "", "html_body": "<p>many links here</p>", "from_address": "a"}),
-        )
-        monkeypatch.setattr(
-            ge,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {
-                        "jobs": [{"job_link": "https://jobs.example.com/a"}],
-                    },
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            ge,
-            "_meteorite_fetch_link_visible_text",
-            AsyncMock(return_value=("visible text " * 20, "https://jobs.example.com/a")),
-        )
-        monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
-        create = MagicMock(return_value={"astral_job_id": "j2"})
-        archive = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
-        monkeypatch.setattr(ge, "archive_message", archive)
-        out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        assert out["total_passed"] == 1
-        create.assert_called_once()
-        archive.assert_called_once_with("m4")
-
-    @pytest.mark.asyncio
-    async def test_html_links_dict_metadata_still_creates(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """AST-1144: Ruth dict metadata must not block scrape/create/archive."""
-        self._stub_stamp(monkeypatch)
-        monkeypatch.setattr(
-            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-dict", matched=True)])
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_candidate",
-            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_message_html",
-            MagicMock(
-                return_value={
-                    "subject": "",
-                    "html_body": "<a href=\"https://www.dice.com/job-detail/x\">role</a>",
-                    "from_address": "a",
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            ge,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {
-                        "parse_mode": "html_links",
-                        "jobs": [
-                            {
-                                "job_link": "https://www.dice.com/job-detail/x",
-                                "metadata": {"company": "Dice", "location": "Remote"},
-                            }
-                        ],
-                    },
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            ge,
-            "_meteorite_fetch_link_visible_text",
-            AsyncMock(return_value=("visible text " * 20, "https://www.dice.com/job-detail/x")),
-        )
-        monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
-        create = MagicMock(return_value={"astral_job_id": "j-dict"})
-        archive = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
-        monkeypatch.setattr(ge, "archive_message", archive)
-        out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        assert out["total_passed"] == 1 and out["total_errors"] == 0
-        create.assert_called_once()
-        archive.assert_called_once_with("m-dict")
+    # AST-1522: Ruth html_links / subject_url+_ingest_link / create_meteorite_job runner
+    # cases removed — superseded by land_meteorite routing (see TestAst1522).
 
     @pytest.mark.asyncio
     async def test_debug_false_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -568,7 +395,7 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
     reason="AST-1213 Ruth live payload helpers not on this publish tip",
 )
 class TestAst1213RuthLivePayload:
-    """AST-1213: visible text + --- LINKS --- for Ruth; tracking wrappers kept."""
+    """AST-1213: visible text + --- LINKS --- helpers (runner Ruth paths retired AST-1522)."""
 
     _HTML = (
         "<p>New jobs</p>"
@@ -590,47 +417,41 @@ class TestAst1213RuthLivePayload:
         assert "<a" not in body and "<p>" not in body
         assert ge._format_ruth_live_body("", []).startswith("(no visible text)")
 
-    @pytest.mark.asyncio
-    async def test_html_links_live_content_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        stamp = MagicMock()
-        monkeypatch.setattr(ge, "update_candidate_last_email_check", stamp)
-        monkeypatch.setattr(
-            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-html", matched=True)])
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_candidate",
-            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_message_html",
-            MagicMock(return_value={"subject": "", "html_body": self._HTML, "from_address": "a"}),
-        )
-        captured: dict = {}
+    # AST-1522: html_links / subject_body live_content + ruth_payload Style D runner
+    # cases removed — Ruth pre-land parse dropped from _handle_bound.
 
-        async def _do_task(**kwargs):
-            captured["live_content"] = kwargs.get("live_content")
-            return {"success": True, "parsed_response": {"jobs": []}}
 
-        monkeypatch.setattr(ge, "do_task", _do_task)
-        # AST-1294: empty Ruth jobs + payload links → reconcile stubs then ingest; keep this
-        # case on live_content shape only (no real Playwright scrape).
-        monkeypatch.setattr(ge, "_ingest_link", AsyncMock(return_value="skipped"))
-        monkeypatch.setattr(ge, "archive_message", MagicMock())
-        await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        live = captured["live_content"]
-        assert live.startswith("PARSE_MODE: html_links\n\n")
-        assert "--- LINKS ---" in live
-        assert any("list-manage.com" in line for line in live.splitlines())
-        assert "<a href=" not in live
-        assert "<p>" not in live
+@pytest.mark.skipif(
+    not hasattr(ge, "run_meteorite_email"),
+    reason="AST-1090 meteorite_email runner not on this publish tip",
+)
+class TestAst1522NoSubjectJdLandsAndArchives:
+    """AST-1522 [bug-repro]: no-subject JD text → land_meteorite + archive (AST-1521 fix).
+
+    Pre-fix: Ruth html_links + empty jobs → ignored-empty pass, inbox kept, no land.
+    Post-fix (AST-1521): land_meteorite(text=visible body) + archive_message.
+    """
+
+    # Plain JD body, no http(s) links; visible text ≥ METEORITE_EMAIL_INGEST_CONFIG min_jd_chars.
+    _JD_HTML = (
+        "<p>Senior Platform Engineer role. Own distributed systems design, on-call "
+        "rotation, and reliable service delivery for customers worldwide.</p>"
+    )
 
     @pytest.mark.asyncio
-    async def test_subject_body_live_content_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_no_subject_jd_text_lands_and_archives(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Empty subject + JD body must land + archive (not ignored-empty)."""
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG, METEORITE_EMAIL_INGEST_CONFIG
+
+        visible = ge._body_text(self._JD_HTML)
+        assert len(visible) >= int(METEORITE_EMAIL_INGEST_CONFIG["min_jd_chars"])
+
         monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
         monkeypatch.setattr(
-            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-sub", matched=True)])
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-jd", matched=True)])
         )
         monkeypatch.setattr(
             ge,
@@ -641,243 +462,43 @@ class TestAst1213RuthLivePayload:
             ge,
             "get_message_html",
             MagicMock(
-                return_value={
-                    "subject": "Weekly digest",
-                    "html_body": self._HTML,
-                    "from_address": "a",
-                }
+                return_value={"subject": "", "html_body": self._JD_HTML, "from_address": "a"}
             ),
         )
-        captured: dict = {}
-
-        async def _do_task(**kwargs):
-            captured["live_content"] = kwargs.get("live_content")
-            return {
-                "success": True,
-                "parsed_response": {"jobs": [], "content_text": "Weekly digest"},
-            }
-
-        monkeypatch.setattr(ge, "do_task", _do_task)
-        monkeypatch.setattr(ge, "create_meteorite_job", MagicMock(return_value={"astral_job_id": "j"}))
-        monkeypatch.setattr(ge, "archive_message", MagicMock())
-        await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        live = captured["live_content"]
-        assert live.startswith("PARSE_MODE: subject_body\nSUBJECT: Weekly digest\n\n")
-        assert "--- LINKS ---" in live
-        assert "<a href=" not in live
-
-    @pytest.mark.asyncio
-    async def test_debug_true_emits_ruth_payload_detail(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
-        monkeypatch.setattr(
-            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-dbg", matched=True)])
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_candidate",
-            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_message_html",
-            MagicMock(return_value={"subject": "", "html_body": self._HTML, "from_address": "a"}),
-        )
+        # Pre-fix Ruth path: success + zero jobs + no links → ignored-empty (the bug).
         monkeypatch.setattr(
             ge,
             "do_task",
             AsyncMock(return_value={"success": True, "parsed_response": {"jobs": []}}),
         )
-        # AST-1294: reconcile stubs missing payload links before ingest — isolate Style D payload lines.
-        monkeypatch.setattr(ge, "_ingest_link", AsyncMock(return_value="skipped"))
-        monkeypatch.setattr(ge, "archive_message", MagicMock())
-        detail = MagicMock()
-        monkeypatch.setattr(ge.logger, "debug_detail", detail)
-        monkeypatch.setattr(ge.logger, "debug_index", MagicMock())
-        monkeypatch.setattr(ge.logger, "set_debug_flag", MagicMock())
-        await ge.run_meteorite_email({"candidate_id": "c1"}, debug=True)
-        lines = [c.args[0] for c in detail.call_args_list if c.args]
-        assert any(isinstance(s, str) and s.startswith("ruth_payload visible_chars=") for s in lines)
-        assert any(isinstance(s, str) and "PARSE_MODE: html_links" in s for s in lines)
-
-
-@pytest.mark.skipif(
-    not hasattr(ge, "_ensure_html_links_jobs_complete"),
-    reason="AST-1294 html_links completeness helper not on this publish tip",
-)
-class TestAst1294HtmlLinksJobsComplete:
-    """AST-1294: payload-link completeness reconcile + Style D found/recorded/missing."""
-
-    _MISSING_A = "https://www.dice.com/job-detail/3628bf85-8915-4525-93ff-2f05e09f9e39"
-    _MISSING_B = "https://www.dice.com/job-detail/add50803-2af1-4f26-aba5-3997c9db8905"
-    # Parent UAT enumeration (34 Dice job-detail links); Ruth historically dropped the last two.
-    _UAT_PAYLOAD = [
-        "https://www.dice.com/job-detail/801012b1-1801-42dc-a784-fecd2ae4f871",
-        "https://www.dice.com/job-detail/fe9ffb32-07bb-4fbc-beff-99c45969e423",
-        "https://www.dice.com/job-detail/6210dbdf-304e-400f-b73a-3e1dfc5993d4",
-        "https://www.dice.com/job-detail/711e4efd-04ca-428a-9d15-954aa9d4850a",
-        "https://www.dice.com/job-detail/1f5c5c4c-a427-48aa-8f3c-4168ee3f22e7",
-        "https://www.dice.com/job-detail/f00dcb10-f309-42cc-ab4a-aaaffd6a90c4",
-        "https://www.dice.com/job-detail/c375529b-543c-48e7-a87c-39fb762e402c",
-        "https://www.dice.com/job-detail/a740e541-f52e-4fa6-b522-a10d6845f0a4",
-        "https://www.dice.com/job-detail/42f5e734-b1eb-45d3-8493-f18e03107211",
-        "https://www.dice.com/job-detail/8e6f94dc-df8b-47b6-a96f-2c10b61e965d",
-        "https://www.dice.com/job-detail/5edf3075-df3b-4538-8013-b23a3499eac2",
-        "https://www.dice.com/job-detail/cc5614d4-6ff1-4673-8571-e59bdb455736",
-        "https://www.dice.com/job-detail/04dd50e5-7829-4187-997e-753a8f1114ad",
-        "https://www.dice.com/job-detail/cf1b0f6b-df72-4267-9882-8df914eb31f8",
-        "https://www.dice.com/job-detail/0f4fd8c7-3032-47de-9f06-c1602d5a1617",
-        "https://www.dice.com/job-detail/1c6049e1-27c4-4a42-b9c8-3e3be446d4e8",
-        "https://www.dice.com/job-detail/238439a6-65f4-4c03-99b1-449e21fbc882",
-        "https://www.dice.com/job-detail/f97e3e2f-79cc-4217-a8ca-ea07be3cc44b",
-        "https://www.dice.com/job-detail/50ac44a4-ca09-4a0e-8297-cbdbe058b9d8",
-        "https://www.dice.com/job-detail/68e6f5a7-a112-4ded-b81f-7bbe427f7d97",
-        "https://www.dice.com/job-detail/e4a8ade2-7394-41c1-83c6-32e8484edf44",
-        "https://www.dice.com/job-detail/5056150a-47c5-483e-8943-ba06fa880d2e",
-        "https://www.dice.com/job-detail/b87017d4-f536-40ef-bac1-c9980a4c075d",
-        "https://www.dice.com/job-detail/e118abab-d44f-4284-8773-a31de4409586",
-        "https://www.dice.com/job-detail/e2bf7ac5-ead5-4d9f-867c-176835f43381",
-        "https://www.dice.com/job-detail/3465ba33-4099-4b94-9ebe-f100ff59b843",
-        "https://www.dice.com/job-detail/4b9727f4-ddc0-4aab-ab6e-dd7f42d9888e",
-        "https://www.dice.com/job-detail/e5536776-23c8-4c86-b9a3-60c29d32ce69",
-        "https://www.dice.com/job-detail/62749deb-b3a9-4372-b1fe-ebe0e8be619e",
-        "https://www.dice.com/job-detail/c797094a-2fea-406c-8c58-ad2d19471685",
-        "https://www.dice.com/job-detail/cd599298-c4ce-418a-9a68-9efc1ecc56f6",
-        "https://www.dice.com/job-detail/fc812fa4-8436-4e0e-93eb-931c52c67193",
-        _MISSING_A,
-        _MISSING_B,
-    ]
-
-    def test_uat_34_payload_stubs_two_missing_null_titles(self) -> None:
-        # AC1/AC2: 34 payload links + Ruth 32 → 34 jobs including the two UAT UUID tails.
-        ruth = [{"job_link": u, "job_title": f"t{i}"} for i, u in enumerate(self._UAT_PAYLOAD[:32])]
-        out = ge._ensure_html_links_jobs_complete(ruth, self._UAT_PAYLOAD, debug=False)
-        assert len(out) == 34
-        assert out[:32] == ruth
-        assert out[32] == {"job_link": self._MISSING_A, "job_title": None}
-        assert out[33] == {"job_link": self._MISSING_B, "job_title": None}
-        links = {j["job_link"] for j in out}
-        assert self._MISSING_A in links and self._MISSING_B in links
-
-    def test_normalize_link_avoids_duplicate_stub(self) -> None:
-        # Ruth echoes scheme/slash variant of a payload href — one row, no second stub.
-        payload = ["https://www.dice.com/job-detail/abc/"]
-        ruth = [{"job_link": "http://www.dice.com/job-detail/abc", "job_title": "Lead"}]
-        out = ge._ensure_html_links_jobs_complete(ruth, payload, debug=False)
-        assert len(out) == 1
-        assert out[0]["job_title"] == "Lead"
-
-    def test_preserves_ruth_extras_and_drops_junk_rows(self) -> None:
-        payload = ["https://jobs.example.com/a"]
-        ruth: List[Any] = [
-            "not-a-dict",
-            {"job_link": "", "job_title": "empty"},
-            {"job_link": "https://jobs.example.com/extra-not-in-payload", "job_title": "keep"},
-            {"job_link": "https://jobs.example.com/a", "job_title": "covered"},
-        ]
-        out = ge._ensure_html_links_jobs_complete(ruth, payload, debug=False)
-        assert [j["job_link"] for j in out] == [
-            "https://jobs.example.com/extra-not-in-payload",
-            "https://jobs.example.com/a",
-        ]
-
-    def test_debug_true_emits_found_recorded_missing_ids(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        index = MagicMock()
-        detail = MagicMock()
-        monkeypatch.setattr(ge.logger, "debug_index", index)
-        monkeypatch.setattr(ge.logger, "debug_detail", detail)
-        payload = [
-            "https://www.dice.com/job-detail/keep-me",
-            self._MISSING_A,
-            self._MISSING_B,
-        ]
-        ruth = [{"job_link": payload[0], "job_title": "Kept"}]
-        out = ge._ensure_html_links_jobs_complete(ruth, payload, debug=True)
-        assert len(out) == 3
-        index.assert_called_once_with(
-            func="meteorite_email._ensure_html_links_jobs_complete",
-            index=1,
-            total=1,
-            identifier="html_links",
-            outcome="reconciled",
+        created = METEORITE_CONFIG["land_outcome_created"]
+        land = AsyncMock(
+            return_value={
+                "outcome": created,
+                "outcomes": [{"outcome": created, "astral_job_id": "j-jd"}],
+                "company": "meteorite-c1",
+                "error": None,
+            }
         )
-        detail_msgs = [c.args[0] for c in detail.call_args_list if c.args]
-        assert detail_msgs == [
-            "found=3 recorded=1 missing="
-            "3628bf85-8915-4525-93ff-2f05e09f9e39,add50803-2af1-4f26-aba5-3997c9db8905"
-        ]
+        monkeypatch.setattr(meteorite_mod, "land_meteorite", land)
+        archive = MagicMock()
+        monkeypatch.setattr(ge, "archive_message", archive)
+        create = MagicMock()
+        if hasattr(ge, "create_meteorite_job"):
+            monkeypatch.setattr(ge, "create_meteorite_job", create)
 
-    def test_debug_false_or_complete_skips_style_d(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        index = MagicMock()
-        detail = MagicMock()
-        monkeypatch.setattr(ge.logger, "debug_index", index)
-        monkeypatch.setattr(ge.logger, "debug_detail", detail)
-        payload = [self._MISSING_A]
-        ruth = [{"job_link": self._MISSING_A, "job_title": None}]
-        # Complete coverage → no Style D even with debug=True.
-        ge._ensure_html_links_jobs_complete(ruth, payload, debug=True)
-        index.assert_not_called()
-        detail.assert_not_called()
-        # Incomplete + debug=False → stubs still, silence on Style D.
-        out = ge._ensure_html_links_jobs_complete([], payload, debug=False)
-        assert out == [{"job_link": self._MISSING_A, "job_title": None}]
-        index.assert_not_called()
-        detail.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_html_links_call_site_ingests_stubbed_links(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Call site: incomplete Ruth jobs still feed stubbed payload links into _ingest_link.
-        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
-        monkeypatch.setattr(
-            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-complete", matched=True)])
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_candidate",
-            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
-        )
-        html = (
-            f'<a href="{self._MISSING_A}">one</a>'
-            f'<a href="{self._MISSING_B}">two</a>'
-            '<a href="https://www.dice.com/job-detail/covered-uuid">three</a>'
-        )
-        monkeypatch.setattr(
-            ge,
-            "get_message_html",
-            MagicMock(return_value={"subject": "", "html_body": html, "from_address": "a"}),
-        )
-        monkeypatch.setattr(
-            ge,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {
-                        "jobs": [
-                            {
-                                "job_link": "https://www.dice.com/job-detail/covered-uuid",
-                                "job_title": "Covered",
-                            }
-                        ],
-                    },
-                }
-            ),
-        )
-        ingest = AsyncMock(return_value="created")
-        monkeypatch.setattr(ge, "_ingest_link", ingest)
-        monkeypatch.setattr(ge, "archive_message", MagicMock())
         out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        assert out["total_passed"] == 1 and out["total_errors"] == 0
-        ingested = [c.args[1] if c.args else c.kwargs.get("url") for c in ingest.call_args_list]
-        # _ingest_link(cid, url, jd_suffix=..., debug=...) — URL is positional arg 1.
-        assert self._MISSING_A in ingested
-        assert self._MISSING_B in ingested
-        assert "https://www.dice.com/job-detail/covered-uuid" in ingested
-        assert len(ingested) == 3
+
+        assert out["total_processed"] == 1
+        assert out["total_passed"] == 1
+        assert out["total_errors"] == 0
+        land.assert_awaited()
+        land_kwargs = land.await_args.kwargs
+        assert land.await_args.args[0] == "c1"
+        assert (land_kwargs.get("text") or "").strip() == visible
+        archive.assert_called_once_with("m-jd")
+        create.assert_not_called()
+
+
+# AST-1522: TestAst1294HtmlLinksJobsComplete removed — _ensure_html_links_jobs_complete
+# dropped with Ruth-first html_links ingest (AST-1521 proposed change).
