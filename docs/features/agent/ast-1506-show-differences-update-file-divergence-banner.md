@@ -501,3 +501,17 @@ C7 artifact complete.
 
 ```
 [code-rubric] PROCEED (Commit: 46870882) modal scroll wrapper fixed
+```
+
+## Resolution
+
+**2026-08-27 — resolve-child (Katherine)**
+
+Radia **PROCEED / CLEAN** @ `46870882` — **no fix-now** items. Product tip unchanged.
+
+| Finding | Action |
+|---------|--------|
+| Advisory: jsdom `toBeVisible` after `scrollTop` weak | Deferred — structural `overflowY`/`height` assertions remain the gate |
+| Advisory: sub tip carries sibling commits not on ftr | Deferred to `merge-child` / ftr rollup |
+
+**§9a:** `origin/sub/AST-1455/AST-1511-…` @ pre-resolve tip conflicted with `origin/dev` (changed-in-both on plan doc, banner TSX, agent/candidate/config, test-bible). Merged `origin/dev` on the sub (`sync(dev)` @ `b065dcc8`); scroll wrapper retained. Dry-run clean into `origin/dev` and `origin/ftr/AST-1455-show-differences-update-file`.
