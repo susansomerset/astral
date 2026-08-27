@@ -295,12 +295,23 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
             AsyncMock(return_value=("visible text " * 20, "https://jobs.example.com/sel")),
         )
         monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
-        create = MagicMock(return_value={"astral_job_id": "j-sel"})
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        land = AsyncMock(
+            return_value={
+                "outcome": created,
+                "outcomes": [{"outcome": created, "astral_job_id": "j-sel"}],
+                "company": "meteorite-c1",
+                "error": None,
+            }
+        )
         archive = MagicMock()
         trash = MagicMock()
         stamp = MagicMock()
         create_strip = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
+        monkeypatch.setattr(meteorite_mod, "land_meteorite", land)
         monkeypatch.setattr(ge, "archive_message", archive)
         monkeypatch.setattr(ge, "trash_message", trash)
         # Forbidden call sites — must never be invoked from selected-ids.
@@ -335,7 +346,9 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
         assert out["total_skipped"] == 3
         assert out["total_processed"] == 4
         assert out["total_passed"] == 1
-        create.assert_called_once()
+        land.assert_awaited()
+        assert land.await_args.args[0] == "c1"
+        assert land.await_args.kwargs.get("job_link") == "https://jobs.example.com/sel"
         archive.assert_called_once_with("bound")
         trash.assert_not_called()
         stamp.assert_not_called()
@@ -390,35 +403,8 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
         )
 
 
-@pytest.mark.skipif(
-    not hasattr(ge, "_ruth_live_parts"),
-    reason="AST-1213 Ruth live payload helpers not on this publish tip",
-)
-class TestAst1213RuthLivePayload:
-    """AST-1213: visible text + --- LINKS --- helpers (runner Ruth paths retired AST-1522)."""
-
-    _HTML = (
-        "<p>New jobs</p>"
-        '<a href="https://jobs.example.com/apply/123">Senior Engineer at Acme</a>'
-        '<a href="https://example.list-manage.com/track/click?u=1">Staff Engineer at Globex</a>'
-        '<a href="https://example.com/unsubscribe">Unsubscribe</a>'
-        '<a href="mailto:x@y.z">x</a>'
-    )
-
-    def test_helpers_keep_tracking_drop_noise(self) -> None:
-        text, links = ge._ruth_live_parts(self._HTML)
-        assert "Staff Engineer at Globex" in text
-        assert "https://jobs.example.com/apply/123" in links
-        assert any("list-manage.com" in u for u in links)
-        assert not any("unsubscribe" in u.casefold() for u in links)
-        assert not any(u.lower().startswith("mailto:") for u in links)
-        body = ge._format_ruth_live_body(text, links)
-        assert "--- LINKS ---" in body
-        assert "<a" not in body and "<p>" not in body
-        assert ge._format_ruth_live_body("", []).startswith("(no visible text)")
-
-    # AST-1522: html_links / subject_body live_content + ruth_payload Style D runner
-    # cases removed — Ruth pre-land parse dropped from _handle_bound.
+# AST-1522 return: TestAst1213RuthLivePayload removed — `_ruth_live_parts` /
+# `_format_ruth_live_body` deleted with Ruth-first path (AST-1521).
 
 
 @pytest.mark.skipif(
