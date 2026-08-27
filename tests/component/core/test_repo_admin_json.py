@@ -742,6 +742,21 @@ class TestAst1072ContactEstelleTurnCatalogRow:
         assert "live_content" in user.lower() or "Slack" in user or "JSON" in user
 
 
+class TestAst1515ContactEstelleTurnMarkupPrompt:
+    """AST-1515: contact_estelle_turn teaches contact-task markup in reply (not skill_calls)."""
+
+    def test_contact_estelle_turn_markup_prompt_contract(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["contact_estelle_turn"]
+        system = row["system_prompt"]
+        assert "Contact tasks (AST-1414)" in system
+        assert "~~/<task_key>" in system
+        assert "Available contact tasks (markup)" in system
+        assert "skill_calls remain for ACL entity-save only" in system
+        user = row["user_prompt"]
+        assert "prefer markup in reply over inventing data" in user
+
 
 class TestAst1075TopicMenuCatalogRows:
     """AST-1075: Estelle topic_menu_preamble_confirm + topic_menu_generate catalog rows."""
