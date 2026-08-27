@@ -281,3 +281,20 @@ No `canon/patterns/**` draft yet; parent epic explicitly assigns child #1 to int
 Files Changed and stages stay inside ticket **## Scope**; no sibling file edits; `CONTACT_TASK_CONFIG` + collision asserts mirror `CONTACT_CONFIG` / `TASK_CONFIG` discipline; Style D dispatch logging is `debug=True`-gated; follow-up uses `do_task`; `land_calls` / `skill_calls` preserved.
 
 context_tokens≈38000
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch` |
+| Tip | `847ebc6c` |
+| Branch | `sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch` |
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `bf918cd1` | `CONTACT_TASK_CONFIG` block — six keys, handler metadata, asserts |
+| 2–3 | `df54bb78` | Markup parse/strip, dynamic dispatch, follow-up turn, live_content catalog |
+| 4 | `847ebc6c` | `contact_estelle_turn` system/user prompt markup contract |
+
+**Betty note:** component tests for markup parse, dispatch Style D, follow-up turn, config asserts deferred to qa-child.
