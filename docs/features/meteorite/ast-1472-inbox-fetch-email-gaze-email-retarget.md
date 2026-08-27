@@ -491,3 +491,16 @@ After the branch, always `_finalize_archive(mid, outcomes, ...)` when the branch
 - Style D only when `debug=True`; `debug=False` no new contract noise.  
 - Layer rules: core orchestrates; Gmail archive/trash via `external.gmail`; Playwright via existing gazer fetch helper; no ui/data imports from this module beyond current database stamp/dedupe helpers.  
 - AST-1472 inbox `fetch_email` / admin land paths remain as shipped — this bug does not regress them.
+
+## Resolution — AST-1522 (2026-08-27)
+
+Gap child [AST-1522](https://linear.app/astralcareermatch/issue/AST-1522) cleared Radia’s Review Posted fix-now (test-tree only; engineer `[qa-handoff]` → Betty).
+
+| Finding | Disposition |
+|---------|-------------|
+| fix-now (1) `TestAst1140` still asserted `create_meteorite_job` | **Closed** — Betty retargeted selected-ids suite to `land_meteorite` (`test(AST-1522): return — land_meteorite 1140 + drop dead 1213` @ `2bd215df`) |
+| fix-now (2) dead `TestAst1213RuthLivePayload` + bible | **Closed** — class removed; `docs/test-bible/core/meteorite_email.md` AST-1213 / AST-1294 / AST-1522 rows updated (shasum `31a0f0ca`) |
+| discuss — narrowed manifest | Accepted — return Run is `TestAst1522NoSubjectJdLandsAndArchives` + `TestAst1140RunMeteoriteEmailSelectedIds` (4 passed on tip) |
+| advisory — broader board coverage | Deferred — primary repro + 1140 retarget satisfy Review Posted bar; further matrix stays Betty backlog |
+
+Product tip still carries AST-1521 merge (`224b882b`). No further product edits this resolve pass.
