@@ -224,3 +224,30 @@ Do not put markup in skill_calls or other JSON fields. skill_calls remain for AC
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1515
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch` @ `ab96557a05151fff1be88d3892409791b070cef8`
+
+## Traceability
+AC1→S1,S2,S3; AC2→S3,S4; AC3→S2,S3; parent AC2–6→N/A (sibling handlers); all stages map to parent Purpose/Functional scope slice for markup/dispatch framework.
+
+## Findings
+
+### fix-now — Stage 1 step 3, handler assert bullet
+**Finding:** Assert text says handler strings contain **exactly one** `.` separating module path from attribute, but the example (`src.core.gazer.contact_task_gazer_scrape`) has three dots, and Stage 2 step 5 correctly splits on the **last** `.`. Implementing the assert as written (`count('.') == 1`) will fail at import for every registered handler.
+**Recommendation:** Rewrite the assert to match resolution logic: handler must be a non-empty str containing at least one `.`; split on last `.` yields non-empty module path and attribute; optionally assert module path starts with `src.core.`.
+
+### discuss — Citations / `pattern.core.contact-task-markup`
+**Finding:** Child cites `pattern.core.contact-task-markup` (proposed); no matching file under `canon/patterns/**`. Parent epic explicitly assigns child #1 to introduce it — acceptable for build, but catalog entry is not drafted yet.
+**Recommendation:** No plan change required before build; flag for Archie pattern draft/approval track parallel to implementation (parent already names it proposed).
+
+### acceptable — Scope, layers, config, debug
+Files Changed and stages stay inside ticket **## Scope**; no sibling file edits; `CONTACT_TASK_CONFIG` + collision asserts mirror existing `CONTACT_CONFIG` / `TASK_CONFIG` discipline; Style D dispatch logging is `debug=True`-gated; follow-up uses `do_task` (not direct Anthropic I/O); `land_calls` / `skill_calls` paths preserved.
+
+context_tokens≈32000
