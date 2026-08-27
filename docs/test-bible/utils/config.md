@@ -3277,3 +3277,24 @@ Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`);
   tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
   -q
 ```
+---
+
+### AST-1523 · AST-1460
+
+**Parent:** [AST-1460](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence`.
+
+Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_artifact_key`** + clear slot. Primary coverage: **`docs/test-bible/core/candidate.md`** § AST-1523.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Notes slot + epic keys retired | `src/utils/config.py` | **`TestAst1523NotesArtifactConfig`**; revised **`TestAst1270DraftJobResumeNestConfig`**, **`TestAst1271DeviationsArtifactConfig`** |
+
+**Broken / obsolete:** **`TestAst1507ResumeAdviceArtifactConfig`**, **`TestAst1508AdviceAdherenceArtifactConfig`** — retired with product revert.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1523NotesArtifactConfig \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  -q
+```
