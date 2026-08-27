@@ -40,6 +40,14 @@ def _msg(
     }
 
 
+def _land_created_mock() -> AsyncMock:
+    return AsyncMock(return_value={"outcome": "created", "outcomes": [{"outcome": "created"}]})
+
+
+def _land_skip_mock() -> AsyncMock:
+    return AsyncMock(return_value={"outcome": "duplicate_skip", "outcomes": [{"outcome": "duplicate_skip"}]})
+
+
 # Branches: scheme+netloc URL subject; empty / non-url reject.
 
 class TestAst1090SubjectIsUrl:
@@ -169,14 +177,14 @@ class TestAst1090RunMeteoriteEmail:
             AsyncMock(return_value=("visible text " * 20, "https://jobs.example.com/role-1")),
         )
         monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
-        create = MagicMock(return_value={"astral_job_id": "j1"})
+        land = _land_created_mock()
         archive = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
+        monkeypatch.setattr(ge, "land_meteorite", land)
         monkeypatch.setattr(ge, "archive_message", archive)
         out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
         assert out["total_passed"] == 1 and out["total_errors"] == 0
-        create.assert_called_once()
-        assert create.call_args.kwargs.get("job_link") == "https://jobs.example.com/role-1"
+        land.assert_awaited_once()
+        assert land.await_args.kwargs.get("job_link") == "https://jobs.example.com/role-1"
         archive.assert_called_once_with("m2")
 
     @pytest.mark.asyncio
@@ -218,6 +226,7 @@ class TestAst1090RunMeteoriteEmail:
 
     @pytest.mark.asyncio
     async def test_html_links_ruth_jobs_create(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Inspector/list HTML with multiple links → per-link ingest (AST-1520)."""
         self._stub_stamp(monkeypatch)
         monkeypatch.setattr(
             ge, "list_inbox_messages", MagicMock(return_value=[_msg("m4", matched=True)])
@@ -227,43 +236,31 @@ class TestAst1090RunMeteoriteEmail:
             "get_candidate",
             MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
         )
+        html = (
+            "<html><body>"
+            '<a href="https://jobs.example.com/a">one</a>'
+            '<a href="https://jobs.example.com/b">two</a>'
+            "</body></html>"
+        )
         monkeypatch.setattr(
             ge,
             "get_message_html",
-            MagicMock(return_value={"subject": "", "html_body": "<p>many links here</p>", "from_address": "a"}),
+            MagicMock(return_value={"subject": "", "html_body": html, "from_address": "a"}),
         )
-        monkeypatch.setattr(
-            ge,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {
-                        "jobs": [{"job_link": "https://jobs.example.com/a"}],
-                    },
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            ge,
-            "_meteorite_fetch_link_visible_text",
-            AsyncMock(return_value=("visible text " * 20, "https://jobs.example.com/a")),
-        )
-        monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
-        create = MagicMock(return_value={"astral_job_id": "j2"})
+        ingest = AsyncMock(return_value="created")
         archive = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
+        monkeypatch.setattr(ge, "_ingest_link", ingest)
         monkeypatch.setattr(ge, "archive_message", archive)
         out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
         assert out["total_passed"] == 1
-        create.assert_called_once()
+        assert ingest.await_count == 2
         archive.assert_called_once_with("m4")
 
     @pytest.mark.asyncio
     async def test_html_links_dict_metadata_still_creates(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AST-1144: Ruth dict metadata must not block scrape/create/archive."""
+        """AST-1144: inspector HTML links still ingest via scrape/land (no Ruth gate)."""
         self._stub_stamp(monkeypatch)
         monkeypatch.setattr(
             ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-dict", matched=True)])
@@ -273,48 +270,24 @@ class TestAst1090RunMeteoriteEmail:
             "get_candidate",
             MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
         )
+        html = (
+            "<html><body>"
+            '<a href="https://www.dice.com/job-detail/x">role</a>'
+            '<a href="https://www.dice.com/job-detail/y">role2</a>'
+            "</body></html>"
+        )
         monkeypatch.setattr(
             ge,
             "get_message_html",
-            MagicMock(
-                return_value={
-                    "subject": "",
-                    "html_body": "<a href=\"https://www.dice.com/job-detail/x\">role</a>",
-                    "from_address": "a",
-                }
-            ),
+            MagicMock(return_value={"subject": "", "html_body": html, "from_address": "a"}),
         )
-        monkeypatch.setattr(
-            ge,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {
-                        "parse_mode": "html_links",
-                        "jobs": [
-                            {
-                                "job_link": "https://www.dice.com/job-detail/x",
-                                "metadata": {"company": "Dice", "location": "Remote"},
-                            }
-                        ],
-                    },
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            ge,
-            "_meteorite_fetch_link_visible_text",
-            AsyncMock(return_value=("visible text " * 20, "https://www.dice.com/job-detail/x")),
-        )
-        monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
-        create = MagicMock(return_value={"astral_job_id": "j-dict"})
+        ingest = AsyncMock(return_value="created")
         archive = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
+        monkeypatch.setattr(ge, "_ingest_link", ingest)
         monkeypatch.setattr(ge, "archive_message", archive)
         out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
         assert out["total_passed"] == 1 and out["total_errors"] == 0
-        create.assert_called_once()
+        assert ingest.await_count == 2
         archive.assert_called_once_with("m-dict")
 
     @pytest.mark.asyncio
@@ -468,12 +441,12 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
             AsyncMock(return_value=("visible text " * 20, "https://jobs.example.com/sel")),
         )
         monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
-        create = MagicMock(return_value={"astral_job_id": "j-sel"})
+        land = _land_created_mock()
         archive = MagicMock()
         trash = MagicMock()
         stamp = MagicMock()
         create_strip = MagicMock()
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
+        monkeypatch.setattr(ge, "land_meteorite", land)
         monkeypatch.setattr(ge, "archive_message", archive)
         monkeypatch.setattr(ge, "trash_message", trash)
         # Forbidden call sites — must never be invoked from selected-ids.
@@ -508,7 +481,7 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
         assert out["total_skipped"] == 3
         assert out["total_processed"] == 4
         assert out["total_passed"] == 1
-        create.assert_called_once()
+        land.assert_awaited_once()
         archive.assert_called_once_with("bound")
         trash.assert_not_called()
         stamp.assert_not_called()
@@ -592,6 +565,7 @@ class TestAst1213RuthLivePayload:
 
     @pytest.mark.asyncio
     async def test_html_links_live_content_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """AST-1520: inspector HTML routes to per-link ingest (no Ruth pre-parse)."""
         stamp = MagicMock()
         monkeypatch.setattr(ge, "update_candidate_last_email_check", stamp)
         monkeypatch.setattr(
@@ -607,27 +581,19 @@ class TestAst1213RuthLivePayload:
             "get_message_html",
             MagicMock(return_value={"subject": "", "html_body": self._HTML, "from_address": "a"}),
         )
-        captured: dict = {}
-
-        async def _do_task(**kwargs):
-            captured["live_content"] = kwargs.get("live_content")
-            return {"success": True, "parsed_response": {"jobs": []}}
-
-        monkeypatch.setattr(ge, "do_task", _do_task)
-        # AST-1294: empty Ruth jobs + payload links → reconcile stubs then ingest; keep this
-        # case on live_content shape only (no real Playwright scrape).
-        monkeypatch.setattr(ge, "_ingest_link", AsyncMock(return_value="skipped"))
+        ingest = AsyncMock(return_value="skipped")
+        monkeypatch.setattr(ge, "_ingest_link", ingest)
         monkeypatch.setattr(ge, "archive_message", MagicMock())
         await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        live = captured["live_content"]
-        assert live.startswith("PARSE_MODE: html_links\n\n")
-        assert "--- LINKS ---" in live
-        assert any("list-manage.com" in line for line in live.splitlines())
-        assert "<a href=" not in live
-        assert "<p>" not in live
+        assert ingest.await_count >= 1
+        assert all(
+            c.args[1].startswith("https://") or c.kwargs.get("url", "").startswith("https://")
+            for c in ingest.call_args_list
+        )
 
     @pytest.mark.asyncio
     async def test_subject_body_live_content_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """AST-1520: subject+body with links scrapes first link (no Ruth)."""
         monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
         monkeypatch.setattr(
             ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-sub", matched=True)])
@@ -648,28 +614,18 @@ class TestAst1213RuthLivePayload:
                 }
             ),
         )
-        captured: dict = {}
-
-        async def _do_task(**kwargs):
-            captured["live_content"] = kwargs.get("live_content")
-            return {
-                "success": True,
-                "parsed_response": {"jobs": [], "content_text": "Weekly digest"},
-            }
-
-        monkeypatch.setattr(ge, "do_task", _do_task)
-        monkeypatch.setattr(ge, "create_meteorite_job", MagicMock(return_value={"astral_job_id": "j"}))
+        ingest = AsyncMock(return_value="created")
+        monkeypatch.setattr(ge, "_ingest_link", ingest)
         monkeypatch.setattr(ge, "archive_message", MagicMock())
         await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
-        live = captured["live_content"]
-        assert live.startswith("PARSE_MODE: subject_body\nSUBJECT: Weekly digest\n\n")
-        assert "--- LINKS ---" in live
-        assert "<a href=" not in live
+        ingest.assert_awaited_once()
+        assert ingest.await_args.args[1] == "https://jobs.example.com/apply/123"
 
     @pytest.mark.asyncio
     async def test_debug_true_emits_ruth_payload_detail(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """AST-1520: plain JD path emits land debug (Ruth payload retired from routing)."""
         monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
         monkeypatch.setattr(
             ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-dbg", matched=True)])
@@ -682,15 +638,15 @@ class TestAst1213RuthLivePayload:
         monkeypatch.setattr(
             ge,
             "get_message_html",
-            MagicMock(return_value={"subject": "", "html_body": self._HTML, "from_address": "a"}),
+            MagicMock(
+                return_value={
+                    "subject": "",
+                    "html_body": "<p>Senior Engineer role with full JD text here.</p>",
+                    "from_address": "a",
+                }
+            ),
         )
-        monkeypatch.setattr(
-            ge,
-            "do_task",
-            AsyncMock(return_value={"success": True, "parsed_response": {"jobs": []}}),
-        )
-        # AST-1294: reconcile stubs missing payload links before ingest — isolate Style D payload lines.
-        monkeypatch.setattr(ge, "_ingest_link", AsyncMock(return_value="skipped"))
+        monkeypatch.setattr(ge, "land_meteorite", _land_created_mock())
         monkeypatch.setattr(ge, "archive_message", MagicMock())
         detail = MagicMock()
         monkeypatch.setattr(ge.logger, "debug_detail", detail)
@@ -698,8 +654,8 @@ class TestAst1213RuthLivePayload:
         monkeypatch.setattr(ge.logger, "set_debug_flag", MagicMock())
         await ge.run_meteorite_email({"candidate_id": "c1"}, debug=True)
         lines = [c.args[0] for c in detail.call_args_list if c.args]
-        assert any(isinstance(s, str) and s.startswith("ruth_payload visible_chars=") for s in lines)
-        assert any(isinstance(s, str) and "PARSE_MODE: html_links" in s for s in lines)
+        assert any(isinstance(s, str) and s == "shape=plain_jd" for s in lines)
+        assert any(isinstance(s, str) and s.startswith("land_outcome=") for s in lines)
 
 
 @pytest.mark.skipif(
@@ -881,3 +837,111 @@ class TestAst1294HtmlLinksJobsComplete:
         assert self._MISSING_B in ingested
         assert "https://www.dice.com/job-detail/covered-uuid" in ingested
         assert len(ingested) == 3
+
+
+class TestAst1520PlainJdLandMeteorite:
+    """AST-1520: no-subject JD text lands via land_meteorite; failed ingest leaves inbox."""
+
+    @pytest.mark.asyncio
+    async def test_no_subject_plain_jd_lands_and_archives(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-jd", matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        jd_html = "<p>Senior Software Engineer — remote, full benefits, apply today.</p>"
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(return_value={"subject": "", "html_body": jd_html, "from_address": "a"}),
+        )
+        land = _land_created_mock()
+        archive = MagicMock()
+        monkeypatch.setattr(ge, "land_meteorite", land)
+        monkeypatch.setattr(ge, "archive_message", archive)
+        out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
+        assert out["total_passed"] == 1 and out["total_errors"] == 0
+        land.assert_awaited_once()
+        assert "Senior Software Engineer" in (land.await_args.kwargs.get("text") or "")
+        archive.assert_called_once_with("m-jd")
+
+    @pytest.mark.asyncio
+    async def test_no_subject_plain_jd_land_error_leaves_inbox(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-fail", matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "subject": "",
+                    "html_body": "<p>Full job description text without any hyperlinks.</p>",
+                    "from_address": "a",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            ge,
+            "land_meteorite",
+            AsyncMock(return_value={"outcome": "error", "error": "enrichment failed"}),
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(ge, "archive_message", archive)
+        out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
+        assert out["total_passed"] == 0 and out["total_errors"] == 1
+        archive.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_url_subject_with_body_lands_link_and_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-url-body", matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "subject": "https://jobs.example.com/role-9",
+                    "html_body": "<p>Pasted JD body from candidate email.</p>",
+                    "from_address": "a",
+                }
+            ),
+        )
+        land = _land_created_mock()
+        archive = MagicMock()
+        monkeypatch.setattr(ge, "land_meteorite", land)
+        monkeypatch.setattr(ge, "archive_message", archive)
+        out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
+        assert out["total_passed"] == 1
+        assert land.await_args.kwargs.get("job_link") == "https://jobs.example.com/role-9"
+        archive.assert_called_once_with("m-url-body")
+
+    def test_body_is_inspector_html_heuristics(self) -> None:
+        assert ge._body_is_inspector_html("<html><body><a href='https://a.com/1'>x</a></body></html>")
+        prose = "<p>Long job description " + ("word " * 100) + "</p>"
+        assert not ge._body_is_inspector_html(prose)
+        list_html = '<a href="https://a.com/1">one</a><a href="https://a.com/2">two</a>'
+        assert ge._body_is_inspector_html(list_html)
