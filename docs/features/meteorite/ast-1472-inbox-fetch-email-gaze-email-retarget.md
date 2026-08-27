@@ -521,3 +521,25 @@ Gap child for AST-1520 / AST-1521: Betty lands `docs/test-bible/core/meteorite_e
 ## Radia review — AST-1522 (after Betty return)
 
 **Overall:** PROCEED after Betty return @ `2bd215df` (TestAst1140→`land_meteorite`; dead TestAst1213RuthLivePayload + bible cleaned). resolve(AST-1522) recorded findings addressed @ `75dad84f`.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/2da90618cb1009099aab5d444cc5e618/25a81139-284d-4847-8031-777878d157d4/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/7df5a29b-b543-42d3-85d6-dba853c9bd8e/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/2da90618cb1009099aab5d444cc5e618/717692f0-52f1-489a-aa6c-d2951d4c9d8e/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1520 (parent) | ftr/AST-1520-emailed-job-description-parsed-as-html |
+| AST-1521 | sub/AST-1520/AST-1521-meteorite-email-land-routing |
+| AST-1522 | sub/AST-1520/AST-1522-gap-meteorite-email-tests |
+
+**Epic worktree:** `astral-AST-1520/` — one active sub checked out at a time.
