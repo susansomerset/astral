@@ -214,3 +214,59 @@ describe("RepoJsonDivergenceBanner — AST-1506", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Update file with table version" })).toBeInTheDocument())
   })
 })
+
+function tallComparePayload(changedCount: number) {
+  const changed_rows = Array.from({ length: changedCount }, (_, i) => ({
+    row_key: `drift_row_${i + 1}`,
+    fields: [
+      {
+        field: "content",
+        file_value: "x".repeat(200),
+        database_value: "y".repeat(200),
+      },
+    ],
+  }))
+  return {
+    table_key: "agent_task",
+    diverged: true,
+    repo_relative_path: "data/admin/agent_task.json",
+    only_in_database: [],
+    only_in_file: [],
+    changed_rows,
+  }
+}
+
+describe("RepoJsonDivergenceBanner — AST-1511", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+  })
+
+  it("[bug-repro] Show Differences modal scrolls to later changed rows", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/admin/repo_json/status") {
+        return { ok: true, json: async () => divergedStatus("agent_task") } as Response
+      }
+      if (url === "/api/admin/repo_json/compare/agent_task") {
+        return { ok: true, json: async () => tallComparePayload(4) } as Response
+      }
+      throw new Error(`unexpected api call: ${url}`)
+    })
+    renderBanner("agent_task")
+    await waitFor(() => expect(screen.getByRole("button", { name: "Show Differences" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Show Differences" }))
+
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: /Differences — task prompts/i })).toBeInTheDocument(),
+    )
+
+    const modalBody = document.querySelector(".modal-card--wide .modal-body") as HTMLElement
+    expect(modalBody).toBeTruthy()
+    const scrollWrap = modalBody.firstElementChild as HTMLElement
+    expect(scrollWrap.style.overflowY).toBe("auto")
+    expect(scrollWrap.style.height).toBe("100%")
+
+    const fourthRow = screen.getByText("Row: drift_row_4")
+    scrollWrap.scrollTop = scrollWrap.scrollHeight
+    expect(fourthRow).toBeVisible()
+  })
+})

@@ -1374,14 +1374,15 @@ class TestAst1515ContactTaskMarkup:
         assert results == []
 
     def test_dispatch_handler_unavailable_for_listed_key(self) -> None:
+        # gazer_scrape resolves after AST-1516; reads after AST-1518 — pin AST-1517 key.
         results = contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
-            markup_spans=[("gazer_scrape", "https://x.example/jd")],
+            markup_spans=[("create_contact_meteorite", "https://x.example/jd")],
         )
         assert len(results) == 1
         assert results[0]["ok"] is False
         assert results[0]["error"] == "handler_unavailable"
-        assert results[0]["task_key"] == "gazer_scrape"
+        assert results[0]["task_key"] == "create_contact_meteorite"
 
     def test_dispatch_no_candidate_when_required(self) -> None:
         results = contact_mod.run_contact_task_dispatch(
@@ -1407,9 +1408,10 @@ class TestAst1515ContactTaskMarkup:
     def test_dispatch_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
         log = MagicMock()
         monkeypatch.setattr(contact_mod, "get_logger", lambda _n: log)
+        # create_contact_meteorite still unavailable until AST-1517 (AST-1518 lands reads).
         contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
-            markup_spans=[("gazer_scrape", "u")],
+            markup_spans=[("create_contact_meteorite", "u")],
             debug=True,
         )
         log.set_debug_flag.assert_called_with(True)
@@ -1468,7 +1470,8 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        "reply": "Sure! ~~/gazer_scrape https://jobs.example/1~~",
+                        # create_contact_meteorite still unavailable until AST-1517
+                        "reply": "Sure! ~~/create_contact_meteorite https://jobs.example/1~~",
                     },
                 }
             return {
@@ -1518,7 +1521,8 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        "reply": "Checking ~~/gazer_scrape https://x.example~~",
+                        # create_contact_meteorite still unavailable until AST-1517
+                        "reply": "Checking ~~/create_contact_meteorite https://x.example~~",
                     },
                 }
             captured["live"] = kwargs.get("live_content") or ""

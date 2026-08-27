@@ -401,3 +401,24 @@ Shared `jd_classifier.bot_signals` widened so parent-captured Cloudflare interst
   -q
 ```
 
+### AST-1516 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1516-gazer-scrape-contact-task`.
+
+`contact_task_gazer_scrape`: one-URL Playwright scrape via `extract_page_scrape_contract`; `_classify_jd` → Estelle-facing `page_status` (`cookie`/`bot` → `blocked`); no job create/transition. Dispatch/follow-up owned by **AST-1515**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Handler payload + map + Style D + no persist | `src/core/gazer.py` | **`TestAst1516ContactTaskGazerScrape`** |
+
+**Broken / obsolete (AST-1515 revise this pass):** `TestAst1515ContactTaskMarkup` / turn fixtures that pinned `gazer_scrape` → `handler_unavailable` — retargeted to `create_contact_meteorite` (still missing until AST-1517). See **`docs/test-bible/core/contact.md`** § AST-1515.
+
+**Integration:** no existing scenario asserts contact-task gazer scrape — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestAst1516ContactTaskGazerScrape \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  -q
+```
