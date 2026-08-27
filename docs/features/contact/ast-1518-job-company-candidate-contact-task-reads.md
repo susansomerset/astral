@@ -174,3 +174,29 @@ AC5 (parent AC5)→S1,S2; AC6 (parent AC6)→S2; AC7 (parent AC8 read paths)→S
 Does not call async coat-check `get_job_data` / `roster.get_company_data` (no gazer/website fetch); hydrates via `get_job` + `get_entity_agent_story`; ambiguous pattern → refuse; company scope check via `list_jobs`; four handler names match AST-1515 `CONTACT_TASK_CONFIG`; single-file scope; Style D gated on `debug=True`; late-import `agent` avoids cycles.
 
 context_tokens≈45000
+
+## Joan validate (round 2)
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1518
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` @ `6ad190a2e0f52fbac6d0e01f41010cfc574adbd1`
+
+## Traceability
+AC5 (parent AC5)→S1,S2; AC6 (parent AC6)→S2; AC7 (parent AC8 read paths)→S2; parent AC1–4,7→N/A (siblings); stages map to child Purpose / Functional read slice only.
+
+## Findings
+
+### acceptable — Revision 1 (job ownership)
+Stage 1 `_job_owned_by_candidate` mirrors `_candidate_data_for_job` (company→`candidate_id`); both job handlers gate on it before hydrate; `contact_task_get_job_data` no longer relies on `job["candidate_id"]`. Prior fix-now closed.
+
+### acceptable — Company param contract
+Stage 2 step 4 documents `short_name` only; other ids → `not_found`; notes AST-1515 `param_hint` mismatch out of Files Changed. Prior discuss closed in-plan.
+
+### acceptable — Boundaries, coat-check bypass, hydration, scope
+No async coat-check `get_job_data` / `roster.get_company_data`; hydrates via `get_job` + `get_entity_agent_story`; ambiguous pattern → refuse; four handler names match AST-1515 `CONTACT_TASK_CONFIG`; single-file scope; Style D gated on `debug=True`; late-import `agent` avoids cycles.
+
+context_tokens≈52000
+
+---
