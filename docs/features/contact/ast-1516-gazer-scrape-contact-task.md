@@ -123,3 +123,35 @@ async def contact_task_gazer_scrape(
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1516
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1414/AST-1516-gazer-scrape-contact-task` @ `072cf5a3bd464c5533bc89866c4ffd0c6f0a7ed7`
+
+## Traceability
+AC2 (handler slice: visible text + links + blocked/ok/closed/missing, no job create)→S1; AC2 (same-event follow-up / Estelle narrative)→N/A (AST-1515 dispatch); AC3→S1 step 5i; parent AC1/4–8→N/A or sibling scope.
+
+## Findings
+
+### discuss — Linear assignee
+**Finding:** Ticket is `Plan Ready` but assignee is Hedy, not Joan. Chuckles normally assigns Joan before validate-plan.
+**Recommendation:** Procedural only — does not block plan quality; Chuckles may restore implementer after posting upshot.
+
+### acceptable — Scope, layers, handler contract
+Single file `src/core/gazer.py`; Playwright I/O stays in `src.external.playwright` (`create_browser_context`, `get_page`, `extract_page_scrape_contract`, `close_page`); no job create/transition/`save_job_data`; async signature matches AST-1515 dispatch; `CONTACT_TASK_CONFIG` handler path already points at `contact_task_gazer_scrape`.
+
+### acceptable — Classification + payload
+`_CONTACT_PAGE_STATUS` collapses `cookie`/`bot`→`blocked` without mutating batch `_classify_jd` / `_JD_ERROR_STATES`; success dict includes Estelle-facing `page_status` plus raw `classification`; `nav_urls`→`links` list matches parent functional scope; connectivity/exception paths return `ok=False` dicts (turn stays alive).
+
+### acceptable — DRY + Style D
+Reuses roster-aligned scrape contract (`extract_page_scrape_contract` + `collapse_consecutive_blank_lines`); handler-level Style D is `debug=True`-gated with `truncate_debug_content` for long text; outer dispatch bookends from AST-1515 remain the per-task found/recorded pair — handler uses a single index (sibling AST-1518 uses dual index internally; both acceptable).
+
+context_tokens≈45000
+
+---
+
+[plan-rubric] PROCEED (Commit: 072cf5a3) scrape handler ready
