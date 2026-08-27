@@ -769,6 +769,22 @@ On successful `do_task("advise_job_resume")`, validate coded RESUME BRIEF text (
   -q
 ```
 
+### AST-1514 · AST-1460 (bug-repro)
+
+**Parent:** [AST-1460](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1514-advise-resume-brief-validation`.
+
+`do_task("advise_job_resume")` must validate + persist when post-unwrap `parsed` is a JSON-string or dict with config `resume_advice_json_key` (`resume_brief`). Primary parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1514.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| JSON-string / dict success + persist | `src/core/agent.py` | **`TestAst1514DoTaskResumeBriefJsonPersist`** (bug-repro) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1514DoTaskResumeBriefJsonPersist \
+  -q
+```
+
 ### AST-1508 · AST-1460
 
 **Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
@@ -784,6 +800,26 @@ On successful `do_task("draft_job_resume")`, validate per-code **`advice_adheren
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestAst1508DoTaskAdviceAdherencePersist \
+  -q
+```
+
+### AST-1523 · AST-1460
+
+**Parent:** [AST-1460](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence`.
+
+Draft success persists freeform **`notes`**; advise accepts freeform RESUME BRIEF (no coded validate/persist). Primary: **`docs/test-bible/core/candidate.md`** § AST-1523.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Notes persist + freeform advise | `src/core/agent.py` | **`TestAst1523DoTaskNotesPersist`**, **`TestAst1523AdviseFreeformSuccess`**, **`TestAst1523EpicAgentHooksRemoved`** |
+
+**Broken / obsolete:** **`TestAst1507DoTaskResumeAdvicePersist`**, **`TestAst1508DoTaskAdviceAdherencePersist`** — retired.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1523DoTaskNotesPersist \
+  tests/component/core/test_agent.py::TestAst1523AdviseFreeformSuccess \
+  tests/component/core/test_agent.py::TestAst1523EpicAgentHooksRemoved \
   -q
 ```
 

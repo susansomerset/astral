@@ -1373,8 +1373,13 @@ class TestAst1515ContactTaskMarkup:
         )
         assert results == []
 
-    def test_dispatch_handler_unavailable_for_listed_key(self) -> None:
-        # gazer_scrape resolves after AST-1516; reads after AST-1518 — pin AST-1517 key.
+    def test_dispatch_handler_unavailable_for_listed_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # All six handlers resolve after AST-1517 — mock missing import path.
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
         results = contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
             markup_spans=[("create_contact_meteorite", "https://x.example/jd")],
@@ -1408,7 +1413,9 @@ class TestAst1515ContactTaskMarkup:
     def test_dispatch_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
         log = MagicMock()
         monkeypatch.setattr(contact_mod, "get_logger", lambda _n: log)
-        # create_contact_meteorite still unavailable until AST-1517 (AST-1518 lands reads).
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
         contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
             markup_spans=[("create_contact_meteorite", "u")],
@@ -1463,6 +1470,10 @@ class TestAst1515ContactEstelleTurnMarkup:
         return post, calls
 
     def test_strips_markup_before_slack_post(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
+
         def side(idx, _kwargs):
             if idx == 0:
                 return {
@@ -1470,7 +1481,6 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        # create_contact_meteorite still unavailable until AST-1517
                         "reply": "Sure! ~~/create_contact_meteorite https://jobs.example/1~~",
                     },
                 }
@@ -1512,6 +1522,9 @@ class TestAst1515ContactEstelleTurnMarkup:
     def test_follow_up_turn_includes_task_results_in_live_content(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
         captured: dict = {}
 
         def side(idx, kwargs):
@@ -1521,7 +1534,6 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        # create_contact_meteorite still unavailable until AST-1517
                         "reply": "Checking ~~/create_contact_meteorite https://x.example~~",
                     },
                 }

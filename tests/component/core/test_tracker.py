@@ -1110,7 +1110,7 @@ class TestAst1504CoverLetterHydrateDisplayGaps:
 
 
 class TestAst1270NestedResumePayloadBody:
-    """AST-1270: _resume_payload_body prefers nested resume; ignores advice_adherence envelope."""
+    """AST-1270: _resume_payload_body prefers nested resume; ignores notes envelope."""
 
     def test_prefers_nested_resume_dict(self) -> None:
         body = tracker_mod._resume_payload_body(
@@ -1121,9 +1121,7 @@ class TestAst1270NestedResumePayloadBody:
                         "experience": "nested-jobs",
                     },
                     "professional_summary": "flat-should-lose",
-                    "advice_adherence": [
-                        {"code": "R1", "status": "skipped", "note": "skip note"},
-                    ],
+                    "notes": ["skipped UAT claim"],
                 }
             }
         )
@@ -1131,7 +1129,7 @@ class TestAst1270NestedResumePayloadBody:
             "professional_summary": "from-nest",
             "experience": "nested-jobs",
         }
-        assert "advice_adherence" not in body
+        assert "notes" not in body
         assert "resume" not in body
 
     def test_flat_unwrapped_payload_unchanged(self) -> None:
@@ -1141,58 +1139,33 @@ class TestAst1270NestedResumePayloadBody:
         assert body == {"professional_summary": "S", "experience": "E"}
 
 
-class TestAst1508AdviceAdherenceMetadataRetention:
-    """AST-1508: extract/save advice_adherence; resume body never includes metadata keys."""
+class TestAst1523NotesMetadataRetention:
+    """AST-1523: extract/save freeform notes; resume body never includes metadata keys."""
 
-    def test_extract_nested_envelope_reads_adherence_rows(self) -> None:
+    def test_extract_nested_envelope_reads_notes(self) -> None:
         parsed = {
             "agent_payload": {
                 "resume": {"professional_summary": "S"},
-                "advice_adherence": [
-                    {"code": "R1", "status": "skipped", "note": "unsupported"},
-                ],
+                "notes": ["skipped UAT claim"],
             }
         }
-        assert tracker_mod.extract_draft_job_resume_advice_adherence(parsed) == [
-            {"code": "R1", "status": "skipped", "note": "unsupported"}
-        ]
+        assert tracker_mod.extract_draft_job_resume_notes(parsed) == ["skipped UAT claim"]
 
     def test_extract_absent_returns_none(self) -> None:
         assert (
-            tracker_mod.extract_draft_job_resume_advice_adherence(
+            tracker_mod.extract_draft_job_resume_notes(
                 {"agent_payload": {"professional_summary": "S"}}
             )
             is None
         )
 
-    def test_get_job_resume_advice_codes_reads_artifact(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            tracker_mod,
-            "get_job",
-            lambda jid: {
-                "job_data": {
-                    "artifacts": {
-                        "resume_advice": [
-                            {"code": "R1", "instruction": "x", "citation": ""},
-                            {"code": "R2", "instruction": "y", "citation": ""},
-                        ]
-                    }
-                }
-            },
-        )
-        codes, err = tracker_mod.get_job_resume_advice_codes("job-1508")
-        assert err is None
-        assert codes == ["R1", "R2"]
-
-    def test_get_job_resume_advice_codes_missing_fails(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            tracker_mod,
-            "get_job",
-            lambda jid: {"job_data": {"artifacts": {}}},
-        )
-        codes, err = tracker_mod.get_job_resume_advice_codes("job-1508")
-        assert codes is None
-        assert err and "advise_job_resume must run first" in err
+    def test_extract_coerces_string_and_drops_blanks(self) -> None:
+        assert tracker_mod.extract_draft_job_resume_notes(
+            {"agent_payload": {"notes": "  one note  "}}
+        ) == ["one note"]
+        assert tracker_mod.extract_draft_job_resume_notes(
+            {"agent_payload": {"notes": ["keep", "  ", ""]}}
+        ) == ["keep"]
 
     def test_persist_saves_under_artifact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saved: list[dict] = []
@@ -1201,38 +1174,37 @@ class TestAst1508AdviceAdherenceMetadataRetention:
             "save_job_data",
             lambda jid, payload: saved.append({"jid": jid, **payload}),
         )
-        rows = list(_AST1508_ADVICE_ADHERENCE_ROWS)
-        items = tracker_mod.persist_draft_job_resume_advice_adherence(
-            "job-1508",
-            {"agent_payload": {"advice_adherence": rows, "professional_summary": "S"}},
+        ok = tracker_mod.persist_draft_job_resume_notes(
+            "job-1523",
+            {"agent_payload": {"notes": ["a", "b"], "professional_summary": "S"}},
         )
-        assert items == rows
-        assert saved == [{"jid": "job-1508", "artifacts": {"advice_adherence": rows}}]
+        assert ok is True
+        assert saved == [{"jid": "job-1523", "artifacts": {"notes": ["a", "b"]}}]
 
-    def test_persist_absent_key_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_persist_absent_key_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saved: list = []
         monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: saved.append(1))
         assert (
-            tracker_mod.persist_draft_job_resume_advice_adherence(
-                "job-1508", {"agent_payload": {"professional_summary": "S"}}
+            tracker_mod.persist_draft_job_resume_notes(
+                "job-1523", {"agent_payload": {"professional_summary": "S"}}
             )
-            is None
+            is False
         )
         assert saved == []
 
-    def test_resume_body_skips_advice_adherence_metadata(self) -> None:
+    def test_resume_body_skips_notes_metadata(self) -> None:
         body = tracker_mod._resume_payload_body(
             {
                 "agent_payload": {
                     "professional_summary": "S",
-                    "advice_adherence": [{"code": "R1", "status": "applied", "note": "n"}],
+                    "notes": "looks-like-a-section",
                 }
             }
         )
         assert body == {"professional_summary": "S"}
-        assert "advice_adherence" not in body
+        assert "notes" not in body
 
-    def test_persist_job_artifact_writes_adherence_not_resume_content(
+    def test_persist_job_artifact_writes_notes_not_resume_content(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from src.core import candidate as candidate_mod
@@ -1253,22 +1225,21 @@ class TestAst1508AdviceAdherenceMetadataRetention:
                 }
             },
         )
-        rows = [{"code": "R1", "status": "applied", "note": "note"}]
         parsed = {
             "agent_payload": {
                 "resume": {"professional_summary": "tailored"},
-                "advice_adherence": rows,
+                "notes": ["note"],
             }
         }
-        assert tracker_mod.persist_job_artifact_from_parsed("job-1508", parsed) is True
+        assert tracker_mod.persist_job_artifact_from_parsed("job-1523", parsed) is True
         arts = [p.get("artifacts") for p in saved]
         resume_writes = [a for a in arts if a and "resume_content" in a]
-        adh_writes = [a for a in arts if a and "advice_adherence" in a]
+        note_writes = [a for a in arts if a and "notes" in a]
         assert resume_writes
-        assert "advice_adherence" not in resume_writes[0]["resume_content"]
-        assert adh_writes and adh_writes[0]["advice_adherence"] == rows
+        assert "notes" not in resume_writes[0]["resume_content"]
+        assert note_writes and note_writes[0]["notes"] == ["note"]
 
-    def test_clear_job_build_artifacts_removes_advice_adherence(
+    def test_clear_job_build_artifacts_removes_notes(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         saved: list[tuple[str, dict, bool]] = []
@@ -1283,122 +1254,31 @@ class TestAst1508AdviceAdherenceMetadataRetention:
                 "job_data": {
                     "artifacts": {
                         "resume_content": {"professional_summary": "draft"},
-                        "advice_adherence": [
-                            {"code": "R1", "status": "applied", "note": "old"},
-                        ],
+                        "notes": ["old note"],
                         "analysis_upshot": {"summary": "keep"},
                     }
                 }
             },
         )
         monkeypatch.setattr(tracker_mod, "save_job_data", _save)
-        tracker_mod.clear_job_build_artifacts("job-1508")
+        tracker_mod.clear_job_build_artifacts("job-1523")
         art = saved[0][1]["artifacts"]
-        assert "advice_adherence" not in art
+        assert "notes" not in art
         assert "resume_content" not in art
         assert art["analysis_upshot"] == {"summary": "keep"}
 
 
-class TestAst1271DeviationsMetadataRetention:
-    """AST-1271: retired — draft deviations helpers removed (AST-1508 advice_adherence)."""
+class TestAst1523EpicHelpersRemoved:
+    """AST-1523: hard-contract persist/validate helpers removed from tracker."""
 
-    def test_deviations_helpers_removed(self) -> None:
+    def test_epic_helpers_removed(self) -> None:
         assert not hasattr(tracker_mod, "extract_draft_job_resume_deviations")
         assert not hasattr(tracker_mod, "persist_draft_job_resume_deviations")
-
-
-_AST1508_ADVICE_ADHERENCE_ROWS = [
-    {"code": "R1", "status": "applied", "note": "Promoted cloud win in summary."},
-    {"code": "R2", "status": "skipped", "note": "PHP bullet unsupported in materials."},
-]
-
-
-_AST1507_VALID_ADVISE_TEXT = """RESUME BRIEF
-[R1] Promote cloud migration win — cite: "Led AWS migration"
-[R2] Cut outdated PHP bullet
-
-COVER LETTER DIRECTION
-Ratify thesis with one line of reasoning.
-
-ASK CANDIDATE
-Nothing further.
-"""
-
-
-class TestAst1507ResumeAdviceMetadataRetention:
-    """AST-1507: extract/save resume_advice metadata; cancel clears slot."""
-
-    def test_extract_parses_coded_items_from_text(self) -> None:
-        items = tracker_mod.extract_advise_job_resume_coded_advice(
-            _AST1507_VALID_ADVISE_TEXT
-        )
-        assert items and items[0]["code"] == "R1"
-
-    def test_extract_invalid_text_returns_none(self) -> None:
-        assert tracker_mod.extract_advise_job_resume_coded_advice("no section") is None
-
-    def test_persist_saves_under_artifact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        saved: list[dict] = []
-        monkeypatch.setattr(
-            tracker_mod,
-            "save_job_data",
-            lambda jid, payload: saved.append({"jid": jid, **payload}),
-        )
-        items = tracker_mod.persist_advise_job_resume_coded_advice(
-            "job-1507", _AST1507_VALID_ADVISE_TEXT
-        )
-        assert items and len(items) == 2
-        assert saved == [
-            {
-                "jid": "job-1507",
-                "artifacts": {
-                    "resume_advice": [
-                        {
-                            "code": "R1",
-                            "instruction": "Promote cloud migration win",
-                            "citation": "Led AWS migration",
-                        },
-                        {
-                            "code": "R2",
-                            "instruction": "Cut outdated PHP bullet",
-                            "citation": "",
-                        },
-                    ]
-                },
-            }
-        ]
-
-    def test_persist_invalid_text_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        saved: list = []
-        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: saved.append(1))
-        assert tracker_mod.persist_advise_job_resume_coded_advice("job-1507", "bad") is None
-        assert saved == []
-
-    def test_clear_job_build_artifacts_removes_resume_advice(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        saved: list[tuple[str, dict, bool]] = []
-
-        def _save(jid: str, payload: dict, replace: bool = False) -> None:
-            saved.append((jid, payload, replace))
-
-        monkeypatch.setattr(
-            tracker_mod,
-            "get_job",
-            lambda jid: {
-                "job_data": {
-                    "artifacts": {
-                        "resume_advice": [{"code": "R1", "instruction": "x", "citation": ""}],
-                        "analysis_upshot": {"summary": "keep"},
-                    }
-                }
-            },
-        )
-        monkeypatch.setattr(tracker_mod, "save_job_data", _save)
-        tracker_mod.clear_job_build_artifacts("job-1507")
-        art = saved[0][1]["artifacts"]
-        assert "resume_advice" not in art
-        assert art["analysis_upshot"] == {"summary": "keep"}
+        assert not hasattr(tracker_mod, "extract_draft_job_resume_advice_adherence")
+        assert not hasattr(tracker_mod, "persist_draft_job_resume_advice_adherence")
+        assert not hasattr(tracker_mod, "get_job_resume_advice_codes")
+        assert not hasattr(tracker_mod, "extract_advise_job_resume_coded_advice")
+        assert not hasattr(tracker_mod, "persist_advise_job_resume_coded_advice")
 
 
 class TestAst1305JobResumeExtras:
