@@ -1887,7 +1887,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content`.
 
-**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved base, not editor buffer / session admin POST / job Print). `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`.
+**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved **body** content, not editor buffer / session admin POST / job Print). **AST-1489:** structure `page_break_policy` auto-persisted from editor rows immediately before print GET. `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -2315,6 +2315,38 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-1476|AST-1306"
 ```
 
+### AST-1489 · AST-1483 (bug — Print ignores unsaved page-break)
+
+**Parent:** [AST-1483 — Resume page break settings don't work](https://linear.app/astralcareermatch/issue/AST-1483/resume-page-break-settings-dont-work). **Publish:** `origin/sub/AST-1483/AST-1489-page-break-settings-still-ignored-on-print`. Auto-save structure rows (incl. `page_break_policy`) before validate-then-blob print GET on Base Resume Content and JAR Job Resume. **Body content** still from saved artifacts — not editor buffer.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Base Print without Save sections (bug-repro) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1489:`** |
+| JAR Print Resume without Save sections | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1489:`** |
+| Reorder + Print full body (AST-1490) | `ArtifactEditor.tsx`, Base/JAR pages | **`docs/test-bible/frontend/components.md`** § AST-1490 |
+| Print mock handlers (AST-1337 / AST-1350) | same | revised **`AST-1337:`** / **`AST-1350:`** — tolerate structure PUT before resume GET |
+
+**Broken / obsolete this pass:** AST-1337 Print mocks lacked structure PUT handler — extended for make-fix blast radius.
+
+**Integration:** none — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Base print-before-PUT (bug-repro): `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1489"`
+2. JAR print-before-PUT (bug-repro): `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1489"`
+3. Print regression mocks: same files — `--testNamePattern="AST-1337|AST-1350"`
+
+**AST-1489** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1489|AST-1337|AST-1350"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
 ### AST-1481 · AST-1463
 
 **Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`.
@@ -2353,3 +2385,77 @@ npm run test:component -- \
 
 - `docs/test-bible/frontend/pages.md` — `ab00a069b7566ed95635137118159ef65ffbd3d8`
 - `docs/test-bible/frontend/contexts.md` — `839d8fc16fcda5db81fc374b0177717f44d7cc3c`
+
+### AST-1488 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`.
+
+**Re-land of AST-1479** product slice (`APPLIED_JOB_STATES` + Applied nav + `view=applied` API + real `JobsApplied`). **Existing coverage — no new tests.** Config/API: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/ui/api/api_jobs.md`** § AST-1488.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Applied page (**§6c**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`JobsApplied — AST-1479 applied list home`** (rows + Actions; empty; Interview → notes → `candidate_action`; 409 toast) |
+| API `view=applied` | `api_jobs.py` | **`test_list_applied_uses_applied_job_states`** (+ **`test_list_recommended_and_default`**) |
+| Config states + nav | `config.py` | **`TestAst1479AppliedJobStatesAndNav`** |
+
+**Broken / obsolete:** none — product restore makes the AST-1479 suites green again; do not rename test ids.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Applied page (**§6c**): `tests/component/frontend/pages/test_JobsApplied.test.tsx` — **`AST-1479`**
+2. API `view=applied`: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states` (+ `test_list_recommended_and_default`)
+3. Config states + nav: `tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav`
+
+**AST-1488** narrowed run (same paths as AST-1479):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1479"
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1498 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1498-candidate-applied-missing-from-applied-screen`.
+
+Fix-lane bug: Applied page must list stem/meteorite jobs with NULL `company.candidate_id`; post-applied `candidate_action` must send `candidate_id` for linkage repair. API repro: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1498.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| POST includes `candidate_id` (**[bug-repro]**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`AST-1498 [bug-repro]: candidate_action POST includes candidate_id`** |
+
+**Broken / obsolete:** **`JobsApplied — AST-1479`** Interview case still asserts body without `candidate_id` — keep for pre-fix regression; AST-1498 repro is separate `it`.
+
+**Integration:** none.
+
+---
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+Read-only **Meteorite** companies list (`CompaniesMeteorite.tsx`): inline columns; fetches `view=meteorite_list`; row click → `CompanyDetailModal`; no bulk actions. API: **`docs/test-bible/ui/api/api_companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page load + modal (§6c) | `CompaniesMeteorite.tsx` | **`test_CompaniesMeteorite.test.tsx`** |
+| Non-array payload empty state | same | **`test_CompaniesMeteorite.test.tsx`** |
+
+**Broken / obsolete:** none — new page.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
+```

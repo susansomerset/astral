@@ -81,3 +81,15 @@ Board REVISE on AST-1416: `TestSaveCandidate` only rejects `NOT_A_STATE`; AST-13
 ```
 
 **Pass criterion:** node fails on pre-fix tree (`Invalid candidate state 'REQUESTED_ARTIFACTS.craft_get_rubric'`); flips green after AST-1416 `make-fix`.
+
+### AST-1502 · AST-1492 (gap — ensure leaves live candidate content)
+
+**Parent:** AST-1492. **Sibling product:** AST-1497. Primary bible: **`docs/test-bible/core/bootstrap.md`** § AST-1502.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ensure skips content migrates; ARTIFACTS_READY survives | `src/data/database.py` (`_ensure_candidate_schema`) | **`TestAst1502EnsureLeavesLiveCandidateContent::test_ensure_candidate_schema_leaves_artifacts_ready_without_content_migrates`** (**[bug-repro]**) |
+
+**Broken / obsolete this pass:** none in this module beyond the new assertion bar (AST-575 ensure-driven backfill expectations may need a later revise when AST-1497 lands — out of this gap's board What).
+
+**Integration:** none.

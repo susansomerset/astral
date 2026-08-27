@@ -96,8 +96,8 @@ export default function BaseResumeContent() {
       .catch(e => setToast({ text: e.message, variant: "error" }))
   }
 
-  function saveStructure(rows: SectionRow[]) {
-    if (!selectedId) return
+  async function persistStructureRows(rows: SectionRow[]): Promise<void> {
+    if (!selectedId) throw new Error("No candidate selected")
     const sections: Record<string, Record<string, unknown>> = {}
     rows.forEach((row, index) => {
       const spec: Record<string, unknown> = {
@@ -113,34 +113,44 @@ export default function BaseResumeContent() {
     })
     setStructureSaving(true)
     setStructureError(null)
-    api(`/api/candidates/${selectedId}/data`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artifacts: { resume_structure: { sections } } }),
-    })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Save failed") })
-        return r.json()
+    try {
+      const r = await api(`/api/candidates/${selectedId}/data`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifacts: { resume_structure: { sections } } }),
       })
-      .then(() => api(`/api/candidates/${selectedId}/resume_structure`).then(r => r.json()))
-      .then(data => {
-        applyStructurePayload(data)
-        setToast({ text: "Resume sections saved", variant: "success" })
-      })
-      .catch(e => {
-        const msg = e.message || "Save failed"
-        setStructureError(msg)
-        setToast({ text: msg, variant: "error" })
-      })
-      .finally(() => setStructureSaving(false))
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({})) as { error?: string }
+        throw new Error(e.error || "Save failed")
+      }
+      await r.json()
+      const data = await api(`/api/candidates/${selectedId}/resume_structure`).then(res => res.json())
+      applyStructurePayload(data)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Save failed"
+      setStructureError(msg)
+      throw e instanceof Error ? e : new Error(msg)
+    } finally {
+      setStructureSaving(false)
+    }
   }
 
-  // Session-style validate-then-blob: saved base via GET /candidate/resume/base (not editor buffer).
+  function saveStructure(rows: SectionRow[]) {
+    void persistStructureRows(rows)
+      .then(() => setToast({ text: "Resume sections saved", variant: "success" }))
+      .catch(e => {
+        const msg = e instanceof Error ? e.message : "Save failed"
+        setToast({ text: msg, variant: "error" })
+      })
+  }
+
+  // Validate-then-blob: body from saved base_resume; structure page-break rows auto-persisted pre-GET.
   async function handlePrint() {
     if (!selectedId || printing) return
     setPrinting(true)
     setPrintError(null)
     try {
+      await persistStructureRows(allSections)
       const r = await api(
         `/candidate/resume/base?candidate_id=${encodeURIComponent(selectedId)}`,
       )

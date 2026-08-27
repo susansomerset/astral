@@ -12,10 +12,30 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
 
 const mockedApi = vi.mocked(api)
 
-function renderBanner(tableKey: "agent" | "agent_task" = "agent") {
+function divergedStatus(tableKey: "agent" | "agent_task") {
+  return {
+    agent: {
+      diverged: tableKey === "agent",
+      repo_relative_path: "data/admin/agent.json",
+    },
+    agent_task: {
+      diverged: tableKey === "agent_task",
+      repo_relative_path: "data/admin/agent_task.json",
+    },
+  }
+}
+
+function renderBanner(
+  tableKey: "agent" | "agent_task" = "agent",
+  opts?: { refreshToken?: number; onReverted?: () => void },
+) {
   return render(
     <UserPromptProvider>
-      <RepoJsonDivergenceBanner tableKey={tableKey} />
+      <RepoJsonDivergenceBanner
+        tableKey={tableKey}
+        refreshToken={opts?.refreshToken}
+        onReverted={opts?.onReverted}
+      />
     </UserPromptProvider>,
   )
 }
@@ -43,10 +63,7 @@ describe("RepoJsonDivergenceBanner", () => {
       if (url === "/api/admin/repo_json/status") {
         return {
           ok: true,
-          json: async () => ({
-            agent: { diverged: true, repo_relative_path: "data/admin/agent.json" },
-            agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
-          }),
+          json: async () => divergedStatus("agent"),
         } as Response
       }
       if (url === "/api/admin/repo_json/revert/agent" && init?.method === "POST") {
@@ -66,5 +83,134 @@ describe("RepoJsonDivergenceBanner", () => {
     await waitFor(() =>
       expect(mockedApi).toHaveBeenCalledWith("/api/admin/repo_json/revert/agent", { method: "POST" }),
     )
+  })
+})
+
+describe("RepoJsonDivergenceBanner — AST-1506", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+  })
+
+  it("rewritten warning omits restart deploy overwrite copy", async () => {
+    mockedApi.mockResolvedValue({
+      ok: true,
+      json: async () => divergedStatus("agent"),
+    } as Response)
+    renderBanner("agent")
+    await waitFor(() => expect(screen.getByRole("button", { name: "Show Differences" })).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Update file with table version" })).toBeInTheDocument()
+    expect(screen.queryByText(/restart/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/deploy/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/export_repo_admin_json/i)).not.toBeInTheDocument()
+  })
+
+  it("Show Differences loads compare payload for tableKey only", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/admin/repo_json/status") {
+        return { ok: true, json: async () => divergedStatus("agent_task") } as Response
+      }
+      if (url === "/api/admin/repo_json/compare/agent_task") {
+        return {
+          ok: true,
+          json: async () => ({
+            table_key: "agent_task",
+            diverged: true,
+            repo_relative_path: "data/admin/agent_task.json",
+            only_in_database: [],
+            only_in_file: [],
+            changed_rows: [
+              {
+                row_key: "craft_do_rubric",
+                fields: [
+                  { field: "content", file_value: "on-disk", database_value: "live-edit" },
+                ],
+              },
+            ],
+          }),
+        } as Response
+      }
+      throw new Error(`unexpected api call: ${url}`)
+    })
+    renderBanner("agent_task")
+    await waitFor(() => expect(screen.getByRole("button", { name: "Show Differences" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Show Differences" }))
+
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith("/api/admin/repo_json/compare/agent_task"),
+    )
+    expect(mockedApi).not.toHaveBeenCalledWith("/api/admin/repo_json/compare/agent")
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: /Differences — task prompts/i })).toBeInTheDocument(),
+    )
+    expect(screen.getByText("Row: craft_do_rubric")).toBeInTheDocument()
+    expect(screen.getByText("on-disk")).toBeInTheDocument()
+    expect(screen.getByText("live-edit")).toBeInTheDocument()
+  })
+
+  it("Update file confirm posts write then refetches status and onReverted", async () => {
+    const onReverted = vi.fn()
+    let statusCalls = 0
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/repo_json/status") {
+        statusCalls += 1
+        return {
+          ok: true,
+          json: async () =>
+            statusCalls === 1
+              ? divergedStatus("agent")
+              : {
+                  agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+                  agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+                },
+        } as Response
+      }
+      if (url === "/api/admin/repo_json/write/agent" && init?.method === "POST") {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            table_key: "agent",
+            row_count: 6,
+            repo_relative_path: "data/admin/agent.json",
+          }),
+        } as Response
+      }
+      throw new Error(`unexpected api call: ${url}`)
+    })
+    renderBanner("agent", { onReverted })
+    await waitFor(() => expect(screen.getByRole("button", { name: "Update file with table version" })).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole("button", { name: "Update file with table version" }))
+    await waitFor(() =>
+      expect(screen.getByRole("alertdialog", { name: "Update file with table version" })).toBeInTheDocument(),
+    )
+    const confirmButtons = screen.getAllByRole("button", { name: "Update file with table version" })
+    await userEvent.click(confirmButtons[confirmButtons.length - 1])
+
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith("/api/admin/repo_json/write/agent", { method: "POST" }),
+    )
+    await waitFor(() => expect(statusCalls).toBeGreaterThanOrEqual(2))
+    await waitFor(() => expect(onReverted).toHaveBeenCalled())
+  })
+
+  it("Update file cancel does not post write", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/admin/repo_json/status") {
+        return { ok: true, json: async () => divergedStatus("agent") } as Response
+      }
+      throw new Error(`unexpected api call: ${url}`)
+    })
+    renderBanner("agent")
+    await waitFor(() => expect(screen.getByRole("button", { name: "Update file with table version" })).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole("button", { name: "Update file with table version" }))
+    await waitFor(() =>
+      expect(screen.getByRole("alertdialog", { name: "Update file with table version" })).toBeInTheDocument(),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+
+    expect(mockedApi).not.toHaveBeenCalledWith("/api/admin/repo_json/write/agent", expect.anything())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Update file with table version" })).toBeInTheDocument())
   })
 })

@@ -1026,6 +1026,27 @@ ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code,
   -q
 ```
 
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+`enrich_meteorite_land_packet` maps Ruth `company_stem` via `company_stem_response_key`; dispatch `qualify_meteorite` Style D logs stem on success when present (not persisted on job row — attach is **AST-1495**). Config schema: **`docs/test-bible/utils/config.md`**. Catalog prompts: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Land enrich map + strip + debug detail | `src/core/consult.py` | **`TestAst1494EnrichMeteoriteCompanyStem`** |
+| Dispatch debug stem on pass | `src/core/consult.py` | **`TestAst1494EnrichMeteoriteCompanyStem::test_dispatch_debug_logs_company_stem_when_present`** |
+
+**Broken / obsolete:** none — additive map on enrich output.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem \
+  -q
+```
+
 ### AST-1210 · AST-1186
 
 **Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`.
@@ -1112,5 +1133,35 @@ Persist `{prefix}_score_breakdown` `{earned, possible, max}` beside Analysis-pha
   tests/component/utils/test_config.py::TestAst1347PhaseScoreBreakdownConfig \
   tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
   tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  -q
+```
+
+---
+
+### AST-1513 · AST-1510
+
+**Parent:** [AST-1510 — meteorite_grade_do incomplete grade set (duplicate Do rubric TP codes)](https://linear.app/astralcareermatch/issue/AST-1510). **Publish:** `origin/sub/AST-1510/AST-1513-reject-duplicate-do-rubric-codes`.
+
+Board REVISE: `_vector_labels_map` HT/TP duplicate-code collision (last-wins drops Hands-On label → incomplete grade set). Product fix lands on AST-1513 Step 3; this gap owns the [bug-repro] bar.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Decode map first-wins on duplicate codes | `src/core/consult.py` (`_vector_labels_map`) | **`TestAst1513DuplicateRubricCodes::test_vector_labels_map_first_wins_on_duplicate_tp`** (**[bug-repro]**) |
+| Symptom: incomplete grade set with duplicate TP decode | same + `_require_complete_grade_set` | **`TestAst1513DuplicateRubricCodes::test_duplicate_tp_codes_cause_incomplete_grade_set`** |
+
+**Broken / obsolete:** none — `TestRubricHelpers::test_maps_vector_labels` single-code happy path unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. First-wins map (bug-repro): `tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes::test_vector_labels_map_first_wins_on_duplicate_tp`
+2. Incomplete-grade symptom (documents collision): `tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes::test_duplicate_tp_codes_cause_incomplete_grade_set`
+
+**Pass criterion:** (1) red pre-fix, green after make-fix Step 3; (2) passes on both trees (symptom documentation).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes \
   -q
 ```

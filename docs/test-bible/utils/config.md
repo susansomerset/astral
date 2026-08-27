@@ -1203,13 +1203,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
 
-`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, **IGNORE**, unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
+`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, company state **METEORITE** after **AST-1493** (was IGNORE), unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Template keys + IGNORE/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing assert revised **AST-1056**) |
+| Template keys + company_state/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing **AST-1056**; company_state **AST-1493**) |
 
-**Broken / obsolete:** none — additive config block.
+**Broken / obsolete:** AST-1041 `company_state == "IGNORE"` — revised **AST-1493**.
 
 **Integration:** no existing scenario asserts METEORITE_CONFIG — no revision.
 
@@ -3151,5 +3151,129 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+```
+
+### AST-1488 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`.
+
+**Re-land of AST-1479** — same `APPLIED_JOB_STATES` + Applied nav enablement. **Existing coverage — no new tests.** Full manifest: **`docs/test-bible/frontend/pages.md`** § AST-1488.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied state set + nav | `src/utils/config.py` | **`TestAst1479AppliedJobStatesAndNav`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+### AST-1493 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track`.
+
+`COMPANY_STATES["METEORITE"] = {}` (roster-inert); `METEORITE_CONFIG["company_state"]` → **METEORITE**; stem template keys (`stem_short_name_template` / `default_stem` / `meteorite_self_stem`). Ensure/track: **`docs/test-bible/core/meteorite.md`** (**AST-1493**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| METEORITE state + stem template asserts | `src/utils/config.py` | **`TestAst1493MeteoriteCompanyStateConfig`**; revised **`TestAst1041MeteoriteConfig`** |
+
+**Broken / obsolete:** AST-1041 `company_state == "IGNORE"`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
+  tests/component/core/test_meteorite.py::TestAst1493StemEnsureAndTrack \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  -q
+```
+
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`); `company_stem_response_key` literal for consult map. Enrich/apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema + response key + validate omit/value | `src/utils/config.py` | **`TestAst1494QualifyMeteoriteCompanyStemSchema`** |
+
+**Broken / obsolete:** none — additive optional field.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1494QualifyMeteoriteCompanyStemSchema \
+  -q
+```
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+`NAV_CONFIG` Companies group: **Meteorite** → `/companies/meteorite_list` (after Ignored). Core/API: **`docs/test-bible/core/meteorite.md`**, **`docs/test-bible/ui/api/api_companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Companies → Meteorite nav item | `src/utils/config.py` | **`TestAst1495MeteoriteCompaniesNav`** |
+
+**Broken / obsolete:** none — additive NAV item.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1495MeteoriteCompaniesNav \
+  -q
+```
+
+---
+
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+`TASK_CONFIG["advise_job_resume"]` coded-advice keys + `resume_advice` in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Primary parse/validate/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1507. Tracker persist + cancel clear: **`docs/test-bible/core/tracker.md`** § AST-1507. `do_task` validate/persist hooks: **`docs/test-bible/core/agent.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Artifact slot + clear-keys | `src/utils/config.py` | **`TestAst1507ResumeAdviceArtifactConfig`** |
+
+**Broken / obsolete:** none — additive advise metadata slot (AST-1271 deviations mirror).
+
+**Integration:** none — advise hop is component-layer; no existing integration scenario asserts coded resume advice.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1507ResumeAdviceArtifactConfig \
+  -q
+```
+
+---
+
+### AST-1508 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
+
+`TASK_CONFIG["draft_job_resume"]` per-code adherence keys (`advice_adherence_*`); **`deviations`** removed from draft metadata/artifact/clear-keys; **`advice_adherence`** in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Primary normalize/validate/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1508. Tracker persist: **`docs/test-bible/core/tracker.md`** § AST-1508.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Adherence slot + clear-keys | `src/utils/config.py` | **`TestAst1508AdviceAdherenceArtifactConfig`**; revised **`TestAst1270DraftJobResumeNestConfig`**, **`TestAst1271DeviationsArtifactConfig`** |
+
+**Broken / obsolete:** AST-1271 deviations slot on draft — superseded; **`TestAst1271DeviationsArtifactConfig`** revised to assert retirement.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1508AdviceAdherenceArtifactConfig \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
   -q
 ```

@@ -1075,7 +1075,7 @@ Core `get_new_candidate_batch` / `clear_candidate_batch` wrappers (batch_id-firs
 
 **Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`.
 
-Nested hop contract: normalize unwraps **`agent_payload.resume`** before section checks; whitelist = candidate **`artifacts.base_resume`** keys (including extras after **AST-1305** — no longer ∩ **`RESUME_STRUCTURE_KNOWN_SECTION_IDS`**; no persisted **`resume_structure`** required); **`deviations`** is sibling metadata (retention = **AST-1271**; Style D trail = **AST-1272**). Manage Tasks seed keeps nested envelope + experience value-type wording. Flat (no nest) payloads remain accepted.
+Nested hop contract: normalize unwraps **`agent_payload.resume`** before section checks; whitelist = candidate **`artifacts.base_resume`** keys (including extras after **AST-1305** — no longer ∩ **`RESUME_STRUCTURE_KNOWN_SECTION_IDS`**; no persisted **`resume_structure`** required); **`advice_adherence`** is sibling metadata (retention = **AST-1508**; supersedes **AST-1271** `deviations`; Style D trail = **AST-1272**). Manage Tasks seed keeps nested envelope + experience value-type wording. Flat (no nest) payloads remain accepted.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1477,3 +1477,131 @@ Config-owned structure `page_break_policy` tokens (`normal` / `page_break_before
 - `docs/test-bible/core/candidate.md`
 - `docs/test-bible/utils/config.md`
 - `docs/test-bible/ui/api/api_candidate.md`
+
+---
+
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+Parse/validate coded `[R<n>]` lines from Estelle **text** RESUME BRIEF section (prompt-enforced; metadata only — never resume body). Style D when `debug=True`. Manage Tasks prompt + AST-756 twin: revised **`TestAst1349ExperienceArrayContract::test_advise_prompt_coded_resume_brief_contract`**. Config keys: **`docs/test-bible/utils/config.md`** § AST-1507. Persist/cancel: **`docs/test-bible/core/tracker.md`** § AST-1507. `do_task` hooks: **`docs/test-bible/core/agent.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Text parse/validate + Style D | `src/core/candidate.py` | **`TestAst1507AdviseCodedResumeAdvice`** |
+| Coded RESUME BRIEF prompt + fixture twin | `data/admin/agent_task.json` | **`TestAst1349ExperienceArrayContract::test_advise_prompt_coded_resume_brief_contract`**, existing **`test_uat_fixture_twin_matches_catalog_after_prompt_edits`** |
+
+**Broken / obsolete:** none — additive advise contract; AST-1270 nest/draft paths unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Config coded-advice keys + clear slot: `tests/component/utils/test_config.py::TestAst1507ResumeAdviceArtifactConfig`
+2. Parse/validate/errors + debug trail: `tests/component/core/test_candidate.py::TestAst1507AdviseCodedResumeAdvice`
+3. Coded RESUME BRIEF prompt contract: `tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_advise_prompt_coded_resume_brief_contract`
+4. UAT fixture twin (existing): `tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits`
+5. Tracker extract/persist/cancel clear: `tests/component/core/test_tracker.py::TestAst1507ResumeAdviceMetadataRetention`
+6. `do_task` validate gate + persist hook: `tests/component/core/test_agent.py::TestAst1507DoTaskResumeAdvicePersist`
+
+**AST-1507** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1507ResumeAdviceArtifactConfig \
+  tests/component/core/test_candidate.py::TestAst1507AdviseCodedResumeAdvice \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_advise_prompt_coded_resume_brief_contract \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits \
+  tests/component/core/test_tracker.py::TestAst1507ResumeAdviceMetadataRetention \
+  tests/component/core/test_agent.py::TestAst1507DoTaskResumeAdvicePersist \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1508 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
+
+Judith **`draft_job_resume`** replaces freeform **`deviations: string[]`** (**AST-1271**) with per-code **`advice_adherence`** rows validated against **`job_data.artifacts.resume_advice`** (**AST-1507**). Normalize/validate in candidate; load expected codes + persist in tracker; agent validate gate before grade + success-path persist. Config slot: **`docs/test-bible/utils/config.md`** § AST-1508. Tracker extract/persist/cancel: **`docs/test-bible/core/tracker.md`** § AST-1508. Live hop path: **`docs/test-bible/core/agent.md`** § AST-1508.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Normalize/validate + debug Style D | `src/core/candidate.py` | **`TestAst1508DraftAdviceAdherenceValidate`** |
+| Nested prompt + metadata sibling | `data/admin/agent_task.json` | revised **`TestAst1270NestedDraftJobResumeContract`**; **`TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy`** |
+| Config adherence keys (replaces deviations) | `src/utils/config.py` | **`TestAst1508AdviceAdherenceArtifactConfig`**; revised **`TestAst1270DraftJobResumeNestConfig`** |
+| Extract/persist/clear + advice code load | `src/core/tracker.py` | **`TestAst1508AdviceAdherenceMetadataRetention`**; revised **`TestAst1270NestedResumePayloadBody`** |
+| Validate gate + success persist | `src/core/agent.py` | **`TestAst1508DoTaskAdviceAdherencePersist`** |
+
+**Broken / obsolete this pass (revised or retired):**
+
+- **`TestAst1271DeviationsMetadataRetention`** — replaced by **`TestAst1508AdviceAdherenceMetadataRetention`**; deviations helpers removed from tracker.
+- **`TestAst1271DoTaskDeviationsPersist`** — replaced by **`TestAst1508DoTaskAdviceAdherencePersist`**; persist hook removed.
+- **`TestAst1271DeviationsArtifactConfig`** — revised to assert deviations **retired** on draft config; primary slot tests in **`TestAst1508AdviceAdherenceArtifactConfig`**.
+- AST-1270 nested prompt/metadata asserts — **`deviations`** → **`advice_adherence`**.
+
+**Integration:** none — no existing scenario for draft adherence metadata.
+
+## QA test manifest
+
+1. Config adherence keys + clear slot: `tests/component/utils/test_config.py::TestAst1508AdviceAdherenceArtifactConfig`
+2. Revised nest config (no deviations): `tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig`
+3. Retired deviations config assert: `tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig`
+4. Normalize/validate/errors + debug trail: `tests/component/core/test_candidate.py::TestAst1508DraftAdviceAdherenceValidate`
+5. Nested prompt contract (revised): `tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract`
+6. Draft tailor prompt (revised): `tests/component/core/test_candidate.py::TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy`
+7. Tracker extract/persist/clear + `get_job_resume_advice_codes`: `tests/component/core/test_tracker.py::TestAst1508AdviceAdherenceMetadataRetention`
+8. Nested body skip (revised): `tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody`
+9. Deviations helpers removed stub: `tests/component/core/test_tracker.py::TestAst1271DeviationsMetadataRetention::test_deviations_helpers_removed`
+10. `do_task` validate gate + success persist: `tests/component/core/test_agent.py::TestAst1508DoTaskAdviceAdherencePersist`
+11. Deviations persist helper removed stub: `tests/component/core/test_agent.py::TestAst1271DoTaskDeviationsPersist::test_deviations_persist_helper_removed`
+
+**AST-1508** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1508AdviceAdherenceArtifactConfig \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  tests/component/core/test_candidate.py::TestAst1508DraftAdviceAdherenceValidate \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy \
+  tests/component/core/test_tracker.py::TestAst1508AdviceAdherenceMetadataRetention \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  tests/component/core/test_tracker.py::TestAst1271DeviationsMetadataRetention::test_deviations_helpers_removed \
+  tests/component/core/test_agent.py::TestAst1508DoTaskAdviceAdherencePersist \
+  tests/component/core/test_agent.py::TestAst1271DoTaskDeviationsPersist::test_deviations_persist_helper_removed \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1513 · AST-1510
+
+**Parent:** [AST-1510 — meteorite_grade_do incomplete grade set (duplicate Do rubric TP codes)](https://linear.app/astralcareermatch/issue/AST-1510). **Publish:** `origin/sub/AST-1510/AST-1513-reject-duplicate-do-rubric-codes`.
+
+Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST-1513; this gap owns the [bug-repro] bar for Step 2.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Save-time duplicate-code guard | `src/core/candidate.py` (`normalize_rubric_artifacts_on_save`) | **`TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes`** (**[bug-repro]**) |
+
+**Broken / obsolete:** none — additive guard; existing `TestNormalizeRubricArtifactsOnSaveExtended` unique-code paths unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Save guard (bug-repro): `tests/component/core/test_candidate.py::TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes`
+
+**Pass criterion:** pytest red on pre-fix tree; green after make-fix Step 2.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1513DuplicateRubricCodes \
+  -q
+```

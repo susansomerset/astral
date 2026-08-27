@@ -25,7 +25,7 @@ class TestCompaniesRoutes:
     def test_list_new_inactive_ignored_and_default_views(self, companies_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(companies_mod, "get_active_trigger_states", lambda candidate_id, entity_type: ["TO_WATCH", "WATCH", "IGNORE"])
         monkeypatch.setattr(companies_mod, "list_companies", lambda **kwargs: [{"short_name": "co", "company_data": {}}])
-        for view in ("new_list", "inactive_list", "ignored", "other"):
+        for view in ("new_list", "inactive_list", "ignored", "meteorite_list", "other"):
             resp = companies_client.get(f"/api/companies?view={view}&candidate_id=cand-1", headers=auth_headers)
             assert resp.status_code == 200
             assert resp.get_json()[0]["short_name"] == "co"
@@ -46,6 +46,7 @@ class TestCompaniesRoutes:
         assert history.status_code == 200
         assert counts.status_code == 200
         assert counts.get_json()["/companies/watch_list"] == 2
+        assert counts.get_json()["/companies/meteorite_list"] == 2
 
     def test_detail_not_found(self, companies_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = companies_client.get("/api/companies/missing", headers=auth_headers)

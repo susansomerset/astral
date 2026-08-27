@@ -192,8 +192,30 @@ def _rubric_criteria_for_cfg(candidate_id: str, cfg: dict) -> list:
     return rubric_criteria_for_task(candidate_id, owner)
 
 
-def _vector_labels_map(rubric_criteria: list) -> Dict[str, str]:
-    return {item["code"]: item["label"] for item in rubric_criteria if item.get("code") and item.get("label")}
+def _vector_labels_map(rubric_criteria: list, *, debug: bool = False) -> Dict[str, str]:
+    """Map rubric code → label for encoded grade decode. First-wins on duplicate codes (AST-1513)."""
+    pairs: List[Tuple[str, str]] = []
+    for item in rubric_criteria or []:
+        if not isinstance(item, dict):
+            continue
+        code = item.get("code")
+        label = item.get("label")
+        if code and label:
+            pairs.append((str(code).strip().upper(), str(label).strip()))
+    by_code: Dict[str, List[str]] = {}
+    for code, label in pairs:
+        by_code.setdefault(code, []).append(label)
+    dupes = {code: labels for code, labels in by_code.items() if len(labels) > 1}
+    if dupes:
+        detail = "; ".join(f"{code}→{labels!r}" for code, labels in sorted(dupes.items()))
+        logger.warning("duplicate rubric codes: %s", detail)
+        if debug:
+            logger.debug_detail(detail)
+    # First-wins keeps decode stable until duplicate rows are data-fixed (not silent last-wins).
+    out: Dict[str, str] = {}
+    for code, label in pairs:
+        out.setdefault(code, label)
+    return out
 
 
 def _lookup_rubric_reason_for_grade(rubric_criteria: list, vector_label: str, letter: str) -> str:
@@ -1239,7 +1261,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     # Encoded consult tasks need batch_entities + vector_labels for decode (same as _run_batch_consult).
     cd = (ctx or {}).get("candidate_data", {})
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
-    vector_labels = _vector_labels_map(rubric_criteria)
+    vector_labels = _vector_labels_map(rubric_criteria, debug=debug)
     job_row = dict(job)
     task_ctx: Dict[str, Any] = {**(ctx or {}), "batch_entities": [job_row], "vector_labels": vector_labels, "batch_size": 1}
 
@@ -1402,7 +1424,7 @@ async def _run_batch_consult(
     live_content = assemble_fn(jobs)
     # Build code→label map from candidate's rubric so _decode_payload can hydrate vector names
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
-    vector_labels = _vector_labels_map(rubric_criteria)
+    vector_labels = _vector_labels_map(rubric_criteria, debug=debug)
     # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
     cid = _candidate_id_from_ctx(ctx)
     task_ctx = {**(ctx or {}), "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
@@ -1961,12 +1983,15 @@ async def enrich_meteorite_land_packet(
         jd_text = (rj.get("jd_text") or "").strip() if isinstance(rj.get("jd_text"), str) else ""
         ruth_emp = (rj.get("employer_name") or "").strip() if isinstance(rj.get("employer_name"), str) else ""
         employer_name = ruth_emp or scrap["employer_name"]
+        stem_key = TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"]
+        ruth_stem = (rj.get(stem_key) or "").strip() if isinstance(rj.get(stem_key), str) else ""
         out_jobs.append({
             "company_job_id": company_job_id,
             "job_title": job_title,
             "job_link": job_link,
             "jd_text": jd_text,
             "employer_name": employer_name,
+            "company_stem": ruth_stem,
             "scrap_index": i,
         })
         if debug:
@@ -1979,7 +2004,8 @@ async def enrich_meteorite_land_packet(
             )
             logger.debug_detail(
                 f"batch_id={batch_id} link={job_link!r} content_chars_in={len(scrap['content'])} "
-                f"jd_chars={len(jd_text)} employer_name={'yes' if employer_name else 'no'}"
+                f"jd_chars={len(jd_text)} employer_name={'yes' if employer_name else 'no'} "
+                f"company_stem={ruth_stem!r}"
             )
 
     return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
@@ -2170,6 +2196,10 @@ async def qualify_meteorite(
                     f"jd_chars={len(jd_text)}",
                 ]
             )
+            stem_key = cfg["company_stem_response_key"]
+            ruth_stem = (response_job.get(stem_key) or "").strip() if isinstance(response_job.get(stem_key), str) else ""
+            if ruth_stem:
+                found_bits.append(f"company_stem={ruth_stem!r}")
             logger.debug_detail(
                 f"{' '.join(found_bits)} | "
                 f"recorded company_job_id={recorded.get('company_job_id')!r} "

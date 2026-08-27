@@ -180,3 +180,53 @@ GET detail attaches `fields_editable` + `legal_next_states` (empty when not skip
   tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
   -q
 ```
+
+### AST-1488 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`.
+
+**Re-land of AST-1479** — same `view=applied` list branch. **Existing coverage — no new tests.** Full manifest: **`docs/test-bible/frontend/pages.md`** § AST-1488.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied view list | `src/ui/api/api_jobs.py` | **`test_list_applied_uses_applied_job_states`**; **`test_list_recommended_and_default`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+### AST-1498 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1498-candidate-applied-missing-from-applied-screen`.
+
+Applied list must include post-applied jobs on stem/meteorite companies when `company.candidate_id` is NULL — supplement + repair pass on `view=applied` only. Page POST body: **`docs/test-bible/frontend/pages.md`** § AST-1498.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied view stem linkage (**[bug-repro]**) | `src/ui/api/api_jobs.py` | **`test_list_applied_includes_stem_job_null_company_candidate_id_ast1498`** |
+| Primary pass params (regression) | same | revised **`test_list_applied_uses_applied_job_states`** (multi-call safe) |
+
+**Broken / obsolete:** none pre-fix — **`test_list_applied_uses_applied_job_states`** revised so supplement pass does not false-fail post-fix.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. **[bug-repro]** API stem NULL linkage: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_includes_stem_job_null_company_candidate_id_ast1498`
+2. Applied primary pass regression: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states`
+3. **[bug-repro]** Page POST `candidate_id`: `tests/component/frontend/pages/test_JobsApplied.test.tsx` — **`AST-1498 [bug-repro]`**
+
+**AST-1498** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_includes_stem_job_null_company_candidate_id_ast1498 \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1498"
+```
+
+**Pass criterion:** repro lines flip red→green after `make-fix`; regression line stays green — not zero-arg harness / branch-lock gate.

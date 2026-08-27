@@ -434,24 +434,55 @@ class TestAst594DraftJobResumeSchema:
 
 
 class TestAst1270DraftJobResumeNestConfig:
-    """AST-1270: nest unwrap key + payload metadata (incl. deviations) on TASK_CONFIG."""
+    """AST-1270: nest unwrap key + payload metadata (incl. advice_adherence) on TASK_CONFIG."""
 
-    def test_nested_resume_key_and_metadata_include_deviations(self) -> None:
+    def test_nested_resume_key_and_metadata_include_advice_adherence(self) -> None:
         entry = cfg.TASK_CONFIG["draft_job_resume"]
         assert entry["nested_resume_key"] == "resume"
         meta = set(entry["payload_metadata_keys"])
-        assert "deviations" in meta
+        assert "advice_adherence" in meta
+        assert "deviations" not in meta
         assert {"astral_job_id", "company", "title", "task_success"}.issubset(meta)
 
 
-class TestAst1271DeviationsArtifactConfig:
-    """AST-1271: deviations job-artifact slot + cancel clear-keys."""
+class TestAst1508AdviceAdherenceArtifactConfig:
+    """AST-1508: per-code advice_adherence slot + cancel clear-keys (replaces AST-1271 deviations)."""
 
-    def test_deviations_artifact_key_and_clear_keys(self) -> None:
+    def test_advice_adherence_keys_and_clear_keys(self) -> None:
         entry = cfg.TASK_CONFIG["draft_job_resume"]
-        assert entry["deviations_artifact_key"] == "deviations"
-        assert entry["deviations_artifact_key"] in entry["payload_metadata_keys"]
-        assert "deviations" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert entry["advice_adherence_required"] is True
+        assert entry["advice_adherence_artifact_key"] == "advice_adherence"
+        assert entry["advice_adherence_status_applied"] == "applied"
+        assert entry["advice_adherence_status_skipped"] == "skipped"
+        assert "advice_adherence" in entry["payload_metadata_keys"]
+        assert "deviations" not in entry["payload_metadata_keys"]
+        assert "deviations_artifact_key" not in entry
+        assert "advice_adherence" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "deviations" not in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+
+
+class TestAst1271DeviationsArtifactConfig:
+    """AST-1271: retired on draft — superseded by AST-1508 advice_adherence."""
+
+    def test_deviations_retired_from_draft_config(self) -> None:
+        entry = cfg.TASK_CONFIG["draft_job_resume"]
+        assert "deviations_artifact_key" not in entry
+        assert "deviations" not in entry["payload_metadata_keys"]
+        assert "deviations" not in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+
+
+class TestAst1507ResumeAdviceArtifactConfig:
+    """AST-1507: coded resume_advice slot on advise_job_resume + cancel clear-keys."""
+
+    def test_resume_advice_keys_and_clear_keys(self) -> None:
+        entry = cfg.TASK_CONFIG["advise_job_resume"]
+        assert entry["resume_advice_coded_list"] is True
+        assert entry["resume_advice_artifact_key"] == "resume_advice"
+        assert entry["resume_advice_section_header"] == "RESUME BRIEF"
+        assert entry["resume_advice_section_end_header"] == "COVER LETTER DIRECTION"
+        assert entry["resume_advice_code_prefix"] == "R"
+        assert entry["resume_advice_min_items"] >= 1
+        assert "resume_advice" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
 
 
 class TestAst520AnticipateScanTaskKey:
@@ -2802,14 +2833,15 @@ class TestAst1333CraftParseHighlightsSchema:
 
 
 class TestAst1041MeteoriteConfig:
-    """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
+    """AST-1041: METEORITE_CONFIG placeholder template (METEORITE state after AST-1493)."""
 
-    def test_required_keys_and_ignore_state(self) -> None:
+    def test_required_keys_and_meteorite_company_state(self) -> None:
         m = cfg.METEORITE_CONFIG
         assert m["short_name_prefix"] == "meteorite-"
         assert m["short_name_template"] == "meteorite-{candidate_id}"
         assert m["company_name"] == "meteorite"
-        assert m["company_state"] == "IGNORE"
+        # AST-1493: new placeholders land in METEORITE (was IGNORE).
+        assert m["company_state"] == "METEORITE"
         assert m["company_state"] in cfg.COMPANY_STATES
         assert "note" in m["company_data"]
         # AST-1056: create landing retargeted to METEORITE_NEW.
@@ -2821,6 +2853,26 @@ class TestAst1041MeteoriteConfig:
         cid = "cand-42"
         built = cfg.METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
         assert built == cfg.METEORITE_CONFIG["short_name_prefix"] + cid
+
+
+class TestAst1493MeteoriteCompanyStateConfig:
+    """AST-1493: COMPANY_STATES METEORITE + stem templates on METEORITE_CONFIG."""
+
+    def test_meteorite_company_state_roster_inert(self) -> None:
+        assert "METEORITE" in cfg.COMPANY_STATES
+        assert cfg.COMPANY_STATES["METEORITE"] == {}
+        assert cfg.METEORITE_CONFIG["company_state"] == "METEORITE"
+
+    def test_stem_templates_and_literals(self) -> None:
+        m = cfg.METEORITE_CONFIG
+        assert m["stem_short_name_template"] == "{stem}-{candidate_id}"
+        assert m["default_stem"] == "meteorite"
+        assert m["meteorite_self_stem"] == "meteorite-self"
+        # default stem + template must equal legacy short_name_template shape
+        assert m["stem_short_name_template"].format(
+            stem=m["default_stem"],
+            candidate_id="{candidate_id}",
+        ) == m["short_name_template"]
 
 
 class TestAst1047CandidateLookupConfig:
@@ -3197,6 +3249,46 @@ class TestAst1127QualifyMeteoriteCompanyJobIdOptional:
             missing_jd, schema, "qualify_meteorite"
         )
         assert err and "jd_text" in err
+
+
+# Branches: optional company_stem schema + response key literal (AST-1494).
+class TestAst1494QualifyMeteoriteCompanyStemSchema:
+    """AST-1494: company_stem optional on qualify_meteorite items_schema."""
+
+    def test_schema_and_response_key(self) -> None:
+        from src.utils import config as cfg
+
+        if "qualify_meteorite" not in cfg.TASK_CONFIG:
+            import pytest
+            pytest.skip("qualify_meteorite not on tip")
+        item = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert item["company_stem"]["type"] == "str"
+        assert item["company_stem"]["required"] is False
+        assert cfg.TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] == "company_stem"
+        assert cfg.TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in item
+
+    def test_validate_allows_omit_and_accepts_value(self) -> None:
+        from src.core import agent as agent_mod
+        from src.utils import config as cfg
+
+        if "qualify_meteorite" not in cfg.TASK_CONFIG:
+            import pytest
+            pytest.skip("qualify_meteorite not on tip")
+        schema = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]
+        job = {
+            "astral_job_id": "000",
+            "company_job_id": "EXT-1",
+            "job_title": "Engineer",
+            "job_link": "https://jobs.example.com/1",
+            "jd_text": "x" * 50,
+        }
+        base = {"agent_performance": "success", "agent_payload": {"jobs": [job]}}
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+        with_stem = {**job, "company_stem": "alice@example.com"}
+        base["agent_payload"]["jobs"][0] = with_stem
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+        base["agent_payload"]["jobs"][0] = {**with_stem, "company_stem": ""}
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
 
 
 # Branches: qualify_meteorite job_link/job_title optional + BOT_BLOCKED rename (AST-1195).
@@ -5054,3 +5146,16 @@ class TestAst1479AppliedJobStatesAndNav:
         applied = next(it for it in jobs["items"] if it.get("path") == "/jobs/applied")
         assert applied.get("label") == "Applied"
         assert applied.get("enabled") is not False
+
+
+class TestAst1495MeteoriteCompaniesNav:
+    """AST-1495: Companies → Meteorite nav item for meteorite_list view."""
+
+    def test_companies_meteorite_nav_item(self) -> None:
+        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
+        paths = [it.get("path") for it in companies.get("items", [])]
+        assert "/companies/meteorite_list" in paths
+        meteorite = next(
+            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
+        )
+        assert meteorite.get("label") == "Meteorite"

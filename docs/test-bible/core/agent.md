@@ -574,6 +574,24 @@ Workbench Test success path stringifies the extracted body via **`_caller_respon
   -q
 ```
 
+### AST-1486 · AST-1423
+
+**Scope:** Gap from AST-1486 `[board-betty] TESTS: REVISE` — `store_feedback_block` / FEEDBACK rows stamp `entity_id` when index is known (AST-724/862 only asserted block presence).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Capture path stamps FEEDBACK `entity_id` | `src/core/agent.py` → `store_feedback_block` | `TestAst1486FeedbackEntityIdStamp::test_capture_feedback_block_stamps_entity_id_when_index_known` |
+| Omitted index → null | same | `TestAst1486FeedbackEntityIdStamp::test_capture_feedback_block_entity_id_null_when_index_omitted` |
+| Direct `store_feedback_block` writer | `src/data/database.py` | `TestAst1486FeedbackEntityIdStamp::test_store_feedback_block_stamps_entity_id_when_index_known` |
+
+**AST-1486** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1486FeedbackEntityIdStamp \
+  -q
+```
+
 ---
 
 ### AST-1005 · AST-994
@@ -732,6 +750,40 @@ On successful `do_task("draft_job_resume")`, best-effort `persist_draft_job_resu
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestAst1271DoTaskDeviationsPersist \
+  -q
+```
+
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+On successful `do_task("advise_job_resume")`, validate coded RESUME BRIEF text (post-unwrap) then best-effort `persist_advise_job_resume_coded_advice(index, parsed)`; validation failure fails hop before persist. Tracker extract/save: **`docs/test-bible/core/tracker.md`** § AST-1507. Parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate gate + success persist / failure skip | `src/core/agent.py` | **`TestAst1507DoTaskResumeAdvicePersist`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1507DoTaskResumeAdvicePersist \
+  -q
+```
+
+### AST-1508 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
+
+On successful `do_task("draft_job_resume")`, validate per-code **`advice_adherence`** against **`get_job_resume_advice_codes`** (post resume whitelist) then best-effort **`persist_draft_job_resume_advice_adherence`**. Replaces **AST-1271** deviations persist. Tracker extract/save: **`docs/test-bible/core/tracker.md`** § AST-1508. Parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1508.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate gate + success persist / failure skip | `src/core/agent.py` | **`TestAst1508DoTaskAdviceAdherencePersist`** |
+
+**Broken / obsolete:** **`TestAst1271DoTaskDeviationsPersist`** — retired; stub asserts persist helper removed.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1508DoTaskAdviceAdherencePersist \
   -q
 ```
 
@@ -986,3 +1038,31 @@ Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per 
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1513 · AST-1510
+
+**Parent:** [AST-1510 — meteorite_grade_do incomplete grade set (duplicate Do rubric TP codes)](https://linear.app/astralcareermatch/issue/AST-1510). **Publish:** `origin/sub/AST-1510/AST-1513-reject-duplicate-do-rubric-codes`.
+
+Board REVISE (optional Step 4): `_decode_payload` should fail fast when the same two-char vector code appears twice on one encoded line (`…|TPB4|TPB4`). Contingent on make-fix landing Step 4.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Duplicate segment guard on encoded line | `src/core/agent.py` (`_decode_payload`) | **`TestAst1513DuplicateRubricCodes::test_decode_rejects_duplicate_tp_segments_on_one_line`** (**[bug-repro]**, Step 4 optional) |
+
+**Broken / obsolete:** none — additive guard on duplicate segments only.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Decode duplicate guard (bug-repro, Step 4 optional): `tests/component/core/test_agent.py::TestAst1513DuplicateRubricCodes::test_decode_rejects_duplicate_tp_segments_on_one_line`
+
+**Pass criterion:** red pre-fix; green if make-fix lands Step 4 (skip/xfail acceptable if engineer omits optional decode guard).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1513DuplicateRubricCodes \
+  -q
+```

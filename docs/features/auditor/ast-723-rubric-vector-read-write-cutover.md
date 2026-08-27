@@ -454,3 +454,82 @@ No conflicts requiring plan revision.
 | discuss — sync `importance` default `5` | No change — path always runs after `normalize_rubric_artifacts_on_save` on API save; backfill script normalizes separately. |
 
 **Publish tip after resolve:** `origin/sub/AST-378/AST-723-rubric-vector-read-write-cutover` (see git log).
+
+## Bug: AST-1513 — Reject duplicate Do rubric codes (meteorite_grade_do is failing)
+
+### As-is
+
+Somerset `grade_do` / `meteorite_grade_do` rubric has **two vectors sharing code `TP`**. `_vector_labels_map` (`consult.py` L195–196) builds `{code: label}` via dict comprehension — **later row silently overwrites** the earlier one, so **Hands-On Technical Partnership With Engineers** (`HT`) never appears in the decode map. The model prompt lists `TP` twice; staging batch `meteorite_grade_do-f8e798a5-00d6-404f-b18f-ea3d9a26f176` decodes `000|AGA5|…|TPB4|TPB4` (12 segments, `TPB4` duplicated, `HT` absent). `_require_complete_grade_set` rejects the batch as incomplete → jobs hold in retry → `METEORITE_FAILED_TECHNICAL_DO`. Rubric save/sync has **no duplicate-code guard** — `normalize_rubric_artifacts_on_save` validates grade tables and importance only; `sync_rubric_vectors_from_criteria` keys `current_by_code` from the pre-sync DB snapshot and can **insert multiple `current=1` rows with the same code** when one incoming criteria list contains duplicate codes.
+
+### To-be
+
+Every `grade_do` vector for somerset has a **unique two-letter code** (`HT` and `TP` distinct). `meteorite_grade_do` decodes one segment per rubric vector, applies scored Do pass/fail without incomplete-grade error. Rubric artifact save/sync **rejects duplicate codes** with a clear `ValueError` (API → HTTP 400) before rows reach `rubric_vector`. Runtime paths **surface duplicate codes** in `_vector_labels_map` (and optionally at decode) instead of silent last-wins.
+
+### Repro
+
+1. **Staging log (observed):** candidate somerset, batch `meteorite_grade_do-f8e798a5-00d6-404f-b18f-ea3d9a26f176` — `processed=11 passed=0 failed=0 errors=11`; incomplete grade set → `METEORITE_FAILED_TECHNICAL_DO`; `missing=['Hands-On Technical Partnership With Engineers']`; decoded example `000|AGA5|AIA5|CFB4|DKC3|DSB4|DTB4|RGX0|RRB4|SAB4|SRB4|TPB4|TPB4`; expected feedback codes `{AG, AI, CF, DK, DS, DT, RG, RR, SA, SR, TP}` count 11, no `HT`.
+2. **Fixture repro (pre-fix product):** criteria list for owner `grade_do` / artifact `do_rubric` with two dicts both `"code": "TP"` — labels **Hands-On Technical Partnership With Engineers** and **Speaking Truth to Power With Diplomacy** — each with valid trailing grade table and importance. Save via Artifacts PUT (or call `apply_rubric_vectors_save` after `normalize_rubric_artifacts_on_save`). Inspect `list_rubric_vectors(candidate_id, "grade_do", current_only=True)` → two `current=1` rows with code `TP`. Resolve `{$RUBRIC_VECTORS}` for `grade_do` → `TP` appears once in map (last-wins). Encode/decode path with model output `…|TPB4|TPB4` → `IncompleteGradeSetError` missing HT.
+
+### Root cause
+
+1. **Missing save validation:** `normalize_rubric_artifacts_on_save` never checks code uniqueness within a rubric artifact list.
+2. **Sync allows duplicate inserts:** `sync_rubric_vectors_from_criteria` loads `current_by_code` once from DB; duplicate codes in a single incoming list each hit the insert branch because the in-memory map is not updated after inserts — multiple `current=1` rows can share a code.
+3. **Silent map collapse:** `_vector_labels_map` last-wins on duplicate codes, dropping one label from consult decode context (`vector_labels`) while `_require_complete_grade_set` still expects **every** rubric label — duplicate segments cannot substitute for a missing vector.
+
+### Proposed change
+
+**Step 1 — Somerset data fix (primary unblock):**
+
+1. Load somerset candidate; `list_rubric_vectors(somerset_id, "grade_do", current_only=True)`.
+2. Find the row whose label is **Hands-On Technical Partnership With Engineers** (or equivalent) sharing code `TP` with **Speaking Truth to Power With Diplomacy**.
+3. Reassign that vector's code to **`HT`** (keep label, content, importance, grade table unchanged).
+4. Artifacts save path: PUT `/api/candidates/:id/data` with `artifacts.do_rubric` = full hydrated list with the corrected code (triggers `normalize_rubric_artifacts_on_save` → `apply_rubric_vectors_save` → `sync_rubric_vectors_from_criteria`). Confirm resolved admin preview / `{$RUBRIC_VECTORS}` for `grade_do` lists 11 unique codes including `HT` and `TP` once each.
+
+**Step 2 — Save-time guard (`src/core/candidate.py`):**
+
+1. Add module helper **`_assert_unique_rubric_codes(criteria: list, artifact_key: str) -> None`** immediately above `normalize_rubric_artifacts_on_save`:
+   - Walk criteria; normalize each `code` with `.strip().upper()` (empty code → treat as missing, skip or use index default only after the same defaulting rule as sync: `(item.get("code") or "").strip() or f"V{idx+1:02d}"`).
+   - Track `seen: Dict[str, str]` mapping code → label.
+   - On second occurrence of the same code, raise **`ValueError(f"Rubric {artifact_key!r}: duplicate code {code!r} on vectors {seen[code]!r} and {label!r}")`**.
+2. At end of each rubric artifact loop body inside **`normalize_rubric_artifacts_on_save`** (after per-item grade-table/importance validation, before leaving that `key`), call **`_assert_unique_rubric_codes(val, key)`**.
+
+**Step 3 — Read/decode diagnostic (`src/core/consult.py`):**
+
+1. Replace **`_vector_labels_map`** body with:
+   - First pass: collect `(code_upper, label)` pairs from criteria with both fields present.
+   - Detect duplicates: if any `code_upper` appears more than once, build collision detail string listing code → labels.
+   - **`logger.warning("duplicate rubric codes: %s", detail)`** always when collisions exist (not gated on debug).
+   - Return `{code: label}` using **first-wins** (explicit) so behavior is stable until data is fixed — document in one-line comment that first-wins is intentional for diagnostic stability, not silent overwrite.
+2. Add optional param **`debug: bool = False`** to **`_vector_labels_map`**. When `debug=True` and duplicates detected, call **`logger.debug_detail(detail)`** (Style D) after the warning.
+3. Update call sites that already have **`debug`** in scope (`render_verdict` ~L1242, batch consult ~L1405) to pass **`debug=debug`**.
+
+**Step 4 — Optional decode guard (`src/core/agent.py`):**
+
+1. In **`_decode_payload`**, inside the per-line loop after building **`grade_segs`**, before appending grade rows:
+   - Extract `codes = [seg[:2] for seg in grade_segs]`.
+   - If `len(codes) != len(set(codes))`, raise **`ValueError(f"[{task_key}] duplicate vector code in encoded line: {line!r}")`** naming the duplicated code(s) in the message (e.g. join sorted dupes).
+   - This fails fast with an explicit decode error instead of only surfacing later as incomplete grade set.
+
+**Out of scope for this bug:** changes to `src/data/database.py` sync internals (save guard in Step 2 prevents bad incoming lists); AST-1150 retry-routing policy; `_render_score` math; vector_reviews wire-format parse (secondary).
+
+### Blast radius
+
+| Area | Risk |
+|------|------|
+| All rubric artifact saves (`do_rubric`, `get_rubric`, `like_rubric`, etc.) | Duplicate codes in any rubric list now 400 at save — correct for data integrity; Susan must fix any other candidates with latent duplicates before save. |
+| `_vector_labels_map` | All encoded consult decode paths (`render_verdict`, `_run_batch_consult`) — warning noise if legacy duplicate rows remain in DB until data-fixed. |
+| `_decode_payload` duplicate guard | All `grades_encoded_*` tasks with `_meta` / notes tails — only triggers when model emits duplicate 2-char codes on one line. |
+| Somerset staging | Data fix required before re-run; code guards alone do not repair existing `rubric_vector` rows. |
+
+### What must still hold
+
+- **AST-723 authority:** Rubric runtime reads/writes stay on `rubric_vector` + `{$RUBRIC_VECTORS}`; no artifact JSON persistence for rubric keys after save.
+- **`normalize_rubric_artifacts_on_save`:** Grade-table parsing and importance coercion unchanged; duplicate check runs **after** those validations.
+- **`sync_rubric_vectors_from_criteria`:** Fingerprint retire/insert semantics unchanged for valid (unique-code) saves.
+- **`_require_complete_grade_set` / `_grade_set_vector_diff`:** Still require exact set match of rubric labels vs decoded vectors for complete grade sets — do not weaken to allow duplicates.
+- **Embedded merges:** `_merge_embedded_evaluate_jd_criteria` / prefilter embedded criteria behavior unchanged (embedded-wins-on-code remains intentional for JD/prefilter only).
+- **`parse_vector_reviews_diagnostic`:** Existing `duplicate_code` failure reason in `rubric_feedback.py` unchanged.
+
+### Review (Radia) — AST-1513
+
+**Publish tip:** `3d8eae67` — **CLEAN / PROCEED**. Steps 2–4 match plan; Step 1 correctly operational (Somerset HT reassignment via Artifacts before staging AC). `[bug-repro]` tests assert save guard, first-wins map, decode duplicate guard. No fix-now items. UAT: run Step 1 data fix before expecting green `meteorite_grade_do` on staging.

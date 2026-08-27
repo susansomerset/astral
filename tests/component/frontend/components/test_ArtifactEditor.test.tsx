@@ -1395,6 +1395,105 @@ describe("ArtifactEditor", () => {
     expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Edited after rename/)
   })
 
+  it("AST-1490: structure reorder does not re-GET candidate artifact", async () => {
+    let candidateGets = 0
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const initialRows = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+      {
+        id: "prior_experience",
+        title: "Prior Experience",
+        enabled: true,
+        order: 1,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: false,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        candidateGets += 1
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: {
+                  professional_summary: "Persisted summary",
+                  prior_experience: "Earlier roles",
+                },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    function Harness() {
+      const [rows, setRows] = React.useState(initialRows)
+      return (
+        <ArtifactEditor
+          title="Base Resume Content"
+          artifactKey="base_resume"
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={[
+            { id: "professional_summary", label: "Summary" },
+            { id: "prior_experience", label: "Prior Experience" },
+          ]}
+          structureCatalog={catalog}
+          structureRows={rows}
+          onStructureRowsChange={setRows}
+          onStructureSave={() => {}}
+        />
+      )
+    }
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByDisplayValue("Persisted summary")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByDisplayValue("Earlier roles")).toBeInTheDocument())
+    const getsAfterHydrate = candidateGets
+    const downButtons = screen.getAllByRole("button", { name: "Down" })
+    await userEvent.click(downButtons[0]!)
+    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument())
+    expect(candidateGets).toBe(getsAfterHydrate)
+    expect(screen.getByDisplayValue("Persisted summary")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Earlier roles")).toBeInTheDocument()
+  })
+
   it("AST-1480: job_resume pin overlays resume_content sibling bodies", async () => {
     const putBodies: { job_resume?: Record<string, string> }[] = []
     installBaseApiMocks(mockedApi, async (url, init) => {
