@@ -174,3 +174,28 @@ Stem-keyed `ensure_meteorite_company(stem=)` into **METEORITE**; leave-in-place 
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
 ```
+
+---
+
+### AST-1517 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1517-create-contact-meteorite`.
+
+`create_contact_meteorite`: URL detector (`_contact_param_looks_like_url`); link mode → `contact_task_gazer_scrape` then `create_meteorite_job` with `job_link`; text mode → direct create; soft returns for scrape fail / empty visible text; Style D on `debug=True`. Markup/dispatch: **`docs/test-bible/core/contact.md`** (AST-1515, revised AST-1517).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| URL detector + create path + scrape soft-fail + Style D | `src/core/meteorite.py` | **`TestAst1517CreateContactMeteorite`** |
+
+**Broken / obsolete:** AST-1515 **`TestAst1515ContactTaskMarkup`** / **`TestAst1515ContactEstelleTurnMarkup`** — `handler_unavailable` fixtures revised to mock `_resolve_contact_task_handler` → `None` (all six handlers now resolve).
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1517CreateContactMeteorite \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  -q
+```
+

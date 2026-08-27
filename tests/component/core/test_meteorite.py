@@ -463,3 +463,157 @@ class TestAst1470LandMeteorite:
             if c.kwargs.get("func") == "meteorite.land_meteorite"
         ]
         assert land_indexes == []
+
+
+# Branches: URL detector; no_candidate/param_required; text vs link mode; scrape soft-fail; Style D (AST-1517).
+class TestAst1517CreateContactMeteorite:
+    """AST-1517: contact-task create — scrape-or-text → create_meteorite_job."""
+
+    def test_contact_param_looks_like_url(self) -> None:
+        looks = meteorite_mod._contact_param_looks_like_url
+        assert looks("") is False
+        assert looks("   ") is False
+        assert looks("line one\nline two") is False
+        assert looks("has space.com") is False
+        assert looks(".hidden") is False
+        assert looks("https://jobs.example/jd") is True
+        assert looks("jobs.example.com/path") is True
+
+    @pytest.mark.asyncio
+    async def test_no_candidate(self) -> None:
+        out = await meteorite_mod.create_contact_meteorite("", "https://x.example/j")
+        assert out == {
+            "ok": False,
+            "error": "no_candidate",
+            "task_key": "create_contact_meteorite",
+        }
+
+    @pytest.mark.asyncio
+    async def test_param_required(self) -> None:
+        out = await meteorite_mod.create_contact_meteorite("c1", "  ")
+        assert out == {
+            "ok": False,
+            "error": "param_required",
+            "task_key": "create_contact_meteorite",
+        }
+
+    @pytest.mark.asyncio
+    async def test_text_mode_creates_without_scrape(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1517-text"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        body = "Senior Engineer\n" + ("detail " * 20)
+
+        async def _fail_scrape(*_a, **_k):
+            raise AssertionError("text mode must not scrape")
+
+        monkeypatch.setattr(
+            "src.core.gazer.contact_task_gazer_scrape", _fail_scrape
+        )
+        out = await meteorite_mod.create_contact_meteorite(cid, body, debug=False)
+        assert out["ok"] is True
+        assert out["mode"] == "text"
+        assert out["task_key"] == "create_contact_meteorite"
+        assert out["result"]["astral_job_id"]
+        from src.utils.config import TRACKER_CONFIG
+
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        row = db.get_job(out["result"]["astral_job_id"])
+        assert row["job_data"][jd_key] == body.rstrip()
+
+    @pytest.mark.asyncio
+    async def test_link_mode_scrape_then_create(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1517-link"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+        url = "https://jobs.example/jd"
+        visible = "Role title\n" + ("jd " * 20)
+
+        async def _scrape(_cid, _url, debug=False):
+            assert _url == url
+            return {
+                "ok": True,
+                "visible_text": visible,
+                "url": url,
+                "final_url": "https://jobs.example/jd/final",
+                "page_status": "ok",
+                "task_key": "gazer_scrape",
+            }
+
+        monkeypatch.setattr(
+            "src.core.gazer.contact_task_gazer_scrape", _scrape
+        )
+        out = await meteorite_mod.create_contact_meteorite(cid, url, debug=False)
+        assert out["ok"] is True
+        assert out["mode"] == "link"
+        assert out["page_status"] == "ok"
+        assert out["final_url"] == "https://jobs.example/jd/final"
+        row = db.get_job(out["result"]["astral_job_id"])
+        assert row["job_link"] == "https://jobs.example/jd/final"
+
+    @pytest.mark.asyncio
+    async def test_link_mode_scrape_failure_soft_return(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _scrape(_cid, _url, debug=False):
+            return {"ok": False, "error": "no_connectivity", "task_key": "gazer_scrape"}
+
+        monkeypatch.setattr(
+            "src.core.gazer.contact_task_gazer_scrape", _scrape
+        )
+        out = await meteorite_mod.create_contact_meteorite(
+            "c1", "https://jobs.example/jd", debug=False
+        )
+        assert out["ok"] is False
+        assert out["error"] == "no_connectivity"
+        assert out["mode"] == "link"
+
+    @pytest.mark.asyncio
+    async def test_link_mode_empty_visible_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _scrape(_cid, _url, debug=False):
+            return {
+                "ok": True,
+                "visible_text": "   ",
+                "page_status": "blocked",
+                "task_key": "gazer_scrape",
+            }
+
+        monkeypatch.setattr(
+            "src.core.gazer.contact_task_gazer_scrape", _scrape
+        )
+        out = await meteorite_mod.create_contact_meteorite(
+            "c1", "https://jobs.example/jd", debug=False
+        )
+        assert out["ok"] is False
+        assert out["error"] == "empty_visible_text"
+        assert out["scrape"]["page_status"] == "blocked"
+
+    @pytest.mark.asyncio
+    async def test_debug_true_emits_style_d(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1517-dbg"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
+        out = await meteorite_mod.create_contact_meteorite(
+            cid, "plain pasted jd\n" + ("x" * 40), debug=True
+        )
+        assert out["ok"] is True
+        contact_calls = [
+            c
+            for c in log.debug_index.call_args_list
+            if c.kwargs.get("func") == "meteorite.create_contact_meteorite"
+        ]
+        assert len(contact_calls) == 2
+        assert contact_calls[0].kwargs.get("outcome") == "found"
+        assert str(contact_calls[1].kwargs.get("outcome", "")).startswith(
+            "recorded astral_job_id="
+        )
