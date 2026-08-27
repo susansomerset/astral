@@ -2637,7 +2637,35 @@ METEORITE_EMAIL_INGEST_CONFIG = {
     "nested_autolink_attr_names": ("href", "xmlns", "src", "cite", "data-url"),
     # When True and no http(s) <a href> remain after unwrap, wrap bare http(s) URLs as anchors.
     "promote_bare_http_urls": True,
+    # AST-1521: no-subject inspector-paste detection — count opening tags in this set;
+    # ≥ inspector_min_structural_tags → multi-link scrape path (plain <p> JD stays text-land).
+    "inspector_structural_tags": (
+        "div",
+        "span",
+        "table",
+        "tr",
+        "td",
+        "th",
+        "ul",
+        "ol",
+        "li",
+        "section",
+        "article",
+        "main",
+        "header",
+        "nav",
+        "form",
+        "button",
+        "img",
+        "a",
+    ),
+    "inspector_min_structural_tags": 5,
 }
+
+assert isinstance(METEORITE_EMAIL_INGEST_CONFIG["inspector_structural_tags"], tuple)
+assert len(METEORITE_EMAIL_INGEST_CONFIG["inspector_structural_tags"]) > 0
+assert isinstance(METEORITE_EMAIL_INGEST_CONFIG["inspector_min_structural_tags"], int)
+assert METEORITE_EMAIL_INGEST_CONFIG["inspector_min_structural_tags"] > 0
 
 # AST-1469: same floor as email ingest inverted-id match — single int, not a second magic.
 METEORITE_CONFIG["min_company_job_id_match_chars"] = METEORITE_EMAIL_INGEST_CONFIG[
