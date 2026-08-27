@@ -3277,3 +3277,23 @@ Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`);
   tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
   -q
 ```
+
+### AST-1515 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch`.
+
+`CONTACT_TASK_CONFIG`: six allowlisted contact-task keys with handler dotted paths, descriptions, param hints, `requires_candidate=True`; import-time collision asserts vs `TASK_CONFIG` and `CONTACT_CONFIG["skills"]`. Core markup/dispatch: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Six keys + handler metadata + collision guards | `src/utils/config.py` | **`TestAst1515ContactTaskConfig`** |
+
+**Broken / obsolete:** none — new block distinct from `CONTACT_CONFIG` skills ACL and `TASK_CONFIG`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1515ContactTaskConfig \
+  -q
+```

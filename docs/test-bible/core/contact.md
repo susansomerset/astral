@@ -264,3 +264,24 @@ Events/Socket ingress hydrates `debug` from `slack_debug_enabled()` (caller kwar
   tests/component/ui/api/test_api_slack.py::TestAst1207SlackEventsDebugSot \
   -q
 ```
+
+### AST-1515 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch`.
+
+Child #1: `CONTACT_TASK_CONFIG` block (six keys pre-registered), markup parse/strip, dynamic dispatch router (`handler_unavailable` until siblings AST-1516–1518 land handlers), same-event follow-up Estelle turn when listed markup present, markup stripped before Slack post. Config: **`docs/test-bible/utils/config.md`**. Prompt contract: **`docs/test-bible/core/repo_admin_json.md`**. Does **not** implement gazer/meteorite/tracker handlers or extend skills ACL.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse/strip/dispatch + turn strip/follow-up/live_content catalog | `src/core/contact.py` | **`TestAst1515ContactTaskMarkup`**, **`TestAst1515ContactEstelleTurnMarkup`** |
+
+**Broken / obsolete:** none — additive on AST-1073 turn loop; `land_calls` / `skill_calls` paths unchanged.
+
+**Integration:** no existing scenario asserts contact-task markup dispatch — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  -q
+```
