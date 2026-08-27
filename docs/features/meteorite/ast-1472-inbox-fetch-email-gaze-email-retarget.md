@@ -398,3 +398,96 @@ context_tokens≈52000
 ```
 [code-rubric] PROCEED (Commit: 43cba473) fetch_email land retarget clean
 ```
+
+## Bug: AST-1521 — meteorite_email land_meteorite routing
+
+Parent mini-epic: [AST-1520](https://linear.app/astralcareermatch/issue/AST-1520/emailed-job-description-parsed-as-html) (orphaned fix lane). Completes the gap this ticket’s Scope gate explicitly deferred: **`src/core/meteorite_email.py` stays as-is** while inbox `fetch_email` / admin land already call `land_meteorite` (see Scope gate table + Joan discuss on dual mailbox surfaces above).
+
+### As-is
+
+Bound `meteorite_email` still forks inside `_handle_bound` on four Ruth-era shapes (`html_links` / `subject_url` / `subject_body` / ignore). A bound message with **no subject + JD text body** takes `html_links`: Ruth `do_task(meteorite_email)` first, then `_ingest_link` only for Ruth `jobs[]` rows that carry a `job_link`. When Ruth returns success with zero scrapeable links, outcomes stay empty → `_finalize_archive([])` returns **pass** (`ignored-empty`) **without** archiving — the reported failure. No path calls `land_meteorite`; scrape-short/fail in `_ingest_link` becomes `"skipped"` / `"error"` with **no** `BOT_BLOCKED` job; URL-subject+body still goes through Ruth.
+
+### To-be
+
+`_handle_bound` follows Susan’s decision tree (AST-1520 Description, preserved on the parent). JD-text ingress uses **`await land_meteorite(...)`** (same public API AST-1472 / AST-1470 established — late-import inside the mailbox module; do **not** fork enrich). Playwright scrape success → land with link + visible text (or append-scrape-to-body then land); scrape failure → create a meteorite job with `job_link` and transition to **`BOT_BLOCKED`** (no JD). Multi-link inspector paste → one land/BOT_BLOCKED per link. After successful land (or acceptable duplicate/supersede) **or** successful BOT_BLOCKED create → **archive** Gmail; on error → **leave inbox** and fail the run. Ruth / “heckaroony” runs **after** a job row exists (qualify), not inside `_handle_bound`. Unbound Trash / `last_email_check` stamp stay owned here (not `fetch_email`).
+
+### Repro
+
+1. Candidate has a bound From address and an active `meteorite_email` dispatch row.
+2. Send (or fixture) an inbox message: **empty/missing subject**, body = plain JD text (no `http(s)` job links), From = that candidate.
+3. Run `run_meteorite_email` for that candidate (AUTO/CLICK).
+4. **Broken today:** Ruth `html_links` path runs; no job created; message remains in inbox; runner still counts the message as **passed** (`ignored-empty`).
+5. **Expected after fix:** `land_meteorite(cid, text=<visible body>)` creates/dedupes a meteorite job; Gmail message is **archived**; runner **passed** only when land (or archive) succeeds — land error leaves inbox and fails.
+
+Fixture shape (no DB seed — file/JSON persistence): a message dict as returned by `list_inbox_messages` / `get_message_html` with `subject=""`, non-empty `html_body` whose visible text is ≥ `METEORITE_EMAIL_INGEST_CONFIG["min_jd_chars"]` / qualify min, `candidate_match.matched` + matching `astral_candidate_id`.
+
+### Root cause
+
+AST-1472 retargeted inbox `fetch_email` + admin create/land to `land_meteorite` and **explicitly excluded** `meteorite_email.py`. The per-candidate mailbox runner still uses the pre-land Ruth-first shape table. That table’s no-subject branch assumes “HTML links to scrape,” so plain JD text never reaches a text-blob land ingress; empty ingest is treated as an intentional pass without archive.
+
+### Proposed change
+
+**Scope (binding — AST-1521 `## Scope`):** major edit `src/core/meteorite_email.py`; consume `land_meteorite` / `ensure_meteorite_company` from `src/core/meteorite.py` **read-only** (no meteorite.py edits); **do not** edit `inbox.py` / `gazer.py` (tree + archive differ from `_land_bound_inbox_message` strip→land — no shared-helper extraction this pass); optional literals only in `METEORITE_EMAIL_*_CONFIG` / existing `TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"]`; Betty owns tests.
+
+**Susan tree → `_handle_bound` (after existing candidate/API-key + `get_message_html` gates):**
+
+Outer parent item “2. if no (but it is bound…)” is **not** a separate code path here — `run_meteorite_email` already filters to this candidate before `_handle_bound` (AST-1520 fork-logic answer). Implement the **subject / URL / body / inspector** branches only.
+
+Keep intentional **ignore** (leave inbox, count pass) for: non-URL subject + empty body; subject empty + empty body.
+
+1. **Helpers (same file)**  
+   - Late-import `land_meteorite`, `ensure_meteorite_company` from `src.core.meteorite`; import `save_meteorite_job` + `transition_job_state` from `src.core.tracker` for the BOT_BLOCKED-only path.  
+   - Drop `_handle_bound` use of `do_task` / `_ruth_parse` / `_ensure_html_links_jobs_complete` / `create_meteorite_job` for JD ingest (remove dead Ruth-first branches; delete unused helpers/imports in the same change if nothing else calls them).  
+   - Reuse existing `_ruth_candidate_links` (or rename to a neutral `_body_http_links`) + `_meteorite_email_body_text` / `_meteorite_fetch_link_visible_text` for links + scrape.  
+   - **`_land_outcome_token(land: dict) -> str`:** map `METEORITE_CONFIG` land keys → archive tokens: `created`→`created`; `duplicate_skip` / `superseded`→`skipped`; `error`→`error`.  
+   - **`async def _land_jd(cid, *, text, job_link=None, debug) -> str`:** `await land_meteorite(cid, text=text, job_link=job_link, debug=debug)` → token via mapper. Empty text after strip → `error` (do not call land).  
+   - **`async def _scrape_land_or_bot_blocked(cid, url, *, jd_suffix=None, debug) -> str`:** scrape via `_meteorite_fetch_link_visible_text`; if visible length ≥ `METEORITE_EMAIL_INGEST_CONFIG["min_jd_chars"]`, land with `text=(visible + optional suffix)` and `job_link=final_url or url`; if scrape empty/short/raises → **BOT_BLOCKED create** (below) and return `created` on success / `error` on failure. Dedupe: if `job_link_exists_for_candidate` (or land returns `duplicate_skip`) treat as `skipped` — do not create a second BOT_BLOCKED.  
+   - **`_create_bot_blocked_job(cid, job_link, *, debug) -> str`:** `ensure_meteorite_company(cid)` → `save_meteorite_job(cid, company=short_name, job_link=link, job_data={})` (empty JD; create carve-out into `METEORITE_NEW`) → on `land_outcome_created`, `transition_job_state([astral_job_id], TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"])` (`BOT_BLOCKED` priors already include `METEORITE_NEW` — AST-1195/1197). On `duplicate_skip` / `superseded` return `skipped` (no second transition). On save error → `error`. **Do not** change `meteorite.py` / `land_meteorite` for this — land has no BOT_BLOCKED API today.  
+   - **`_body_looks_like_inspector_html(html) -> bool`:** config-driven structural-tag density (see config step). Used only on the **no-subject** branch.
+
+2. **Config (optional — only if statute forces literals out of code)** in `METEORITE_EMAIL_INGEST_CONFIG` (or mailbox block if clearer): e.g. `inspector_structural_tags` (tuple of tag names) + `inspector_min_structural_tags` (int). Assert types/non-empty. No new job states. Reuse `min_jd_chars`, `subject_url_schemes`, `link_schemes` / allow+exclude substrings already present. Read `bot_blocked_state` from `TASK_CONFIG["qualify_meteorite"]` — do not hardcode `"BOT_BLOCKED"`.
+
+3. **Rewrite `_handle_bound` branch table** (replace html_links / subject_url / subject_body):
+
+| Condition | Action |
+|-----------|--------|
+| Subject is pure URL (`_subject_is_url`) **and** body non-empty | `_land_jd(cid, text=visible_body, job_link=subject)` — subject is `job_link`, body is JD (no scrape required). |
+| Subject is pure URL **and** body empty | `_scrape_land_or_bot_blocked(cid, subject)`. |
+| Subject non-empty, **not** URL, body non-empty, body has ≥1 http(s) link | Scrape **first** document-order link; on scrape ok → `_land_jd` with `text=f"{subject}\\n\\n{visible_body}\\n\\n{scraped}"` (append scraped visible text to email body; `job_link=that link`); on scrape fail → `_land_jd` with `text=f"{subject}\\n\\n{visible_body}"` (no link required). |
+| Subject non-empty, **not** URL, body non-empty, **no** links | `_land_jd(cid, text=f"{subject}\\n\\n{visible_body}")`. |
+| **No** subject, body non-empty, `_body_looks_like_inspector_html` **and** ≥1 link | For **each** link: `_scrape_land_or_bot_blocked(cid, link)` (one job per link). Collect outcome tokens. |
+| **No** subject, body non-empty, inspector **but** no links | `_land_jd(cid, text=visible_body)`. |
+| **No** subject, body non-empty, **not** inspector (reported JD-text case) | `_land_jd(cid, text=visible_body)`. |
+
+After the branch, always `_finalize_archive(mid, outcomes, ...)` when the branch produced an outcomes list.
+
+4. **`_finalize_archive`**  
+   - **Change:** `if not outcomes:` → treat as **error** (leave inbox; `passed=0`, `errors=1`, outcome e.g. `error` / `ignored-empty` retired as a pass). No more pass-without-ingest after a land attempt.  
+   - **Keep:** ≥1 `created` **or** all-`skipped` with zero `error` → `archive_message`; only-`error` → leave inbox.  
+   - Map land `duplicate_skip` / `superseded` through the `skipped` token so acceptable dedupe still archives (same spirit as today’s AC5 all-skip archive).
+
+5. **`run_meteorite_email` / `process_meteorite_email_messages` / `run_meteorite_email_selected_ids`**  
+   - List/bind/filter/unbound Trash / `last_email_check` unchanged.  
+   - Outcomes driven solely by new `_handle_bound` returns.  
+   - Module docstring: bound path → Susan tree + `land_meteorite` / BOT_BLOCKED; Ruth not invoked pre-land.
+
+6. **Explicit non-goals**  
+   - No `inbox.py` shared helper. No `gazer.py` / `api_inbox.py` / `dispatcher.py` edits. No qualify/`do_task` from this runner. No new `JOB_STATES` keys.
+
+### Blast radius
+
+- **Same helper:** `run_meteorite_email_selected_ids` (admin Land Meteorite selected-ids) and `process_meteorite_email_messages` share `_handle_bound` — behavior flips with the runner.  
+- **Dual mailbox:** `fetch_email` (AST-1472) already lands via `inbox._land_bound_inbox_message` without Gmail archive in that stage; this ticket owns archive on the **candidate-bound** AUTO path. Ops may still see both task keys until product consolidates.  
+- **Tests:** existing Ruth `html_links` / `subject_body` / `_ingest_link` / `ignored-empty` expectations under `tests/component/core/` for meteorite_email will break — Betty owns replacements (no-subject JD → land + archive; URL+body; scrape-fail → BOT_BLOCKED; multi-link inspector). Do not edit `tests/` in make-fix.  
+- **Ruth task `meteorite_email`:** no longer called from this runner; qualify / other callers of the agent task are untouched.  
+- **`create_meteorite_job`:** removed from this module’s ingest path; other call sites unchanged.
+
+### What must still hold
+
+- Unbound retention Trash + bound-only ingest + `last_email_check` stamp ownership on `meteorite_email` (not moved into `fetch_email`).  
+- `land_meteorite` remains the sole JD-text enrich→Tracker ingress (AST-1470/1472) — no parallel Ruth pre-parse for land.  
+- Tracker meteorite dedupe / `duplicate_skip` / `superseded` semantics unchanged; acceptable dedupe still archives.  
+- `BOT_BLOCKED` only via existing registry + `TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"]`; priors already allow `METEORITE_NEW` → `BOT_BLOCKED`.  
+- Style D only when `debug=True`; `debug=False` no new contract noise.  
+- Layer rules: core orchestrates; Gmail archive/trash via `external.gmail`; Playwright via existing gazer fetch helper; no ui/data imports from this module beyond current database stamp/dedupe helpers.  
+- AST-1472 inbox `fetch_email` / admin land paths remain as shipped — this bug does not regress them.
