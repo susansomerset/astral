@@ -1,16 +1,20 @@
 """AST-1136: candidate-bound meteorite_email mailbox runner.
 
 List Astral inbox → filter From→selected candidate → unbound age→Trash
-(shared hygiene) → bound shape route → Ruth parse (that candidate’s API key)
-/ scrape / per-candidate dedupe → METEORITE_NEW create → archive; stamp
-last_email_check. Style D when debug=True. Never calls qualify/GDL or global
-AST-1061 job_link helpers. process_meteorite_email_messages is the AST-1129 reuse path.
+(shared hygiene) → bound shape route → land_meteorite / Playwright scrape /
+per-candidate dedupe → archive; stamp last_email_check. Style D when debug=True.
+Never calls qualify/GDL dispatch directly. process_meteorite_email_messages is
+the AST-1129 reuse path.
 
 AST-1140: ``run_meteorite_email_selected_ids`` — Land Meteorite selected-ids ingest
 sharing the same bound helper; does not stamp ``candidate.last_email_check``.
 
-AST-1213: Ruth live payload is visible text + links (not raw HTML); link list
-uses ``ruth_payload_link_exclude_substrings`` (not Playwright excludes).
+AST-1213: Ruth live payload helpers retained for tests; bound routing uses
+land_meteorite (AST-1472) per AST-1520 decision tree — plain JD text no longer
+forces Ruth html_links pre-ingest.
+
+AST-1520: Susan's bind→subject→URL→body/links tree; scrape fail → BOT_BLOCKED;
+successful land/duplicate skip → archive; ingest failure → leave inbox + error count.
 """
 
 from __future__ import annotations
@@ -27,16 +31,20 @@ from src.core.gazer import (
     _meteorite_fetch_link_visible_text,
 )
 from src.core.inbox import get_message_html, list_inbox_messages
-from src.core.meteorite import create_meteorite_job
+from src.core.inbox import strip_extract_email_html
+from src.core.meteorite import create_meteorite_job, land_meteorite
+from src.core import tracker
 from src.data.database import (
     job_link_exists_for_candidate,
     update_candidate_last_email_check,
 )
 from src.external.gmail import archive_message, trash_message
 from src.utils.config import (
+    METEORITE_CONFIG,
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
     METEORITE_EMAIL_PARSE_CONFIG,
+    TASK_CONFIG,
 )
 from src.utils.formatting import normalize_link
 from src.utils.logging import get_logger, truncate_debug_content
@@ -63,6 +71,72 @@ def _body_text(html_body: str) -> str:
 
 def _body_is_empty(html_body: str) -> bool:
     return not _body_text(html_body)
+
+
+def _body_is_inspector_html(html_body: str) -> bool:
+    """True when body looks like pasted page source (DevTools / list HTML), not prose JD."""
+    raw = html_body or ""
+    low = raw.casefold()
+    if "<html" in low or "<head" in low or "<body" in low:
+        return True
+    links = _ruth_candidate_links(raw)
+    if len(links) < 2:
+        return False
+    text = _meteorite_email_body_text(raw)
+    # Many job links with little visible prose → inspector/list paste, not a plain JD email.
+    return len(text.strip()) < 200 * len(links)
+
+
+def _land_to_archive_outcome(land: dict) -> str:
+    """Map land_meteorite rollup to create|skipped|error for Gmail archive."""
+    outcome = land.get("outcome") or METEORITE_CONFIG["land_outcome_error"]
+    if outcome in (
+        METEORITE_CONFIG["land_outcome_created"],
+        METEORITE_CONFIG["land_outcome_superseded"],
+    ):
+        return "created"
+    if outcome == METEORITE_CONFIG["land_outcome_duplicate_skip"]:
+        return "skipped"
+    return "error"
+
+
+async def _land_email_text(
+    cid: str,
+    *,
+    subject: str,
+    html: str,
+    job_link: Optional[str] = None,
+    debug: bool,
+) -> str:
+    """Strip/extract email HTML and land via land_meteorite (AST-1472 / AST-1520)."""
+    text = strip_extract_email_html(subject, html)
+    if not text.strip():
+        _detail(debug, "land_error=empty_stripped_html")
+        return "error"
+    link = (job_link or "").strip() or None
+    land = await land_meteorite(cid, text=text, job_link=link, debug=debug)
+    _detail(debug, f"land_outcome={land.get('outcome')!r}")
+    return _land_to_archive_outcome(land)
+
+
+async def _create_bot_blocked_link(cid: str, url: str, *, debug: bool) -> str:
+    """Create link-only job in BOT_BLOCKED when Playwright cannot supply JD text."""
+    link = (url or "").strip()
+    if not link:
+        return "error"
+    if job_link_exists_for_candidate(cid, link):
+        _detail(debug, f"skipped-duplicate job_link={link[:120]}")
+        return "skipped"
+    bot_state = TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"]
+    placeholder = "(scrape blocked — provide job description in UI)"
+    try:
+        result = create_meteorite_job(cid, placeholder, job_link=link, debug=debug)
+        tracker.transition_job_state([result["astral_job_id"]], bot_state)
+        _detail(debug, f"bot_blocked astral_job_id={result.get('astral_job_id')}")
+        return "created"
+    except Exception as exc:
+        _detail(debug, f"bot_blocked_error={type(exc).__name__}")
+        return "error"
 
 
 def _unbound_is_stale(internal_date_ms: int, *, now_ms: int) -> bool:
@@ -114,22 +188,20 @@ async def _ingest_link(
         text, final_url = await _meteorite_fetch_link_visible_text(url, debug=debug)
     except Exception as exc:
         _detail(debug, f"scrape_error={type(exc).__name__}")
-        return "error"
+        return await _create_bot_blocked_link(cid, url, debug=debug)
     link = (final_url or url).strip()
     if job_link_exists_for_candidate(cid, link):
         _detail(debug, f"skipped-duplicate job_link={link[:120]}")
         return "skipped"
-    if len((text or "").strip()) < int(METEORITE_EMAIL_INGEST_CONFIG["min_jd_chars"]):
-        _detail(debug, "skipped-short")
-        return "skipped"
-    jd = text if not jd_suffix else f"{text.rstrip()}\n\n{jd_suffix.lstrip()}"
-    try:
-        result = create_meteorite_job(cid, jd, job_link=link, debug=debug)
-        _detail(debug, f"recorded astral_job_id={result.get('astral_job_id')}")
-        return "created"
-    except Exception as exc:
-        _detail(debug, f"create_error={type(exc).__name__}")
-        return "error"
+    jd = (text or "").strip()
+    if jd_suffix:
+        jd = f"{jd.rstrip()}\n\n{jd_suffix.lstrip()}" if jd else jd_suffix.lstrip()
+    if len(jd) < int(METEORITE_EMAIL_INGEST_CONFIG["min_jd_chars"]):
+        _detail(debug, "scrape-short")
+        return await _create_bot_blocked_link(cid, link, debug=debug)
+    land = await land_meteorite(cid, text=jd, job_link=link, debug=debug)
+    _detail(debug, f"land_outcome={land.get('outcome')!r}")
+    return _land_to_archive_outcome(land)
 
 
 def _ruth_candidate_links(html: str) -> list[str]:
@@ -268,8 +340,8 @@ async def _finalize_archive(
 ) -> tuple[int, int, int, str]:
     """Archive when ≥1 create or all attempts were skips. Returns (passed, failed, error, outcome)."""
     if not outcomes:
-        index_dbg(debug, index=index, total=total, mid=msg_id, outcome="ignored-empty")
-        return (1, 0, 0, "ignored-empty")  # leave inbox; count as intentional pass
+        index_dbg(debug, index=index, total=total, mid=msg_id, outcome="error")
+        return (0, 0, 1, "error")  # AST-1520: no ingest → leave inbox, count as error
     n_created = outcomes.count("created")
     n_skipped = outcomes.count("skipped")
     n_error = outcomes.count("error")
@@ -317,8 +389,8 @@ async def _handle_bound(
     subject = (payload.get("subject") or "").strip()
     html = payload.get("html_body") or ""
     empty_body = _body_is_empty(html)
-    modes = METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]
-    html_mode, subject_mode = modes[0], modes[1]
+    body_txt = _body_text(html)
+    links = _ruth_candidate_links(html)
 
     # Shape: ignore (non-URL subject + empty body) — leave inbox
     if subject and not _subject_is_url(subject) and empty_body:
@@ -334,76 +406,43 @@ async def _handle_bound(
 
     outcomes: list[str] = []
 
-    # html_links: no subject + non-empty body
-    if not subject and not empty_body:
-        _detail(debug, "shape=html_links")
-        text, links = _ruth_live_parts(html)
-        body = _format_ruth_live_body(text, links)
-        live = f"PARSE_MODE: {html_mode}\n\n{body}"
-        _detail(debug, f"ruth_payload visible_chars={len(text)} links={len(links)}")
-        for line in truncate_debug_content(live):
-            _detail(debug, line)
-        parsed = await _ruth_parse(mode=html_mode, live=live, msg_id=mid, ctx=ctx, debug=debug)
-        if parsed is None:
-            index_dbg(debug, index=index, total=total, mid=mid, outcome="error")
-            return (1, 0, 0, 1, "error")
-        jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
-        jobs = _ensure_html_links_jobs_complete(jobs, links, debug=debug)
-        parsed["jobs"] = jobs
-        for job in jobs:
-            if not isinstance(job, dict):
-                continue
-            link = (job.get("job_link") or "").strip()
-            if not link:
-                continue
-            outcomes.append(await _ingest_link(cid, link, jd_suffix=None, debug=debug))
+    # URL subject (+ optional body): link is the job_link; body is JD when present.
+    if subject and _subject_is_url(subject):
+        if empty_body:
+            _detail(debug, "shape=subject_url")
+            outcomes.append(await _ingest_link(cid, subject, jd_suffix=None, debug=debug))
+        else:
+            _detail(debug, "shape=subject_url_body")
+            outcomes.append(
+                await _land_email_text(cid, subject=subject, html=html, job_link=subject, debug=debug)
+            )
         p, f, e, outcome = await _finalize_archive(
             mid, outcomes, debug=debug, index=index, total=total, index_dbg=index_dbg
         )
         return (1, p, f, e, outcome)
 
-    # subject_url: URL subject + empty body
-    if subject and _subject_is_url(subject) and empty_body:
-        _detail(debug, "shape=subject_url")
-        outcomes.append(await _ingest_link(cid, subject, jd_suffix=None, debug=debug))
-        p, f, e, outcome = await _finalize_archive(
-            mid, outcomes, debug=debug, index=index, total=total, index_dbg=index_dbg
-        )
-        return (1, p, f, e, outcome)
-
-    # subject_body: subject + non-empty body (URL subject with body uses this path)
+    # Non-URL subject + body: prepend subject; scrape first body link when present.
     if subject and not empty_body:
         _detail(debug, "shape=subject_body")
-        text, links = _ruth_live_parts(html)
-        body = _format_ruth_live_body(text, links)
-        live = f"PARSE_MODE: {subject_mode}\nSUBJECT: {subject}\n\n{body}"
-        _detail(debug, f"ruth_payload visible_chars={len(text)} links={len(links)}")
-        for line in truncate_debug_content(live):
-            _detail(debug, line)
-        parsed = await _ruth_parse(mode=subject_mode, live=live, msg_id=mid, ctx=ctx, debug=debug)
-        if parsed is None:
-            index_dbg(debug, index=index, total=total, mid=mid, outcome="error")
-            return (1, 0, 0, 1, "error")
-        jd_link = (parsed.get("jd_link") or "").strip()
-        content_text = (parsed.get("content_text") or "").strip()
-        body_txt = _body_text(html)
-        min_chars = int(METEORITE_EMAIL_INGEST_CONFIG["min_jd_chars"])
-        if jd_link:
+        if links:
             suffix = f"SUBJECT: {subject}\n\n{body_txt}"
-            outcomes.append(await _ingest_link(cid, jd_link, jd_suffix=suffix, debug=debug))
+            outcomes.append(await _ingest_link(cid, links[0], jd_suffix=suffix, debug=debug))
         else:
-            jd = content_text or f"{subject}\n\n{body_txt}"
-            if len(jd.strip()) < min_chars:
-                index_dbg(debug, index=index, total=total, mid=mid, outcome="ignored-empty")
-                return (1, 1, 0, 0, "ignored-empty")
-            # no link-based dedupe — always create with job_link=None (AC5 is link-scoped)
-            try:
-                result = create_meteorite_job(cid, jd, job_link=None, debug=debug)
-                _detail(debug, f"recorded astral_job_id={result.get('astral_job_id')}")
-                outcomes.append("created")
-            except Exception as exc:
-                _detail(debug, f"create_error={type(exc).__name__}")
-                outcomes.append("error")
+            outcomes.append(await _land_email_text(cid, subject=subject, html=html, debug=debug))
+        p, f, e, outcome = await _finalize_archive(
+            mid, outcomes, debug=debug, index=index, total=total, index_dbg=index_dbg
+        )
+        return (1, p, f, e, outcome)
+
+    # No subject + body: inspector/list HTML with links → one job per link; else land JD text.
+    if not subject and not empty_body:
+        if links and _body_is_inspector_html(html):
+            _detail(debug, "shape=html_links")
+            for link in links:
+                outcomes.append(await _ingest_link(cid, link, jd_suffix=None, debug=debug))
+        else:
+            _detail(debug, "shape=plain_jd")
+            outcomes.append(await _land_email_text(cid, subject="", html=html, debug=debug))
         p, f, e, outcome = await _finalize_archive(
             mid, outcomes, debug=debug, index=index, total=total, index_dbg=index_dbg
         )
