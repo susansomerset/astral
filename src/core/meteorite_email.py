@@ -11,6 +11,8 @@ sharing the same bound helper; does not stamp ``candidate.last_email_check``.
 
 AST-1521: completes AST-1472's deferred retarget — bound path uses
 ``land_meteorite`` for JD-text ingress (not Ruth-first html_links).
+
+AST-1522: test/bible gap only — no further product change on this sub.
 """
 
 from __future__ import annotations
