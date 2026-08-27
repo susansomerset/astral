@@ -4438,6 +4438,70 @@ assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
 assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
 assert CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] > 0
 
+# CONTACT_TASK_CONFIG: allowlisted Contact task keys (AST-1515 / AST-1414).
+# Distinct from CONTACT_CONFIG skills ACL and TASK_CONFIG dispatch catalog.
+CONTACT_TASK_CONFIG = {
+    "gazer_scrape": {
+        "handler": "src.core.gazer.contact_task_gazer_scrape",
+        "description": (
+            "Fetch visible text, links, and blocked/ok/closed/missing for one job URL."
+        ),
+        "param_hint": "Single URL — remainder of the markup line after the task key.",
+        "requires_candidate": True,
+    },
+    "create_contact_meteorite": {
+        "handler": "src.core.meteorite.create_contact_meteorite",
+        "description": (
+            "Land a meteorite from link (scrape-first) or pasted page text."
+        ),
+        "param_hint": "URL or page text (rest of line).",
+        "requires_candidate": True,
+    },
+    "get_job_by_pattern": {
+        "handler": "src.core.tracker.contact_task_get_job_by_pattern",
+        "description": (
+            "Resolve one fully hydrated job for the Slack candidate from a text pattern."
+        ),
+        "param_hint": "Pattern string (rest of line).",
+        "requires_candidate": True,
+    },
+    "get_job_data": {
+        "handler": "src.core.tracker.contact_task_get_job_data",
+        "description": "Return stored job data for an id belonging to the candidate.",
+        "param_hint": "Astral job id (rest of line).",
+        "requires_candidate": True,
+    },
+    "get_company_data": {
+        "handler": "src.core.tracker.contact_task_get_company_data",
+        "description": "Return stored company data via extant getters.",
+        "param_hint": "Company short_name or id (rest of line).",
+        "requires_candidate": True,
+    },
+    "get_candidate_data": {
+        "handler": "src.core.tracker.contact_task_get_candidate_data",
+        "description": "Return stored candidate data for the Slack-resolved candidate.",
+        "param_hint": "Optional sub-path or empty (rest of line may be blank).",
+        "requires_candidate": True,
+    },
+}
+assert isinstance(CONTACT_TASK_CONFIG, dict) and CONTACT_TASK_CONFIG
+for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
+    assert isinstance(_ct_key, str) and _ct_key.strip(), _ct_key
+    assert isinstance(_ct_meta, dict), _ct_key
+    for _field in ("handler", "description", "param_hint"):
+        assert isinstance(_ct_meta.get(_field), str) and _ct_meta[_field].strip(), (
+            _ct_key,
+            _field,
+        )
+    assert isinstance(_ct_meta.get("requires_candidate"), bool), _ct_key
+    assert _ct_key not in TASK_CONFIG, _ct_key
+    assert _ct_key not in CONTACT_CONFIG["skills"], _ct_key
+    _handler = _ct_meta["handler"]
+    assert "." in _handler, _ct_key
+    _module_path, _, _attr_name = _handler.rpartition(".")
+    assert _module_path and _attr_name, _ct_key
+    assert _module_path.startswith("src.core."), _ct_key
+
 BRAIN_BIG = "Big"
 BRAIN_SETTINGS: tuple[str, str, str] = (BRAIN_LITTLE, BRAIN_MEDIUM, BRAIN_BIG)
 

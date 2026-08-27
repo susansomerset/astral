@@ -399,3 +399,25 @@ Extract/save per-code **`advice_adherence`** under `job_data.artifacts.advice_ad
   tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
   -q
 ```
+
+### AST-1518 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads`.
+
+Four `contact_task_*` read handlers + `get_job_by_pattern`: candidate-scoped pattern match; company→`candidate_id` ownership; hydrate via `get_entity_agent_story` (no coat-check/gazer). Markup/dispatch: **`docs/test-bible/core/contact.md`** (AST-1515).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pattern / job / company / candidate reads + Style D | `src/core/tracker.py` | **`TestAst1518ContactTaskReads`** |
+
+**Broken / obsolete:** AST-1515 turn/dispatch tests that assumed `get_job_data` stayed `handler_unavailable` — revised to `create_contact_meteorite` (still sibling AST-1517).
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1518ContactTaskReads \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  -q
+```
