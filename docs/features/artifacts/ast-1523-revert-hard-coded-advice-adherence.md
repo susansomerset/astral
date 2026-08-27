@@ -172,5 +172,5 @@ context_tokens≈62000
 ## Review
 
 **Branch:** `sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence`  
-**Tip:** `9954a8b5dc6b584ca0c0a45a24ee6d6b11ddf6c1`
+**Tip:** `8f8f5a1785324b8373e2ad073cea99067f2dbfb3` (code); publish ref HEAD follows
 **Notes for Betty:** retire AST-1507 / AST-1508 / AST-1514 hard-contract tests + bible (AC4); product tip no longer emits/validates `[R#]` / `advice_adherence`.
