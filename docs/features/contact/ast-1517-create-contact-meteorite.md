@@ -168,3 +168,18 @@ Calls `create_meteorite_job` (not `land_meteorite` / `save_meteorite_job`); land
 Single-file scope; scrape hard-fail / empty visible text return `ok=False` without raising into Contact; handler signature matches AST-1515 dispatch; Style D gated on `debug=True`; does not edit config/contact/gazer/tracker.
 
 context_tokens≈58000
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1414/AST-1517-create-contact-meteorite` |
+| Tip | `4ddaed5c` |
+| Branch | `sub/AST-1414/AST-1517-create-contact-meteorite` |
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `4ddaed5c` | `create_contact_meteorite` — URL scrape→create / text→create; Style D |
+
+**Betty note:** component tests for link vs text mode, scrape-fail soft returns, METEORITE_NEW landing + job_link, Style D on debug=True deferred to qa-child.
