@@ -122,7 +122,11 @@ Rules in prompt (not enforced in code):
 
 Confirm Chuckles estimate: 2 — agree
 
-## Joan validate
+## Review
+
+**Publish ref:** `origin/sub/AST-1460/AST-1524-soft-numbered-prose-advise-draft-notes` @ `0c7492dd`
+**Built:** Merged AST-1523 prerequisite; Stages 1–3 — Estelle A./B./C. RESUME BRIEF prose; Judith `notes` respond to lettered items; UAT twin sync. Prompt-only — no `src/**` changes this ticket.
+
 
 [plan-rubric]
 **Rubric:** plan-rubric.v1
