@@ -168,3 +168,24 @@ Retire `gaze_email` test/bible identity; retarget mailbox runner + config/dispat
   tests/component/core/test_ast1467_gaze_email_retire.py \
   -q
 ```
+
+
+### AST-1522 · AST-1520
+
+**Parent:** [AST-1520 — Emailed job description parsed as HTML](https://linear.app/astralcareermatch/issue/AST-1520/emailed-job-description-parsed-as-html). **Publish:** `origin/sub/AST-1520/AST-1522-gap-meteorite-email-tests`. **Fix:** AST-1521.
+
+`[bug-repro]` no-subject plain JD body → `land_meteorite(text=visible)` + Gmail archive (not Ruth `html_links` / `ignored-empty` pass-without-ingest). Fails on pre-fix tip; green after AST-1521 make-fix.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No-subject JD → land + archive | `src/core/meteorite_email.py` | **`TestAst1522NoSubjectJdLandsAndArchives::test_no_subject_jd_text_lands_and_archives`** |
+
+**Broken / obsolete (this pass):** Ruth `html_links` / `subject_body` / `_ingest_link` / `ignored-empty` runner expectations — removed `TestAst1090` subject_url+html_links create cases, `TestAst1213` live_content/ruth_payload runner cases, entire **`TestAst1294HtmlLinksJobsComplete`**. Helper-only `TestAst1213RuthLivePayload::test_helpers_keep_tracking_drop_noise` retained while `_ruth_live_parts` remains.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite_email.py::TestAst1522NoSubjectJdLandsAndArchives::test_no_subject_jd_text_lands_and_archives \
+  -q
+```
