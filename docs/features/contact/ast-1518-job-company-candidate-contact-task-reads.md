@@ -133,3 +133,32 @@ def _contact_task_style_d(
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1518
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` @ `b2cfeb230786e1d603324a84d8225f47ac86f9e5`
+
+## Traceability
+AC5 (parent AC5)→S1,S2; AC6 (parent AC6)→S2; AC7 (parent AC8 read paths)→S2; parent AC1–4,7→N/A (siblings); stages map to child Purpose / Functional read slice only.
+
+## Findings
+
+### fix-now — Stage 2 steps 2–3, cross-candidate checks
+**Finding:** `contact_task_get_job_data` and `contact_task_get_job_by_pattern` defense-in-depth gate on `job.get("candidate_id")`, but job rows in tracker do not use that field for ownership — candidate scope is `job["company"]` → `get_company(...).get("candidate_id")` (see existing `_candidate_data_for_job` / `builder.py`). `contact_task_get_job_data` loads via `get_job(param)` with **no** `list_jobs` scoping, so a foreign `astral_job_id` could return another candidate's job while the planned check never fires.
+**Recommendation:** Add a private helper (e.g. `_job_owned_by_candidate(job, cid)`) resolving company→`candidate_id`; use it in both handlers before hydrate/success. `contact_task_get_job_data` must refuse when resolved owner ≠ `cid` (`refused_cross_candidate`). Pattern path can keep `list_jobs(candidate_id=cid)` but should use the same helper for defense in depth.
+
+### discuss — Stage 2 step 4, `get_company_data` param_hint
+**Finding:** AST-1515 `param_hint` says "company short_name or id"; plan resolves via `tracker.get_company(param.strip())` (short_name key only). Misleading if Estelle passes a non-short_name identifier.
+**Recommendation:** Either narrow param_hint in a sibling config doc pass (out of this ticket's Files Changed) or add one plan line: param must be company `short_name` as stored on the job row — other ids → `not_found`.
+
+### acceptable — Boundaries, coat-check bypass, hydration, scope
+Does not call async coat-check `get_job_data` / `roster.get_company_data` (no gazer/website fetch); hydrates via `get_job` + `get_entity_agent_story`; ambiguous pattern → refuse; company scope check via `list_jobs`; four handler names match AST-1515 `CONTACT_TASK_CONFIG`; single-file scope; Style D gated on `debug=True`; late-import `agent` avoids cycles.
+
+context_tokens≈45000
+
+---
