@@ -3642,6 +3642,36 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert other["agent_performance"]["status"] == "success | failure"
 
 
+# Branches: CONTACT_TASK_CONFIG six keys + collision guards (AST-1515).
+class TestAst1515ContactTaskConfig:
+    """AST-1515: allowlisted contact-task keys distinct from TASK_CONFIG and skills ACL."""
+
+    _EXPECTED_KEYS = frozenset(
+        {
+            "gazer_scrape",
+            "create_contact_meteorite",
+            "get_job_by_pattern",
+            "get_job_data",
+            "get_company_data",
+            "get_candidate_data",
+        }
+    )
+
+    def test_six_keys_handler_metadata_and_collision_guards(self) -> None:
+        block = cfg.CONTACT_TASK_CONFIG
+        assert set(block.keys()) == self._EXPECTED_KEYS
+        for key, meta in block.items():
+            assert key not in cfg.TASK_CONFIG
+            assert key not in cfg.CONTACT_CONFIG["skills"]
+            for field in ("handler", "description", "param_hint"):
+                assert isinstance(meta[field], str) and meta[field].strip(), (key, field)
+            assert meta["requires_candidate"] is True
+            handler = meta["handler"]
+            assert handler.startswith("src.core.")
+            mod_path, _, attr = handler.rpartition(".")
+            assert mod_path and attr
+
+
 # Branches: turn-loop trim keys + optional skill_calls schema (AST-1073).
 class TestAst1073ContactEstelleTurnConfig:
     def test_turn_context_trim_keys(self) -> None:

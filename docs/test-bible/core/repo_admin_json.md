@@ -514,6 +514,26 @@ UAT restore: `meteorite_grade_do` / `meteorite_grade_get` grouping-only rows bac
 
 Estelle `topic_menu_preamble_confirm` / `topic_menu_generate` `cache_prompt` vocabulary includes `ideal_day`. Primary: **`docs/test-bible/utils/config.md`** § AST-1367 — revised **`TestAst1075TopicMenuCatalogRows`**.
 
+### AST-1515 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch`.
+
+`contact_estelle_turn` system/user prompts teach `~~/<task_key> <parameters>~~` markup in `agent_payload.reply` (not `skill_calls`); reference live_content **Available contact tasks (markup)** section. Turn wiring: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Markup prompt contract | `data/admin/agent_task.json` | **`TestAst1515ContactEstelleTurnMarkupPrompt`** |
+
+**Broken / obsolete:** none — additive prompt paragraphs on existing row.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1515ContactEstelleTurnMarkupPrompt \
+  -q
+```
+
 ### AST-1400 · AST-1398
 
 **Parent:** [AST-1398 — Update agent.json and agent_task.json](https://linear.app/astralcareermatch/issue/AST-1398/update-agentjson-and-agent-taskjson). **Publish:** `origin/sub/AST-1398/AST-1400-gap-estelle-craft-seed-asserts`.
