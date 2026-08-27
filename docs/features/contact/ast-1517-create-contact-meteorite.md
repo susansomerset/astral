@@ -183,3 +183,33 @@ context_tokens≈58000
 | 1 | `4ddaed5c` | `create_contact_meteorite` — URL scrape→create / text→create; Style D |
 
 **Betty note:** component tests for link vs text mode, scrape-fail soft returns, METEORITE_NEW landing + job_link, Style D on debug=True deferred to qa-child.
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1517
+**Publish ref:** `sub/AST-1414/AST-1517-create-contact-meteorite` @ `b7456464e579619c287cd5972829542f6b3da187`
+**Overall:** CLEAN
+
+## Statutes checked
+
+Full-set statute sweep — all scoped/universal statutes conform or not-applicable. Key conforms: `astral.standards.debug-contract-gated`, `astral.standards.dry-and-focused-functions`, `astral.layers.import-direction` (late-import breaks gazer↔meteorite cycle), `astral.state.core-decides-transitions` (METEORITE_NEW carve-out via existing `create_meteorite_job`).
+
+## Plan adherence
+
+Stage 1 implemented in `4ddaed5c`: URL detector, link mode (scrape→create), text mode (direct create), Style D on debug=True, soft-fail returns for scrape/empty visible text. Betty `TestAst1517CreateContactMeteorite` covers URL detector, text/link modes, scrape soft-fail, Style D.
+
+## Findings
+
+*(none — fix-now / discuss)*
+
+## What's solid
+
+- URL-vs-text split prevents scraping pasted prose that embeds a URL (whitespace/newline guard).
+- Late-import of `contact_task_gazer_scrape` avoids module-load cycle.
+- Scrape failures return structured payloads — Contact turn stays alive.
+- Link mode uses `create_meteorite_job` → `METEORITE_NEW` via existing carve-out.
+- Style D matches sibling AST-1518 dual-index write-path shape.
+
+context_tokens≈44000
