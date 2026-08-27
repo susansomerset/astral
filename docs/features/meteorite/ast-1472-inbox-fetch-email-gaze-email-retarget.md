@@ -491,3 +491,8 @@ After the branch, always `_finalize_archive(mid, outcomes, ...)` when the branch
 - Style D only when `debug=True`; `debug=False` no new contract noise.  
 - Layer rules: core orchestrates; Gmail archive/trash via `external.gmail`; Playwright via existing gazer fetch helper; no ui/data imports from this module beyond current database stamp/dedupe helpers.  
 - AST-1472 inbox `fetch_email` / admin land paths remain as shipped — this bug does not regress them.
+
+## Radia review — AST-1521 (clean §3h)
+
+**Overall:** CLEAN / PROCEED. No fix-now. [bug-repro] coverage lives on sibling gap AST-1522.
+**Next:** Review Posted → User Testing via do-all-the-things §3h (resolve-child skipped).
