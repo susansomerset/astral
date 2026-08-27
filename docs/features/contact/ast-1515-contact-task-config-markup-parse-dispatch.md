@@ -298,3 +298,24 @@ context_tokens≈38000
 | 4 | `847ebc6c` | `contact_estelle_turn` system/user prompt markup contract |
 
 **Betty note:** component tests for markup parse, dispatch Style D, follow-up turn, config asserts deferred to qa-child.
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1515
+**Publish ref:** `sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch` @ `0f18b068598a9c39415644d7c2b38b571854a8c6`
+**Overall:** DISCUSS
+
+### discuss — `pattern.core.contact-task-markup` catalog entry still absent
+Plan Stage 4 cites `pattern.core.contact-task-markup`; no file under `canon/patterns/**`. Track-with-Archie — draft catalog before parent UAT closes.
+
+### discuss — Follow-up turn failure leaves no Slack reply (plan-intentional, UAT-sensitive)
+When listed markup present, Slack narrative comes only from follow-up turn. By design per plan step 3g; UAT should confirm hear-ack/admin visibility on follow-up LLM failure.
+
+### advisory — `out["reply"]` vs Slack payload
+Turn return `"reply"` may retain markup while Slack uses stripped text — low severity unless downstream assumes parity.
+
+**Slim gate:** REVIEW (Commit: 0f18b068) Pattern catalog pending; code PROCEED
+
+context_tokens≈42000
