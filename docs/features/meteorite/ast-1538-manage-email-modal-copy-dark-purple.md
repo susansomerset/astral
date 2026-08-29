@@ -110,3 +110,35 @@ Place it with the other `.manage-email-*` rules. No other CSS changes.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1538
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple` @ `93cf11e0ee366120490c72e5b15e69f0cf8f051c`
+
+## Traceability
+AC1 → Stage 1 (`assembled_html` in `<pre>`, no `html_body` fallback); AC2 → Stage 1 (Copy clips `assembledHtml`); AC3 → Stage 2 (`--bg-elevated` on `.email-html-source`); AC4 → Scope gate + Stage 1 step 5 (Land Meteorite / multi-select untouched).
+
+## Findings
+
+### discuss
+- **Location:** Linear gate — assignee Katherine Johnson, not Joan
+- **Finding:** `validate-plan` §1 expects Joan assigned during this pass; ticket is still on the implementer.
+- **Recommendation:** Chuckles-only — no plan change; restore assignee after writeback per skill §8.
+
+### acceptable
+- **Location:** Stage 1 — Copy `onClick`
+- **Finding:** `navigator.clipboard.writeText` has no `.catch()`; failures would be unhandled rejections.
+- **Recommendation:** Matches existing admin copy patterns (`AdminPerformanceMonitor`, `AdminDataManagement`); optional hardening, not blocking.
+
+### acceptable
+- **Location:** Stage 1 — `<pre title="Email body">`
+- **Finding:** Plan does not rename the `title` after switching to header+body source.
+- **Recommendation:** Cosmetic polish only.
+
+context_tokens≈58000
+```
