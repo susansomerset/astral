@@ -139,26 +139,3 @@ Raw `to_address` on `list_inbox_messages` / `get_message_html` (empty string whe
 
 **Pass criterion:** pytest green on narrowed args; `[bug-repro]` test passes after make-fix lands `cache_discovery=False`.
 
-
-### AST-1537 · AST-1533
-
-**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify`.
-
-`GmailMessageHtml` / `get_message_html` include `date` from the raw Date header (empty string when missing). Primary map: **`docs/test-bible/core/inbox.md`** (**AST-1537**).
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Date on full-message HTML get | `src/external/gmail.py` | revised **`TestGetMessageHtml`** (equality dicts + Date header case) |
-
-**Broken / obsolete:** get payload equality without `date` — revised.
-
-**Integration:** none — do not invent.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/external/test_gmail.py::TestGetMessageHtml \
-  -q
-```
-
-**Pass criterion:** pytest green on narrowed args; `src/external/gmail.py` remains **LOCKED_AT_100** branch coverage.
-
