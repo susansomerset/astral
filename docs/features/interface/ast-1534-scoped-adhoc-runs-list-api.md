@@ -234,3 +234,10 @@ AC1→Stages 1–4; AC2→Stages 2–4 (API; UI refetch AST-1535); AC3→Stage 3
 
 context_tokens≈42000
 ```
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api`  
+**Product commit:** `31515387` — Stages 1–4 (`UI_CONFIG` caps, filtered `list_agent_data_batches`, `list_agent_data_runs` kwargs + debug, `GET /adhoc/runs` query params)
+
+Frontend picker chrome left to AST-1535. Load path / Test prefix / `tests/` / bible untouched.
