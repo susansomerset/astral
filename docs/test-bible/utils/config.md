@@ -3376,3 +3376,24 @@ Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_a
   tests/component/utils/test_config.py::TestAst1049InboxCreateJobConfig \
   -q
 ```
+
+
+### AST-1534 · AST-1532
+
+**Parent:** [AST-1532](https://linear.app/astralcareermatch/issue/AST-1532). **Publish:** `origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api`.
+
+`UI_CONFIG["adhoc_import_runs_limit"]` (10) + `UI_CONFIG["adhoc_import_picker_visible_rows"]` (5). Primary map: **`docs/test-bible/core/agent.md`** (§ AST-1534).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cap + visible-row literals | `src/utils/config.py` | **`TestAst1534AdhocImportConfigKeys`** |
+
+**Broken / obsolete:** none for config keys. List-path revisions live under core/agent § AST-1534.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1534AdhocImportConfigKeys \
+  -q
+```

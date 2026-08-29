@@ -4984,7 +4984,7 @@ class TestAst515AdhocWorkbenchLedger:
 
 
 class TestAst1451ListAgentDataRuns:
-    """AST-1451: list_agent_data_runs returns data rows; Style D only when debug=True."""
+    """AST-1451 (revised AST-1534): list_agent_data_runs returns data rows; Style D when debug=True."""
 
     _ROWS = [
         {
@@ -5004,7 +5004,9 @@ class TestAst1451ListAgentDataRuns:
     def test_returns_data_rows_debug_false_skips_contract(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(agent_mod, "list_agent_data_batches", lambda: list(self._ROWS))
+        monkeypatch.setattr(
+            agent_mod, "list_agent_data_batches", lambda **_kw: list(self._ROWS)
+        )
         gl = MagicMock(wraps=agent_mod.get_logger)
         monkeypatch.setattr(agent_mod, "get_logger", gl)
         out = agent_mod.list_agent_data_runs(debug=False)
@@ -5014,7 +5016,9 @@ class TestAst1451ListAgentDataRuns:
     def test_debug_true_emits_index_found_recorded_per_run(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(agent_mod, "list_agent_data_batches", lambda: list(self._ROWS))
+        monkeypatch.setattr(
+            agent_mod, "list_agent_data_batches", lambda **_kw: list(self._ROWS)
+        )
         dbg = MagicMock()
         real = agent_mod.get_logger
         monkeypatch.setattr(
@@ -5037,6 +5041,63 @@ class TestAst1451ListAgentDataRuns:
         assert details[1].startswith("recorded ")
         assert "batch_id='b-new'" in details[1]
         dbg.debug_detail_block.assert_not_called()
+
+
+class TestAst1534ListAgentDataRunsFilters:
+    """AST-1534: forwards filter/limit kwargs; debug only on returned (filtered) rows."""
+
+    def test_forwards_candidate_task_limit_to_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[dict] = []
+
+        def _list(**kw):
+            seen.append(kw)
+            return [{"batch_id": "b1", "created_at": "t", "entity_id": "e", "task_key": "k"}]
+
+        monkeypatch.setattr(agent_mod, "list_agent_data_batches", _list)
+        out = agent_mod.list_agent_data_runs(
+            candidate_id="cand-1",
+            task_key="evaluate_jd",
+            limit=10,
+            debug=False,
+        )
+        assert seen == [
+            {"candidate_id": "cand-1", "task_key": "evaluate_jd", "limit": 10}
+        ]
+        assert out[0]["batch_id"] == "b1"
+
+    def test_debug_true_only_covers_returned_rows(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Data already filtered — core must not invent extra debug for dropped batches.
+        filtered = [
+            {
+                "batch_id": "b-kept",
+                "created_at": "2026-08-01 00:00:00",
+                "entity_id": "job-1",
+                "task_key": "adhoc-evaluate_jd",
+            }
+        ]
+        monkeypatch.setattr(
+            agent_mod, "list_agent_data_batches", lambda **_kw: list(filtered)
+        )
+        dbg = MagicMock()
+        real = agent_mod.get_logger
+        monkeypatch.setattr(
+            agent_mod,
+            "get_logger",
+            lambda *a, **k: dbg if k.get("debug_flag") else real(*a, **k),
+        )
+        out = agent_mod.list_agent_data_runs(
+            candidate_id="cand-1", task_key="evaluate_jd", limit=10, debug=True
+        )
+        assert out == filtered
+        index_kw = [c.kwargs for c in dbg.debug_index.call_args_list]
+        assert len(index_kw) == 1
+        assert index_kw[0]["total"] == 1
+        assert index_kw[0]["identifier"] == "b-kept"
+        assert len(dbg.debug_detail.call_args_list) == 2
 
 
 class TestAst724VectorFeedbackCapture:

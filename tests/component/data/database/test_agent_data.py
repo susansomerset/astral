@@ -538,10 +538,15 @@ class TestAst1377EnsureRefAgentDataId:
 
 
 class TestAst1451ListAgentDataBatches:
-    """AST-1451: one metadata row per batch_id, newest first; no filter/cap; no block_data."""
+    """AST-1451 (revised AST-1534): one metadata row per batch_id, newest first; no block_data.
 
-    def test_empty_table_returns_empty_list(self, sqlite_in_memory) -> None:
+    Unfiltered/no-cap list is retired — blank candidate → []; scoped list needs ledger join.
+    """
+
+    def test_blank_candidate_returns_empty_list(self, sqlite_in_memory) -> None:
         assert sqlite_in_memory.list_agent_data_batches() == []
+        assert sqlite_in_memory.list_agent_data_batches(candidate_id="") == []
+        assert sqlite_in_memory.list_agent_data_batches(candidate_id=None) == []
 
     def test_one_row_per_batch_newest_first_includes_adhoc_and_production(
         self, sqlite_in_memory
@@ -567,6 +572,9 @@ class TestAst1451ListAgentDataBatches:
             created_at="2026-01-01 00:00:01",
             entity_id="job-old",
         )
+        db.save_dispatch_ledger(
+            "batch-prod", "evaluate_jd", "cand-1", "2026-01-01 00:00:00"
+        )
         db.save_agent_data(
             "new-sys",
             "job",
@@ -577,7 +585,10 @@ class TestAst1451ListAgentDataBatches:
             created_at="2026-08-01 12:00:00",
             entity_id="job-new",
         )
-        rows = db.list_agent_data_batches()
+        db.save_dispatch_ledger(
+            "batch-adhoc", "adhoc-evaluate_jd", "cand-1", "2026-08-01 12:00:00"
+        )
+        rows = db.list_agent_data_batches(candidate_id="cand-1")
         assert [r["batch_id"] for r in rows] == ["batch-adhoc", "batch-prod"]
         assert rows[0]["task_key"] == "adhoc-evaluate_jd"
         assert rows[0]["entity_id"] == "job-new"
@@ -586,3 +597,131 @@ class TestAst1451ListAgentDataBatches:
         for row in rows:
             assert set(row) >= {"batch_id", "created_at", "entity_id", "task_key"}
             assert "block_data" not in row
+
+
+class TestAst1534ScopedListAgentDataBatches:
+    """AST-1534: candidate + optional task_key (adhoc- strip) + limit via dispatch_ledger join."""
+
+    def _seed(
+        self,
+        db: Any,
+        *,
+        batch_id: str,
+        task_key: str,
+        created_at: str,
+        candidate_id: str,
+        entity_id: str = "job-1",
+        ledger_task_key: Optional[str] = None,
+    ) -> None:
+        db.save_agent_data(
+            f"{batch_id}-sys",
+            "job",
+            task_key,
+            batch_id,
+            "SYSTEM",
+            "sys",
+            created_at=created_at,
+            entity_id=entity_id,
+        )
+        db.save_dispatch_ledger(
+            batch_id,
+            ledger_task_key or task_key,
+            candidate_id,
+            created_at,
+        )
+
+    def test_scopes_by_candidate_excludes_other_and_ledgerless(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        self._seed(
+            db,
+            batch_id="b-keep",
+            task_key="evaluate_jd",
+            created_at="2026-08-01 12:00:00",
+            candidate_id="cand-a",
+        )
+        self._seed(
+            db,
+            batch_id="b-other",
+            task_key="evaluate_jd",
+            created_at="2026-08-02 12:00:00",
+            candidate_id="cand-b",
+        )
+        # agent_data without ledger — INNER JOIN drops it
+        db.save_agent_data(
+            "orphan-sys",
+            "job",
+            "evaluate_jd",
+            "b-orphan",
+            "SYSTEM",
+            "sys",
+            created_at="2026-08-03 12:00:00",
+            entity_id="job-x",
+        )
+        rows = db.list_agent_data_batches(candidate_id="cand-a")
+        assert [r["batch_id"] for r in rows] == ["b-keep"]
+
+    def test_task_key_adhoc_prefix_equivalence(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(
+            db,
+            batch_id="b-adhoc",
+            task_key="adhoc-evaluate_jd",
+            created_at="2026-08-02 00:00:00",
+            candidate_id="cand-1",
+        )
+        self._seed(
+            db,
+            batch_id="b-bare",
+            task_key="evaluate_jd",
+            created_at="2026-08-01 00:00:00",
+            candidate_id="cand-1",
+        )
+        self._seed(
+            db,
+            batch_id="b-other-task",
+            task_key="adhoc-grade_get",
+            created_at="2026-08-03 00:00:00",
+            candidate_id="cand-1",
+        )
+        # Catalog key matches both adhoc- and bare stored keys; query may also be adhoc-.
+        for query_key in ("evaluate_jd", "adhoc-evaluate_jd"):
+            rows = db.list_agent_data_batches(
+                candidate_id="cand-1", task_key=query_key
+            )
+            assert [r["batch_id"] for r in rows] == ["b-adhoc", "b-bare"], query_key
+
+    def test_empty_task_key_returns_all_for_candidate_newest_first(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        self._seed(
+            db,
+            batch_id="b-old",
+            task_key="grade_get",
+            created_at="2026-01-01 00:00:00",
+            candidate_id="cand-1",
+        )
+        self._seed(
+            db,
+            batch_id="b-new",
+            task_key="evaluate_jd",
+            created_at="2026-08-01 00:00:00",
+            candidate_id="cand-1",
+        )
+        rows = db.list_agent_data_batches(candidate_id="cand-1", task_key="")
+        assert [r["batch_id"] for r in rows] == ["b-new", "b-old"]
+
+    def test_limit_caps_newest_first(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        for i in range(5):
+            self._seed(
+                db,
+                batch_id=f"b-{i}",
+                task_key="evaluate_jd",
+                created_at=f"2026-08-0{i+1} 00:00:00",
+                candidate_id="cand-1",
+            )
+        rows = db.list_agent_data_batches(candidate_id="cand-1", limit=2)
+        assert [r["batch_id"] for r in rows] == ["b-4", "b-3"]

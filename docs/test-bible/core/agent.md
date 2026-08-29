@@ -1038,7 +1038,7 @@ Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_pr
 
 **Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload`.
 
-Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per `batch_id`, newest first, includes `adhoc-*`, no filter/cap); `GET /api/admin/adhoc/runs` `@require_admin`; Style D found→recorded on the list when `debug=True`; one leading `adhoc-` strip in `run_adhoc_workbench_test` so ledger stays `adhoc-<task_key>`. Load body is existing `GET /api/agent_data/<batch_id>` (unchanged). Picker chrome: sibling AST-1452.
+Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per `batch_id`, newest first, includes `adhoc-*`); `GET /api/admin/adhoc/runs` `@require_admin`; Style D found→recorded on the list when `debug=True`; one leading `adhoc-` strip in `run_adhoc_workbench_test` so ledger stays `adhoc-<task_key>`. Load body is existing `GET /api/agent_data/<batch_id>` (unchanged). Picker chrome: sibling AST-1452. **Filter/cap (candidate + task_key + config limit):** superseded by **AST-1534** — unfiltered full-history list retired.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1049,7 +1049,7 @@ Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per 
 | Admin list JSON + auth + `ui_llm_debug` | `src/ui/api/api_admin.py` (`adhoc_runs`) | **`TestAst1451AdhocRuns`** |
 | Load payload (existing GET) | `src/ui/api/api_system.py` | existing **`TestSystemAuthRoutes::test_agent_data_returns_rows`** |
 
-**Broken / obsolete this pass:** none — AST-515 catalog-key ledger assertion still holds.
+**Broken / obsolete this pass:** none originally — **AST-1534** revises list mocks/asserts for filter kwargs (see § AST-1534).
 
 **Integration:** no existing scenario covers admin Ad Hoc list/load — v1 harness is system+candidate only. Do not invent new integration coverage.
 
@@ -1125,3 +1125,51 @@ Board REVISE (optional Step 4): `_decode_payload` should fail fast when the same
   tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate \
   -q
 ```
+
+
+### AST-1534 · AST-1532 (Scoped adhoc runs list API)
+
+**Parent:** [AST-1532](https://linear.app/astralcareermatch/issue/AST-1532). **Publish:** `origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api`.
+
+Backend scoped import list: `UI_CONFIG` cap (10) + picker visible rows (5); `list_agent_data_batches` joins `dispatch_ledger` for `candidate_id`, optional `task_key` with one leading `adhoc-` strip equivalence, `ORDER BY created_at DESC` + `limit`; `list_agent_data_runs` forwards kwargs and Style D debug only on returned rows; `GET /api/admin/adhoc/runs` reads `candidate_id`/`task_key`, uses config limit (ignores client `limit`). React chrome: **AST-1535**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config literals | `src/utils/config.py` (`UI_CONFIG`) | **`TestAst1534AdhocImportConfigKeys`** |
+| Blank candidate → `[]`; scoped newest-first; no `block_data` | `src/data/database.py` | revised **`TestAst1451ListAgentDataBatches`** |
+| Candidate scope + ledgerless exclude; `adhoc-` task equiv; empty task; limit | same | **`TestAst1534ScopedListAgentDataBatches`** |
+| Core Style D debug gate | `src/core/agent.py` | revised **`TestAst1451ListAgentDataRuns`** |
+| Forwards kwargs; debug only on returned set | same | **`TestAst1534ListAgentDataRunsFilters`** |
+| Admin auth + debug forward | `src/ui/api/api_admin.py` | revised **`TestAst1451AdhocRuns`** |
+| Query params + config cap; blank → none; ignore client limit | same | **`TestAst1534AdhocRunsScoped`** |
+
+**Broken / obsolete this pass:** AST-1451 unfiltered/no-cap list assumptions — revised in place (blank candidate, kwargs-accepting mocks).
+
+**Integration:** no existing scenario covers admin Ad Hoc list — do not invent.
+
+## QA test manifest
+
+1. Config keys: `tests/component/utils/test_config.py::TestAst1534AdhocImportConfigKeys`
+2. Data scoped list: `tests/component/data/database/test_agent_data.py::TestAst1451ListAgentDataBatches`
+3. Data filter/limit: `tests/component/data/database/test_agent_data.py::TestAst1534ScopedListAgentDataBatches`
+4. Core debug + kwargs: `tests/component/core/test_agent.py::TestAst1451ListAgentDataRuns`
+5. Core filter forward: `tests/component/core/test_agent.py::TestAst1534ListAgentDataRunsFilters`
+6. Admin auth: `tests/component/ui/api/test_api_admin.py::TestAst1451AdhocRuns`
+7. Admin scoped GET: `tests/component/ui/api/test_api_admin.py::TestAst1534AdhocRunsScoped`
+
+**AST-1534** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1534AdhocImportConfigKeys \
+  tests/component/data/database/test_agent_data.py::TestAst1451ListAgentDataBatches \
+  tests/component/data/database/test_agent_data.py::TestAst1534ScopedListAgentDataBatches \
+  tests/component/core/test_agent.py::TestAst1451ListAgentDataRuns \
+  tests/component/core/test_agent.py::TestAst1534ListAgentDataRunsFilters \
+  tests/component/ui/api/test_api_admin.py::TestAst1451AdhocRuns \
+  tests/component/ui/api/test_api_admin.py::TestAst1534AdhocRunsScoped \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
