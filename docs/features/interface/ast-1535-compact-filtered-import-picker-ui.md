@@ -111,3 +111,45 @@ Keep the inner `<table className="list-page-table">`, thead columns, and tbody r
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1535
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1532/AST-1535-compact-filtered-import-picker-ui` @ `fdbed48252bc7fc41e4ede6e744fdf5a61b797e6`
+
+## Traceability
+AC2→Stage 2; AC3→Stage 1; AC4→Stages 1–2 (Load/confirmLoad untouched; smoke Stage 2); parent AC1→N/A (AST-1534 API)
+
+## Findings
+
+### fix-now
+- **Severity:** fix-now
+- **Location:** Stage 2 — ui_config fetch (`api("/api/system/ui_config")`); Files Changed / Depends-on prose
+- **Finding:** Plan prescribes `GET /api/system/ui_config`, but the live Flask route is `system_bp` prefix `/api` + `@system_bp.route("/ui_config")` → **`GET /api/ui_config`** (`api_system.py`). There is no `/api/system/ui_config` blueprint route; unmatched `/api/*` paths fall through to the React catch-all (HTML 200), so `r.json()` fails, the catch sets `importPickerVisibleRows` to `null`, and `maxHeight` stays `undefined`. Child AC2 (≈five visible rows + scroll) would not be met in production — only the API cap (10 rows) limits height.
+- **Recommendation:** In Stage 2 step 1, fetch `api("/api/ui_config")` (same payload — spreads `UI_CONFIG` including `adhoc_import_picker_visible_rows`). Update plan prose that says `/api/system/ui_config` to `/api/ui_config` for accuracy. `CandidateProfile.tsx` / `IntakePreamblePanel.tsx` already use the live path; `ArtifactsBaseResumeContent.tsx` is the stale alias donor — do not copy its URL here.
+
+### acceptable
+- **Location:** Stage 2 — `ADHOC_IMPORT_PICKER_HEAD_PX` / `ADHOC_IMPORT_PICKER_ROW_PX`
+- **Finding:** Pixel layout mirrors of `.list-page-table` CSS, not business caps.
+- **Recommendation:** Acceptable — visible-row **count** comes only from `adhoc_import_picker_visible_rows`; pixels size the viewport.
+
+- **Location:** Stage 2 — `maxHeight: undefined` when config missing
+- **Finding:** No hardcoded `5` fallback if ui_config fails after a correct URL.
+- **Recommendation:** Acceptable once URL is fixed — API cap is 10 rows; degraded unbounded wrap is bounded and documented.
+
+- **Location:** Boundaries — `tests/`, bible
+- **Finding:** No component-test plan for filtered refetch / scroll viewport.
+- **Recommendation:** Acceptable at plan gate — Betty owns qa-child; plan scope is single page file only.
+
+## Notes
+- Status `Plan Ready`; assignee Joan Clarke (validator spawn carries authority).
+- Zero completed `[plan-discuss]` rounds — round=1 concern for this REVISE.
+- Scope faithful: single file `AdminAnthropicAdHoc.tsx`; no API/config edits; no client `limit` param.
+- Stage 1 filtered refetch (`[selectedId, taskKey]`, skip when no candidate, omit `task_key` for “No Task”, stale selection clear, cancellation guard) matches AST-1534 contract and child AC3.
+- `pattern.ui.shared-button-roles` preserved (`btn primary` Load); `list-page-table-wrap--scroll` matches existing admin list pattern.
+- Depends on AST-1534 query-param contract — sibling sub ref ships `adhoc_import_runs_limit` + `adhoc_import_picker_visible_rows` on ui_config spread.
+
+context_tokens≈52000
