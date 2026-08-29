@@ -2165,7 +2165,7 @@ input.side-tab-heading-editable:focus {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.45;
-  background: #fff;
+  background: var(--bg-elevated);
   color: var(--text-primary);
 }
 
@@ -2178,6 +2178,13 @@ input.side-tab-heading-editable:focus {
   margin: 0;
   padding: 12px 20px 0;
   font-size: 13px;
+}
+.manage-email-modal-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px 0;
 }
 .manage-email-toolbar {
   display: flex;

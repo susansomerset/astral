@@ -19,7 +19,7 @@ from typing import Any
 
 from src.core.agent import do_task  # noqa: F401 — AST-1522 [bug-repro] still monkeypatches this name
 from src.core.candidate import get_candidate
-from src.core.inbox import get_message_html, list_inbox_messages
+from src.core.inbox import get_message_html, list_inbox_messages, strip_extract_email_html
 from src.data.database import update_candidate_last_email_check
 from src.external.gmail import archive_message, trash_message
 from src.utils.config import (
@@ -149,13 +149,14 @@ async def _handle_bound(
         _detail(debug, f"get_html_error={type(exc).__name__}")
         return (1, 0, 0, 1, "error")
 
-    # Caller-owned blob (no strip_extract — inbox owns strip).
-    subject = (payload.get("subject") or "").strip()
-    html = payload.get("html_body") or ""
-    if subject and html:
-        blob = f"{subject}\n\n{html}"
-    else:
-        blob = subject or html
+    # Shared header+body assembly (inbox owns strip — AST-1537).
+    blob = strip_extract_email_html(
+        payload.get("subject") or "",
+        payload.get("html_body") or "",
+        from_address=payload.get("from_address") or "",
+        to_address=payload.get("to_address") or "",
+        date=payload.get("date") or "",
+    )
 
     from src.core.meteorite import stage_meteorite
 

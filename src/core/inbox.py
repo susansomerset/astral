@@ -4,8 +4,9 @@ Inbox read orchestration + fetch_email → stage_meteorite (AST-1531).
 Thin core wrapper over src.external.gmail list/get. No gaze_email.
 AST-1033 owns the Read email admin surface and calls these functions.
 AST-1047 / AST-1313: From-then-To → candidate_match enrichment on list payloads.
-AST-1049 / AST-1472: strip/extract ownership stays here; Land/fetch_email stage
-then land-inside-stage (not raw land_meteorite on the stripped blob).
+AST-1049 / AST-1472 / AST-1537: strip/extract + header+body assembly ownership
+stays here; land/fetch_email and message-get share that shape; Land/fetch_email
+stage then land-inside-stage (not raw land_meteorite on the stripped blob).
 """
 
 from __future__ import annotations
@@ -177,8 +178,28 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
         raise
 
 
-def strip_extract_email_html(subject: str, html_body: str) -> str:
-    """Cull configured tags/attrs; wrap subject + body per INBOX_CREATE_JOB_CONFIG."""
+def get_message_with_assembled_html(message_id: str) -> dict:
+    """Gmail HTML payload plus assembled_html (header+body strip/wrap)."""
+    payload = dict(get_message_html(message_id))
+    payload["assembled_html"] = strip_extract_email_html(
+        payload.get("subject") or "",
+        payload.get("html_body") or "",
+        from_address=payload.get("from_address") or "",
+        to_address=payload.get("to_address") or "",
+        date=payload.get("date") or "",
+    )
+    return payload
+
+
+def strip_extract_email_html(
+    subject: str,
+    html_body: str,
+    *,
+    from_address: str = "",
+    to_address: str = "",
+    date: str = "",
+) -> str:
+    """Cull configured tags/attrs; wrap From/To/Subject/Date + body per INBOX_CREATE_JOB_CONFIG."""
     # B1 lazy import: bs4 is heavy and only needed on the Create strip path.
     from bs4 import BeautifulSoup
 
@@ -207,12 +228,18 @@ def strip_extract_email_html(subject: str, html_body: str) -> str:
     else:
         body = soup.decode_contents()
 
-    # AST-1131: unescape / unwrap nested Gmail auto-links before subject wrap.
+    # AST-1131: unescape / unwrap nested Gmail auto-links before header wrap.
     body = normalize_pasted_list_email_html(body)
 
+    escaped_from = html_module.escape(from_address or "", quote=True)
+    escaped_to = html_module.escape(to_address or "", quote=True)
     escaped_subject = html_module.escape(subject or "", quote=True)
+    escaped_date = html_module.escape(date or "", quote=True)
     return INBOX_CREATE_JOB_CONFIG["subject_html_template"].format(
+        from_address=escaped_from,
+        to_address=escaped_to,
         subject=escaped_subject,
+        date=escaped_date,
         body=body,
     )
 
@@ -232,7 +259,13 @@ async def _land_bound_inbox_message(
     payload = get_message_html(mid)
     subject = payload.get("subject") or ""
     raw_html = payload.get("html_body") or ""
-    html = strip_extract_email_html(subject, raw_html)
+    html = strip_extract_email_html(
+        subject,
+        raw_html,
+        from_address=payload.get("from_address") or "",
+        to_address=payload.get("to_address") or "",
+        date=payload.get("date") or "",
+    )
     if not html.strip():
         if debug:
             logger.set_debug_flag(True)
@@ -491,7 +524,13 @@ def create_meteorite_job_from_inbox_message(
         for line in truncate_debug_content(bind_address):
             logger.debug_detail(f"bind_address={line}")
 
-    html = strip_extract_email_html(subject, raw_html)
+    html = strip_extract_email_html(
+        subject,
+        raw_html,
+        from_address=from_address,
+        to_address=to_address,
+        date=payload.get("date") or "",
+    )
     if not html.strip():
         raise ValueError("stripped email HTML is empty")
     if debug:

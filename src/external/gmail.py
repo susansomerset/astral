@@ -64,6 +64,7 @@ class GmailMessageHtml(TypedDict):
     subject: str
     from_address: str
     to_address: str
+    date: str
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +149,7 @@ def list_inbox_messages() -> list[GmailInboxMessage]:
 
 
 def get_message_html(message_id: str) -> GmailMessageHtml:
-    """Return HTML body + Subject/From/To for one Gmail message id (empty html if no HTML part)."""
+    """Return HTML body + Subject/From/To/Date for one Gmail message id (empty html if no HTML part)."""
     require_controlled_external_io("gmail.get_message_html")
     service = _build_service()
     raw = service.users().messages().get(userId="me", id=message_id, format="full").execute()
@@ -161,6 +162,7 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
         "subject": headers.get("subject", ""),
         "from_address": headers.get("from", ""),
         "to_address": headers.get("to", ""),
+        "date": headers.get("date", ""),
     }
 
 
