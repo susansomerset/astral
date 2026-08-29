@@ -275,3 +275,135 @@ context_tokens≈28000
 | 2 | `25bde854` | `agent_task` `stage_meteorite` Ruth row; `meteorite_email` stays non-live |
 
 **Betty note:** AST-756 fixture twin intentionally out of Scope — sync at qa-child if component tests require it.
+
+
+## Radia review
+
+`[code-rubric] revision=2`  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1529  
+**Publish ref:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config` @ `9925c5d159df706ef80b7b87dd5b5228a6937c44`  
+**Overall:** CLEAN  
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config` (10 paths; engineer `src/utils/config.py` + `data/admin/agent_task.json`; Betty merge-tests: component tests, test-bible, AST-756 fixture twin)
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/core/agent` logic changes |
+| astral.agent.do-task-delegation | scoped | not-applicable | no `do_task` / delegation changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths touched |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch-id paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch-id format changes |
+| astral.batch.claim-process-release | scoped | not-applicable | no dispatcher/claim helpers changed |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity-agent-responses paths |
+| astral.config.config-source-of-truth | scoped | conforms | `STAGE_METEORITE_CONFIG` + `TASK_CONFIG["stage_meteorite"]` added as named config blocks; parse stub retained |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env/secret surface changes |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed changes |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no `run_next` wiring |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | plan doc is the single AST-1529 feature file |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty lane owns tests/bible/fixture; engineer build stayed on config + catalog |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits limited to `src/utils/config.py` + `data/admin/agent_task.json` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | utils-only product change |
+| astral.layers.import-direction | scoped | conforms | no new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI changes |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API auth surface |
+| astral.seed.agent-tables-in-repo-json | scoped | conforms | live `stage_meteorite` Ruth row; non-empty `agent_task.json`; `meteorite_email` stays poller shell |
+| astral.seed.archie-catalog-wins | scoped | conforms | repo JSON is SSOT; fixture twin lockstep test added |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot/hot-path wiring |
+| astral.seed.define-approved | scoped | not-applicable | no new seed catalog |
+| astral.seed.operator-rows-stay-deleted | scoped | conforms | no operator-row resurrection |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data-layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` changes |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no `debug=` emission added |
+| astral.standards.dry-and-focused-functions | scoped | conforms | focused config/catalog delta |
+| astral.standards.in-scope-only | scoped | conforms | matches AC7 partition; no AST-1530/1531 orchestration smuggled |
+| astral.standards.logging-via-utils | scoped | conforms | no `print`/raw logging in diff |
+| astral.standards.names-not-ticket-ids | scoped | conforms | six outcome literals are semantic names; prompts teach literals not ticket ids |
+| astral.standards.no-cross-contamination | scoped | conforms | meteorite ingress vocabulary isolated to new block |
+| astral.standards.no-hardcoded-sets | scoped | conforms | outcomes/partitions/prefixes live in `STAGE_METEORITE_CONFIG`; enum lockstep wired |
+| astral.standards.public-then-helpers | scoped | conforms | named public config block + asserts |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no new utils→data imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state-machine edits |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job-state edits |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no `run()` chain edits |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend files |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI naming surface |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1529)` present on tip |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests` vocabulary respected |
+| orch.git.flow-direction-inviolable | universal | conforms | sub on ftr topology |
+| orch.git.ftr-sub-topology | universal | conforms | publish ref matches child pattern |
+| orch.git.merge-on-checkout | universal | conforms | no checkout violations in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops in artifact |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent dev branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1527` worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no unresolved product forks |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches both plan stages |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to diff |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns test/bible/fixture delta |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee preserved |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Straggler (C4):** Joan plan-rubric APPROVED attached; no Excluded-statute list — no stragglers.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan has no "Patterns to reuse" line; diff shape matches uncited `pattern.config.config-block` (named block + asserts + TASK_CONFIG lockstep) |
+
+## Plan adherence
+
+**Stage 1 (config):** Delivers `STAGE_METEORITE_CONFIG` with six outcomes, source-ref prefixes, and asserted landable/text/url/skip partitions; adds `TASK_CONFIG["stage_meteorite"]` with jobs scrap schema and late enum lockstep; removes `TASK_CONFIG["meteorite_email"]`; retires `parse_modes` and mailbox↔parse task_key assert while keeping `METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"` and fold stub behavior.
+
+**Stage 2 (catalog):** Live `stage_meteorite` Ruth row (`college_intern_ruth`, `task_seq` 2.0, Meteorite Review 4500); all six outcome literals present in `cache_prompt`; `meteorite_email` row non-live (`agent_id` empty, prompts empty, `task_seq` 999); `qualify_meteorite` at 2.5.
+
+**Estimate (5):** Footprint matches — config block + catalog row + Betty test/bible/fixture fold; no core orchestration.
+
+**Cross-ticket boundaries:** No `meteorite.py` / `consult.py` / inbox cutover (AST-1530/1531). AST-756 fixture sync landed via Betty merge-tests (plan build note said defer; qa-child path is correct).
+
+**C6 lenses (§5a–g):** No layer/import/logging/debug/external violations in changed `src/utils/config.py`. No silent failure or fallback concerns introduced.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+1. **`src/core/agent.py` comment drift (out of diff):** `_resolve_task_prompts` still comments that "TASK_CONFIG key is meteorite_email" (AST-1212). Harmless on this tip but misleading after AST-1529 — suggest AST-1530/1531 tidy to `stage_meteorite` when callers cut over.
+
+2. **Prompt wording vs plan verbatim:** Plan step cited `Do not call this meteorite_email / parse_modes`; catalog ships `This is not meteorite_email / parse_modes.` — intent met; `TestAst1529StageMeteoriteCatalogRow` OR-assert covers it.
+
+3. **Epic merge ordering:** Removing `TASK_CONFIG["meteorite_email"]` means any future `do_task("meteorite_email")` call fails at `TASK_CONFIG.get` before prompts. No such caller on this tip (`meteorite_email` runner uses direct land/scrape, not Ruth `do_task`). Siblings AST-1530/1531 should land before any revived Ruth-parse path on ftr.
+
+## What's solid
+
+- Config SSOT pattern is textbook: single vocabulary block, exhaustive asserts, enum wired from block not duplicated inline.
+- Parse retirement is clean: `parse_modes` gone, fold stub preserved for admin/`_resolve_task_prompts`, mailbox poller identity untouched.
+- Betty coverage is tight: config shell, catalog row, schema validation, fixture lockstep, superseded AST-1089/1144 tests retired/skipped appropriately.
+
+## Frame diff
+
+- `src/utils/config.py`: add `STAGE_METEORITE_CONFIG`; replace `TASK_CONFIG["meteorite_email"]` with `TASK_CONFIG["stage_meteorite"]`; strip `METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]` + shared task_key assert; update header inventory comments.
+- `data/admin/agent_task.json`: add live `stage_meteorite` Ruth row; keep `meteorite_email` non-live poller shell; adjust Meteorite Review sequencing (`stage_meteorite` 2.0, `qualify_meteorite` 2.5).
+- Betty merge-tests: component tests + test-bible + `docs/uat-fixtures/AST-756/expected-agent_task.json` lockstep.
+
+context_tokens≈42000
