@@ -142,3 +142,8 @@ AC1 → Stage 1 (`assembled_html` in `<pre>`, no `html_body` fallback); AC2 → 
 
 context_tokens≈58000
 ```
+
+## Review
+
+**Build tip:** `origin/sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple` @ `c81121f1`
+**Stages:** assembled_html modal + copy → dark purple `.email-html-source`
