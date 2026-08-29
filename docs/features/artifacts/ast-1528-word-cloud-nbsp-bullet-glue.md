@@ -80,3 +80,9 @@ Publish ref: `sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue` @ `caf38f385447
 - **Recommendation:** No plan change.
 
 context_tokens≈18500
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue` @ `0301a6e4` — `_resume_site_markers` replaces `emit_sep` with `\u00a0•\u00a0`; `_emit_education_list_html` partitions on the same glued bullet. `COVER_FROM_BLOCK_CONFIG` untouched.
+
+**Out of build scope (Betty / qa-child):** flip asymmetric `\u00a0• ` asserts in `tests/component/core/test_builder.py` per plan Betty section.
