@@ -1203,13 +1203,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
 
-`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, **IGNORE**, unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
+`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, company state **METEORITE** after **AST-1493** (was IGNORE), unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Template keys + IGNORE/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing assert revised **AST-1056**) |
+| Template keys + company_state/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing **AST-1056**; company_state **AST-1493**) |
 
-**Broken / obsolete:** none — additive config block.
+**Broken / obsolete:** AST-1041 `company_state == "IGNORE"` — revised **AST-1493**.
 
 **Integration:** no existing scenario asserts METEORITE_CONFIG — no revision.
 
@@ -3355,3 +3355,24 @@ Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_a
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1537 · AST-1533
+
+**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify`.
+
+`INBOX_CREATE_JOB_CONFIG["subject_html_template"]` (key name unchanged) carries From/To/Subject/Date + body placeholders under `email-headers` / `email-body`. Primary map: **`docs/test-bible/core/inbox.md`** (**AST-1537**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header+body template placeholders | `src/utils/config.py` | revised **`TestAst1049InboxCreateJobConfig`** |
+
+**Broken / obsolete:** subject/body-only placeholder asserts — revised for `{from_address}` / `{to_address}` / `{date}` + header classes.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1049InboxCreateJobConfig \
+  -q
+```

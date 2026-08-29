@@ -61,14 +61,20 @@ class TestAst1033InboxApi:
     def test_get_message_ok(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-1537: get wires get_message_with_assembled_html (assembled_html + raw fields).
+        payload = {
+            "id": "m1",
+            "html_body": "<p>x</p>",
+            "assembled_html": '<header class="email-headers"></header>\n<section class="email-body"><p>x</p></section>',
+        }
         monkeypatch.setattr(
             inbox_mod,
-            "get_message_html",
-            MagicMock(return_value={"id": "m1", "html_body": "<p>x</p>"}),
+            "get_message_with_assembled_html",
+            MagicMock(return_value=payload),
         )
         resp = inbox_client.get("/api/admin/inbox/messages/m1", headers=auth_headers)
         assert resp.status_code == 200
-        assert resp.get_json() == {"id": "m1", "html_body": "<p>x</p>"}
+        assert resp.get_json() == payload
 
     def test_get_message_blank_id_400(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str]
@@ -81,7 +87,9 @@ class TestAst1033InboxApi:
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            inbox_mod, "get_message_html", MagicMock(side_effect=RuntimeError("get boom"))
+            inbox_mod,
+            "get_message_with_assembled_html",
+            MagicMock(side_effect=RuntimeError("get boom")),
         )
         warn = MagicMock()
         monkeypatch.setattr(inbox_mod.logger, "warning", warn)
