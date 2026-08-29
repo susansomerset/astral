@@ -2894,15 +2894,23 @@ class TestAst1047CandidateLookupConfig:
         )
 
 class TestAst1049InboxCreateJobConfig:
-    """AST-1049: INBOX_CREATE_JOB_CONFIG strip sets + subject template."""
+    """AST-1049 / AST-1537: strip sets + header+body subject_html_template."""
 
     def test_strip_sets_and_subject_template(self) -> None:
         ic = cfg.INBOX_CREATE_JOB_CONFIG
         assert "script" in ic["strip_tags"]
         assert "style" in ic["strip_attr_names"]
         assert ic["strip_on_attrs"] is True
-        assert "{subject}" in ic["subject_html_template"]
-        assert "{body}" in ic["subject_html_template"]
+        tpl = ic["subject_html_template"]
+        # Key name kept; placeholders cover From/To/Subject/Date + body (AST-1537).
+        assert "{from_address}" in tpl
+        assert "{to_address}" in tpl
+        assert "{subject}" in tpl
+        assert "{date}" in tpl
+        assert "{body}" in tpl
+        assert 'class="email-headers"' in tpl
+        assert 'class="email-subject"' in tpl
+        assert 'class="email-body"' in tpl
 
 
 class TestAst1053MeteoriteGdlJobStates:

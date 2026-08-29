@@ -226,6 +226,7 @@ class TestGetMessageHtml:
             "subject": "",
             "from_address": "",
             "to_address": "",
+            "date": "",
         }
 
     def test_includes_subject_and_from_headers(self, monkeypatch) -> None:
@@ -239,6 +240,7 @@ class TestGetMessageHtml:
                             {"name": "Subject", "value": "JD role"},
                             {"name": "From", "value": "Ada <ada@ex.com>"},
                             {"name": "To", "value": "Susan <susan@ex.com>"},
+                            {"name": "Date", "value": "Sat, 29 Aug 2026 12:00:00 -0000"},
                         ],
                         "body": {"data": _b64url("<p>body</p>")},
                     }
@@ -252,6 +254,7 @@ class TestGetMessageHtml:
             "subject": "JD role",
             "from_address": "Ada <ada@ex.com>",
             "to_address": "Susan <susan@ex.com>",
+            "date": "Sat, 29 Aug 2026 12:00:00 -0000",
         }
 
     def test_top_level_html_and_empty_when_missing(self, monkeypatch) -> None:
@@ -298,6 +301,7 @@ class TestGetMessageHtml:
             "subject": "",
             "from_address": "",
             "to_address": "",
+            "date": "",
         }
         assert gmail_mod.get_message_html("empty-data")["html_body"] == ""
         assert gmail_mod.get_message_html("bad-body")["html_body"] == ""
@@ -308,6 +312,7 @@ class TestGetMessageHtml:
             "subject": "",
             "from_address": "",
             "to_address": "",
+            "date": "",
         }
         assert gmail_mod.get_message_html("no-payload")["html_body"] == ""
 
