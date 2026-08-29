@@ -187,3 +187,141 @@ context_tokens≈55000
 **Product commits:** `70f1d005` — Stage 1 (filtered refetch); `1918aeed` — Stage 2 (ui_config visible rows + scroll viewport)
 
 API/config/`tests/`/bible untouched. Load / confirmLoad / Save As / Preview / Test unchanged.
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1535
+**Publish ref:** e1cf0d183957fe707f868c2d47a50bfa27d38142
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no confidence/scoring logic in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task / delegation edits |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no vector validation changes |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch claim/creation ordering change |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id format logic |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/finally helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity-agent response selection |
+| astral.config.config-source-of-truth | scoped | conforms | visible-row count read from `/api/ui_config`, not JSX literal |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | dispatcher untouched |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | `docs/features/interface/ast-1535-*.md` present |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/bible commits only; engineer src is Hedy |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Hedy product commits (`70f1d005`, `1918aeed`) touch only `AdminAnthropicAdHoc.tsx` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | external layer unchanged by AST-1535 product |
+| astral.layers.import-direction | scoped | conforms | frontend calls `api()` only; stacked backend remains ui→core→data |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | picker viewport N from `adhoc_import_picker_visible_rows`; filters via query params not hardcoded rules |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check storage |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render/consult orchestration |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no new/changed API routes on AST-1535 product commits |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON edits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | catalog untouched |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot-path seed |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed flow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row deletes |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join logic |
+| astral.standards.data-raises-caller-logs | scoped | conforms | stacked data helper still raise-only, no logging (AST-1534) |
+| astral.standards.database-header-inventory | scoped | conforms | stacked `list_agent_data_batches` still on agent_data header line |
+| astral.standards.debug-contract-gated | scoped | conforms | stacked core debug unchanged; frontend adds no debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | two focused effects + layout constants; Load path untouched |
+| astral.standards.in-scope-only | scoped | conforms | AST-1535 product = single page file only |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging in frontend diff |
+| astral.standards.names-not-ticket-ids | scoped | conforms | runtime names domain terms; AST comment is trace only |
+| astral.standards.no-cross-contamination | scoped | conforms | no out-of-layer src imports |
+| astral.standards.no-hardcoded-sets | scoped | conforms | px mirrors are layout sizing; row **count** from config |
+| astral.standards.public-then-helpers | scoped | conforms | module consts above component; no helper reorder issues |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | stacked config change is literals only |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run daisy-chain |
+| astral.ui.frontend-file-placement | scoped | conforms | change confined to `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` |
+| astral.ui.naming-conventions | scoped | conforms | existing page/component naming preserved |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker/deploy config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | single `merge-tests(AST-1535)` on sub |
+| orch.git.commit-vocabulary | universal | conforms | commit prefixes match ticket ids |
+| orch.git.flow-direction-inviolable | universal | conforms | sub off dev; includes resolve(AST-1534) not reverse merge |
+| orch.git.ftr-sub-topology | universal | conforms | correct `sub/AST-1532/AST-1535-*` publish ref |
+| orch.git.merge-on-checkout | universal | conforms | no checkout merge violations observed |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear commits + one merge-tests |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named dev branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1532 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | dev/sub topology respected |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy bypass |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 match approved plan; Joan `/api/ui_config` fix applied |
+| orch.pipeline.project-scoped-queues | universal | conforms | reviewed in isolation per spawn |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed gate honored |
+| orch.roles.archie-approves-statutes | universal | conforms | no canon statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | AST-1535 frontend tests + bible § AST-1535 only on test commit |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | no Chuckles assignment flip |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy remains implementer |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Active set scored:** 65
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.shared-button-roles | conforms | Load stays `btn primary`; confirm modal keeps `btn danger` on replace |
+| pattern.ui.admin-endpoint | not-applicable | no API route changes on AST-1535 product commits (stacked AST-1534 backend already conforms) |
+
+(Joan cited `pattern.ui.shared-button-roles` and `list-page-table-wrap--scroll` admin list pattern — latter matches `AdminScheduledActions` / `ListPage` precedent.)
+
+## Plan adherence
+
+**AST-1535 product (`70f1d005`, `1918aeed`):** Matches approved Stages 1–2 on the single planned file.
+
+- **Stage 1:** Mount-only unfiltered fetch replaced with `[selectedId, taskKey]` effect; skips HTTP when no candidate; builds `URLSearchParams` with optional `task_key`; cancellation guard; stale `selectedImportBatchId` cleared; error path clears runs + selection + toast. Load / confirmLoad / row click / columns untouched.
+- **Stage 2:** `api("/api/ui_config")` (Joan revision 1 — not stale `/api/system/ui_config`); `importPickerVisibleRows` state; `ADHOC_IMPORT_PICKER_*` layout mirrors; `list-page-table-wrap--scroll` + config-driven `maxHeight`; no hardcoded `5` in style object.
+
+**Three-dot diff vs `origin/dev`:** Also includes stacked sibling AST-1534 backend (`31515387` + resolve `2adfa43f`) and AST-1534/1537 test-tree cleanup — expected on a sequential sub publish ref before ftr merge; AST-1535 plan explicitly depends on AST-1534 API contract. Not scope smuggling on Hedy’s commits.
+
+**Estimate 2:** Still fits (one page file, two stages).
+
+**Tests (Betty `079903f9`):** Four new `AST-1535` cases + revised `AST-1452` mount test; Vitest green locally (`AST-1535` 4/4, `AST-1452` 6/6). Off-manifest inbox/config tests remain dev-compatible (AST-1537 smuggle stripped via resolve AST-1534 on this branch).
+
+## Findings
+
+### advisory
+
+**JSX formatting — missing newline before `<table>`**  
+- **Location:** `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` ~line 519 (`>        <table className="list-page-table">` jammed against closing `>` of wrap div)  
+- **Impact:** cosmetic only; no runtime effect.
+
+**Brief layout shift when ui_config loads**  
+- **Location:** Stage 2 viewport — `maxHeight` starts `undefined`, then snaps to `33 + N×29` px once `/api/ui_config` returns  
+- **Impact:** bounded (≤10 API rows pre-config); plan documents degraded unbounded wrap as acceptable; optional polish for resolve-child if Susan cares.
+
+### What's solid
+
+- Filtered refetch contract matches AST-1534 (candidate required, optional task_key, no client `limit`).
+- Cancellation + stale-selection clearing prevent race bugs on fast candidate/task changes.
+- Scroll viewport uses established `list-page-table-wrap--scroll` + sticky thead pattern.
+- Load → `GET /api/agent_data/<batch_id>` path unchanged; tests confirm.
+
+## Frame diff
+
+| Layer | Files | Frame change |
+|-------|-------|----------------|
+| ui (frontend) | `AdminAnthropicAdHoc.tsx` | Candidate/task-scoped runs refetch; ui_config visible-row viewport; scroll wrap |
+| ui/core/data/utils | stacked AST-1534 | Config cap keys, ledger-joined list API, admin query params (dependency — not AST-1535 product) |
+| tests/docs | `test_AdminAnthropicAdHoc.test.tsx`, `pages.md` | AST-1535 coverage + revised AST-1452 mocks |
+
+## Notes
+
+- Joan plan-rubric APPROVED (round 2) after `/api/ui_config` fix; no Excluded-statute list → no C4 straggler.
+- Prior AST-1534 contamination (`AST-1537` tests smuggled) addressed on this publish ref by `resolve(AST-1534)` / `dd4af004` — not re-flagged for AST-1535.
+- §5f / §5g: not applicable to AST-1535 frontend product diff.
+- C7 complete → recommend **Review Posted** → **resolve-child** not required unless Susan wants the formatting newline.
+
+**context_tokens≈78000**
