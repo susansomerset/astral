@@ -47,7 +47,7 @@ export default function AdminManageEmail() {
   const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [htmlBody, setHtmlBody] = useState("")
+  const [assembledHtml, setAssembledHtml] = useState("")
   const [bodyLoading, setBodyLoading] = useState(false)
   const [bodyError, setBodyError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -110,7 +110,7 @@ export default function AdminManageEmail() {
 
   async function openMessage(row: InboxMessage) {
     setSelectedId(row.id)
-    setHtmlBody("")
+    setAssembledHtml("")
     setBodyError(null)
     setBodyLoading(true)
     try {
@@ -122,7 +122,10 @@ export default function AdminManageEmail() {
         setBodyError(msg)
         return
       }
-      setHtmlBody(typeof data.html_body === "string" ? data.html_body : "")
+      // Prefer assembled_html only — no html_body fallback (header+body AC).
+      setAssembledHtml(
+        typeof data.assembled_html === "string" ? data.assembled_html : "",
+      )
     } catch (e) {
       setBodyError(e instanceof Error ? e.message : "Failed to load message")
     } finally {
@@ -132,7 +135,7 @@ export default function AdminManageEmail() {
 
   function closeModal() {
     setSelectedId(null)
-    setHtmlBody("")
+    setAssembledHtml("")
     setBodyError(null)
   }
 
@@ -339,9 +342,28 @@ export default function AdminManageEmail() {
           <p style={{ padding: 20, color: "var(--danger)", fontSize: 13 }}>{bodyError}</p>
         )}
         {!bodyLoading && !bodyError && (
-          <div className="email-html-frame">
-            <pre className="email-html-source" title="Email body">{htmlBody || ""}</pre>
-          </div>
+          <>
+            <div className="manage-email-modal-toolbar">
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={!assembledHtml}
+                onClick={() => {
+                  void navigator.clipboard.writeText(assembledHtml).then(() => {
+                    setToast({ text: "Copied to clipboard", variant: "success" })
+                  })
+                }}
+                title="Copy header+body HTML"
+              >
+                Copy
+              </button>
+            </div>
+            <div className="email-html-frame">
+              <pre className="email-html-source" title="Email body">
+                {assembledHtml || ""}
+              </pre>
+            </div>
+          </>
         )}
       </Modal>
 
