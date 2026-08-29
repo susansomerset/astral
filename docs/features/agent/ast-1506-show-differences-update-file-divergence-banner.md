@@ -515,3 +515,27 @@ Radia **PROCEED / CLEAN** @ `46870882` — **no fix-now** items. Product tip unc
 | Advisory: sub tip carries sibling commits not on ftr | Deferred to `merge-child` / ftr rollup |
 
 **§9a:** `origin/sub/AST-1455/AST-1511-…` @ pre-resolve tip conflicted with `origin/dev` (changed-in-both on plan doc, banner TSX, agent/candidate/config, test-bible). Merged `origin/dev` on the sub (`sync(dev)` @ `b065dcc8`); scroll wrapper retained. Dry-run clean into `origin/dev` and `origin/ftr/AST-1455-show-differences-update-file`.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/da2516342c5c4c3d00dbc92a2a77632f/dad4a971-d0aa-4dbb-8113-734f4c64170a/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/da2516342c5c4c3d00dbc92a2a77632f/f4bc9ff7-e144-4c3f-8b3d-5b0e3b6507d3/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/1d395862-f23d-43db-a561-b46a88a62816/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/da2516342c5c4c3d00dbc92a2a77632f/3c8aeb6e-e9a5-4ae5-ad5e-501a873f137c/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1455 (parent) | ftr/AST-1455-show-differences-update-file |
+| AST-1505 | sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write |
+| AST-1506 | sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner |
+| AST-1511 | sub/AST-1455/AST-1511-show-differences-modal-does-not-scroll |
+
+**Epic worktree:** `astral-AST-1455/` — one active sub checked out at a time.
