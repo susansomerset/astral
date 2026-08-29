@@ -194,3 +194,43 @@ Extends the AST-1451 list path with config + join filter + query params; no sche
 - Child AC3 (debug only on filtered returned rows) → Stage 3
 - Parent AC2 (five-row viewport) → N/A here (`adhoc_import_picker_visible_rows` config only; chrome AST-1535)
 - Parent AC4 (Load unchanged) → N/A (no Load path edits)
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1534
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api` @ `2e0a22407ec816283877e5c3056a39e5e21a0934`
+
+## Traceability
+AC1→Stages 1–4; AC2→Stages 2–4 (API; UI refetch AST-1535); AC3→Stage 3; parent AC2/AC4→N/A (config-only / out of scope)
+
+## Findings
+
+### acceptable
+- **Location:** Stage 2 — `INNER JOIN dispatch_ledger`
+- **Finding:** Batches with `agent_data` but no ledger row are excluded.
+- **Recommendation:** Acceptable — plan documents AST-1451 Ad Hoc Test always writes ledger; matches parent scoped-recent-runs intent.
+
+- **Location:** Stage 1 — `adhoc_import_picker_visible_rows`
+- **Finding:** Config key added here but not read by API in this ticket.
+- **Recommendation:** Acceptable — parent Component scope assigns both literals to child #1; sibling AST-1535 consumes via `GET /api/system/ui_config`.
+
+- **Location:** `docs/test-bible/**` (out of plan Files Changed)
+- **Finding:** Bible still describes unfiltered/capped-less list path.
+- **Recommendation:** Acceptable at plan gate — plan explicitly excludes `tests/` and bible; Betty owns qa-child manifest refresh.
+
+## Notes
+- Ticket status `Plan Ready` — valid entry gate.
+- Assignee on Linear is Ada (not Joan); Chuckles spawn carries validate-plan authority for this pass.
+- Zero completed `[plan-discuss]` rounds — no discuss tag required for APPROVED.
+- Scope matches child `## Scope` and parent backend slice only; no frontend, no sibling creep.
+- Layers: utils→data→core→ui; `@require_admin` preserved; cap from `UI_CONFIG` only (no client `limit`); filter/limit in data with API query params — conforms to `astral.layers.ui-config-driven-business-logic` and `pattern.ui.admin-endpoint`.
+- `list_agent_data_batches` kwargs extension is safe — sole runtime caller is `list_agent_data_runs`; signature change is intentional retirement of unfiltered full-history for this path.
+- `adhoc-` strip semantics (`substr(..., 7)` / Python `len("adhoc-")`) align with `run_adhoc_workbench_test` ledger vs stored task_key shapes.
+- Self-assessment / Estimate confirm (2) matches footprint.
+
+context_tokens≈42000
+```
