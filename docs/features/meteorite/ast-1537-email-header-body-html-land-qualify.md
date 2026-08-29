@@ -235,3 +235,122 @@ context_tokens≈42000
 
 **Build tip:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify` @ `fbfa03f0`
 **Stages:** config wrapper → Gmail `date` → inbox strip/land/create/`assembled_html` → meteorite_email shared assemble → api_inbox get
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1537
+**Publish ref:** `sub/AST-1533/AST-1537-email-header-body-html-land-qualify` @ `1b2c939ddd5c076723474a4265f41732b78e6f3f`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/core/agent*` or agent prompt paths in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no `do_task` / delegation changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector / validation paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch claim/dispatch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch id formatting |
+| astral.batch.claim-process-release | scoped | not-applicable | no entity claim/release helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity-agent-response persistence |
+| astral.config.config-source-of-truth | scoped | conforms | `INBOX_CREATE_JOB_CONFIG["subject_html_template"]` extended in config; callers read template |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no repo-root artifact dirs |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike/debug scripts |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no `run_next` / chain authority |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single plan doc `docs/features/meteorite/ast-1537-*.md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty tip commits touch only `tests/**` + `docs/test-bible/**` |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer `code()` commits exclude test-tree; Betty `test()` + `merge-tests()` own bible/tests |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Gmail I/O stays external; core owns strip/assemble; UI thin over core |
+| astral.layers.import-direction | scoped | conforms | `inbox`→`external.gmail`; `api_inbox`→`core.inbox`; no UI→data/external |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | no hardcoded business state in frontend (React untouched) |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check / storage paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | `consult.py` untouched; `email-subject`+`<h1>` preserved for scraper |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `inbox_get_message` still `@require_admin`; no new routes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no catalog overrides |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot/hot-path seed |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed approval flow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no `src/data/**` changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB/migration changes |
+| astral.standards.debug-contract-gated | scoped | conforms | no new debug emission; existing `create_meteorite_job_from_inbox_message` debug indices unchanged |
+| astral.standards.dry-and-focused-functions | scoped | conforms | single shared `strip_extract_email_html` wired land/create/get/mailbox |
+| astral.standards.in-scope-only | scoped | conforms | diff limited to scope-gate files; React/consult/non-email ingress untouched |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` only; no `print()` / stdlib logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | no ticket ids in identifiers |
+| astral.standards.no-cross-contamination | scoped | conforms | email assembly isolated to inbox/config/gmail/api paths |
+| astral.standards.no-hardcoded-sets | scoped | conforms | template/strip sets remain config-owned |
+| astral.standards.public-then-helpers | scoped | conforms | `get_message_with_assembled_html` placed after `get_message_html` per plan |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data touches |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transition map edits |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job prior-state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | still `stage_meteorite` / `land_meteorite`; no new daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no `src/ui/frontend/**` |
+| astral.ui.naming-conventions | scoped | conforms | `assembled_html`, `email-headers` naming consistent |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker/config server changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip `merge-tests(AST-1537): origin/tests bda5e714` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`test`/`docs`/`merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1533/AST-1537-*` publish ref |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/<parent>/…` |
+| orch.git.merge-on-checkout | universal | conforms | no merge/rebase violations in reviewed commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1533` worktree |
+| orch.git.three-permanent-branches | universal | conforms | feature branch topology respected |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | product tradeoffs documented in plan ⚠️ decisions |
+| orch.pipeline.plan-is-bible | universal | conforms | five stages land as specified |
+| orch.pipeline.project-scoped-queues | universal | conforms | scoped child under AST-1533 |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | no new/changed statutes |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest + revised component tests on tip |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Ada (engineer) |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits evident |
+
+**Active-set count:** 64 rows from `canon/statutes/README.md` § Harvested corpus + universal (registry reports 65; no extra active id beyond this table on review tree).
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Stages 1–5 implemented on publish tip: config `subject_html_template` extended with From/To/Subject/Date+body placeholders (key name preserved); `GmailMessageHtml.date` + `get_message_html` Date header; `strip_extract_email_html` header kwargs on land/create; new `get_message_with_assembled_html`; `meteorite_email._handle_bound` retires plain `subject\n\nhtml` prepend; `api_inbox` GET returns assembled payload. Scope gate honored — no React, `consult.py`, or non-email ingress. Estimate **3** matches footprint (five `src/` modules + Betty test/bible pass). Cross-ticket boundary clean — AST-1538 UI deferred; `html_body` raw + `assembled_html` split documented.
+
+**Joan plan-rubric:** APPROVED @ `6a3a4260`; no Excluded-statute attachment → no straggler callout (`no plan-rubric Excluded list attached`).
+
+**C6 lenses (§5a–§5g):** Imports/layers clean (B1 lazy bs4 comment retained; UI→core only). No silent failure, no new `print()`, no debug-contract regressions on touched paths. Gmail external change is non-LLM — §5g N/A. Header fields HTML-escaped; body remains stripped fragment (pre-existing AST-1049 contract).
+
+## Findings
+
+(none — no fix-now / discuss / advisory blockers)
+
+## What's solid
+
+- Shared assembly path unifies Manage Email land, legacy create, mailbox bound stage, and admin GET — qualify/Ruth see one HTML shape.
+- Preserved `class="email-subject"` + inner `<h1>` protects `consult._qualify_meteorite_email_subject` without editing consult (AST-1197).
+- Betty manifest narrows eight component classes; revised asserts cover escaping, header classes, and mailbox non-prepend regression.
+- `assembled_html` vs raw `html_body` split avoids double-wrap and gives AST-1538 a stable render/copy field.
+
+## Frame diff
+
+Prior issue-doc stub (`docs(AST-1537): review stub — build complete` @ `fbfa03f0`) covered product code only. Tip adds:
+
+- `test(AST-1537): header+body email HTML land/qualify coverage` — revised/new tests in `tests/component/{core,external,ui/api,utils}/`
+- `docs/test-bible/{core,inbox,meteorite_email,external/gmail,ui/api/api_inbox,utils/config}.md` — AST-1537 manifest blocks
+- `merge-tests(AST-1537): origin/tests bda5e714` — Betty merge SHA on publish ref
+
+Product `src/**` unchanged since `fbfa03f0`.
+
+## Notes
+
+- C7 complete — Chuckles may append, `docs()` push, post slim upshot, move to **Review Posted** → **resolve-child** (PROCEED) or UT if no findings.
+- Downstream **AST-1538** must switch modal/copy to `assembled_html` (out of scope here; API field ready).
+
+context_tokens≈38000
