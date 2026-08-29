@@ -288,3 +288,17 @@ context_tokens≈45000
 
 ---
 ```
+
+## Resolution
+
+**Date:** 2026-08-29  
+**Tip before resolve:** `origin/sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple` @ `87aeec2d` (Radia `docs()` intake)
+
+| Bucket | Action |
+|--------|--------|
+| **fix-now** | none |
+| **discuss** — AST-1534 test/bible via `merge-tests` | No engineer product change. Out of AST-1538 scope gate; Radia: does **not** block product UT. Chuckles spawned `resolve-child` → proceed. Hygiene (re-merge vs documented stack) remains Chuckles/Betty before ftr rollup if needed. |
+| **advisory** — clipboard `.catch()` | Left as-is — matches `AdminPerformanceMonitor` / `AdminDataManagement` (Joan + Radia acceptable). |
+| **advisory** — `<pre title>` | Deferred — Betty Vitest selects via `getByTitle("Email body")`; renaming needs `[qa-handoff]` / bible+test revise. Cosmetic only. |
+
+Product delta this pass: none (Resolution doc only).
