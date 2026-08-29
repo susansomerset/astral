@@ -3355,3 +3355,45 @@ Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_a
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1537 · AST-1533
+
+**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify`.
+
+`INBOX_CREATE_JOB_CONFIG["subject_html_template"]` (key name unchanged) carries From/To/Subject/Date + body placeholders under `email-headers` / `email-body`. Primary map: **`docs/test-bible/core/inbox.md`** (**AST-1537**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header+body template placeholders | `src/utils/config.py` | revised **`TestAst1049InboxCreateJobConfig`** |
+
+**Broken / obsolete:** subject/body-only placeholder asserts — revised for `{from_address}` / `{to_address}` / `{date}` + header classes.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1049InboxCreateJobConfig \
+  -q
+```
+
+
+### AST-1534 · AST-1532
+
+**Parent:** [AST-1532](https://linear.app/astralcareermatch/issue/AST-1532). **Publish:** `origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api`.
+
+`UI_CONFIG["adhoc_import_runs_limit"]` (10) + `UI_CONFIG["adhoc_import_picker_visible_rows"]` (5). Primary map: **`docs/test-bible/core/agent.md`** (§ AST-1534).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cap + visible-row literals | `src/utils/config.py` | **`TestAst1534AdhocImportConfigKeys`** |
+
+**Broken / obsolete:** none for config keys. List-path revisions live under core/agent § AST-1534.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1534AdhocImportConfigKeys \
+  -q
+```
