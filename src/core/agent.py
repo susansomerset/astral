@@ -3924,9 +3924,19 @@ def get_agent_data(
     return result
 
 
-def list_agent_data_runs(*, debug: bool = False) -> List[Dict[str, Any]]:
-    """Ad Hoc import list: one dict per stored batch, newest first."""
-    rows = list_agent_data_batches()
+def list_agent_data_runs(
+    *,
+    candidate_id: Optional[str] = None,
+    task_key: Optional[str] = None,
+    limit: Optional[int] = None,
+    debug: bool = False,
+) -> List[Dict[str, Any]]:
+    """Ad Hoc import list: filtered/capped agent_data batches, newest first."""
+    rows = list_agent_data_batches(
+        candidate_id=candidate_id,
+        task_key=task_key,
+        limit=limit,
+    )
     if debug:
         dbg = get_logger(__name__, debug_flag=True)
         total = len(rows)
@@ -3934,7 +3944,7 @@ def list_agent_data_runs(*, debug: bool = False) -> List[Dict[str, Any]]:
             batch_id = row.get("batch_id") or ""
             created_at = row.get("created_at")
             entity_id = row.get("entity_id")
-            task_key = row.get("task_key")
+            row_task_key = row.get("task_key")
             dbg.debug_index(
                 func="list_agent_data_runs",
                 index=i,
@@ -3943,11 +3953,11 @@ def list_agent_data_runs(*, debug: bool = False) -> List[Dict[str, Any]]:
                 outcome="listed",
             )
             dbg.debug_detail(
-                f"found created_at={created_at!r} entity_id={entity_id!r} task_key={task_key!r}"
+                f"found created_at={created_at!r} entity_id={entity_id!r} task_key={row_task_key!r}"
             )
             dbg.debug_detail(
                 f"recorded batch_id={batch_id!r} created_at={created_at!r} "
-                f"entity_id={entity_id!r} task_key={task_key!r}"
+                f"entity_id={entity_id!r} task_key={row_task_key!r}"
             )
     return rows
 

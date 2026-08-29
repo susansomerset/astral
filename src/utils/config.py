@@ -4905,6 +4905,9 @@ UI_CONFIG = {
         "max_width_px": 400,
         "max_height_px": 90,
     },
+    # AST-1534: Agent Ad Hoc import picker — API list cap + sibling viewport row count.
+    "adhoc_import_runs_limit": 10,
+    "adhoc_import_picker_visible_rows": 5,
 }
 
 # ---------------------------------------------------------------------------
