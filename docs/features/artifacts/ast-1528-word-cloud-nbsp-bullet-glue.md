@@ -50,3 +50,33 @@ Do **not** weaken AST-1027 digraph fidelity. Engineer never commits under `tests
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1528
+**Overall:** APPROVED
+Publish ref: `sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue` @ `caf38f385447f6ddb72dc0809b458fe798977bc2`
+
+## Traceability
+1→Stage 1 (`|` join via `emit_sep` + final glue replace to `\u00a0•\u00a0`); 2→Stage 1 (unchanged `__`/`~~` order before glue — AST-1027); 3→Stage 1 (`_apply_resume_text_markers` on all three build paths: base, session, job); 4→Stage 1 (cover stays on `expand_cover_from_block_text`; education partition companion in `builder.py` only).
+
+## Findings
+
+### acceptable — procedural (Chuckles handoff)
+- **Location:** Linear assignee
+- **Finding:** Ticket is `Plan Ready` but assignee is Katherine Johnson, not Joan. Validation proceeded per spawn; Chuckles should restore implementer after posting upshot.
+- **Recommendation:** No plan change.
+
+### acceptable — blast radius (documented)
+- **Location:** Stage 1 step 1, shared `_resume_site_markers`
+- **Finding:** Global `emit_sep` → `\u00a0•\u00a0` replace also glues compact-title `title • company` strings (not only `word_cloud`). Betty qa-child section names compact-title asserts to flip; parent AC4 allows inseparable shared-path blast.
+- **Recommendation:** No plan change — already documented.
+
+### acceptable — Files Changed tests row
+- **Location:** Files Changed table
+- **Finding:** `tests/component/core/test_builder.py` is outside ticket `## Scope` but listed for Betty qa-child per `astral.git.engineer-test-tree-ban`; Explicit scope gate + engineer Stage 1 commit-only rule are correct.
+- **Recommendation:** No plan change.
+
+context_tokens≈18500
