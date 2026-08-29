@@ -11,7 +11,7 @@ AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
 (`slack_debug_enabled`); Style D found/recorded depth on Contact Slack path.
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
-AST-1471: Contact scrap path lands via `contact_land_meteorite` → `land_meteorite`.
+AST-1471 / AST-1531: Contact scrap path → `contact_land_meteorite` → `stage_meteorite`.
 AST-1515: Contact-task markup parse/dispatch + same-event follow-up turn.
 """
 
@@ -48,7 +48,13 @@ from src.external.slack import (
     post_message,
     verify_slack_signature,
 )
-from src.utils.config import CONTACT_CONFIG, CONTACT_ESTELLE_CONFIG, CONTACT_TASK_CONFIG
+from src.utils.config import (
+    CONTACT_CONFIG,
+    CONTACT_ESTELLE_CONFIG,
+    CONTACT_TASK_CONFIG,
+    METEORITE_CONFIG,
+    STAGE_METEORITE_CONFIG,
+)
 from src.utils.deploy_status import get_deploy_label
 from src.utils.logging import get_logger, truncate_debug_content
 
@@ -556,22 +562,64 @@ def run_contact_skill(
 def contact_land_meteorite(
     astral_candidate_id: str,
     *,
+    source_kind: str,
+    source_id: str,
     scraps: Optional[List[Dict[str, Any]]] = None,
     text: Optional[str] = None,
     job_link: Optional[str] = None,
     employer_name: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Contact/Estelle sync entry to land_meteorite (AST-1471)."""
-    from src.core.meteorite import land_meteorite
+    """Contact/Estelle sync entry to stage_meteorite (AST-1531)."""
+    err = {
+        "outcome": METEORITE_CONFIG["land_outcome_error"],
+        "error": "source_kind/source_id required",
+        "skipped": False,
+        "scraps": [],
+        "land": None,
+        "outcomes": [],
+        "company": None,
+        "company_inserted": False,
+    }
+    kind = (source_kind or "").strip()
+    sid = (source_id or "").strip()
+    if kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"] or not sid:
+        return err
+
+    parts: List[str] = []
+    if isinstance(text, str) and text.strip():
+        parts.append(text.strip())
+    elif isinstance(scraps, list) and scraps:
+        for scrap in scraps:
+            if not isinstance(scrap, dict):
+                continue
+            for key in ("text", "content", "html_body"):
+                val = scrap.get(key)
+                if isinstance(val, str) and val.strip():
+                    parts.append(val.strip())
+            link = scrap.get("job_link")
+            if isinstance(link, str) and link.strip():
+                parts.append(link.strip())
+    blob = "\n\n".join(parts)
+    link_kw = job_link.strip() if isinstance(job_link, str) else ""
+    if link_kw and link_kw not in blob:
+        blob = f"{blob}\n\n{link_kw}" if blob else link_kw
+    emp = employer_name.strip() if isinstance(employer_name, str) else ""
+    if emp:
+        blob = f"{blob}\n\nEmployer: {emp}" if blob else f"Employer: {emp}"
+    if not blob.strip():
+        out = dict(err)
+        out["error"] = "blob is required"
+        return out
+
+    from src.core.meteorite import stage_meteorite
 
     return asyncio.run(
-        land_meteorite(
+        stage_meteorite(
             astral_candidate_id,
-            scraps=scraps,
-            text=text,
-            job_link=job_link,
-            employer_name=employer_name,
+            blob,
+            source_kind=kind,
+            source_id=sid,
             debug=debug,
         )
     )
@@ -1135,10 +1183,16 @@ def run_contact_estelle_turn(
                 {"ok": False, "error": str(exc), "skill_key": skill_key}
             )
 
-    # e2. Optional land_calls → contact_land_meteorite (AST-1471; not ACL skill)
+    # e2. Optional land_calls → contact_land_meteorite (AST-1531; not ACL skill)
     land_results: List[Dict[str, Any]] = []
     raw_land = parsed.get("land_calls") if isinstance(parsed, dict) else None
     land_items = raw_land if isinstance(raw_land, list) else []
+    # Prefer message_ts, then thread_ts, then channel for Slack source-ref id.
+    slack_sid = ""
+    for cand in (message_ts, thread_ts, channel):
+        if isinstance(cand, str) and cand.strip():
+            slack_sid = cand.strip()
+            break
     for item in land_items:
         if not isinstance(item, dict):
             continue
@@ -1148,11 +1202,17 @@ def run_contact_estelle_turn(
         try:
             if isinstance(item.get("scraps"), list) and item["scraps"]:
                 land_out = contact_land_meteorite(
-                    astral_candidate_id, scraps=item["scraps"], debug=debug
+                    astral_candidate_id,
+                    source_kind="slack",
+                    source_id=slack_sid,
+                    scraps=item["scraps"],
+                    debug=debug,
                 )
             else:
                 land_out = contact_land_meteorite(
                     astral_candidate_id,
+                    source_kind="slack",
+                    source_id=slack_sid,
                     text=item.get("text") if isinstance(item.get("text"), str) else None,
                     job_link=(
                         item.get("job_link")
