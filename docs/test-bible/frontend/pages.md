@@ -2166,11 +2166,11 @@ npm run test:component -- \
 
 **Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load`.
 
-Agent Ad Hoc import picker table (`GET /api/admin/adhoc/runs` on mount — sibling **AST-1451**), row select, **Load** into seven editors from `GET /api/agent_data/<batch_id>` (TASK → User; missing slots empty), `BatchAgentDataPanes` on imported `batch_id`, one leading `adhoc-` strip on workbench task key with `skipCatalogFetchRef` (no catalog fetch-from-task), `importEntityLock` for Preview/Test `entity_id`, dirty-editor replace confirm matching fetch-from-task. Does **not** own list query implementation or Test persist prefix (**AST-1451**).
+Agent Ad Hoc import picker table (list GET — sibling **AST-1451**; **AST-1535** scopes refetch with `candidate_id` / `task_key`), row select, **Load** into seven editors from `GET /api/agent_data/<batch_id>` (TASK → User; missing slots empty), `BatchAgentDataPanes` on imported `batch_id`, one leading `adhoc-` strip on workbench task key with `skipCatalogFetchRef` (no catalog fetch-from-task), `importEntityLock` for Preview/Test `entity_id`, dirty-editor replace confirm matching fetch-from-task. Does **not** own list query implementation or Test persist prefix (**AST-1451**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Routed page + import list on mount (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1452: mount loads import runs into the table`** |
+| Routed page + import list with candidate (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1452: with candidate selected loads import runs into the table`** (revised **AST-1535**) |
 | Load → editors + panes (**AC2**) | same | **`AST-1452: Load fills editors and mounts panes for the imported batch`** |
 | Strip `adhoc-`; skip catalog fetch (**AC4**) | same | **`AST-1452: Load strips one adhoc- prefix without catalog fetch-from-task`** |
 | `importEntityLock` + orphan entity option (**AC5**) | same | **`AST-1452: importEntityLock sends restored entity_id on Preview`** |
@@ -2178,7 +2178,7 @@ Agent Ad Hoc import picker table (`GET /api/admin/adhoc/runs` on mount — sibli
 | List/load GET contracts | **AST-1451** | **`docs/test-bible/core/agent.md`** § AST-1451 (no duplicate API tests here) |
 | Preview modal / post-Test panes baseline | **AST-1413** | existing **`AST-1413`** cases (unchanged) |
 
-**Broken / obsolete this pass:** all `mockApi` paths must stub **`GET /api/admin/adhoc/runs`** on mount (empty array default) — added to shared handler + AST-1215 inline mock.
+**Broken / obsolete this pass:** all `mockApi` paths must stub **`GET /api/admin/adhoc/runs`** (empty array default) — revised under **AST-1535** to `startsWith` + candidate query. Originally: shared handler + AST-1215 inline mock.
 
 **Integration:** no existing scenario covers Ad Hoc import picker/load — do not invent new integration coverage.
 
@@ -2489,3 +2489,37 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+
+### AST-1535 · AST-1532 (Compact filtered import picker UI)
+
+**Parent:** [AST-1532](https://linear.app/astralcareermatch/issue/AST-1532). **Publish:** `origin/sub/AST-1532/AST-1535-compact-filtered-import-picker-ui`.
+
+Picker chrome only on `AdminAnthropicAdHoc.tsx`: refetch `GET /api/admin/adhoc/runs?candidate_id=…&task_key=…` on `[selectedId, taskKey]` (skip when no candidate); read `adhoc_import_picker_visible_rows` from `GET /api/ui_config`; scroll wrap `maxHeight` = head + N×row layout mirrors; preserve Load / confirmLoad. API filter/cap: **AST-1534**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page §6c + candidate-scoped list | `AdminAnthropicAdHoc.tsx` | revised **`AST-1452: with candidate selected loads import runs into the table`** |
+| Empty candidate → no runs GET | same | **`AST-1535: no candidate skips runs fetch and leaves picker empty`** |
+| Task key → `task_key` query | same | **`AST-1535: task key selection adds task_key query param on runs refetch`** |
+| ui_config visible rows → scroll maxHeight | same | **`AST-1535: ui_config visible rows set scroll wrap maxHeight`** |
+| Load / agent_data unchanged | same | **`AST-1535: Load still fills editors from agent_data batch`** + existing **`AST-1452`** Load suite |
+
+**Broken / obsolete this pass:** AST-1452 bare `/api/admin/adhoc/runs` on mount; `selectImportRow` race before filtered list arrives — revised in place. `mockApi` / AST-1215 mocks use `startsWith` + optional `uiConfig` / empty `candidates`.
+
+**Integration:** no existing scenario covers Agent Ad Hoc picker — do not invent.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc + filtered picker / Load (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx` — patterns **`AST-1535`** + **`AST-1452`**
+
+**AST-1535** narrowed run (from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  --testNamePattern="AST-1535|AST-1452"
+```
+
+**Pass criterion:** Vitest green on narrowed args — not zero-arg harness / branch-lock gate.
+
