@@ -149,13 +149,34 @@ export default function AnthropicAdHoc() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
 
+  // AST-1535: scoped import list — candidate required; optional task_key filter.
   useEffect(() => {
-    api("/api/admin/adhoc/runs")
+    if (!selectedId) {
+      setImportRuns([])
+      setSelectedImportBatchId("")
+      return
+    }
+    const params = new URLSearchParams({ candidate_id: selectedId })
+    if (taskKey) params.set("task_key", taskKey)
+    let cancelled = false
+    api(`/api/admin/adhoc/runs?${params}`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => setImportRuns(Array.isArray(d) ? d : []))
-      .catch(e => setToast({ text: e.message, variant: "error" }))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+      .then(d => {
+        if (cancelled) return
+        const rows: ImportRun[] = Array.isArray(d) ? d : []
+        setImportRuns(rows)
+        setSelectedImportBatchId(prev =>
+          prev && rows.some(r => r.batch_id === prev) ? prev : ""
+        )
+      })
+      .catch(e => {
+        if (cancelled) return
+        setImportRuns([])
+        setSelectedImportBatchId("")
+        setToast({ text: e.message, variant: "error" })
+      })
+    return () => { cancelled = true }
+  }, [selectedId, taskKey])
 
   // Dismiss save-as dropdown on outside click
   useEffect(() => {
