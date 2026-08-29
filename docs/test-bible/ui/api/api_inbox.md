@@ -97,24 +97,3 @@ Create-job JSON includes `created`/`skipped`/`mode`; **201** when any created, *
   tests/component/ui/api/test_api_inbox.py::TestAst1141InboxLandMeteoriteApi \
   -q
 ```
-
-
-### AST-1537 · AST-1533
-
-**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify`.
-
-`GET /api/admin/inbox/messages/<id>` returns `get_message_with_assembled_html` (includes `assembled_html` + raw fields). Primary map: **`docs/test-bible/core/inbox.md`** (**AST-1537**). React render/copy = **AST-1538**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Get → assembled payload | `src/ui/api/api_inbox.py` | revised **`TestAst1033InboxApi`** (`get_message_with_assembled_html` mocks) |
-
-**Broken / obsolete:** get mocks of `get_message_html` — product no longer imports that name in `api_inbox`.
-
-**Integration:** none — do not invent.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi \
-  -q
-```

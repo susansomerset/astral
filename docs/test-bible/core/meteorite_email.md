@@ -213,24 +213,3 @@ Mailbox `_handle_bound` → `stage_meteorite(source_kind="email", source_id=mid)
   tests/component/core/test_meteorite_email.py::TestAst1090RunMeteoriteEmail::test_bound_stage_skip_archives \
   -q
 ```
-
-
-### AST-1537 · AST-1533
-
-**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify`.
-
-Mailbox `_handle_bound` stages the shared inbox `strip_extract_email_html` header+body blob (retires plain `subject\n\nhtml` prepend). Primary map: **`docs/test-bible/core/inbox.md`** (**AST-1537**).
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Bound stage uses shared header strip | `src/core/meteorite_email.py` | revised **`TestAst1531MailboxStageCutover::test_bound_stage_land_archives_with_email_source`** |
-
-**Broken / obsolete:** AST-1531 subject+html plain-prepend expectation — revised to assert `email-from` / `email-to` / `email-date` classes and reject `\n\n` prepend.
-
-**Integration:** none — do not invent.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py::TestAst1531MailboxStageCutover \
-  -q
-```

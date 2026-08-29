@@ -284,64 +284,21 @@ class TestAst1313FromThenToBind:
 
 
 # AST-1049: strip/extract + Create orchestration.
-# AST-1537: wrap embeds From/To/Subject/Date (not subject-only).
 class TestAst1049StripExtractEmailHtml:
     def test_strips_tags_attrs_and_wraps_subject(self) -> None:
         raw = (
             '<html><body><script>alert(1)</script>'
             '<p style="x" onclick="y" onfocus="z">Hello</p></body></html>'
         )
-        out = inbox_mod.strip_extract_email_html(
-            "Role <A>",
-            raw,
-            from_address='Ada <ada@ex.com>',
-            to_address='To <t@ex.com>',
-            date='Sat, 29 Aug 2026',
-        )
+        out = inbox_mod.strip_extract_email_html("Role <A>", raw)
         assert "<script>" not in out
         assert "onclick" not in out
         assert "onfocus" not in out
         assert 'style="' not in out
         assert "Hello" in out
         assert "Role &lt;A&gt;" in out
-        assert 'class="email-headers"' in out
-        assert 'class="email-from"' in out
-        assert "Ada &lt;ada@ex.com&gt;" in out
-        assert 'class="email-to"' in out
-        assert "To &lt;t@ex.com&gt;" in out
         assert 'class="email-subject"' in out
-        assert 'class="email-date"' in out
-        assert "Sat, 29 Aug 2026" in out
         assert 'class="email-body"' in out
-
-
-# Branches: get_message_with_assembled_html keeps raw html_body + assembled header wrap.
-class TestAst1537AssembledHtmlGet:
-    def test_assembled_html_keeps_raw_body(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            inbox_mod,
-            "get_message_html",
-            MagicMock(
-                return_value={
-                    "id": "m1",
-                    "html_body": "<p onclick=x>Body</p>",
-                    "subject": "Subj <X>",
-                    "from_address": "From <f@x>",
-                    "to_address": "To <t@x>",
-                    "date": "Mon",
-                }
-            ),
-        )
-        out = inbox_mod.get_message_with_assembled_html("m1")
-        assert out["html_body"] == "<p onclick=x>Body</p>"
-        assert out["assembled_html"] != out["html_body"]
-        assert "Body" in out["assembled_html"]
-        assert "onclick" not in out["assembled_html"]
-        assert "Subj &lt;X&gt;" in out["assembled_html"]
-        assert "From &lt;f@x&gt;" in out["assembled_html"]
-        assert "To &lt;t@x&gt;" in out["assembled_html"]
-        assert 'class="email-date"' in out["assembled_html"]
-        assert "Mon" in out["assembled_html"]
 
 
 class TestAst1049CreateMeteoriteJobFromInboxMessage:
@@ -528,9 +485,7 @@ class TestAst1531InboxStageCutover:
                 return_value={
                     "subject": "Role",
                     "html_body": "<p onclick=x>JD body here</p>",
-                    "from_address": "Ada <a@b.c>",
-                    "to_address": "Susan <s@x>",
-                    "date": "Fri, 28 Aug 2026",
+                    "from_address": "a@b.c",
                 }
             ),
         )
@@ -565,13 +520,6 @@ class TestAst1531InboxStageCutover:
         assert "JD body here" in seen["blob"]
         assert "onclick" not in seen["blob"]
         assert "Role" in seen["blob"]
-        # AST-1537: land blob is header+body HTML, not subject-only wrap.
-        assert 'class="email-from"' in seen["blob"]
-        assert "Ada &lt;a@b.c&gt;" in seen["blob"]
-        assert 'class="email-to"' in seen["blob"]
-        assert "Susan &lt;s@x&gt;" in seen["blob"]
-        assert 'class="email-date"' in seen["blob"]
-        assert "Fri, 28 Aug 2026" in seen["blob"]
 
     @pytest.mark.asyncio
     async def test_land_bound_empty_strip_errors_without_stage(
