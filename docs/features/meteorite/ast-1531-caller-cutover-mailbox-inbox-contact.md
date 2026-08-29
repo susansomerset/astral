@@ -272,3 +272,151 @@ context_tokens≈52000
 | 1 | `2a0f464a` | mailbox `_handle_bound` → `stage_meteorite`; mechanical tree deleted |
 | 2 | `4457be23` | inbox `_land_bound_inbox_message` / fetch / Land → stage; skip = passed |
 | 3 | `f948e6ad` | `contact_land_meteorite` → stage; Estelle Slack `source_kind`/`source_id` |
+
+## Radia review
+
+# Radia review — AST-1531
+
+`[code-rubric] revision=2`  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1531  
+**Publish ref:** `origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact` @ `3afaf3e853bc1efdb948b2c74c19753ac9cc8f00`  
+**Overall:** CLEAN  
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact` (27 paths). AST-1531 product delta: `src/core/meteorite_email.py`, `src/core/inbox.py`, `src/core/contact.py`. Branch tip also carries AST-1529/1530 foundation + Betty merge-tests (expected epic lineage; 1531 engineer commits stayed inside Files Changed).
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent-vector changes |
+| astral.agent.do-task-delegation | scoped | conforms | callers delegate classify/land to `stage_meteorite` (no ad-hoc Ruth) |
+| astral.agent.grade-vector-validation | scoped | not-applicable | n/a |
+| astral.batch.batch-id-first | scoped | not-applicable | no new batch claim paths in callers |
+| astral.batch.batch-id-format | scoped | not-applicable | batch id minting stays in 1530 invoke |
+| astral.batch.claim-process-release | scoped | conforms | no METEORITE_NEW claim added in callers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | n/a |
+| astral.config.config-source-of-truth | scoped | conforms | skip-as-passed reads `STAGE_METEORITE_CONFIG["skip_outcomes"]` |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | n/a |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | n/a |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | n/a |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | n/a |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | n/a |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single AST-1531 plan file |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty owns tests/bible |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits limited to three core files |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | mailbox mechanical scrape/BOT_BLOCKED removed; scrape stays in `land_meteorite` via stage |
+| astral.layers.import-direction | scoped | conforms | late `stage_meteorite` imports in callers; no UI/data imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | n/a |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI edits |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | n/a |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | callers orchestrate; stage/consult own Ruth path |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | n/a |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no 1531 catalog edits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | n/a |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | n/a |
+| astral.seed.define-approved | scoped | not-applicable | n/a |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | n/a |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | n/a |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data-layer edits |
+| astral.standards.database-header-inventory | scoped | not-applicable | n/a |
+| astral.standards.debug-contract-gated | scoped | conforms | mailbox uses `_detail` only (plan); inbox debug gated; no new ungated emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | large deletion in mailbox; thin inbox/contact rewires |
+| astral.standards.in-scope-only | scoped | conforms | `create_meteorite_job_from_inbox_message` left on `land_meteorite` per plan |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` / debug helpers only |
+| astral.standards.names-not-ticket-ids | scoped | conforms | source kinds use config keys (`email`/`slack`/`paste`) |
+| astral.standards.no-cross-contamination | scoped | conforms | no parallel classify vocabulary in callers |
+| astral.standards.no-hardcoded-sets | scoped | conforms | skip-as-passed uses `STAGE_METEORITE_CONFIG` |
+| astral.standards.public-then-helpers | scoped | conforms | `_stage_archive_token` helper colocated with archive helpers |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | n/a |
+| astral.state.core-decides-transitions | scoped | conforms | BOT_BLOCKED mechanical path removed; transitions stay in land |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | n/a |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | n/a |
+| astral.ui.frontend-file-placement | scoped | not-applicable | n/a |
+| astral.ui.naming-conventions | scoped | not-applicable | n/a |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | n/a |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1531)` on tip |
+| orch.git.commit-vocabulary | universal | conforms | three `code(AST-1531)` stage commits + merge-tests |
+| orch.git.flow-direction-inviolable | universal | conforms | sub topology |
+| orch.git.ftr-sub-topology | universal | conforms | publish ref matches child pattern |
+| orch.git.merge-on-checkout | universal | conforms | n/a |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | n/a |
+| orch.git.no-dev-agent-branches | universal | conforms | n/a |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1527` |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | empty-body shift flagged at plan (Joan discuss) |
+| orch.pipeline.plan-is-bible | universal | conforms | all three stages match plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns cutover tests + bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee preserved |
+| orch.roles.pre-commit-path-bans | universal | conforms | n/a |
+
+**Straggler (C4):** Joan plan-rubric APPROVED attached; no Excluded-statute list — no stragglers.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited in plan body | — | Cutover consumes `stage_meteorite` contract only |
+
+## Plan adherence
+
+**Stage 1 (mailbox):** `_handle_bound` rebuilt — `subject`+`html` blob → `stage_meteorite(email, mid)` → `_stage_archive_token` → `_finalize_archive`. Mechanical tree + BOT_BLOCKED/scrape helpers deleted; docstring updated; hygiene/unbound/`last_email_check` paths preserved.
+
+**Stage 2 (inbox):** `_land_bound_inbox_message` strips then stages (not raw `land_meteorite`); empty strip early return unchanged; `run_fetch_email` + `land_inbox_message_ids` treat `skipped` or `skip_outcomes` as passed; `create_meteorite_job_from_inbox_message` untouched.
+
+**Stage 3 (contact):** `contact_land_meteorite` requires `source_kind`/`source_id`, assembles blob, calls `stage_meteorite`; Estelle `land_calls` pass `source_kind="slack"` + `message_ts`→`thread_ts`→`channel` fallback.
+
+**Estimate (3):** Matches — three caller rewires on shipped stage contract.
+
+**C6 lenses:** No new layer violations; archive `except` pre-existing; debug gated per plan; no caller-side scrap map duplication.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+1. **Bound empty-body mailbox messages (Joan plan discuss — now live):** Plan removed empty-body ignore forks. When subject and HTML are both empty, blob is empty → `invoke_stage_meteorite` fails → `_stage_archive_token` → `error` → runner counts `(passed=0, errors=1)` vs old `(passed=1, ignored)`. Inbox stays on error (similar to old ignore). Joan flagged at plan approval; implementation matches that decision. **Confirm Susan accepts the accounting shift** for rare empty bound mail — or add a documented pre-stage empty-blob branch without restoring the heuristic tree.
+
+### advisory
+
+1. **`run_fetch_email` skip-as-passed** — logic added in `run_fetch_email` / `land_inbox_message_ids`; component tests cover `_land_bound_inbox_message` and `land_inbox_message_ids` wiring but not a direct `run_fetch_email` stage-skip → `total_passed` assertion. Low risk given mirrored passed rule in both functions.
+
+2. **Legacy Create API** — `create_meteorite_job_from_inbox_message` still calls `land_meteorite` directly (plan out of scope). Full inbox parity needs a follow-on ticket if desired.
+
+3. **Caller blob shape** — mailbox passes `subject\n\n{raw html}`; inbox passes strip output only. Intentional per plan (strip ownership in inbox); Ruth sees different shapes per ingress surface.
+
+4. **Estelle `slack_sid` empty** — if `message_ts`/`thread_ts`/`channel` all empty, `contact_land_meteorite` returns structured error without staging. Reasonable fail-closed; worth knowing for malformed Slack events.
+
+5. **`asyncio.run` in sync `contact_land_meteorite`** — pre-existing pattern (was used with `land_meteorite`); not introduced by this ticket.
+
+6. **Retired mailbox tests** — `TestAst1090SubjectIsUrl` skipped; mechanical-classify tests rewritten for stage path. Appropriate for cutover.
+
+## What's solid
+
+- Mechanical classify tree fully removed from `meteorite_email.py` (~300 lines); no dead scrape/BOT_BLOCKED imports remain.
+- `_stage_archive_token` cleanly bridges stage skip vs land rollup vs error into existing archive contract.
+- Inbox skip-as-passed uses both `land.get("skipped")` and `STAGE_METEORITE_CONFIG["skip_outcomes"]` (defensive).
+- Contact signature break isolated to Estelle `land_calls` with Slack source handle wiring.
+- Tests lock mailbox stage+archive-on-skip, inbox strip→stage, contact source gates, and selected-ids stage path.
+
+## Frame diff
+
+- `src/core/meteorite_email.py`: `_handle_bound` → `stage_meteorite`; add `_stage_archive_token`; delete mechanical classify/scrape/BOT_BLOCKED helpers.
+- `src/core/inbox.py`: `_land_bound_inbox_message` / `run_fetch_email` / `land_inbox_message_ids` → stage; skip outcomes count as passed.
+- `src/core/contact.py`: `contact_land_meteorite` → `stage_meteorite` with required source handle; Estelle `land_calls` Slack `source_id`.
+- Betty merge-tests: `test_meteorite_email.py`, `test_inbox.py`, `test_contact.py` + bible entries.
+
+context_tokens≈45000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 3afaf3e8) caller cutover clean
+```
