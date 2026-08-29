@@ -1,10 +1,11 @@
 """
-Inbox read orchestration + fetch_email → land_meteorite (AST-1472).
+Inbox read orchestration + fetch_email → stage_meteorite (AST-1531).
 
 Thin core wrapper over src.external.gmail list/get. No gaze_email.
 AST-1033 owns the Read email admin surface and calls these functions.
 AST-1047 / AST-1313: From-then-To → candidate_match enrichment on list payloads.
-AST-1049 / AST-1472: strip/extract + create/land via land_meteorite (not gazer ingest).
+AST-1049 / AST-1472: strip/extract ownership stays here; Land/fetch_email stage
+then land-inside-stage (not raw land_meteorite on the stripped blob).
 """
 
 from __future__ import annotations
@@ -26,6 +27,7 @@ from src.utils.config import (
     INBOX_CREATE_JOB_CONFIG,
     METEORITE_CONFIG,
     METEORITE_EMAIL_MAILBOX_CONFIG,
+    STAGE_METEORITE_CONFIG,
 )
 from src.utils.formatting import normalize_pasted_list_email_html
 from src.utils.logging import get_logger, truncate_debug_content
@@ -221,7 +223,7 @@ async def _land_bound_inbox_message(
     *,
     debug: bool = False,
 ) -> dict:
-    """Fetch + strip one bound message, then land_meteorite (AST-1472)."""
+    """Fetch + strip one bound message, then stage_meteorite (AST-1531)."""
     mid = (message_id or "").strip()
     cid = (candidate_id or "").strip()
     err_key = METEORITE_CONFIG["land_outcome_error"]
@@ -252,9 +254,15 @@ async def _land_bound_inbox_message(
             "company_inserted": False,
         }
 
-    from src.core.meteorite import land_meteorite
+    from src.core.meteorite import stage_meteorite
 
-    land = await land_meteorite(cid, text=html, debug=debug)
+    stage = await stage_meteorite(
+        cid,
+        html,
+        source_kind="email",
+        source_id=mid,
+        debug=debug,
+    )
     if debug:
         logger.set_debug_flag(True)
         logger.debug_index(
@@ -262,13 +270,15 @@ async def _land_bound_inbox_message(
             index=1,
             total=1,
             identifier=mid[:80],
-            outcome=str(land.get("outcome") or err_key),
+            outcome=str(stage.get("outcome") or err_key),
         )
         logger.debug_detail(f"message_id={mid[:80]}")
         logger.debug_detail(f"astral_candidate_id={cid}")
         logger.debug_detail(f"html_len={len(html)}")
-        logger.debug_detail(f"company={land.get('company')!r}")
-    return land
+        logger.debug_detail(f"stage_outcome={stage.get('stage_outcome')!r}")
+        logger.debug_detail(f"skipped={stage.get('skipped')!r}")
+        logger.debug_detail(f"company={stage.get('company')!r}")
+    return stage
 
 
 async def run_fetch_email(
@@ -276,7 +286,7 @@ async def run_fetch_email(
     *,
     debug: bool = False,
 ) -> dict:
-    """Null-candidate fetch_email shell: list → bind → land matched (AST-1472)."""
+    """Null-candidate fetch_email shell: list → bind → stage matched (AST-1531)."""
     _ = task  # shell row — no entity claim queue
     if debug:
         logger.set_debug_flag(True)
@@ -319,7 +329,11 @@ async def run_fetch_email(
         land = await _land_bound_inbox_message(mid, cid, debug=debug)
         outcome = land.get("outcome") or err_k
         total_processed += 1
-        if outcome in (created_k, skip_k, super_k):
+        if (
+            land.get("skipped")
+            or outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]
+            or outcome in (created_k, skip_k, super_k)
+        ):
             total_passed += 1
         elif outcome == err_k:
             total_failed += 1
@@ -341,7 +355,7 @@ async def land_inbox_message_ids(
     *,
     debug: bool = False,
 ) -> dict:
-    """Admin Land Meteorite: selected inbox ids → land_meteorite (AST-1472)."""
+    """Admin Land Meteorite: selected inbox ids → stage_meteorite (AST-1531)."""
     if debug:
         logger.set_debug_flag(True)
 
@@ -405,7 +419,11 @@ async def land_inbox_message_ids(
             }
         )
         total_processed += 1
-        if land_outcome in (created_k, skip_k, super_k):
+        if (
+            land.get("skipped")
+            or land_outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]
+            or land_outcome in (created_k, skip_k, super_k)
+        ):
             total_passed += 1
         elif land_outcome == err_k:
             total_failed += 1
