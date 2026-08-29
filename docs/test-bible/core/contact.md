@@ -285,3 +285,24 @@ Child #1: `CONTACT_TASK_CONFIG` block (six keys pre-registered), markup parse/st
   tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
   -q
 ```
+
+
+### AST-1531 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact`.
+
+`contact_land_meteorite` requires `source_kind` ∈ `STAGE_METEORITE_CONFIG["source_ref_prefixes"]` + non-empty `source_id`, builds blob from text/scraps/job_link/employer, then `asyncio.run(stage_meteorite(...))` — no unclassified `land_meteorite`. Mailbox/inbox: **`docs/test-bible/core/meteorite_email.md`**, **`docs/test-bible/core/inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Source gates + stage blob + empty blob | `src/core/contact.py` | **`TestAst1531ContactLandStageCutover`** |
+
+**Broken / obsolete:** none for this cutover. Pre-existing **`TestAst1071ContactSkillRunners`** profile→contact rename failures are outside AST-1531 (already red on AST-1530 tip).
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1531ContactLandStageCutover \
+  -q
+```

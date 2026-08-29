@@ -7,7 +7,7 @@ from pathlib import Path
 import hmac
 import json
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -1574,3 +1574,81 @@ class TestAst1515ContactEstelleTurnMarkup:
         assert "## Available contact tasks (markup)" in live
         for key in CONTACT_TASK_CONFIG:
             assert f"- {key}:" in live
+
+
+# --- AST-1531: contact_land_meteorite → stage_meteorite ---
+
+
+class TestAst1531ContactLandStageCutover:
+    """contact_land_meteorite requires source handle and stages blob (no raw land)."""
+
+    def test_requires_source_kind_and_id(self) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        err = METEORITE_CONFIG["land_outcome_error"]
+        out = contact_mod.contact_land_meteorite("c1", source_kind="", source_id="x", text="JD")
+        assert out["outcome"] == err
+        out2 = contact_mod.contact_land_meteorite(
+            "c1", source_kind="email", source_id="", text="JD"
+        )
+        assert out2["outcome"] == err
+        out3 = contact_mod.contact_land_meteorite(
+            "c1", source_kind="not-a-kind", source_id="s1", text="JD"
+        )
+        assert out3["outcome"] == err
+
+    def test_stages_text_blob_with_source_handle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        seen = {}
+
+        async def _stage(cid, blob, *, source_kind, source_id, debug=False):
+            seen.update(
+                {
+                    "cid": cid,
+                    "blob": blob,
+                    "source_kind": source_kind,
+                    "source_id": source_id,
+                }
+            )
+            return {
+                "skipped": False,
+                "outcome": created,
+                "land": {"outcome": created, "error": None},
+                "error": None,
+                "scraps": [],
+            }
+
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", _stage)
+        out = contact_mod.contact_land_meteorite(
+            "c1",
+            source_kind="slack",
+            source_id="T1.msg9",
+            text="Senior eng JD text",
+            job_link="https://jobs.example.com/r",
+            debug=False,
+        )
+        assert out["outcome"] == created
+        assert seen["cid"] == "c1"
+        assert seen["source_kind"] == "slack"
+        assert seen["source_id"] == "T1.msg9"
+        assert "Senior eng JD text" in seen["blob"]
+        assert "https://jobs.example.com/r" in seen["blob"]
+
+    def test_empty_blob_errors_without_stage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        stage = AsyncMock()
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", stage)
+        out = contact_mod.contact_land_meteorite(
+            "c1", source_kind="paste", source_id="p1", text="  ", scraps=None
+        )
+        assert out["outcome"] == METEORITE_CONFIG["land_outcome_error"]
+        assert "blob" in (out.get("error") or "").lower()
+        stage.assert_not_awaited()
+
