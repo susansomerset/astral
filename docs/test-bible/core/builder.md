@@ -70,7 +70,7 @@ Equivalent harness:
 
 ### AST-1007 · AST-993
 
-**AST-1007:** `_apply_resume_text_markers` deep-walks dict/list nests and applies `_resume_site_markers` (`__` → NBSP, `~~` → non-breaking hyphen, `" • "` → NBSP-bullet spacing) to every string leaf before session / base / job-tailored HTML emit. Layout chrome (role lead/bullets, education lines, skills grid, header/meta/styles) stays siblings **AST-1008** / **AST-1009** / **AST-1010**.
+**AST-1007:** `_apply_resume_text_markers` deep-walks dict/list nests and applies `_resume_site_markers` (`__` → NBSP, `~~` → non-breaking hyphen, `" • "` → NBSP-bullet spacing) to every string leaf before session / base / job-tailored HTML emit. Layout chrome (role lead/bullets, education lines, skills grid, header/meta/styles) stays siblings **AST-1008** / **AST-1009** / **AST-1010**. **AST-1528** tightens the bullet glue to `\u00a0•\u00a0` (both sides) on this shared path.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -127,7 +127,7 @@ Equivalent harness:
 
 ### AST-1009 · AST-993
 
-**AST-1009:** `_emit_body_sections_html` emits education as per-line `div.education-list` (`<strong>` credential + post-marker `\u00a0• ` rest), technical skills as `div.skills-grid` with one `div.skill-category` per `Category: items` line (`h4` + items `<p>`), and prior experience remains `p.competencies-list` (markers from AST-1007). Experience role chrome / header-meta-styles stay siblings **AST-1008** / **AST-1010**.
+**AST-1009:** `_emit_body_sections_html` emits education as per-line `div.education-list` (`<strong>` credential + post-marker glued bullet rest — `\u00a0•\u00a0` after **AST-1528**), technical skills as `div.skills-grid` with one `div.skill-category` per `Category: items` line (`h4` + items `<p>`), and prior experience remains `p.competencies-list` (markers from AST-1007). Experience role chrome / header-meta-styles stay siblings **AST-1008** / **AST-1010**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -706,6 +706,51 @@ When `debug=True`, session/base/job emit paths call `candidate.debug_experience_
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss \
   tests/component/core/test_builder.py::TestAst1020GoldenStylesheet \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1528 · AST-1526 (word-cloud NBSP bullet glue)
+
+**Parent:** [AST-1526 — Resume word clouds need non-breaking spaces](https://linear.app/astralcareermatch/issue/AST-1526/resume-word-clouds-need-non-breaking-spaces). **Publish:** `origin/sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue`.
+
+Shared `_resume_site_markers` replaces authoring `emit_separator` (`" • "`) with `\u00a0•\u00a0` (both sides) after `|` join — pipe-authored clouds, space-bullet text, and `__•__` digraphs all glue the same way. `_emit_education_list_html` partitions on the same glued bullet. Header `Name\u00a0• Title` and contact `"\u00a0• ".join` stay asymmetric (not on the glue replace). Cover from-block / `COVER_FROM_BLOCK_CONFIG["emit_separator"]` untouched.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pipe / space / digraph glue + education partition + session word_cloud | `src/core/builder.py` | **`TestAst1528WordCloudNbspBulletGlue`** |
+| Digraph fidelity regression | same | **`TestAst1027UatMarkerExpand`** |
+| Compact-title / competencies / meta tagline glue flips | same | **`TestAst998ExperienceJobRender`**, **`TestAst1008ExperienceGoldenLayout`**, **`TestAst1007NestedTypographyMarkers`**, **`TestAst1009EducationSkillsPrior::test_emit_education_list_html_splits_post_marker_bullet`**, **`TestAst1010HeaderContactMetaStyles`**, **`TestAst1021DocumentTitleChrome`**, **`TestAst1029UatCompetenciesBulletsEmit`**, **`TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`** |
+| Cover emit_separator unchanged | `src/utils/config.py` / `src/core/candidate.py` | cover from-block config + expand tests (emit_separator still `" • "`) |
+
+**Broken / obsolete this pass:** asserts that locked left-only `\u00a0• ` after `_resume_site_markers` (compact-title, competencies, education partition input, meta tagline bullets) — flipped to `\u00a0•\u00a0`. Header `h1` asymmetric join unchanged.
+
+**Integration:** no existing scenario asserts word_cloud NBSP-bullet-NBSP — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Glue lock (pipe / space / digraph + education + session cloud): `tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue`
+2. Digraph regression: `tests/component/core/test_builder.py::TestAst1027UatMarkerExpand`
+3. Nested markers + compact-title / edu / meta / competencies flips: `TestAst1007NestedTypographyMarkers`, `TestAst998ExperienceJobRender`, `TestAst1008ExperienceGoldenLayout`, `TestAst1009EducationSkillsPrior::test_emit_education_list_html_splits_post_marker_bullet`, `TestAst1010HeaderContactMetaStyles`, `TestAst1021DocumentTitleChrome`, `TestAst1029UatCompetenciesBulletsEmit`, `TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+4. Cover emit_separator still `" • "`: `tests/component/utils/test_config.py` (-k CoverFromBlock / 1147) + `tests/component/core/test_candidate.py` (-k 1148 / expand_cover)
+
+**AST-1528** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1027UatMarkerExpand \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1007NestedTypographyMarkers \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout \
+  tests/component/core/test_builder.py::TestAst1009EducationSkillsPrior::test_emit_education_list_html_splits_post_marker_bullet \
+  tests/component/core/test_builder.py::TestAst1010HeaderContactMetaStyles \
+  tests/component/core/test_builder.py::TestAst1021DocumentTitleChrome \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes \
   -q
 ```
 
