@@ -259,3 +259,16 @@ Epic intent: classify via stage → `land_meteorite` scrape path. Short-URL BOT_
 `source_kind` / `source_id` required; only production caller is Estelle `land_calls` (plan updates it). Paste ingress can use `source_kind="paste"` when wired later.
 
 context_tokens≈52000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact`  
+**Plan path:** `docs/features/meteorite/ast-1531-caller-cutover-mailbox-inbox-contact.md`
+
+**Built tip:** `f948e6ada5ff751aec7de5a96293bab1f53cb0e1` (`f948e6ad`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `2a0f464a` | mailbox `_handle_bound` → `stage_meteorite`; mechanical tree deleted |
+| 2 | `4457be23` | inbox `_land_bound_inbox_message` / fetch / Land → stage; skip = passed |
+| 3 | `f948e6ad` | `contact_land_meteorite` → stage; Estelle Slack `source_kind`/`source_id` |
