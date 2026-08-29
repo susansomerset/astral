@@ -180,3 +180,10 @@ AC2→Stage 2; AC3→Stage 1; AC4→Stages 1–2 (Load/confirmLoad untouched; sm
 - `pattern.ui.shared-button-roles` preserved (`btn primary` Load); frontend placement/naming statutes satisfied; no client `limit` param.
 
 context_tokens≈55000
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-1532/AST-1535-compact-filtered-import-picker-ui`  
+**Product commits:** `70f1d005` — Stage 1 (filtered refetch); `1918aeed` — Stage 2 (ui_config visible rows + scroll viewport)
+
+API/config/`tests/`/bible untouched. Load / confirmLoad / Save As / Preview / Test unchanged.
