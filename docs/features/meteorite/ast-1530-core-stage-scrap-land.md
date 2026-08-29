@@ -238,3 +238,17 @@ Stage path detail includes `source_id`; invoke helper logs `source_kind` only. A
 
 context_tokens≈38000
 ```
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1527/AST-1530-core-stage-scrap-land`
+**Plan path:** `docs/features/meteorite/ast-1530-core-stage-scrap-land.md`
+
+**Built tip:** `4df72aa8675e4926f31c2cc918ac29c92a5c0311` (`4df72aa8`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `61d940e7` | `consult.invoke_stage_meteorite` — live_content + `do_task(stage_meteorite)` |
+| 2 | `4df72aa8` | public `meteorite.stage_meteorite` + `_map_stage_jobs_to_scraps` → land/skip; Style D |
+
+**agent.py:** untouched (plan Decision).
