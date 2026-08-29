@@ -212,3 +212,29 @@ Build `ctx` from the candidate dict with `astral_candidate_id=cid`. Call `invoke
 Confirm Chuckles estimate: 5 — agree
 
 New public core entry + consult invoke helper on a known enrich/`do_task` pattern; scrap map is careful but bounded to config partitions; no caller cutover in this child.
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1530
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1527/AST-1530-core-stage-scrap-land` @ `c29d47d88413facb675cffa2d4d9e40cfb4ac951`
+
+## Traceability
+AC1–AC4 → Stage 2 (`_map_stage_jobs_to_scraps` partitions + `land_meteorite`); AC5 → Stage 2 skip path (no `land_meteorite`); AC6 → Stage 2 docstring/contract (no METEORITE_NEW / qualify dispatch from stage; land remains write API); AC7 → Stage 1 + Stage 2 Style D gated on `debug=True` only. Stage 1 → `invoke_stage_meteorite` / `do_task("stage_meteorite")`.
+
+## Findings
+
+### discuss — `pattern.agent.prompt-persist-before-provider` citation
+Ticket/parent cite this pattern; catalog entry is `status: proposed` (not `approved`). Plan conforms by delegating through existing `do_task` (same as `enrich_meteorite_land_packet`) — no new provider/persist sequencing in stages. Epic-level canon status, not a missing implementation step; no plan rewrite required for AST-1530 build.
+
+### acceptable — Dual Style D on `debug=True` success path
+`invoke_stage_meteorite` and `stage_meteorite` each emit gated index/detail. Slightly redundant but both respect `debug=False` silence and match enrich+land layering.
+
+### acceptable — `invoke_stage_meteorite` success detail omits `source_id`
+Stage path detail includes `source_id`; invoke helper logs `source_kind` only. AC7 “source handle” is still recoverable from live_content assembly; minor observability gap, not a functional AC miss.
+
+context_tokens≈38000
+```
