@@ -39,7 +39,7 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
-  INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
+  INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases METEORITE_EMAIL_MAILBOX_CONFIG["account_address"])
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, unbound retention, dispatch row seed (AST-1134 / AST-1466) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
@@ -1897,9 +1897,14 @@ INBOX_CREATE_JOB_CONFIG = {
     ),
     # True → also drop any attribute whose name starts with "on".
     "strip_on_attrs": True,
-    # Format with subject= (HTML-escaped) and body= (already-stripped HTML fragment).
+    # Format with HTML-escaped from_address/to_address/subject/date and already-stripped body.
     "subject_html_template": (
-        '<header class="email-subject"><h1>{subject}</h1></header>\n'
+        '<header class="email-headers">'
+        '<p class="email-from"><span class="email-label">From:</span> {from_address}</p>'
+        '<p class="email-to"><span class="email-label">To:</span> {to_address}</p>'
+        '<div class="email-subject"><h1>{subject}</h1></div>'
+        '<p class="email-date"><span class="email-label">Date:</span> {date}</p>'
+        '</header>\n'
         '<section class="email-body">{body}</section>'
     ),
 }
