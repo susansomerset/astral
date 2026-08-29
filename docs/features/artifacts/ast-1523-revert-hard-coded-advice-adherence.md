@@ -332,3 +332,29 @@ Diff delivers exactly that. No soft-prose sibling work, no UI, no `run_next` cha
 ```
 
 `context_tokens≈85000`
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/85ac6f0fa1af475870fb5e29868d2702/aa381d9d-1c4c-4402-9f6b-0f1d3659bab9/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/85ac6f0fa1af475870fb5e29868d2702/98e428fe-d73f-4bf8-aadc-905ea9059fbc/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/426a3cc3-2f83-4f6a-8ffd-ae96a2ab282d/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/85ac6f0fa1af475870fb5e29868d2702/1e8f7c20-baa2-4333-acf3-a550b0c688e3/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1460 (parent) | ftr/AST-1460-advise-resume-coded-list |
+| AST-1507 | sub/AST-1460/AST-1507-estelle-coded-resume-advice-list |
+| AST-1508 | sub/AST-1460/AST-1508-judith-per-code-advice-adherence |
+| AST-1514 | sub/AST-1460/AST-1514-advise-resume-brief-validation |
+| AST-1523 | sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence |
+| AST-1524 | sub/AST-1460/AST-1524-soft-numbered-prose-advise-draft-notes |
+
+**Epic worktree:** `astral-AST-1460/` — one active sub checked out at a time.
