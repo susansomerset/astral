@@ -252,3 +252,7 @@ context_tokens≈38000
 | 2 | `4df72aa8` | public `meteorite.stage_meteorite` + `_map_stage_jobs_to_scraps` → land/skip; Style D |
 
 **agent.py:** untouched (plan Decision).
+
+## Radia review
+
+[datt-trace] Active/radia set on AST-1530
