@@ -147,3 +147,144 @@ context_tokens≈58000
 
 **Build tip:** `origin/sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple` @ `c81121f1`
 **Stages:** assembled_html modal + copy → dark purple `.email-html-source`
+
+## Radia review
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1538
+**Publish ref:** `sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple` @ `759f8508db8d5e6a63c070de72cdf8f2785799ab`
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent/prompt paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | no `do_task` changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch claim paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch id formatting |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity-agent-response persistence |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config edits on 1538 product line (1537 stack on branch only) |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no artifact dirs |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike scripts |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no `run_next` |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single plan doc `ast-1538-manage-email-modal-copy-dark-purple.md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits touch test-tree only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | `code(AST-1538)` excludes `tests/**` / bible; Betty `test()` + `merge-tests()` own test-tree |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no `src/core` / `src/external` on 1538 product line |
+| astral.layers.import-direction | scoped | conforms | frontend uses existing `api()` to admin inbox route; no `src.data` / `src.external` in TS |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | no hardcoded job/candidate state strings; display reads API payload |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | consult untouched |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | message GET still via authenticated `api()` helper |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no catalog overrides |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot seed |
+| astral.seed.define-approved | scoped | not-applicable | no define flow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator seed |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no `src/data/**` on 1538 product line |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB/migrations |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no backend debug paths on 1538 product line |
+| astral.standards.dry-and-focused-functions | scoped | conforms | thin modal change; reuses Toast + existing admin copy pattern |
+| astral.standards.in-scope-only | scoped | needs-discussion | publish-ref diff bundles AST-1534 test/bible via `merge-tests`; engineer `code(AST-1538)` stays in scope gate |
+| astral.standards.logging-via-utils | scoped | not-applicable | no backend logging changes on 1538 product line |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `assembledHtml` naming; no ticket ids in identifiers |
+| astral.standards.no-cross-contamination | scoped | needs-discussion | `0f3785db test(AST-1534)` (AST-1532 epic) merged through `merge-tests(AST-1538)` |
+| astral.standards.no-hardcoded-sets | scoped | conforms | CSS uses `--bg-elevated` token, not new hex |
+| astral.standards.public-then-helpers | scoped | not-applicable | no new Python modules on 1538 product line |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job prior-state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run-chain changes |
+| astral.ui.frontend-file-placement | scoped | conforms | `pages/AdminManageEmail.tsx` + `App.css` per placement rules |
+| astral.ui.naming-conventions | scoped | conforms | camelCase state; BEM-ish manage-email classes |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip `merge-tests(AST-1538): origin/tests 3dd075d8` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`test`/`docs`/`merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1533/AST-1538-*` publish ref |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/<parent>/…` |
+| orch.git.merge-on-checkout | universal | conforms | no forbidden merge pattern in reviewed commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase/force |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1533` |
+| orch.git.three-permanent-branches | universal | conforms | branch topology respected |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | product tradeoffs in plan ⚠️ decisions |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 match plan on product line |
+| orch.pipeline.project-scoped-queues | universal | conforms | scoped under AST-1533 |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest + Vitest block on tip |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine (engineer) |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path engineer commits evident |
+
+**Active-set count:** 64 rows from `canon/statutes/README.md` § Harvested corpus + universal.
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+**AST-1538 product (`code(AST-1538)` @ `18ccbc83`–`c81121f1`):** Stage 1 — `htmlBody`→`assembledHtml`; `openMessage` sets `assembled_html` only (no `html_body` fallback); Copy toolbar (`btn secondary`, `navigator.clipboard.writeText`, Toast success); list Land Meteorite / multi-select untouched. Stage 2 — `.email-html-source` background `var(--bg-elevated)`; `.manage-email-modal-toolbar` added. Estimate **2** matches footprint.
+
+**Dependency stack:** Three-dot diff vs `origin/dev` also carries full **AST-1537** product+tests (not on `origin/dev` yet) — expected per plan `Depends on: AST-1537`.
+
+**Joan plan-rubric:** APPROVED @ `93cf11e0`; no Excluded-statute list → no straggler callout.
+
+**C6 lenses:** No `dangerouslySetInnerHTML`; raw `<pre>` source view preserved (AST-1040). Clipboard `.catch()` absent — matches `AdminPerformanceMonitor` / `AdminDataManagement` (Joan acceptable). §5f/§5g N/A (frontend-only ticket).
+
+## Findings
+
+### discuss — cross-epic test bundle on publish ref
+
+- **Location:** `merge-tests(AST-1538)` @ `759f8508` ← `origin/tests` `3dd075d8` ← `0f3785db test(AST-1534)`
+- **Finding:** Three-dot diff vs `origin/dev` includes Ad Hoc scoped-list test/bible changes for **AST-1534** (parent **AST-1532**) — `tests/component/{core/test_agent,data/database/test_agent_data,ui/api/test_api_admin,utils/test_config}.py` + bible blocks — merged via Betty's `origin/tests` branch, not in AST-1538 scope gate.
+- **Recommendation:** Chuckles/Betty confirm hygiene before ftr rollup: AST-1534 tests should land on `sub/AST-1532/AST-1534-*` (or documented intentional stack). Does **not** block AST-1538 product UT — engineer commits are clean.
+
+### advisory — clipboard error handling
+
+- **Location:** `AdminManageEmail.tsx` Copy `onClick`
+- **Finding:** `writeText` has no `.catch()` — unhandled rejection if clipboard denied.
+- **Recommendation:** Matches existing admin copy pages; optional hardening, not blocking (Joan acceptable).
+
+### advisory — `<pre title="Email body">`
+
+- **Location:** `AdminManageEmail.tsx` modal source pane
+- **Finding:** Title still says "Email body" after switching to header+body source.
+- **Recommendation:** Cosmetic polish for AST-1538 or a follow-up Task.
+
+## What's solid
+
+- No `html_body` fallback — explicit test `ignores html_body when assembled_html missing` guards AC1.
+- Copy clips the exact `<pre>` string (`assembledHtml`), not a client-side reassembly.
+- Dark purple uses existing `--bg-elevated` token — no new hex.
+- Betty Vitest manifest covers assembled modal, copy+toast, CSS token, and preserves AST-1142 Land Meteorite regression describe.
+
+## Frame diff
+
+Prior issue-doc stub (`docs(AST-1538): review stub — build complete` @ `c81121f1`) covered product only. Tip adds:
+
+- `test(AST-1538): Manage Email assembled modal copy + dark purple` — `test_AdminManageEmail.test.tsx` + `docs/test-bible/frontend/pages.md`
+- `merge-tests(AST-1538): origin/tests 3dd075d8` — also folds **`test(AST-1534)`** test/bible from `origin/tests` (see discuss finding)
+
+Product `AdminManageEmail.tsx` / `App.css` unchanged since `c81121f1`.
+
+## Notes
+
+- C7 complete — Chuckles may append, `docs()` push, post slim upshot, move to **Review Posted**.
+- **resolve-child:** product findings none; discuss item is merge/tests hygiene only — Chuckles decides whether to re-merge tests or document stack before UT.
+- **Downstream:** Parent AC1–AC3 satisfied once AST-1537+AST-1538 both on ftr; modal depends on `assembled_html` from 1537 API.
+
+context_tokens≈45000
+
+---
+```
