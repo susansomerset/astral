@@ -1165,3 +1165,25 @@ Board REVISE: `_vector_labels_map` HT/TP duplicate-code collision (last-wins dro
   tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes \
   -q
 ```
+
+---
+
+### AST-1530 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1530-core-stage-scrap-land`.
+
+`invoke_stage_meteorite`: validate candidate/source/blob; assemble `SOURCE_KIND` / `SOURCE_ID` / `CONTENT` live_content; `do_task("stage_meteorite")`; validate outcome against `STAGE_METEORITE_CONFIG`; clear jobs on skip outcomes. No claim/land. Public stage: **`docs/test-bible/core/meteorite.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gates + parse + live_content + skip job clear | `src/core/consult.py` | **`TestAst1530InvokeStageMeteorite`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1530InvokeStageMeteorite \
+  -q
+```

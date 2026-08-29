@@ -6340,3 +6340,118 @@ class TestAst1347PhaseScoreBreakdown:
         payload = save.call_args.args[1]
         assert "jd_score" not in payload
         assert f"jd_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" not in payload
+
+
+# Branches: invoke_stage_meteorite gates + do_task parse (AST-1530).
+@pytest.mark.skipif(
+    not hasattr(consult_mod, "invoke_stage_meteorite"),
+    reason="AST-1530 invoke_stage_meteorite not on this publish tip",
+)
+class TestAst1530InvokeStageMeteorite:
+    """AST-1530: consult.invoke_stage_meteorite — live_content + do_task, no land."""
+
+    @pytest.mark.asyncio
+    async def test_input_gates(self) -> None:
+        out = await consult_mod.invoke_stage_meteorite(
+            "", "blob", source_kind="email", source_id="m"
+        )
+        assert out["success"] is False
+        assert "candidate_id" in (out.get("error") or "")
+
+        out2 = await consult_mod.invoke_stage_meteorite(
+            "c1", "blob", source_kind="fax", source_id="m"
+        )
+        assert out2["success"] is False
+        assert out2["error"] == "invalid source_kind"
+
+        out3 = await consult_mod.invoke_stage_meteorite(
+            "c1", "blob", source_kind="email", source_id=""
+        )
+        assert out3["success"] is False
+        assert "source_id" in (out3.get("error") or "")
+
+        out4 = await consult_mod.invoke_stage_meteorite(
+            "c1", "   ", source_kind="email", source_id="m"
+        )
+        assert out4["success"] is False
+        assert "blob" in (out4.get("error") or "")
+
+    @pytest.mark.asyncio
+    async def test_success_parses_outcome_and_live_content(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen = {}
+
+        async def _do_task(**kwargs):
+            seen["live_content"] = kwargs["live_content"]
+            seen["task_key"] = kwargs["task_key"]
+            seen["ctx"] = kwargs["ctx"]
+            return {
+                "success": True,
+                "parsed_response": {
+                    "outcome": "link_list",
+                    "jobs": [
+                        {"job_link": "https://jobs.example.com/a"},
+                        "skip-non-dict",
+                    ],
+                },
+            }
+
+        monkeypatch.setattr(consult_mod, "do_task", _do_task)
+        out = await consult_mod.invoke_stage_meteorite(
+            "cand-1",
+            "href list body",
+            source_kind="email",
+            source_id="msg-99",
+            ctx={"candidate_data": {"x": 1}},
+            debug=False,
+        )
+        assert out["success"] is True
+        assert out["outcome"] == "link_list"
+        assert len(out["jobs"]) == 1
+        assert out["jobs"][0]["job_link"].startswith("https://")
+        assert seen["task_key"] == "stage_meteorite"
+        assert "SOURCE_KIND: email" in seen["live_content"]
+        assert "SOURCE_ID: msg-99" in seen["live_content"]
+        assert "CONTENT:\nhref list body" in seen["live_content"]
+        assert seen["ctx"]["astral_candidate_id"] == "cand-1"
+        assert seen["ctx"]["candidate_data"] == {"x": 1}
+
+    @pytest.mark.asyncio
+    async def test_skip_outcome_clears_jobs(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def _do_task(**_kwargs):
+            return {
+                "success": True,
+                "parsed_response": {
+                    "outcome": "not_job_content",
+                    "jobs": [{"jd_text": "noise"}],
+                },
+            }
+
+        monkeypatch.setattr(consult_mod, "do_task", _do_task)
+        out = await consult_mod.invoke_stage_meteorite(
+            "c1", "x", source_kind="slack", source_id="s1"
+        )
+        assert out["success"] is True
+        assert out["outcome"] == "not_job_content"
+        assert out["jobs"] == []
+
+    @pytest.mark.asyncio
+    async def test_invalid_outcome_fails(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def _do_task(**_kwargs):
+            return {
+                "success": True,
+                "parsed_response": {"outcome": "html_links", "jobs": []},
+            }
+
+        monkeypatch.setattr(consult_mod, "do_task", _do_task)
+        out = await consult_mod.invoke_stage_meteorite(
+            "c1", "x", source_kind="email", source_id="m"
+        )
+        assert out["success"] is False
+        assert out["error"] == "invalid stage outcome"
+        assert out["outcome"] == "html_links"
