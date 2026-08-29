@@ -205,3 +205,28 @@ Then `stage_meteorite(cid, blob, source_kind="email", source_id=mid, debug=debug
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1537
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1533/AST-1537-email-header-body-html-land-qualify` @ `6a3a4260d9a4a70a015c68b4a7bb6ec026629ce9`
+
+## Traceability
+AC4 → Stages 1–5 (config header+body template, gmail `date`, inbox shared strip on land/create/get, `meteorite_email` bound blob, api `assembled_html`); AC5 → Scope gate + email-only paths (paste/scrap/consult/React explicitly untouched).
+
+## Findings
+
+### acceptable
+- **Location:** Plan structure — no formal `## Self-assessment` block
+- **Finding:** Confidence/unknowns are implicit in stage ⚠️ decisions and estimate confirm, not a labeled self-assessment section.
+- **Recommendation:** Optional polish only; stages and decisions are specific enough to build.
+
+### acceptable
+- **Location:** Stage 1 — always emit Date row
+- **Finding:** Template renders `Date:` even when Gmail omits the header (empty value).
+- **Recommendation:** Documented tradeoff; fine for AC4 qualify input; sibling AST-1538 can handle display nuance for AC1.
+
+context_tokens≈42000
