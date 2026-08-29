@@ -230,3 +230,8 @@ AC4 → Stages 1–5 (config header+body template, gmail `date`, inbox shared st
 - **Recommendation:** Documented tradeoff; fine for AC4 qualify input; sibling AST-1538 can handle display nuance for AC1.
 
 context_tokens≈42000
+
+## Review
+
+**Build tip:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify` @ `fbfa03f0`
+**Stages:** config wrapper → Gmail `date` → inbox strip/land/create/`assembled_html` → meteorite_email shared assemble → api_inbox get
