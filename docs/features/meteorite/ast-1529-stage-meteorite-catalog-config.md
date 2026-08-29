@@ -238,3 +238,26 @@ METEORITE_EMAIL_PARSE_CONFIG = {
 Confirm Chuckles estimate: 5 — agree
 
 Config + Ruth prompt catalog for six outcomes on a known pattern (AST-1089 lineage); no core orchestration in this child.
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1529
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config` @ `ca0a28c2724652c4ba4108299f57387a84b5512a`
+
+## Traceability
+AC7 → Stage 1 (`STAGE_METEORITE_CONFIG`, `TASK_CONFIG["stage_meteorite"]`, retire `meteorite_email` TASK_CONFIG + `parse_modes` coupling) + Stage 2 (`agent_task` `stage_meteorite` row, `meteorite_email` stays non-live); mailbox poller `meteorite_email` preserved via `METEORITE_EMAIL_MAILBOX_CONFIG`.
+
+## Findings
+
+### acceptable — `STAGE_METEORITE_CONFIG` partition keys (`landable_outcomes`, `text_source_ref_outcomes`, `url_scrape_outcomes`, `skip_outcomes`)
+Partition tuples reuse the same six literals for AST-1530 scrap-map wiring. Slightly beyond the ticket Scope prose (“six outcome literals and source-ref prefix map”), but same vocabulary, asserted disjointness, and explicitly owned as config SSOT for the sibling — not a second invented set. No plan change required.
+
+### acceptable — No `## Self-assessment` section
+Catalog-only child on a known AST-1089 lineage; Estimate confirm line present. Honest complexity signal without a formal self-assessment block.
+
+context_tokens≈28000
+```
