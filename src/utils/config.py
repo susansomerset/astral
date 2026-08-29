@@ -43,7 +43,8 @@ Config sections:
   INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases METEORITE_EMAIL_MAILBOX_CONFIG["account_address"])
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, unbound retention, dispatch row seed (AST-1134 / AST-1466) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
-  METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals (AST-1089; renamed AST-1212)
+  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
+  METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
   FETCH_EMAIL_CONFIG — fetch_email mailbox-shell seed literals (AST-1469; runner/ensure = sibling)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
@@ -526,33 +527,34 @@ TASK_CONFIG = {
         "trigger_state": None,
         "agent_task": "qualify_meteorite",
     },
-    # AST-1087 / AST-1089: Ruth parse of bound meteorite email HTML (not a dispatch claim task).
-    # AST-1212: live key renamed parse_meteorite_email → meteorite_email.
-    # AST-1090 calls do_task with METEORITE_EMAIL_PARSE_CONFIG["task_key"] + candidate ctx.
-    "meteorite_email": {
+    # AST-1529: ingress classify — candidate-bound blob + source handle; not a job claim queue.
+    # outcome enum filled after STAGE_METEORITE_CONFIG (lockstep).
+    "stage_meteorite": {
         "response_format": "json",
         "output_type": "fields",
         "scored": False,
         "response_schema": {
-            "parse_mode": {"type": "str", "required": True},
+            "outcome": {
+                "type": "str",
+                "required": True,
+            },
             "jobs": {
                 "type": "list",
                 "required": True,
                 "items_schema": {
-                    "job_link": {"type": "str", "required": True},
                     "job_title": {"type": "str", "required": False},
-                    # AST-1144: Ruth returns structured company/location objects.
-                    "metadata": {"type": "dict", "required": False},
+                    "job_link": {"type": "str", "required": False},
+                    "company_job_id": {"type": "str", "required": False},
+                    "jd_text": {"type": "str", "required": False},
+                    "employer_name": {"type": "str", "required": False},
                 },
             },
-            "jd_link": {"type": "str", "required": False},
-            "content_text": {"type": "str", "required": False},
         },
-        "context_format": "meteorite_email_{index}",
+        "context_format": "stage_meteorite_{index}",
         "entity_type": None,
         "requires_candidate_key": True,
         "trigger_state": None,
-        "agent_task": "meteorite_email",
+        "agent_task": "stage_meteorite",
     },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
@@ -2665,9 +2667,9 @@ assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 # mailbox poller, not an ENTITY_TYPES claim queue. Avail/eligible count is the live
 # bind-filtered inbox count (core inbox helpers, AST-1135). Runner is candidate-bound
 # (AST-1136): filter From→row candidate_id, stamp last_email_check, unbound Trash
-# hygiene via unbound_retention_days. Ruth parse task is AST-1089
-# (METEORITE_EMAIL_PARSE_CONFIG). Seed auto_mode CLICK (false) — parent seed law;
-# never Auto-true at provision.
+# hygiene via unbound_retention_days. Live Ruth classify is stage_meteorite
+# (STAGE_METEORITE_CONFIG / AST-1529); METEORITE_EMAIL_PARSE_CONFIG is a fold stub only.
+# Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 METEORITE_EMAIL_MAILBOX_CONFIG = {
     "task_key": "meteorite_email",
     "account_address": "astral.career.match@gmail.com",
@@ -2738,24 +2740,94 @@ assert INBOX_BIND_CONFIG["header_order"] == ("from", "to")
 assert INBOX_BIND_CONFIG["inbox_address"] == METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
 assert isinstance(INBOX_BIND_CONFIG["inbox_address"], str)
 assert "@" in INBOX_BIND_CONFIG["inbox_address"]
-# AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
-# AST-1212: live task_key is meteorite_email (formerly parse_meteorite_email).
-# Callers (AST-1090 meteorite_email runner) pass live_content shaped per parse_modes and
-# must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
+
+# AST-1529: closed-outcome ingress classify (stage_meteorite). Outcome strings and
+# source-ref prefixes are config SSOT — core/prompts must not invent parallel sets.
+STAGE_METEORITE_CONFIG = {
+    "task_key": "stage_meteorite",
+    "outcomes": (
+        "single_jd_no_link",
+        "single_jd_with_more",
+        "multi_jd_inline",
+        "link_list",
+        "not_job_content",
+        "not_original_posting",
+    ),
+    # source kind → prefix for synthesized job_link / company_job_id when no ATS URL.
+    "source_ref_prefixes": {
+        "email": "email-",
+        "slack": "slack-",
+        "paste": "paste-",
+    },
+    # Partitions for AST-1530 scrap map (same literal strings as outcomes — not a second vocabulary).
+    "landable_outcomes": (
+        "single_jd_no_link",
+        "single_jd_with_more",
+        "multi_jd_inline",
+        "link_list",
+    ),
+    "text_source_ref_outcomes": (
+        "single_jd_no_link",
+        "multi_jd_inline",
+    ),
+    "url_scrape_outcomes": (
+        "single_jd_with_more",
+        "link_list",
+    ),
+    "skip_outcomes": (
+        "not_job_content",
+        "not_original_posting",
+    ),
+}
+assert STAGE_METEORITE_CONFIG["task_key"] == "stage_meteorite"
+assert len(STAGE_METEORITE_CONFIG["outcomes"]) == 6
+assert (
+    set(STAGE_METEORITE_CONFIG["landable_outcomes"])
+    | set(STAGE_METEORITE_CONFIG["skip_outcomes"])
+    == set(STAGE_METEORITE_CONFIG["outcomes"])
+)
+assert set(STAGE_METEORITE_CONFIG["landable_outcomes"]).isdisjoint(
+    STAGE_METEORITE_CONFIG["skip_outcomes"]
+)
+assert (
+    set(STAGE_METEORITE_CONFIG["text_source_ref_outcomes"])
+    | set(STAGE_METEORITE_CONFIG["url_scrape_outcomes"])
+    == set(STAGE_METEORITE_CONFIG["landable_outcomes"])
+)
+assert set(STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]).isdisjoint(
+    STAGE_METEORITE_CONFIG["url_scrape_outcomes"]
+)
+assert STAGE_METEORITE_CONFIG["source_ref_prefixes"]["email"] == "email-"
+assert set(STAGE_METEORITE_CONFIG["source_ref_prefixes"]) == {"email", "slack", "paste"}
+assert all(
+    isinstance(p, str) and p and p.endswith("-")
+    for p in STAGE_METEORITE_CONFIG["source_ref_prefixes"].values()
+)
+TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"] = list(
+    STAGE_METEORITE_CONFIG["outcomes"]
+)
+assert TASK_CONFIG["stage_meteorite"]["agent_task"] == STAGE_METEORITE_CONFIG["task_key"]
+assert TASK_CONFIG["stage_meteorite"]["requires_candidate_key"] is True
+assert TASK_CONFIG["stage_meteorite"]["entity_type"] is None
+assert TASK_CONFIG["stage_meteorite"]["trigger_state"] is None
+assert TASK_CONFIG["stage_meteorite"]["scored"] is False
+assert list(TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"]) == list(
+    STAGE_METEORITE_CONFIG["outcomes"]
+)
+assert "meteorite_email" not in TASK_CONFIG
+
+# AST-1529: parse_modes Ruth classify RETIRED — live classify is stage_meteorite.
+# Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
+# Historical: AST-1089/1212 parse_modes + shared mailbox↔parse task_key assert — do not restore.
 METEORITE_EMAIL_PARSE_CONFIG = {
     "task_key": "meteorite_email",
-    # Live agent_task seed name until AST-1182 rename / catch_meteorite_email.
     "legacy_agent_task_key": "parse_meteorite_email",
-    # Archie (AST-1214): candidate-bound mailbox; Avail = Gmail inbox ping.
     "admin_entity_type": "candidate",
-    # live_content first line: "PARSE_MODE: <mode>" — see agent_task prompts.
-    "parse_modes": ("html_links", "subject_body"),
 }
-assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG
-assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subject_body"}
+assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "meteorite_email"
+assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"] == "parse_meteorite_email"
 assert METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"] == "candidate"
-assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"]
-assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == METEORITE_EMAIL_PARSE_CONFIG["task_key"]
+assert "parse_modes" not in METEORITE_EMAIL_PARSE_CONFIG
 
 
 def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
