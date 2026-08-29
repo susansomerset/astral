@@ -348,8 +348,8 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "meteorite_grade_do",
         "meteorite_grade_get",
         "parse_job_list",
-        "parse_meteorite_email",
         "propose_application_responses",
+        "stage_meteorite",
         "preamble_validate_response",
         "prefilter_company",
         "qualify_job_listings",
@@ -377,11 +377,12 @@ class TestAst1252RetiredWrapperTaskKeysAbsent:
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON catalog lock (55 rows after AST-1402).
+    """AST-786 UAT: populated agent_task repo JSON catalog lock (54 rows after AST-1529).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
     AST-1239 wipe left a 50-key Job Review–shaped catalog; AST-1269 restores the two
-    grouping-only alias rows (50 → 52). AST-1402 adds three UI stubs (52 → 55).
+    grouping-only alias rows (50 → 52). AST-1402 adds three UI stubs; later tips drop
+    `parse_meteorite_email` and AST-1529 adds `stage_meteorite` (53 → 54).
     This class locks catalog keys + startup apply only. Alias row shape:
     **`TestAst1222MeteoriteGradeAliasCatalogRows`** / **`TestAst1269AliasAgentTaskSeedRestore`**.
     """
@@ -910,6 +911,69 @@ class TestAst1089ParseMeteoriteEmailCatalogRow:
         user = row["user_prompt"]
         assert "PARSE_MODE" in user or "parse" in user.lower()
         assert by["qualify_meteorite"]["task_seq"] == 3
+
+
+class TestAst1529StageMeteoriteCatalogRow:
+    """AST-1529: live stage_meteorite Ruth row; meteorite_email stays non-live poller shell."""
+
+    _OUTCOMES = (
+        "single_jd_no_link",
+        "single_jd_with_more",
+        "multi_jd_inline",
+        "link_list",
+        "not_job_content",
+        "not_original_posting",
+    )
+
+    def test_stage_meteorite_ruth_shell_and_outcomes(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG, TASK_CONFIG
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        assert "parse_meteorite_email" not in by
+        row = by["stage_meteorite"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_group_name"] == "Meteorite Review"
+        assert row["task_group_order"] == "4500"
+        assert row["task_name"] == row["task_key"] == "stage_meteorite"
+        assert row["task_key"] == TASK_CONFIG["stage_meteorite"]["agent_task"]
+        assert row["task_key"] == STAGE_METEORITE_CONFIG["task_key"]
+        assert row["task_seq"] == 2.0
+        cache = row["cache_prompt"]
+        for outcome in self._OUTCOMES:
+            assert outcome in cache
+        assert list(STAGE_METEORITE_CONFIG["outcomes"]) == list(self._OUTCOMES)
+        assert "PARSE_MODE" not in cache
+        assert "html_links" not in cache
+        # Prompt may name parse_modes only as a banned/retired label — not as live modes.
+        assert "Do not call this `meteorite_email` / parse_modes" in cache or (
+            "parse_modes" in cache.lower() and "not" in cache.lower()
+        )
+        user = row["user_prompt"]
+        assert "outcome" in user.lower()
+        assert "jobs" in user.lower()
+        # Mailbox poller row remains non-live (no Ruth classify).
+        mailbox = by["meteorite_email"]
+        assert mailbox["agent_id"] in ("", None)
+        assert not (mailbox.get("cache_prompt") or "").strip()
+        assert not (mailbox.get("user_prompt") or "").strip()
+        assert by["qualify_meteorite"]["task_seq"] == 2.5
+
+    def test_fixture_stage_meteorite_lockstep(self) -> None:
+        cat = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        fix = json.loads(
+            Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        cat_row = next(r for r in cat if r.get("task_key") == "stage_meteorite")
+        fix_row = next(r for r in fix if r.get("task_key") == "stage_meteorite")
+        assert fix_row["cache_prompt"] == cat_row["cache_prompt"]
+        assert fix_row["user_prompt"] == cat_row["user_prompt"]
+        assert fix_row["agent_id"] == cat_row["agent_id"]
+        assert Path("data/admin/agent_task.json").read_bytes() == Path(
+            "docs/uat-fixtures/AST-756/expected-agent_task.json"
+        ).read_bytes()
 
 
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)

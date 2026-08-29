@@ -3319,3 +3319,39 @@ Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_a
   tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
   -q
 ```
+
+---
+
+### AST-1529 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config`.
+
+`STAGE_METEORITE_CONFIG` (six closed outcomes + source-ref prefixes + landable/skip/text/url partitions) + `TASK_CONFIG["stage_meteorite"]` (outcome enum lockstep; jobs scrap schema). Retires live `TASK_CONFIG["meteorite_email"]` Ruth parse entry and `METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]` — PARSE block is a fold stub only; mailbox poller key stays `METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"`. Catalog: **`docs/test-bible/core/repo_admin_json.md`**. Schema validate: **`docs/test-bible/core/agent.md`**. Core orchestration / caller cutover: siblings **AST-1530** / **AST-1531**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage config + TASK_CONFIG shell + PARSE stub + mailbox poller | `src/utils/config.py` | **`TestAst1529StageMeteoriteConfig`** |
+
+**Broken / obsolete:** **`TestAst1089ParseMeteoriteEmailConfig`** — rewritten as **`TestAst1529StageMeteoriteConfig`**. **`TestAst1144ParseMeteoriteEmailMetadataDict`** (config) — skipped; metadata lived on retired parse schema.
+
+**Integration:** no existing scenarios assert stage_meteorite / parse_modes — none revised.
+
+## QA test manifest
+
+1. Stage config shell: `tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig`
+2. Schema validate: `tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate`
+3. Catalog + fixture twin: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+4. Catalog membership lock: `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys`
+5. Fixture byte twin (cross-ticket): `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
