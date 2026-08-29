@@ -1104,7 +1104,8 @@ def _resume_site_markers(text: str) -> str:
             keepers = [seg.strip() for seg in line.split(auth_sep) if seg.strip()]
             out_lines.append(emit_sep.join(keepers))
         t = line_sep.join(out_lines)
-    t = t.replace(" • ", "\u00a0• ")
+    # Glue both sides of • (old __•__ equivalence) — not left-only NBSP.
+    t = t.replace(emit_sep, "\u00a0•\u00a0")
     return t
 
 
@@ -1495,7 +1496,7 @@ section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
 
 def _emit_education_list_html(text: str) -> str:
     """Per-line education rows: ``<strong>credential</strong>`` + post-marker bullet rest."""
-    bullet = "\u00a0• "
+    bullet = "\u00a0•\u00a0"  # matches _resume_site_markers glue (AST-1528)
     rows: List[str] = []
     for line in str(text).splitlines():
         line = line.strip()
