@@ -882,15 +882,15 @@ Regression: `_validate_response_schema` accepts realistic `parse_meteorite_email
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Dict metadata validates / str rejected | `src/core/agent.py` | **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+| Dict metadata validates / str rejected | `src/core/agent.py` | **`TestAst1144ParseMeteoriteEmailMetadataDict`** (retired — see **AST-1529**) |
 
-**Broken / obsolete:** none — additive against TASK_CONFIG schema.
+**Broken / obsolete (AST-1529):** class replaced by **`TestAst1529StageMeteoriteSchemaValidate`** — `TASK_CONFIG["meteorite_email"]` parse schema removed.
 
 **Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate \
   -q
 ```
 
@@ -1100,5 +1100,28 @@ Board REVISE (optional Step 4): `_decode_payload` should fail fast when the same
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestAst1513DuplicateRubricCodes \
+  -q
+```
+
+
+---
+
+### AST-1529 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config`.
+
+`_validate_response_schema` for `stage_meteorite`: closed `outcome` enum + `jobs` list; unknown outcomes rejected. Supersedes AST-1144 / AST-1212 parse `metadata` / `parse_mode` validation. Schema SSOT: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Landable / skip / unknown outcome | `src/core/agent.py` | **`TestAst1529StageMeteoriteSchemaValidate`** |
+
+**Broken / obsolete:** **`TestAst1144ParseMeteoriteEmailMetadataDict`** — rewritten as **`TestAst1529StageMeteoriteSchemaValidate`**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate \
   -q
 ```

@@ -952,10 +952,10 @@ class TestAst998ExperienceJobRender:
 
     def test_emit_experience_jobs_html_role_chrome(self) -> None:
         # AST-1008 superseded AST-998 subheader/meta/prose chrome with golden article classes.
-        # Title joiner " • " becomes NBSP-bullet via _resume_site_markers.
+        # Title joiner " • " becomes NBSP-bullet-NBSP via _resume_site_markers (AST-1528).
         html = builder_mod._emit_experience_jobs_html(self._JOBS)
         assert '<article class="role">' in html
-        assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
+        assert 'class="compact-title"><strong>Engineer\u00a0•\u00a0Acme Corp</strong></p>' in html
         assert 'class="compact-location"><em>2020-2023: Remote</em></p>' in html
         assert "<li>Shipped widgets</li>" in html
         # Title empty → company-only compact-title
@@ -983,7 +983,7 @@ class TestAst998ExperienceJobRender:
                 }
             ]
         )
-        assert 'class="compact-title"><strong>Dev\u00a0• Solo</strong></p>' in html
+        assert 'class="compact-title"><strong>Dev\u00a0•\u00a0Solo</strong></p>' in html
         # empty location → dates-only compact-location (no dangling place/arrangement)
         assert 'class="compact-location"><em>2024</em></p>' in html
         assert "Remote" not in html
@@ -1003,7 +1003,7 @@ class TestAst998ExperienceJobRender:
             {"professional_summary": "Summary", "experience": self._JOBS},
         )
         assert 'id="experience"' in html or ">Experience<" in html
-        assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
+        assert 'class="compact-title"><strong>Engineer\u00a0•\u00a0Acme Corp</strong></p>' in html
         assert "<li>Shipped widgets</li>" in html
         assert 'class="compact-title"><strong>Beta LLC</strong></p>' in html
         assert ".compact-title" in html  # CSS present
@@ -1038,7 +1038,7 @@ class TestAst998ExperienceJobRender:
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
         monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
         html = builder_mod.build_base_resume("cand-1")
-        assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
+        assert 'class="compact-title"><strong>Engineer\u00a0•\u00a0Acme Corp</strong></p>' in html
         assert "Acme Corp" in html
         assert "<li>Shipped widgets</li>" in html
 
@@ -1061,7 +1061,7 @@ class TestAst998ExperienceJobRender:
             base_resume={"professional_summary": "Base", "experience": "legacy"},
         )
         html = builder_mod.build_resume_from_job(job, cd)
-        assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
+        assert 'class="compact-title"><strong>Engineer\u00a0•\u00a0Acme Corp</strong></p>' in html
         assert "<li>Shipped widgets</li>" in html
         assert "Job summary" in html
 
@@ -1345,7 +1345,7 @@ class TestAst1007NestedTypographyMarkers:
         marked = builder_mod._apply_resume_text_markers(render)
         assert marked["candidate_title"] == "Fractional\u00a0TPM"
         assert marked["core_competencies"] == (
-            "AI\u2011Assisted\u00a0Delivery\u00a0• Cross\u2011Functional\u00a0Execution"
+            "AI\u2011Assisted\u00a0Delivery\u00a0•\u00a0Cross\u2011Functional\u00a0Execution"
         )
         job0 = marked["experience"][0]
         assert job0["company"] == "Somerset\u00a0Consulting"
@@ -1465,9 +1465,9 @@ class TestAst1008ExperienceGoldenLayout:
     @staticmethod
     def _assert_golden_experience(html: str) -> None:
         assert '<article class="role">' in html
-        # " • " joiner → NBSP-bullet via _resume_site_markers; company __ → NBSP
+        # " • " joiner → NBSP-bullet-NBSP via _resume_site_markers (AST-1528); company __ → NBSP
         assert (
-            'class="compact-title"><strong>Principal Technical Program Manager\u00a0• '
+            'class="compact-title"><strong>Principal Technical Program Manager\u00a0•\u00a0'
             "Somerset\u00a0Consulting</strong></p>"
         ) in html
         assert 'class="compact-location"><em>2011 to Present: United States (Full-time Remote)</em></p>' in html
@@ -1479,7 +1479,7 @@ class TestAst1008ExperienceGoldenLayout:
         assert f"<li>{TestAst1008ExperienceGoldenLayout._BULLET_A}</li>" in html
         assert f"<li>{TestAst1008ExperienceGoldenLayout._BULLET_B}</li>" in html
         assert (
-            'class="compact-title"><strong>Technical Program Manager\u00a0• PTown.tech</strong></p>'
+            'class="compact-title"><strong>Technical Program Manager\u00a0•\u00a0PTown.tech</strong></p>'
             in html
         )
         assert (
@@ -1672,13 +1672,13 @@ class TestAst1009EducationSkillsPrior:
 
     def test_emit_education_list_html_splits_post_marker_bullet(self) -> None:
         marked = (
-            "Certified ScrumMaster (CSM)\u00a0• Scrum Alliance, 2024 to 2026\n"
+            "Certified ScrumMaster (CSM)\u00a0•\u00a0Scrum Alliance, 2024 to 2026\n"
             "UW Milwaukee"
         )
         html = builder_mod._emit_education_list_html(marked)
         assert 'class="education-list"' in html
         assert (
-            "<strong>Certified ScrumMaster (CSM)</strong>\u00a0• Scrum Alliance, 2024 to 2026"
+            "<strong>Certified ScrumMaster (CSM)</strong>\u00a0•\u00a0Scrum Alliance, 2024 to 2026"
             in html
         )
         assert "<strong>UW Milwaukee</strong>" in html
@@ -1754,8 +1754,8 @@ class TestAst1010HeaderContactMetaStyles:
     )
     _META = (
         "Resume of Susan Somerset, Fractional TPM, specializing in "
-        "Program Delivery • Cross-Functional Alignment • "
-        "Cloud SaaS • AI-Assisted Engineering"
+        "Program Delivery • Cross-Functional Alignment • "
+        "Cloud SaaS • AI-Assisted Engineering"
     )
 
     def _structure(self) -> dict[str, Any]:
@@ -2028,7 +2028,7 @@ class TestAst1021DocumentTitleChrome:
     # Non-golden title/tagline — proves meta is not the desired-HTML example string.
     _META = (
         "Resume of Susan Somerset, Fractional TPM, specializing in "
-        "Enterprise Implementation • Service Delivery"
+        "Enterprise Implementation • Service Delivery"
     )
     _GOLDEN_META_FRAGMENT = "Senior Technical Product Manager / Program Manager"
     _GOLDEN_META_FRAGMENT2 = "Cloud Platforms, Agile Delivery"
@@ -2220,6 +2220,61 @@ class TestAst1027UatMarkerExpand:
         assert "__" not in html
 
 
+class TestAst1528WordCloudNbspBulletGlue:
+    """AST-1528: shared _resume_site_markers glues NBSP both sides of • (pipe / space / digraph)."""
+
+    def test_resume_site_markers_pipe_space_and_digraph_glue(self) -> None:
+        assert builder_mod._resume_site_markers("A | B | C") == "A\u00a0•\u00a0B\u00a0•\u00a0C"
+        assert builder_mod._resume_site_markers("A • B") == "A\u00a0•\u00a0B"
+        assert builder_mod._resume_site_markers("A__•__B") == "A\u00a0•\u00a0B"
+        # Left-only glue must not remain after the tighten.
+        assert "\u00a0• " not in builder_mod._resume_site_markers("X | Y")
+
+    def test_education_partition_matches_glued_bullet(self) -> None:
+        marked = builder_mod._resume_site_markers(
+            "Certified ScrumMaster (CSM) • Scrum Alliance, 2024 to 2026"
+        )
+        html = builder_mod._emit_education_list_html(marked)
+        assert (
+            "<strong>Certified ScrumMaster (CSM)</strong>\u00a0•\u00a0"
+            "Scrum Alliance, 2024 to 2026"
+        ) in html
+
+    def test_session_word_cloud_emits_glued_separators(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "core_competencies": {
+                    "id": "core_competencies",
+                    "title": "Core Competencies",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                    "format": "word_cloud",
+                },
+            }
+        }
+        html = builder_mod.build_session_base_resume(
+            structure,
+            {
+                "candidate_name": "Susan Somerset",
+                "core_competencies": "Delivery | Risk | Stakeholder trust",
+            },
+        )
+        assert 'class="competencies-list"' in html
+        assert "Delivery\u00a0•\u00a0Risk\u00a0•\u00a0Stakeholder trust" in html
+        assert "\u00a0• " not in html.split('class="competencies-list"', 1)[1].split("</p>", 1)[0]
+
+
 class TestAst1028UatKeywordsMetaEmit:
     """AST-1028: when title/tagline are split, keywords stay in meta — not header/body."""
 
@@ -2323,9 +2378,9 @@ class TestAst1029UatCompetenciesBulletsEmit:
             "Risk and Dependency Management"
         )
         prior = "Project Manager (4 yrs) • Systems Analyst (6 yrs)"
-        # Shared markers turn " • " into NBSP-bullet before emit.
-        comps_html = comps.replace(" • ", "\u00a0• ")
-        prior_html = prior.replace(" • ", "\u00a0• ")
+        # Shared markers turn " • " into NBSP-bullet-NBSP before emit (AST-1528).
+        comps_html = comps.replace(" • ", "\u00a0•\u00a0")
+        prior_html = prior.replace(" • ", "\u00a0•\u00a0")
         html = builder_mod.build_session_base_resume(
             structure,
             {
@@ -3772,8 +3827,8 @@ class TestAst1382BugReproBaseResumeIssues:
         assert "|" not in builder_mod._resume_site_markers(comps)
         assert "Ada | Remote" not in html
         assert "Delivery | Risk" not in html
-        assert ("Ada\u00a0• Remote" in html) or ("Ada • Remote" in html)
-        assert ("Delivery\u00a0• Risk" in html) or ("Delivery • Risk" in html)
+        assert "Ada\u00a0•\u00a0Remote" in html
+        assert "Delivery\u00a0•\u00a0Risk" in html
 
     def test_prior_experience_free_prose_format_emits_summary_intro(
         self, monkeypatch: pytest.MonkeyPatch

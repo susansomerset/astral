@@ -567,3 +567,28 @@ Gap sibling of **AST-1399** (`[board-betty] TESTS: REVISE`). Pins Estelle repo c
 ### AST-1502 · AST-1492 (gap — bootstrap kill-switch)
 
 Primary: **`docs/test-bible/core/bootstrap.md`** § AST-1502. **`TestApplyRepoAdminJsonAtStartup`** rewritten: `apply_repo_admin_json_at_startup` is a no-op on staging/production/local (AST-1497 kill-switch). Export / divergence / catalog seed tests unchanged.
+
+---
+
+### AST-1529 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config`.
+
+Live `stage_meteorite` Ruth row (six outcome literals in `cache_prompt`; seq `2.0` before `qualify_meteorite` `2.5`); `meteorite_email` remains non-live (empty prompts / no `agent_id`). Catalog frozenset drops stale `parse_meteorite_email`, adds `stage_meteorite` (**54** keys). AST-756 fixture whole-file twin synced. Config SSOT: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage Ruth shell + mailbox non-live + fixture lockstep | `data/admin/agent_task.json` | **`TestAst1529StageMeteoriteCatalogRow`** |
+| Catalog membership 54 | same | revised **`TestAst786AgentTaskRepoJsonSeed`** (`parse_meteorite_email` → `stage_meteorite`) |
+
+**Broken / obsolete:** **`TestAst1089ParseMeteoriteEmailCatalogRow`** remains under `_AST1269_SEED_WIPE_SKIP` (parse_modes Ruth shell); live classify coverage is **`TestAst1529StageMeteoriteCatalogRow`**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```

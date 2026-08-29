@@ -7385,62 +7385,55 @@ class TestAst1083StoreResponseDebugResult:
 
 
 @pytest.mark.skipif(
-    "meteorite_email" not in TASK_CONFIG,
-    reason="AST-1212 meteorite_email not on this publish tip",
+    "stage_meteorite" not in TASK_CONFIG,
+    reason="AST-1529 stage_meteorite not on this publish tip",
 )
-class TestAst1144ParseMeteoriteEmailMetadataDict:
-    """AST-1144 / AST-1212: realistic Ruth html_links payload with dict metadata validates."""
+class TestAst1529StageMeteoriteSchemaValidate:
+    """AST-1529: stage_meteorite outcome+jobs schema validates; supersedes AST-1144 parse metadata."""
 
     def _schema(self):
-        return TASK_CONFIG["meteorite_email"]["response_schema"]
+        return TASK_CONFIG["stage_meteorite"]["response_schema"]
 
-    def test_dict_metadata_validates(self) -> None:
+    def test_landable_outcome_with_jobs_validates(self) -> None:
         parsed = {
             "agent_payload": {
-                "parse_mode": "html_links",
+                "outcome": "single_jd_with_more",
                 "jobs": [
                     {
                         "job_link": "https://www.dice.com/job-detail/abc",
                         "job_title": "Engineer",
-                        "metadata": {"company": "Acme", "location": "Remote"},
+                        "jd_text": "Build things.",
                     }
                 ],
             }
         }
         assert agent_mod._validate_response_schema(
-            parsed, self._schema(), "meteorite_email"
+            parsed, self._schema(), "stage_meteorite"
         ) is None
 
-    def test_str_metadata_rejected(self) -> None:
-        # Pre-AST-1144 contract — must not silently accept again.
+    def test_skip_outcome_empty_jobs_ok(self) -> None:
         parsed = {
             "agent_payload": {
-                "parse_mode": "html_links",
-                "jobs": [
-                    {
-                        "job_link": "https://www.dice.com/job-detail/abc",
-                        "metadata": "company=Acme",
-                    }
-                ],
+                "outcome": "not_job_content",
+                "jobs": [],
+            }
+        }
+        assert agent_mod._validate_response_schema(
+            parsed, self._schema(), "stage_meteorite"
+        ) is None
+
+    def test_unknown_outcome_rejected(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "outcome": "html_links",
+                "jobs": [],
             }
         }
         err = agent_mod._validate_response_schema(
-            parsed, self._schema(), "meteorite_email"
+            parsed, self._schema(), "stage_meteorite"
         )
         assert err is not None
-        assert "metadata" in err
-        assert "must be dict" in err
-
-    def test_omitted_metadata_still_ok(self) -> None:
-        parsed = {
-            "agent_payload": {
-                "parse_mode": "html_links",
-                "jobs": [{"job_link": "https://jobs.example.com/a"}],
-            }
-        }
-        assert agent_mod._validate_response_schema(
-            parsed, self._schema(), "meteorite_email"
-        ) is None
+        assert "outcome" in err
 
 
 
