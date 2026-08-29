@@ -241,3 +241,145 @@ context_tokens≈42000
 **Product commit:** `31515387` — Stages 1–4 (`UI_CONFIG` caps, filtered `list_agent_data_batches`, `list_agent_data_runs` kwargs + debug, `GET /adhoc/runs` query params)
 
 Frontend picker chrome left to AST-1535. Load path / Test prefix / `tests/` / bible untouched.
+
+## Radia review
+
+# Radia review — AST-1534
+
+**Publish ref:** `origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api` @ `59ed7f520a0ebc7e98ba21b22b4139ba153cc582`  
+**Baseline:** `origin/dev`  
+**Status gate:** Tests Passed (spawn prompt — trusted)
+
+---
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1534
+**Publish ref:** 59ed7f520a0ebc7e98ba21b22b4139ba153cc582
+**Overall:** FIX-NOW
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | core/agent.py touched but no confidence/scoring logic changed |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task / delegation path edits |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no vector validation changes |
+| astral.batch.batch-id-first | scoped | not-applicable | list query only; no batch-id creation/claim ordering change |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id format logic |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/finally clear helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity-agent response selection logic |
+| astral.config.config-source-of-truth | scoped | conforms | cap/visible-rows live in `UI_CONFIG`; handler reads config not literals |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | dispatcher/config seed-auto untouched |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next / chain edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single `docs/features/interface/ast-1534-*.md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | src/features edits are engineer commits, not Betty |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer product commit `31515387` does not touch `tests/**` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | external layer unchanged |
+| astral.layers.import-direction | scoped | conforms | ui→core→data; utils config import only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | list cap from `UI_CONFIG["adhoc_import_runs_limit"]`; query params are filters not business rules |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check storage |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render/consult orchestration |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `@require_admin` preserved on `/adhoc/runs` |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no admin JSON / bootstrap seed edits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | dispatcher catalog untouched |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot-path seed |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed approval flow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row seed deletes |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed logic |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `list_agent_data_batches` raises via `_run_with_retry`; no data-layer logging added |
+| astral.standards.database-header-inventory | scoped | conforms | header still lists `list_agent_data_batches` on agent_data line |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D gated on `debug=True`; per-row index + found/recorded details |
+| astral.standards.dry-and-focused-functions | scoped | conforms | kwargs extension in place; thin route handler |
+| astral.standards.in-scope-only | scoped | conforms | src/** limited to planned four modules + adhoc config keys |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` in core; no new stdlib logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | runtime names are domain terms; AST comment is ticket trace only |
+| astral.standards.no-cross-contamination | scoped | conforms | no out-of-layer src imports |
+| astral.standards.no-hardcoded-sets | scoped | conforms | 10/5 are config literals not duplicated magic in handler/SQL |
+| astral.standards.public-then-helpers | scoped | conforms | public list helpers unchanged ordering |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config.py change is dict literals only |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transition decisions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend changes |
+| astral.ui.naming-conventions | scoped | conforms | existing admin route naming preserved |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker/config deployment change |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | single `merge-tests(AST-1534)` on sub |
+| orch.git.commit-vocabulary | universal | conforms | commit prefixes match ticket ids |
+| orch.git.flow-direction-inviolable | universal | conforms | sub branch off dev; no reverse merge |
+| orch.git.ftr-sub-topology | universal | conforms | correct `sub/AST-1532/AST-1534-*` publish ref |
+| orch.git.merge-on-checkout | universal | conforms | no checkout merge violations observed |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear commits + one merge-tests |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named dev branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1532 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | dev/sub topology respected |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy bypass |
+| orch.pipeline.plan-is-bible | universal | needs-discussion | product matches plan; test/bible diff includes AST-1537 hunks outside Files Changed |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Interface child reviewed in isolation |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed gate honored |
+| orch.roles.archie-approves-statutes | universal | conforms | no canon statute edits |
+| orch.roles.betty-owns-test-tree | universal | violates | AST-1537 test/bible hunks landed on AST-1534 publish ref |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | no Chuckles assignment flip |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada remains implementer |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Active set scored:** 65
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.admin-endpoint | conforms | `@require_admin` admin blueprint route; thin handler delegates to core; cap from config |
+
+(Joan cited `astral.layers.ui-config-driven-business-logic` — scored above, not a catalog pattern.)
+
+## Plan adherence
+
+**Product (`31515387`, four src files):** Matches Stages 1–4 exactly — `UI_CONFIG` literals, `dispatch_ledger`-joined filtered `list_agent_data_batches`, kwargs + Style-D-on-returned-rows in `list_agent_data_runs`, query params + config cap on `adhoc_runs`, no client `limit`, no frontend, no new route/table. Estimate 2 still fits.
+
+**Tests/bible on tip:** AST-1534 manifest (7 classes) is well-aligned and passes locally (16/16). However the publish ref also carries **AST-1537** test + bible material (`bda5e714`, merged via `merge-tests`) with **no AST-1537 product code** on this branch — plan Files Changed explicitly excluded sibling scope; this is cross-ticket smuggling on the publish ref, not a product defect in the scoped list API itself.
+
+## Findings
+
+### fix-now
+
+**Cross-ticket test/bible contamination (AST-1537 on AST-1534 sub)**  
+- **Location:** `tests/component/core/test_inbox.py`, `test_meteorite_email.py`, `test_gmail.py`, `test_api_inbox.py`, `tests/component/utils/test_config.py` (`TestAst1049InboxCreateJobConfig`), plus AST-1537 sections in `docs/test-bible/core/inbox.md`, `meteorite_email.md`, `external/gmail.md`, `ui/api/api_inbox.md`, `utils/config.md`  
+- **Evidence:** Commit `bda5e714 test(AST-1537)` is in the three-dot range; `src/core/inbox.py`, `src/external/gmail.py` (beyond pre-existing `date`), `src/ui/api/api_inbox.py` have **no** AST-1537 product diff vs `origin/dev`. Off-manifest tests are **red** on this tip (verified: `TestAst1049InboxCreateJobConfig`, `TestAst1049StripExtractEmailHtml`, `TestGetMessageHtml` fail).  
+- **Why fix-now:** Violates `orch.roles.betty-owns-test-tree` and plan boundary (AST-1533/1537 work on AST-1532/1534 publish ref). Leaves a poisoned test tree on the sub even though the narrowed AST-1534 manifest is green.  
+- **Recommended downstream action (not Radia lane):** Re-merge `origin/tests` at an AST-1534-only SHA (drop `bda5e714` / AST-1537 hunks), restore dev-compatible inbox/gmail/config tests on this sub, strip AST-1537 bible sections from this publish ref; keep product commit `31515387` as-is.
+
+### discuss
+
+**Plan-is-bible vs qa merge breadth**  
+- **Location:** publish ref tip vs plan `## Files Changed`  
+- **Question for Chuckles/Betty:** Was `origin/tests` intentionally shared across concurrent children? If yes, document the exception; if no, enforce ticket-scoped test SHAs before merge-tests. AST-1534 product is shippable once test tree is cleaned.
+
+### advisory
+
+**What's solid (product slice):** Layered filter/limit design is clean — empty candidate short-circuits in data, parameterized SQL with ledger join, `adhoc-` strip equivalence matches `run_adhoc_workbench_test`, debug contract on returned rows only, admin route ignores client `limit`. AST-1534 component tests cover scope, ledgerless exclusion, task filter, and cap behavior.
+
+## Frame diff
+
+| Layer | Files | Frame change |
+|-------|-------|----------------|
+| utils | `config.py` | +`adhoc_import_runs_limit` (10), +`adhoc_import_picker_visible_rows` (5) on `UI_CONFIG` |
+| data | `database.py` | `list_agent_data_batches(*, candidate_id, task_key, limit)` — ledger join, optional task filter with one `adhoc-` strip, DESC + LIMIT |
+| core | `agent.py` | `list_agent_data_runs` forwards filter/limit; Style D debug on returned rows only |
+| ui | `api_admin.py` | `GET /adhoc/runs` reads `candidate_id`/`task_key`; passes config cap + `ui_llm_debug()` |
+| tests/docs | 10 non-1534-scoped files | **AST-1537** test + bible hunks (out of ticket scope; several red off-manifest) |
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute list → no C4 straggler callout.  
+- §5f (debug contract): **conforms** on touched `list_agent_data_runs` path.  
+- §5g / external cleanliness: **not applicable** (no external LLM diff).  
+- C7 complete; recommend **Review Posted** only after test-tree cleanup — route to **resolve-child** for contamination, not product rework.
+
+**context_tokens≈95000**
