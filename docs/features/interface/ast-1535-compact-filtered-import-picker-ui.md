@@ -4,18 +4,18 @@
 - **Parent:** [AST-1532](https://linear.app/astralcareermatch/issue/AST-1532)
 - **Publish ref:** `sub/AST-1532/AST-1535-compact-filtered-import-picker-ui`
 
-Agent Ad Hoc import still mounts an unbounded `list-page-table` of every `agent_data` batch (`GET /api/admin/adhoc/runs` with no query params, once on mount). Sibling [AST-1534](https://linear.app/astralcareermatch/issue/AST-1534) already ships filtered/capped runs + `UI_CONFIG["adhoc_import_picker_visible_rows"]` on `GET /api/system/ui_config`. This ticket owns **picker chrome only**: pass `candidate_id` / `task_key` on refetch, constrain the table wrap to ~N visible body rows with overflow scroll, keep Load / confirmLoad / row selection / `GET /api/agent_data/<batch_id>` unchanged.
+Agent Ad Hoc import still mounts an unbounded `list-page-table` of every `agent_data` batch (`GET /api/admin/adhoc/runs` with no query params, once on mount). Sibling [AST-1534](https://linear.app/astralcareermatch/issue/AST-1534) already ships filtered/capped runs + `UI_CONFIG["adhoc_import_picker_visible_rows"]` on `GET /api/ui_config`. This ticket owns **picker chrome only**: pass `candidate_id` / `task_key` on refetch, constrain the table wrap to ~N visible body rows with overflow scroll, keep Load / confirmLoad / row selection / `GET /api/agent_data/<batch_id>` unchanged.
 
 ## Files Changed (planned)
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` | Refetch `/api/admin/adhoc/runs` with `candidate_id` / `task_key` when those change; read `adhoc_import_picker_visible_rows` from `/api/system/ui_config`; set wrap `maxHeight` to ~N body rows + sticky header; clear stale row selection; preserve Load / confirmLoad | ui |
+| `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` | Refetch `/api/admin/adhoc/runs` with `candidate_id` / `task_key` when those change; read `adhoc_import_picker_visible_rows` from `/api/ui_config`; set wrap `maxHeight` to ~N body rows + sticky header; clear stale row selection; preserve Load / confirmLoad | ui |
 
 Do **not** edit: `src/utils/config.py`, `src/data/database.py`, `src/core/agent.py`, `src/ui/api/**`, `src/ui/frontend/src/lib/uiConfig.ts`, `App.css`, Save As / Preview / Test handlers, `GET /api/agent_data/<batch_id>`, `tests/`, bible. Do **not** invent a client `limit` query param (API owns the cap). Do **not** add a new component file or route.
 
 **Depends on AST-1534 contract (already User Testing):**  
-`GET /api/admin/adhoc/runs?candidate_id=<id>&task_key=<catalog_key>` → JSON array `{batch_id, created_at, entity_id, task_key}`, at most `adhoc_import_runs_limit` rows, newest first. Omit/blank `candidate_id` → `[]`. Candidate + blank/omit `task_key` → last N for that candidate across task keys. `adhoc_import_picker_visible_rows` is on `GET /api/system/ui_config`.
+`GET /api/admin/adhoc/runs?candidate_id=<id>&task_key=<catalog_key>` → JSON array `{batch_id, created_at, entity_id, task_key}`, at most `adhoc_import_runs_limit` rows, newest first. Omit/blank `candidate_id` → `[]`. Candidate + blank/omit `task_key` → last N for that candidate across task keys. `adhoc_import_picker_visible_rows` is on `GET /api/ui_config`.
 
 ## Stage 1: Filtered refetch on candidate / task change
 
@@ -59,15 +59,15 @@ Do **not** edit: `src/utils/config.py`, `src/data/database.py`, `src/core/agent.
 
 ## Stage 2: Five-row scrollable picker viewport
 
-**Done when:** The import table wrap scrolls inside a max height that shows about `adhoc_import_picker_visible_rows` body rows (plus the sticky header), read from `GET /api/system/ui_config` — not a bare literal `5` in JSX. With more rows than that (up to the API cap of 10), the wrap scrolls; with fewer, no pointless empty scroll chrome beyond content. Prompt editor tabs below remain reachable without paging through an unfiltered full-page table. Load / confirmLoad / Save As / Preview / Test still behave as before Stage 1.
+**Done when:** The import table wrap scrolls inside a max height that shows about `adhoc_import_picker_visible_rows` body rows (plus the sticky header), read from `GET /api/ui_config` — not a bare literal `5` in JSX. With more rows than that (up to the API cap of 10), the wrap scrolls; with fewer, no pointless empty scroll chrome beyond content. Prompt editor tabs below remain reachable without paging through an unfiltered full-page table. Load / confirmLoad / Save As / Preview / Test still behave as before Stage 1.
 
-1. In the same file, add state for the visible-row count and a mount (or once-per-page) effect that loads it from system ui_config:
+1. In the same file, add state for the visible-row count and a mount (or once-per-page) effect that loads it from ui_config:
 
 ```tsx
   const [importPickerVisibleRows, setImportPickerVisibleRows] = useState<number | null>(null)
 
   useEffect(() => {
-    api("/api/system/ui_config")
+    api("/api/ui_config")
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
       .then(cfg => {
         const n = cfg?.adhoc_import_picker_visible_rows
@@ -77,7 +77,7 @@ Do **not** edit: `src/utils/config.py`, `src/data/database.py`, `src/core/agent.
   }, [])
 ```
 
-⚠️ **Decision:** Fetch `/api/system/ui_config` inline in this page (same pattern as `ArtifactsBaseResumeContent.tsx`) rather than extending `src/ui/frontend/src/lib/uiConfig.ts` — ticket Scope lists only `AdminAnthropicAdHoc.tsx`. Do not add the key to the shared `UiConfig` interface in this ticket.
+⚠️ **Decision:** Fetch `/api/ui_config` inline in this page (live Flask route: `system_bp` `/api` + `/ui_config` — same path as `CandidateProfile.tsx` / `IntakePreamblePanel.tsx`) rather than extending `src/ui/frontend/src/lib/uiConfig.ts` — ticket Scope lists only `AdminAnthropicAdHoc.tsx`. Do not use `/api/system/ui_config` (stale alias; no blueprint route). Do not add the key to the shared `UiConfig` interface in this ticket.
 
 2. Above the component (near other module consts), add named layout mirrors for `.list-page-table` padding in `App.css` (thead `padding: 6px 10px`, tbody `padding: 5px 10px`, `font-size: 13px`, 1px border):
 
@@ -111,6 +111,12 @@ Keep the inner `<table className="list-page-table">`, thead columns, and tbody r
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Revisions
+
+Revision 1 — 2026-08-29
+Driven by: Joan `[plan-rubric] REVIEW … fix ui_config URL` / fix-now (plan-discuss round=1)
+Changes: Every plan reference to `GET /api/system/ui_config` → live `GET /api/ui_config` (summary, Files Changed, Depends-on, Stage 2 Done when / step 1 code + Decision). Decision now cites `CandidateProfile` / `IntakePreamblePanel`; explicitly rejects the stale `/api/system/ui_config` alias.
 
 ## Joan validate
 
