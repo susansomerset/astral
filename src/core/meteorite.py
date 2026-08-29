@@ -3,23 +3,25 @@ Meteorite placeholder company ensure, legacy create, and public land_meteorite (
 
 Lazy-insert stem-keyed companies into METEORITE from METEORITE_CONFIG (default
 stem → meteorite-<candidate_id>). Track = company state METEORITE or legacy
-short_name_prefix. Public entry is land_meteorite: scraps → optional Playwright
-visible text → qualify_meteorite packet enrich → per-row Ruth company_stem ensure
-→ tracker.save_meteorite_job. No email/Gmail/mailbox I/O here — inbox and Contact
-call land (siblings). create_meteorite_job accepts optional stem= for legacy callers.
-create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
+short_name_prefix. Public stage_meteorite (AST-1530): classify blob+source handle
+→ scrap map → land_meteorite; skip outcomes do not land. Public land_meteorite:
+scraps → optional Playwright visible text → qualify_meteorite packet enrich →
+per-row Ruth company_stem ensure → tracker.save_meteorite_job. No email/Gmail/mailbox
+I/O here — inbox and Contact call land (siblings). create_meteorite_job accepts
+optional stem= for legacy callers. create_contact_meteorite (AST-1517 contact-task
+create) wraps scrape-or-text → create.
 """
 from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.candidate import get_candidate
 from src.core import tracker
 from src.data.database import get_company, get_job, save_company, save_job
 from src.external.playwright import get_visible_text
-from src.utils.config import METEORITE_CONFIG, TASK_CONFIG, TRACKER_CONFIG
+from src.utils.config import METEORITE_CONFIG, STAGE_METEORITE_CONFIG, TASK_CONFIG, TRACKER_CONFIG
 from src.utils.logging import get_logger, truncate_debug_content
 
 
@@ -424,6 +426,148 @@ def _land_rollup_outcome(outcomes: List[Dict[str, Any]]) -> str:
     return err
 
 
+async def stage_meteorite(
+    candidate_id: str,
+    blob: str,
+    *,
+    source_kind: str,
+    source_id: str,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Public ingress stage: classify blob → scrap map → land_meteorite or skip (AST-1530).
+
+    Does not claim METEORITE_NEW or run qualify_meteorite dispatch. Callers (AST-1531)
+    own mailbox/inbox/Contact hygiene after this return.
+    """
+    err_key = METEORITE_CONFIG["land_outcome_error"]
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+
+    def _err(error: str, *, batch_id=None, stage_outcome=None) -> Dict[str, Any]:
+        return {
+            "outcome": err_key,
+            "stage_outcome": stage_outcome,
+            "skipped": False,
+            "scraps": [],
+            "land": None,
+            "error": error,
+            "batch_id": batch_id,
+            "company": None,
+            "company_inserted": False,
+            "outcomes": [],
+        }
+
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return _err("candidate_id is required")
+    cand = get_candidate(cid)
+    if not cand:
+        return _err(f"candidate not found: {cid}")
+
+    # Late-import: consult loads is_meteorite_company at module top.
+    from src.core.consult import invoke_stage_meteorite
+
+    ctx = dict(cand) if isinstance(cand, dict) else {}
+    ctx["astral_candidate_id"] = cid
+    invoke = await invoke_stage_meteorite(
+        cid, blob, source_kind=source_kind, source_id=source_id, ctx=ctx, debug=debug,
+    )
+    batch_id = invoke.get("batch_id")
+
+    if not invoke.get("success"):
+        if debug:
+            log.debug_index(
+                func="meteorite.stage_meteorite",
+                index=1,
+                total=1,
+                identifier=cid,
+                outcome="stage_invoke_failed",
+            )
+            log.debug_detail(f"error={invoke.get('error')!r} batch_id={batch_id!r}")
+        return _err(invoke.get("error") or "stage invoke failed", batch_id=batch_id)
+
+    stage_outcome = invoke["outcome"]
+    kind = (source_kind or "").strip()
+    sid = (source_id or "").strip()
+
+    if stage_outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+        if debug:
+            log.debug_index(
+                func="meteorite.stage_meteorite",
+                index=1,
+                total=1,
+                identifier=cid,
+                outcome=str(stage_outcome),
+            )
+            log.debug_detail(
+                f"source_kind={kind} source_id={sid} scrap_count=0 land=skip"
+            )
+        return {
+            "outcome": stage_outcome,
+            "stage_outcome": stage_outcome,
+            "skipped": True,
+            "scraps": [],
+            "land": None,
+            "error": None,
+            "batch_id": batch_id,
+            "company": None,
+            "company_inserted": False,
+            "outcomes": [],
+        }
+
+    scraps, map_err = _map_stage_jobs_to_scraps(
+        stage_outcome,
+        invoke.get("jobs") or [],
+        source_kind=kind,
+        source_id=sid,
+    )
+    if map_err:
+        if debug:
+            log.debug_index(
+                func="meteorite.stage_meteorite",
+                index=1,
+                total=1,
+                identifier=cid,
+                outcome="map_failed",
+            )
+            log.debug_detail(f"error={map_err!r} stage_outcome={stage_outcome!r}")
+        return _err(map_err, batch_id=batch_id, stage_outcome=stage_outcome)
+
+    land = await land_meteorite(cid, scraps=scraps, debug=debug)
+    if debug:
+        log.debug_index(
+            func="meteorite.stage_meteorite",
+            index=1,
+            total=1,
+            identifier=cid,
+            outcome=str(stage_outcome),
+        )
+        # Found stage scraps vs recorded land rollup.
+        scrap_bits = []
+        for s in scraps:
+            link = (s.get("job_link") or "")[:80]
+            body = _land_scrap_body(s)
+            scrap_bits.append(f"link={link!r} body_chars={len(body)}")
+        detail = (
+            f"source_kind={kind} source_id={sid} scrap_count={len(scraps)} "
+            f"land_outcome={land.get('outcome')!r} | " + "; ".join(scrap_bits)
+        )
+        log.debug_detail(truncate_debug_content(detail) if detail.count("\n") > 50 else detail)
+
+    return {
+        "outcome": land.get("outcome"),
+        "stage_outcome": stage_outcome,
+        "skipped": False,
+        "scraps": scraps,
+        "land": land,
+        "error": land.get("error"),
+        "batch_id": batch_id,
+        "company": land.get("company"),
+        "company_inserted": land.get("company_inserted"),
+        "outcomes": land.get("outcomes") or [],
+    }
+
+
 async def land_meteorite(
     candidate_id: str,
     *,
@@ -594,3 +738,69 @@ async def land_meteorite(
         "outcome": rollup,
         "error": top_error,
     }
+
+
+# --- stage_meteorite helpers ---
+
+def _map_stage_jobs_to_scraps(
+    outcome: str,
+    jobs: List[Dict[str, Any]],
+    *,
+    source_kind: str,
+    source_id: str,
+) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    """Map stage agent jobs → land_meteorite scraps via STAGE_METEORITE_CONFIG partitions."""
+    prefixes = STAGE_METEORITE_CONFIG["source_ref_prefixes"]
+    if source_kind not in prefixes:
+        return [], "invalid source_kind"
+    prefix = prefixes[source_kind]
+    sid = (source_id or "").strip()
+
+    def _source_ref(index: Optional[int] = None) -> str:
+        if index is None:
+            return f"{prefix}{sid}"
+        return f"{prefix}{sid}-{index}"
+
+    if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+        return [], None
+
+    rows = [j for j in jobs if isinstance(j, dict)]
+
+    if outcome in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]:
+        if len(rows) < 1:
+            return [], "text outcome produced no jobs"
+        scraps: List[Dict[str, Any]] = []
+        for i, job in enumerate(rows, start=1):
+            ref = _source_ref(None if len(rows) == 1 else i)
+            text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
+            if not text:
+                return [], "text scrap missing jd_text"
+            emp = job.get("employer_name")
+            scraps.append({
+                "job_link": ref,
+                "company_job_id": ref,
+                "text": text,
+                "employer_name": emp.strip() if isinstance(emp, str) else "",
+            })
+        return scraps, None
+
+    if outcome in STAGE_METEORITE_CONFIG["url_scrape_outcomes"]:
+        if len(rows) < 1:
+            return [], "url outcome produced no jobs"
+        scraps = []
+        for i, job in enumerate(rows, start=1):
+            link = (job.get("job_link") or "").strip() if isinstance(job.get("job_link"), str) else ""
+            if not (link.startswith("http://") or link.startswith("https://")):
+                return [], "url scrap missing http(s) job_link"
+            ref = _source_ref(None if len(rows) == 1 else i)
+            text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
+            emp = job.get("employer_name")
+            scraps.append({
+                "job_link": link,
+                "company_job_id": ref,
+                "text": text,
+                "employer_name": emp.strip() if isinstance(emp, str) else "",
+            })
+        return scraps, None
+
+    return [], "unhandled stage outcome"
