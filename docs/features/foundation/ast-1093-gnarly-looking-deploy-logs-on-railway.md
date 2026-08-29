@@ -249,3 +249,24 @@ In `src/external/gmail.py`:
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/17a50f0eb5b952512b4f11a4b497fc23/c4f2a6f8-16eb-4170-8ee8-a27e271cb428/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/1ef72414-32f5-4c69-8107-61df23778f5d/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/17a50f0eb5b952512b4f11a4b497fc23/6f209629-8ff9-4375-b3cb-40b29d5b5d3d/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1509 (parent) | ftr/AST-1509-suppress-gmail-discovery-cache-log-noise |
+| AST-1512 | sub/AST-1509/AST-1512-suppress-gmail-discovery-cache-log-noise |
+
+**Epic worktree:** `astral-AST-1509/` — one active sub checked out at a time.
