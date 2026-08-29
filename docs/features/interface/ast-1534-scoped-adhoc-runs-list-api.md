@@ -383,3 +383,12 @@ Frontend picker chrome left to AST-1535. Load path / Test prefix / `tests/` / bi
 - C7 complete; recommend **Review Posted** only after test-tree cleanup — route to **resolve-child** for contamination, not product rework.
 
 **context_tokens≈95000**
+
+## Resolution
+
+**2026-08-29 — Ada / resolve-child**
+
+- **fix-now (AST-1537 test/bible smuggle):** Cleared by Betty — `dd4af004 test(AST-1534): strip smuggled AST-1537 test/bible from publish ref`. Tip after sync: `c46620fe`. Product `31515387` unchanged.
+- **Re-ran Betty AST-1534 narrowed manifest:** 16 passed (config + revised AST-1451 + AST-1534 data/core/admin classes).
+- **discuss (shared `origin/tests` breadth):** Left for Chuckles/Betty process — not a product gate on this child; no Ada code change.
+- **advisory:** No action.
