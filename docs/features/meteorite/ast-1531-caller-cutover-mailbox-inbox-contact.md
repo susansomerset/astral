@@ -232,3 +232,30 @@ Return keys (AST-1530): `outcome`, `stage_outcome`, `skipped`, `scraps`, `land`,
 Confirm Chuckles estimate: 3 — agree
 
 Three known callers onto an already-shipped `stage_meteorite` contract; mechanical tree deletion is large in `meteorite_email.py` but bounded; inbox/contact are thin rewires plus skip-as-passed / source-handle wiring.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1531
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact` @ `54754e3328e39f5a839e45cf3df12e6c9f3dae93`
+
+## Traceability
+AC6 → Stage 1 (`_handle_bound` → `stage_meteorite`, mechanical tree deleted); Stage 2 (`_land_bound_inbox_message`, `run_fetch_email`, `land_inbox_message_ids`); Stage 3 (`contact_land_meteorite` + Estelle `land_calls` with Slack source handle).
+
+## Findings
+
+### discuss — Bound empty-body mailbox messages
+Plan removes empty-body ignore forks and always calls stage. When subject and HTML are both empty, blob is empty → invoke fails → archive token `error` → `(passed=0, errors=1)` vs old `(passed=1, ignored)`. Leave-inbox behavior similar; runner accounting shifts. If empty bound mail is rare, acceptable; otherwise add an explicit pre-stage empty-blob branch (documented) without restoring the full heuristic tree.
+
+### acceptable — `create_meteorite_job_from_inbox_message` stays on raw `land_meteorite`
+Explicitly out of Scope; not an admin Land / `fetch_email` path in this partition. Ticket AC6 covers the three wired ingress surfaces; legacy Create API is a follow-on if Susan wants full inbox parity.
+
+### acceptable — BOT_BLOCKED / scrape helpers removed from mailbox
+Epic intent: classify via stage → `land_meteorite` scrape path. Short-URL BOT_BLOCKED creation was mechanical-tree behavior; not revived here.
+
+### acceptable — `contact_land_meteorite` signature break
+`source_kind` / `source_id` required; only production caller is Estelle `land_calls` (plan updates it). Paste ingress can use `source_kind="paste"` when wired later.
+
+context_tokens≈52000
