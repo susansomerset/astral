@@ -159,3 +159,24 @@ AC2→Stage 2; AC3→Stage 1; AC4→Stages 1–2 (Load/confirmLoad untouched; sm
 - Depends on AST-1534 query-param contract — sibling sub ref ships `adhoc_import_runs_limit` + `adhoc_import_picker_visible_rows` on ui_config spread.
 
 context_tokens≈52000
+
+## Joan validate (round 2)
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1535
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1532/AST-1535-compact-filtered-import-picker-ui` @ `a80cf9275cc7a04a45131a2776c60f22e022e6ec`
+
+## Traceability
+AC2→Stage 2; AC3→Stage 1; AC4→Stages 1–2 (Load/confirmLoad untouched; smoke Stage 2); parent AC1→N/A (AST-1534 API)
+
+## Notes
+- Status `Plan Ready`; assignee Joan Clarke. One completed plan-discuss round (round=1 concern + reply) — prior fix-now resolved in revision 1 (`/api/ui_config`).
+- Scope: single file `AdminAnthropicAdHoc.tsx` only; no API/config/test creep.
+- Stage 1: `[selectedId, taskKey]` refetch, skip fetch when no candidate, omit `task_key` for “No Task”, stale selection clear, cancellation guard — matches AST-1534 contract and child AC3.
+- Stage 2: `api("/api/ui_config")` matches live `system_bp` route; visible-row count from `adhoc_import_picker_visible_rows`; layout px mirrors documented; `list-page-table-wrap--scroll` + sticky thead — child AC2.
+- Load / confirmLoad / `GET /api/agent_data/<batch_id>` unchanged — child AC4.
+- `pattern.ui.shared-button-roles` preserved (`btn primary` Load); frontend placement/naming statutes satisfied; no client `limit` param.
+
+context_tokens≈55000
