@@ -261,3 +261,17 @@ Catalog-only child on a known AST-1089 lineage; Estimate confirm line present. H
 
 context_tokens≈28000
 ```
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config`
+**Plan path:** `docs/features/meteorite/ast-1529-stage-meteorite-catalog-config.md`
+
+**Built tip:** `25bde8541e88952db1b56f538c9f89bafe0084e4` (`25bde854`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `87a1bfa2` | `STAGE_METEORITE_CONFIG` + `TASK_CONFIG["stage_meteorite"]`; retire parse_modes / mailbox↔parse assert; drop `TASK_CONFIG["meteorite_email"]` |
+| 2 | `25bde854` | `agent_task` `stage_meteorite` Ruth row; `meteorite_email` stays non-live |
+
+**Betty note:** AST-756 fixture twin intentionally out of Scope — sync at qa-child if component tests require it.
