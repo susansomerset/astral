@@ -255,4 +255,139 @@ context_tokens≈38000
 
 ## Radia review
 
-[datt-trace] Active/radia set on AST-1530
+# Radia review — AST-1530
+
+`[code-rubric] revision=2`  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1530  
+**Publish ref:** `origin/sub/AST-1527/AST-1530-core-stage-scrap-land` @ `88a865c7c8c15c298d1176d8e3db3b6a6fdac037`  
+**Overall:** CLEAN  
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1527/AST-1530-core-stage-scrap-land` (17 paths). AST-1530 product delta: `src/core/consult.py` (`invoke_stage_meteorite`), `src/core/meteorite.py` (`stage_meteorite`, `_map_stage_jobs_to_scraps`). Branch tip also carries AST-1529 catalog/config + Betty merge-tests (expected epic lineage; 1530 engineer commits did not re-touch config/catalog).
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no confidence-vector changes |
+| astral.agent.do-task-delegation | scoped | conforms | stage path delegates Ruth classify to `do_task` via consult helper |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade vectors on stage path |
+| astral.batch.batch-id-first | scoped | conforms | `log_batch_id` set/cleared around `do_task` (enrich parity) |
+| astral.batch.batch-id-format | scoped | conforms | `stage_meteorite-stage-{uuid4()}` batch id minted |
+| astral.batch.claim-process-release | scoped | conforms | no claim/dispatch from stage; land remains separate |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity-agent-responses changes |
+| astral.config.config-source-of-truth | scoped | conforms | scrap partitions read `STAGE_METEORITE_CONFIG` (1529 SSOT; not redefined here) |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env/secret surface |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed changes |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | stage invoke does not set `run_next` |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | `ast-1530-core-stage-scrap-land.md` is sole 1530 plan file |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty owns test/bible delta |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits limited to `consult.py` + `meteorite.py` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no new Playwright/scrape stack in stage; URL scrape stays in existing `land_meteorite` |
+| astral.layers.import-direction | scoped | conforms | `consult` late-import in `meteorite.stage_meteorite` with cycle comment |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI changes |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | meteorite orchestrates; consult owns `do_task` invoke |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API surface |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no 1530 catalog edits (1529 carryover only) |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed apply changes in 1530 commits |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot wiring |
+| astral.seed.define-approved | scoped | not-applicable | no new seed catalog |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | n/a |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | n/a |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data-layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` changes |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D index/detail only when `debug=True`; `debug=False` silent on new paths |
+| astral.standards.dry-and-focused-functions | scoped | conforms | invoke helper + mapper are focused; land reused |
+| astral.standards.in-scope-only | scoped | conforms | `agent.py` untouched; no AST-1531 caller cutover |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` / `debug_index` / `debug_detail` via utils |
+| astral.standards.names-not-ticket-ids | scoped | conforms | outcomes/partitions from config literals |
+| astral.standards.no-cross-contamination | scoped | conforms | stage vocabulary stays on `STAGE_METEORITE_CONFIG` |
+| astral.standards.no-hardcoded-sets | scoped | conforms | mapper branches on config partitions, not inline outcome sets |
+| astral.standards.public-then-helpers | scoped | conforms | `stage_meteorite` public before `land_meteorite`; `_map_stage_jobs_to_scraps` after |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no new utils→data imports |
+| astral.state.core-decides-transitions | scoped | conforms | stage does not claim `METEORITE_NEW` or dispatch qualify |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no state-table edits |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no `run()` chain edits |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1530)` on tip |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests` |
+| orch.git.flow-direction-inviolable | universal | conforms | sub on ftr topology |
+| orch.git.ftr-sub-topology | universal | conforms | publish ref matches child pattern |
+| orch.git.merge-on-checkout | universal | conforms | n/a |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | n/a |
+| orch.git.no-dev-agent-branches | universal | conforms | n/a |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1527` |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no unresolved product forks |
+| orch.pipeline.plan-is-bible | universal | conforms | both stages match plan; `agent.py` omission honored |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns `test_consult` / `test_meteorite` + bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy assignee preserved |
+| orch.roles.pre-commit-path-bans | universal | conforms | n/a |
+
+**Straggler (C4):** Joan plan-rubric APPROVED attached; no Excluded-statute list — no stragglers.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited in plan body | — | Implementation follows enrich/`do_task` discipline |
+| `pattern.agent.prompt-persist-before-provider` (Joan discuss) | conforms via delegation | Catalog entry is `proposed`; stage path uses existing `do_task` persist sequencing — no new provider/persist shape |
+
+## Plan adherence
+
+**Stage 1 (`invoke_stage_meteorite`):** Input gates (candidate, `source_kind` in prefixes, `source_id`, non-empty blob); `SOURCE_KIND`/`SOURCE_ID`/`CONTENT` live_content; batch id + `do_index`; `log_batch_id` try/finally; `do_task(stage_meteorite)`; outcome validated against `STAGE_METEORITE_CONFIG["outcomes"]`; skip outcomes coerce `jobs=[]`; gated Style D on failure/success; header inventory line added.
+
+**Stage 2 (`stage_meteorite`):** Candidate gate before agent; late-import consult; skip path returns structured skip without `land_meteorite`; landable path maps via `_map_stage_jobs_to_scraps` (text source-refs overwrite agent URLs; URL outcomes require `http(s)://`; multi-row `{prefix}{sid}-{n}` individuation); calls existing `land_meteorite`; return contract includes `outcome`, `stage_outcome`, `skipped`, `scraps`, `land`, `error`, `batch_id`, plus land rollups at top level.
+
+**Boundaries:** No `agent.py` edits; no AST-1531 mailbox/inbox/contact cutover; no second Playwright stack in stage; no AST-1529 config/catalog re-edit in 1530 commits.
+
+**Estimate (5):** Matches — two core files + focused Betty tests.
+
+**C6 lenses:** Imports at module top; consult cycle broken via late import; no silent `except: pass`; mapper fails loud on empty/invalid scraps; debug contract gated (§5f); no external-layer changes in 1530 diff.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+1. **Dual Style D on `debug=True` success path** — `invoke_stage_meteorite` and `stage_meteorite` each emit index/detail; Joan flagged as acceptable; land may add a third layer when `debug=True`. Not blocking.
+
+2. **`invoke_stage_meteorite` debug detail omits `source_id`** — logs `source_kind` only; handle still in `live_content`. Joan acceptable; AST-1531 operators may want `source_id` in invoke detail if mailbox cutover debug gets noisy.
+
+3. **Invalid-outcome path** — when `do_task` succeeds but outcome ∉ config, no Style D line even if `debug=True` (plan step 8 only specified debug on `do_task` failure). Minor observability gap only.
+
+4. **`agent.py` comment (1529 carryover)** — `_resolve_task_prompts` still says TASK_CONFIG key is `meteorite_email`; stale after 1529; tidy when 1531 wires callers.
+
+5. **Branch diff includes AST-1529 foundation** — expected on sub after sibling merge; 1530 review scope is the consult/meteorite stage path on top of that base.
+
+## What's solid
+
+- Clean separation: consult owns `do_task` assembly; meteorite owns scrap map + land policy.
+- Source-ref rules enforced in mapper (overwrite agent homepage URLs; `http(s)://` gate for scrape outcomes; empty `jd_text` fails whole map).
+- Skip outcomes never reach `land_meteorite`; tests lock gates, map shapes, skip vs land, and Style D on skip.
+- Reuses `land_meteorite` scrape/enrich/save — no parallel ingress stack.
+
+## Frame diff
+
+- `src/core/consult.py`: new `invoke_stage_meteorite` — live_content + batch id + `do_task("stage_meteorite")` + outcome validation.
+- `src/core/meteorite.py`: new public `stage_meteorite` → invoke → map → `land_meteorite` or skip; `_map_stage_jobs_to_scraps` helper after `land_meteorite`.
+- Betty merge-tests: `test_consult.py` (`TestAst1530InvokeStageMeteorite`), `test_meteorite.py` (`TestAst1530StageMeteorite`) + bible entries.
+
+context_tokens≈38000
