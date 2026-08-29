@@ -2459,3 +2459,33 @@ Read-only **Meteorite** companies list (`CompaniesMeteorite.tsx`): inline column
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
 ```
+
+
+### AST-1538 · AST-1533
+
+**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple`.
+
+Manage Email modal (§6c): render `assembled_html` in `<pre class="email-html-source">` (no `html_body` fallback); Copy (`btn secondary`) clips that string + success toast; `.email-html-source` background is `var(--bg-elevated)` (not `#fff`). Land Meteorite multi-select unchanged — covered by **AST-1142**. Assembly API: **`docs/test-bible/core/inbox.md`** / **`docs/test-bible/ui/api/api_inbox.md`** (**AST-1537**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Assembled modal source + no body-only fallback (§6c) | `AdminManageEmail.tsx` | revised matched-row modal case; **`AdminManageEmail — AST-1538`** |
+| Copy control + toast (§6c) | `AdminManageEmail.tsx` | **`AdminManageEmail — AST-1538`** · Copy clips `assembled_html` |
+| Dark purple reading surface | `App.css` | **`AdminManageEmail — AST-1538`** · `.email-html-source` uses `--bg-elevated` |
+| Land Meteorite multi-select regression (AC4) | `AdminManageEmail.tsx` | existing **`AdminManageEmail — AST-1142`** |
+
+**Broken / obsolete:** AST-1040/1051 modal case that mocked `html_body` only and asserted that string in the `<pre>` — revised to `assembled_html`.
+
+**Integration:** none — no existing Manage Email modal scenario; do not invent.
+
+## QA test manifest
+
+1. Routed page + assembled modal + copy + CSS: `tests/component/frontend/pages/test_AdminManageEmail.test.tsx`
+2. Land Meteorite regression (same file): describe **`AST-1142`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+**Pass criterion:** Vitest green on narrowed args — not zero-arg harness / branch-lock gate.

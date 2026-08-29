@@ -5230,3 +5230,11 @@ class TestAst1495MeteoriteCompaniesNav:
             it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
         )
         assert meteorite.get("label") == "Meteorite"
+
+
+class TestAst1534AdhocImportConfigKeys:
+    """AST-1534: UI_CONFIG import-list cap + picker visible-row literals."""
+
+    def test_adhoc_import_cap_and_visible_rows(self) -> None:
+        assert cfg.UI_CONFIG["adhoc_import_runs_limit"] == 10
+        assert cfg.UI_CONFIG["adhoc_import_picker_visible_rows"] == 5
