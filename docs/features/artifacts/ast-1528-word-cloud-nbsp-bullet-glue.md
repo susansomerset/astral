@@ -348,3 +348,7 @@ All edits in `src/core/builder.py` only (parent Component/Technical scope).
 - AST-1381: authoring `|` → emit bullet join unchanged.
 - Parent AC4 / bug boundary: cover from-block unchanged; no new digraphs; non-`word_cloud` formats do not inherit full cloud glue after format switch.
 - Header/contact asymmetric `\u00a0• ` joins unchanged.
+
+## Radia review (AST-1536)
+
+Clean — render-only `_glue_word_cloud_bullet_separators` on `word_cloud` arm; generation-path global glue reverted. [bug-repro] format-switch OK. §3h shortcut — no resolve().
