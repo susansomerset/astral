@@ -239,3 +239,112 @@ Resume site-marker expand: space-bullet-space (`emit_sep`) → NBSP-bullet-NBSP 
 ```
 
 context_tokens≈22000
+
+## Bug: AST-1536 — Word-cloud NBSP glue must apply at render, not generation
+
+### As-is
+
+AST-1528 added `emit_sep` → `\u00a0•\u00a0` inside `_resume_site_markers`, which runs on **every** resume string leaf via `_apply_resume_text_markers` **before** `_emit_body_sections_html` chooses a section format. Pipe-authored cloud text (`A | B | C`) and space-bullet text therefore carry full NBSP-bullet-NBSP glue in the shared markers dict used by base Print, session Open HTML, and job Print. When that section’s structure `format` is switched from `word_cloud` to `free_prose` (or any non-cloud format), emit still reads the already-glued string — free prose shows cloud encoding (`\u00a0•\u00a0`) instead of ordinary `" • "` separators. Education partition was also tied to the global glued shape (`bullet = "\u00a0•\u00a0"`).
+
+### To-be
+
+NBSP-before-bullet and NBSP-between-items glue (`\u00a0•\u00a0`) applies **only** when `_emit_body_sections_html` emits a section whose resolved `format` is `word_cloud` — immediately before `_emit_inline_emphasis_html` on that section’s text. Stored / marker-expanded content keeps ordinary separators (pipe join → `" • "` / left-only `\u00a0• ` at most on the shared marker path); format switches do not inherit cloud glue. Parent AC 1–3 still hold on Print/Open HTML for sections still on `word_cloud`. Cover from-block untouched.
+
+### Repro
+
+1. Candidate (or session paste) with structure section `core_competencies` (or any body section) at `format: word_cloud` and content `"Delivery | Alignment | Cloud"`.
+2. Base Resume Print or session Open HTML — competencies paragraph shows `\u00a0•\u00a0` glue (expected while on word_cloud).
+3. Structure editor: change that section’s `format` to `free_prose`; save structure (content string unchanged — still `"Delivery | Alignment | Cloud"` or `"Delivery • Alignment • Cloud"` with regular spaces).
+4. Print / Open HTML again — **broken today:** body emits with `\u00a0•\u00a0` in free-prose paragraphs because glue ran in `_resume_site_markers` before format dispatch. **Fixed:** free prose shows ordinary `" • "` (or left-only `\u00a0• ` from legacy marker tighten), not full cloud glue; switching back to `word_cloud` restores glued HTML.
+
+Fixture shape (no DB — astral persistence is JSON blobs):
+
+```json
+{
+  "artifacts": {
+    "resume_structure": {
+      "sections": {
+        "core_competencies": {
+          "id": "core_competencies",
+          "title": "Core Competencies",
+          "enabled": true,
+          "order": 3,
+          "format": "free_prose"
+        }
+      }
+    },
+    "base_resume": {
+      "core_competencies": "Delivery | Alignment | Cloud"
+    }
+  }
+}
+```
+
+After step 3, re-print and assert free-prose `<p class="summary-intro">` (or equivalent) does **not** contain `\u00a0•\u00a0`; same blob with `"format": "word_cloud"` must contain `\u00a0•\u00a0` inside `p.competencies-list`.
+
+### Root cause
+
+AST-1528 placed the `\u00a0•\u00a0` tighten on `_resume_site_markers` (shared pre-emit marker expand) instead of on the `word_cloud` HTML emit arm. `_apply_resume_text_markers` runs once upstream of format-specific emit, so glue is format-agnostic — violating Susan’s render-time-only requirement and parent AC4 intent for non-`word_cloud` formats.
+
+### Proposed change
+
+All edits in `src/core/builder.py` only (parent Component/Technical scope).
+
+1. **`_resume_site_markers` — remove global full glue.** Delete the final `t.replace(emit_sep, "\u00a0•\u00a0")` block (AST-1528 lines ~1107–1108). Restore pre-AST-1528 left-only tighten: `t.replace(emit_sep, "\u00a0• ")` so compact-title / education / contact strings keep historical asymmetric NBSP-before-bullet without both-sides cloud glue. Keep unchanged: `__` → `\u00a0`, `~~` → `\u2011`, authoring `|` → `emit_sep.join` (AST-1381 / AST-1027 digraph path — `A__•__B` still becomes `\u00a0•\u00a0` via `__` replacement alone).
+
+2. **Add render-only glue helper** (private, same helpers region as `_resume_site_markers`, e.g. immediately after it):
+
+   ```python
+   def _glue_word_cloud_bullet_separators(text: str) -> str:
+       """NBSP both sides of • for word_cloud HTML emit only (AST-1536)."""
+       if not text:
+           return text
+       emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
+       glued = "\u00a0•\u00a0"
+       t = text.replace(emit_sep, glued).replace("\u00a0• ", glued)
+       return t
+   ```
+
+   Use `emit_sep` from config (not a second hard-coded `" • "` set). The `.replace("\u00a0• ", glued)` pass upgrades left-only marker output to full glue idempotently for cloud emit.
+
+3. **`_emit_body_sections_html` — word_cloud arm only.** Replace:
+
+   ```python
+   elif fmt == "word_cloud":
+       inner_html = (
+           f'      <p class="competencies-list">{_emit_inline_emphasis_html(str(text))}</p>'
+       )
+   ```
+
+   with:
+
+   ```python
+   elif fmt == "word_cloud":
+       cloud_text = _glue_word_cloud_bullet_separators(str(text))
+       inner_html = (
+           f'      <p class="competencies-list">{_emit_inline_emphasis_html(cloud_text)}</p>'
+       )
+   ```
+
+   Do **not** call `_glue_word_cloud_bullet_separators` from `_apply_resume_text_markers`, `_mark_resume_value`, or non-`word_cloud` format arms.
+
+4. **`_emit_education_list_html` — revert partition bullet.** Change `bullet = "\u00a0•\u00a0"` back to `bullet = "\u00a0• "` (matches left-only post-marker education lines; education is `indented_bold_single`, not word_cloud).
+
+5. **Do not touch:** `COVER_FROM_BLOCK_CONFIG`, `candidate.expand_cover_from_block_text`, header `h1_inner` (`name\u00a0• title`), contact `"\u00a0• ".join(parts)`, experience compact-title paths beyond restored left-only marker behavior.
+
+⚠️ **Decision:** Render-time glue in a dedicated helper called only from the `word_cloud` arm — not a second fork of `_resume_site_markers`. Shared marker expand keeps pipe/`__`/`~~` contract; cloud-specific NBSP-between-items is emit-only.
+
+### Blast radius
+
+- **AST-1528 tests (`TestAst1528WordCloudNbspBulletGlue`, bible § AST-1528):** `test_resume_site_markers_pipe_space_and_digraph_glue` must move expectations — `_resume_site_markers("A | B | C")` returns left-only / ordinary join, **not** full glue; session word_cloud HTML test stays green via render arm. Betty **qa-fix** owns test-tree updates (`astral.git.engineer-test-tree-ban`).
+- **Compact-title / meta / competencies tests** flipped for AST-1528 full global glue may revert toward left-only `\u00a0• ` expectations on `_resume_site_markers` output — qa-fix manifest, not make-fix.
+- **Sibling AST-1528 ship:** product fix lands on bug publish ref `sub/AST-1526/AST-1536-word-cloud-nbsp-glue-at-render`; rollup to parent ftr after fix lane completes.
+- **Stored JSON:** no migration — fix is emit-path only; existing blobs with accidental `\u00a0` in content are out of scope unless a separate normalize ticket is filed.
+
+### What must still hold
+
+- Parent AST-1526 AC1–3: `word_cloud` Print/Open HTML (base, session, job) shows `\u00a0` before each `•` and `\u00a0` between items for pipe-, space-, and `__•__`-authored cloud content.
+- AST-1027: `__` / `~~` digraph 1:1 expand unchanged on shared marker path.
+- AST-1381: authoring `|` → emit bullet join unchanged.
+- Parent AC4 / bug boundary: cover from-block unchanged; no new digraphs; non-`word_cloud` formats do not inherit full cloud glue after format switch.
+- Header/contact asymmetric `\u00a0• ` joins unchanged.
