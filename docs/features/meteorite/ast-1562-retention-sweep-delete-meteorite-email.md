@@ -232,3 +232,52 @@ AC6 → Stages 3–4 (delete `meteorite_email.py`, retire unbound/selected-id ma
 - **Tip:** `0eff452b8a2ff1f7760135964f1f5f395dc420ae`
 - **Stages:** 1 retention config/seed/dispatcher · 2 `run_meteorite_retention` · 3 delete `meteorite_email.py` · 4 grep verify + consult late import
 - **Build notes:** Merged sibling tips AST-1557–1561 locally (no origin/ftr). Minimal `api_inbox` literal for land skip outcome after mailbox config key removal.
+
+## Radia review
+
+`[code-rubric] revision=2`  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1562  
+**Publish ref:** `sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email` @ `f2f9de2cefe72ecfe161f1347172caa3cc45d401`  
+**Overall:** DISCUSS  
+**Internal grade:** DISCUSS (product faithful; test-tree collection gap)
+
+**Baseline:** `git diff origin/dev...origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`  
+**Status gate:** Tests Passed (spawn prompt — trusted)
+
+**AST-1562-only product footprint** (commits `7af96e96`…`0eff452b`): `src/utils/config.py`, `src/core/dispatcher.py`, `src/core/meteorite.py`, `src/core/meteorite_email.py` (deleted), `src/core/consult.py` (optional cycle trim), `data/admin/dispatch_task.json` (+1 row), `src/ui/api/api_inbox.py` (unused import removal only).
+
+### Findings
+
+#### discuss — `test_meteorite_email.py` breaks pytest collection after module delete
+- **Location:** `tests/component/core/test_meteorite_email.py` (module-level `from src.core import meteorite_email as ge`)
+- **Finding:** `pytestmark` skipif runs at test time, but module import fails at collection when `find_spec("src.core.meteorite_email")` is `None` (`ImportError` verified on tip). Bible claims the file "skips when module absent"; that is not true for collection.
+- **Impact:** Manifest-scoped green (8 passed on `TestAst1562*`) masks failure on `pytest tests/component/core/test_meteorite_email.py` or any broad `tests/component/core/` collect.
+- **Recommendation:** **Betty** (not resolve-child): delete `test_meteorite_email.py` or guard with `pytest.importorskip("src.core.meteorite_email")` before the import. Re-run component collect before prep-uat.
+
+#### discuss — stacked sibling product on publish ref vs `origin/dev`
+- **Location:** Full three-dot diff (~47 files, AST-1557–1561 stack)
+- **Finding:** Expected epic merge; AST-1562-only engineer delta is 7 files / ~200 LOC net.
+- **Recommendation:** **Chuckles/datt:** ftr merge order per blockedBy; not resolve-child scope.
+
+#### advisory — retention `debug=True` has no per-row Style D index on stale loop
+- **Location:** `run_meteorite_retention` stale_rows loop
+- **Finding:** Plan explicitly makes stale lines always-on info (not Style D). When `debug=True`, multi-row stale loop has no `debug_index` per §5f batch guidance.
+- **Recommendation:** Accept per plan; optional follow-up if operators need Style D on retention sweeps.
+
+#### advisory — purge and stale paths each honor `batch_size` independently
+- **Location:** `run_meteorite_retention`
+- **Finding:** One run may process up to `2 × batch_size` rows (200 landed + 200 stale). Plan does not cap combined total.
+- **Recommendation:** Accept at current scale; tune config if daily sweep needs a hard ceiling.
+
+#### advisory — issue doc Review stub tip stale
+- **Location:** `docs/features/meteorite/ast-1562-*.md` Review section cites `0eff452b`; tip is `f2f9de2c` (merge-tests)
+- **Recommendation:** **Chuckles:** update stub when appending verdict.
+
+### What's solid
+- `run_meteorite_retention`: correct cutoffs, batched purge, stale info-only path, summary counts.
+- Dispatcher retention branch: `entity_batch_id`, ledger, `await` runner, ordered after notify / before `check_inbox`.
+- `meteorite_email.py` deleted; no `from src.core.meteorite_email` in `src/`.
+- Mailbox config cleaned; Stage 4 greps clean; Betty manifest tests green.
+
+**Notes:** No fix-now product violations. Recommended downstream: Betty fixes `test_meteorite_email.py` collection; no mandatory resolve-child product changes for AC6/AC7.
