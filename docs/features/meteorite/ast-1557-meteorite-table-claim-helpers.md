@@ -223,3 +223,8 @@ AC1 → Stages 2–3 (`insert_meteorite_rows` N-row fan-out + schema/claim/updat
 **In-session statute pass:** Universal orch.* statutes — conforms or N/A (orchestration). Scoped considered (data/utils layers): `astral.standards.database-header-inventory`, `astral.standards.no-hardcoded-sets`, `astral.config.config-source-of-truth`, `astral.state.core-decides-transitions`, `astral.batch.claim-process-release`, `astral.batch.batch-id-first`, `astral.batch.batch-id-format`, `astral.standards.in-scope-only`, `astral.standards.data-raises-caller-logs`, `astral.standards.dry-and-focused-functions`, `astral.layers.import-direction` — all **conforms**. Cited patterns `pattern.state.entity-state-transitions` and `pattern.batch.entity-claim-process-release` match plan shape (config registry + data claim trio, core-owned transitions, no `prior_states` enforcement in data). Remaining scoped statutes excluded by layer/path/change-type predicates.
 
 context_tokens≈42000
+
+## Review
+
+- **Publish tip:** `7ae8111a90cc75c499aaf3126094d8de2aa87849` on `sub/AST-1555/AST-1557-meteorite-table-claim-helpers`
+- **Built:** METEORITE_STATES + meteorite table claim/insert/update + retention helpers
