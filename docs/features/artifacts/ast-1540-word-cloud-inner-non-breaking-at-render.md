@@ -251,3 +251,83 @@ Stage 1 landed exactly as specified: `_glue_word_cloud_bullet_separators` keeps 
 2. Optional: record bible shasum on next Betty pass.
 
 context_tokens≈72000
+
+## Bug: AST-1552 — Word-cloud: breaking space after bullet (inner NBSP only)
+
+### As-is
+
+`_glue_word_cloud_bullet_separators` (AST-1536/1540) first glues separators to `\u00a0•\u00a0`, then converts **every** remaining ordinary `" "` to `\u00a0`. The space after each `•` (between the bullet and the first character of the next cloud item) is therefore non-breaking — Print/Open HTML has no soft-wrap opportunity after the bullet. Example emit: `AI\u2011Assisted\u00a0Delivery\u00a0•\u00a0Cloud`.
+
+### To-be
+
+Keep **inner** item ordinary spaces as `\u00a0` and ASCII hyphens as `\u2011`. Leave a **normal breaking** space between `•` and the first character of each following cloud item. Keep `\u00a0` immediately **before** each `•` (do not wrap onto a leading bullet). Example emit: `AI\u2011Assisted\u00a0Delivery\u00a0• Cloud` (ordinary `" "` after `•`).
+
+### Repro
+
+1. Base or session resume with a `word_cloud` section whose content includes multi-item text with ordinary spaces/hyphens inside items, e.g. after markers/`" • "` join: `AI-Assisted Delivery • Cloud` or pipe-authored `AI-Assisted Delivery | Cloud`.
+2. Print / Open HTML — inspect `p.competencies-list` text.
+3. **Broken today:** substring `\u00a0•\u00a0` between items (no ordinary space after `•`).
+4. **Fixed:** substring `\u00a0• ` (NBSP, bullet, ordinary space) between items; inner item still has `AI\u2011Assisted\u00a0Delivery` (no ordinary `" "` / `"-"` left inside the item).
+
+Fixture shape (no DB):
+
+```json
+{
+  "artifacts": {
+    "resume_structure": {
+      "sections": {
+        "core_competencies": {
+          "id": "core_competencies",
+          "title": "Core Competencies",
+          "enabled": true,
+          "order": 3,
+          "format": "word_cloud"
+        }
+      }
+    },
+    "base_resume": {
+      "core_competencies": "AI-Assisted Delivery • Stakeholder trust • Cloud"
+    }
+  }
+}
+```
+
+### Root cause
+
+AST-1540 applied a blanket `t.replace(" ", "\u00a0")` **after** building `\u00a0•\u00a0`. That correctly non-breaks inner item spaces, but the post-bullet character in the glued separator is already `\u00a0` from the AST-1536 glue step — so the cloud string ends with zero breaking spaces. The product intent (Susan UAT) needs a soft-wrap opportunity **after** the bullet while keeping mid-item non-breaking.
+
+### Proposed change
+
+All edits in `src/core/builder.py` only (parent Component/Technical scope — same `_glue_word_cloud_bullet_separators` render helper).
+
+1. In `_glue_word_cloud_bullet_separators`, keep the existing order through hyphen conversion:
+
+   - early return if `not text`
+   - `emit_sep` / `glued = "\u00a0•\u00a0"`
+   - `t = text.replace(emit_sep, glued).replace("\u00a0• ", glued)`
+   - `t = t.replace(" ", "\u00a0")`
+   - `t = t.replace("-", "\u2011")`
+
+2. **Then** restore a breaking space after each bullet (AST-1552):  
+   `t = t.replace("\u00a0•\u00a0", "\u00a0• ")`  
+   so the separator becomes NBSP + `•` + ordinary `" "` while inner item `\u00a0` / `\u2011` from steps above remain.
+
+3. Update the helper docstring to note: after inner space/hyphen non-breaking, restore ordinary space after `•` (AST-1552); NBSP before `•` unchanged.
+
+4. Do **not** call this from `_resume_site_markers` / generation / non-`word_cloud` arms. Do **not** edit `COVER_FROM_BLOCK_CONFIG`, cover from-block, or change en/em/soft hyphens.
+
+⚠️ **Decision:** Restore `\u00a0•\u00a0` → `\u00a0• ` **after** the blanket space→NBSP pass (do not change `glued` to `\u00a0• ` before that pass — a trailing ordinary space would be re-converted to NBSP). Prefer this one-line restore over splitting items and re-joining — same helper, minimal delta. Keep NBSP **before** `•` so lines still do not soft-wrap onto a leading bullet (Susan asked only for the post-bullet space to break).
+
+### Blast radius
+
+- **AST-1540 / AST-1528 / AST-1536 tests** that lock full `\u00a0•\u00a0` on `word_cloud` emit (`TestAst1540WordCloudInnerNonBreaking`, `TestAst1528WordCloudNbspBulletGlue` session HTML, `TestAst1029UatCompetenciesBulletsEmit`, possibly `TestAst1536BugReproWordCloudFormatSwitch` glue positive asserts) must expect `\u00a0• ` after the bullet while still locking inner `\u00a0` / `\u2011`. Betty **qa-fix** (if board says TESTS: REVISE) owns test-tree updates — engineer does not edit `tests/**`.
+- **Original AST-1540 AC2** (“`\u00a0` between items” / both-sides glue) is **superseded for the post-bullet character** by this UAT bug; pre-bullet `\u00a0` and inner non-breaking remain.
+- Markers / format-switch / cover paths unchanged if the helper stays word_cloud-arm-only.
+
+### What must still hold
+
+- AST-1540 AC1: inner ordinary spaces → `\u00a0`, ASCII hyphens → `\u2011` inside cloud items on Print/Open HTML.
+- AST-1540 AC3 / AST-1536: saved/generated text and non-`word_cloud` formats (e.g. `free_prose` after format switch) do **not** inherit cloud inner NBSP / `\u2011` or this separator shape from the glue helper.
+- AST-1540 AC4: base / session / job share `_emit_body_sections_html` `word_cloud` arm.
+- AST-1540 AC5 / boundaries: cover from-block, `_resume_site_markers` left-only + digraphs, non-cloud formats unchanged in intent.
+- AST-1027: `__` / `~~` on the shared marker path unchanged.
