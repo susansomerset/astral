@@ -757,3 +757,46 @@ Remove global `\u00a0•\u00a0` from `_resume_site_markers`; restore left-only `
 ```
 
 **Pass criterion:** item 1 red on pre-fix tree; all manifest lines green after `make-fix` + `test-fix` (red→green on **[bug-repro]**).
+
+---
+
+### AST-1540 · AST-1539 (word-cloud inner non-breaking at render)
+
+**Parent:** [AST-1539](https://linear.app/astralcareermatch/issue/AST-1539/word-cloud-items-with-inner-characters-must-be-non-breaking). **Publish:** `origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render`.
+
+Extend `_glue_word_cloud_bullet_separators`: after `\u00a0•\u00a0` glue, remaining ordinary `" "` → `\u00a0` and ASCII `"-"` → `\u2011` for `word_cloud` HTML emit only. `_resume_site_markers` / generation unchanged (left-only + digraphs). Format switch to `free_prose` must not inherit inner cloud NBSP / `\u2011`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inner space + hyphen on glue helper + session cloud emit | `src/core/builder.py` | **`TestAst1540WordCloudInnerNonBreaking`** |
+| Markers left-only + digraphs unchanged | same | **`TestAst1540WordCloudInnerNonBreaking::test_resume_site_markers_unchanged_left_only_and_digraphs`** + **`TestAst1528WordCloudNbspBulletGlue`** (session assert revised) |
+| Format switch: free_prose no inner cloud encoding | same | **`TestAst1540WordCloudInnerNonBreaking::test_free_prose_does_not_inherit_inner_cloud_encoding`** + **`TestAst1536BugReproWordCloudFormatSwitch`** |
+| Default-format competencies/prior UAT bullets | same | **`TestAst1029UatCompetenciesBulletsEmit`** (revised for inner NBSP/`\u2011`) |
+
+**Broken / obsolete (this pass):** `TestAst1528WordCloudNbspBulletGlue::test_session_word_cloud_emits_glued_separators` (`Stakeholder trust` → `Stakeholder\u00a0trust`); `TestAst1029UatCompetenciesBulletsEmit` expected HTML (spaces/hyphens inside default `word_cloud` items).
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Inner NBSP / non-breaking hyphen (helper + session emit + markers + free_prose): `tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking`
+2. Separator glue regression (revised): `tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue`
+3. Format-switch control: `tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch`
+4. Default word_cloud competencies/prior (revised): `tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit`
+5. Pipe→bullet emit: `tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+
+**AST-1540** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** record via `git show origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render:docs/test-bible/core/builder.md | shasum`.

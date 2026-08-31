@@ -2272,7 +2272,8 @@ class TestAst1528WordCloudNbspBulletGlue:
             },
         )
         assert 'class="competencies-list"' in html
-        assert "Delivery\u00a0•\u00a0Risk\u00a0•\u00a0Stakeholder trust" in html
+        # AST-1540: remaining ordinary spaces inside items → NBSP after bullet glue
+        assert "Delivery\u00a0•\u00a0Risk\u00a0•\u00a0Stakeholder\u00a0trust" in html
         assert "\u00a0• " not in html.split('class="competencies-list"', 1)[1].split("</p>", 1)[0]
 
 
@@ -2437,9 +2438,17 @@ class TestAst1029UatCompetenciesBulletsEmit:
             "Risk and Dependency Management"
         )
         prior = "Project Manager (4 yrs) • Systems Analyst (6 yrs)"
-        # Shared markers turn " • " into NBSP-bullet-NBSP before emit (AST-1528).
-        comps_html = comps.replace(" • ", "\u00a0•\u00a0")
-        prior_html = prior.replace(" • ", "\u00a0•\u00a0")
+        # Default format is word_cloud: render glue → \u00a0•\u00a0 then inner
+        # spaces/hyphens non-breaking (AST-1536 / AST-1540).
+        comps_html = (
+            "AI\u2011Assisted\u00a0Delivery\u00a0•\u00a0"
+            "Cross\u2011Functional\u00a0Execution\u00a0•\u00a0"
+            "Risk\u00a0and\u00a0Dependency\u00a0Management"
+        )
+        prior_html = (
+            "Project\u00a0Manager\u00a0(4\u00a0yrs)\u00a0•\u00a0"
+            "Systems\u00a0Analyst\u00a0(6\u00a0yrs)"
+        )
         html = builder_mod.build_session_base_resume(
             structure,
             {
@@ -2457,6 +2466,91 @@ class TestAst1029UatCompetenciesBulletsEmit:
             text = block.split("</p>", 1)[0]
             assert " | " not in text
             assert "|" not in text
+
+
+class TestAst1540WordCloudInnerNonBreaking:
+    """AST-1540: word_cloud emit converts inner spaces/ASCII hyphens; markers untouched."""
+
+    _CLOUD = "Project Management | AI-Assisted Delivery | Cloud"
+
+    @staticmethod
+    def _structure(*, fmt: str) -> dict[str, Any]:
+        return {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "core_competencies": {
+                    "id": "core_competencies",
+                    "title": "Core Competencies",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                    "format": fmt,
+                },
+            }
+        }
+
+    def test_glue_helper_inner_space_and_hyphen(self) -> None:
+        out = builder_mod._glue_word_cloud_bullet_separators(
+            "Project Management • AI-Assisted Delivery"
+        )
+        assert out == (
+            "Project\u00a0Management\u00a0•\u00a0AI\u2011Assisted\u00a0Delivery"
+        )
+        assert " " not in out
+        assert "-" not in out
+
+    def test_resume_site_markers_unchanged_left_only_and_digraphs(self) -> None:
+        assert builder_mod._resume_site_markers("A | B | C") == "A\u00a0• B\u00a0• C"
+        assert "\u00a0•\u00a0" not in builder_mod._resume_site_markers("X | Y")
+        assert (
+            builder_mod._resume_site_markers("AI~~Assisted__Delivery")
+            == "AI\u2011Assisted\u00a0Delivery"
+        )
+
+    def test_session_word_cloud_emits_inner_nbsp_and_nonbreaking_hyphen(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(fmt="word_cloud"),
+            {
+                "candidate_name": "Susan Somerset",
+                "core_competencies": self._CLOUD,
+            },
+        )
+        cloud = html.split('class="competencies-list"', 1)[1].split("</p>", 1)[0]
+        assert (
+            "Project\u00a0Management\u00a0•\u00a0"
+            "AI\u2011Assisted\u00a0Delivery\u00a0•\u00a0Cloud"
+        ) in cloud
+        assert " " not in cloud
+        assert "-" not in cloud
+
+    def test_free_prose_does_not_inherit_inner_cloud_encoding(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(fmt="free_prose"),
+            {
+                "candidate_name": "Susan Somerset",
+                "core_competencies": self._CLOUD,
+            },
+        )
+        assert 'class="competencies-list"' not in html
+        intro = html.split('class="summary-intro"', 1)[1].split("</p>", 1)[0]
+        # Markers only: left-only bullet; no cloud glue / inner NBSP / \u2011
+        assert "\u00a0•\u00a0" not in intro
+        assert "Project Management" in intro
+        assert "AI-Assisted" in intro
+        assert "\u2011" not in intro
+        assert "Project\u00a0Management" not in intro
 
 
 class TestAst1030UatNoBulletLeadEmit:
