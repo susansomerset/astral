@@ -311,3 +311,27 @@ context_tokens≈76000
 
 - **Publish tip:** `9dca033cdd719a20cfb6fc4fd42895ec4f456b29` on `sub/AST-1555/AST-1560-stage-scrape-land-transitions`
 - **Built:** METEORITE_INGRESS_DISPATCH_CONFIG + dispatch seeds; dispatcher ingress branch; `run_stage_meteorite` / `run_scrape_meteorite` / `run_land_meteorite` + `log_meteorite_row_transition`; retired `_map_stage_jobs_to_scraps` / classify-only `stage_meteorite`
+
+## Radia review
+
+`[code-rubric] revision=2`  
+**Overall:** DISCUSS (product faithful; minor plan-shape + ops edge cases)  
+**Publish ref:** `sub/AST-1555/AST-1560-stage-scrape-land-transitions` @ `c8e5506a387c05f353d9bf2e995b8c54ebf121c5`
+
+**Statute pass:** 64-row full set — conforms on scoped astral.batch.*, astral.state.*, astral.config.*, astral.layers.*, orch.git.*, orch.pipeline.*. Joan R1 batch-id + row-monitoring gaps closed in code.
+
+**Plan adherence:** Stages 1–3 match plan; AC2–AC4 traceability covered by tests.
+
+### discuss
+- **SEED_CONFIG key shape** — one tuple key vs three plan literals; functionally equivalent, not AC-blocking.
+- **Generic Exception paths** — validation paths set ERROR + monitoring; bare exceptions only log + release claim (retry semantics). Optional resolve if Susan wants catch-all ERROR + monitoring.
+- **Stacked sibling product on publish ref** — AST-1557–1559 in full diff; expected after merge-child dependencies.
+- **stage_meteorite string shared with Ruth catalog** — disambiguation via custom dispatcher branch before `_run_unified`; documented.
+
+### advisory
+- Manage Email Land still calls classify-only `stage_meteorite` (AST-1558 sibling; transitional).
+- New `data/admin/dispatch_task.json` on branch — verify admin bootstrap at UAT.
+
+**No fix-now product findings on AST-1560 scope.**
+
+context_tokens≈68000
