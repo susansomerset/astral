@@ -196,3 +196,30 @@ The plan is binding. The agent:
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1557
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1555/AST-1557-meteorite-table-claim-helpers` @ `9e49433068aba301e42fe41160806c4331f7f44c`
+
+## Traceability
+AC1 → Stages 2–3 (`insert_meteorite_rows` N-row fan-out + schema/claim/update/retention helpers); archive/classify/Gmail mid behavior and classify-failure zero-row contract owned by AST-1559 callers on this spine.
+
+## Findings
+
+### acceptable
+- **Location:** Stage 1 — `METEORITE_STATES` keys vs `JOB_STATES`
+- **Finding:** Short state strings (`NEW`, `BOT_BLOCKED`) collide across registries; plan documents separate-dict import discipline.
+- **Recommendation:** Keep the Decision callout; sibling core children must import `METEORITE_STATES` explicitly when touching staging rows.
+
+### acceptable
+- **Location:** Stage 2 — `list_meteorites_by_source`
+- **Finding:** Helper not named in parent technical-scope bullet but supports parent source-ref dedup and stays inside ticket `## Scope` (`database.py`).
+- **Recommendation:** No change — reasonable data-layer affordance for AST-1559.
+
+**In-session statute pass:** Universal orch.* statutes — conforms or N/A (orchestration). Scoped considered (data/utils layers): `astral.standards.database-header-inventory`, `astral.standards.no-hardcoded-sets`, `astral.config.config-source-of-truth`, `astral.state.core-decides-transitions`, `astral.batch.claim-process-release`, `astral.batch.batch-id-first`, `astral.batch.batch-id-format`, `astral.standards.in-scope-only`, `astral.standards.data-raises-caller-logs`, `astral.standards.dry-and-focused-functions`, `astral.layers.import-direction` — all **conforms**. Cited patterns `pattern.state.entity-state-transitions` and `pattern.batch.entity-claim-process-release` match plan shape (config registry + data claim trio, core-owned transitions, no `prior_states` enforcement in data). Remaining scoped statutes excluded by layer/path/change-type predicates.
+
+context_tokens≈42000
