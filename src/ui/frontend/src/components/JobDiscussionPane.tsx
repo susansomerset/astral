@@ -38,9 +38,11 @@ function formatDiscussionContent(raw: string): string {
 function responseBodyForTask(story: readonly AgentStoryEntry[], taskKey: string): string {
   const entry = story.find(e => (e.task_key || "") === taskKey)
   if (!entry) return ""
+  // Skip empty RESPONSE first (AgentStoryTab parity) so a blank block cannot hide a later body.
   const block = (entry.blocks ?? []).find(
-    (b: AgentBlock) => b.type === "RESPONSE" || b.type.startsWith("RESPONSE"),
+    (b: AgentBlock) =>
+      (b.type === "RESPONSE" || b.type.startsWith("RESPONSE")) && b.content !== "",
   )
-  if (!block || block.content === "") return ""
+  if (!block) return ""
   return formatDiscussionContent(block.content)
 }
