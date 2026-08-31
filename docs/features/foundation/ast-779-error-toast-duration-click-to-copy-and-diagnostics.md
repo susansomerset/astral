@@ -488,6 +488,60 @@ Radia **Review Posted** — **no fix-now**; **discuss** none; **advisory** (`HTT
 
 **§9a:** `origin/sub/AST-770/AST-779-error-toast-diagnostics` dry-run merge clean into `origin/dev` and `origin/ftr/AST-770-update-error-toast`.
 
+## Bug: AST-1549 — Fix: error toast X dismisses without copying
+
+### As-is
+
+On an error toast, the shared `Toast` root is fully click-to-copy (AST-779 Stage 3: root `onClick` / `role="button"` / keyboard handlers). There is no separate dismiss control. The leading glyph is ✗ (`\u2717`), which reads as an “X” close affordance; clicking it (or anywhere on the toast) copies the diagnostic bundle instead of dismissing.
+
+### To-be
+
+Clicking a dedicated dismiss (X) control dismisses the toast with no clipboard write. Clicking the error message text or the “Click to copy” hint copies the diagnostic bundle (same payload path as today via `formatDiagnosticBundle` / `handleClick`). Dismiss and copy are separate actions. Success/info toasts and the 15s error auto-dismiss / 2s copy-confirmation behavior stay unchanged.
+
+### Repro
+
+1. Trigger any error toast (e.g. fail an admin API call so `setToast({ text: …, variant: "error" })` fires).
+2. Click the leading ✗ glyph (or any non-text chrome that looks like close).
+3. Observe: clipboard receives the diagnostic bundle; toast stays up (copy confirmation may flash “Copied to clipboard”).
+4. Expected after fix: a dedicated dismiss control closes the toast with no `navigator.clipboard.writeText` call; message / “Click to copy” hint still copy.
+
+### Root cause
+
+AST-779 Stage 3 intentionally made the **entire error toast root** the copy hit-target (`onClick={handleClick}` on the portal root `div`, plus `toast-error-clickable` on that same root). No dismiss control was added; dismiss only happens via the 15s timer. The status icon `\u2717` visually collides with a close affordance, so operators click what they think is dismiss and hit the copy path instead.
+
+### Proposed change
+
+All changes stay inside ticket **## Scope** (`Toast.tsx` + `App.css` only).
+
+1. **`src/ui/frontend/src/components/Toast.tsx`**
+   - Remove blanket root copy wiring for errors: do **not** put `onClick` / `role="button"` / `tabIndex` / `onKeyDown` on the portal root `div`.
+   - Keep `handleClick` / `handleKeyDown` as today (same `formatDiagnosticBundle` + clipboard + 2s `copied` restore, no timer reset).
+   - Wrap the error message text and the “Click to copy” hint in a single copy target element (e.g. `span` or `div` with class `toast-copy-target toast-error-clickable`) that owns `role="button"`, `tabIndex={0}`, `onClick` → `handleClick`, `onKeyDown` → `handleKeyDown`. Success/info keep the current non-interactive layout (no copy target).
+   - Add `handleDismiss` that: stops propagation / prevents default; runs the same exit animation as the timer path (`setVisible(false)` then `setTimeout(onDone, 300)`); never calls `navigator.clipboard.writeText` or `handleClick`.
+   - Render an explicit dismiss control for **error** only, e.g. `<button type="button" className="toast-dismiss" aria-label="Dismiss">` with a visible × (or similar), `onClick={handleDismiss}`. Do not render this button for success/info.
+   - Change `ICONS.error` from `\u2717` to a non-close lookalike status glyph (e.g. `\u26A0` warning or `\u2757`) so the status icon is not mistaken for the dismiss control. Leave success/info icons unchanged.
+
+2. **`src/ui/frontend/src/App.css`** (§11 Toast)
+   - Keep base `.toast { pointer-events: none; }` for success/info.
+   - Ensure error dismiss + copy targets receive clicks: either keep a root class that only sets `pointer-events: auto` (no whole-toast `cursor: pointer`), or set `pointer-events: auto` on `.toast-dismiss` and `.toast-copy-target` / `.toast-error-clickable` when they are children of an error toast.
+   - Move cursor/hover affordance off the full toast chrome onto the copy target (reuse/adapt existing `.toast-error-clickable` / `:hover` rules so they apply to the narrowed region).
+   - Style `.toast-dismiss` as a compact button (reset browser chrome, readable ×, hit target large enough to click, does not steal the message layout). Do not restyle success/info toast chrome.
+
+### Blast radius
+
+- Shared `Toast` is used app-wide; every error toast gains a dismiss control and loses whole-toast click-to-copy.
+- Existing component tests (`tests/component/frontend/components/test_Toast.test.tsx`) currently click the toast root / assume `.toast-error-clickable` on the root — they will need retargeting to the copy region and new coverage for dismiss-without-copy (Betty / fix-board TESTS verdict owns whether that lands as qa-fix).
+- `toastDiagnostics.ts`, API enrichment, and toast consumers are untouched (Boundaries).
+
+### What must still hold
+
+From AST-779 (and this ticket’s AC):
+
+1. Error toasts still default to ~15s auto-dismiss (`ERROR_TOAST_DURATION_MS`); success/info stay ~3s.
+2. Clicking the error **message** or **“Click to copy”** hint still writes the same multi-line diagnostic bundle and shows “Copied to clipboard” for 2s without resetting the dismiss timer.
+3. Success/info toasts remain non-interactive (`pointer-events: none` path unchanged).
+4. No changes to toast consumers, API error enrichment, or `toastDiagnostics.ts` bundle formatting beyond what `Toast.tsx` already calls.
+
 ## Bug: AST-1553 — gap: Toast dismiss-without-copy tests + bible
 
 ### As-is
@@ -555,3 +609,11 @@ Radia **Review Posted** — **discuss:** drop AST-1549 product UI from this gap 
 **Product:** Reverted the `code(AST-1553): bring AST-1549…` tip so this publish ref no longer carries `Toast.tsx` / `App.css` deltas. Betty’s `test(AST-1553):` / bible commits and plan-fix doc section remain.
 
 **§9a:** dry-run merge of publish ref into `origin/dev` and `origin/ftr/AST-1543-close-button-on-error-toast-copies-error` before User Testing.
+
+## Resolution (AST-1549 — 2026-08-31)
+
+Radia **Review Posted** — **fix-now:** reset tip to `ftr` + product (`d218b062` Toast/App.css + plan-fix `## Bug: AST-1549`) only; drop `sync(dev)` archive waves from this publish ref. Tests/bible remain on ftr via AST-1553.
+
+**Product:** `Toast.tsx` / `App.css` dismiss vs copy split retained. Unrelated `docs/features/**` archive commits not on this tip.
+
+**§9a:** dry-run vs `origin/dev` and `origin/ftr/AST-1543-close-button-on-error-toast-copies-error` before User Testing.
