@@ -199,3 +199,213 @@ context_tokens≈38000
 - **Publish ref:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`
 - **Tip:** `9121d03acabc923e0c1cfd3024a157a1022f99e3`
 - **Stages:** 1 config retire · 2 inbox verbs · 3 dispatcher · 4 api_inbox · 5 AdminManageEmail
+
+## Radia review
+
+# Radia review — AST-1558
+
+`[code-rubric] revision=2`  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1558  
+**Publish ref:** `sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter` @ `158e73aa7ae28da5ba78a251d52256268b562f14`  
+**Overall:** DISCUSS  
+**Internal grade:** DISCUSS (product faithful; branch hygiene + off-manifest test debt)
+
+**Baseline:** `git diff origin/dev...origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`  
+**Status gate:** Tests Passed (spawn prompt — trusted)
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch claim paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch ids |
+| astral.batch.claim-process-release | scoped | not-applicable | bind/claim queue retired |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no agent_responses |
+| astral.config.config-source-of-truth | scoped | conforms | land/skip outcomes read `METEORITE_CONFIG` / `STAGE_METEORITE_CONFIG` / mailbox config |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no new env reads |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no artifacts dir |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spikes |
+| astral.dispatch.seed-auto-false | scoped | conforms | `FETCH_EMAIL_CONFIG` + `SEED_CONFIG["dispatch_task-fetch-email"]` removed; no new auto seeds |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single `ast-1558-*.md` plan doc |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Betty test/bible commits |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | engineer `src/` only per plan contract |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Gmail I/O in `src/external`; core orchestrates |
+| astral.layers.import-direction | scoped | conforms | ui→core; core→external; no ui→data/external |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | filter/Land rules server-side; React thin |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | all inbox routes `@require_admin` + auth tests |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no admin JSON edits (verified empty) |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot seed |
+| astral.seed.define-approved | scoped | not-applicable | implement ticket |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator row purge |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage join |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py |
+| astral.standards.debug-contract-gated | scoped | conforms | `list_inbox_messages` / `fetch_candidate_email` emit Style D only when `debug=True` |
+| astral.standards.dry-and-focused-functions | scoped | needs-discussion | `_email_aliases_for_candidate` duplicates candidate lookup walking (Joan flagged; scope forbids `candidate.py` touch) |
+| astral.standards.in-scope-only | scoped | needs-discussion | `METEORITE_STATES` block (AST-1557) landed on this sub via `6a9a046f` — outside AST-1558 plan Files Changed |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` in inbox/api; warnings + re-raise |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain function/route names |
+| astral.standards.no-cross-contamination | scoped | conforms | inbox/dispatcher/api_inbox changes cohesive; retired symbols removed from `src/` |
+| astral.standards.no-hardcoded-sets | scoped | conforms | outcomes/aliases from config; no inline state sets |
+| astral.standards.public-then-helpers | scoped | conforms | public verbs before local lookup helpers |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | config-only utils edits |
+| astral.state.core-decides-transitions | scoped | conforms | Land delegates to `stage_meteorite`; no inbox transition map |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job transition edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | per-id `stage_meteorite` loop; no inbox daisy-chain |
+| astral.ui.frontend-file-placement | scoped | conforms | `AdminManageEmail.tsx` under `pages/` |
+| astral.ui.naming-conventions | scoped | conforms | no naming violations |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1558)` on tip |
+| orch.git.commit-vocabulary | universal | conforms | staged `code`/`test`/`docs`/`merge-tests` |
+| orch.git.flow-direction-inviolable | universal | conforms | sub under AST-1555 |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1555/AST-1558-…` |
+| orch.git.merge-on-checkout | universal | conforms | no rebase violation observed |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | clean history |
+| orch.git.no-dev-agent-branches | universal | conforms | engineer sub branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1555 worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy invention |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–5 implemented |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Meteorite child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review |
+| orch.roles.archie-approves-statutes | universal | conforms | no new statutes |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest + tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Hedy assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer still assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | no hook bypass |
+
+**Active set scored:** 64 rows (registry lists 65; all corpus ids covered).
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.layers.import-discipline | conforms | Gmail in external; bind/filter/archive in core; ui calls core only |
+| pattern.ui.admin-endpoint | needs-discussion | `@require_admin` (pre-existing on this blueprint) vs catalog canonical `@require_auth` — Joan precedent on peer inbox routes |
+
+---
+
+## Plan adherence
+
+**Stages 1–5:** Matches plan.
+
+| Stage | Verdict |
+|-------|---------|
+| **1 Config** | `FETCH_EMAIL_CONFIG`, `INBOX_BIND_CONFIG`, `TASK_CONFIG["fetch_email"]`, `SEED_CONFIG["dispatch_task-fetch-email"]` deleted; header inventory updated |
+| **2 inbox.py** | `fetch_candidate_email`, `archive_candidate_email`, unenriched `list_inbox_messages`, bind/fetch/land-bound symbols removed, count stubs `{}`/`0`, HTML/strip keepers retained, Style D when `debug=True` |
+| **3 dispatcher** | `ensure_fetch_email_dispatch_task`, `_dispatch_one` fetch_email branch, `run_task` available_count branch removed |
+| **4 api_inbox** | All vs `candidate_id` list; `_email_aliases_for_candidate` local; create-job route gone; Land requires `candidate_id`, loops `stage_meteorite` via `asyncio.run` |
+| **5 AdminManageEmail** | Default All filter; Matched column removed; Land disabled when All; POST includes `candidate_id` |
+
+**Boundaries respected in `src/`:** No `meteorite_email.py`, `candidate.py`, `api_admin.py` edits. `archive_candidate_email` present but unwired (plan-acceptable for AST-1559).
+
+**Estimate 5:** Honest for ~350 LOC net shrink + API/UI rewrite + Betty test pass.
+
+**Sibling degradation:** Documented — `meteorite_email` still expects bind enrichment until AST-1559; bind-count stubs return 0.
+
+---
+
+## Findings
+
+### discuss — AST-1557 `METEORITE_STATES` on AST-1558 publish ref
+
+- **Location:** `src/utils/config.py` (commit `6a9a046f` on same sub)
+- **Finding:** Three-dot diff adds full `METEORITE_STATES` / `METEORITE_STATES_RETENTION` block — AST-1557 scope, not listed in AST-1558 Files Changed. No `database.py` helpers on this branch.
+- **Recommendation:** Not a functional defect for this ticket. **Chuckles/datt:** confirm parallel-child stacking on shared ftr/sub ancestry is intentional; avoid double-landing config on ftr merge if AST-1557 lands separately first.
+
+### discuss — sibling test/bible bleed on publish ref
+
+- **Location:** `tests/component/data/database/test_meteorites.py`, `tests/component/core/test_tracker.py`, `tests/component/ui/api/test_api_jobs.py`, related bible blocks (AST-1557 / AST-1556 ancestry via `origin/tests`)
+- **Finding:** Present in diff vs `origin/dev` but outside AST-1558 manifest; Betty manifest correctly scopes green runs.
+- **Recommendation:** **Chuckles:** strip or document parallel-track carry before ftr merge; not resolve-child product work.
+
+### discuss — off-manifest legacy test references deleted `INBOX_BIND_CONFIG`
+
+- **Location:** `tests/component/core/test_ast1467_gaze_email_retire.py::test_mailbox_config_is_meteorite_email_only`
+- **Finding:** Asserts `cfg.INBOX_BIND_CONFIG["inbox_address"]` — AttributeError if that module is run; not in AST-1558 manifest.
+- **Recommendation:** **Betty** revise on next sweep (assert mailbox address via `METEORITE_EMAIL_MAILBOX_CONFIG` only, or drop bind coupling). Manifest green does not prove zero-arg harness safety.
+
+### discuss — `_email_aliases_for_candidate` duplication (Joan carry-forward)
+
+- **Location:** `src/ui/api/api_inbox.py`
+- **Finding:** Reimplements `CANDIDATE_LOOKUP_CONFIG` path walking because plan forbids `candidate.py` touch.
+- **Recommendation:** Accept for this ticket; optional shared core helper follow-up.
+
+### discuss — Land orchestration in UI API layer
+
+- **Location:** `src/ui/api/api_inbox.py::inbox_land_meteorite`
+- **Finding:** Strip loop + `asyncio.run` + `stage_meteorite` moved from deleted inbox land-bound helpers into API — heavier than ideal thin-wrapper.
+- **Recommendation:** Plan- and Joan-approved; proceed to UT; AST-1560 may rehome when table transitions land.
+
+### advisory — `get_message_html` failures map to skip-missing outcome
+
+- **Location:** `inbox_land_meteorite` exception handler
+- **Finding:** All `get_message_html` failures use `selected_outcome_skipped_not_in_inbox`, not generic `"error"` — plan bullets slightly tensioned; matches prior mailbox skip semantics.
+- **Recommendation:** No change unless Susan wants stricter error vs skip distinction.
+
+### advisory — `fetch_candidate_email` loads full inbox then filters in memory
+
+- **Location:** `src/core/inbox.py`
+- **Finding:** Joan flagged; acceptable at admin scale per plan Decision.
+- **Recommendation:** No plan change in this slice.
+
+### advisory — `@require_admin` vs pattern `require_auth`
+
+- **Location:** `src/ui/api/api_inbox.py`
+- **Finding:** Pre-existing on dev; auth + non-admin forbidden tests present.
+- **Recommendation:** Citation hygiene only.
+
+---
+
+## What's solid
+
+- Clean retirement of bind/fetch_email surfaces: config, dispatcher, inbox, API, and UI aligned.
+- `list_inbox_messages` no longer attaches `candidate_match`; filter uses explicit aliases From **or** To.
+- Manage Email AC: default All, Matched column gone, Land gated on candidate filter + required `candidate_id`.
+- Layer discipline maintained; debug contract gated on inbox paths.
+- Betty manifest covers inbox core, config retirements, API, and Vitest page tests.
+
+---
+
+## Frame diff
+
+| Area | Paths | Verdict |
+|------|-------|---------|
+| AST-1558 product | `src/core/inbox.py`, `dispatcher.py`, `api_inbox.py`, `AdminManageEmail.tsx`, `config.py` retirements | In-scope; plan-faithful |
+| AST-1558 tests/bible | `test_inbox.py`, `test_api_inbox.py`, `test_AdminManageEmail.test.tsx`, `TestAst1558FetchEmailBindRetired`, inbox/api/pages bible | In-scope |
+| AST-1557 bleed | `METEORITE_STATES` in `config.py`; `test_meteorites.py` + bible | Discuss — sibling |
+| AST-1556 bleed | `test_tracker.py`, `api_jobs` bible/tests | Discuss — sibling |
+| Off-manifest debt | `test_ast1467_gaze_email_retire.py` | Discuss — Betty |
+
+---
+
+## Notes
+
+- Joan plan-rubric APPROVED @ `81c44eb9`; no Excluded-statute attachment for straggler sweep.
+- C6 lenses (imports, layers, silent failure, fallbacks, logging, batch §5f, external §5g): no fix-now violations in AST-1558 `src/` footprint.
+- `grep` confirms no remaining `FETCH_EMAIL_CONFIG` / `INBOX_BIND_CONFIG` / `run_fetch_email` in `src/`.
+- No fix-now product findings on AST-1558 scope.
+
+---
+
+## Recommended actions (downstream — not Radia)
+
+1. **Chuckles:** Append verdict; post slim upshot; → Review Posted.
+2. **Chuckles/datt:** Resolve AST-1557 config + sibling test bleed on sub tip before ftr merge.
+3. **Betty (follow-up):** Fix `test_ast1467` `INBOX_BIND_CONFIG` assertion off-manifest.
+4. **resolve-child:** No AST-1558 product changes required; proceed to UT after discuss acknowledged.
+
+context_tokens≈62000
