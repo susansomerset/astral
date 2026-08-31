@@ -277,3 +277,32 @@ AC2 → Stages 1–2 (dispatcher `entity_batch_id` → per-row `claim_meteorite_
 **In-session statute pass:** Claim/process/clear + one transition per runner — **astral.batch.claim-process-release** / **astral.state.no-daisy-chain-in-run** conform (batch_id propagation excepted). Core-owned state writes via `update_meteorite` — **astral.state.core-decides-transitions** conform. Playwright via existing external helpers — **pattern.layers.import-discipline** conform. Universal orch.* — N/A/conforms.
 
 context_tokens≈72000
+
+## Joan validate (round 2)
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1560
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1555/AST-1560-stage-scrape-land-transitions` @ `395d3775c9544d95d4cfa77e511fccd768ba4213`
+
+## Traceability
+AC2 → Stages 1–2 (dispatcher `entity_batch_id` sole golden ticket → `claim_meteorite_batch` / `clear_meteorite_batch` + single-transition runners); AC3 → Stage 2c (`save_meteorite_job` → `METEORITE_NEW` + `astral_job_id` + `LANDED`, no enrich); AC4 → Stages 2–3 (no `source_ref` synthesis, null `job_link`/`company_job_id` at land); parent functional scope #6 → Stage 1 `METEORITE_MONITORING_CONFIG` row formats + Stage 2d `log_meteorite_row_transition` on `BOT_BLOCKED` / `ERROR` / `LANDED`.
+
+## Findings
+
+### acceptable
+- **Location:** Stage 2a — `url_scrape_outcomes` missing-link branch
+- **Finding:** Step 3 says “Require link non-empty” but does not spell an explicit ERROR + monitoring branch (unlike scrape Stage 2b step 1).
+- **Recommendation:** Implementer should mirror scrape missing-link handling; optional one-line plan add, not blocking.
+
+### acceptable
+- **Location:** Stage 1 — `METEORITE_MONITORING_CONFIG` extend
+- **Finding:** Plan depends explicitly on AST-1557 symbols; row-monitoring extension assumes AST-1559 base block landed via merge-child order.
+- **Recommendation:** Chuckles merge AST-1559 before build-child; no plan rewrite needed.
+
+**Round=1 resolution:** Prior fix-now (batch_id propagation + row-transition monitoring) addressed in revision @ `395d3775`. Discuss item (`stage_meteorite` naming / dispatcher branch ordering) documented in Stage 1.
+
+**In-session statute pass:** **astral.batch.batch-id-first**, **astral.batch.claim-process-release**, **pattern.batch.entity-claim-process-release** — conforms (single `entity_batch_id`). **astral.state.no-daisy-chain-in-run**, **astral.state.core-decides-transitions** — conforms. **astral.standards.logging-via-utils**, **astral.config.config-source-of-truth** — conforms. **pattern.layers.import-discipline** — conforms. Universal orch.* — N/A/conforms.
+
+context_tokens≈76000
