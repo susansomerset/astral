@@ -11,14 +11,17 @@ AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
 (`slack_debug_enabled`); Style D found/recorded depth on Contact Slack path.
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
-AST-1471: Contact scrap path lands via `contact_land_meteorite` → `land_meteorite`.
+AST-1471 / AST-1531: Contact scrap path → `contact_land_meteorite` → `stage_meteorite`.
+AST-1515: Contact-task markup parse/dispatch + same-event follow-up turn.
 """
 
 from __future__ import annotations
 
 import asyncio
+import importlib
 import json
 import os
+import re
 import threading
 import time
 from collections import OrderedDict
@@ -45,7 +48,13 @@ from src.external.slack import (
     post_message,
     verify_slack_signature,
 )
-from src.utils.config import CONTACT_CONFIG, CONTACT_ESTELLE_CONFIG
+from src.utils.config import (
+    CONTACT_CONFIG,
+    CONTACT_ESTELLE_CONFIG,
+    CONTACT_TASK_CONFIG,
+    METEORITE_CONFIG,
+    STAGE_METEORITE_CONFIG,
+)
 from src.utils.deploy_status import get_deploy_label
 from src.utils.logging import get_logger, truncate_debug_content
 
@@ -553,22 +562,64 @@ def run_contact_skill(
 def contact_land_meteorite(
     astral_candidate_id: str,
     *,
+    source_kind: str,
+    source_id: str,
     scraps: Optional[List[Dict[str, Any]]] = None,
     text: Optional[str] = None,
     job_link: Optional[str] = None,
     employer_name: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Contact/Estelle sync entry to land_meteorite (AST-1471)."""
-    from src.core.meteorite import land_meteorite
+    """Contact/Estelle sync entry to stage_meteorite (AST-1531)."""
+    err = {
+        "outcome": METEORITE_CONFIG["land_outcome_error"],
+        "error": "source_kind/source_id required",
+        "skipped": False,
+        "scraps": [],
+        "land": None,
+        "outcomes": [],
+        "company": None,
+        "company_inserted": False,
+    }
+    kind = (source_kind or "").strip()
+    sid = (source_id or "").strip()
+    if kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"] or not sid:
+        return err
+
+    parts: List[str] = []
+    if isinstance(text, str) and text.strip():
+        parts.append(text.strip())
+    elif isinstance(scraps, list) and scraps:
+        for scrap in scraps:
+            if not isinstance(scrap, dict):
+                continue
+            for key in ("text", "content", "html_body"):
+                val = scrap.get(key)
+                if isinstance(val, str) and val.strip():
+                    parts.append(val.strip())
+            link = scrap.get("job_link")
+            if isinstance(link, str) and link.strip():
+                parts.append(link.strip())
+    blob = "\n\n".join(parts)
+    link_kw = job_link.strip() if isinstance(job_link, str) else ""
+    if link_kw and link_kw not in blob:
+        blob = f"{blob}\n\n{link_kw}" if blob else link_kw
+    emp = employer_name.strip() if isinstance(employer_name, str) else ""
+    if emp:
+        blob = f"{blob}\n\nEmployer: {emp}" if blob else f"Employer: {emp}"
+    if not blob.strip():
+        out = dict(err)
+        out["error"] = "blob is required"
+        return out
+
+    from src.core.meteorite import stage_meteorite
 
     return asyncio.run(
-        land_meteorite(
+        stage_meteorite(
             astral_candidate_id,
-            scraps=scraps,
-            text=text,
-            job_link=job_link,
-            employer_name=employer_name,
+            blob,
+            source_kind=kind,
+            source_id=sid,
             debug=debug,
         )
     )
@@ -765,6 +816,143 @@ def resolve_slack_user(
     }
 
 
+_CONTACT_TASK_MARKUP_RE = re.compile(
+    r"~~/([a-z][a-z0-9_]*)\s*(.*?)\s*~~",
+    re.DOTALL,
+)
+
+
+def contact_tasks() -> Dict[str, Any]:
+    """Shallow copy of CONTACT_TASK_CONFIG allowlist."""
+    return dict(CONTACT_TASK_CONFIG)
+
+
+def parse_contact_task_markup(text: str) -> List[Tuple[str, str]]:
+    """Return ordered (task_key, param) pairs from Estelle reply markup."""
+    raw = text if isinstance(text, str) else ""
+    out: List[Tuple[str, str]] = []
+    for m in _CONTACT_TASK_MARKUP_RE.finditer(raw):
+        key = (m.group(1) or "").strip()
+        param = (m.group(2) or "").strip()
+        if key:
+            out.append((key, param))
+    return out
+
+
+def strip_contact_task_markup(text: str) -> str:
+    """Remove all contact-task markup spans; collapse runs of blank lines to one."""
+    raw = text if isinstance(text, str) else ""
+    stripped = _CONTACT_TASK_MARKUP_RE.sub("", raw)
+    stripped = re.sub(r"\n{3,}", "\n\n", stripped)
+    return stripped.strip()
+
+
+def _resolve_contact_task_handler(handler: str):
+    """Import a contact-task handler by dotted path; None when unavailable."""
+    h = (handler or "").strip()
+    if not h or "." not in h:
+        return None
+    module_path, _, attr_name = h.rpartition(".")
+    if not module_path or not attr_name:
+        return None
+    try:
+        mod = importlib.import_module(module_path)
+        return getattr(mod, attr_name)
+    except (ImportError, AttributeError, ValueError):
+        return None
+
+
+def run_contact_task_dispatch(
+    *,
+    astral_candidate_id: str,
+    markup_spans: List[Tuple[str, str]],
+    debug: bool = False,
+) -> List[Dict[str, Any]]:
+    """Run allowlisted contact tasks from parsed reply markup (AST-1515)."""
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    results: List[Dict[str, Any]] = []
+    total = len(markup_spans)
+    cid = (astral_candidate_id or "").strip()
+
+    for index, (key, param) in enumerate(markup_spans, start=1):
+        if key not in CONTACT_TASK_CONFIG:
+            continue
+        meta = CONTACT_TASK_CONFIG[key]
+        if debug:
+            log.debug_index(
+                func="contact.run_contact_task_dispatch",
+                index=index,
+                total=total,
+                identifier=key,
+                outcome="found",
+            )
+            for line in truncate_debug_content(f"param={param!r}"):
+                log.debug_detail(line)
+
+        if meta.get("requires_candidate") and not cid:
+            row = {"ok": False, "error": "no_candidate", "task_key": key}
+            results.append(row)
+            if debug:
+                log.debug_index(
+                    func="contact.run_contact_task_dispatch",
+                    index=index,
+                    total=total,
+                    identifier=key,
+                    outcome="recorded",
+                )
+                log.debug_detail(f"ok=False error=no_candidate")
+            continue
+
+        handler = _resolve_contact_task_handler(meta.get("handler") or "")
+        if handler is None:
+            row = {"ok": False, "error": "handler_unavailable", "task_key": key}
+            results.append(row)
+            if debug:
+                log.debug_index(
+                    func="contact.run_contact_task_dispatch",
+                    index=index,
+                    total=total,
+                    identifier=key,
+                    outcome="recorded",
+                )
+                log.debug_detail("ok=False error=handler_unavailable")
+            continue
+
+        try:
+            if asyncio.iscoroutinefunction(handler):
+                raw_result = asyncio.run(handler(cid, param, debug=debug))
+            else:
+                raw_result = handler(cid, param, debug=debug)
+            if isinstance(raw_result, dict):
+                row = dict(raw_result)
+                row.setdefault("task_key", key)
+                if "ok" not in row:
+                    row["ok"] = True
+            else:
+                row = {"ok": True, "result": raw_result, "task_key": key}
+        except Exception as exc:
+            row = {"ok": False, "error": str(exc), "task_key": key}
+
+        results.append(row)
+        if debug:
+            log.debug_index(
+                func="contact.run_contact_task_dispatch",
+                index=index,
+                total=total,
+                identifier=key,
+                outcome="recorded",
+            )
+            ok = bool(row.get("ok"))
+            if ok:
+                payload = json.dumps(row, default=str)
+                for line in truncate_debug_content(payload):
+                    log.debug_detail(f"ok=True {line}")
+            else:
+                log.debug_detail(f"ok=False error={row.get('error')!r}")
+
+    return results
+
 
 def run_contact_estelle_turn(
     *,
@@ -854,6 +1042,19 @@ def run_contact_estelle_turn(
         path_s = ", ".join(str(x) for x in paths)
         lines.append(f"- {skill_key}: {desc} | paths: {path_s}")
     lines.append("")
+    lines.append("## Available contact tasks (markup)")
+    lines.append("Embed instructions in agent_payload.reply only — not skill_calls.")
+    lines.append("Syntax: ~~/<task_key> <parameters>~~")
+    lines.append(
+        "Only use task keys listed below. Contact executes markup after your turn "
+        "and strips it from the Slack-visible reply. Do not paste raw task payloads "
+        "into reply — stay conversational."
+    )
+    for task_key, meta in contact_tasks().items():
+        desc = (meta or {}).get("description") or ""
+        hint = (meta or {}).get("param_hint") or ""
+        lines.append(f"- {task_key}: {desc} | param: {hint}")
+    lines.append("")
     lines.append("## Land meteorite (job scraps)")
     lines.append(
         "When the candidate shares a job listing (link and/or text), emit land_calls as a"
@@ -903,6 +1104,54 @@ def run_contact_estelle_turn(
     )
     turn = conversational_turn_from_do_task_result(result)
 
+    reply_raw = turn.get("reply") if isinstance(turn.get("reply"), str) else ""
+    markup_spans = parse_contact_task_markup(reply_raw)
+    reply_stripped = strip_contact_task_markup(reply_raw)
+    contact_task_results = run_contact_task_dispatch(
+        astral_candidate_id=astral_candidate_id or "",
+        markup_spans=markup_spans,
+        debug=debug,
+    )
+    listed_markup = any(key in CONTACT_TASK_CONFIG for key, _ in markup_spans)
+    reply_for_slack = reply_stripped
+    if listed_markup:
+        follow_lines = [
+            f"channel={channel}",
+            f"thread_ts={thread_ts or ''}",
+            f"astral_candidate_id={astral_candidate_id or ''}",
+            f"candidate_state={candidate_state or ''}",
+            "",
+            "## Contact task results (same inbound event)",
+        ]
+        for row in contact_task_results:
+            follow_lines.append(_trim(json.dumps(row, default=str)))
+        follow_lines.append("")
+        follow_lines.append("## Conversation")
+        for m in messages:
+            if not isinstance(m, dict):
+                continue
+            who = m.get("user") or m.get("bot_id") or "unknown"
+            follow_lines.append(f"[{who}] {_trim(m.get('text') or '')}")
+        follow_lines.append("")
+        follow_lines.append("## Latest inbound")
+        follow_lines.append(_trim(text if isinstance(text, str) else ""))
+        follow_live_content = "\n".join(follow_lines)
+        follow_result = asyncio.run(
+            do_task(
+                task_key,
+                live_content=follow_live_content,
+                index=astral_candidate_id or channel,
+                candidate_data=candidate_data,
+                debug=debug,
+                store_agent_data=True,
+            )
+        )
+        follow_turn = conversational_turn_from_do_task_result(follow_result)
+        turn = follow_turn
+        reply_for_slack = strip_contact_task_markup(
+            follow_turn.get("reply") if isinstance(follow_turn.get("reply"), str) else ""
+        )
+
     # e. Optional skill_calls (ACL via run_contact_skill)
     skill_results = []
     parsed = result.get("parsed_response") if isinstance(result, dict) else None
@@ -934,10 +1183,16 @@ def run_contact_estelle_turn(
                 {"ok": False, "error": str(exc), "skill_key": skill_key}
             )
 
-    # e2. Optional land_calls → contact_land_meteorite (AST-1471; not ACL skill)
+    # e2. Optional land_calls → contact_land_meteorite (AST-1531; not ACL skill)
     land_results: List[Dict[str, Any]] = []
     raw_land = parsed.get("land_calls") if isinstance(parsed, dict) else None
     land_items = raw_land if isinstance(raw_land, list) else []
+    # Prefer message_ts, then thread_ts, then channel for Slack source-ref id.
+    slack_sid = ""
+    for cand in (message_ts, thread_ts, channel):
+        if isinstance(cand, str) and cand.strip():
+            slack_sid = cand.strip()
+            break
     for item in land_items:
         if not isinstance(item, dict):
             continue
@@ -947,11 +1202,17 @@ def run_contact_estelle_turn(
         try:
             if isinstance(item.get("scraps"), list) and item["scraps"]:
                 land_out = contact_land_meteorite(
-                    astral_candidate_id, scraps=item["scraps"], debug=debug
+                    astral_candidate_id,
+                    source_kind="slack",
+                    source_id=slack_sid,
+                    scraps=item["scraps"],
+                    debug=debug,
                 )
             else:
                 land_out = contact_land_meteorite(
                     astral_candidate_id,
+                    source_kind="slack",
+                    source_id=slack_sid,
                     text=item.get("text") if isinstance(item.get("text"), str) else None,
                     job_link=(
                         item.get("job_link")
@@ -975,13 +1236,13 @@ def run_contact_estelle_turn(
     outcome = turn.get("outcome")
     reply_ok = (
         bool(turn.get("success"))
-        and isinstance(reply, str)
-        and bool(reply.strip())
+        and isinstance(reply_for_slack, str)
+        and bool(reply_for_slack.strip())
         and outcome in ("success", "concern")
     )
     if reply_ok:
         reply_thread_ts = thread_ts or message_ts
-        outbound = format_contact_reply_text(reply)
+        outbound = format_contact_reply_text(reply_for_slack)
         slack_post = contact_post_message(
             channel=channel,
             text=outbound,
@@ -1010,6 +1271,7 @@ def run_contact_estelle_turn(
         "admin_aside": aside if isinstance(aside, str) else None,
         "skill_results": skill_results,
         "land_results": land_results,
+        "contact_task_results": contact_task_results,
         "slack_post": slack_post,
         "error": do_task_error,
     }
@@ -1025,7 +1287,10 @@ def run_contact_estelle_turn(
         )
         skill_ok = sum(1 for r in skill_results if isinstance(r, dict) and r.get("ok"))
         land_ok = sum(1 for r in land_results if isinstance(r, dict) and r.get("ok"))
-        reply_len = len(reply) if isinstance(reply, str) else 0
+        contact_task_ok = sum(
+            1 for r in contact_task_results if isinstance(r, dict) and r.get("ok")
+        )
+        reply_len = len(reply_for_slack) if isinstance(reply_for_slack, str) else 0
         aside_len = len(aside) if isinstance(aside, str) else 0
         slack_ok = None
         if isinstance(slack_post, dict):
@@ -1034,7 +1299,9 @@ def run_contact_estelle_turn(
             f"outcome={outcome!r} success={bool(turn.get('success'))} "
             f"reply_len={reply_len} admin_aside_len={aside_len} "
             f"skill_calls={len(calls)} skill_ok={skill_ok} "
-            f"land_calls={len(land_items)} land_ok={land_ok} slack_ok={slack_ok}"
+            f"land_calls={len(land_items)} land_ok={land_ok} "
+            f"contact_tasks={len(contact_task_results)} contact_task_ok={contact_task_ok} "
+            f"slack_ok={slack_ok}"
         )
 
     return out

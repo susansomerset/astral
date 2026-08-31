@@ -3270,7 +3270,7 @@ class TestAst1412EnrichTaskLens:
 
 
 class TestAst1451AdhocRuns:
-    """AST-1451: GET /api/admin/adhoc/runs is admin-auth list; debug follows ui_llm_debug."""
+    """AST-1451 (revised AST-1534): GET /api/admin/adhoc/runs admin-auth; debug via ui_llm_debug."""
 
     _ROWS = [
         {
@@ -3295,7 +3295,7 @@ class TestAst1451AdhocRuns:
     ) -> None:
         seen: list[bool] = []
 
-        def _list(*, debug: bool = False) -> list[dict[str, Any]]:
+        def _list(*, debug: bool = False, **_kw) -> list[dict[str, Any]]:
             seen.append(debug)
             return list(self._ROWS)
 
@@ -3314,3 +3314,66 @@ class TestAst1451AdhocRuns:
     ) -> None:
         resp = admin_client.get("/api/admin/adhoc/runs", headers=non_admin_headers)
         assert resp.status_code == 403
+
+
+class TestAst1534AdhocRunsScoped:
+    """AST-1534: query params + config cap; blank candidate → []; ignore client limit."""
+
+    def test_forwards_candidate_task_and_config_limit(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+
+        def _list(**kw) -> list[dict[str, Any]]:
+            seen.append(kw)
+            return [
+                {
+                    "batch_id": "b1",
+                    "created_at": "2026-08-01 12:00:00",
+                    "entity_id": "job-1",
+                    "task_key": "adhoc-evaluate_jd",
+                }
+            ]
+
+        monkeypatch.setattr(admin_mod, "list_agent_data_runs", _list)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        monkeypatch.setitem(admin_mod.UI_CONFIG, "adhoc_import_runs_limit", 10)
+        resp = admin_client.get(
+            "/api/admin/adhoc/runs?candidate_id=cand-1&task_key=evaluate_jd&limit=999",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()[0]["batch_id"] == "b1"
+        assert seen == [
+            {
+                "candidate_id": "cand-1",
+                "task_key": "evaluate_jd",
+                "limit": 10,
+                "debug": False,
+            }
+        ]
+
+    def test_blank_candidate_passes_none(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+
+        def _list(**kw) -> list[dict[str, Any]]:
+            seen.append(kw)
+            return []
+
+        monkeypatch.setattr(admin_mod, "list_agent_data_runs", _list)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        monkeypatch.setitem(admin_mod.UI_CONFIG, "adhoc_import_runs_limit", 10)
+        resp = admin_client.get("/api/admin/adhoc/runs", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == []
+        assert seen[0]["candidate_id"] is None
+        assert seen[0]["task_key"] is None
+        assert seen[0]["limit"] == 10

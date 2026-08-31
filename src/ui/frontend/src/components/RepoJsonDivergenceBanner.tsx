@@ -242,66 +242,76 @@ export default function RepoJsonDivergenceBanner({
         showFooter={false}
         size="wide"
       >
-        {diffLoading ? (
-          <p style={{ fontSize: 13 }}>Loading comparison…</p>
-        ) : diffError ? (
-          <p style={{ color: "var(--error, #f87171)", fontSize: 13 }}>{diffError}</p>
-        ) : diffData ? (
-          <div style={{ fontSize: 13 }}>
-            <h3 style={{ fontSize: 14, marginTop: 0 }}>Rows only in database</h3>
-            {diffData.only_in_database.length === 0 ? (
-              <p>(none)</p>
-            ) : (
-              <ul>
-                {diffData.only_in_database.map(row => (
-                  <li key={rowLabel(row, tableKey)}>{rowLabel(row, tableKey)}</li>
-                ))}
-              </ul>
-            )}
+        {/* AST-1511: wide modal-body is overflow:hidden; scroll inside this wrapper */}
+        <div
+          style={{
+            padding: "20px",
+            height: "100%",
+            overflowY: "auto",
+            boxSizing: "border-box",
+          }}
+        >
+          {diffLoading ? (
+            <p style={{ fontSize: 13 }}>Loading comparison…</p>
+          ) : diffError ? (
+            <p style={{ color: "var(--error, #f87171)", fontSize: 13 }}>{diffError}</p>
+          ) : diffData ? (
+            <div style={{ fontSize: 13 }}>
+              <h3 style={{ fontSize: 14, marginTop: 0 }}>Rows only in database</h3>
+              {diffData.only_in_database.length === 0 ? (
+                <p>(none)</p>
+              ) : (
+                <ul>
+                  {diffData.only_in_database.map(row => (
+                    <li key={rowLabel(row, tableKey)}>{rowLabel(row, tableKey)}</li>
+                  ))}
+                </ul>
+              )}
 
-            <h3 style={{ fontSize: 14 }}>Rows only in file</h3>
-            {diffData.only_in_file.length === 0 ? (
-              <p>(none)</p>
-            ) : (
-              <ul>
-                {diffData.only_in_file.map(row => (
-                  <li key={rowLabel(row, tableKey)}>{rowLabel(row, tableKey)}</li>
-                ))}
-              </ul>
-            )}
+              <h3 style={{ fontSize: 14 }}>Rows only in file</h3>
+              {diffData.only_in_file.length === 0 ? (
+                <p>(none)</p>
+              ) : (
+                <ul>
+                  {diffData.only_in_file.map(row => (
+                    <li key={rowLabel(row, tableKey)}>{rowLabel(row, tableKey)}</li>
+                  ))}
+                </ul>
+              )}
 
-            <h3 style={{ fontSize: 14 }}>Changed fields</h3>
-            {diffData.changed_rows.length === 0 ? (
-              <p>(none)</p>
-            ) : (
-              diffData.changed_rows.map(row => (
-                <div key={row.row_key} style={{ marginBottom: 16 }}>
-                  <h4 style={{ fontSize: 13, marginBottom: 8 }}>Row: {row.row_key}</h4>
-                  <table className="list-page-table" style={{ width: "100%", fontSize: 13 }}>
-                    <thead>
-                      <tr>
-                        <th>Field</th>
-                        <th>File</th>
-                        <th>Database</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {row.fields.map(field => (
-                        <tr key={field.field}>
-                          <td>{field.field}</td>
-                          <td>{diffCellContent(field.file_value)}</td>
-                          <td>{diffCellContent(field.database_value)}</td>
+              <h3 style={{ fontSize: 14 }}>Changed fields</h3>
+              {diffData.changed_rows.length === 0 ? (
+                <p>(none)</p>
+              ) : (
+                diffData.changed_rows.map(row => (
+                  <div key={row.row_key} style={{ marginBottom: 16 }}>
+                    <h4 style={{ fontSize: 13, marginBottom: 8 }}>Row: {row.row_key}</h4>
+                    <table className="list-page-table" style={{ width: "100%", fontSize: 13 }}>
+                      <thead>
+                        <tr>
+                          <th>Field</th>
+                          <th>File</th>
+                          <th>Database</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))
-            )}
-          </div>
-        ) : (
-          <p style={{ fontSize: 13 }}>(no differences reported)</p>
-        )}
+                      </thead>
+                      <tbody>
+                        {row.fields.map(field => (
+                          <tr key={field.field}>
+                            <td>{field.field}</td>
+                            <td>{diffCellContent(field.file_value)}</td>
+                            <td>{diffCellContent(field.database_value)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : (
+            <p style={{ fontSize: 13 }}>(no differences reported)</p>
+          )}
+        </div>
       </Modal>
     </>
   )

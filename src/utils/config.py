@@ -39,11 +39,12 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
-  INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
+  INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases METEORITE_EMAIL_MAILBOX_CONFIG["account_address"])
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, unbound retention, dispatch row seed (AST-1134 / AST-1466) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
-  METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals (AST-1089; renamed AST-1212)
+  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
+  METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
   FETCH_EMAIL_CONFIG — fetch_email mailbox-shell seed literals (AST-1469; runner/ensure = sibling)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
@@ -526,33 +527,34 @@ TASK_CONFIG = {
         "trigger_state": None,
         "agent_task": "qualify_meteorite",
     },
-    # AST-1087 / AST-1089: Ruth parse of bound meteorite email HTML (not a dispatch claim task).
-    # AST-1212: live key renamed parse_meteorite_email → meteorite_email.
-    # AST-1090 calls do_task with METEORITE_EMAIL_PARSE_CONFIG["task_key"] + candidate ctx.
-    "meteorite_email": {
+    # AST-1529: ingress classify — candidate-bound blob + source handle; not a job claim queue.
+    # outcome enum filled after STAGE_METEORITE_CONFIG (lockstep).
+    "stage_meteorite": {
         "response_format": "json",
         "output_type": "fields",
         "scored": False,
         "response_schema": {
-            "parse_mode": {"type": "str", "required": True},
+            "outcome": {
+                "type": "str",
+                "required": True,
+            },
             "jobs": {
                 "type": "list",
                 "required": True,
                 "items_schema": {
-                    "job_link": {"type": "str", "required": True},
                     "job_title": {"type": "str", "required": False},
-                    # AST-1144: Ruth returns structured company/location objects.
-                    "metadata": {"type": "dict", "required": False},
+                    "job_link": {"type": "str", "required": False},
+                    "company_job_id": {"type": "str", "required": False},
+                    "jd_text": {"type": "str", "required": False},
+                    "employer_name": {"type": "str", "required": False},
                 },
             },
-            "jd_link": {"type": "str", "required": False},
-            "content_text": {"type": "str", "required": False},
         },
-        "context_format": "meteorite_email_{index}",
+        "context_format": "stage_meteorite_{index}",
         "entity_type": None,
         "requires_candidate_key": True,
         "trigger_state": None,
-        "agent_task": "meteorite_email",
+        "agent_task": "stage_meteorite",
     },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
@@ -1895,9 +1897,14 @@ INBOX_CREATE_JOB_CONFIG = {
     ),
     # True → also drop any attribute whose name starts with "on".
     "strip_on_attrs": True,
-    # Format with subject= (HTML-escaped) and body= (already-stripped HTML fragment).
+    # Format with HTML-escaped from_address/to_address/subject/date and already-stripped body.
     "subject_html_template": (
-        '<header class="email-subject"><h1>{subject}</h1></header>\n'
+        '<header class="email-headers">'
+        '<p class="email-from"><span class="email-label">From:</span> {from_address}</p>'
+        '<p class="email-to"><span class="email-label">To:</span> {to_address}</p>'
+        '<div class="email-subject"><h1>{subject}</h1></div>'
+        '<p class="email-date"><span class="email-label">Date:</span> {date}</p>'
+        '</header>\n'
         '<section class="email-body">{body}</section>'
     ),
 }
@@ -2665,9 +2672,9 @@ assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 # mailbox poller, not an ENTITY_TYPES claim queue. Avail/eligible count is the live
 # bind-filtered inbox count (core inbox helpers, AST-1135). Runner is candidate-bound
 # (AST-1136): filter From→row candidate_id, stamp last_email_check, unbound Trash
-# hygiene via unbound_retention_days. Ruth parse task is AST-1089
-# (METEORITE_EMAIL_PARSE_CONFIG). Seed auto_mode CLICK (false) — parent seed law;
-# never Auto-true at provision.
+# hygiene via unbound_retention_days. Live Ruth classify is stage_meteorite
+# (STAGE_METEORITE_CONFIG / AST-1529); METEORITE_EMAIL_PARSE_CONFIG is a fold stub only.
+# Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 METEORITE_EMAIL_MAILBOX_CONFIG = {
     "task_key": "meteorite_email",
     "account_address": "astral.career.match@gmail.com",
@@ -2738,24 +2745,94 @@ assert INBOX_BIND_CONFIG["header_order"] == ("from", "to")
 assert INBOX_BIND_CONFIG["inbox_address"] == METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
 assert isinstance(INBOX_BIND_CONFIG["inbox_address"], str)
 assert "@" in INBOX_BIND_CONFIG["inbox_address"]
-# AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
-# AST-1212: live task_key is meteorite_email (formerly parse_meteorite_email).
-# Callers (AST-1090 meteorite_email runner) pass live_content shaped per parse_modes and
-# must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
+
+# AST-1529: closed-outcome ingress classify (stage_meteorite). Outcome strings and
+# source-ref prefixes are config SSOT — core/prompts must not invent parallel sets.
+STAGE_METEORITE_CONFIG = {
+    "task_key": "stage_meteorite",
+    "outcomes": (
+        "single_jd_no_link",
+        "single_jd_with_more",
+        "multi_jd_inline",
+        "link_list",
+        "not_job_content",
+        "not_original_posting",
+    ),
+    # source kind → prefix for synthesized job_link / company_job_id when no ATS URL.
+    "source_ref_prefixes": {
+        "email": "email-",
+        "slack": "slack-",
+        "paste": "paste-",
+    },
+    # Partitions for AST-1530 scrap map (same literal strings as outcomes — not a second vocabulary).
+    "landable_outcomes": (
+        "single_jd_no_link",
+        "single_jd_with_more",
+        "multi_jd_inline",
+        "link_list",
+    ),
+    "text_source_ref_outcomes": (
+        "single_jd_no_link",
+        "multi_jd_inline",
+    ),
+    "url_scrape_outcomes": (
+        "single_jd_with_more",
+        "link_list",
+    ),
+    "skip_outcomes": (
+        "not_job_content",
+        "not_original_posting",
+    ),
+}
+assert STAGE_METEORITE_CONFIG["task_key"] == "stage_meteorite"
+assert len(STAGE_METEORITE_CONFIG["outcomes"]) == 6
+assert (
+    set(STAGE_METEORITE_CONFIG["landable_outcomes"])
+    | set(STAGE_METEORITE_CONFIG["skip_outcomes"])
+    == set(STAGE_METEORITE_CONFIG["outcomes"])
+)
+assert set(STAGE_METEORITE_CONFIG["landable_outcomes"]).isdisjoint(
+    STAGE_METEORITE_CONFIG["skip_outcomes"]
+)
+assert (
+    set(STAGE_METEORITE_CONFIG["text_source_ref_outcomes"])
+    | set(STAGE_METEORITE_CONFIG["url_scrape_outcomes"])
+    == set(STAGE_METEORITE_CONFIG["landable_outcomes"])
+)
+assert set(STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]).isdisjoint(
+    STAGE_METEORITE_CONFIG["url_scrape_outcomes"]
+)
+assert STAGE_METEORITE_CONFIG["source_ref_prefixes"]["email"] == "email-"
+assert set(STAGE_METEORITE_CONFIG["source_ref_prefixes"]) == {"email", "slack", "paste"}
+assert all(
+    isinstance(p, str) and p and p.endswith("-")
+    for p in STAGE_METEORITE_CONFIG["source_ref_prefixes"].values()
+)
+TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"] = list(
+    STAGE_METEORITE_CONFIG["outcomes"]
+)
+assert TASK_CONFIG["stage_meteorite"]["agent_task"] == STAGE_METEORITE_CONFIG["task_key"]
+assert TASK_CONFIG["stage_meteorite"]["requires_candidate_key"] is True
+assert TASK_CONFIG["stage_meteorite"]["entity_type"] is None
+assert TASK_CONFIG["stage_meteorite"]["trigger_state"] is None
+assert TASK_CONFIG["stage_meteorite"]["scored"] is False
+assert list(TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"]) == list(
+    STAGE_METEORITE_CONFIG["outcomes"]
+)
+assert "meteorite_email" not in TASK_CONFIG
+
+# AST-1529: parse_modes Ruth classify RETIRED — live classify is stage_meteorite.
+# Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
+# Historical: AST-1089/1212 parse_modes + shared mailbox↔parse task_key assert — do not restore.
 METEORITE_EMAIL_PARSE_CONFIG = {
     "task_key": "meteorite_email",
-    # Live agent_task seed name until AST-1182 rename / catch_meteorite_email.
     "legacy_agent_task_key": "parse_meteorite_email",
-    # Archie (AST-1214): candidate-bound mailbox; Avail = Gmail inbox ping.
     "admin_entity_type": "candidate",
-    # live_content first line: "PARSE_MODE: <mode>" — see agent_task prompts.
-    "parse_modes": ("html_links", "subject_body"),
 }
-assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG
-assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subject_body"}
+assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "meteorite_email"
+assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"] == "parse_meteorite_email"
 assert METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"] == "candidate"
-assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"]
-assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == METEORITE_EMAIL_PARSE_CONFIG["task_key"]
+assert "parse_modes" not in METEORITE_EMAIL_PARSE_CONFIG
 
 
 def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
@@ -4444,6 +4521,70 @@ assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
 assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
 assert CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] > 0
 
+# CONTACT_TASK_CONFIG: allowlisted Contact task keys (AST-1515 / AST-1414).
+# Distinct from CONTACT_CONFIG skills ACL and TASK_CONFIG dispatch catalog.
+CONTACT_TASK_CONFIG = {
+    "gazer_scrape": {
+        "handler": "src.core.gazer.contact_task_gazer_scrape",
+        "description": (
+            "Fetch visible text, links, and blocked/ok/closed/missing for one job URL."
+        ),
+        "param_hint": "Single URL — remainder of the markup line after the task key.",
+        "requires_candidate": True,
+    },
+    "create_contact_meteorite": {
+        "handler": "src.core.meteorite.create_contact_meteorite",
+        "description": (
+            "Land a meteorite from link (scrape-first) or pasted page text."
+        ),
+        "param_hint": "URL or page text (rest of line).",
+        "requires_candidate": True,
+    },
+    "get_job_by_pattern": {
+        "handler": "src.core.tracker.contact_task_get_job_by_pattern",
+        "description": (
+            "Resolve one fully hydrated job for the Slack candidate from a text pattern."
+        ),
+        "param_hint": "Pattern string (rest of line).",
+        "requires_candidate": True,
+    },
+    "get_job_data": {
+        "handler": "src.core.tracker.contact_task_get_job_data",
+        "description": "Return stored job data for an id belonging to the candidate.",
+        "param_hint": "Astral job id (rest of line).",
+        "requires_candidate": True,
+    },
+    "get_company_data": {
+        "handler": "src.core.tracker.contact_task_get_company_data",
+        "description": "Return stored company data via extant getters.",
+        "param_hint": "Company short_name or id (rest of line).",
+        "requires_candidate": True,
+    },
+    "get_candidate_data": {
+        "handler": "src.core.tracker.contact_task_get_candidate_data",
+        "description": "Return stored candidate data for the Slack-resolved candidate.",
+        "param_hint": "Optional sub-path or empty (rest of line may be blank).",
+        "requires_candidate": True,
+    },
+}
+assert isinstance(CONTACT_TASK_CONFIG, dict) and CONTACT_TASK_CONFIG
+for _ct_key, _ct_meta in CONTACT_TASK_CONFIG.items():
+    assert isinstance(_ct_key, str) and _ct_key.strip(), _ct_key
+    assert isinstance(_ct_meta, dict), _ct_key
+    for _field in ("handler", "description", "param_hint"):
+        assert isinstance(_ct_meta.get(_field), str) and _ct_meta[_field].strip(), (
+            _ct_key,
+            _field,
+        )
+    assert isinstance(_ct_meta.get("requires_candidate"), bool), _ct_key
+    assert _ct_key not in TASK_CONFIG, _ct_key
+    assert _ct_key not in CONTACT_CONFIG["skills"], _ct_key
+    _handler = _ct_meta["handler"]
+    assert "." in _handler, _ct_key
+    _module_path, _, _attr_name = _handler.rpartition(".")
+    assert _module_path and _attr_name, _ct_key
+    assert _module_path.startswith("src.core."), _ct_key
+
 BRAIN_BIG = "Big"
 BRAIN_SETTINGS: tuple[str, str, str] = (BRAIN_LITTLE, BRAIN_MEDIUM, BRAIN_BIG)
 
@@ -4769,6 +4910,9 @@ UI_CONFIG = {
         "max_width_px": 400,
         "max_height_px": 90,
     },
+    # AST-1534: Agent Ad Hoc import picker — API list cap + sibling viewport row count.
+    "adhoc_import_runs_limit": 10,
+    "adhoc_import_picker_visible_rows": 5,
 }
 
 # ---------------------------------------------------------------------------

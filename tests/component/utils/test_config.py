@@ -3640,6 +3640,36 @@ class TestAst1072ConversationalEnvelopeConfig:
         assert other["agent_performance"]["status"] == "success | failure"
 
 
+# Branches: CONTACT_TASK_CONFIG six keys + collision guards (AST-1515).
+class TestAst1515ContactTaskConfig:
+    """AST-1515: allowlisted contact-task keys distinct from TASK_CONFIG and skills ACL."""
+
+    _EXPECTED_KEYS = frozenset(
+        {
+            "gazer_scrape",
+            "create_contact_meteorite",
+            "get_job_by_pattern",
+            "get_job_data",
+            "get_company_data",
+            "get_candidate_data",
+        }
+    )
+
+    def test_six_keys_handler_metadata_and_collision_guards(self) -> None:
+        block = cfg.CONTACT_TASK_CONFIG
+        assert set(block.keys()) == self._EXPECTED_KEYS
+        for key, meta in block.items():
+            assert key not in cfg.TASK_CONFIG
+            assert key not in cfg.CONTACT_CONFIG["skills"]
+            for field in ("handler", "description", "param_hint"):
+                assert isinstance(meta[field], str) and meta[field].strip(), (key, field)
+            assert meta["requires_candidate"] is True
+            handler = meta["handler"]
+            assert handler.startswith("src.core.")
+            mod_path, _, attr = handler.rpartition(".")
+            assert mod_path and attr
+
+
 # Branches: turn-loop trim keys + optional skill_calls schema (AST-1073).
 class TestAst1073ContactEstelleTurnConfig:
     def test_turn_context_trim_keys(self) -> None:
@@ -4079,62 +4109,97 @@ class TestAst1140GazeEmailSelectedConfig:
         assert g["debug_func"] == "meteorite_email.run"
 
 
-# Branches: METEORITE_EMAIL_PARSE_CONFIG + meteorite_email TASK_CONFIG (AST-1089; key AST-1212).
+# Branches: STAGE_METEORITE_CONFIG + stage_meteorite TASK_CONFIG; PARSE fold stub (AST-1529).
+# Supersedes AST-1089/1212 live parse_modes + TASK_CONFIG["meteorite_email"] Ruth shell.
 @pytest.mark.skipif(
-    "meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
-    reason="AST-1212 meteorite_email TASK_CONFIG not on this publish tip",
+    "stage_meteorite" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1529 stage_meteorite TASK_CONFIG not on this publish tip",
 )
-class TestAst1089ParseMeteoriteEmailConfig:
-    """AST-1089 / AST-1212: Ruth email-HTML parse config — not a dispatch claim task."""
+class TestAst1529StageMeteoriteConfig:
+    """AST-1529: closed-outcome ingress classify — not a dispatch claim; mailbox stays poller-only."""
 
-    def test_parse_config_and_task_shell(self) -> None:
+    def test_stage_config_and_task_shell(self) -> None:
+        stage = cfg.STAGE_METEORITE_CONFIG
+        assert stage["task_key"] == "stage_meteorite"
+        assert len(stage["outcomes"]) == 6
+        assert set(stage["landable_outcomes"]) | set(stage["skip_outcomes"]) == set(
+            stage["outcomes"]
+        )
+        assert set(stage["landable_outcomes"]).isdisjoint(stage["skip_outcomes"])
+        assert set(stage["text_source_ref_outcomes"]) | set(
+            stage["url_scrape_outcomes"]
+        ) == set(stage["landable_outcomes"])
+        assert set(stage["text_source_ref_outcomes"]).isdisjoint(
+            stage["url_scrape_outcomes"]
+        )
+        assert set(stage["source_ref_prefixes"]) == {"email", "slack", "paste"}
+        assert stage["source_ref_prefixes"]["email"] == "email-"
+        assert all(
+            isinstance(p, str) and p.endswith("-")
+            for p in stage["source_ref_prefixes"].values()
+        )
+
+        # Fold stub only — parse_modes Ruth classify retired.
         parse_cfg = cfg.METEORITE_EMAIL_PARSE_CONFIG
         assert parse_cfg["task_key"] == "meteorite_email"
-        assert set(parse_cfg["parse_modes"]) == {"html_links", "subject_body"}
-        # AST-1214: live seed name until AST-1182 rename — Admin fold key, not TASK_CONFIG.
+        assert "parse_modes" not in parse_cfg
         assert parse_cfg["legacy_agent_task_key"] == "parse_meteorite_email"
         assert parse_cfg["admin_entity_type"] == "candidate"
         assert cfg.is_meteorite_email_mailbox_task_key("parse_meteorite_email")
         assert cfg.is_meteorite_email_mailbox_task_key("meteorite_email")
         assert "parse_meteorite_email" not in cfg.TASK_CONFIG
+        assert "meteorite_email" not in cfg.TASK_CONFIG
+        assert cfg.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
 
-        tc = cfg.TASK_CONFIG["meteorite_email"]
+        tc = cfg.TASK_CONFIG["stage_meteorite"]
         assert tc["scored"] is False
         assert tc["output_type"] == "fields"
         assert tc["response_format"] == "json"
-        assert tc["agent_task"] == "meteorite_email"
-        assert tc["context_format"] == "meteorite_email_{index}"
+        assert tc["agent_task"] == "stage_meteorite"
+        assert tc["context_format"] == "stage_meteorite_{index}"
         assert tc["entity_type"] is None
         assert tc["requires_candidate_key"] is True
         assert tc["trigger_state"] is None
         assert "pass_state" not in tc
         assert "fail_state" not in tc
         assert "error_state" not in tc
-
-        schema = tc["response_schema"]
-        assert schema["parse_mode"]["required"] is True
-        assert schema["jobs"]["required"] is True
-        assert schema["jobs"]["items_schema"]["job_link"]["required"] is True
-        assert schema["jd_link"]["required"] is False
-        assert schema["content_text"]["required"] is False
+        assert list(tc["response_schema"]["outcome"]["enum"]) == list(stage["outcomes"])
+        assert tc["response_schema"]["outcome"]["required"] is True
+        assert tc["response_schema"]["jobs"]["required"] is True
+        items = tc["response_schema"]["jobs"]["items_schema"]
+        for key in (
+            "job_title",
+            "job_link",
+            "company_job_id",
+            "jd_text",
+            "employer_name",
+        ):
+            assert items[key]["type"] == "str"
+            assert items[key].get("required") is False
+        assert "metadata" not in items
+        assert "parse_mode" not in tc["response_schema"]
 
     def test_not_a_meteorite_dispatch_claim(self) -> None:
         assert all(
+            e["task_key"] != "stage_meteorite" for e in cfg.METEORITE_DISPATCH_TASKS
+        )
+        assert all(
             e["task_key"] != "meteorite_email" for e in cfg.METEORITE_DISPATCH_TASKS
         )
+        assert "stage_meteorite" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         assert "meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        with pytest.raises(KeyError, match="stage_meteorite"):
+            cfg._dispatch_trigger_state_for_task_key("stage_meteorite")
         with pytest.raises(KeyError, match="meteorite_email"):
             cfg._dispatch_trigger_state_for_task_key("meteorite_email")
 
 
-
-# Branches: meteorite_email jobs[].metadata dict (AST-1144 UAT; key AST-1212).
-@pytest.mark.skipif(
-    "meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
-    reason="AST-1212 meteorite_email TASK_CONFIG not on this publish tip",
+# Branches: AST-1144 metadata dict on retired meteorite_email parse schema — superseded by AST-1529.
+@pytest.mark.skip(
+    reason="AST-1529 retired TASK_CONFIG['meteorite_email'] parse schema (metadata dict)",
 )
 class TestAst1144ParseMeteoriteEmailMetadataDict:
-    """AST-1144: Ruth structured metadata objects — schema type dict, not str."""
+    """AST-1144: Ruth structured metadata — obsolete after stage_meteorite cutover."""
 
     def test_metadata_schema_is_optional_dict(self) -> None:
         meta = cfg.TASK_CONFIG["meteorite_email"]["response_schema"]["jobs"]["items_schema"][
@@ -5157,3 +5222,10 @@ class TestAst1495MeteoriteCompaniesNav:
             it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
         )
         assert meteorite.get("label") == "Meteorite"
+
+class TestAst1534AdhocImportConfigKeys:
+    """AST-1534: UI_CONFIG import-list cap + picker visible-row literals."""
+
+    def test_adhoc_import_cap_and_visible_rows(self) -> None:
+        assert cfg.UI_CONFIG["adhoc_import_runs_limit"] == 10
+        assert cfg.UI_CONFIG["adhoc_import_picker_visible_rows"] == 5

@@ -1697,3 +1697,127 @@ class TestAst1453PersistSkippedJobEdits:
             )
         save.assert_called_once()
         assert save.call_args.kwargs["job_title"] == "Kept"
+
+
+# Branches: pattern match / ownership refuse / hydrate / Style D (AST-1518).
+class TestAst1518ContactTaskReads:
+    """AST-1518: contact_task_* read wrappers + get_job_by_pattern."""
+
+    def _job(self, jid: str = "j1", company: str = "acme", title: str = "Engineer") -> Dict[str, Any]:
+        return {
+            "astral_job_id": jid,
+            "company": company,
+            "job_title": title,
+            "job_link": f"https://jobs.example/{jid}",
+            "state": "RECOMMENDED",
+        }
+
+    def _patch_story(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.agent.get_entity_agent_story",
+            lambda entity: [{"role": "assistant", "content": "story"}],
+        )
+
+    def test_get_job_by_pattern_exact_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        jobs = [self._job("j1", title="Staff Engineer"), self._job("j2", title="Analyst")]
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: jobs)
+        assert tracker_mod.get_job_by_pattern("c1", "Staff")["astral_job_id"] == "j1"
+        assert tracker_mod.get_job_by_pattern("c1", "missing") is None
+        jobs2 = [self._job("j1", title="Engineer A"), self._job("j2", title="Engineer B")]
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: jobs2)
+        assert tracker_mod.get_job_by_pattern("c1", "Engineer") is None
+
+    def test_contact_task_get_job_by_pattern_happy_and_errors(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._patch_story(monkeypatch)
+        job = self._job()
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: [job])
+        monkeypatch.setattr(
+            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
+        )
+        out = tracker_mod.contact_task_get_job_by_pattern("c1", "Engineer")
+        assert out["ok"] is True and out["task_key"] == "get_job_by_pattern"
+        assert out["result"]["astral_job_id"] == "j1"
+        assert out["result"]["agent_story"]
+
+        assert tracker_mod.contact_task_get_job_by_pattern("", "x")["error"] == "no_candidate"
+        assert tracker_mod.contact_task_get_job_by_pattern("c1", "")["error"] == "unmatched_pattern"
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: [])
+        assert tracker_mod.contact_task_get_job_by_pattern("c1", "x")["error"] == "unmatched_pattern"
+        monkeypatch.setattr(
+            tracker_mod,
+            "list_jobs",
+            lambda **kwargs: [self._job("j1"), self._job("j2", title="Engineer Two")],
+        )
+        assert (
+            tracker_mod.contact_task_get_job_by_pattern("c1", "Engineer")["error"]
+            == "ambiguous_pattern"
+        )
+
+    def test_contact_task_get_job_data_ownership(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_story(monkeypatch)
+        job = self._job()
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: job if jid == "j1" else None)
+        monkeypatch.setattr(
+            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
+        )
+        ok = tracker_mod.contact_task_get_job_data("c1", "j1")
+        assert ok["ok"] is True and "agent_story" in ok["result"]
+
+        monkeypatch.setattr(
+            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "other"}
+        )
+        refused = tracker_mod.contact_task_get_job_data("c1", "j1")
+        assert refused["error"] == "refused_cross_candidate"
+
+        assert tracker_mod.contact_task_get_job_data("c1", "missing")["error"] == "not_found"
+        assert tracker_mod.contact_task_get_job_data("", "j1")["error"] == "no_candidate"
+
+    def test_contact_task_get_company_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_story(monkeypatch)
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_company",
+            lambda sn: {"short_name": sn, "candidate_id": "c1"} if sn == "acme" else None,
+        )
+        out = tracker_mod.contact_task_get_company_data("c1", "acme")
+        assert out["ok"] is True and out["result"]["short_name"] == "acme"
+        assert out["result"]["agent_story"]
+        assert tracker_mod.contact_task_get_company_data("c1", "nope")["error"] == "not_found"
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_company",
+            lambda sn: {"short_name": sn, "candidate_id": "other"},
+        )
+        assert (
+            tracker_mod.contact_task_get_company_data("c1", "acme")["error"]
+            == "refused_cross_candidate"
+        )
+
+    def test_contact_task_get_candidate_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_story(monkeypatch)
+        row = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {"profile": {"first": "Ada"}},
+        }
+        monkeypatch.setattr(tracker_mod.candidate_mod, "get_candidate", lambda cid: row if cid == "c1" else None)
+        full = tracker_mod.contact_task_get_candidate_data("c1", "")
+        assert full["ok"] is True and full["result"]["agent_story"]
+        leaf = tracker_mod.contact_task_get_candidate_data("c1", "profile.first")
+        assert leaf["ok"] is True and leaf["result"] == "Ada"
+        assert tracker_mod.contact_task_get_candidate_data("c1", "profile.missing")["error"] == "not_found"
+        assert tracker_mod.contact_task_get_candidate_data("", "")["error"] == "no_candidate"
+
+    def test_style_d_debug_on_job_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_story(monkeypatch)
+        log = MagicMock()
+        monkeypatch.setattr(tracker_mod, "get_logger", lambda _n: log)
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        monkeypatch.setattr(
+            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
+        )
+        tracker_mod.contact_task_get_job_data("c1", "j1", debug=True)
+        outcomes = [c.kwargs.get("outcome") for c in log.debug_index.call_args_list]
+        assert outcomes == ["found", "recorded"]
+        assert log.debug_index.call_args_list[0].kwargs["func"] == "tracker.contact_task_get_job_data"

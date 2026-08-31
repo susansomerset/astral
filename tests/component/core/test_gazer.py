@@ -1576,3 +1576,165 @@ class TestAst1146CreateSkipShortCompanyJobId:
         assert out["created"] == []
         assert out["skipped"][0]["reason"] == "known_company_job_id"
         assert out["skipped"][0]["matched_company_job_id"] == "KNOWN-EXT-77"
+
+# Branches: url validate; scheme fix; connectivity; scrape payload; cookie/bot→blocked; Style D; no job create.
+class TestAst1516ContactTaskGazerScrape:
+    """AST-1516: contact_task_gazer_scrape — Playwright scrape + page_status (no job create)."""
+
+    def test_contact_page_status_collapses_cookie_and_bot(self) -> None:
+        assert gazer_mod._CONTACT_PAGE_STATUS["cookie"] == "blocked"
+        assert gazer_mod._CONTACT_PAGE_STATUS["bot"] == "blocked"
+        assert gazer_mod._CONTACT_PAGE_STATUS["ok"] == "ok"
+        assert gazer_mod._CONTACT_PAGE_STATUS["closed"] == "closed"
+        assert gazer_mod._CONTACT_PAGE_STATUS["missing"] == "missing"
+
+    @pytest.mark.asyncio
+    async def test_url_required_when_param_blank(self) -> None:
+        out = await gazer_mod.contact_task_gazer_scrape("c1", "  ", debug=False)
+        assert out == {"ok": False, "error": "url_required", "task_key": "gazer_scrape"}
+
+    @pytest.mark.asyncio
+    async def test_no_connectivity(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=False))
+        out = await gazer_mod.contact_task_gazer_scrape(
+            "c1", "https://jobs.example/jd", debug=False
+        )
+        assert out["ok"] is False
+        assert out["error"] == "no_connectivity"
+        assert out["url"] == "https://jobs.example/jd"
+
+    @pytest.mark.asyncio
+    async def test_scheme_fix_and_success_payload(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        page = AsyncMock()
+        context = AsyncMock()
+
+        @asynccontextmanager
+        async def _browser():
+            yield context
+
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer_mod, "create_browser_context", _browser)
+        monkeypatch.setattr(gazer_mod, "get_page", AsyncMock(return_value=page))
+        monkeypatch.setattr(
+            gazer_mod,
+            "extract_page_scrape_contract",
+            AsyncMock(
+                return_value={
+                    "visible_text": _OK_JD,
+                    "nav_urls": ["https://jobs.example/a", "https://jobs.example/b"],
+                    "final_url": "https://jobs.example/jd",
+                }
+            ),
+        )
+        close = AsyncMock()
+        monkeypatch.setattr(gazer_mod, "close_page", close)
+        save = MagicMock()
+        transition = MagicMock()
+        create = MagicMock()
+        monkeypatch.setattr(gazer_mod, "save_job_data", save)
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        monkeypatch.setattr(gazer_mod, "create_meteorite_job", create)
+
+        out = await gazer_mod.contact_task_gazer_scrape(
+            "cand-1", "jobs.example/jd", debug=False
+        )
+        assert out["ok"] is True
+        assert out["task_key"] == "gazer_scrape"
+        assert out["url"] == "https://jobs.example/jd"
+        assert out["final_url"] == "https://jobs.example/jd"
+        assert out["page_status"] == "ok"
+        assert out["classification"] == "ok"
+        assert out["links"] == ["https://jobs.example/a", "https://jobs.example/b"]
+        assert out["astral_candidate_id"] == "cand-1"
+        assert "role summary" in out["visible_text"]
+        close.assert_awaited_once_with(page)
+        save.assert_not_called()
+        transition.assert_not_called()
+        create.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cookie_and_bot_map_to_blocked(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        page = AsyncMock()
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer_mod, "create_browser_context", _browser)
+        monkeypatch.setattr(gazer_mod, "get_page", AsyncMock(return_value=page))
+        monkeypatch.setattr(gazer_mod, "close_page", AsyncMock())
+
+        async def _run(label: str) -> str:
+            monkeypatch.setattr(
+                gazer_mod,
+                "extract_page_scrape_contract",
+                AsyncMock(
+                    return_value={"visible_text": "x", "nav_urls": [], "final_url": "u"}
+                ),
+            )
+            monkeypatch.setattr(gazer_mod, "_classify_jd", MagicMock(return_value=label))
+            out = await gazer_mod.contact_task_gazer_scrape("c1", "https://x", debug=False)
+            return out["page_status"]
+
+        assert await _run("cookie") == "blocked"
+        assert await _run("bot") == "blocked"
+
+    @pytest.mark.asyncio
+    async def test_scrape_exception_returns_error_dict(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        @asynccontextmanager
+        async def _browser():
+            raise RuntimeError("browser boom")
+            yield  # pragma: no cover
+
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer_mod, "create_browser_context", _browser)
+        out = await gazer_mod.contact_task_gazer_scrape(
+            "c1", "https://jobs.example/jd", debug=False
+        )
+        assert out["ok"] is False
+        assert out["task_key"] == "gazer_scrape"
+        assert "browser boom" in out["error"]
+
+    @pytest.mark.asyncio
+    async def test_debug_style_d_on_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        page = AsyncMock()
+
+        @asynccontextmanager
+        async def _browser():
+            yield AsyncMock()
+
+        monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
+        monkeypatch.setattr(gazer_mod, "create_browser_context", _browser)
+        monkeypatch.setattr(gazer_mod, "get_page", AsyncMock(return_value=page))
+        monkeypatch.setattr(gazer_mod, "close_page", AsyncMock())
+        monkeypatch.setattr(
+            gazer_mod,
+            "extract_page_scrape_contract",
+            AsyncMock(
+                return_value={
+                    "visible_text": _OK_JD,
+                    "nav_urls": ["https://a"],
+                    "final_url": "https://jobs.example/jd",
+                }
+            ),
+        )
+        log = MagicMock()
+        monkeypatch.setattr(gazer_mod, "get_logger", lambda _n: log)
+        out = await gazer_mod.contact_task_gazer_scrape(
+            "c1", "https://jobs.example/jd", debug=True
+        )
+        assert out["ok"] is True
+        log.set_debug_flag.assert_called_with(True)
+        kwa = log.debug_index.call_args.kwargs
+        assert kwa["func"] == "gazer.contact_task_gazer_scrape"
+        assert kwa["outcome"] == "ok page_status=ok"
+        details = " ".join(c.args[0] for c in log.debug_detail.call_args_list if c.args)
+        assert "visible_chars=" in details
+        assert "links_count=1" in details

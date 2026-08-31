@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -464,4 +464,118 @@ class TestAst1135InboxBoundCounts:
         assert inbox_mod.count_inbox_messages_bound_to_candidate("") == 0
         assert inbox_mod.count_inbox_messages_bound_to_candidate("   ") == 0
         listed.assert_not_called()
+
+
+# --- AST-1531: inbox land/fetch → stage_meteorite ---
+
+
+class TestAst1531InboxStageCutover:
+    """_land_bound_inbox_message strips then stages with source_kind=email."""
+
+    @pytest.mark.asyncio
+    async def test_land_bound_stages_stripped_html(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "subject": "Role",
+                    "html_body": "<p onclick=x>JD body here</p>",
+                    "from_address": "a@b.c",
+                }
+            ),
+        )
+        seen = {}
+
+        async def _stage(cid, blob, *, source_kind, source_id, debug=False):
+            seen.update(
+                {
+                    "cid": cid,
+                    "blob": blob,
+                    "source_kind": source_kind,
+                    "source_id": source_id,
+                    "debug": debug,
+                }
+            )
+            return {
+                "skipped": False,
+                "stage_outcome": "single_jd_with_more",
+                "outcome": created,
+                "land": {"outcome": created, "error": None},
+                "error": None,
+                "scraps": [],
+                "batch_id": "b-inbox",
+            }
+
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", _stage)
+        out = await inbox_mod._land_bound_inbox_message("m-inbox", "c1", debug=False)
+        assert out["outcome"] == created
+        assert seen["cid"] == "c1"
+        assert seen["source_kind"] == "email"
+        assert seen["source_id"] == "m-inbox"
+        assert "JD body here" in seen["blob"]
+        assert "onclick" not in seen["blob"]
+        assert "Role" in seen["blob"]
+
+    @pytest.mark.asyncio
+    async def test_land_bound_empty_strip_errors_without_stage(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(return_value={"subject": "S", "html_body": "<p>x</p>", "from_address": "a"}),
+        )
+        # Strip gate is on the post-strip blob; force empty to assert no stage call.
+        monkeypatch.setattr(inbox_mod, "strip_extract_email_html", MagicMock(return_value="  "))
+        stage = AsyncMock()
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", stage)
+        out = await inbox_mod._land_bound_inbox_message("m-empty", "c1", debug=False)
+        assert out["outcome"] == METEORITE_CONFIG["land_outcome_error"]
+        assert "empty" in (out.get("error") or "").lower()
+        stage.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_land_inbox_message_ids_uses_stage_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        monkeypatch.setattr(
+            inbox_mod,
+            "list_inbox_messages",
+            MagicMock(
+                return_value=[
+                    {
+                        "id": "bound",
+                        "candidate_match": {
+                            "matched": True,
+                            "astral_candidate_id": "c1",
+                        },
+                    }
+                ]
+            ),
+        )
+        land = AsyncMock(
+            return_value={
+                "skipped": False,
+                "outcome": created,
+                "land": {"outcome": created},
+            }
+        )
+        monkeypatch.setattr(inbox_mod, "_land_bound_inbox_message", land)
+        out = await inbox_mod.land_inbox_message_ids(["bound", "missing"], debug=False)
+        assert out["total_processed"] == 2
+        assert out["total_passed"] == 1
+        assert out["total_skipped"] == 1
+        land.assert_awaited_once()
+        assert land.await_args.args[:2] == ("bound", "c1")
 

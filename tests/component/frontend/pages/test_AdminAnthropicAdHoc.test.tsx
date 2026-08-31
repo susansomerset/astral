@@ -82,7 +82,12 @@ describe("AdminAnthropicAdHoc", () => {
 
   function mockApi(
     testResult?: { ok?: boolean; json: Record<string, unknown> },
-    opts?: { importRuns?: typeof defaultImportRuns; agentDataByBatch?: Record<string, unknown[]> },
+    opts?: {
+      importRuns?: typeof defaultImportRuns
+      agentDataByBatch?: Record<string, unknown[]>
+      candidates?: Array<Record<string, unknown>>
+      uiConfig?: Record<string, unknown>
+    },
   ) {
     const testOk = testResult?.ok !== false
     const testJson = testResult?.json ?? {
@@ -93,8 +98,15 @@ describe("AdminAnthropicAdHoc", () => {
     }
     const importRuns = opts?.importRuns ?? defaultImportRuns
     const agentDataByBatch = opts?.agentDataByBatch ?? {}
+    const candidates = opts?.candidates ?? [
+      { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { first: "Jane", last: "Doe" } },
+    ]
+    const uiConfig = opts?.uiConfig ?? { column_types: {}, adhoc_import_picker_visible_rows: 5 }
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
-      if (url === "/api/admin/adhoc/runs") {
+      if (url === "/api/ui_config" || url === "/api/system/ui_config") {
+        return { ok: true, json: async () => uiConfig } as Response
+      }
+      if (url.startsWith("/api/admin/adhoc/runs")) {
         return { ok: true, json: async () => importRuns } as Response
       }
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
@@ -168,7 +180,7 @@ describe("AdminAnthropicAdHoc", () => {
       if (url === "/api/admin/tasks/task_b" && init?.method === "PUT") return { ok: true, json: async () => ({}) } as Response
       if (url === "/api/admin/tasks/task_b_only" && init?.method === "PUT") return { ok: true, json: async () => ({}) } as Response
       if (url === "/api/candidates") {
-        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { first: "Jane", last: "Doe" } }] } as Response
+        return { json: async () => candidates } as Response
       }
     })
   }
@@ -219,7 +231,7 @@ describe("AdminAnthropicAdHoc", () => {
       { task_key: "mid", user_prompt_len: 0, cache_prompt_len: 0, nocache_prompt_len: 0 },
     ]
     installBaseApiMocks(mockedApi, async (url: string) => {
-      if (url === "/api/admin/adhoc/runs") return { ok: true, json: async () => [] } as Response
+      if (url.startsWith("/api/admin/adhoc/runs")) return { ok: true, json: async () => [] } as Response
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return { json: async () => ["candidate_name"] } as Response
       if (url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) return { json: async () => unsortedTasks } as Response
@@ -473,16 +485,24 @@ describe("AdminAnthropicAdHoc", () => {
   }
 
   async function selectImportRow(batchId: string) {
-    const row = screen.getByText(batchId === "import-batch-1" ? "2026-01-01T12:00:00Z" : "2026-01-02T12:00:00Z").closest("tr")
-    expect(row).toBeTruthy()
-    await userEvent.click(row as HTMLElement)
+    // AST-1535: runs arrive after candidate hydrate + filtered GET — wait for the row.
+    const stamp = batchId === "import-batch-1" ? "2026-01-01T12:00:00Z" : "2026-01-02T12:00:00Z"
+    const row = await waitFor(() => {
+      const el = screen.getByText(stamp).closest("tr")
+      expect(el).toBeTruthy()
+      return el as HTMLElement
+    })
+    await userEvent.click(row)
   }
 
-  it("AST-1452: mount loads import runs into the table", async () => {
+  it("AST-1452: with candidate selected loads import runs into the table", async () => {
+    // AST-1535: runs GET is candidate-scoped (no bare /adhoc/runs on mount).
     mockApi(undefined, { importRuns: defaultImportRuns })
     renderWithProviders(<AnthropicAdHoc />)
     await waitFor(() =>
-      expect(mockedApi.mock.calls.some(([u]) => String(u) === "/api/admin/adhoc/runs")).toBe(true),
+      expect(
+        mockedApi.mock.calls.some(([u]) => String(u).startsWith("/api/admin/adhoc/runs?candidate_id=c1")),
+      ).toBe(true),
     )
     expect(screen.getByRole("columnheader", { name: "timestamp" })).toBeInTheDocument()
     expect(screen.getByText("2026-01-01T12:00:00Z")).toBeInTheDocument()
@@ -583,5 +603,66 @@ describe("AdminAnthropicAdHoc", () => {
     await userEvent.click(screen.getByRole("button", { name: "User Prompt" }))
     expect(screen.getByDisplayValue("imported-user")).toBeInTheDocument()
     expect(screen.queryByDisplayValue("draft")).not.toBeInTheDocument()
+  }, 20000)
+
+  it("AST-1535: no candidate skips runs fetch and leaves picker empty", async () => {
+    mockApi(undefined, { candidates: [], importRuns: defaultImportRuns })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(mockedApi.mock.calls.some(([u]) => String(u) === "/api/candidates")).toBe(true),
+    )
+    expect(mockedApi.mock.calls.some(([u]) => String(u).startsWith("/api/admin/adhoc/runs"))).toBe(false)
+    expect(screen.queryByText("2026-01-01T12:00:00Z")).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Load" })).toBeDisabled()
+  }, 15000)
+
+  it("AST-1535: task key selection adds task_key query param on runs refetch", async () => {
+    mockApi(undefined, { importRuns: defaultImportRuns })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() =>
+      expect(
+        mockedApi.mock.calls.some(([u]) => String(u) === "/api/admin/adhoc/runs?candidate_id=c1"),
+      ).toBe(true),
+    )
+    await userEvent.selectOptions(screen.getAllByRole("combobox")[0], "task_a")
+    await waitFor(() =>
+      expect(
+        mockedApi.mock.calls.some(
+          ([u]) => String(u) === "/api/admin/adhoc/runs?candidate_id=c1&task_key=task_a",
+        ),
+      ).toBe(true),
+    )
+  }, 20000)
+
+  it("AST-1535: ui_config visible rows set scroll wrap maxHeight", async () => {
+    mockApi(undefined, {
+      importRuns: defaultImportRuns,
+      uiConfig: { column_types: {}, adhoc_import_picker_visible_rows: 5 },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("2026-01-01T12:00:00Z")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(mockedApi.mock.calls.some(([u]) => String(u) === "/api/ui_config")).toBe(true),
+    )
+    const wrap = document.querySelector(".list-page-table-wrap--scroll") as HTMLElement | null
+    expect(wrap).toBeTruthy()
+    // HEAD 33 + 5 * ROW 29 = 178 — layout mirrors, count from config.
+    await waitFor(() => expect(wrap!.style.maxHeight).toBe("178px"))
+    expect(wrap!.style.overflowY).toBe("auto")
+  }, 15000)
+
+  it("AST-1535: Load still fills editors from agent_data batch", async () => {
+    mockApi(undefined, {
+      importRuns: defaultImportRuns,
+      agentDataByBatch: { "import-batch-2": importBlocks("import-batch-2") },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    await selectImportRow("import-batch-2")
+    await userEvent.click(screen.getByRole("button", { name: "Load" }))
+    await waitFor(() => expect(screen.getByText("Loaded agent data import-batch-2")).toBeInTheDocument())
+    expect(screen.getByDisplayValue("imported-system")).toBeInTheDocument()
+    expect(agentDataGets()).toContain("/api/agent_data/import-batch-2")
   }, 20000)
 })

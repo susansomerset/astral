@@ -1104,8 +1104,17 @@ def _resume_site_markers(text: str) -> str:
             keepers = [seg.strip() for seg in line.split(auth_sep) if seg.strip()]
             out_lines.append(emit_sep.join(keepers))
         t = line_sep.join(out_lines)
-    t = t.replace(" • ", "\u00a0• ")
+    t = t.replace(emit_sep, "\u00a0• ")
     return t
+
+
+def _glue_word_cloud_bullet_separators(text: str) -> str:
+    """NBSP both sides of • for word_cloud HTML emit only (AST-1536)."""
+    if not text:
+        return text
+    emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
+    glued = "\u00a0•\u00a0"
+    return text.replace(emit_sep, glued).replace("\u00a0• ", glued)
 
 
 def _emit_inline_emphasis_html(text: str) -> str:
@@ -1599,8 +1608,9 @@ def _emit_body_sections_html(
                     skip_reasons[key] = "skipped — empty"
                     continue
             elif fmt == "word_cloud":
+                cloud_text = _glue_word_cloud_bullet_separators(str(text))
                 inner_html = (
-                    f'      <p class="competencies-list">{_emit_inline_emphasis_html(str(text))}</p>'
+                    f'      <p class="competencies-list">{_emit_inline_emphasis_html(cloud_text)}</p>'
                 )
             elif fmt == "dual_column":
                 inner_html = _emit_skills_grid_html(str(text))

@@ -187,3 +187,29 @@ Retire `gaze_email` test/bible identity; retarget mailbox runner + config/dispat
   tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
   -q
 ```
+
+
+### AST-1531 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact`.
+
+Mailbox `_handle_bound` → `stage_meteorite(source_kind="email", source_id=mid)` on subject+html blob; archive via `_stage_archive_token` (land created / all-skip). Mechanical subject/href classify (`_subject_is_url`, scrape helpers) retired. Inbox / Contact cutover: **`docs/test-bible/core/inbox.md`**, **`docs/test-bible/core/contact.md`**. Stage core: **`docs/test-bible/core/meteorite.md`** (**AST-1530**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Bound stage land + skip-archive + archive token | `src/core/meteorite_email.py` | **`TestAst1531MailboxStageCutover`**; revised **`TestAst1090RunMeteoriteEmail::test_bound_stage_skip_archives`** |
+| Empty-subject JD → stage + archive | `src/core/meteorite_email.py` | revised **`TestAst1522NoSubjectJdLandsAndArchives`** (`stage_meteorite`) |
+| Selected-ids bound → stage | `src/core/meteorite_email.py` | revised **`TestAst1140RunMeteoriteEmailSelectedIds`** (`stage_meteorite`) |
+
+**Broken / obsolete:** **`TestAst1090SubjectIsUrl`** skipped (helper deleted). Create/land mechanical mocks replaced with `stage_meteorite`.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite_email.py::TestAst1531MailboxStageCutover \
+  tests/component/core/test_meteorite_email.py::TestAst1522NoSubjectJdLandsAndArchives \
+  tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
+  tests/component/core/test_meteorite_email.py::TestAst1090RunMeteoriteEmail::test_bound_stage_skip_archives \
+  -q
+```

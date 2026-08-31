@@ -463,3 +463,369 @@ class TestAst1470LandMeteorite:
             if c.kwargs.get("func") == "meteorite.land_meteorite"
         ]
         assert land_indexes == []
+
+
+# Branches: URL detector; no_candidate/param_required; text vs link mode; scrape soft-fail; Style D (AST-1517).
+class TestAst1517CreateContactMeteorite:
+    """AST-1517: contact-task create — scrape-or-text → create_meteorite_job."""
+
+    def test_contact_param_looks_like_url(self) -> None:
+        looks = meteorite_mod._contact_param_looks_like_url
+        assert looks("") is False
+        assert looks("   ") is False
+        assert looks("line one\nline two") is False
+        assert looks("has space.com") is False
+        assert looks(".hidden") is False
+        assert looks("https://jobs.example/jd") is True
+        assert looks("jobs.example.com/path") is True
+
+    @pytest.mark.asyncio
+    async def test_no_candidate(self) -> None:
+        out = await meteorite_mod.create_contact_meteorite("", "https://x.example/j")
+        assert out == {
+            "ok": False,
+            "error": "no_candidate",
+            "task_key": "create_contact_meteorite",
+        }
+
+    @pytest.mark.asyncio
+    async def test_param_required(self) -> None:
+        out = await meteorite_mod.create_contact_meteorite("c1", "  ")
+        assert out == {
+            "ok": False,
+            "error": "param_required",
+            "task_key": "create_contact_meteorite",
+        }
+
+    @pytest.mark.asyncio
+    async def test_text_mode_creates_without_scrape(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1517-text"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        body = "Senior Engineer\n" + ("detail " * 20)
+
+        async def _fail_scrape(*_a, **_k):
+            raise AssertionError("text mode must not scrape")
+
+        monkeypatch.setattr(
+            "src.core.gazer.contact_task_gazer_scrape", _fail_scrape
+        )
+        out = await meteorite_mod.create_contact_meteorite(cid, body, debug=False)
+        assert out["ok"] is True
+        assert out["mode"] == "text"
+        assert out["task_key"] == "create_contact_meteorite"
+        assert out["result"]["astral_job_id"]
+        from src.utils.config import TRACKER_CONFIG
+
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        row = db.get_job(out["result"]["astral_job_id"])
+        assert row["job_data"][jd_key] == body.rstrip()
+
+    @pytest.mark.asyncio
+    async def test_link_mode_scrape_then_create(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1517-link"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+        url = "https://jobs.example/jd"
+        visible = "Role title\n" + ("jd " * 20)
+
+        async def _scrape(_cid, _url, debug=False):
+            assert _url == url
+            return {
+                "ok": True,
+                "visible_text": visible,
+                "url": url,
+                "final_url": "https://jobs.example/jd/final",
+                "page_status": "ok",
+                "task_key": "gazer_scrape",
+            }
+
+        monkeypatch.setattr(
+            "src.core.gazer.contact_task_gazer_scrape", _scrape
+        )
+        out = await meteorite_mod.create_contact_meteorite(cid, url, debug=False)
+        assert out["ok"] is True
+        assert out["mode"] == "link"
+        assert out["page_status"] == "ok"
+        assert out["final_url"] == "https://jobs.example/jd/final"
+        row = db.get_job(out["result"]["astral_job_id"])
+        assert row["job_link"] == "https://jobs.example/jd/final"
+
+    @pytest.mark.asyncio
+    async def test_link_mode_scrape_failure_soft_return(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _scrape(_cid, _url, debug=False):
+            return {"ok": False, "error": "no_connectivity", "task_key": "gazer_scrape"}
+
+        monkeypatch.setattr(
+            "src.core.gazer.contact_task_gazer_scrape", _scrape
+        )
+        out = await meteorite_mod.create_contact_meteorite(
+            "c1", "https://jobs.example/jd", debug=False
+        )
+        assert out["ok"] is False
+        assert out["error"] == "no_connectivity"
+        assert out["mode"] == "link"
+
+    @pytest.mark.asyncio
+    async def test_link_mode_empty_visible_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        async def _scrape(_cid, _url, debug=False):
+            return {
+                "ok": True,
+                "visible_text": "   ",
+                "page_status": "blocked",
+                "task_key": "gazer_scrape",
+            }
+
+        monkeypatch.setattr(
+            "src.core.gazer.contact_task_gazer_scrape", _scrape
+        )
+        out = await meteorite_mod.create_contact_meteorite(
+            "c1", "https://jobs.example/jd", debug=False
+        )
+        assert out["ok"] is False
+        assert out["error"] == "empty_visible_text"
+        assert out["scrape"]["page_status"] == "blocked"
+
+    @pytest.mark.asyncio
+    async def test_debug_true_emits_style_d(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1517-dbg"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
+        out = await meteorite_mod.create_contact_meteorite(
+            cid, "plain pasted jd\n" + ("x" * 40), debug=True
+        )
+        assert out["ok"] is True
+        contact_calls = [
+            c
+            for c in log.debug_index.call_args_list
+            if c.kwargs.get("func") == "meteorite.create_contact_meteorite"
+        ]
+        assert len(contact_calls) == 2
+        assert contact_calls[0].kwargs.get("outcome") == "found"
+        assert str(contact_calls[1].kwargs.get("outcome", "")).startswith(
+            "recorded astral_job_id="
+        )
+
+
+# Branches: stage gates; skip; text/url scrap map; land call; Style D (AST-1530).
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "stage_meteorite"),
+    reason="AST-1530 stage_meteorite not on this publish tip",
+)
+class TestAst1530StageMeteorite:
+    """AST-1530: public stage_meteorite — classify → scrap map → land or skip."""
+
+    def test_map_single_jd_no_link_source_ref(self) -> None:
+        scraps, err = meteorite_mod._map_stage_jobs_to_scraps(
+            "single_jd_no_link",
+            [{"jd_text": "JD body " + ("x" * 40), "job_link": "https://evil.example/home"}],
+            source_kind="email",
+            source_id="msg-1",
+        )
+        assert err is None
+        assert len(scraps) == 1
+        assert scraps[0]["job_link"] == "email-msg-1"
+        assert scraps[0]["company_job_id"] == "email-msg-1"
+        assert scraps[0]["text"].startswith("JD body")
+
+    def test_map_multi_jd_inline_individuated_refs(self) -> None:
+        scraps, err = meteorite_mod._map_stage_jobs_to_scraps(
+            "multi_jd_inline",
+            [
+                {"jd_text": "First JD " + ("a" * 40)},
+                {"jd_text": "Second JD " + ("b" * 40)},
+            ],
+            source_kind="paste",
+            source_id="blob-9",
+        )
+        assert err is None
+        assert [s["job_link"] for s in scraps] == ["paste-blob-9-1", "paste-blob-9-2"]
+        assert scraps[0]["company_job_id"] == "paste-blob-9-1"
+
+    def test_map_url_scrape_keeps_http_link(self) -> None:
+        scraps, err = meteorite_mod._map_stage_jobs_to_scraps(
+            "single_jd_with_more",
+            [{"job_link": "https://jobs.example.com/role", "jd_text": "hint"}],
+            source_kind="email",
+            source_id="m2",
+        )
+        assert err is None
+        assert scraps[0]["job_link"] == "https://jobs.example.com/role"
+        assert scraps[0]["company_job_id"] == "email-m2"
+
+    def test_map_link_list_and_rejects_non_http(self) -> None:
+        scraps, err = meteorite_mod._map_stage_jobs_to_scraps(
+            "link_list",
+            [
+                {"job_link": "https://dice.com/a"},
+                {"job_link": "https://dice.com/b"},
+            ],
+            source_kind="slack",
+            source_id="ch1",
+        )
+        assert err is None
+        assert scraps[0]["company_job_id"] == "slack-ch1-1"
+        assert scraps[1]["job_link"] == "https://dice.com/b"
+
+        _, err2 = meteorite_mod._map_stage_jobs_to_scraps(
+            "link_list",
+            [{"job_link": "www.not-a-scheme.example/x"}],
+            source_kind="email",
+            source_id="m",
+        )
+        assert err2 == "url scrap missing http(s) job_link"
+
+    def test_map_text_missing_jd_text_errors(self) -> None:
+        _, err = meteorite_mod._map_stage_jobs_to_scraps(
+            "single_jd_no_link",
+            [{"jd_text": "   ", "job_link": "https://x"}],
+            source_kind="email",
+            source_id="m",
+        )
+        assert err == "text scrap missing jd_text"
+
+    @pytest.mark.asyncio
+    async def test_empty_candidate_and_missing_candidate(
+        self, sqlite_in_memory
+    ) -> None:
+        err = METEORITE_CONFIG["land_outcome_error"]
+        out = await meteorite_mod.stage_meteorite(
+            "", "blob", source_kind="email", source_id="m1"
+        )
+        assert out["outcome"] == err
+        assert "candidate_id" in (out.get("error") or "")
+        assert out["skipped"] is False
+
+        out2 = await meteorite_mod.stage_meteorite(
+            "missing", "blob text", source_kind="email", source_id="m1"
+        )
+        assert out2["outcome"] == err
+        assert "candidate not found" in (out2.get("error") or "")
+
+    @pytest.mark.asyncio
+    async def test_skip_outcomes_do_not_land(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-stage-skip"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+
+        async def _invoke(*_a, **_k):
+            return {
+                "success": True,
+                "outcome": "not_job_content",
+                "jobs": [{"jd_text": "should be ignored"}],
+                "error": None,
+                "batch_id": "stage_meteorite-stage-skip",
+            }
+
+        land_calls = []
+
+        async def _land(*_a, **_k):
+            land_calls.append(1)
+            return {"outcome": "should-not-run"}
+
+        monkeypatch.setattr(
+            "src.core.consult.invoke_stage_meteorite", _invoke
+        )
+        monkeypatch.setattr(meteorite_mod, "land_meteorite", _land)
+        out = await meteorite_mod.stage_meteorite(
+            cid, "noise thread", source_kind="email", source_id="msg-skip"
+        )
+        assert out["skipped"] is True
+        assert out["outcome"] == "not_job_content"
+        assert out["stage_outcome"] == "not_job_content"
+        assert out["scraps"] == []
+        assert out["land"] is None
+        assert land_calls == []
+
+    @pytest.mark.asyncio
+    async def test_landable_calls_land_with_mapped_scraps(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-stage-land"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+
+        async def _invoke(*_a, **_k):
+            return {
+                "success": True,
+                "outcome": "single_jd_no_link",
+                "jobs": [{"jd_text": "Original JD " + ("z" * 40)}],
+                "error": None,
+                "batch_id": "stage_meteorite-stage-land",
+            }
+
+        captured = {}
+
+        async def _land(cand_id, **kwargs):
+            captured["cid"] = cand_id
+            captured["scraps"] = kwargs.get("scraps")
+            return {
+                "outcome": "landed",
+                "error": None,
+                "company": "MET-cand-stage-land",
+                "company_inserted": True,
+                "outcomes": [{"astral_job_id": "j1"}],
+            }
+
+        monkeypatch.setattr(
+            "src.core.consult.invoke_stage_meteorite", _invoke
+        )
+        monkeypatch.setattr(meteorite_mod, "land_meteorite", _land)
+        out = await meteorite_mod.stage_meteorite(
+            cid, "blob", source_kind="email", source_id="msg-land", debug=False
+        )
+        assert out["skipped"] is False
+        assert out["stage_outcome"] == "single_jd_no_link"
+        assert out["outcome"] == "landed"
+        assert captured["cid"] == cid
+        assert captured["scraps"][0]["job_link"] == "email-msg-land"
+        assert out["company"] == "MET-cand-stage-land"
+        assert out["land"]["outcomes"][0]["astral_job_id"] == "j1"
+
+    @pytest.mark.asyncio
+    async def test_debug_true_emits_style_d_on_skip(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-stage-dbg"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+
+        async def _invoke(*_a, **_k):
+            return {
+                "success": True,
+                "outcome": "not_original_posting",
+                "jobs": [],
+                "error": None,
+                "batch_id": "b-dbg",
+            }
+
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
+        monkeypatch.setattr(
+            "src.core.consult.invoke_stage_meteorite", _invoke
+        )
+        out = await meteorite_mod.stage_meteorite(
+            cid, "reply", source_kind="email", source_id="m", debug=True
+        )
+        assert out["skipped"] is True
+        stage_calls = [
+            c
+            for c in log.debug_index.call_args_list
+            if c.kwargs.get("func") == "meteorite.stage_meteorite"
+        ]
+        assert len(stage_calls) >= 1
+        assert stage_calls[0].kwargs.get("outcome") == "not_original_posting"

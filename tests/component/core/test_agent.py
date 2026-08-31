@@ -4984,7 +4984,7 @@ class TestAst515AdhocWorkbenchLedger:
 
 
 class TestAst1451ListAgentDataRuns:
-    """AST-1451: list_agent_data_runs returns data rows; Style D only when debug=True."""
+    """AST-1451 (revised AST-1534): list_agent_data_runs returns data rows; Style D when debug=True."""
 
     _ROWS = [
         {
@@ -5004,7 +5004,9 @@ class TestAst1451ListAgentDataRuns:
     def test_returns_data_rows_debug_false_skips_contract(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(agent_mod, "list_agent_data_batches", lambda: list(self._ROWS))
+        monkeypatch.setattr(
+            agent_mod, "list_agent_data_batches", lambda **_kw: list(self._ROWS)
+        )
         gl = MagicMock(wraps=agent_mod.get_logger)
         monkeypatch.setattr(agent_mod, "get_logger", gl)
         out = agent_mod.list_agent_data_runs(debug=False)
@@ -5014,7 +5016,9 @@ class TestAst1451ListAgentDataRuns:
     def test_debug_true_emits_index_found_recorded_per_run(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(agent_mod, "list_agent_data_batches", lambda: list(self._ROWS))
+        monkeypatch.setattr(
+            agent_mod, "list_agent_data_batches", lambda **_kw: list(self._ROWS)
+        )
         dbg = MagicMock()
         real = agent_mod.get_logger
         monkeypatch.setattr(
@@ -5037,6 +5041,63 @@ class TestAst1451ListAgentDataRuns:
         assert details[1].startswith("recorded ")
         assert "batch_id='b-new'" in details[1]
         dbg.debug_detail_block.assert_not_called()
+
+
+class TestAst1534ListAgentDataRunsFilters:
+    """AST-1534: forwards filter/limit kwargs; debug only on returned (filtered) rows."""
+
+    def test_forwards_candidate_task_limit_to_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        seen: list[dict] = []
+
+        def _list(**kw):
+            seen.append(kw)
+            return [{"batch_id": "b1", "created_at": "t", "entity_id": "e", "task_key": "k"}]
+
+        monkeypatch.setattr(agent_mod, "list_agent_data_batches", _list)
+        out = agent_mod.list_agent_data_runs(
+            candidate_id="cand-1",
+            task_key="evaluate_jd",
+            limit=10,
+            debug=False,
+        )
+        assert seen == [
+            {"candidate_id": "cand-1", "task_key": "evaluate_jd", "limit": 10}
+        ]
+        assert out[0]["batch_id"] == "b1"
+
+    def test_debug_true_only_covers_returned_rows(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Data already filtered — core must not invent extra debug for dropped batches.
+        filtered = [
+            {
+                "batch_id": "b-kept",
+                "created_at": "2026-08-01 00:00:00",
+                "entity_id": "job-1",
+                "task_key": "adhoc-evaluate_jd",
+            }
+        ]
+        monkeypatch.setattr(
+            agent_mod, "list_agent_data_batches", lambda **_kw: list(filtered)
+        )
+        dbg = MagicMock()
+        real = agent_mod.get_logger
+        monkeypatch.setattr(
+            agent_mod,
+            "get_logger",
+            lambda *a, **k: dbg if k.get("debug_flag") else real(*a, **k),
+        )
+        out = agent_mod.list_agent_data_runs(
+            candidate_id="cand-1", task_key="evaluate_jd", limit=10, debug=True
+        )
+        assert out == filtered
+        index_kw = [c.kwargs for c in dbg.debug_index.call_args_list]
+        assert len(index_kw) == 1
+        assert index_kw[0]["total"] == 1
+        assert index_kw[0]["identifier"] == "b-kept"
+        assert len(dbg.debug_detail.call_args_list) == 2
 
 
 class TestAst724VectorFeedbackCapture:
@@ -7385,62 +7446,55 @@ class TestAst1083StoreResponseDebugResult:
 
 
 @pytest.mark.skipif(
-    "meteorite_email" not in TASK_CONFIG,
-    reason="AST-1212 meteorite_email not on this publish tip",
+    "stage_meteorite" not in TASK_CONFIG,
+    reason="AST-1529 stage_meteorite not on this publish tip",
 )
-class TestAst1144ParseMeteoriteEmailMetadataDict:
-    """AST-1144 / AST-1212: realistic Ruth html_links payload with dict metadata validates."""
+class TestAst1529StageMeteoriteSchemaValidate:
+    """AST-1529: stage_meteorite outcome+jobs schema validates; supersedes AST-1144 parse metadata."""
 
     def _schema(self):
-        return TASK_CONFIG["meteorite_email"]["response_schema"]
+        return TASK_CONFIG["stage_meteorite"]["response_schema"]
 
-    def test_dict_metadata_validates(self) -> None:
+    def test_landable_outcome_with_jobs_validates(self) -> None:
         parsed = {
             "agent_payload": {
-                "parse_mode": "html_links",
+                "outcome": "single_jd_with_more",
                 "jobs": [
                     {
                         "job_link": "https://www.dice.com/job-detail/abc",
                         "job_title": "Engineer",
-                        "metadata": {"company": "Acme", "location": "Remote"},
+                        "jd_text": "Build things.",
                     }
                 ],
             }
         }
         assert agent_mod._validate_response_schema(
-            parsed, self._schema(), "meteorite_email"
+            parsed, self._schema(), "stage_meteorite"
         ) is None
 
-    def test_str_metadata_rejected(self) -> None:
-        # Pre-AST-1144 contract — must not silently accept again.
+    def test_skip_outcome_empty_jobs_ok(self) -> None:
         parsed = {
             "agent_payload": {
-                "parse_mode": "html_links",
-                "jobs": [
-                    {
-                        "job_link": "https://www.dice.com/job-detail/abc",
-                        "metadata": "company=Acme",
-                    }
-                ],
+                "outcome": "not_job_content",
+                "jobs": [],
+            }
+        }
+        assert agent_mod._validate_response_schema(
+            parsed, self._schema(), "stage_meteorite"
+        ) is None
+
+    def test_unknown_outcome_rejected(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "outcome": "html_links",
+                "jobs": [],
             }
         }
         err = agent_mod._validate_response_schema(
-            parsed, self._schema(), "meteorite_email"
+            parsed, self._schema(), "stage_meteorite"
         )
         assert err is not None
-        assert "metadata" in err
-        assert "must be dict" in err
-
-    def test_omitted_metadata_still_ok(self) -> None:
-        parsed = {
-            "agent_payload": {
-                "parse_mode": "html_links",
-                "jobs": [{"job_link": "https://jobs.example.com/a"}],
-            }
-        }
-        assert agent_mod._validate_response_schema(
-            parsed, self._schema(), "meteorite_email"
-        ) is None
+        assert "outcome" in err
 
 
 
@@ -8006,6 +8060,82 @@ class TestAst1523EpicAgentHooksRemoved:
         assert not hasattr(tracker_mod, "persist_draft_job_resume_deviations")
         assert not hasattr(tracker_mod, "persist_draft_job_resume_advice_adherence")
         assert not hasattr(tracker_mod, "persist_advise_job_resume_coded_advice")
+
+
+# AST-1514 bug-repro fixtures (mirror candidate TestAst1514AdviseResumeBriefJsonPayload).
+_AST1514_RESUME_BRIEF_BODY = (
+    '[R1] Promote cloud migration win — cite: "Led AWS migration"\n'
+    "[R2] Cut outdated PHP bullet"
+)
+_AST1514_PAYLOAD_DICT = {
+    "resume_brief": _AST1514_RESUME_BRIEF_BODY,
+    "cover_letter_direction": "Ratify thesis with one line of reasoning.",
+    "ask_candidate": "Nothing further.",
+}
+_AST1514_PAYLOAD_JSON = json.dumps(_AST1514_PAYLOAD_DICT)
+
+
+class TestAst1514DoTaskResumeBriefJsonPersist:
+    """AST-1514: advise_job_resume accepts JSON-string/dict resume_brief and persists."""
+
+    @pytest.mark.asyncio
+    async def test_json_string_payload_succeeds_and_persists(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        # Pre-fix: validate fails — RESUME BRIEF section missing or incomplete.
+        persist = MagicMock(return_value=[{"code": "R1"}, {"code": "R2"}])
+        monkeypatch.setattr("src.core.tracker.persist_advise_job_resume_coded_advice", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": _AST1514_PAYLOAD_JSON},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task("advise_job_resume", index="job-1514", ctx={})
+        assert out["success"] is True
+        persist.assert_called_once()
+        assert persist.call_args.args[0] == "job-1514"
+        assert persist.call_args.args[1] == _AST1514_PAYLOAD_JSON
+
+    @pytest.mark.asyncio
+    async def test_dict_payload_validates_and_persists(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        # Pre-fix: str-only validate gate skips; persist gets "" instead of the dict.
+        persist = MagicMock(return_value=[{"code": "R1"}, {"code": "R2"}])
+        monkeypatch.setattr("src.core.tracker.persist_advise_job_resume_coded_advice", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": dict(_AST1514_PAYLOAD_DICT)},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task("advise_job_resume", index="job-1514", ctx={})
+        assert out["success"] is True
+        persist.assert_called_once()
+        assert persist.call_args.args[1] == _AST1514_PAYLOAD_DICT
 
 
 class TestAst1293SoftCoerceNumericSchemaStrings:

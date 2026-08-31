@@ -136,4 +136,4 @@ Legacy `agent_data` tables missing `ref_agent_data_id` gain a nullable TEXT colu
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-`list_agent_data_batches` (Ad Hoc import list): **`docs/test-bible/core/agent.md`** § AST-1451.
+`list_agent_data_batches` (Ad Hoc import list): **`docs/test-bible/core/agent.md`** § AST-1451 (unfiltered retired) + § AST-1534 (candidate/task/limit).

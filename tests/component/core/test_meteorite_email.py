@@ -40,17 +40,15 @@ def _msg(
     }
 
 
-# Branches: scheme+netloc URL subject; empty / non-url reject.
+# Branches: scheme+netloc URL subject — deleted with mechanical classify (AST-1531).
 
+@pytest.mark.skip(reason="AST-1531 retired _subject_is_url with mailbox stage cutover")
 class TestAst1090SubjectIsUrl:
     def test_http_https_with_netloc(self) -> None:
         assert ge._subject_is_url("https://jobs.example.com/role") is True
-        assert ge._subject_is_url("http://x.test/a") is True
 
     def test_rejects_non_url_and_scheme_only(self) -> None:
         assert ge._subject_is_url("Hello role") is False
-        assert ge._subject_is_url("https://") is False
-        assert ge._subject_is_url("") is False
 
 
 # Branches: retention age vs unknown internalDate.
@@ -114,7 +112,10 @@ class TestAst1090RunMeteoriteEmail:
         stamp.assert_called_once_with("c1")
 
     @pytest.mark.asyncio
-    async def test_bound_ignore_non_url_empty_body(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_bound_stage_skip_archives(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """AST-1531: stage skip → archive (all-skip rule); no mechanical classify."""
+        from src.core import meteorite as meteorite_mod
+
         self._stub_stamp(monkeypatch)
         monkeypatch.setattr(
             ge, "list_inbox_messages", MagicMock(return_value=[_msg("m1", matched=True)])
@@ -127,19 +128,38 @@ class TestAst1090RunMeteoriteEmail:
         monkeypatch.setattr(
             ge,
             "get_message_html",
-            MagicMock(return_value={"subject": "Weekly digest", "html_body": "<p>  </p>", "from_address": "a"}),
+            MagicMock(return_value={"subject": "Weekly digest", "html_body": "<p>hi</p>", "from_address": "a"}),
         )
+        seen = {}
+
+        async def _stage(cid, blob, *, source_kind, source_id, debug=False):
+            seen["cid"] = cid
+            seen["source_kind"] = source_kind
+            seen["source_id"] = source_id
+            seen["blob"] = blob
+            return {
+                "skipped": True,
+                "stage_outcome": "not_job_content",
+                "outcome": "not_job_content",
+                "land": None,
+                "error": None,
+                "scraps": [],
+                "batch_id": "b-skip",
+            }
+
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", _stage)
         archive = MagicMock()
         trash = MagicMock()
-        create = MagicMock()
         monkeypatch.setattr(ge, "archive_message", archive)
         monkeypatch.setattr(ge, "trash_message", trash)
-        monkeypatch.setattr(ge, "create_meteorite_job", create)
         out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
         assert out == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-        archive.assert_not_called()
+        assert seen["cid"] == "c1"
+        assert seen["source_kind"] == "email"
+        assert seen["source_id"] == "m1"
+        assert "Weekly digest" in seen["blob"]
+        archive.assert_called_once_with("m1")
         trash.assert_not_called()
-        create.assert_not_called()
 
     # AST-1522: Ruth html_links / subject_url+_ingest_link / create_meteorite_job runner
     # cases removed — superseded by land_meteorite routing (see TestAst1522).
@@ -289,29 +309,34 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
                 }
             ),
         )
-        monkeypatch.setattr(
-            ge,
-            "_meteorite_fetch_link_visible_text",
-            AsyncMock(return_value=("visible text " * 20, "https://jobs.example.com/sel")),
-        )
-        monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
         from src.core import meteorite as meteorite_mod
         from src.utils.config import METEORITE_CONFIG
 
         created = METEORITE_CONFIG["land_outcome_created"]
-        land = AsyncMock(
+        stage = AsyncMock(
             return_value={
+                "skipped": False,
+                "stage_outcome": "single_jd_with_more",
                 "outcome": created,
-                "outcomes": [{"outcome": created, "astral_job_id": "j-sel"}],
-                "company": "meteorite-c1",
+                "land": {
+                    "outcome": created,
+                    "outcomes": [{"outcome": created, "astral_job_id": "j-sel"}],
+                    "company": "meteorite-c1",
+                    "error": None,
+                },
                 "error": None,
+                "scraps": [{"job_link": "https://jobs.example.com/sel"}],
+                "batch_id": "b-sel",
+                "company": "meteorite-c1",
+                "company_inserted": False,
+                "outcomes": [{"outcome": created, "astral_job_id": "j-sel"}],
             }
         )
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", stage)
         archive = MagicMock()
         trash = MagicMock()
         stamp = MagicMock()
         create_strip = MagicMock()
-        monkeypatch.setattr(meteorite_mod, "land_meteorite", land)
         monkeypatch.setattr(ge, "archive_message", archive)
         monkeypatch.setattr(ge, "trash_message", trash)
         # Forbidden call sites — must never be invoked from selected-ids.
@@ -346,9 +371,10 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
         assert out["total_skipped"] == 3
         assert out["total_processed"] == 4
         assert out["total_passed"] == 1
-        land.assert_awaited()
-        assert land.await_args.args[0] == "c1"
-        assert land.await_args.kwargs.get("job_link") == "https://jobs.example.com/sel"
+        stage.assert_awaited()
+        assert stage.await_args.args[0] == "c1"
+        assert stage.await_args.kwargs.get("source_kind") == "email"
+        assert stage.await_args.kwargs.get("source_id") == "bound"
         archive.assert_called_once_with("bound")
         trash.assert_not_called()
         stamp.assert_not_called()
@@ -412,13 +438,8 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
     reason="AST-1090 meteorite_email runner not on this publish tip",
 )
 class TestAst1522NoSubjectJdLandsAndArchives:
-    """AST-1522 [bug-repro]: no-subject JD text → land_meteorite + archive (AST-1521 fix).
+    """AST-1522 intent via AST-1531: empty subject + JD HTML stages and archives on land."""
 
-    Pre-fix: Ruth html_links + empty jobs → ignored-empty pass, inbox kept, no land.
-    Post-fix (AST-1521): land_meteorite(text=visible body) + archive_message.
-    """
-
-    # Plain JD body, no http(s) links; visible text ≥ METEORITE_EMAIL_INGEST_CONFIG min_jd_chars.
     _JD_HTML = (
         "<p>Senior Platform Engineer role. Own distributed systems design, on-call "
         "rotation, and reliable service delivery for customers worldwide.</p>"
@@ -428,13 +449,11 @@ class TestAst1522NoSubjectJdLandsAndArchives:
     async def test_no_subject_jd_text_lands_and_archives(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """[bug-repro] Empty subject + JD body must land + archive (not ignored-empty)."""
+        """Empty subject + JD body → stage_meteorite(email, mid) + archive."""
         from src.core import meteorite as meteorite_mod
-        from src.utils.config import METEORITE_CONFIG, METEORITE_EMAIL_INGEST_CONFIG
+        from src.utils.config import METEORITE_CONFIG
 
-        visible = ge._body_text(self._JD_HTML)
-        assert len(visible) >= int(METEORITE_EMAIL_INGEST_CONFIG["min_jd_chars"])
-
+        created = METEORITE_CONFIG["land_outcome_created"]
         monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
         monkeypatch.setattr(
             ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-jd", matched=True)])
@@ -451,40 +470,148 @@ class TestAst1522NoSubjectJdLandsAndArchives:
                 return_value={"subject": "", "html_body": self._JD_HTML, "from_address": "a"}
             ),
         )
-        # Pre-fix Ruth path: success + zero jobs + no links → ignored-empty (the bug).
-        monkeypatch.setattr(
-            ge,
-            "do_task",
-            AsyncMock(return_value={"success": True, "parsed_response": {"jobs": []}}),
-        )
-        created = METEORITE_CONFIG["land_outcome_created"]
-        land = AsyncMock(
+        stage = AsyncMock(
             return_value={
+                "skipped": False,
+                "stage_outcome": "single_jd_with_more",
                 "outcome": created,
-                "outcomes": [{"outcome": created, "astral_job_id": "j-jd"}],
-                "company": "meteorite-c1",
+                "land": {
+                    "outcome": created,
+                    "outcomes": [{"outcome": created, "astral_job_id": "j-jd"}],
+                    "company": "meteorite-c1",
+                    "error": None,
+                },
                 "error": None,
+                "scraps": [{"job_link": None}],
+                "batch_id": "b-1522",
+                "company": "meteorite-c1",
+                "company_inserted": False,
+                "outcomes": [{"outcome": created, "astral_job_id": "j-jd"}],
             }
         )
-        monkeypatch.setattr(meteorite_mod, "land_meteorite", land)
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", stage)
         archive = MagicMock()
         monkeypatch.setattr(ge, "archive_message", archive)
-        create = MagicMock()
-        if hasattr(ge, "create_meteorite_job"):
-            monkeypatch.setattr(ge, "create_meteorite_job", create)
 
         out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
 
         assert out["total_processed"] == 1
         assert out["total_passed"] == 1
         assert out["total_errors"] == 0
-        land.assert_awaited()
-        land_kwargs = land.await_args.kwargs
-        assert land.await_args.args[0] == "c1"
-        assert (land_kwargs.get("text") or "").strip() == visible
+        stage.assert_awaited_once()
+        assert stage.await_args.args[0] == "c1"
+        assert self._JD_HTML in stage.await_args.args[1]
+        assert stage.await_args.kwargs.get("source_kind") == "email"
+        assert stage.await_args.kwargs.get("source_id") == "m-jd"
         archive.assert_called_once_with("m-jd")
-        create.assert_not_called()
 
 
 # AST-1522: TestAst1294HtmlLinksJobsComplete removed — _ensure_html_links_jobs_complete
 # dropped with Ruth-first html_links ingest (AST-1521 proposed change).
+
+
+# --- AST-1531: mailbox → stage_meteorite cutover ---
+
+
+class TestAst1531MailboxStageCutover:
+    """Mailbox builds subject+html blob and stages with source_kind=email / source_id=mid."""
+
+    @pytest.mark.asyncio
+    async def test_bound_stage_land_archives_with_email_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        mid = "m-stage"
+        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg(mid, matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "subject": "Role at Acme",
+                    "html_body": "<p>Full JD HTML</p>",
+                    "from_address": "a@b.c",
+                }
+            ),
+        )
+        seen = {}
+
+        async def _stage(cid, blob, *, source_kind, source_id, debug=False):
+            seen.update(
+                {
+                    "cid": cid,
+                    "blob": blob,
+                    "source_kind": source_kind,
+                    "source_id": source_id,
+                }
+            )
+            return {
+                "skipped": False,
+                "stage_outcome": "single_jd_with_more",
+                "outcome": created,
+                "land": {
+                    "outcome": created,
+                    "outcomes": [{"outcome": created, "astral_job_id": "j-stage"}],
+                    "company": "meteorite-c1",
+                    "error": None,
+                },
+                "error": None,
+                "scraps": [{"job_link": None}],
+                "batch_id": "b-stage",
+                "company": "meteorite-c1",
+                "company_inserted": False,
+                "outcomes": [{"outcome": created, "astral_job_id": "j-stage"}],
+            }
+
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", _stage)
+        archive = MagicMock()
+        trash = MagicMock()
+        monkeypatch.setattr(ge, "archive_message", archive)
+        monkeypatch.setattr(ge, "trash_message", trash)
+
+        out = await ge.run_meteorite_email({"candidate_id": "c1"}, debug=False)
+        assert out["total_passed"] == 1
+        assert seen["cid"] == "c1"
+        assert seen["source_kind"] == "email"
+        assert seen["source_id"] == mid
+        assert "Role at Acme" in seen["blob"]
+        assert "Full JD HTML" in seen["blob"]
+        archive.assert_called_once_with(mid)
+        trash.assert_not_called()
+
+    def test_stage_archive_token_skip_and_land(self) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        skip = METEORITE_CONFIG["land_outcome_duplicate_skip"]
+        err = METEORITE_CONFIG["land_outcome_error"]
+        assert ge._stage_archive_token({"skipped": True}) == "skipped"
+        assert (
+            ge._stage_archive_token(
+                {"skipped": False, "land": {"outcome": created, "error": None}}
+            )
+            == "created"
+        )
+        assert (
+            ge._stage_archive_token(
+                {"skipped": False, "land": {"outcome": skip, "error": None}}
+            )
+            == "skipped"
+        )
+        assert (
+            ge._stage_archive_token(
+                {"skipped": False, "land": {"outcome": err, "error": "boom"}}
+            )
+            == "error"
+        )

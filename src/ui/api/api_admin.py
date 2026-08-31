@@ -60,6 +60,7 @@ from src.utils.config import (
     brain_setting_for_anthropic_agent_key,
     TASK_CONFIG,
     TRACKER_CONFIG,
+    UI_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
     CANDIDATE_STATES,
@@ -1372,8 +1373,17 @@ def adhoc_entities():
 @admin_bp.route("/adhoc/runs")
 @require_admin
 def adhoc_runs():
-    """Import picker source: one agent_data batch per row, newest first."""
-    return jsonify(list_agent_data_runs(debug=ui_llm_debug()))
+    """Import picker source: candidate-scoped agent_data batches, newest first, config-capped."""
+    candidate_id = (request.args.get("candidate_id") or "").strip()
+    task_key = (request.args.get("task_key") or "").strip()
+    return jsonify(
+        list_agent_data_runs(
+            candidate_id=candidate_id or None,
+            task_key=task_key or None,
+            limit=UI_CONFIG["adhoc_import_runs_limit"],
+            debug=ui_llm_debug(),
+        )
+    )
 
 
 def _resolve_adhoc(body):

@@ -3277,6 +3277,27 @@ Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`);
   tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
   -q
 ```
+
+### AST-1515 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch`.
+
+`CONTACT_TASK_CONFIG`: six allowlisted contact-task keys with handler dotted paths, descriptions, param hints, `requires_candidate=True`; import-time collision asserts vs `TASK_CONFIG` and `CONTACT_CONFIG["skills"]`. Core markup/dispatch: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Six keys + handler metadata + collision guards | `src/utils/config.py` | **`TestAst1515ContactTaskConfig`** |
+
+**Broken / obsolete:** none — new block distinct from `CONTACT_CONFIG` skills ACL and `TASK_CONFIG`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1515ContactTaskConfig \
+  -q
+```
+
 ---
 
 ### AST-1523 · AST-1460
@@ -3296,5 +3317,62 @@ Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_a
   tests/component/utils/test_config.py::TestAst1523NotesArtifactConfig \
   tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
   tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  -q
+```
+
+---
+
+### AST-1529 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config`.
+
+`STAGE_METEORITE_CONFIG` (six closed outcomes + source-ref prefixes + landable/skip/text/url partitions) + `TASK_CONFIG["stage_meteorite"]` (outcome enum lockstep; jobs scrap schema). Retires live `TASK_CONFIG["meteorite_email"]` Ruth parse entry and `METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]` — PARSE block is a fold stub only; mailbox poller key stays `METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"`. Catalog: **`docs/test-bible/core/repo_admin_json.md`**. Schema validate: **`docs/test-bible/core/agent.md`**. Core orchestration / caller cutover: siblings **AST-1530** / **AST-1531**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage config + TASK_CONFIG shell + PARSE stub + mailbox poller | `src/utils/config.py` | **`TestAst1529StageMeteoriteConfig`** |
+
+**Broken / obsolete:** **`TestAst1089ParseMeteoriteEmailConfig`** — rewritten as **`TestAst1529StageMeteoriteConfig`**. **`TestAst1144ParseMeteoriteEmailMetadataDict`** (config) — skipped; metadata lived on retired parse schema.
+
+**Integration:** no existing scenarios assert stage_meteorite / parse_modes — none revised.
+
+## QA test manifest
+
+1. Stage config shell: `tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig`
+2. Schema validate: `tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate`
+3. Catalog + fixture twin: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+4. Catalog membership lock: `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys`
+5. Fixture byte twin (cross-ticket): `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1534 · AST-1532
+
+**Parent:** [AST-1532](https://linear.app/astralcareermatch/issue/AST-1532). **Publish:** `origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api`.
+
+`UI_CONFIG["adhoc_import_runs_limit"]` (10) + `UI_CONFIG["adhoc_import_picker_visible_rows"]` (5). Primary map: **`docs/test-bible/core/agent.md`** (§ AST-1534).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cap + visible-row literals | `src/utils/config.py` | **`TestAst1534AdhocImportConfigKeys`** |
+
+**Broken / obsolete:** none for config keys. List-path revisions live under core/agent § AST-1534.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1534AdhocImportConfigKeys \
   -q
 ```

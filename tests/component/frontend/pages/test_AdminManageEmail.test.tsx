@@ -83,11 +83,18 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     expect(document.querySelector("button.manage-email-create")).toBeNull()
   })
 
-  it("matched row: modal shows bind + raw HTML; no Create in modal (AST-1040/1051)", async () => {
-    const raw = "<p>body html</p>"
+  it("matched row: modal shows bind + assembled HTML; no Create in modal (AST-1040/1051/1538)", async () => {
+    // AST-1537/1538: popup reads assembled_html only (not body-only html_body).
+    const assembled =
+      '<header class="email-headers"><p class="email-from">From: a@x</p></header>\n' +
+      '<section class="email-body"><p>body html</p></section>'
     mockApis(async (url) => {
       if (url === "/api/admin/inbox/messages/m1") {
-        return jsonResponse({ id: "m1", html_body: raw })
+        return jsonResponse({
+          id: "m1",
+          html_body: "<p>body html</p>",
+          assembled_html: assembled,
+        })
       }
     })
     renderWithProviders(<AdminManageEmail />)
@@ -103,7 +110,7 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     const source = screen.getByTitle("Email body")
     expect(source.tagName).toBe("PRE")
     expect(source).toHaveClass("email-html-source")
-    expect(source).toHaveTextContent(raw)
+    expect(source.textContent).toBe(assembled)
     expect(document.querySelector("iframe")).toBeNull()
     expect(mockedApi).toHaveBeenCalledWith("/api/admin/inbox/messages/m1")
   })
@@ -111,7 +118,7 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
   it("unmatched row: modal omits match line; browse still works (AST-1051)", async () => {
     mockApis(async (url) => {
       if (url === "/api/admin/inbox/messages/m2") {
-        return jsonResponse({ id: "m2", html_body: "" })
+        return jsonResponse({ id: "m2", html_body: "", assembled_html: "" })
       }
     })
     renderWithProviders(<AdminManageEmail />)
@@ -328,5 +335,83 @@ describe("AdminManageEmail — AST-1410 silent refetch", () => {
       expect(within(table).queryByText("Hello Astral")).not.toBeInTheDocument()
       expect(within(table).getByText("other@example.com")).toBeInTheDocument()
     })
+  })
+})
+
+
+describe("AdminManageEmail — AST-1538 (§6c assembled HTML + copy + dark purple)", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    })
+  })
+
+  function mockApis(
+    extra?: (url: string, init?: RequestInit) => Promise<Response | undefined> | Response | undefined,
+  ) {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      const fromExtra = extra ? await extra(url, init) : undefined
+      if (fromExtra !== undefined) return fromExtra
+      if (url === "/api/admin/inbox/messages") {
+        return jsonResponse({ messages: ROWS })
+      }
+    })
+  }
+
+  it("ignores html_body when assembled_html missing (no body-only fallback)", async () => {
+    mockApis(async (url) => {
+      if (url === "/api/admin/inbox/messages/m1") {
+        return jsonResponse({ id: "m1", html_body: "<p>raw only</p>" })
+      }
+    })
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("Hello Astral"))
+    await waitFor(() => expect(screen.getByTitle("Email body")).toBeInTheDocument())
+    expect(screen.getByTitle("Email body")).toHaveTextContent("")
+    expect(screen.getByRole("button", { name: "Copy" })).toBeDisabled()
+  })
+
+  it("Copy clips assembled_html and toasts success", async () => {
+    const assembled =
+      '<header class="email-headers"><div class="email-subject"><h1>Hello Astral</h1></div></header>\n' +
+      '<section class="email-body"><p>JD</p></section>'
+    mockApis(async (url) => {
+      if (url === "/api/admin/inbox/messages/m1") {
+        return jsonResponse({
+          id: "m1",
+          html_body: "<p>JD</p>",
+          assembled_html: assembled,
+        })
+      }
+    })
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await userEvent.click(screen.getByText("Hello Astral"))
+    await waitFor(() => expect(screen.getByTitle("Email body").textContent).toBe(assembled))
+    const copyBtn = screen.getByRole("button", { name: "Copy" })
+    expect(copyBtn).toHaveClass("btn", "secondary")
+    expect(copyBtn).toHaveAttribute("title", "Copy header+body HTML")
+    expect(document.querySelector(".manage-email-modal-toolbar")).toBeTruthy()
+    await userEvent.click(copyBtn)
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(assembled),
+    )
+    expect(screen.getByText("Copied to clipboard")).toBeInTheDocument()
+  })
+
+  it("email-html-source uses dark purple --bg-elevated (not #fff)", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { resolve } = await import("node:path")
+    const css = readFileSync(
+      resolve(__dirname, "../../../../src/ui/frontend/src/App.css"),
+      "utf8",
+    )
+    const block = css.match(/\.email-html-source\s*\{[^}]+\}/)
+    expect(block).toBeTruthy()
+    expect(block![0]).toMatch(/background:\s*var\(--bg-elevated\)/)
+    expect(block![0]).not.toMatch(/background:\s*#fff\b/)
   })
 })

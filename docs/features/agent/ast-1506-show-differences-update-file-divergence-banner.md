@@ -252,3 +252,290 @@ Stages 1–2 delivered: warning copy rewritten; Show Differences modal via GET c
 - Statute `astral.seed.agent-tables-in-repo-json` lag on sibling AST-1505 — parent close-out, not AST-1506 blocking.
 
 **No fix-now or discuss findings on Katherine's banner implementation.**
+
+## Bug: AST-1511 — Show Differences modal does not scroll
+
+### As-is
+
+On Manage Agents or Manage Tasks, when the divergence warning is shown and the operator clicks **Show Differences**, the wide modal opens but the body does not scroll. Content below the first viewport (Susan saw only the first three differences) is clipped and unreachable.
+
+### To-be
+
+The **Show Differences** modal scrolls inside the dialog so the operator can review every section — rows only in database, rows only in file, and all changed-field tables — without closing the modal.
+
+### Repro
+
+1. Sign in as admin; open **Manage Tasks** (or **Manage Agents**) with live table diverged from repo JSON (multiple `changed_rows` and/or long field values — e.g. several task keys with `content` drift).
+2. Click **Show Differences** on the gold divergence banner.
+3. Observe the modal title **Differences — …** and the first diff sections render.
+4. Attempt to scroll (wheel, trackpad, or scrollbar) to rows/fields below the fold.
+5. **Actual:** no scroll; content below ~first three differences is not visible. **Expected:** modal body scrolls to reveal all diff sections.
+
+Component-test shape (Betty): mock `GET /api/admin/repo_json/compare/<tableKey>` with `changed_rows` length ≥ 4 (or tall `content` strings); after opening modal, assert a later row label (e.g. 4th `row_key`) is reachable via `scrollIntoView` / container `scrollTop` / `within(modal-body).getByText(...)` after scroll helper — no browser UAT required for make-fix.
+
+### Root cause
+
+AST-1506 Stage 1 renders the compare payload inside shared `Modal` with `size="wide"`. In `App.css`, `.modal-card--wide .modal-body` sets `overflow: hidden` and `padding: 0` so wide modals can host nested SideTabPanel layouts with their own scroll regions. The diff modal places content **directly** in `modal-body` with no inner scroll wrapper (unlike `.email-html-source`, which wraps content in `height: 100%; overflow: auto`). Tall diff output is clipped by the fixed `90vh` card.
+
+### Proposed change
+
+**File:** `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` only.
+
+1. Inside the **Show Differences** `<Modal … size="wide" showFooter={false}>`, wrap **all** body branches (loading, error, `diffData`, empty fallback) in one scroll container:
+
+   ```tsx
+   <div
+     style={{
+       padding: "20px",
+       height: "100%",
+       overflowY: "auto",
+       boxSizing: "border-box",
+     }}
+   >
+     {/* existing loading / error / diffData / empty content unchanged */}
+   </div>
+   ```
+
+2. Do **not** change `Modal.tsx`, `App.css`, compare API, button labels, Update/Revert handlers, or `size="wide"` (table needs horizontal room).
+
+3. **Done when:** With a compare payload taller than the viewport, the inner wrapper scrolls; header (title + ×) stays fixed; `cd src/ui/frontend && npx tsc -b --noEmit` passes.
+
+⚠️ **Decision:** Fix locally in the banner component (same pattern as `.email-html-source` inner scroll) rather than changing global `.modal-card--wide .modal-body` — avoids regressing SideTabPanel wide modals site-wide.
+
+### Blast radius
+
+- **Show Differences modal only** on Manage Agents / Manage Tasks — no other `Modal` call sites.
+- **AST-1506** Show/Update/Revert behavior and API wiring unchanged.
+- Betty may extend `test_RepoJsonDivergenceBanner.test.tsx` (AST-1511) for multi-row scroll reachability; engineer does not edit `tests/` or `docs/test-bible/**`.
+
+### What must still hold
+
+- Parent AST-1455 AC: **Show Differences** lists actual row and field differences for **that page's table only** (`tableKey` prop); must include rows beyond the first viewport when drift is large.
+- **Update file with table version** and **Revert to file** confirm/POST behavior unchanged (AST-1506 Boundaries).
+- Wide modal layout preserved for three-column Field / File / Database tables.
+- Per-cell `<pre>` scroll for long values (AST-1506 Stage 1) remains; this fix is modal-level scroll for many rows/sections.
+
+## Radia review (AST-1511)
+
+# Radia review-fix — AST-1511
+
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1511  
+**Parent:** AST-1455 (normal — `origin/ftr/AST-1455-show-differences-update-file` exists; not orphaned)  
+**Publish ref:** `origin/sub/AST-1455/AST-1511-show-differences-modal-does-not-scroll` @ `46870882ca8f19ff85869a2a195f0c8bbb916c49`  
+**Overall:** CLEAN  
+**Diff base:** `origin/ftr/AST-1455-show-differences-update-file...origin/sub/AST-1455/AST-1511-show-differences-modal-does-not-scroll` (mandated fix-lane base)
+
+**Diff-base note:** Three-dot diff spans 25 files (+931/−63) — sibling fixes (AST-1512, AST-1513, AST-1515, etc.) merged on `sub/AST-1455/AST-1511` ahead of `ftr`. **AST-1511 footprint:** product commit `46870882` (`RepoJsonDivergenceBanner.tsx` only, +67/−57); Betty `test(AST-1511): bug-repro` @ `1d1b236a` merged @ `dbc44800`. Statute sweep and findings below target AST-1511 footprint; sibling paths on the sub tip are not re-audited in this pass.
+
+---
+
+## Fix-specific checks
+
+### `[bug-repro]` — OK
+
+**Test:** `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` — `RepoJsonDivergenceBanner — AST-1511` → `[bug-repro] Show Differences modal scrolls to later changed rows`
+
+**Assertions (concrete, tied to To-be):**
+- Mocks `GET /compare/agent_task` with `tallComparePayload(4)` — four `changed_rows`, each with 200-char `content` values (tall enough to exceed viewport).
+- After opening modal, locates `.modal-card--wide .modal-body` → `firstElementChild` scroll wrapper.
+- **Pins fix contract:** `scrollWrap.style.overflowY === "auto"` and `scrollWrap.style.height === "100%"` — matches plan-fix `## Proposed change` inline styles exactly.
+- Asserts 4th row label `Row: drift_row_4` reachable after `scrollWrap.scrollTop = scrollWrap.scrollHeight`.
+
+**Pre-fix plausibility:** Pre-AST-1511, modal body content sat directly under `.modal-body` (no inner wrapper). `firstElementChild` would be a `<p>` or content `<div>` without `overflowY: auto` — style assertions **fail**. Correct repro-first shape.
+
+**Caveat (advisory, not fix-now):** `toBeVisible()` after manual `scrollTop` is weak in jsdom (no real layout clip). Primary guard is structural wrapper + overflow styles; acceptable for component tier.
+
+### `## What must still hold` — OK
+
+| Item | Verdict |
+|------|---------|
+| Show Differences lists row/field diffs for **that page's `tableKey` only** | OK — `openDiff()` still calls `/compare/${tableKey}`; modal sections unchanged |
+| **Update file** and **Revert to file** confirm/POST behavior unchanged | OK — `handleUpdateFile` / `handleRevert` untouched in `46870882` |
+| Wide modal layout for Field/File/Database tables | OK — `size="wide"` retained; tables unchanged |
+| Per-cell `<pre>` scroll for long values (`diffCellContent`) | OK — helper untouched; modal-level scroll is additive |
+
+---
+
+## Statutes checked
+
+Scored against AST-1511 footprint (`RepoJsonDivergenceBanner.tsx` + Betty bug-repro test).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | no dispatch |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade vector |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | plan-fix patch in parent AST-1506 feature doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test-tree only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer product commit: one TSX file only |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | frontend only |
+| astral.layers.import-direction | scoped | conforms | no new imports; Modal import pre-existing |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | `tableKey` prop still drives compare URL |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | still calls authenticated admin routes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed/boot paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no catalog |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no bootstrap |
+| astral.seed.define-approved | scoped | not-applicable | no seed catalog |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no boot apply |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage join |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug logging |
+| astral.standards.dry-and-focused-functions | scoped | conforms | minimal wrapper; comment explains why |
+| astral.standards.in-scope-only | scoped | conforms | single file per plan-fix blast radius |
+| astral.standards.logging-via-utils | scoped | conforms | no logging added |
+| astral.standards.names-not-ticket-ids | scoped | conforms | N/A |
+| astral.standards.no-cross-contamination | scoped | conforms | Show Differences modal only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | no new hardcoded table sets |
+| astral.standards.public-then-helpers | scoped | conforms | N/A |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state machine |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job states |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run chain |
+| astral.ui.frontend-file-placement | scoped | conforms | component path unchanged |
+| astral.ui.naming-conventions | scoped | conforms | N/A |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1511)` at tip ancestry |
+| orch.git.commit-vocabulary | universal | conforms | `code(AST-1511)` / `test(AST-1511)` |
+| orch.git.flow-direction-inviolable | universal | conforms | fix sub on ftr line |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1455/AST-1511-*` |
+| orch.git.merge-on-checkout | universal | conforms | N/A |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | N/A |
+| orch.git.no-dev-agent-branches | universal | conforms | N/A |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1455 worktree |
+| orch.git.three-permanent-branches | universal | conforms | ftr base used |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | localized CSS workaround per plan decision |
+| orch.pipeline.plan-is-bible | universal | conforms | matches `## Proposed change` exactly |
+| orch.pipeline.project-scoped-queues | universal | conforms | scoped fix |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | N/A |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty bug-repro |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | single TSX product file |
+
+Registry: 63 active rows scored.
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | plan-fix cites `.email-html-source` pattern by analogy, not a catalog id |
+
+---
+
+## Plan adherence
+
+**`## Proposed change` delivered** in `46870882`:
+- Inner scroll wrapper wraps **all** modal body branches (loading, error, `diffData`, empty).
+- Styles: `padding: 20px`, `height: 100%`, `overflowY: auto`, `boxSizing: border-box` — match plan.
+- `Modal.tsx`, `App.css`, compare API, button labels, Update/Revert handlers, `size="wide"` — untouched.
+- In-code comment documents root cause (`.modal-card--wide .modal-body` `overflow: hidden`).
+
+**Root cause / To-be:** Addresses clipped tall compare output; operator can scroll all sections inside dialog while header stays fixed (wrapper inside `modal-body`, not global CSS change — correct blast-radius decision).
+
+**Blast radius:** Show Differences modal only — confirmed.
+
+---
+
+## Findings
+
+**No fix-now or discuss findings.**
+
+### advisory
+
+- **Location:** `[bug-repro]` test — `toBeVisible()` after `scrollTop`  
+- **Finding:** jsdom does not model overflow clipping; structural style assertions are the real gate.  
+- **Recommendation:** Susan hand-verify on staging if desired; not blocking.
+
+- **Location:** Diff base `ftr...sub`  
+- **Finding:** Sub tip carries sibling fix commits not yet on `ftr`; unrelated to AST-1511 product quality.  
+- **Recommendation:** `merge-child` / ftr rollup handles separately; do not attribute sibling diffs to this fix review.
+
+---
+
+## What's solid
+
+- Localized fix mirrors existing `.email-html-source` inner-scroll pattern — avoids site-wide `.modal-card--wide` regression.
+- All modal states (loading/error/empty/data) scroll consistently.
+- AST-1506 Show/Update/Revert wiring preserved.
+- Betty bug-repro pins wrapper contract and 4-row payload; fails pre-fix.
+
+---
+
+## Frame diff
+
+AST-1511 frame = inner scroll `<div>` in Show Differences `Modal` + Betty `[bug-repro]` test + plan-fix patch in AST-1506 feature doc. No API, CSS global, or sibling behavior changes in AST-1511 product commit.
+
+---
+
+## Notes for Chuckles
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal AST-1455 | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` **skipped**) |
+
+No `[board-betty]` / `[board-joan]` comments on issue doc — qa-fix ran with `[bug-repro]` test (valid; not clean-board opt-out absence issue).
+
+C7 artifact complete.
+
+`context_tokens≈72000`
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 46870882) modal scroll wrapper fixed
+```
+
+## Resolution
+
+**2026-08-27 — resolve-child (Katherine)**
+
+Radia **PROCEED / CLEAN** @ `46870882` — **no fix-now** items. Product tip unchanged.
+
+| Finding | Action |
+|---------|--------|
+| Advisory: jsdom `toBeVisible` after `scrollTop` weak | Deferred — structural `overflowY`/`height` assertions remain the gate |
+| Advisory: sub tip carries sibling commits not on ftr | Deferred to `merge-child` / ftr rollup |
+
+**§9a:** `origin/sub/AST-1455/AST-1511-…` @ pre-resolve tip conflicted with `origin/dev` (changed-in-both on plan doc, banner TSX, agent/candidate/config, test-bible). Merged `origin/dev` on the sub (`sync(dev)` @ `b065dcc8`); scroll wrapper retained. Dry-run clean into `origin/dev` and `origin/ftr/AST-1455-show-differences-update-file`.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/da2516342c5c4c3d00dbc92a2a77632f/dad4a971-d0aa-4dbb-8113-734f4c64170a/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/da2516342c5c4c3d00dbc92a2a77632f/f4bc9ff7-e144-4c3f-8b3d-5b0e3b6507d3/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/1d395862-f23d-43db-a561-b46a88a62816/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/da2516342c5c4c3d00dbc92a2a77632f/3c8aeb6e-e9a5-4ae5-ad5e-501a873f137c/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1455 (parent) | ftr/AST-1455-show-differences-update-file |
+| AST-1505 | sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write |
+| AST-1506 | sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner |
+| AST-1511 | sub/AST-1455/AST-1511-show-differences-modal-does-not-scroll |
+
+**Epic worktree:** `astral-AST-1455/` — one active sub checked out at a time.

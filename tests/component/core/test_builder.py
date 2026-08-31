@@ -952,7 +952,7 @@ class TestAst998ExperienceJobRender:
 
     def test_emit_experience_jobs_html_role_chrome(self) -> None:
         # AST-1008 superseded AST-998 subheader/meta/prose chrome with golden article classes.
-        # Title joiner " • " becomes NBSP-bullet via _resume_site_markers.
+        # Title joiner " • " becomes NBSP-bullet-NBSP via _resume_site_markers (AST-1528).
         html = builder_mod._emit_experience_jobs_html(self._JOBS)
         assert '<article class="role">' in html
         assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
@@ -1465,7 +1465,7 @@ class TestAst1008ExperienceGoldenLayout:
     @staticmethod
     def _assert_golden_experience(html: str) -> None:
         assert '<article class="role">' in html
-        # " • " joiner → NBSP-bullet via _resume_site_markers; company __ → NBSP
+        # " • " joiner → NBSP-bullet-NBSP via _resume_site_markers (AST-1528); company __ → NBSP
         assert (
             'class="compact-title"><strong>Principal Technical Program Manager\u00a0• '
             "Somerset\u00a0Consulting</strong></p>"
@@ -2220,6 +2220,120 @@ class TestAst1027UatMarkerExpand:
         assert "__" not in html
 
 
+class TestAst1528WordCloudNbspBulletGlue:
+    """AST-1528/1536: cloud full glue at word_cloud render; markers stay left-only."""
+
+    def test_resume_site_markers_pipe_and_space_left_only_not_full_glue(self) -> None:
+        assert builder_mod._resume_site_markers("A | B | C") == "A\u00a0• B\u00a0• C"
+        assert builder_mod._resume_site_markers("A • B") == "A\u00a0• B"
+        assert "\u00a0•\u00a0" not in builder_mod._resume_site_markers("X | Y")
+
+    def test_resume_site_markers_digraph_still_glues_both_sides(self) -> None:
+        assert builder_mod._resume_site_markers("A__•__B") == "A\u00a0•\u00a0B"
+
+    def test_education_partition_matches_left_only_marker_bullet(self) -> None:
+        marked = builder_mod._resume_site_markers(
+            "Certified ScrumMaster (CSM) • Scrum Alliance, 2024 to 2026"
+        )
+        html = builder_mod._emit_education_list_html(marked)
+        assert (
+            "<strong>Certified ScrumMaster (CSM)</strong>\u00a0• "
+            "Scrum Alliance, 2024 to 2026"
+        ) in html
+
+    def test_session_word_cloud_emits_glued_separators(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "core_competencies": {
+                    "id": "core_competencies",
+                    "title": "Core Competencies",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                    "format": "word_cloud",
+                },
+            }
+        }
+        html = builder_mod.build_session_base_resume(
+            structure,
+            {
+                "candidate_name": "Susan Somerset",
+                "core_competencies": "Delivery | Risk | Stakeholder trust",
+            },
+        )
+        assert 'class="competencies-list"' in html
+        assert "Delivery\u00a0•\u00a0Risk\u00a0•\u00a0Stakeholder trust" in html
+        assert "\u00a0• " not in html.split('class="competencies-list"', 1)[1].split("</p>", 1)[0]
+
+
+class TestAst1536BugReproWordCloudFormatSwitch:
+    """[bug-repro] AST-1536: free_prose must not inherit word_cloud NBSP glue."""
+
+    _CONTENT = "Delivery | Alignment | Cloud"
+
+    @staticmethod
+    def _structure(*, fmt: str) -> dict[str, Any]:
+        return {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "core_competencies": {
+                    "id": "core_competencies",
+                    "title": "Core Competencies",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                    "format": fmt,
+                },
+            }
+        }
+
+    def test_free_prose_emit_has_no_cloud_glue(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(fmt="free_prose"),
+            {
+                "candidate_name": "Susan Somerset",
+                "core_competencies": self._CONTENT,
+            },
+        )
+        assert 'class="summary-intro"' in html
+        assert 'class="competencies-list"' not in html
+        intro = html.split('class="summary-intro"', 1)[1].split("</p>", 1)[0]
+        assert "\u00a0•\u00a0" not in intro
+
+    def test_word_cloud_emit_still_glued_after_format_switch_content(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(fmt="word_cloud"),
+            {
+                "candidate_name": "Susan Somerset",
+                "core_competencies": self._CONTENT,
+            },
+        )
+        assert 'class="competencies-list"' in html
+        assert "Delivery\u00a0•\u00a0Alignment\u00a0•\u00a0Cloud" in html
+
+
 class TestAst1028UatKeywordsMetaEmit:
     """AST-1028: when title/tagline are split, keywords stay in meta — not header/body."""
 
@@ -2323,9 +2437,9 @@ class TestAst1029UatCompetenciesBulletsEmit:
             "Risk and Dependency Management"
         )
         prior = "Project Manager (4 yrs) • Systems Analyst (6 yrs)"
-        # Shared markers turn " • " into NBSP-bullet before emit.
-        comps_html = comps.replace(" • ", "\u00a0• ")
-        prior_html = prior.replace(" • ", "\u00a0• ")
+        # Shared markers turn " • " into NBSP-bullet-NBSP before emit (AST-1528).
+        comps_html = comps.replace(" • ", "\u00a0•\u00a0")
+        prior_html = prior.replace(" • ", "\u00a0•\u00a0")
         html = builder_mod.build_session_base_resume(
             structure,
             {
@@ -3772,8 +3886,8 @@ class TestAst1382BugReproBaseResumeIssues:
         assert "|" not in builder_mod._resume_site_markers(comps)
         assert "Ada | Remote" not in html
         assert "Delivery | Risk" not in html
-        assert ("Ada\u00a0• Remote" in html) or ("Ada • Remote" in html)
-        assert ("Delivery\u00a0• Risk" in html) or ("Delivery • Risk" in html)
+        assert "Ada\u00a0• Remote" in html
+        assert "Delivery\u00a0•\u00a0Risk" in html
 
     def test_prior_experience_free_prose_format_emits_summary_intro(
         self, monkeypatch: pytest.MonkeyPatch

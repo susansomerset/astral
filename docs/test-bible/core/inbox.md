@@ -172,3 +172,24 @@ Email create/land paths: `create_meteorite_job_from_inbox_message` → `land_met
   tests/component/core/test_inbox.py::TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses \
   -q
 ```
+
+
+### AST-1531 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact`.
+
+`_land_bound_inbox_message` / `land_inbox_message_ids` / `run_fetch_email` stage stripped HTML with `source_kind="email"` / `source_id=mid` (empty strip → error, no stage). Legacy `create_meteorite_job_from_inbox_message` still lands directly (out of this cutover). Mailbox: **`docs/test-bible/core/meteorite_email.md`**. Contact: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Strip → stage + empty gate + selected-ids shell | `src/core/inbox.py` | **`TestAst1531InboxStageCutover`** |
+
+**Broken / obsolete:** none in Create strip path this pass.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1531InboxStageCutover \
+  -q
+```

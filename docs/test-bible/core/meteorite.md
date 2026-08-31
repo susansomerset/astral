@@ -175,3 +175,56 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
 ```
 
+---
+
+### AST-1517 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1517-create-contact-meteorite`.
+
+`create_contact_meteorite`: URL detector (`_contact_param_looks_like_url`); link mode → `contact_task_gazer_scrape` then `create_meteorite_job` with `job_link`; text mode → direct create; soft returns for scrape fail / empty visible text; Style D on `debug=True`. Markup/dispatch: **`docs/test-bible/core/contact.md`** (AST-1515, revised AST-1517).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| URL detector + create path + scrape soft-fail + Style D | `src/core/meteorite.py` | **`TestAst1517CreateContactMeteorite`** |
+
+**Broken / obsolete:** AST-1515 **`TestAst1515ContactTaskMarkup`** / **`TestAst1515ContactEstelleTurnMarkup`** — `handler_unavailable` fixtures revised to mock `_resolve_contact_task_handler` → `None` (all six handlers now resolve).
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1517CreateContactMeteorite \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  -q
+```
+
+---
+
+### AST-1530 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1530-core-stage-scrap-land`.
+
+Public `stage_meteorite`: blob + source handle → `invoke_stage_meteorite` → scrap map (`_map_stage_jobs_to_scraps`) → `land_meteorite` for landable outcomes, or structured skip for `not_job_content` / `not_original_posting`. Text outcomes overwrite agent URLs with source-refs; URL outcomes keep `http(s)` links and set source-ref `company_job_id`. No second Playwright stack. Catalog/config: **`docs/test-bible/utils/config.md`** (**AST-1529**). Invoke helper: **`docs/test-bible/core/consult.md`**. Callers: sibling **AST-1531**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scrap map + stage gates / skip / land / Style D | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`** |
+
+**Broken / obsolete:** none — additive public entry; existing `land_meteorite` tests unchanged.
+
+**Integration:** none — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Stage + scrap map: `tests/component/core/test_meteorite.py::TestAst1530StageMeteorite`
+2. Invoke helper: `tests/component/core/test_consult.py::TestAst1530InvokeStageMeteorite`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1530StageMeteorite \
+  tests/component/core/test_consult.py::TestAst1530InvokeStageMeteorite \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

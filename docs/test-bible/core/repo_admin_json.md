@@ -514,6 +514,26 @@ UAT restore: `meteorite_grade_do` / `meteorite_grade_get` grouping-only rows bac
 
 Estelle `topic_menu_preamble_confirm` / `topic_menu_generate` `cache_prompt` vocabulary includes `ideal_day`. Primary: **`docs/test-bible/utils/config.md`** § AST-1367 — revised **`TestAst1075TopicMenuCatalogRows`**.
 
+### AST-1515 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch`.
+
+`contact_estelle_turn` system/user prompts teach `~~/<task_key> <parameters>~~` markup in `agent_payload.reply` (not `skill_calls`); reference live_content **Available contact tasks (markup)** section. Turn wiring: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Markup prompt contract | `data/admin/agent_task.json` | **`TestAst1515ContactEstelleTurnMarkupPrompt`** |
+
+**Broken / obsolete:** none — additive prompt paragraphs on existing row.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1515ContactEstelleTurnMarkupPrompt \
+  -q
+```
+
 ### AST-1400 · AST-1398
 
 **Parent:** [AST-1398 — Update agent.json and agent_task.json](https://linear.app/astralcareermatch/issue/AST-1398/update-agentjson-and-agent-taskjson). **Publish:** `origin/sub/AST-1398/AST-1400-gap-estelle-craft-seed-asserts`.
@@ -547,3 +567,28 @@ Gap sibling of **AST-1399** (`[board-betty] TESTS: REVISE`). Pins Estelle repo c
 ### AST-1502 · AST-1492 (gap — bootstrap kill-switch)
 
 Primary: **`docs/test-bible/core/bootstrap.md`** § AST-1502. **`TestApplyRepoAdminJsonAtStartup`** rewritten: `apply_repo_admin_json_at_startup` is a no-op on staging/production/local (AST-1497 kill-switch). Export / divergence / catalog seed tests unchanged.
+
+---
+
+### AST-1529 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config`.
+
+Live `stage_meteorite` Ruth row (six outcome literals in `cache_prompt`; seq `2.0` before `qualify_meteorite` `2.5`); `meteorite_email` remains non-live (empty prompts / no `agent_id`). Catalog frozenset drops stale `parse_meteorite_email`, adds `stage_meteorite` (**54** keys). AST-756 fixture whole-file twin synced. Config SSOT: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage Ruth shell + mailbox non-live + fixture lockstep | `data/admin/agent_task.json` | **`TestAst1529StageMeteoriteCatalogRow`** |
+| Catalog membership 54 | same | revised **`TestAst786AgentTaskRepoJsonSeed`** (`parse_meteorite_email` → `stage_meteorite`) |
+
+**Broken / obsolete:** **`TestAst1089ParseMeteoriteEmailCatalogRow`** remains under `_AST1269_SEED_WIPE_SKIP` (parse_modes Ruth shell); live classify coverage is **`TestAst1529StageMeteoriteCatalogRow`**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```

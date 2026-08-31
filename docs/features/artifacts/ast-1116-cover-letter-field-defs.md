@@ -613,3 +613,25 @@ Surgical fix at the right layer: one public helper, pin-loop skip prevents doubl
 ## Bug: AST-1504 — cover letter hydrate display gap tests
 
 Test-gap sibling of AST-1499. Betty board REVISE: hydrate empty-overwrite / nested unwrap / pin leave-on-miss uncovered. qa-fix + strengthen landed \`[bug-repro]\`; product carve-out is AST-1499. This child is test-only (docs-acceptance).
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/2cee570d416e267bd22ff60fa93862ad/7a95bd94-4407-4d66-9069-771c767cb155/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/10cd1762-7cc7-43b7-a311-f5f042fd3c8c/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/2cee570d416e267bd22ff60fa93862ad/bb9b571a-bb3e-4e57-ae59-ac87d62b594f/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1491 (parent) | ftr/AST-1491-cover-letter-content-does-not-appear-for-editing |
+| AST-1499 | sub/AST-1491/AST-1499-fix-cover-letter-content-edit-hydrate |
+| AST-1504 | sub/AST-1491/AST-1504-gap-cover-letter-hydrate-tests |
+
+**Epic worktree:** `astral-AST-1491/` — one active sub checked out at a time.

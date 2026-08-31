@@ -7,13 +7,13 @@ from pathlib import Path
 import hmac
 import json
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from src.core import contact as contact_mod
 from src.core import candidate as candidate_mod
-from src.utils.config import CONTACT_CONFIG, TASK_CONFIG
+from src.utils.config import CONTACT_CONFIG, CONTACT_TASK_CONFIG, TASK_CONFIG
 
 
 def _sign(secret: str, timestamp: str, body: bytes) -> str:
@@ -1341,3 +1341,314 @@ class TestAst1207DurableDebugSot:
         assert status == 200
         assert out == {"challenge": "ch-sot"}
         log.set_debug_flag.assert_called_with(False)
+
+
+# Branches: markup parse/strip; dispatch allowlist + handler_unavailable; turn strip/follow-up (AST-1515).
+class TestAst1515ContactTaskMarkup:
+    """AST-1515: contact-task markup helpers and dispatch router."""
+
+    def test_parse_and_strip_markup(self) -> None:
+        text = "Hello ~~/gazer_scrape https://example.com/jd~~ world ~~/unknown_key x~~"
+        spans = contact_mod.parse_contact_task_markup(text)
+        assert spans == [
+            ("gazer_scrape", "https://example.com/jd"),
+            ("unknown_key", "x"),
+        ]
+        stripped = contact_mod.strip_contact_task_markup(text)
+        assert "~~/" not in stripped
+        assert "Hello" in stripped and "world" in stripped
+
+    def test_strip_collapses_blank_lines(self) -> None:
+        assert contact_mod.strip_contact_task_markup("a\n\n\n\nb") == "a\n\nb"
+
+    def test_contact_tasks_shallow_copy(self) -> None:
+        tasks = contact_mod.contact_tasks()
+        tasks["gazer_scrape"] = {"mutated": True}
+        assert "mutated" not in contact_mod.contact_tasks()["gazer_scrape"]
+
+    def test_dispatch_skips_unknown_keys(self) -> None:
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="c1",
+            markup_spans=[("not_a_real_key", "x")],
+        )
+        assert results == []
+
+    def test_dispatch_handler_unavailable_for_listed_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # All six handlers resolve after AST-1517 — mock missing import path.
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="c1",
+            markup_spans=[("create_contact_meteorite", "https://x.example/jd")],
+        )
+        assert len(results) == 1
+        assert results[0]["ok"] is False
+        assert results[0]["error"] == "handler_unavailable"
+        assert results[0]["task_key"] == "create_contact_meteorite"
+
+    def test_dispatch_no_candidate_when_required(self) -> None:
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="",
+            markup_spans=[("gazer_scrape", "https://x.example/jd")],
+        )
+        assert results[0]["error"] == "no_candidate"
+
+    def test_dispatch_sync_handler(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def _fake_handler(cid, param, debug=False):
+            return {"ok": True, "payload": param, "candidate": cid}
+
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: _fake_handler
+        )
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="c99",
+            markup_spans=[("get_job_data", "job-1")],
+        )
+        assert results[0]["ok"] is True
+        assert results[0]["payload"] == "job-1"
+
+    def test_dispatch_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        log = MagicMock()
+        monkeypatch.setattr(contact_mod, "get_logger", lambda _n: log)
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
+        contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="c1",
+            markup_spans=[("create_contact_meteorite", "u")],
+            debug=True,
+        )
+        log.set_debug_flag.assert_called_with(True)
+        outcomes = [c.kwargs.get("outcome") for c in log.debug_index.call_args_list]
+        assert outcomes == ["found", "recorded"]
+        assert log.debug_index.call_args.kwargs["func"] == "contact.run_contact_task_dispatch"
+
+
+class TestAst1515ContactEstelleTurnMarkup:
+    """AST-1515: Estelle turn strips markup, dispatches, optional same-event follow-up."""
+
+    def setup_method(self) -> None:
+        contact_mod._context_cache.clear()
+        contact_mod._seen_event_ids.clear()
+
+    def _patch_turn(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        side_effect,
+    ) -> tuple[MagicMock, dict]:
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "load_slack_conversation_context",
+            MagicMock(
+                return_value={
+                    "channel": "C1",
+                    "thread_ts": "",
+                    "messages": [],
+                    "source": "cache",
+                }
+            ),
+        )
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(return_value=None))
+        monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
+        post = MagicMock(return_value={"ok": True, "ts": "9.0"})
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        monkeypatch.setattr(contact_mod, "format_contact_reply_text", lambda text: text)
+        calls = {"n": 0}
+
+        async def _do_task(*_a, **kwargs):
+            idx = calls["n"]
+            calls["n"] += 1
+            return side_effect(idx, kwargs)
+
+        import src.core.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        return post, calls
+
+    def test_strips_markup_before_slack_post(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
+
+        def side(idx, _kwargs):
+            if idx == 0:
+                return {
+                    "success": True,
+                    "conversational_outcome": "success",
+                    "agent_performance": {"status": "success"},
+                    "parsed_response": {
+                        "reply": "Sure! ~~/create_contact_meteorite https://jobs.example/1~~",
+                    },
+                }
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {"reply": "I'll check that posting for you."},
+            }
+
+        post, calls = self._patch_turn(monkeypatch, side)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1", text="link?", astral_candidate_id="c1", debug=False
+        )
+        assert out["ok"] is True
+        assert calls["n"] == 2
+        assert "~~/" not in post.call_args.kwargs["text"]
+        assert post.call_args.kwargs["text"] == "I'll check that posting for you."
+        assert len(out["contact_task_results"]) == 1
+        assert out["contact_task_results"][0]["error"] == "handler_unavailable"
+
+    def test_no_follow_up_for_unknown_markup_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def side(idx, _kwargs):
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {"reply": "Ok ~~/not_in_config foo~~"},
+            }
+
+        post, calls = self._patch_turn(monkeypatch, side)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1", text="?", astral_candidate_id="c1", debug=False
+        )
+        assert calls["n"] == 1
+        assert out["contact_task_results"] == []
+        assert post.call_args.kwargs["text"] == "Ok"
+
+    def test_follow_up_turn_includes_task_results_in_live_content(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
+        captured: dict = {}
+
+        def side(idx, kwargs):
+            if idx == 0:
+                return {
+                    "success": True,
+                    "conversational_outcome": "success",
+                    "agent_performance": {"status": "success"},
+                    "parsed_response": {
+                        "reply": "Checking ~~/create_contact_meteorite https://x.example~~",
+                    },
+                }
+            captured["live"] = kwargs.get("live_content") or ""
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {"reply": "Page looks ok."},
+            }
+
+        post, calls = self._patch_turn(monkeypatch, side)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1", text="?", astral_candidate_id="c1", debug=False
+        )
+        assert calls["n"] == 2
+        assert "## Contact task results (same inbound event)" in captured["live"]
+        assert post.call_args.kwargs["text"] == "Page looks ok."
+
+    def test_live_content_lists_contact_tasks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict = {}
+
+        def side(idx, kwargs):
+            if idx == 0:
+                captured["live"] = kwargs.get("live_content") or ""
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {"reply": "Hi"},
+            }
+
+        self._patch_turn(monkeypatch, side)
+        contact_mod.run_contact_estelle_turn(
+            channel="C1", text="hi", astral_candidate_id="c1", debug=False
+        )
+        live = captured["live"]
+        assert "## Available contact tasks (markup)" in live
+        for key in CONTACT_TASK_CONFIG:
+            assert f"- {key}:" in live
+
+
+# --- AST-1531: contact_land_meteorite → stage_meteorite ---
+
+
+class TestAst1531ContactLandStageCutover:
+    """contact_land_meteorite requires source handle and stages blob (no raw land)."""
+
+    def test_requires_source_kind_and_id(self) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        err = METEORITE_CONFIG["land_outcome_error"]
+        out = contact_mod.contact_land_meteorite("c1", source_kind="", source_id="x", text="JD")
+        assert out["outcome"] == err
+        out2 = contact_mod.contact_land_meteorite(
+            "c1", source_kind="email", source_id="", text="JD"
+        )
+        assert out2["outcome"] == err
+        out3 = contact_mod.contact_land_meteorite(
+            "c1", source_kind="not-a-kind", source_id="s1", text="JD"
+        )
+        assert out3["outcome"] == err
+
+    def test_stages_text_blob_with_source_handle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        seen = {}
+
+        async def _stage(cid, blob, *, source_kind, source_id, debug=False):
+            seen.update(
+                {
+                    "cid": cid,
+                    "blob": blob,
+                    "source_kind": source_kind,
+                    "source_id": source_id,
+                }
+            )
+            return {
+                "skipped": False,
+                "outcome": created,
+                "land": {"outcome": created, "error": None},
+                "error": None,
+                "scraps": [],
+            }
+
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", _stage)
+        out = contact_mod.contact_land_meteorite(
+            "c1",
+            source_kind="slack",
+            source_id="T1.msg9",
+            text="Senior eng JD text",
+            job_link="https://jobs.example.com/r",
+            debug=False,
+        )
+        assert out["outcome"] == created
+        assert seen["cid"] == "c1"
+        assert seen["source_kind"] == "slack"
+        assert seen["source_id"] == "T1.msg9"
+        assert "Senior eng JD text" in seen["blob"]
+        assert "https://jobs.example.com/r" in seen["blob"]
+
+    def test_empty_blob_errors_without_stage(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+        from src.utils.config import METEORITE_CONFIG
+
+        stage = AsyncMock()
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", stage)
+        out = contact_mod.contact_land_meteorite(
+            "c1", source_kind="paste", source_id="p1", text="  ", scraps=None
+        )
+        assert out["outcome"] == METEORITE_CONFIG["land_outcome_error"]
+        assert "blob" in (out.get("error") or "").lower()
+        stage.assert_not_awaited()
+

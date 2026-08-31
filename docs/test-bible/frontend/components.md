@@ -456,6 +456,34 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines + `tsc -b --noEmit` — not zero-arg harness / branch-lock gate.
 
+### AST-1511 · AST-1455 (fix lane — modal scroll)
+
+**Parent:** [AST-1455](https://linear.app/astralcareermatch/issue/AST-1455). **Publish:** `origin/sub/AST-1455/AST-1511-show-differences-modal-does-not-scroll`. **Fix:** inner scroll wrapper on **Show Differences** wide modal (`RepoJsonDivergenceBanner.tsx` only).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Modal body scroll for tall compare payload | `RepoJsonDivergenceBanner.tsx` | **`test_RepoJsonDivergenceBanner.test.tsx`** — **`[bug-repro] AST-1511: Show Differences modal scrolls to later changed rows`** |
+
+**Broken / obsolete this pass:** none — **AST-1506** Show/Update/Revert tests unchanged.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. **[bug-repro]** modal scroll reachability (≥4 `changed_rows`): `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` — **`RepoJsonDivergenceBanner — AST-1511`**
+2. **AST-1506** regression: same file — **`RepoJsonDivergenceBanner — AST-1506`** + **`AST-783`** nodes
+
+**AST-1511** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx \
+  -t "AST-1511|AST-1506|AST-783"
+```
+
+**Pass criterion:** `[bug-repro]` red on pre-fix product, green after make-fix; Vitest green on regression nodes post-fix.
+
 
 ### AST-948 · AST-858
 

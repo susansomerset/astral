@@ -70,7 +70,7 @@ Equivalent harness:
 
 ### AST-1007 · AST-993
 
-**AST-1007:** `_apply_resume_text_markers` deep-walks dict/list nests and applies `_resume_site_markers` (`__` → NBSP, `~~` → non-breaking hyphen, `" • "` → NBSP-bullet spacing) to every string leaf before session / base / job-tailored HTML emit. Layout chrome (role lead/bullets, education lines, skills grid, header/meta/styles) stays siblings **AST-1008** / **AST-1009** / **AST-1010**.
+**AST-1007:** `_apply_resume_text_markers` deep-walks dict/list nests and applies `_resume_site_markers` (`__` → NBSP, `~~` → non-breaking hyphen, `" • "` → left-only `\u00a0• ` on the shared marker path) to every string leaf before session / base / job-tailored HTML emit. Layout chrome (role lead/bullets, education lines, skills grid, header/meta/styles) stays siblings **AST-1008** / **AST-1009** / **AST-1010**. **AST-1528** originally glued both sides globally; **AST-1536** moves full `\u00a0•\u00a0` glue to `word_cloud` render only.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -127,7 +127,7 @@ Equivalent harness:
 
 ### AST-1009 · AST-993
 
-**AST-1009:** `_emit_body_sections_html` emits education as per-line `div.education-list` (`<strong>` credential + post-marker `\u00a0• ` rest), technical skills as `div.skills-grid` with one `div.skill-category` per `Category: items` line (`h4` + items `<p>`), and prior experience remains `p.competencies-list` (markers from AST-1007). Experience role chrome / header-meta-styles stay siblings **AST-1008** / **AST-1010**.
+**AST-1009:** `_emit_body_sections_html` emits education as per-line `div.education-list` (`<strong>` credential + post-marker left-only `\u00a0• ` rest), technical skills as `div.skills-grid` with one `div.skill-category` per `Category: items` line (`h4` + items `<p>`), and prior experience remains `p.competencies-list` (markers from AST-1007). Experience role chrome / header-meta-styles stay siblings **AST-1008** / **AST-1010**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -710,3 +710,50 @@ When `debug=True`, session/base/job emit paths call `candidate.debug_experience_
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1528 · AST-1526 (word-cloud NBSP bullet glue — superseded at render by AST-1536)
+
+**Parent:** [AST-1526 — Resume word clouds need non-breaking spaces](https://linear.app/astralcareermatch/issue/AST-1526/resume-word-clouds-need-non-breaking-spaces). **Ship:** `origin/sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue`.
+
+Original fix glued `\u00a0•\u00a0` on `_resume_site_markers` (generation path). **AST-1536** bug: format switch to `free_prose` inherited cloud glue — render-only fix on **`origin/sub/AST-1526/AST-1536-word-cloud-nbsp-glue-at-render`**. Regression lock: **`TestAst1528WordCloudNbspBulletGlue`** (markers left-only + session `word_cloud` HTML glued) + **`TestAst1536BugReproWordCloudFormatSwitch`**.
+
+---
+
+### AST-1536 · AST-1526 (bug — word-cloud NBSP glue at render only)
+
+**Parent:** [AST-1526](https://linear.app/astralcareermatch/issue/AST-1526/resume-word-clouds-need-non-breaking-spaces). **Publish:** `origin/sub/AST-1526/AST-1536-word-cloud-nbsp-glue-at-render`.
+
+Remove global `\u00a0•\u00a0` from `_resume_site_markers`; restore left-only `\u00a0• ` on the shared marker path. Apply full cloud glue only in the `word_cloud` emit arm via `_glue_word_cloud_bullet_separators`. Education partition reverts to `\u00a0• `. Cover from-block / header/contact asymmetric joins unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** format switch: `free_prose` must not show `\u00a0•\u00a0`; `word_cloud` still glued | `src/core/builder.py` | **`TestAst1536BugReproWordCloudFormatSwitch`** |
+| Markers left-only + digraph `__•__` + session cloud HTML | same | **`TestAst1528WordCloudNbspBulletGlue`** (revised per blast radius) |
+| Compact-title / meta tagline left-only regression | same | **`TestAst998ExperienceJobRender`**, **`TestAst1008ExperienceGoldenLayout`**, **`TestAst1007NestedTypographyMarkers`**, **`TestAst1009EducationSkillsPrior`**, **`TestAst1010HeaderContactMetaStyles`**, **`TestAst1021DocumentTitleChrome`** |
+| Digraph fidelity | same | **`TestAst1027UatMarkerExpand`** |
+| Pipe→bullet on `word_cloud` emit | same | **`TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`** |
+
+**Broken / obsolete (qa-fix):** AST-1528 asserts locking generation-path full glue on `_resume_site_markers`, education `\u00a0•\u00a0` partition, and compact-title/meta full-glue flips — revised in this pass.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. **[bug-repro]** free_prose no cloud glue: `tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch::test_free_prose_emit_has_no_cloud_glue`
+2. word_cloud control still glued: `tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch::test_word_cloud_emit_still_glued_after_format_switch_content`
+3. Markers left-only + render cloud: `tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue`
+4. Digraph + compact-title/meta/edu regression: `TestAst1027UatMarkerExpand`, `TestAst998ExperienceJobRender`, `TestAst1008ExperienceGoldenLayout`, `TestAst1007NestedTypographyMarkers`, `TestAst1009EducationSkillsPrior`, `TestAst1010HeaderContactMetaStyles`, `TestAst1021DocumentTitleChrome`, `TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+
+**AST-1536** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1027UatMarkerExpand \
+  -q
+```
+
+**Pass criterion:** item 1 red on pre-fix tree; all manifest lines green after `make-fix` + `test-fix` (red→green on **[bug-repro]**).
