@@ -367,3 +367,12 @@ context_tokens≈58000
 
 ---
 ```
+
+## Resolution
+
+**2026-08-31 — resolve-child (Katherine)**
+
+- **Overall DISCUSS** @ `bd5e0fb3` (Radia docs intake via sync-child).
+- **fix-now:** none (Radia: no product `src/ui/frontend/**` fixes required).
+- **discuss — fixture hop keys:** test-tree only (`stateUiManifestFixture.ts` + `test_JobDiscussionPane` `NINE`). Routed **`[qa-handoff]`** @Betty White; assignee Betty; status stays **Review Posted**. Resume resolve → User Testing after Betty lands AST-1550 `_NINE` alignment and reassigns Katherine.
+- **advisory:** AST-1550 backend rollup + `formatDiscussionContent` duplication — no action.
