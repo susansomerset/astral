@@ -48,6 +48,7 @@ Config sections:
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
   FETCH_EMAIL_CONFIG — fetch_email mailbox-shell seed literals (AST-1469; runner/ensure = sibling)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
+  METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -2537,6 +2538,56 @@ assert isinstance(METEORITE_CONFIG["land_outcome_superseded"], str) and METEORIT
 assert isinstance(METEORITE_CONFIG["land_outcome_error"], str) and METEORITE_CONFIG["land_outcome_error"]
 assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
 assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
+
+# AST-1557: flat meteorite staging-row states (table spine). Keys are NOT JOB_STATES
+# METEORITE_* job lifecycle labels — core transitions decide targets; data accepts state as param.
+METEORITE_STATES = {
+    "NEW": {
+        "prior_states": None,  # insert-only entry from classify fan-out
+    },
+    "SCRAPE_LINK": {
+        "prior_states": ["NEW", "ERROR"],  # link outcomes; retry from ERROR
+    },
+    "READY": {
+        # text fan-out from NEW; scrape success; Estelle paste recovery (sibling)
+        "prior_states": ["NEW", "SCRAPE_LINK", "BOT_BLOCKED"],
+    },
+    "BOT_BLOCKED": {
+        "prior_states": ["SCRAPE_LINK"],
+    },
+    "ERROR": {
+        "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
+    },
+    "LANDED": {
+        "prior_states": ["READY"],
+    },
+    "ABANDONED": {
+        "prior_states": ["BOT_BLOCKED", "ERROR"],  # nag limit / terminal stale
+    },
+}
+
+# Retention partitions (state literals only — day cutoffs are caller/config for AST-1562).
+METEORITE_STATES_RETENTION = {
+    "purge_states": ("LANDED",),
+    "stale_list_states": ("ERROR", "BOT_BLOCKED", "ABANDONED"),
+}
+
+assert set(METEORITE_STATES) == {
+    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+}
+assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
+assert METEORITE_STATES["NEW"]["prior_states"] is None
+assert (
+    set(METEORITE_STATES_RETENTION["purge_states"])
+    | set(METEORITE_STATES_RETENTION["stale_list_states"])
+) <= set(METEORITE_STATES)
+assert set(METEORITE_STATES_RETENTION["purge_states"]).isdisjoint(
+    METEORITE_STATES_RETENTION["stale_list_states"]
+)
+for _ms, _mcfg in METEORITE_STATES.items():
+    _priors = _mcfg["prior_states"]
+    if _priors is not None:
+        assert all(p in METEORITE_STATES for p in _priors), _ms
 
 # ---------------------------------------------------------------------------
 # SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
