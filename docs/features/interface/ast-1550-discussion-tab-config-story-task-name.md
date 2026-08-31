@@ -346,3 +346,33 @@ context_tokens≈72000
 
 [code-rubric] REVIEW (Commit: 814c237c) Sibling Toast tests orphan
 ```
+
+---
+
+## Resolution
+
+**Date:** 2026-08-31  
+**Resolve tip (pre-push):** Betty Toast restore `9d57e822` on `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`; product `src/` unchanged for review findings.
+
+### fix-now — Sibling Toast tests
+
+**Handled by Betty** (not Ada product): `9d57e822 test(AST-1550): restore Toast tests to origin/dev — drop sibling bleed`. `tests/component/frontend/components/test_Toast.test.tsx` matches `origin/dev` (empty diff). No `src/` fix-now required (spawn + Radia recommended action #3).
+
+### discuss — Cross-ticket test commit / Tests Passed gate
+
+**Answer:** Yes — Tests Passed was gated on Betty’s AST-1550 manifest only (bible `docs/test-bible/utils/config.md` § AST-1550 / Linear “Discussion QA ready”):
+
+1. `tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys`
+2. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`
+3. `tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections`
+4. `tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName`
+
+`test_Toast.test.tsx` was **not** on that manifest. Toast bleed is now restored to `origin/dev` on this publish ref.
+
+### advisory — Duplicate walk pattern
+
+**Deferred:** Bounded utils vs core duplication; layer law blocks utils→core. No change this pass.
+
+### advisory — Per-hop double `get_agent_task`
+
+**Deferred:** N≤9; within plan allowance. No change this pass.
