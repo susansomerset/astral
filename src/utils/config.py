@@ -3076,11 +3076,12 @@ JOBS_RECOMMENDED_PRIMARY_ACTIONS = {
 
 assert all(state in RECOMMENDED_JOB_STATES for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS)
 
-# AST-948: top-level Recommended report tabs (Summary / Analysis / Artifacts).
+# AST-948 / AST-1550: top-level Recommended report tabs (Discussion after Artifacts).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
     {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "analysis", "nav_label": "Analysis"},
     {"tab_id": "artifacts", "nav_label": "Artifacts"},
+    {"tab_id": "discussion", "nav_label": "Discussion"},
 ]
 
 JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
@@ -5701,6 +5702,30 @@ def is_build_artifacts_in_progress(state: str) -> bool:
 
 
 is_resume_artifact_in_progress = is_build_artifacts_in_progress
+
+
+def build_artifacts_discussion_hop_task_keys() -> list[str]:
+    """Live run_next walk for Recommended Job Report Discussion sections (AST-1550).
+
+    Starts at BUILD_CONFIG['resume_artifact_chain']['first_task_key'] (contemplate_job).
+    Follows current agent_task.run_next until empty. Cycle → RuntimeError.
+    Does not include anticipate_scan (not on this chain).
+    """
+    from src.data.database import get_agent_task
+
+    start = ((BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key") or "").strip()
+    if not start:
+        return []
+    out: list[str] = []
+    seen: set[str] = set()
+    key = start
+    while key:
+        if key in seen:
+            raise RuntimeError(f"build_artifacts discussion run_next cycle at {key!r}")
+        seen.add(key)
+        out.append(key)
+        key = ((get_agent_task(key) or {}).get("run_next") or "").strip()
+    return out
 
 
 _rac = BUILD_CONFIG.get("resume_artifact_chain") or {}
