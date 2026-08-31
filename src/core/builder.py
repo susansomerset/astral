@@ -1109,12 +1109,15 @@ def _resume_site_markers(text: str) -> str:
 
 
 def _glue_word_cloud_bullet_separators(text: str) -> str:
-    """NBSP both sides of • for word_cloud HTML emit only (AST-1536)."""
+    """NBSP both sides of •, then remaining spaces/hyphens non-breaking (AST-1536/1540)."""
     if not text:
         return text
     emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
     glued = "\u00a0•\u00a0"
-    return text.replace(emit_sep, glued).replace("\u00a0• ", glued)
+    t = text.replace(emit_sep, glued).replace("\u00a0• ", glued)
+    t = t.replace(" ", "\u00a0")
+    t = t.replace("-", "\u2011")
+    return t
 
 
 def _emit_inline_emphasis_html(text: str) -> str:
