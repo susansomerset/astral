@@ -468,3 +468,11 @@ Ban automatic `dispatch_task` writers on scheduler start; script hard-fail on `d
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
 
 Mailbox branch awaits **`check_inbox`** — revised **`TestAst1090GazeEmailDispatchOne`**.
+
+---
+
+### AST-1560 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
+
+`_dispatch_one` custom branch before mailbox / `_run_unified`: mints `entity_batch_id`, sets `task["entity_batch_id"]`, routes `stage_meteorite` / `scrape_meteorite` / `land_meteorite` to meteorite transition runners (not consult). **`TestAst1560IngressTransitionDispatchOne`**. Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
