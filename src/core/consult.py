@@ -24,7 +24,6 @@ from uuid import uuid4
 
 from src.core import tracker
 from src.core.agent import do_task
-from src.core.meteorite import is_meteorite_company
 from src.data.database import ensure_batch_response_entity_ids
 from src.utils import rubric_text
 from src.utils.config import (
@@ -1689,6 +1688,7 @@ async def qualify_job_listings(
     title_screen_failed = 0
     if any((j.get("state") or "") == "NEW" for j in jobs):
         from src.core.gazer import validate_title_batch
+        from src.core.meteorite import is_meteorite_company
 
         new_jobs = [j for j in jobs if (j.get("state") or "") == "NEW"]
         meteorite_new = [j for j in new_jobs if is_meteorite_company(j.get("company"))]

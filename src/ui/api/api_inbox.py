@@ -24,7 +24,6 @@ from src.core.inbox import (
 from src.utils.config import (
     CANDIDATE_LOOKUP_CONFIG,
     METEORITE_CONFIG,
-    METEORITE_EMAIL_MAILBOX_CONFIG,
     STAGE_METEORITE_CONFIG,
 )
 from src.utils.deploy_status import ui_llm_debug

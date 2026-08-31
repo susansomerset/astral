@@ -11,7 +11,9 @@ only — table ingress uses dispatch transition runners for map/land. Public lan
 scraps → optional Playwright visible text → qualify_meteorite packet enrich →
 per-row Ruth company_stem ensure → tracker.save_meteorite_job. check_inbox (AST-1559):
 aliases → fetch → inline classify → fan-out staging rows → archive; no Gmail I/O here —
-inbox owns fetch/archive. create_meteorite_job accepts optional stem= for legacy callers.
+inbox owns fetch/archive. run_meteorite_retention (AST-1562): scheduled purge of old LANDED
+rows + info-list stale ERROR/BOT_BLOCKED/ABANDONED; meteorite_email.py retired AST-1562.
+create_meteorite_job accepts optional stem= for legacy callers.
 create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
 """
 from __future__ import annotations
