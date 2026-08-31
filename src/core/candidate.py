@@ -1561,6 +1561,43 @@ def _lookup_path_value(candidate: Dict[str, Any], dotted_path: str) -> str:
     return val.strip()
 
 
+def email_aliases_for_candidate(candidate_id: str) -> list[str]:
+    """Bare email addresses from CANDIDATE_LOOKUP_CONFIG paths (order-stable, unique)."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return []
+    row = get_candidate(cid)
+    if not row:
+        return []
+    seen: set[str] = set()
+    aliases: list[str] = []
+    for path in CANDIDATE_LOOKUP_CONFIG["email_paths"]:
+        raw = _lookup_path_value(row, path)
+        if not raw:
+            continue
+        _display, parsed = parseaddr(raw)
+        token = (parsed or raw).strip()
+        if "@" not in token:
+            continue
+        folded = token.casefold()
+        if folded in seen:
+            continue
+        seen.add(folded)
+        aliases.append(token)
+    for path in CANDIDATE_LOOKUP_CONFIG["email_list_paths"]:
+        for raw in _iter_uniqueness_path_values(row, path):
+            _display, parsed = parseaddr(raw)
+            token = (parsed or raw).strip()
+            if "@" not in token:
+                continue
+            folded = token.casefold()
+            if folded in seen:
+                continue
+            seen.add(folded)
+            aliases.append(token)
+    return aliases
+
+
 def get_candidate_id_for_query(
     query: str,
     *,
