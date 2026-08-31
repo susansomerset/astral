@@ -193,3 +193,33 @@ f. **Landable outcome:** `_map_classify_jobs_to_meteorite_rows(...)` → if erro
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1559
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1555/AST-1559-check-inbox-monitoring-log` @ `f55dab146b11fd5a084240d6f1de58a4853c75e1`
+
+## Traceability
+AC1 → Stages 3–4 (`check_inbox` inline classify via `invoke_stage_meteorite` → `insert_meteorite_rows` N-row fan-out → `archive_candidate_email`; classify/map failure leaves mid unarchived with zero rows); AC2 → Stage 3 skip branch (`STAGE_METEORITE_CONFIG["skip_outcomes"]` → zero rows + `log_meteorite_inbox_classify` always-on info, then archive).
+
+## Findings
+
+### acceptable
+- **Location:** Linear ticket — `## Citations` / `## Scope` empty
+- **Finding:** Dispatch template fields blank; plan Scope gate correctly mirrors parent proposed child #3 and **What this implements**.
+- **Recommendation:** Chuckles backfill Linear `## Citations` / `## Scope` from parent #3 when appending (same hygiene as AST-1557); plan content itself is scoped.
+
+### acceptable
+- **Location:** Stage 3 — `classify_failed` / `map_failed` monitoring literals
+- **Finding:** Hardcoded outcome strings while `already_ingested` lives in `METEORITE_MONITORING_CONFIG`.
+- **Recommendation:** Optional follow-up to fold error-path literals into config; not blocking — they are monitoring labels, not state sets.
+
+### acceptable
+- **Location:** Stage 3 — `_map_classify_jobs_to_meteorite_rows` vs `_map_stage_jobs_to_scraps`
+- **Finding:** Parallel partition logic; plan explicitly avoids calling land/scrap mapper from `check_inbox`.
+- **Recommendation:** Keep as staged; AST-1560 owns `NEW`→transition path.
+
+**In-session statute pass:** `invoke_stage_meteorite` delegates to `do_task` with `STAGE_METEORITE_CONFIG["task_key"]` — **astral.agent.do-task-delegation** conforms. Inline classify + fan-out only (no scrape/land in same run) — **astral.state.no-daisy-chain-in-run** conforms with parent carve-out. `meteorite` → `inbox` → Gmail, no `external/gmail` in `meteorite.py` — **astral.layers.import-direction** / **astral.layers.core-vs-external-bright-line** conform. Monitoring via `get_logger(...).info` always-on — **astral.standards.logging-via-utils** / **astral.standards.debug-contract-gated** conform. Format SSOT in config — **astral.config.config-source-of-truth** conforms. Universal orch.* — N/A/conforms.
