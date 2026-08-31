@@ -195,3 +195,33 @@ async def run_meteorite_retention(task: dict, *, debug: bool = False) -> dict:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1562
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email` @ `4fe81774e094081d1154d685a18ba9368cfb9a94`
+
+### Traceability
+AC6 → Stages 3–4 (delete `meteorite_email.py`, retire unbound/selected-id mailbox literals, grep confirms no fetch/bind/source-ref/gmail/hygiene); AC7 → Stages 1–2 (`run_meteorite_retention` scheduled dispatch purges old `LANDED`, info-lists stale `ERROR`/`BOT_BLOCKED`/`ABANDONED`, no delete/list inside transition runners).
+
+### Findings
+
+#### acceptable
+- **Location:** AC6 partition vs Scope
+- **Finding:** Parent AC6 includes `inbox.py` fetch/bind removal (AST-1558); this plan verifies via Stage 4 grep only — does not edit `inbox.py` or dispatcher `fetch_email` branch.
+- **Recommendation:** Chuckles merge AST-1558/1559 before build-child; Stage 4 grep is the acceptance gate for those slices.
+
+#### acceptable
+- **Location:** Stage 3 — delete `meteorite_email.py`
+- **Finding:** Plan assumes AST-1559 already repointed mailbox dispatcher to `check_inbox`; Depends names 1559 but does not spell “stop if dispatcher still imports `meteorite_email`.”
+- **Recommendation:** Builder stops on missing `check_inbox` branch before `git rm`; add explicit gate in build if helpful, not blocking plan approval.
+
+#### acceptable
+- **Location:** Linear ticket — empty `## Citations` / `## Scope`
+- **Finding:** Dispatch template gap; plan Scope gate mirrors parent proposed child #6.
+- **Recommendation:** Chuckles backfill Linear fields when appending.
+
+**In-session statute pass:** Retention config block + seed `auto_mode` 0 — **pattern.config.config-block** / **astral.dispatch.seed-auto-false** conform. Purge/list isolated to `run_meteorite_retention` — **astral.standards.in-scope-only** conform. `entity_batch_id` + `await` dispatcher branch — **astral.batch.batch-id-first** conforms (ledger id; no row claim). Day cutoffs in config, state partitions from AST-1557 — **astral.config.config-source-of-truth** conforms. Universal orch.* — N/A/conforms.
