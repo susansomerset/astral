@@ -451,3 +451,24 @@ context_tokens≈85000
 ```
 [code-rubric] PROCEED (Commit: 23483405) Post-bullet space restored
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/c303d23a92c68a4085ba131baab1b5c1/170f36e0-8a43-4d08-80f1-7f0afd6e3c81/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/f966e706-f659-43a0-9f21-f0f7bc08cfaa/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/c303d23a92c68a4085ba131baab1b5c1/aa9c5969-d46d-4f6f-8ff8-4b94cd9ab7fa/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1539 (parent) | ftr/AST-1539-word-cloud-items-with-inner-characters-must-be-non-breaking |
+| AST-1540 | sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render |
+| AST-1552 | sub/AST-1539/AST-1552-word-cloud-breaking-space-after-bullet |
+
+**Epic worktree:** `astral-AST-1539/` — one active sub checked out at a time.

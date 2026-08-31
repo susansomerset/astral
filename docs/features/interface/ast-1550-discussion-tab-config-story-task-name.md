@@ -376,3 +376,26 @@ context_tokens≈72000
 ### advisory — Per-hop double `get_agent_task`
 
 **Deferred:** N≤9; within plan allowance. No change this pass.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/81753492fa55c6a6a65968555e8f5c14/46b16373-da34-4f04-969b-131d1152b981/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/81753492fa55c6a6a65968555e8f5c14/c4f93f7e-ea37-43b5-a6fa-25c31c425e47/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/f9e04fce-94bf-4b71-92a7-cbbe544ee513/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/81753492fa55c6a6a65968555e8f5c14/f48c9428-ac74-4cbe-b103-23a94ed994d1/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1541 (parent) | ftr/AST-1541-discussion-tab-recommended-job-modal |
+| AST-1550 | sub/AST-1541/AST-1550-discussion-tab-config-story-task-name |
+| AST-1551 | sub/AST-1541/AST-1551-discussion-pane-recommended-job-report |
+
+**Epic worktree:** `astral-AST-1541/` — one active sub checked out at a time.
