@@ -5342,3 +5342,38 @@ class TestAst1557MeteoriteStates:
                 continue
             for p in priors:
                 assert p in keys, f"{name} prior {p!r} not in METEORITE_STATES"
+
+
+class TestAst1560IngressDispatchConfig:
+    """AST-1560: METEORITE_INGRESS_DISPATCH_CONFIG + row monitoring lines."""
+
+    def test_ingress_task_keys_and_triggers(self) -> None:
+        ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
+        assert ingress["stage_task_key"] == "stage_meteorite"
+        assert ingress["scrape_task_key"] == "scrape_meteorite"
+        assert ingress["land_task_key"] == "land_meteorite"
+        assert ingress["stage_task_key"] == cfg.STAGE_METEORITE_CONFIG["task_key"]
+        assert ingress["stage_trigger_state"] == "NEW"
+        assert ingress["scrape_trigger_state"] == "SCRAPE_LINK"
+        assert ingress["land_trigger_state"] == "READY"
+        for tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
+            assert ingress[tr] in cfg.METEORITE_STATES
+        assert set(ingress["scrape_page_status_states"].values()) <= {
+            "READY",
+            "BOT_BLOCKED",
+            "ERROR",
+        }
+
+    def test_row_monitoring_format_literals(self) -> None:
+        mon = cfg.METEORITE_MONITORING_CONFIG
+        assert "{row_id}" in mon["row_bot_blocked_line"]
+        assert "{astral_job_id}" in mon["row_landed_line"]
+        assert "{task_key}" in mon["row_error_line"]
+
+    def test_seed_catalog_has_ingress_dispatch_rows(self) -> None:
+        assert "dispatch_task-meteorite-ingress" in cfg.SEED_CONFIG
+        sql = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress"]
+        blob = sql if isinstance(sql, str) else "\n".join(sql)
+        assert "stage_meteorite" in blob
+        assert "scrape_meteorite" in blob
+        assert "land_meteorite" in blob

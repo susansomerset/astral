@@ -37,8 +37,8 @@ _SCHEMA_FLAGS = (
     "_rubric_vector_schema_ensured",
     "_vector_feedback_schema_ensured",
     "_artifacts_schema_ensured",  # AST-1352 / rename AST-1364
-    "_ast723_rubric_token_migration_applied",
     "_meteorite_schema_ensured",  # AST-1557 staging table
+    "_ast723_rubric_token_migration_applied",
 )
 
 

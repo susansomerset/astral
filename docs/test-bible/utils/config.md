@@ -3457,3 +3457,15 @@ Retire `FETCH_EMAIL_CONFIG`, `INBOX_BIND_CONFIG`, `TASK_CONFIG["fetch_email"]`, 
 
 `METEORITE_MONITORING_CONFIG`; `debug_func` → `meteorite.check_inbox`. **`TestAst1559MonitoringConfig`**.
 
+---
+
+### AST-1560 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
+
+`METEORITE_INGRESS_DISPATCH_CONFIG` (task keys, trigger states, scrape page_status map); row-transition monitoring lines in `METEORITE_MONITORING_CONFIG`; `SEED_CONFIG["dispatch_task-meteorite-ingress"]`. **`TestAst1560IngressDispatchConfig`**. Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
