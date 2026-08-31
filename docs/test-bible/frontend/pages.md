@@ -1047,7 +1047,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-987 · AST-985
 
-**AST-987:** Admin **Session Resume Paste** page + session HTML — paste → AST-986 parse API; `useLocalStorage` retention (`session_resume:paste_text` / `session_resume:last_parse`); Open HTML via `POST /api/admin/session_resume/html` → blob URL tab. Builder `build_session_base_resume` emits print HTML from in-memory structure/content (**no** `get_candidate` / profile overlay). Failed parse/HTML never opens a tab. Sibling **AST-986** owns parse core/route. View Parsed JSON control = **AST-1035**.
+**AST-987:** Admin **Session Resume Paste** page + session HTML — paste → AST-986 parse API; `useLocalStorage` retention (`session_resume:paste_text` / `session_resume:last_parse`); Open HTML via `POST /api/admin/session_resume/html` → blob URL tab (`window.open(url, "_blank")` then `opener = null`; success must not toast popup-blocked — **AST-1546**). Builder `build_session_base_resume` emits print HTML from in-memory structure/content (**no** `get_candidate` / profile overlay). Failed parse/HTML never opens a tab. Sibling **AST-986** owns parse core/route. View Parsed JSON control = **AST-1035**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1073,7 +1073,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1025 · AST-1023
 
-**AST-1025:** Admin **Session Cover Letter** page (§6c) — field form mirroring `BUILD_CONFIG["session_cover_letter"]["fields"]`; `useLocalStorage` (`session_cover_letter:fields` / `session_cover_letter:last_render`); Open HTML → `POST /api/admin/session_cover_letter/html` (AST-1024) → blob URL tab; failed/empty HTML never opens a tab; optional `candidate_id` from selected candidate. Nav: **Cover Letter Paste** after **Resume Paste** in Tools (AST-1386 labels; paths unchanged). Core emit = sibling **AST-1024**.
+**AST-1025:** Admin **Session Cover Letter** page (§6c) — field form mirroring `BUILD_CONFIG["session_cover_letter"]["fields"]`; `useLocalStorage` (`session_cover_letter:fields` / `session_cover_letter:last_render`); Open HTML → `POST /api/admin/session_cover_letter/html` (AST-1024) → blob URL tab (`window.open(url, "_blank")` then `opener = null`; success must not toast popup-blocked — **AST-1546**); failed/empty HTML never opens a tab; optional `candidate_id` from selected candidate. Nav: **Cover Letter Paste** after **Resume Paste** in Tools (AST-1386 labels; paths unchanged). Core emit = sibling **AST-1024**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1887,7 +1887,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content`.
 
-**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved **body** content, not editor buffer / session admin POST / job Print). **AST-1489:** structure `page_break_policy` auto-persisted from editor rows immediately before print GET. `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`.
+**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved **body** content, not editor buffer / session admin POST / job Print). **AST-1489:** structure `page_break_policy` auto-persisted from editor rows immediately before print GET. `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`. Success blob open: `window.open(url, "_blank")` then `opener = null` (no features string); must not toast popup-blocked (**AST-1546**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |

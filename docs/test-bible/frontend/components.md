@@ -879,15 +879,38 @@ cd src/ui/frontend && npm run test:component -- \
 
 **AST-1350:** JAR **Print Resume** fetch-then-blob + toast exact API `error` (no `window.open` on failure). **AST-1489:** structure auto-persist before resume GET when candidate selected. Cover Letter print unchanged. Base Resume / Session Open HTML already toast API errors — **`test_ArtifactsBaseResumeContent`** / **`test_AdminSessionResumePaste`**. Core/API: **`docs/test-bible/core/builder.md`**.
 
+**AST-1546 (gap · AST-1542):** Blob Print Resume opens with `window.open(url, "_blank")` then `opener = null` (no features string — AST-1545 product). Success must **not** toast `Popup blocked — allow popups to open the HTML tab.` Cover Letter URL open keeps `"noopener,noreferrer"`.
+
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Fetch-then-blob success + unsupported toast | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **Print Resume fetch-then-blob…**, **AST-1350: Print Resume unsupported toast — no tab** |
-| Print without Save sections (bug-repro) | same | **`AST-1489:`** — structure PUT before resume GET |
+| Fetch-then-blob success + unsupported toast | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **AST-1546: Print Resume success — two-arg open…** (bug-repro), **AST-1350: Print Resume unsupported toast — no tab** |
+| Print without Save sections (bug-repro) | same | **`AST-1489:`** — structure PUT before resume GET (blob open two-arg) |
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
-  --testNamePattern="Print Resume|AST-1350"
+  --testNamePattern="AST-1546|Print Resume|AST-1350"
+```
+
+### AST-1546 · AST-1542 (gap)
+
+**Gap sibling of AST-1545.** Align four validate-then-blob success opens with AST-1545 shape (`window.open(url, "_blank")` + `opener = null`; no popup-blocked toast on success). Product UI is AST-1545 — this ticket is tests/bible only.
+
+## QA test manifest
+
+1. **Bug-repro (must flip red→green with AST-1545 product):** `test_JobAnalysisReportModal.test.tsx` — **`AST-1546: Print Resume success — two-arg open, opener null, no popup-blocked toast; Cover still noopener (AST-1350)`**
+2. Base Print success: `test_ArtifactsBaseResumeContent.test.tsx` — **`AST-1337: … success opens blob tab`** (two-arg + opener null + no blocked toast)
+3. Session Resume Open HTML success: `test_AdminSessionResumePaste.test.tsx`
+4. Session Cover Open HTML success: `test_AdminSessionCoverLetter.test.tsx` — Open HTML posts fields…
+5. JAR AST-1489 / AST-1490 Print Resume blob spies: two-arg open (Cover non-blob noopener unchanged)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx \
+  --testNamePattern="AST-1546|AST-1337: Print disabled|Open HTML posts|Open HTML posts fields"
 ```
 
 ### AST-1351 · AST-1345
