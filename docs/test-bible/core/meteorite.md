@@ -268,6 +268,46 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 
 ---
 
+### AST-1562 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
+
+Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + always-on info lines for stale `ERROR` / `BOT_BLOCKED` / `ABANDONED` (no deletes in transition runners). Deletes `src/core/meteorite_email.py`; retires unbound/selected-ids mailbox literals. Config/dispatcher: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retention runner | `src/core/meteorite.py` | **`TestAst1562RunMeteoriteRetention`** |
+| Retention config + seed | `src/utils/config.py` | **`TestAst1562RetentionConfig`** |
+| Dispatcher retention branch | `src/core/dispatcher.py` | **`TestAst1562RetentionDispatchOne`** |
+| Module retirement inventory | — | revised **`TestAst1467GazeEmailRetired`**; **`test_meteorite_email.py`** module skip |
+
+**Broken / obsolete:** **`TestAst1140GazeEmailSelectedConfig`** (auto-skips — selected-ids keys gone); **`test_meteorite_email.py`** entire module (module deleted); revised **`TestAst1088GazeEmailConfig`**, **`TestAst1090GazeEmailRunnerConfig`**.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention`
+2. `tests/component/utils/test_config.py::TestAst1562RetentionConfig`
+3. `tests/component/core/test_dispatcher.py::TestAst1562RetentionDispatchOne`
+4. `tests/component/core/test_ast1467_gaze_email_retire.py::TestAst1467GazeEmailRetired`
+5. Revised: `TestAst1088GazeEmailConfig`, `TestAst1090GazeEmailRunnerConfig`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention \
+  tests/component/utils/test_config.py::TestAst1562RetentionConfig \
+  tests/component/core/test_dispatcher.py::TestAst1562RetentionDispatchOne \
+  tests/component/core/test_ast1467_gaze_email_retire.py::TestAst1467GazeEmailRetired \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1561 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.

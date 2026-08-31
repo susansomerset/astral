@@ -43,14 +43,14 @@ class TestAst1467GazeEmailRetired:
         m = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
         assert m["task_key"] == "meteorite_email"
         assert m["account_address"] == "astral.career.match@gmail.com"
-        assert isinstance(m["unbound_retention_days"], int) and m["unbound_retention_days"] > 0
-        assert m["debug_func"] == "meteorite_email.run"
-        assert m["debug_func_selected"] == "meteorite_email.selected_ids"
-        assert cfg.INBOX_BIND_CONFIG["inbox_address"] == m["account_address"]
+        assert m["debug_func"] == "meteorite.check_inbox"
+        assert "unbound_retention_days" not in m
+        assert "debug_func_selected" not in m
+        assert not hasattr(cfg, "INBOX_BIND_CONFIG")
 
-    def test_gaze_email_module_gone_meteorite_email_present(self) -> None:
+    def test_gaze_email_module_gone_meteorite_email_deleted(self) -> None:
         assert importlib.util.find_spec("src.core.gaze_email") is None
-        assert importlib.util.find_spec("src.core.meteorite_email") is not None
+        assert importlib.util.find_spec("src.core.meteorite_email") is None
 
     def test_dispatcher_provision_symbols_rehomed(self) -> None:
         from src.core import dispatcher as d

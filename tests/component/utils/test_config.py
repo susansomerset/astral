@@ -4032,7 +4032,7 @@ class TestAst1088GazeEmailConfig:
         g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
         assert g["task_key"] == "meteorite_email"
         assert g["account_address"] == "astral.career.match@gmail.com"
-        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+        assert "unbound_retention_days" not in g
         assert g["auto_mode"] is False
         assert g["min_count"] == 1
         assert g["batch_size"] == 1
@@ -4099,7 +4099,8 @@ class TestAst1090GazeEmailRunnerConfig:
         assert g["debug_func"] == "meteorite.check_inbox"
         assert "dispatch_ledger_candidate_id" not in g
         assert g["task_key"] == "meteorite_email"
-        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+        assert "unbound_retention_days" not in g
+        assert "debug_func_selected" not in g
 
 
 # Branches: selected-ids Style D func + skip outcome vocabulary (AST-1140 / AST-1467).
@@ -5398,3 +5399,42 @@ class TestAst1561BotBlockedNotifyConfig:
         blob = sql if isinstance(sql, str) else "\n".join(sql)
         assert "meteorite_bot_blocked_notify" in blob
         assert "BOT_BLOCKED" in blob
+
+
+class TestAst1562RetentionConfig:
+    """AST-1562: METEORITE_RETENTION_CONFIG + dispatch seed; mailbox literals retired."""
+
+    def test_retention_config_literals(self) -> None:
+        retention = cfg.METEORITE_RETENTION_CONFIG
+        assert retention["task_key"] == "meteorite_retention"
+        assert retention["debug_func"] == "meteorite.run_meteorite_retention"
+        assert retention["landed_purge_days"] >= 1
+        assert retention["stale_list_days"] >= 1
+        assert retention["batch_size"] >= 1
+        for ph in ("{row_id}", "{state}", "{candidate_id}", "{state_changed_at}"):
+            assert ph in retention["stale_list_line"]
+        assert set(cfg.METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
+        assert set(cfg.METEORITE_STATES_RETENTION["stale_list_states"]) == {
+            "ERROR",
+            "BOT_BLOCKED",
+            "ABANDONED",
+        }
+
+    def test_mailbox_config_retired_selected_and_unbound_literals(self) -> None:
+        m = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
+        assert m["debug_func"] == "meteorite.check_inbox"
+        for key in (
+            "unbound_retention_days",
+            "debug_func_selected",
+            "selected_outcome_skipped_unbound",
+            "selected_outcome_skipped_not_in_inbox",
+            "selected_outcome_skipped_unmatched",
+        ):
+            assert key not in m
+
+    def test_seed_catalog_has_retention_dispatch_row(self) -> None:
+        assert "dispatch_task-meteorite-retention" in cfg.SEED_CONFIG
+        sql = cfg.SEED_CONFIG["dispatch_task-meteorite-retention"]
+        blob = sql if isinstance(sql, str) else "\n".join(sql)
+        assert "meteorite_retention" in blob
+        assert "NULL" in blob.upper()
