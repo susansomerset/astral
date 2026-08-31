@@ -1169,3 +1169,13 @@ AST-1548 (and earlier pin/`resume_content` work on this doc) treated “durable 
 - Import direction: UI → core/tracker → `database.save_artifact` / `get_current_artifact`; no UI→data.
 - Unwrapped resume section dict / normalized cover fields only in `artifact_data` (no full hop envelopes).
 
+
+---
+
+## Radia review — AST-1556 (2026-08-31)
+
+**Overall:** FIX-NOW / REVIEW — table SoT solid; consult resume-first still keys `resume_content` only.
+**Publish:** `origin/sub/AST-1547/AST-1556-job-artifacts-in-artifacts-table` @ `17445a51`
+**fix-now:** `consult.py` `_run_cover_letter_for_job` must accept overlaid `job_resume` / table SoT, not only `resume_content`.
+**[bug-repro]:** OK.
+
