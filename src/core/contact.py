@@ -12,6 +12,7 @@ AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
 AST-1471 / AST-1531: Contact scrap path → `contact_land_meteorite` → `stage_meteorite`.
+AST-1561: BOT_BLOCKED paste recovery via `apply_paste` (no re-classify).
 AST-1515: Contact-task markup parse/dispatch + same-event follow-up turn.
 """
 
@@ -557,6 +558,42 @@ def run_contact_skill(
         "astral_candidate_id": cid,
         "paths_written": paths_written,
     }
+
+
+def try_meteorite_apply_paste_from_slack(
+    *,
+    astral_candidate_id: Optional[str],
+    channel: str,
+    thread_ts: Optional[str],
+    message_ts: Optional[str],
+    text: str,
+    debug: bool = False,
+) -> dict:
+    """AST-1561: thread-first BOT_BLOCKED paste recovery before Estelle classify."""
+    if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
+        return {"applied": False}
+    if not (isinstance(text, str) and text.strip()):
+        return {"applied": False}
+
+    from src.core.meteorite import (
+        apply_paste,
+        find_meteorite_bot_blocked_paste_source,
+        find_meteorite_for_estelle_thread,
+    )
+
+    row = None
+    anchor = (thread_ts or message_ts or "").strip()
+    if anchor:
+        row = find_meteorite_for_estelle_thread(
+            candidate_id=astral_candidate_id, thread_ts=anchor
+        )
+    if row is None:
+        row = find_meteorite_bot_blocked_paste_source(candidate_id=astral_candidate_id)
+    if row is None:
+        return {"applied": False}
+
+    result = apply_paste(int(row["id"]), text, debug=debug)
+    return {"applied": True, "result": result}
 
 
 def contact_land_meteorite(
@@ -1200,6 +1237,18 @@ def run_contact_estelle_turn(
             land_results.append({"ok": False, "error": "no_candidate"})
             continue
         try:
+            from src.core.meteorite import (
+                apply_paste,
+                find_meteorite_bot_blocked_paste_source,
+            )
+
+            paste_row = find_meteorite_bot_blocked_paste_source(
+                candidate_id=astral_candidate_id
+            )
+            if paste_row is not None and isinstance(text, str) and text.strip():
+                apply_out = apply_paste(int(paste_row["id"]), text, debug=debug)
+                land_results.append({"ok": True, "result": apply_out, "via": "apply_paste"})
+                continue
             if isinstance(item.get("scraps"), list) and item["scraps"]:
                 land_out = contact_land_meteorite(
                     astral_candidate_id,
@@ -1523,22 +1572,59 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
             },
             debug=debug,
         )
-    # AST-1073: one Estelle turn after accept + resolve + inbound cache append.
+    # AST-1561: paste recovery before Estelle turn (no re-classify).
     if result.get("accepted") and isinstance(channel, str) and channel:
-        try:
-            turn_out = run_contact_estelle_turn(
-                channel=channel,
-                text=text,
-                thread_ts=event.get("thread_ts"),
-                message_ts=msg_ts if isinstance(msg_ts, str) else None,
-                astral_candidate_id=result.get("astral_candidate_id"),
-                candidate_state=result.get("candidate_state"),
-                debug=debug,
-            )
-            result["estelle_turn"] = turn_out
-        except Exception as exc:
-            log.error("contact estelle turn failed: %s", exc, exc_info=True)
-            result["estelle_turn"] = {"ok": False, "error": str(exc)}
+        paste_out = try_meteorite_apply_paste_from_slack(
+            astral_candidate_id=result.get("astral_candidate_id"),
+            channel=channel,
+            thread_ts=event.get("thread_ts"),
+            message_ts=msg_ts if isinstance(msg_ts, str) else None,
+            text=text,
+            debug=debug,
+        )
+        result["meteorite_apply_paste"] = paste_out
+        if paste_out.get("applied") and paste_out.get("result", {}).get("ok"):
+            try:
+                ack = format_contact_reply_text(
+                    "Got it — pasted job description saved for review."
+                )
+                reply_thread_ts = event.get("thread_ts")
+                if not reply_thread_ts and isinstance(msg_ts, str):
+                    reply_thread_ts = msg_ts
+                result["estelle_turn"] = {
+                    "ok": True,
+                    "outcome": "paste_applied",
+                    "meteorite_apply_paste": paste_out,
+                    "slack_post": contact_post_message(
+                        channel=channel,
+                        text=ack,
+                        thread_ts=reply_thread_ts,
+                        debug=debug,
+                    ),
+                }
+            except Exception as exc:
+                log.error("contact paste ack failed: %s", exc, exc_info=True)
+                result["estelle_turn"] = {
+                    "ok": True,
+                    "outcome": "paste_applied",
+                    "meteorite_apply_paste": paste_out,
+                    "slack_post": {"ok": False, "error": str(exc)},
+                }
+        else:
+            try:
+                turn_out = run_contact_estelle_turn(
+                    channel=channel,
+                    text=text,
+                    thread_ts=event.get("thread_ts"),
+                    message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                    astral_candidate_id=result.get("astral_candidate_id"),
+                    candidate_state=result.get("candidate_state"),
+                    debug=debug,
+                )
+                result["estelle_turn"] = turn_out
+            except Exception as exc:
+                log.error("contact estelle turn failed: %s", exc, exc_info=True)
+                result["estelle_turn"] = {"ok": False, "error": str(exc)}
         # AST-1101: hear-ack when Estelle turn did not successfully post to Slack.
         turn_out = result.get("estelle_turn")
         slack_post = turn_out.get("slack_post") if isinstance(turn_out, dict) else None
