@@ -306,3 +306,8 @@ AC2 → Stages 1–2 (dispatcher `entity_batch_id` sole golden ticket → `claim
 **In-session statute pass:** **astral.batch.batch-id-first**, **astral.batch.claim-process-release**, **pattern.batch.entity-claim-process-release** — conforms (single `entity_batch_id`). **astral.state.no-daisy-chain-in-run**, **astral.state.core-decides-transitions** — conforms. **astral.standards.logging-via-utils**, **astral.config.config-source-of-truth** — conforms. **pattern.layers.import-discipline** — conforms. Universal orch.* — N/A/conforms.
 
 context_tokens≈76000
+
+## Review
+
+- **Publish tip:** `9dca033cdd719a20cfb6fc4fd42895ec4f456b29` on `sub/AST-1555/AST-1560-stage-scrape-land-transitions`
+- **Built:** METEORITE_INGRESS_DISPATCH_CONFIG + dispatch seeds; dispatcher ingress branch; `run_stage_meteorite` / `run_scrape_meteorite` / `run_land_meteorite` + `log_meteorite_row_transition`; retired `_map_stage_jobs_to_scraps` / classify-only `stage_meteorite`
