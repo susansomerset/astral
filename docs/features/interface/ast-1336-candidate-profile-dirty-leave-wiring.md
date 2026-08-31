@@ -1,3 +1,83 @@
+<!-- linear-archive: AST-1336 archived 2026-08-31 -->
+
+## Linear archive (AST-1336)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1336/candidate-profile-dirty-leave-wiring-do-not-navigate-away-from-dirty  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1315 — Do not navigate away from dirty content  
+**Blocked by / blocks / related:** parent: AST-1315
+
+### Description
+
+## What this implements
+
+After the shared helper sibling: Candidate Profile tracks dirty vs last loaded/saved snapshot, uses the shared helper on in-app leave, reuses the existing Profile save path, keeps Cancel/Save header behavior, and does not treat in-page text-tab switches as leave. Profile only — no other pages.
+
+## Citations
+
+proposed `pattern.ui.dirty-leave-save-then-navigate`; `pattern.ui.shared-button-roles`; `astral.layers.ui-config-driven-business-logic`; `astral.standards.in-scope-only`; `astral.docs.features-single-file-per-ticket`.
+
+## Acceptance criteria
+
+- [X] 1. With unsaved Profile edits, choosing another left-nav / in-app destination shows a themed save prompt; primary action is Save.
+- [X] 2. Choosing Save on that prompt persists the draft (reload Profile shows the same values) and then lands on the destination that was requested.
+- [X] 3. Choosing Cancel on that prompt leaves the operator on Profile with the draft intact.
+- [X] 4. If that save fails, the operator remains on Profile with a visible error and is not taken to the other destination.
+- [X] 5. With no unsaved changes, leaving Profile does not show the save prompt.
+- [X] 6. Switching only among Profile’s in-page text tabs does not by itself show the leave/save prompt, and draft text across those tabs remains intact until a real leave or header Cancel.
+- [X] 7. Existing header Save and Cancel on Profile still work as today when the operator is not mid-navigation.
+
+## Boundaries
+
+- [X] Does **not** implement the shared helper (sibling). Does **not** expand to other Save pages. Does **not** change shapes/API contracts beyond invoking existing save.
+
+## Notes for planning
+
+Blocked by dirty-leave helper sibling. after #1.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1315/AST-1336-candidate-profile-dirty-leave-wiring` @ `0433ab37` (`merge-tests(AST-1336): origin/tests b3d669fd` + restore AST-1335 hook suite)
+
+### Classification
+
+1. **Gaps:** Profile dirty-leave wiring (§6c) — new `CandidateProfile — AST-1336` cases.
+2. **Broken / obsolete:** entire Profile suite under MemoryRouter — mock `useDirtyLeaveSaveThenNavigate` (useBlocker needs data router). Restored AST-1335 hook suite after merge-tests drop.
+3. Helper contract stays **AST-1335** (`hooks.md`).
+
+### Manifest (test-child)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+**Bible:** `docs/test-bible/frontend/pages.md` shasum `41788aecae7e3ec1f02e92fa51280478296cc18c`
+
+### Comments
+
+#### radia — 2026-08-12T14:00:01.800Z
+[code-rubric] PROCEED (Commit: 92637061) Profile wiring clean
+
+#### betty — 2026-08-12T13:56:53.389Z
+`origin/sub/AST-1315/AST-1336-candidate-profile-dirty-leave-wiring` @ `0433ab37` · Profile dirty-leave tests
+
+#### joan — 2026-08-12T13:52:13.906Z
+[plan-rubric] PROCEED (Commit: fd57bab1f9ad0eadd90ee101d5eb24f4cfb936bf) Profile wiring faithful
+
+#### katherine — 2026-08-12T13:50:58.499Z
+`origin/sub/AST-1315/AST-1336-candidate-profile-dirty-leave-wiring` @ `fd57bab1f9ad0eadd90ee101d5eb24f4cfb936bf` · Profile dirty-leave plan
+
+---
+
 # AST-1336 — Candidate Profile dirty-leave wiring
 
 **Linear:** [AST-1336](https://linear.app/astralcareermatch/issue/AST-1336)

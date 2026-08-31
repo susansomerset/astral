@@ -1,3 +1,89 @@
+<!-- linear-archive: AST-1368 archived 2026-08-31 -->
+
+## Linear archive (AST-1368)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1368/wire-ideal-day-into-jd-do-like-craft-prompts-add-ideal-day-to-the-set  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1360 — Add "ideal_day" to the set of candidate context (strengths, priorities, etc.)  
+**Blocked by / blocks / related:** parent: AST-1360
+
+### Description
+
+## What this implements
+
+Update Job Description, DO, and LIKE craft rubric agent_task prompts (and any shared cache/context blocks those three use) so Ideal Day is included with the other candidate context tokens.
+
+## Citations
+
+`astral.seed.archie-catalog-wins`; `astral.seed.agent-tables-in-repo-json`; `astral.standards.in-scope-only`.
+
+## Acceptance criteria
+
+- [X] 4. Craft tasks for Job Description, DO, and LIKE rubrics include Ideal Day in their candidate-context prompt material (same class of inclusion as Strengths/Priorities today).
+
+## Boundaries
+
+- [X] Does **not** touch GET/joblist/meteorite craft prompts. After Ideal Day library + token.
+
+## Notes for planning
+
+Parent AST-1360. Estimate: 2. After #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1360-ideal-day-candidate-context`,
+child `sub/AST-1360/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Craft DO Ideal Day + LIKE/JD caller-cache + out-of-scope omit: `tests/component/core/test_repo_admin_json.py::TestAst1368IdealDayCraftDoCachePrompt`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1368IdealDayCraftDoCachePrompt \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts`):
+
+* `docs/test-bible/core/repo_admin_json.md` `bde6139d8cb0785a48874d69354942a8ba2791ae`
+
+### Comments
+
+#### radia — 2026-08-14T19:06:14.064Z
+[code-rubric] PROCEED (Commit: 90d0e59e) DO cache Ideal Day token
+
+#### betty — 2026-08-14T19:03:32.932Z
+`origin/sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts` @ `90d0e59e` · Ideal Day craft tests
+
+#### ada — 2026-08-14T18:59:11.996Z
+🛑 Stage 0 blocked: IDEAL_DAY token not on HEAD after sync-child (`5034b1f9`). Commented on parent AST-1360. Waiting for AST-1365 on ftr/dev — will not hand-merge sibling sub.
+
+#### joan — 2026-08-14T18:58:11.553Z
+[plan-rubric] PROCEED (Commit: 482e445504320fa4296ce1cf2cd7f1e3e7578a90) DO cache caller-chain
+
+#### ada — 2026-08-14T18:56:15.822Z
+[check-linear] blocked: non-fast-forward on publish ref
+
+`git push origin HEAD:sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts` rejected (non-fast-forward).
+
+Cause: epic worktree was on `sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface` when the plan commit landed; contaminated tip `bb728bef` was pushed to AST-1368’s publish ref (includes AST-1365 product/tests + AST-1366 plan).
+
+Clean plan-only tip (parent `38cb7ba8` + plan doc only): `482e445504320fa4296ce1cf2cd7f1e3e7578a90`
+
+Need Chuckles force-push (or equivalent) of that clean SHA onto `origin/sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts`. Ada will not force-push.
+
+Local: on clean `sub/AST-1360/AST-1368-…` @ `482e4455`. AST-1366 local reset to `origin/…/AST-1366-…` @ `329b52c9`.
+
+#### ada — 2026-08-14T18:55:38.438Z
+`origin/sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts` @ `bb728beffd8d575a6967a8c69245cbf5b7224b99` · Ideal Day craft plan
+
+---
+
 # AST-1368 — Wire Ideal Day into JD / DO / LIKE craft prompts
 
 **Linear:** [AST-1368](https://linear.app/astralcareermatch/issue/AST-1368/wire-ideal-day-into-jd-do-like-craft-prompts-add-ideal-day-to-the-set)

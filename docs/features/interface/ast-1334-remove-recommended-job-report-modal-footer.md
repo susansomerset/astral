@@ -1,3 +1,94 @@
+<!-- linear-archive: AST-1334 archived 2026-08-31 -->
+
+## Linear archive (AST-1334)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1334/remove-recommended-job-report-modal-footer-remove-the-cancel-button  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1329 — Remove the Cancel button and footer from the Recommended Job Modal  
+**Blocked by / blocks / related:** parent: AST-1329
+
+### Description
+
+## What this implements
+
+Hide the shared modal footer Cancel/chrome for the Recommended Job Report modal only so content is fully visible; keep header × dismiss and Artifacts in-flight Cancel.
+
+## Citations
+
+`pattern.ui.icon-control`; `pattern.ui.shared-button-roles`; `astral.standards.in-scope-only`.
+
+## Acceptance criteria
+
+1. [x] Opening a Recommended job report shows no bottom footer Cancel button.
+2. [x] No modal footer strip covers Summary / Analysis / Artifacts content.
+3. [x] The header close control still closes the modal and returns the operator to the Recommended list context.
+4. [x] While artifacts are generating, the Artifacts-tab Cancel (abort build) remains available beside the in-flight generate control.
+
+## Boundaries
+
+- [X] Does **not** own other Modal call sites or dirty-discard policy (AST-1315). Does **not** remove Artifacts-tab Cancel that aborts in-flight artifact build.
+
+## Notes for planning
+
+Citations above. Parent AST-1329 — Recommended Job Report modal footer only.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1329-remove-cancel-footer-recommended-job-modal`, child `sub/AST-1329/AST-1334-remove-recommended-job-report-modal-footer`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1329/AST-1334-remove-recommended-job-report-modal-footer` @ `44fe3df2` (`merge-tests(AST-1334): origin/tests 09363cc3ba480f7f24858b8e6f90319d132eeac2`)
+
+### 1. Existing coverage (bible-backed)
+
+1. `test_Modal.test.tsx` — AST-1301 footer catalog classes; AST-1302 header `icon-control` (default `showFooter=true`)
+2. `test_JobAnalysisReportModal.test.tsx` — AST-951 Artifacts Generating… + Cancel / `cancel_build` POST
+
+### 2. Broken / obsolete
+
+None — default footer kept for other Modal consumers; JAR Artifacts Cancel cases already scope `within(strip)`.
+
+### 3. Gaps (this pass)
+
+1. `test_Modal.test.tsx` — `AST-1334: showFooter false omits footer; header Close still closes`
+2. `test_JobAnalysisReportModal.test.tsx` — `JobAnalysisReportModal — AST-1334 footer opt-out` (no `.modal-footer`; header Close; BUILD_ARTIFACTS strip Cancel only)
+
+### Run
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  -t "AST-1334|AST-1301|AST-1302|shows Generating|Cancel closes modal after cancel_build"
+```
+
+### Bible shasums (`origin/<publish-ref>`)
+
+* `docs/test-bible/frontend/components.md` — fd2858a0e00aed95f1d4b90fe634259b60a59b6e2b671d1f452a04dfb012f0df
+
+— Betty
+
+### Comments
+
+#### radia — 2026-08-12T13:37:13.034Z
+[code-rubric] PROCEED (Commit: 44fe3df2) footer opt-out clean
+
+#### betty — 2026-08-12T13:34:30.414Z
+`origin/sub/AST-1329/AST-1334-remove-recommended-job-report-modal-footer` @ `44fe3df2` · footer opt-out coverage
+
+#### joan — 2026-08-12T13:28:48.027Z
+[plan-rubric] PROCEED (Commit: 5b69fa2f) Footer opt-out scoped
+
+#### katherine — 2026-08-12T13:27:09.264Z
+`origin/sub/AST-1329/AST-1334-remove-recommended-job-report-modal-footer` @ `5b69fa2fedd67e2aa0a1acf21cb0345d126018ff` · plan ready
+
+---
+
 # AST-1334 — Remove Recommended Job Report modal footer
 
 - **Linear:** [AST-1334](https://linear.app/astralcareermatch/issue/AST-1334/remove-recommended-job-report-modal-footer-remove-the-cancel-button-and)
