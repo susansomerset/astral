@@ -621,3 +621,25 @@ Radia **Review Posted** — **fix-now:** reset tip to `ftr` + product (`d218b062
 **Product:** `Toast.tsx` / `App.css` dismiss vs copy split retained. Unrelated `docs/features/**` archive commits not on this tip.
 
 **§9a:** dry-run vs `origin/dev` and `origin/ftr/AST-1543-close-button-on-error-toast-copies-error` before User Testing.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/8ccfdef24723bd721453a7fc716a50fc/0c6f8680-de79-4193-9ac3-f990bf5c8d78/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/122a1413-23a4-49a8-bda8-34f5c421c3c8/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/8ccfdef24723bd721453a7fc716a50fc/94322aed-1d51-4101-aa5b-da0dac6213b3/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1543 (parent) | ftr/AST-1543-close-button-on-error-toast-copies-error |
+| AST-1549 | sub/AST-1543/AST-1549-fix-error-toast-x-dismisses-without-copying |
+| AST-1553 | sub/AST-1543/AST-1553-gap-toast-dismiss-without-copy-tests |
+
+**Epic worktree:** `astral-AST-1543/` — one active sub checked out at a time.
