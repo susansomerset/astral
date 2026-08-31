@@ -22,6 +22,7 @@ from src.core.tracker import (
     list_jobs_below_dispatch_score_floor,
     persist_skipped_job_edits,
     save_job_artifact_cover_letter,
+    save_job_artifact_job_resume_body,
     save_job_artifact_resume_content,
     save_job_data,
     score_floor_by_trigger_for_candidate,
@@ -287,7 +288,7 @@ def put_job_resume_content(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
 @require_auth
 def put_job_resume_pin_key(astral_job_id):
-    """AST-1428: ArtifactEditor PUTs job_resume URL; body writes resume_content, pin stays."""
+    """AST-1548: ArtifactEditor PUTs job_resume; body dual-writes job_resume + resume_content."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -295,7 +296,7 @@ def put_job_resume_pin_key(astral_job_id):
     body = data.get("job_resume")
     if not isinstance(body, dict):
         return jsonify({"error": "job_resume must be a dict"}), 400
-    save_job_artifact_resume_content(astral_job_id, body)
+    save_job_artifact_job_resume_body(astral_job_id, body)
     return jsonify({"ok": True})
 
 

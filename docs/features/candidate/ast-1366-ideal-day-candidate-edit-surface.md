@@ -1,3 +1,59 @@
+<!-- linear-archive: AST-1366 archived 2026-08-31 -->
+
+## Linear archive (AST-1366)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1366/ideal-day-candidate-edit-surface-add-ideal-day-to-the-set-of-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1360 — Add "ideal_day" to the set of candidate context (strengths, priorities, etc.)  
+**Blocked by / blocks / related:** parent: AST-1360
+
+### Description
+
+## What this implements
+
+Ship Candidate nav + Ideal Day edit page (peer of Strengths/Priorities) wired to the library key from the Ideal Day library + token sibling.
+
+## Citations
+
+`pattern.config.config-block`; `astral.layers.ui-config-driven-business-logic`; `astral.standards.in-scope-only`.
+
+## Acceptance criteria
+
+- [X] 2. Ideal Day is reachable from Candidate navigation (label/path peer of Strengths) and editable with the same save semantics as the other context list pages.
+
+## Boundaries
+
+Does **not** own Topic Menu informs or craft prompts. After Ideal Day library + token.
+
+## Notes for planning
+
+Parent AST-1360. Estimate: 2. After #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1360-ideal-day-candidate-context`,
+child `sub/AST-1360/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-14T19:07:36.432Z
+[code-rubric] PROCEED (Commit: 4cdd9cb7) nav page route peer
+
+#### betty — 2026-08-14T19:05:00.306Z
+`origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface` @ `4cdd9cb7` · Ideal Day page tests
+
+#### joan — 2026-08-14T18:57:16.352Z
+[plan-rubric] PROCEED (Commit: 329b52c9618915d62126f486c8cf5d2995a668ab) nav page route peer
+
+#### hedy — 2026-08-14T18:55:35.801Z
+`origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface` @ `329b52c9618915d62126f486c8cf5d2995a668ab` · Ideal Day edit plan
+
+---
+
 # AST-1366 — Ideal Day Candidate edit surface
 
 **Linear:** [AST-1366](https://linear.app/astralcareermatch/issue/AST-1366/ideal-day-candidate-edit-surface-add-ideal-day-to-the-set-of-candidate)

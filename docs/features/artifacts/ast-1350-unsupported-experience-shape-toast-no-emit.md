@@ -1,3 +1,61 @@
+<!-- linear-archive: AST-1350 archived 2026-08-31 -->
+
+## Linear archive (AST-1350)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1350/unsupported-experience-shape-toast-no-emit-clarify-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1345 — Clarify candidate_data.artifacts.base_resume.experience node  
+**Blocked by / blocks / related:** parent: AST-1345
+
+### Description
+
+## What this implements
+
+Owns operator-visible failure when experience is a legacy string or non-array: toast exactly `unsupported resume structure, please regenerate` on Base Resume / Print / Open HTML (and job artifact edit) paths; no HTML tab opens and no Experience-omitted resume is emitted. Does **not** migrate data. Does **not** own schema text or per-job HTML layout (siblings). Sequencing: after Experience array contract so “unsupported” matches the same contract.
+
+## Citations
+
+`pattern.layers.import-discipline`, `astral.layers.ui-config-driven-business-logic`, `astral.layers.import-direction`, `astral.standards.in-scope-only`
+
+## Acceptance criteria
+
+- [X] 7. Opening or printing a resume whose experience is still a string (or other non-array shape) shows toast text `unsupported resume structure, please regenerate`, opens no HTML tab, and does not emit a resume with Experience omitted.
+
+## Boundaries
+
+- [X] Does **not** migrate data. Does **not** own schema text or per-job HTML layout (siblings).
+
+## Notes for planning
+
+After contract sibling; toast + no emit only.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### hedy — 2026-08-13T00:28:03.821Z
+`origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ `5550df342c947eb33ca0768d92688e20e37c1905` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-08-13T00:26:47.879Z
+[code-rubric] PROCEED (Commit: 81463c4c) unsupported shape toast no emit
+
+#### betty — 2026-08-13T00:23:21.872Z
+`origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ 81463c4c · unsupported toast tests ready
+
+#### joan — 2026-08-13T00:17:59.207Z
+[plan-rubric] PROCEED (Commit: 8984d14e) toast gate before emit
+
+#### hedy — 2026-08-13T00:16:19.158Z
+`origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ `8984d14e09ec7af614fd0973b3ad066d995dceef` · plan ready
+
+---
+
 # Unsupported experience shape — toast, no emit (Clarify candidate_data.artifacts.base_resume.experience node)
 
 **Linear:** [AST-1350](https://linear.app/astralcareermatch/issue/AST-1350/unsupported-experience-shape-toast-no-emit-clarify)

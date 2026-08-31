@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-1391 archived 2026-08-31 -->
+
+## Linear archive (AST-1391)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1391/deepseek-big-output-budget-update-max-tokens-for-big-brain-output-to  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1390 — Update max tokens for big brain output to 384,000  
+**Blocked by / blocks / related:** parent: AST-1390
+
+### Description
+
+## What this implements
+
+Owns the DeepSeek Big tier's 384,000 output budget in config and the shared agent hop applying it as a floor over agent-row / model default when provider is DeepSeek and brain is Big. Does not own Little/Medium, Anthropic, craft thinking policy, timeouts, or Admin UI.
+
+## Citations
+
+`pattern.config.config-block`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.agent.do-task-delegation`, `astral.standards.in-scope-only`.
+
+## Acceptance criteria
+
+- [X] 1. With DeepSeek active, a representative **Big** agent hop sends `max_tokens` of **at least 384000** to the provider — including when the agent row's stored max tokens is lower (e.g. 16000).
+- [X] 2. With DeepSeek active, a representative **Medium** hop still sends the current Medium budget (not 384000).
+- [X] 3. With DeepSeek active, a representative **Little** hop is unchanged.
+- [X] 4. With Anthropic active, Big still uses the existing Anthropic default — not 384000.
+- [X] 5. With `debug=True`, the existing max-tokens debug line on a DeepSeek Big hop shows 384000 (or the higher agent-row value).
+- [X] 6. Craft-rubric DeepSeek Big hops still disable thinking (AST-1380); they may now send 384000 because of the Big floor, which is fine.
+
+## Boundaries
+
+What this ticket does NOT do (no siblings — parent Boundaries apply):
+
+- [X] Not Anthropic Big.
+- [X] Do not change the shared v4-pro model default (Medium).
+- [X] Do not reverse AST-1380 Decision A.
+- [X] Do not change thinking, temperature, or top_p.
+- [X] Do not change wall-time budgets.
+- [X] Not Admin UI / seed backfill.
+
+## Notes for planning
+
+Citations: `pattern.config.config-block`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.agent.do-task-delegation`, `astral.standards.in-scope-only`.
+The 384,000 figure is a named config literal on the DeepSeek Big tier — not the shared v4-pro model default. Apply as a floor on DeepSeek Big hops.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`,
+child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. DeepSeek Big floors a low agent-row (16000) to the config floor: `tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor::test_deepseek_big_floors_low_agent_row`
+2. Agent-row above the floor still wins: `tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor::test_deepseek_big_agent_row_above_floor_wins`
+3. Medium unchanged: `tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor::test_deepseek_medium_keeps_agent_row`
+4. Little unchanged: `tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor::test_deepseek_little_keeps_agent_row`
+5. Anthropic Big is not 384000: `tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor::test_anthropic_big_does_not_use_deepseek_floor`
+6. `debug=True` max_tokens line shows the floor: `tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor::test_debug_true_max_tokens_line_shows_floor`
+7. Craft DeepSeek Big thinking-off + Big floor (AC6): `tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor::test_craft_deepseek_big_thinking_off_uses_big_floor` and revised `tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false`
+8. Named 384000 / Little+Medium None / v4-pro SKU still 16000: `tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor`
+9. Existing craft Anthropic floor still holds: `tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor`
+
+**Broken / obsolete this pass:** `test_craft_get_rubric_deepseek_big_forces_thinking_false` asserted `max_tokens == CRAFT_RUBRIC_MAX_TOKENS` (32000); DeepSeek Big craft now sends the Big floor.
+
+**Integration:** none revised.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1390/AST-1391-deepseek-big-output-budget`):
+
+* `docs/test-bible/core/agent.md` `86aac308094ca81a6cbd6e37dcab78663d7a255e`
+* `docs/test-bible/utils/config.md` `0ca220f4c132383c3c6330231947a9ea38cc4abe`
+
+### Comments
+
+#### radia — 2026-08-16T00:47:26.492Z
+[code-rubric] PROCEED (Commit: d649ec23) DeepSeek Big floor clean
+
+#### betty — 2026-08-16T00:43:58.554Z
+`origin/sub/AST-1390/AST-1391-deepseek-big-output-budget` @ `d649ec23` · Big floor tests ready
+
+#### betty — 2026-08-16T00:42:42.953Z
+`origin/sub/AST-1390/AST-1391-deepseek-big-output-budget` @ `d649ec23` · Big floor tests ready
+
+#### joan — 2026-08-16T00:23:15.515Z
+[plan-rubric] PROCEED (Commit: a1d04410) Big floor config+hop
+
+#### ada — 2026-08-16T00:20:16.689Z
+`origin/sub/AST-1390/AST-1391-deepseek-big-output-budget` @ `a1d04410` · Big floor planned
+
+---
+
 # DeepSeek Big output budget
 
 - **Linear:** [AST-1391](https://linear.app/astralcareermatch/issue/AST-1391)

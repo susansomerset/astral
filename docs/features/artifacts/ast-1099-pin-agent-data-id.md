@@ -912,16 +912,164 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/4f6469835de76b2c9a126ba58b2efbb2/d2215b5e-b37d-4149-bd1d-557eb7ab857d/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/ae332cfb-e3e3-43b4-b1d7-4df0f331aa0b/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/4f6469835de76b2c9a126ba58b2efbb2/cd101524-f16d-43f0-9b6b-e0fd61ad486c/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/cb028d939d41dfcd8e478a8c8ee91601/4a0092bc-fdf3-47f6-8865-307221a318f2/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/6756c75f-4c53-4e2b-855b-38d80ad347c8/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/cb028d939d41dfcd8e478a8c8ee91601/28e31dc0-4096-4933-950e-8a814e0d5963/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1422 (parent) | ftr/AST-1422-finalize-job-resume-not-parsed |
-| AST-1428 | sub/AST-1422/AST-1428-copy-job-resume-blob-keep-pin |
-| AST-1430 | sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin |
+| AST-1547 (parent) | ftr/AST-1547-job-resume-content-not-saving |
+| AST-1548 | sub/AST-1547/AST-1548-fix-job-resume-body-replica |
+| AST-1554 | sub/AST-1547/AST-1554-gap-job-resume-body-replica-tests |
 
-**Epic worktree:** `astral-AST-1422/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-1547/` — one active sub checked out at a time.
+
+## Bug: AST-1548 — Job resume/cover letter body replica on job (not agent_data pin)
+
+Parent mini-epic: [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record) (orphaned Bug — own `ftr`). Child: [AST-1548](https://linear.app/astralcareermatch/issue/AST-1548/fix-job-resumecover-letter-body-replica-on-job-not-agent-data-pin). Approved ancestor: AST-1099 (this file). Binding product contract (Susan / AST-1547): `job_data.artifacts.*` for finalize hops **begins as a replica** of the hop response body on the job (same pattern as `candidate.artifacts.base_resume`); operator surfaces read/edit the **job** body only; `agent_data` RESPONSE stays pristine and is never updated by human edits.
+
+Original AST-1099 Stages 1–3 stay as history (pin map + pin helper + pin after RESPONSE). AST-1428 / AST-1430 kept the pin on `job_resume` and copied a sibling `resume_content` blob with hydrate overlay + pin-resolve fallbacks. **This bug walks that pointer-as-operator-store contract back** for `job_resume` and `cover_letter` only: those slots hold the editable body; pin-resolve is not an operator display/edit path. `proposed_answers` pin semantics are unchanged.
+
+### As-is
+
+After successful `finalize_job_resume` / `finalize_cover_letter`, core still drives `pin_job_artifact_agent_data_id` so `job_data.artifacts.job_resume` / `cover_letter` are RESPONSE `agent_data_id` strings (pointer-only on the operator slots). AST-1428 also copies unwrapped resume sections onto sibling `artifacts.resume_content`; hydrate overlays that sibling onto `job_resume` for JAR, and still falls back to `resolve_job_artifact_agent_data_body` when the sibling is missing. Cover letter hydrate / Print still pin-resolve via `cover_letter_artifact_for_display` / builder. Operator Save for the Job Resume tab writes `resume_content` while the pin string remains on `job_resume`. Edits never land as the durable body on the same keys operators treat as the artifact; pin-resolve keeps `agent_data` in the read path.
+
+### To-be
+
+On successful finalize hops, each matching operator slot **begins as a replica** of the parsed hop body on the job record (`artifacts.job_resume` / `artifacts.cover_letter` are content dicts, parallel to `candidate.artifacts.base_resume`). `agent_data` RESPONSE rows stay the unaltered hop store and are **not** updated by later human edits. Hydrate / JAR / Print / editor load for those two artifacts use **job content only** — no `resolve_job_artifact_agent_data_body` (or cover helper pin-resolve) for operator display/edit. Editor Save writes the edited body back onto the job artifact key; never into `agent_data`. Coat-check skips empty replicas; cancel/clear still wipes the job body keys operators use.
+
+### Repro
+
+Fixture (file/JSON persist — not a SQL row). After `finalize_job_resume` + `finalize_cover_letter` success on current tip:
+
+```json
+{
+  "job_data": {
+    "artifacts": {
+      "job_resume": "<RESPONSE agent_data_id string>",
+      "resume_content": { "title": "…", "professional_summary": "…", "experience": [] },
+      "cover_letter": "<RESPONSE agent_data_id string>"
+    }
+  }
+}
+```
+
+- Disk `job_resume` / `cover_letter` are pins, not the bodies operators edit.
+- GET hydrate may show resume sections only because of `resume_content` overlay or pin→`agent_data` resolve; cover fields come from pin resolve into `agent_data`.
+- If `resume_content` is cleared or never written, JAR/Print still reach into `agent_data` via the pin.
+- `PUT /api/jobs/<id>/artifacts/job_resume` persists the editor dict to `resume_content` only; `job_resume` stays the id string.
+
+### Root cause
+
+AST-1099 made the operator-facing slots pointer-only (`job_resume` / `cover_letter` / `proposed_answers` = RESPONSE ids; body stays in `agent_data`). AST-1100 taught readers to resolve those pins. AST-1428 restored an editable resume blob as sibling `resume_content` while **keeping** the pin on `job_resume` and leaving cover letter pointer + resolve. That still leaves “what operators save/load” split from “what the slot stores,” and keeps `resolve_job_artifact_agent_data_body` on the operator path — which violates the base_resume pattern Susan named: hop RESPONSE pristine in `agent_data`, durable edits on the entity artifact body.
+
+### Proposed change
+
+Scope gate (AST-1548 `## Scope`): `src/core/agent.py`, `src/core/tracker.py`, `src/utils/config.py` only if pin/clear policy must change, and thin job artifact PUT/GET (tracker + `src/ui/api/api_jobs.py`). Do **not** edit `builder.py` / frontend — once slots hold body dicts, existing Print/JAR dict branches and GET hydrate suffice; do **not** re-enable `persist_job_artifact_from_parsed` for finalize hops (it can still clobber unrelated keys). `proposed_answers` stays pin-only.
+
+**1. Config — stop pinning operator body slots — `src/utils/config.py`**
+
+- Remove `finalize_job_resume` and `finalize_cover_letter` from `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` (keep `propose_application_responses` → `proposed_answers`).
+- Add `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` (config source of truth):
+
+  ```python
+  JOB_ARTIFACT_BODY_REPLICA_BY_TASK = {
+      "finalize_job_resume": "job_resume",
+      "finalize_cover_letter": "cover_letter",
+  }
+  ```
+
+- Leave `JOB_BUILD_ARTIFACT_CLEAR_KEYS` as-is (`resume_content`, `job_resume`, `cover_letter`, …) so cancel still wipes operator bodies.
+
+**2. Agent — write replica after RESPONSE store — `src/core/agent.py` `do_task`**
+
+On the same post-RESPONSE success path used today for pins (`result.success`, `index` set, `resp_id` stored, **before** `run_next`):
+
+- If `task_key` is in `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` and `index` + `resp_id` present: lazy-import tracker body-persist helper(s); call with `index` and in-memory `parsed` (do not re-read `agent_data`; do not write `agent_data`). Best-effort: log and continue on failure (mirror AST-1428 / deviations — a copy failure must not fail the hop).
+- Elif `task_key` is in `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK`: keep today’s `pin_job_artifact_agent_data_id` behavior (`proposed_answers` only after the map change).
+- Remove the finalize-only `persist_finalize_job_resume_content` call that ran *after* pin; body persist replaces that for `finalize_job_resume`, and cover gets a parallel path.
+
+**3. Tracker — body persist helpers — `src/core/tracker.py`**
+
+**Resume (`finalize_job_resume` → slot `job_resume`):**
+
+- Extend `persist_finalize_job_resume_content(astral_job_id, parsed) -> bool` (or thin wrapper called from agent):
+  - If `parsed_matches_job_resume_content` is false → return `False` without `save_job_data` (coat-check: never store empty; do not clear a prior body).
+  - Else `body = _resume_payload_body(parsed)` then prepare via existing `_prepare_job_resume_content` / structure filter (same as today’s sibling save).
+  - Persist prepared dict onto **`artifacts.job_resume`** (operator slot replica).
+  - **Dual-write** the same prepared dict onto `artifacts.resume_content` so out-of-scope readers that still prefer `resume_content` (consult resume-first gate, Print prefer-path) keep working without touching `builder.py` / `consult.py`. Authoritative operator slot is `job_resume`; sibling is compatibility only.
+  - Return `True` when a write happened.
+
+**Cover (`finalize_cover_letter` → slot `cover_letter`):**
+
+- Add `persist_finalize_cover_letter_content(astral_job_id, parsed) -> bool` next to the resume helper:
+  - Unwrap hop envelope the same way display already does (`agent_payload` / nested cover keys — reuse `_cover_letter_dict_for_normalize` / slice+normalize path).
+  - If normalized Subject/Letter/signature are all empty → return `False` without save (coat-check).
+  - Else `save_job_artifact_cover_letter(astral_job_id, …)` so `artifacts.cover_letter` is the normalized body dict (overwrites any prior pin string on that key).
+  - Do not write `agent_data`.
+
+**4. Hydrate — job body only for operator slots — `hydrate_job_artifacts_for_display`**
+
+For `job_resume` and `cover_letter` only:
+
+- If the on-disk (or shallow-copied) value is a nonempty content dict → use / normalize it for the outbound overlay.
+- Else if `job_resume` missing/empty dict but `resume_content` is a nonempty dict → overlay sibling onto `job_resume` (legacy AST-1428 rows).
+- If the value is a pin **string** → **do not** call `resolve_job_artifact_agent_data_body` / do not pin-resolve inside `cover_letter_artifact_for_display` for this operator hydrate path (leave string or skip empty overlay — operators must not be served from `agent_data`).
+- Keep pin resolve for `proposed_answers` only.
+- Never persist the overlay; never write `agent_data`.
+
+Split or gate `cover_letter_artifact_for_display` so operator hydrate cannot resolve pins (e.g. only normalize dicts; pin strings → `None`). Any non-operator caller that still needs resolve is out of this ticket’s operator contract — do not reintroduce resolve on the GET/JAR path.
+
+**5. Editor Save — thin PUT handlers — `src/ui/api/api_jobs.py`**
+
+- `PUT …/artifacts/job_resume` (`put_job_resume_pin_key`): require `job_resume` dict body; persist onto **`artifacts.job_resume`** (prepared/filtered like resume save) and dual-write `resume_content` for the same compat reason as §3. Never assign an `agent_data_id` string; never write `agent_data`.
+- `PUT …/artifacts/cover_letter`: keep writing normalized dict via `save_job_artifact_cover_letter` (already body-on-job); confirm it never writes `agent_data`.
+- `PUT …/artifacts/resume_content`: leave as explicit sibling merge (unchanged contract for callers that hit that URL).
+
+**6. Explicit non-edits**
+
+- No `builder.py` change: Print already uses nonempty `resume_content`, nonempty `cover_letter` dict, or nonempty `job_resume` dict before any pin fallback; after replica writes, dict/sibling paths hit first. Pin-fallback branches become dead for newly finalized jobs (acceptable; legacy pin-only jobs show empty until regenerate — product contract).
+- No frontend change: GET hydrate returns body dicts on the tab keys ArtifactEditor already reads.
+- Do not pin `job_resume` / `cover_letter` as non-display metadata in this pass unless a later ticket asks for a separate metadata key — Technical scope allows “instead of”; body-on-slot matching `base_resume` is the chosen reading.
+
+### Blast radius
+
+- AST-1099 AC1/AC2 (“slot equals RESPONSE `agent_data_id` string”) are **intentionally superseded** for `job_resume` / `cover_letter` by this bug; Betty tests that assert pointer-only slots or pin-resolve-on-GET for those keys must flip.
+- AST-1428 / AST-1430 tests that require pin-string-on-`job_resume` + sibling-only save / PUT-must-not-clobber-pin must flip to body-on-`job_resume` (pin no longer on that key); dual-write keeps `resume_content` assertions greener during transition.
+- AST-1100 / cover (AST-1499) paths that assume hydrate pin-resolve for cover letter will see empty overlay on legacy pin-only rows until regenerate.
+- `consult` resume-first gate and Print prefer-`resume_content` keep working via dual-write without scope expansion.
+- `proposed_answers` pin + resolve unchanged.
+- Cancel clear keys already include both body slots and `resume_content`.
+
+### What must still hold
+
+- `agent_data` RESPONSE rows for finalize hops remain the pristine hop store; human Save never updates them.
+- Coat-check: empty/failed hops do not overwrite a good prior job body with blank.
+- Mid-chain finalize hops (`run_next` continues) still write the replica before the next hop (same timing as today’s pin/copy).
+- Style D debug only when `debug=True` on touched persist paths; logging via utils.
+- `propose_application_responses` → `artifacts.proposed_answers` pin semantics unchanged (AST-1099 AC3).
+- Cancel / clear still removes operator job body keys in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`.
+- Import direction: core writes via existing `save_job_data`; UI PUT stays thin → tracker save.
+- Do not copy full hop JSON envelopes into the operator slots — store the unwrapped resume section dict / normalized cover fields only (same shapes JAR already edits).
+
+---
+
+## Radia review — AST-1548 (2026-08-31)
+
+**Overall:** DISCUSS / REVIEW — product matches plan; bible keep-pin suites pending on gap sibling AST-1554.
+**Publish:** `origin/sub/AST-1547/AST-1548-fix-job-resume-body-replica` @ `d5113a8b`
+**fix-now:** none on product.
+**discuss:** Board TESTS:REVISE + AST-1554 gap must land before orphaned finish-up merges to `dev`.
+**advisory:** Stale `agent.py` comment still mentions finalize pin; builder pin-fallback left in blast radius.
+
+## Resolution — AST-1548 (2026-08-31)
+
+**Outcome:** advisory addressed in product comment only; discuss acknowledged (tests stay on gap AST-1554).
+
+- **fix-now:** none.
+- **discuss (AST-1554 before finish-up):** Closed without product expansion. Keep-pin / bible flips remain on gap sibling AST-1554; this child does not absorb test-tree work. Chuckles must not finish-up / land orphaned parent to `dev` until AST-1554 is User Testing (or Done) alongside this tip.
+- **advisory (stale `agent.py` finalize-pin comment):** Updated terminal `do_task` comment so it no longer claims finalize hops pin `agent_data_id`; notes AST-1548 body replicas (+ `proposed_answers` pin) already ran above and forbids re-enabling `persist_job_artifact_from_parsed`.
+- **advisory (builder pin-fallback):** Left as planned blast radius — Print dict/`resume_content` paths hit first for new replicas; `builder.py` remains out of AST-1548 scope (plan §6 Explicit non-edits).
+

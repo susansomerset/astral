@@ -1,3 +1,62 @@
+<!-- linear-archive: AST-1349 archived 2026-08-31 -->
+
+## Linear archive (AST-1349)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1349/experience-array-contract-schema-prompts-agent-clarify-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1345 — Clarify candidate_data.artifacts.base_resume.experience node  
+**Blocked by / blocks / related:** parent: AST-1345; blocks: AST-1351; blocks: AST-1350
+
+### Description
+
+## What this implements
+
+Owns the shared experience job-array wire shape in craft/parse/finalize response schemas and candidate + job craft prompts; tightens agent validation to that contract only (no string success path, no needless extra checks). Does **not** own UI toast chrome or HTML emit (siblings). After this child, schemas/prompts/agent agree on one array shape for candidate and job (Base template = job default structure).
+
+## Citations
+
+`pattern.config.config-block`, `astral.config.config-source-of-truth`, `astral.agent.do-task-delegation`, `astral.standards.debug-contract-gated`, `astral.standards.no-hardcoded-sets`
+
+## Acceptance criteria
+
+1. After craft/parse (or load of a saved base resume) for a multi-job resume, `artifacts.base_resume.experience` is an ordered array; each element exposes company, title, dates, location, and accomplishments observable in Base Resume Content / parse JSON.
+2. Job artifact resume content that carries experience uses the same array element shape as the candidate base resume (same keys/requiredness by default); Base remains the template, not a job-tailored editor.
+3. Craft/parse/finalize schemas and the related candidate + job prompts accept and describe experience only as that array — string experience is not a valid success path.
+4. Agent handling of experience does not reject a valid job array with leftover string-era validation, and does not require fields beyond the shared contract.
+5. When `debug=True` on touched experience-reading hops/persist paths, logs show found/recorded experience shape and per-job detail (Style D), not only summaries.
+
+## Boundaries
+
+Does **not** own UI toast chrome or HTML emit (siblings Unsupported experience shape; Experience array UI + render/print parity).
+
+## Notes for planning
+
+Shared wire shape; Base template = job default structure.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-13T00:12:14.487Z
+[code-rubric] PROCEED (Commit: bab06e65) experience array contract locked
+
+#### betty — 2026-08-13T00:08:55.174Z
+`origin/sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent` @ `bab06e65` · array contract tests ready
+
+#### joan — 2026-08-12T23:59:22.781Z
+[plan-rubric] PROCEED (Commit: 2342855c) experience contract locked
+
+#### ada — 2026-08-12T23:56:21.339Z
+`origin/sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent` @ `2342855c104a1e2109328f78c00bee28077c1dc0` · plan published
+
+---
+
 # Experience array contract — schema, prompts, agent (Clarify candidate_data.artifacts.base_resume.experience node)
 
 **Linear:** [AST-1349](https://linear.app/astralcareermatch/issue/AST-1349/experience-array-contract-schema-prompts-agent-clarify)
