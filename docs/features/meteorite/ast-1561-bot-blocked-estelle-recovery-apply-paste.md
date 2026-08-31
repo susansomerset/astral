@@ -267,5 +267,19 @@ Parent AC4 → Stages 2–3 (`run_notify_meteorite_bot_blocked` Estelle DM + nag
 ## Review
 
 - **Publish ref:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`
-- **Tip:** `3a210773eb6f33664d98d56e2dcafa892411714c`
+- **Tip:** `f503e55c035ccdb425244f324c83c3a545510530`
 - **Stages:** 1 notify config/dispatch · 2 apply_paste + notify runner · 3 contact paste routing
+
+## Radia review
+
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1561
+**Overall:** PROCEED
+**Internal grade:** CLEAN (AST-1561 footprint faithful; Joan R1 fixes landed)
+**Publish ref:** `sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste` @ `f503e55c035ccdb425244f324c83c3a545510530`
+
+**Statutes:** 64-row full-set sweep — all conforms or N/A on AST-1561 footprint. Joan R1 `await` notify runner + unprompted paste ordering resolved in code.
+
+**Findings:** advisory only — stacked sibling product on publish ref (expected ftr merge); DM channel soft-fail until Estelle activity exists; in-memory BOT_BLOCKED lookup scan; land_calls paste-once guard. No fix-now product findings.
+
+**Plan adherence:** Stages 1–3 match plan; AC4 traceability confirmed via Betty manifest.
