@@ -1064,3 +1064,12 @@ Split or gate `cover_letter_artifact_for_display` so operator hydrate cannot res
 **discuss:** Board TESTS:REVISE + AST-1554 gap must land before orphaned finish-up merges to `dev`.
 **advisory:** Stale `agent.py` comment still mentions finalize pin; builder pin-fallback left in blast radius.
 
+## Resolution — AST-1548 (2026-08-31)
+
+**Outcome:** advisory addressed in product comment only; discuss acknowledged (tests stay on gap AST-1554).
+
+- **fix-now:** none.
+- **discuss (AST-1554 before finish-up):** Closed without product expansion. Keep-pin / bible flips remain on gap sibling AST-1554; this child does not absorb test-tree work. Chuckles must not finish-up / land orphaned parent to `dev` until AST-1554 is User Testing (or Done) alongside this tip.
+- **advisory (stale `agent.py` finalize-pin comment):** Updated terminal `do_task` comment so it no longer claims finalize hops pin `agent_data_id`; notes AST-1548 body replicas (+ `proposed_answers` pin) already ran above and forbids re-enabling `persist_job_artifact_from_parsed`.
+- **advisory (builder pin-fallback):** Left as planned blast radius — Print dict/`resume_content` paths hit first for new replicas; `builder.py` remains out of AST-1548 scope (plan §6 Explicit non-edits).
+

@@ -3234,7 +3234,8 @@ async def do_task(
             effective_next = ""
 
     if not effective_next:
-        # AST-1099: finalize_* hops pin agent_data_id (above); no terminal body-copy here.
+        # AST-1548: finalize resume/cover body replicas (+ proposed_answers pin) already ran above;
+        # do not re-enable terminal persist_job_artifact_from_parsed here.
         if result.get("success") and index:
             _maybe_graduate_dispatch_chain(
                 job_id=index,
