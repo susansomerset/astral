@@ -193,3 +193,85 @@ Email create/land paths: `create_meteorite_job_from_inbox_message` → `land_met
   tests/component/core/test_inbox.py::TestAst1531InboxStageCutover \
   -q
 ```
+
+
+### AST-1537 · AST-1533
+
+**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify`.
+
+Shared header+body HTML assembly: `strip_extract_email_html` embeds From/To/Subject/Date via `INBOX_CREATE_JOB_CONFIG["subject_html_template"]`; land/create and `get_message_with_assembled_html` share that shape (`html_body` stays raw). Cross-module: **`docs/test-bible/core/meteorite_email.md`**, **`docs/test-bible/external/gmail.md`**, **`docs/test-bible/ui/api/api_inbox.md`**, **`docs/test-bible/utils/config.md`**. Sibling Manage Email React chrome = **AST-1538** (out of scope).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header+body strip + escape | `src/core/inbox.py` | revised **`TestAst1049StripExtractEmailHtml`** |
+| Assembled get helper | `src/core/inbox.py` | **`TestAst1537AssembledHtmlGet`** |
+| Land staged blob includes headers | `src/core/inbox.py` | revised **`TestAst1531InboxStageCutover::test_land_bound_stages_stripped_html`** |
+
+**Broken / obsolete:** subject-only wrap asserts on strip/land — revised for From/To/Date classes + escaping.
+
+**Integration:** none — no existing inbox/email-header integration scenario; do not invent.
+
+## QA test manifest
+
+1. Config template placeholders: `tests/component/utils/test_config.py::TestAst1049InboxCreateJobConfig`
+2. Gmail Date on get: `tests/component/external/test_gmail.py::TestGetMessageHtml`
+3. Strip header+body: `tests/component/core/test_inbox.py::TestAst1049StripExtractEmailHtml`
+4. Assembled get: `tests/component/core/test_inbox.py::TestAst1537AssembledHtmlGet`
+5. Inbox land headers: `tests/component/core/test_inbox.py::TestAst1531InboxStageCutover`
+6. Mailbox shared strip: `tests/component/core/test_meteorite_email.py::TestAst1531MailboxStageCutover`
+7. API get assembled: `tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi`
+8. Paste-normalize still wraps: `tests/component/core/test_inbox.py::TestAst1131StripNormalizePastedList`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1049InboxCreateJobConfig \
+  tests/component/external/test_gmail.py::TestGetMessageHtml \
+  tests/component/core/test_inbox.py::TestAst1049StripExtractEmailHtml \
+  tests/component/core/test_inbox.py::TestAst1537AssembledHtmlGet \
+  tests/component/core/test_inbox.py::TestAst1531InboxStageCutover \
+  tests/component/core/test_inbox.py::TestAst1131StripNormalizePastedList \
+  tests/component/core/test_meteorite_email.py::TestAst1531MailboxStageCutover \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+Shrink inbox to candidate-scoped `fetch_candidate_email` / `archive_candidate_email` + unenriched `list_inbox_messages`; retire From-then-To bind, `run_fetch_email`, land-bound helpers, and `create_meteorite_job_from_inbox_message`. Bind-count helpers remain importable but stub to `{}` / `0` until AST-1559. Config retirements: **`docs/test-bible/utils/config.md`** § AST-1558. Manage Email API/UI: **`docs/test-bible/ui/api/api_inbox.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unenriched list + Style D `inbox.list` | `src/core/inbox.py` | revised **`TestListInboxMessages`** |
+| Alias From/To filter + archive + count stubs + deleted symbols | same | **`TestAst1558CandidateInboxVerbs`** |
+| Strip/normalize keepers | same | **`TestAst1049StripExtractEmailHtml`**, **`TestAst1131StripNormalizePastedList`**, **`TestGetMessageHtml`** |
+
+**Broken / obsolete (revised or removed this pass):** **`TestAst1047InboxFromBind`**, **`TestAst1313FromThenToBind`**, **`TestAst1049CreateMeteoriteJobFromInboxMessage`**, **`TestAst1135InboxBoundCounts`**, **`TestAst1531InboxStageCutover`** — bind/create/land-bound product surfaces deleted. Historical AST-1313 / AST-1495 / AST-1531 bible blocks above describe pre-1558 behavior; do not re-run those node ids.
+
+**Integration:** none — no existing integration scenario asserts inbox bind / fetch_email; do not invent.
+
+## QA test manifest
+
+1. Core inbox verbs: `tests/component/core/test_inbox.py`
+2. Config retirements: `tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired`
+3. Manage Email API: `tests/component/ui/api/test_api_inbox.py`
+4. Manage Email page (§6c): `tests/component/frontend/pages/test_AdminManageEmail.test.tsx`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py \
+  tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired \
+  tests/component/ui/api/test_api_inbox.py \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums:** recorded after publish in this block (Betty §9).

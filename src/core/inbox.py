@@ -1,111 +1,33 @@
 """
-Inbox read orchestration + fetch_email → stage_meteorite (AST-1531).
+Candidate-scoped Gmail list/filter (`fetch_candidate_email`) + archive
+(`archive_candidate_email`); thin unenriched `list_inbox_messages` for Manage
+Email All; keep `get_message_html` / assembled HTML / `strip_extract_email_html`.
 
-Thin core wrapper over src.external.gmail list/get. No gaze_email.
-AST-1033 owns the Read email admin surface and calls these functions.
-AST-1047 / AST-1313: From-then-To → candidate_match enrichment on list payloads.
-AST-1049 / AST-1472 / AST-1537: strip/extract + header+body assembly ownership
-stays here; land/fetch_email and message-get share that shape; Land/fetch_email
-stage then land-inside-stage (not raw land_meteorite on the stripped blob).
+No From-then-To bind, no `fetch_email` runner, no land-bound stage entrypoints
+(AST-1558). Land for admin is owned by `api_inbox` → meteorite.
 """
 
 from __future__ import annotations
 
-import asyncio
 import html as html_module
 from email.utils import getaddresses, parseaddr
-from typing import Any, Dict, List, Optional
+from typing import Dict, Sequence
 
-from src.core.candidate import get_candidate_id_for_query
 from src.external.gmail import (
     GmailMessageHtml,
+    archive_message as external_archive_message,
     get_message_html as external_get_message_html,
     list_inbox_messages as external_list_inbox_messages,
 )
-from src.utils.config import (
-    FETCH_EMAIL_CONFIG,
-    INBOX_BIND_CONFIG,
-    INBOX_CREATE_JOB_CONFIG,
-    METEORITE_CONFIG,
-    METEORITE_EMAIL_MAILBOX_CONFIG,
-    STAGE_METEORITE_CONFIG,
-)
+from src.utils.config import INBOX_CREATE_JOB_CONFIG
 from src.utils.formatting import normalize_pasted_list_email_html
-from src.utils.logging import get_logger, truncate_debug_content
+from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-def _inbox_addr_folded() -> str:
-    raw = INBOX_BIND_CONFIG["inbox_address"] or ""
-    _display, parsed = parseaddr(raw)
-    token = (parsed or raw).strip()
-    return token.casefold()
-
-
-def _remaining_to_addresses(to_header: str) -> list[str]:
-    # Unique remaining mailbox tokens after dropping the Astral inbox (casefold).
-    inbox = _inbox_addr_folded()
-    remaining: list[str] = []
-    seen: set[str] = set()
-    for _display, addr in getaddresses([to_header or ""]):
-        token = (addr or "").strip()
-        if not token or "@" not in token:
-            continue
-        folded = token.casefold()
-        if inbox and folded == inbox:
-            continue
-        if folded in seen:
-            continue
-        seen.add(folded)
-        remaining.append(token)
-    return remaining
-
-
-def _bind_inbox_message(
-    from_address: str,
-    to_address: str,
-    *,
-    debug: bool = False,
-) -> tuple[dict, str, str]:
-    """From unique hit wins; else To when exactly one remaining address uniquely matches.
-
-    Returns (candidate_match, bind_header, bind_address).
-    bind_header is "from", "to", or "" when no header was eligible / no unique hit.
-    candidate_match shape is only {"matched", "astral_candidate_id"} — do not add bind_header.
-    """
-    bind_header = ""
-    bind_address = ""
-    cid = None
-    for header in INBOX_BIND_CONFIG["header_order"]:
-        if header == "from":
-            raw = from_address or ""
-            cid = get_candidate_id_for_query(raw, debug=debug)
-            if cid is None:
-                continue
-            bind_header = "from"
-            _display, parsed = parseaddr(raw)
-            bind_address = (parsed or "").strip() or raw.strip()
-            break
-        if header == "to":
-            remaining = _remaining_to_addresses(to_address or "")
-            if len(remaining) != 1:
-                continue
-            raw = remaining[0]
-            cid = get_candidate_id_for_query(raw, debug=debug)
-            bind_header = "to"
-            bind_address = raw
-            break
-        raise ValueError(f"unsupported inbox bind header: {header!r}")
-    return (
-        {"matched": cid is not None, "astral_candidate_id": cid},
-        bind_header,
-        bind_address,
-    )
-
-
 def list_inbox_messages(debug: bool = False) -> list[dict]:
-    """Return every INBOX message metadata row for GMAIL_USER, with From-then-To candidate bind."""
+    """Return every INBOX message metadata row for GMAIL_USER (no bind enrichment)."""
     if debug:
         logger.set_debug_flag(True)
     try:
@@ -114,59 +36,94 @@ def list_inbox_messages(debug: bool = False) -> list[dict]:
         logger.warning("[inbox] list_inbox_messages failed: %s", e)
         raise
 
-    enriched: list[dict] = []
-    n = len(messages)
-    for i, msg in enumerate(messages, start=1):
-        match, bind_header, bind_address = _bind_inbox_message(
-            msg.get("from_address") or "",
-            msg.get("to_address") or "",
-            debug=debug,
-        )
-        row = dict(msg)
-        row["candidate_match"] = match
-        enriched.append(row)
-        if debug:
+    rows: list[dict] = [dict(msg) for msg in messages]
+    if debug:
+        n = len(rows)
+        for i, msg in enumerate(rows, start=1):
             mid = (msg.get("id") or "")[:80]
-            outcome = "found|matched" if match["matched"] else "found|none"
             logger.debug_index(
-                func="inbox_bind",
+                func="inbox.list",
                 index=i,
                 total=n,
                 identifier=mid,
-                outcome=outcome,
+                outcome="listed",
             )
-            logger.debug_detail(f"bind_header={bind_header}")
-            for line in truncate_debug_content(bind_address):
-                logger.debug_detail(f"bind_address={line}")
-            if match["matched"]:
-                logger.debug_detail(f"astral_candidate_id={match['astral_candidate_id']}")
-            else:
-                logger.debug_detail("astral_candidate_id=")
-    return enriched
+    return rows
+
+
+def fetch_candidate_email(
+    aliases: Sequence[str],
+    *,
+    debug: bool = False,
+) -> list[dict]:
+    """List inbox messages whose From or To address matches any alias (casefold)."""
+    if debug:
+        logger.set_debug_flag(True)
+
+    alias_set: set[str] = set()
+    for raw in aliases or ():
+        _display, parsed = parseaddr(raw or "")
+        token = (parsed or raw or "").strip()
+        if not token or "@" not in token:
+            continue
+        alias_set.add(token.casefold())
+    if not alias_set:
+        return []
+
+    kept: list[dict] = []
+    for msg in list_inbox_messages(debug=debug):
+        headers = (msg.get("from_address") or "", msg.get("to_address") or "")
+        hit = False
+        for header in headers:
+            for _display, addr in getaddresses([header]):
+                token = (addr or "").strip()
+                if token and token.casefold() in alias_set:
+                    hit = True
+                    break
+            if hit:
+                break
+        if hit:
+            kept.append(msg)
+    if debug:
+        n = len(kept)
+        for i, msg in enumerate(kept, start=1):
+            mid = (msg.get("id") or "")[:80]
+            logger.debug_index(
+                func="inbox.fetch_candidate_email",
+                index=i,
+                total=n,
+                identifier=mid,
+                outcome="matched",
+            )
+            logger.debug_detail(f"aliases_n={len(alias_set)}")
+    return kept
+
+
+def archive_candidate_email(message_id: str) -> None:
+    """Archive one Gmail message (remove INBOX). Raises on failure."""
+    mid = (message_id or "").strip()
+    if not mid:
+        raise ValueError("message_id is required")
+    try:
+        external_archive_message(mid)
+    except Exception as e:
+        logger.warning("[inbox] archive_candidate_email failed id=%s: %s", mid, e)
+        raise
 
 
 def count_inbox_bound_by_candidate(*, debug: bool = False) -> Dict[str, int]:
-    """One inbox list → {astral_candidate_id: message_count} for matched From-then-To binds."""
-    counts: Dict[str, int] = {}
-    for msg in list_inbox_messages(debug=debug):
-        match = msg.get("candidate_match") or {}
-        if not match.get("matched"):
-            continue
-        cid = str(match.get("astral_candidate_id") or "").strip()
-        if not cid:
-            continue
-        counts[cid] = counts.get(cid, 0) + 1
-    return counts
+    """Retired with From-then-To bind (AST-1558); empty until AST-1559 eligibility."""
+    _ = debug
+    return {}
 
 
 def count_inbox_messages_bound_to_candidate(
     candidate_id: str, *, debug: bool = False
 ) -> int:
-    """Live count of current inbox messages whose From-then-To bind is candidate_id."""
-    cid = str(candidate_id or "").strip()
-    if not cid:
-        return 0
-    return int(count_inbox_bound_by_candidate(debug=debug).get(cid, 0))
+    """Retired with From-then-To bind (AST-1558); 0 until AST-1559 eligibility."""
+    _ = candidate_id
+    _ = debug
+    return 0
 
 
 def get_message_html(message_id: str) -> GmailMessageHtml:
@@ -242,346 +199,3 @@ def strip_extract_email_html(
         date=escaped_date,
         body=body,
     )
-
-
-async def _land_bound_inbox_message(
-    message_id: str,
-    candidate_id: str,
-    *,
-    debug: bool = False,
-) -> dict:
-    """Fetch + strip one bound message, then stage_meteorite (AST-1531)."""
-    mid = (message_id or "").strip()
-    cid = (candidate_id or "").strip()
-    err_key = METEORITE_CONFIG["land_outcome_error"]
-    dbg_func = FETCH_EMAIL_CONFIG.get("debug_func") or "inbox.land_bound_message"
-
-    payload = get_message_html(mid)
-    subject = payload.get("subject") or ""
-    raw_html = payload.get("html_body") or ""
-    html = strip_extract_email_html(
-        subject,
-        raw_html,
-        from_address=payload.get("from_address") or "",
-        to_address=payload.get("to_address") or "",
-        date=payload.get("date") or "",
-    )
-    if not html.strip():
-        if debug:
-            logger.set_debug_flag(True)
-            logger.debug_index(
-                func=dbg_func,
-                index=1,
-                total=1,
-                identifier=mid[:80],
-                outcome=err_key,
-            )
-            logger.debug_detail(f"message_id={mid[:80]}")
-            logger.debug_detail(f"astral_candidate_id={cid}")
-            logger.debug_detail("html_len=0")
-        return {
-            "outcome": err_key,
-            "error": "stripped email HTML is empty",
-            "outcomes": [],
-            "company": None,
-            "company_inserted": False,
-        }
-
-    from src.core.meteorite import stage_meteorite
-
-    stage = await stage_meteorite(
-        cid,
-        html,
-        source_kind="email",
-        source_id=mid,
-        debug=debug,
-    )
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_index(
-            func=dbg_func,
-            index=1,
-            total=1,
-            identifier=mid[:80],
-            outcome=str(stage.get("outcome") or err_key),
-        )
-        logger.debug_detail(f"message_id={mid[:80]}")
-        logger.debug_detail(f"astral_candidate_id={cid}")
-        logger.debug_detail(f"html_len={len(html)}")
-        logger.debug_detail(f"stage_outcome={stage.get('stage_outcome')!r}")
-        logger.debug_detail(f"skipped={stage.get('skipped')!r}")
-        logger.debug_detail(f"company={stage.get('company')!r}")
-    return stage
-
-
-async def run_fetch_email(
-    task: Optional[dict] = None,
-    *,
-    debug: bool = False,
-) -> dict:
-    """Null-candidate fetch_email shell: list → bind → stage matched (AST-1531)."""
-    _ = task  # shell row — no entity claim queue
-    if debug:
-        logger.set_debug_flag(True)
-
-    messages = list_inbox_messages(debug=debug)
-    created_k = METEORITE_CONFIG["land_outcome_created"]
-    skip_k = METEORITE_CONFIG["land_outcome_duplicate_skip"]
-    super_k = METEORITE_CONFIG["land_outcome_superseded"]
-    err_k = METEORITE_CONFIG["land_outcome_error"]
-
-    total_processed = total_passed = total_failed = total_errors = 0
-    n = len(messages)
-    dbg_func = FETCH_EMAIL_CONFIG.get("debug_func") or "inbox.fetch_email"
-
-    for i, msg in enumerate(messages, start=1):
-        mid = (msg.get("id") or "").strip()
-        match = msg.get("candidate_match") or {}
-        cid = str(match.get("astral_candidate_id") or "").strip()
-        if debug:
-            logger.debug_index(
-                func=dbg_func,
-                index=i,
-                total=n,
-                identifier=mid[:80] or "?",
-                outcome="found",
-            )
-        if not match.get("matched") or not cid:
-            total_processed += 1
-            total_passed += 1
-            if debug:
-                logger.debug_index(
-                    func=dbg_func,
-                    index=i,
-                    total=n,
-                    identifier=mid[:80] or "?",
-                    outcome="skipped-unbound",
-                )
-            continue
-
-        land = await _land_bound_inbox_message(mid, cid, debug=debug)
-        outcome = land.get("outcome") or err_k
-        total_processed += 1
-        if (
-            land.get("skipped")
-            or outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]
-            or outcome in (created_k, skip_k, super_k)
-        ):
-            total_passed += 1
-        elif outcome == err_k:
-            total_failed += 1
-            if land.get("error"):
-                total_errors += 1
-        else:
-            total_failed += 1
-
-    return {
-        "total_processed": total_processed,
-        "total_passed": total_passed,
-        "total_failed": total_failed,
-        "total_errors": total_errors,
-    }
-
-
-async def land_inbox_message_ids(
-    message_ids: list[str],
-    *,
-    debug: bool = False,
-) -> dict:
-    """Admin Land Meteorite: selected inbox ids → stage_meteorite (AST-1531)."""
-    if debug:
-        logger.set_debug_flag(True)
-
-    normalized_ids = [raw.strip() for raw in (message_ids or []) if (raw or "").strip()]
-    by_id = {(m.get("id") or ""): m for m in list_inbox_messages(debug=debug)}
-
-    skip_missing = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"]
-    skip_unbound = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unbound"]
-    skip_unmatched = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"]
-    created_k = METEORITE_CONFIG["land_outcome_created"]
-    skip_k = METEORITE_CONFIG["land_outcome_duplicate_skip"]
-    super_k = METEORITE_CONFIG["land_outcome_superseded"]
-    err_k = METEORITE_CONFIG["land_outcome_error"]
-
-    results: list[dict] = []
-    total_processed = total_passed = total_failed = total_errors = total_skipped = 0
-
-    for mid in normalized_ids:
-        if mid not in by_id:
-            results.append(
-                {"message_id": mid, "outcome": skip_missing, "astral_candidate_id": None}
-            )
-            total_skipped += 1
-            total_processed += 1
-            continue
-
-        msg = by_id[mid]
-        match = msg.get("candidate_match") or {}
-        cid = str(match.get("astral_candidate_id") or "").strip()
-        if not match.get("matched"):
-            results.append(
-                {
-                    "message_id": mid,
-                    "outcome": skip_unbound,
-                    "astral_candidate_id": None,
-                }
-            )
-            total_skipped += 1
-            total_processed += 1
-            continue
-        if not cid:
-            results.append(
-                {
-                    "message_id": mid,
-                    "outcome": skip_unmatched,
-                    "astral_candidate_id": None,
-                }
-            )
-            total_skipped += 1
-            total_processed += 1
-            continue
-
-        land = await _land_bound_inbox_message(mid, cid, debug=debug)
-        land_outcome = land.get("outcome") or err_k
-        results.append(
-            {
-                "message_id": mid,
-                "outcome": land_outcome,
-                "astral_candidate_id": cid,
-                "land": land,
-            }
-        )
-        total_processed += 1
-        if (
-            land.get("skipped")
-            or land_outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]
-            or land_outcome in (created_k, skip_k, super_k)
-        ):
-            total_passed += 1
-        elif land_outcome == err_k:
-            total_failed += 1
-            if land.get("error"):
-                total_errors += 1
-        else:
-            total_failed += 1
-
-    return {
-        "results": results,
-        "total_processed": total_processed,
-        "total_passed": total_passed,
-        "total_failed": total_failed,
-        "total_errors": total_errors,
-        "total_skipped": total_skipped,
-    }
-
-
-def create_meteorite_job_from_inbox_message(
-    message_id: str,
-    *,
-    debug: bool = False,
-) -> dict:
-    """Fetch message, rematch From-then-To→candidate, strip/extract, land_meteorite."""
-    mid = (message_id or "").strip()
-    if not mid:
-        raise ValueError("message_id is required")
-    if debug:
-        logger.set_debug_flag(True)
-
-    payload = get_message_html(mid)
-    subject = payload.get("subject") or ""
-    from_address = payload.get("from_address") or ""
-    to_address = payload.get("to_address") or ""
-    raw_html = payload.get("html_body") or ""
-    if debug:
-        logger.debug_index(
-            func="inbox_create_job",
-            index=1,
-            total=4,
-            identifier=mid[:80],
-            outcome="found",
-        )
-        logger.debug_detail(f"message_id={mid[:80]}")
-        for line in truncate_debug_content(subject):
-            logger.debug_detail(f"subject={line}")
-        logger.debug_detail(f"raw_html_len={len(raw_html)}")
-
-    match, bind_header, bind_address = _bind_inbox_message(
-        from_address, to_address, debug=False
-    )
-    cid = match["astral_candidate_id"] if match["matched"] else None
-    if cid is None:
-        raise ValueError("message is not matched to a candidate")
-    if debug:
-        logger.debug_index(
-            func="inbox_create_job",
-            index=2,
-            total=4,
-            identifier=mid[:80],
-            outcome="matched",
-        )
-        logger.debug_detail(f"astral_candidate_id={cid}")
-        logger.debug_detail(f"bind_header={bind_header}")
-        for line in truncate_debug_content(bind_address):
-            logger.debug_detail(f"bind_address={line}")
-
-    html = strip_extract_email_html(
-        subject,
-        raw_html,
-        from_address=from_address,
-        to_address=to_address,
-        date=payload.get("date") or "",
-    )
-    if not html.strip():
-        raise ValueError("stripped email HTML is empty")
-    if debug:
-        logger.debug_index(
-            func="inbox_create_job",
-            index=3,
-            total=4,
-            identifier=mid[:80],
-            outcome="extracted",
-        )
-        for line in truncate_debug_content(html):
-            logger.debug_detail(line)
-
-    # Late-import: land already strip-validated above — skip second Gmail get.
-    from src.core.meteorite import land_meteorite
-
-    land = asyncio.run(land_meteorite(cid, text=html, debug=debug))
-    created_k = METEORITE_CONFIG["land_outcome_created"]
-    skip_k = METEORITE_CONFIG["land_outcome_duplicate_skip"]
-    super_k = METEORITE_CONFIG["land_outcome_superseded"]
-    outcomes = land.get("outcomes") or []
-    created = [o for o in outcomes if o.get("outcome") == created_k]
-    skipped = [o for o in outcomes if o.get("outcome") in (skip_k, super_k)]
-    first_id = outcomes[0].get("astral_job_id") if outcomes else None
-
-    if debug:
-        logger.debug_index(
-            func="inbox_create_job",
-            index=4,
-            total=4,
-            identifier=mid[:80],
-            outcome=str(land.get("outcome") or "recorded"),
-        )
-        logger.debug_detail(
-            f"created={len(created)} skipped={len(skipped)} mode=land_meteorite"
-        )
-        logger.debug_detail(f"company={land.get('company')!r}")
-        if first_id:
-            logger.debug_detail(f"astral_job_id={first_id}")
-
-    return {
-        "astral_candidate_id": cid,
-        "outcome": land.get("outcome"),
-        "outcomes": outcomes,
-        "company": land.get("company"),
-        "company_inserted": bool(land.get("company_inserted")),
-        "error": land.get("error"),
-        "astral_job_id": first_id,
-        "created": created,
-        "skipped": skipped,
-        "mode": "land_meteorite",
-        "state": None,
-        "latest_score": None,
-    }

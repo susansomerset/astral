@@ -3430,3 +3430,23 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 **Integration:** none — do not invent.
 
 Primary numbered manifest: **`docs/test-bible/data/database/meteorites.md`** § AST-1557.
+
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+Retire `FETCH_EMAIL_CONFIG`, `INBOX_BIND_CONFIG`, `TASK_CONFIG["fetch_email"]`, `SEED_CONFIG["dispatch_task-fetch-email"]`. Primary inbox/Manage Email map: **`docs/test-bible/core/inbox.md`** § AST-1558.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config + task/seed retirement | `src/utils/config.py` | **`TestAst1558FetchEmailBindRetired`** |
+
+**Broken / obsolete:** **`TestAst1313InboxBindConfig`** — `INBOX_BIND_CONFIG` removed (replaced by retirement asserts).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired \
+  -q
+```

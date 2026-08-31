@@ -2523,3 +2523,23 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on narrowed args — not zero-arg harness / branch-lock gate.
 
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+Manage Email (§6c): candidate filter default **All**; no Candidate/Matched column or modal match line; Land Meteorite disabled until a candidate is selected; list reload with `?candidate_id=`; Land POST includes `candidate_id`. API: **`docs/test-bible/ui/api/api_inbox.md`** § AST-1558.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Filter default All + candidate_id reload + no Matched (§6c) | `AdminManageEmail.tsx` | **`AdminManageEmail — AST-1558`** |
+| Land requires filter + POST body | same | revised **`AdminManageEmail — AST-1142`** / **AST-1410** |
+| Assembled modal without match line | same | revised older describe + **AST-1538** |
+
+**Broken / obsolete:** Candidate column / `Matched: …` / `manage-email-match` assertions (AST-1048/1051) — revised away. Land-enabled-on-selection-alone (AST-1142) — now requires candidate filter.
+
+**Integration:** none — do not invent.
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
