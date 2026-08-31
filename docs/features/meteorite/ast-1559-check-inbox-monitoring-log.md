@@ -223,3 +223,8 @@ AC1 → Stages 3–4 (`check_inbox` inline classify via `invoke_stage_meteorite`
 - **Recommendation:** Keep as staged; AST-1560 owns `NEW`→transition path.
 
 **In-session statute pass:** `invoke_stage_meteorite` delegates to `do_task` with `STAGE_METEORITE_CONFIG["task_key"]` — **astral.agent.do-task-delegation** conforms. Inline classify + fan-out only (no scrape/land in same run) — **astral.state.no-daisy-chain-in-run** conforms with parent carve-out. `meteorite` → `inbox` → Gmail, no `external/gmail` in `meteorite.py` — **astral.layers.import-direction** / **astral.layers.core-vs-external-bright-line** conform. Monitoring via `get_logger(...).info` always-on — **astral.standards.logging-via-utils** / **astral.standards.debug-contract-gated** conform. Format SSOT in config — **astral.config.config-source-of-truth** conforms. Universal orch.* — N/A/conforms.
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`
+- **Tip:** `9f150cf33b29acfe214c528c98f2841d56f482e1`
