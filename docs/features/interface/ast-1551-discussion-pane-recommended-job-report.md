@@ -181,3 +181,30 @@ Every **Files Changed** row and every Stage step names only those files / that k
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1551
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `313778b1e6574bc034bf9b6856c324b3b2a43021`
+
+## Traceability
+AC1→Stage 2 (manifest `report_top_tabs` + Discussion pane branch); AC2–AC6→Stages 1–2 (`JobDiscussionPane` + `report_discussion_sections` / `agent_story` RESPONSE-only formatting); AC7→explicit out-of-scope (no `AgentStoryTab` / Job Detail / Artifacts edits).
+
+## Findings
+
+### acceptable — `formatDiscussionContent` duplicated from `AgentStoryTab`
+**Location:** Stage 1 (`JobDiscussionPane.tsx`)
+**Finding:** Plan copies `formatContent` inline rather than extracting a shared helper; parent allowed a tiny extract in `AgentStoryTab` but ticket Scope excludes editing that file.
+**Recommendation:** Proceed as planned; duplication is bounded (4 lines) and scope-correct.
+
+### acceptable — parent timestamp-order vs manifest hop-order
+**Location:** Files Changed ⚠️ Decision (no `created_at` re-sort)
+**Finding:** Parent Functional scope mentions timestamp ordering when runs differ; child AC2 and stable nine-hop slots require manifest hop order from AST-1550.
+**Recommendation:** Manifest-driven `section_id` order is the correct reading for this child; no plan change needed.
+
+context_tokens≈68000
+```
