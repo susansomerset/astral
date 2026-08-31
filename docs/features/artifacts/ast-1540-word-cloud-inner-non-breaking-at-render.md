@@ -331,3 +331,123 @@ All edits in `src/core/builder.py` only (parent Component/Technical scope — sa
 - AST-1540 AC4: base / session / job share `_emit_body_sections_html` `word_cloud` arm.
 - AST-1540 AC5 / boundaries: cover from-block, `_resume_site_markers` left-only + digraphs, non-cloud formats unchanged in intent.
 - AST-1027: `__` / `~~` on the shared marker path unchanged.
+
+## Radia review — AST-1552
+
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent diff in scoped fix |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no dispatch diff |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grading diff |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch id diff |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/release diff |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity-agent diff |
+| `astral.config.config-source-of-truth` | scoped | conforms | still uses `COVER_FROM_BLOCK_CONFIG["emit_separator"]`; no new config keys |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets diff |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch diff |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run_next diff |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | plan-fix patches existing `ast-1540-…md` per fix-lane convention |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty `0dffde8f` — tests + bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer `23483405` — `src/core/builder.py` only |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | core render helper only |
+| `astral.layers.import-direction` | scoped | conforms | no import changes |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts diff |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | no UI diff in scoped fix |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check diff |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | builder emit, not consult |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API/auth diff |
+| `astral.seed.*` (6 statutes) | scoped | not-applicable | no seed diff |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no data layer |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB diff |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no debug emission |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | one-line restore in existing helper per plan DRY decision |
+| `astral.standards.in-scope-only` | scoped | conforms | scoped fix touches only `_glue_word_cloud_bullet_separators` |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | no logging added |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | helper name retained |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no out-of-layer imports in scoped fix |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | no new behavior sets |
+| `astral.standards.public-then-helpers` | scoped | conforms | private helper extended |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils diff |
+| `astral.state.*` (3 statutes) | scoped | not-applicable | no state diff |
+| `astral.ui.*` (3 statutes) | scoped | not-applicable | no UI diff in scoped fix |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1552)` @ `41ca076a` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `docs` / `merge-tests` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub on parent ftr |
+| `orch.git.ftr-sub-topology` | universal | conforms | naming correct |
+| `orch.git.merge-on-checkout` | universal | conforms | no merge-law violation in fix commits |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | no forbidden git ops |
+| `orch.git.no-dev-agent-branches` | universal | conforms | no agent branches |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | epic worktree pattern |
+| `orch.git.three-permanent-branches` | universal | conforms | diff vs ftr base |
+| `orch.pipeline.*` (4 statutes) | universal | conforms | fix addresses Susan UAT `[bug]` |
+| `orch.roles.*` (6 statutes) | universal | conforms | role boundaries in commit split |
+
+**Active set count:** 64 rows (harvested corpus).
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | reuses existing `emit_separator`; no second vocabulary |
+| `pattern.layers.import-discipline` | conforms | spacer logic stays in core builder emit |
+
+---
+
+## Plan adherence
+
+`plan-fix` **Proposed change** steps 1–4 implemented exactly:
+
+1. Existing glue → space→NBSP → hyphen→`\u2011` order preserved.
+2. Final `t.replace("\u00a0•\u00a0", "\u00a0• ")` after blanket space pass (per ⚠️ Decision).
+3. Docstring updated (AST-1552).
+4. Helper remains `word_cloud`-arm-only; markers/generation/config untouched.
+
+Engineer/Betty ownership split matches board REVISE + `astral.git.engineer-test-tree-ban`.
+
+---
+
+## Frame diff
+
+AST-1540 AC2 post-bullet character superseded: separator shape is now `\u00a0• ` (breaking space after bullet) while pre-bullet NBSP and inner non-breaking remain. Plan-fix blast radius documents this; revised tests reflect it.
+
+---
+
+## Findings
+
+### advisory — Publish ref carries dev delta beyond ftr
+- **Location:** `origin/sub/AST-1539/AST-1552-word-cloud-breaking-space-after-bullet` history (`sync(dev): origin/dev` @ `fe91f8fb` and intervening commits); full `ftr...sub` = 103 files
+- **Finding:** Sub branch includes `origin/dev` commits not yet on `origin/ftr/AST-1539-…` (e.g. AST-1548 product on `src/core/agent.py`, `tracker.py`, etc.). AST-1552 product commits themselves are isolated (`23483405` builder only; `0dffde8f` tests only).
+- **Recommendation:** Chuckles: before `merge-child`, either (a) merge `origin/dev` into `ftr` first then merge only AST-1552 delta, or (b) cherry-pick `d169eace`/`0dffde8f`/`23483405` (+ `merge-tests`) onto a clean sub stacked on current `ftr`. **Do not route to `resolve-child`** — product fix is correct; this is merge ops.
+
+**fix-now:** none  
+**discuss:** none
+
+---
+
+## What's solid
+
+- Minimal, plan-faithful one-line restore with correct operation order (restore after blanket NBSP pass).
+- [bug-repro] pins To-be concretely at helper + session HTML levels; would fail pre-fix.
+- All `## What must still hold` items verified via existing + revised tests.
+- Board REVISE bar cleared; Joan CANON OK.
+
+---
+
+## Chuckles branching note
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean) | Normal AST-1539 | → **Review Posted** → fix-lane clean shortcut → **User Testing** directly (`resolve-child` skipped) |
+| Merge ops | — | Address advisory dev-delta on publish ref before `merge-child` into `ftr` |
+
+context_tokens≈85000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 23483405) Post-bullet space restored
+
