@@ -47,6 +47,7 @@ Config sections:
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
+  METEORITE_MONITORING_CONFIG — always-on info inbox classify line format + subject sanitize limit (AST-1559); not Style D
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -2712,10 +2713,9 @@ assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 # AST-1134/AST-1135 / AST-1466: candidate-bound meteorite_email mailbox dispatch rows
 # (one per candidate; no null shell). Live mailbox identity remains GMAIL_USER environ;
 # account_address is the product expectation. entity_type/trigger_state stay None —
-# mailbox poller, not an ENTITY_TYPES claim queue. Avail/eligible count is the live
-# bind-filtered inbox count (core inbox helpers, AST-1135). Runner is candidate-bound
-# (AST-1136): filter From→row candidate_id, stamp last_email_check, unbound Trash
-# hygiene via unbound_retention_days. Live Ruth classify is stage_meteorite
+# mailbox poller, not an ENTITY_TYPES claim queue. Runner is candidate-bound
+# (AST-1559): aliases → fetch_candidate_email → inline classify → fan-out rows →
+# archive → last_email_check stamp. Live Ruth classify is stage_meteorite
 # (STAGE_METEORITE_CONFIG / AST-1529); METEORITE_EMAIL_PARSE_CONFIG is a fold stub only.
 # Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 METEORITE_EMAIL_MAILBOX_CONFIG = {
@@ -2732,7 +2732,7 @@ METEORITE_EMAIL_MAILBOX_CONFIG = {
     # Runner — subject-is-URL detection (urlparse.scheme).
     "subject_url_schemes": ("http", "https"),
     # Style D func= string for the runner.
-    "debug_func": "meteorite_email.run",
+    "debug_func": "meteorite.check_inbox",
     # AST-1140 — Style D func= for selected-ids Land Meteorite ingest.
     "debug_func_selected": "meteorite_email.selected_ids",
     # Per-id outcome strings returned to AST-1141 / recorded in Style D.
@@ -2745,12 +2745,38 @@ assert isinstance(METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"], int)
 assert METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"] > 0
 assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
 assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "https"}
-assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite_email.run"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite.check_inbox"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func_selected"] == "meteorite_email.selected_ids"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unbound"] == "skipped-unbound"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
+
+# AST-1559: always-on info monitoring for meteorite ingress (not Style D).
+METEORITE_MONITORING_CONFIG = {
+    "subject_max_len": 120,
+    "outcome_already_ingested": "already_ingested",
+    "inbox_classify_line": (
+        "meteorite inbox classify from={from_address} mid={message_id} ts={internal_date_ms} "
+        "subj={subject} candidate={candidate_id} outcome={classify_outcome} jobs={job_count}"
+    ),
+}
+
+assert isinstance(METEORITE_MONITORING_CONFIG["subject_max_len"], int)
+assert METEORITE_MONITORING_CONFIG["subject_max_len"] > 0
+assert (
+    isinstance(METEORITE_MONITORING_CONFIG["outcome_already_ingested"], str)
+    and METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
+)
+_inbox_line = METEORITE_MONITORING_CONFIG["inbox_classify_line"]
+for _placeholder in (
+    "{from_address}",
+    "{message_id}",
+    "{candidate_id}",
+    "{classify_outcome}",
+    "{job_count}",
+):
+    assert _placeholder in _inbox_line
 
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(
