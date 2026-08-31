@@ -1109,7 +1109,7 @@ def _resume_site_markers(text: str) -> str:
 
 
 def _glue_word_cloud_bullet_separators(text: str) -> str:
-    """NBSP both sides of •, then remaining spaces/hyphens non-breaking (AST-1536/1540)."""
+    """NBSP• then break after; inner spaces/hyphens non-breaking (AST-1536/1540/1552)."""
     if not text:
         return text
     emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
@@ -1117,6 +1117,8 @@ def _glue_word_cloud_bullet_separators(text: str) -> str:
     t = text.replace(emit_sep, glued).replace("\u00a0• ", glued)
     t = t.replace(" ", "\u00a0")
     t = t.replace("-", "\u2011")
+    # AST-1552: ordinary space after • (soft-wrap); keep NBSP before •
+    t = t.replace("\u00a0•\u00a0", "\u00a0• ")
     return t
 
 
