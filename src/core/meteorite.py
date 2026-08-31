@@ -6,8 +6,8 @@ transition runners — not Ruth consult hops; dispatcher custom branch only.
 
 Lazy-insert stem-keyed companies into METEORITE from METEORITE_CONFIG (default
 stem → meteorite-<candidate_id>). Track = company state METEORITE or legacy
-short_name_prefix. Public stage_meteorite (AST-1530): classify blob+source handle
-→ scrap map → land_meteorite; skip outcomes do not land. Public land_meteorite:
+short_name_prefix. Public stage_meteorite (AST-1530 / AST-1560): classify blob+source handle
+only — table ingress uses dispatch transition runners for map/land. Public land_meteorite:
 scraps → optional Playwright visible text → qualify_meteorite packet enrich →
 per-row Ruth company_stem ensure → tracker.save_meteorite_job. No email/Gmail/mailbox
 I/O here — inbox and Contact call land (siblings). create_meteorite_job accepts
@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 from src.core.candidate import get_candidate
 from src.core import tracker
@@ -453,10 +453,10 @@ async def stage_meteorite(
     source_id: str,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Public ingress stage: classify blob → scrap map → land_meteorite or skip (AST-1530).
+    """Public ingress stage: classify blob only (AST-1530 / AST-1560).
 
-    Does not claim METEORITE_NEW or run qualify_meteorite dispatch. Callers (AST-1531)
-    own mailbox/inbox/Contact hygiene after this return.
+    Returns classify outcome + jobs[]; table path uses dispatch transition runners
+    for stage/scrape/land. Does not claim METEORITE_NEW or run qualify_meteorite dispatch.
     """
     err_key = METEORITE_CONFIG["land_outcome_error"]
     log = get_logger(__name__)
@@ -467,13 +467,9 @@ async def stage_meteorite(
             "outcome": err_key,
             "stage_outcome": stage_outcome,
             "skipped": False,
-            "scraps": [],
-            "land": None,
+            "jobs": [],
             "error": error,
             "batch_id": batch_id,
-            "company": None,
-            "company_inserted": False,
-            "outcomes": [],
         }
 
     cid = (candidate_id or "").strip()
@@ -519,40 +515,18 @@ async def stage_meteorite(
                 outcome=str(stage_outcome),
             )
             log.debug_detail(
-                f"source_kind={kind} source_id={sid} scrap_count=0 land=skip"
+                f"source_kind={kind} source_id={sid} job_count=0 land=skip"
             )
         return {
             "outcome": stage_outcome,
             "stage_outcome": stage_outcome,
             "skipped": True,
-            "scraps": [],
-            "land": None,
+            "jobs": [],
             "error": None,
             "batch_id": batch_id,
-            "company": None,
-            "company_inserted": False,
-            "outcomes": [],
         }
 
-    scraps, map_err = _map_stage_jobs_to_scraps(
-        stage_outcome,
-        invoke.get("jobs") or [],
-        source_kind=kind,
-        source_id=sid,
-    )
-    if map_err:
-        if debug:
-            log.debug_index(
-                func="meteorite.stage_meteorite",
-                index=1,
-                total=1,
-                identifier=cid,
-                outcome="map_failed",
-            )
-            log.debug_detail(f"error={map_err!r} stage_outcome={stage_outcome!r}")
-        return _err(map_err, batch_id=batch_id, stage_outcome=stage_outcome)
-
-    land = await land_meteorite(cid, scraps=scraps, debug=debug)
+    jobs = invoke.get("jobs") or []
     if debug:
         log.debug_index(
             func="meteorite.stage_meteorite",
@@ -561,29 +535,17 @@ async def stage_meteorite(
             identifier=cid,
             outcome=str(stage_outcome),
         )
-        # Found stage scraps vs recorded land rollup.
-        scrap_bits = []
-        for s in scraps:
-            link = (s.get("job_link") or "")[:80]
-            body = _land_scrap_body(s)
-            scrap_bits.append(f"link={link!r} body_chars={len(body)}")
-        detail = (
-            f"source_kind={kind} source_id={sid} scrap_count={len(scraps)} "
-            f"land_outcome={land.get('outcome')!r} | " + "; ".join(scrap_bits)
+        log.debug_detail(
+            f"source_kind={kind} source_id={sid} job_count={len(jobs)} classify_only=1"
         )
-        log.debug_detail(truncate_debug_content(detail) if detail.count("\n") > 50 else detail)
 
     return {
-        "outcome": land.get("outcome"),
+        "outcome": stage_outcome,
         "stage_outcome": stage_outcome,
         "skipped": False,
-        "scraps": scraps,
-        "land": land,
-        "error": land.get("error"),
+        "jobs": jobs,
+        "error": None,
         "batch_id": batch_id,
-        "company": land.get("company"),
-        "company_inserted": land.get("company_inserted"),
-        "outcomes": land.get("outcomes") or [],
     }
 
 
@@ -759,71 +721,7 @@ async def land_meteorite(
     }
 
 
-# --- stage_meteorite helpers ---
-
-def _map_stage_jobs_to_scraps(
-    outcome: str,
-    jobs: List[Dict[str, Any]],
-    *,
-    source_kind: str,
-    source_id: str,
-) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-    """Map stage agent jobs → land_meteorite scraps via STAGE_METEORITE_CONFIG partitions."""
-    prefixes = STAGE_METEORITE_CONFIG["source_ref_prefixes"]
-    if source_kind not in prefixes:
-        return [], "invalid source_kind"
-    prefix = prefixes[source_kind]
-    sid = (source_id or "").strip()
-
-    def _source_ref(index: Optional[int] = None) -> str:
-        if index is None:
-            return f"{prefix}{sid}"
-        return f"{prefix}{sid}-{index}"
-
-    if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-        return [], None
-
-    rows = [j for j in jobs if isinstance(j, dict)]
-
-    if outcome in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]:
-        if len(rows) < 1:
-            return [], "text outcome produced no jobs"
-        scraps: List[Dict[str, Any]] = []
-        for i, job in enumerate(rows, start=1):
-            ref = _source_ref(None if len(rows) == 1 else i)
-            text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
-            if not text:
-                return [], "text scrap missing jd_text"
-            emp = job.get("employer_name")
-            scraps.append({
-                "job_link": ref,
-                "company_job_id": ref,
-                "text": text,
-                "employer_name": emp.strip() if isinstance(emp, str) else "",
-            })
-        return scraps, None
-
-    if outcome in STAGE_METEORITE_CONFIG["url_scrape_outcomes"]:
-        if len(rows) < 1:
-            return [], "url outcome produced no jobs"
-        scraps = []
-        for i, job in enumerate(rows, start=1):
-            link = (job.get("job_link") or "").strip() if isinstance(job.get("job_link"), str) else ""
-            if not (link.startswith("http://") or link.startswith("https://")):
-                return [], "url scrap missing http(s) job_link"
-            ref = _source_ref(None if len(rows) == 1 else i)
-            text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
-            emp = job.get("employer_name")
-            scraps.append({
-                "job_link": link,
-                "company_job_id": ref,
-                "text": text,
-                "employer_name": emp.strip() if isinstance(emp, str) else "",
-            })
-        return scraps, None
-
-    return [], "unhandled stage outcome"
-
+# --- dispatch transition runners (AST-1560) ---
 
 _ZERO_SUMMARY: Dict[str, int] = {
     "total_processed": 0,
