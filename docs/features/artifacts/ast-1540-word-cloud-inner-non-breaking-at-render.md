@@ -67,3 +67,36 @@ Confirm Chuckles estimate: 2 — agree
 3→Stage 1 (helper remains word_cloud-arm-only; markers / generation untouched → format switch safe).  
 4→Stage 1 (shared `_emit_body_sections_html` word_cloud arm → base / session / job).  
 5→Stage 1 (no cover / non-cloud / digraph / config edits).
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1540
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render` @ `3b6622318208540c86fac5a9d7342c8e9c843959`
+
+## Traceability
+
+1→Stage 1 (`" "` → `\u00a0`, `"-"` → `\u2011` after bullet glue in `_glue_word_cloud_bullet_separators`). 2→Stage 1 (existing `emit_sep` / `\u00a0• ` → `\u00a0•\u00a0` unchanged). 3→Stage 1 (helper word_cloud-arm-only; `_resume_site_markers` / generation untouched). 4→Stage 1 (shared `_emit_body_sections_html` `word_cloud` arm). 5→Stage 1 (no cover / non-cloud / config / digraph edits).
+
+## Findings
+
+### acceptable — Procedure / assignee at fetch
+- **Location:** Linear AST-1540
+- **Finding:** Status `Plan Ready` but assignee was Katherine Johnson (not Joan) at `get-issue` time.
+- **Recommendation:** Chuckles spawn is authoritative for this stdout-only pass; restore implementer after posting upshot per validate-plan §8.
+
+### acceptable — Files Changed `tests/**` row
+- **Location:** Files Changed table
+- **Finding:** Row names `tests/component/core/test_builder.py` while ticket `## Scope` is `builder.py` only.
+- **Recommendation:** Explicit scope gate + Betty qa-child section correctly partition engineer vs Betty ownership; Stage 1 commit boundary (`code()` only `src/core/builder.py`) is clear.
+
+### acceptable — Parent cites `astral.layers.import-direction`; child citations omit it
+- **Location:** Citations vs parent Architectural definition
+- **Finding:** Child lists `pattern.layers.import-discipline` instead of repeating the statute id.
+- **Recommendation:** No action — single-file core change still satisfies import-direction; pattern citation is sufficient for R6.
+
+No `fix-now` or `discuss` findings on plan substance.
+
+context_tokens≈42000
