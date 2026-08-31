@@ -196,3 +196,41 @@ The plan is binding. The agent:
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1560
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1555/AST-1560-stage-scrape-land-transitions` @ `8434867243c5e28c15d839a090d79172c6365b3e`
+
+## Traceability
+AC2 → Stages 1–2 (per-row `claim_meteorite_batch` / `clear_meteorite_batch` + single-transition `run_stage_meteorite` / `run_scrape_meteorite` / `run_land_meteorite`); AC3 → Stage 2c (`save_meteorite_job` → `METEORITE_NEW` + `astral_job_id` + `LANDED`, no enrich); AC4 → Stages 2–3 (no `source_ref` synthesis, `job_link`/`company_job_id` null at land). **Gap:** parent functional scope #6 row-transition always-on info lines (`BOT_BLOCKED` / `ERROR` / `LANDED job=`) — partitioned from AST-1559, not staged here.
+
+## Findings
+
+### fix-now
+- **Location:** Stage 1 §7 + Stage 2 §Shared batch pattern
+- **Finding:** Dispatcher mints `entity_batch_id` for ledger/`log_batch_id`, but each runner mints a **second** `batch_id` for `claim_meteorite_batch`. Entity claim queues must use one golden ticket (`astral.batch.batch-id-first` / `pattern.batch.entity-claim-process-release`).
+- **Recommendation:** Pass dispatcher `entity_batch_id` into `run_*` (via `task` or param) and use it for claim/get/clear — do not mint inside runners.
+
+### fix-now
+- **Location:** Stages 2–3 (missing stage)
+- **Finding:** Parent functional scope #6 requires always-on info row-transition lines; AST-1559 plan explicitly assigned `BOT_BLOCKED` / `ERROR` / `LANDED job=` monitoring to this child. Plan only says “Do not add monitoring info lines (AST-1559)” (inbox classify) with no positive row-transition helper/config formats.
+- **Recommendation:** Add config format strings (extend `METEORITE_MONITORING_CONFIG` or sibling keys in `METEORITE_INGRESS_DISPATCH_CONFIG`) + `log_meteorite_row_transition` calls in scrape/land runners on state writes.
+
+### discuss
+- **Location:** Stage 1 §3 assert — `stage_task_key == STAGE_METEORITE_CONFIG["task_key"]`
+- **Finding:** Same string serves Ruth inline classify (`do_task`) and custom dispatch transition runner; disambiguation relies on dispatcher branch ordering only.
+- **Recommendation:** Keep parent-mandated naming; document in module header that dispatch `stage_meteorite` row is **not** a consult hop; ensure branch precedes any `TASK_CONFIG` / `_run_unified` path.
+
+### acceptable
+- **Location:** Stage 2b scrape path — `_land_fetch_link_text` + gazer `_classify_jd` / `_CONTACT_PAGE_STATUS`
+- **Finding:** Reuses existing Playwright fetch + JD classifier instead of duplicating `contact_task_gazer_scrape` browser stack.
+- **Recommendation:** Late-import private gazer helpers as planned; call monitoring helper once scrape path is added.
+
+**In-session statute pass:** Claim/process/clear + one transition per runner — **astral.batch.claim-process-release** / **astral.state.no-daisy-chain-in-run** conform (batch_id propagation excepted). Core-owned state writes via `update_meteorite` — **astral.state.core-decides-transitions** conform. Playwright via existing external helpers — **pattern.layers.import-discipline** conform. Universal orch.* — N/A/conforms.
+
+context_tokens≈72000
