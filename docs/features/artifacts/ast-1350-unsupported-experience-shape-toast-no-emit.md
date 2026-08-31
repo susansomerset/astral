@@ -386,3 +386,25 @@ Against product tip that includes AST-1545 (open without features + `opener = nu
 ## Resolution — AST-1546
 
 **2026-08-31** — Radia discuss: product UI was stacked on this gap sub (`code(AST-1546)` cherry-pick of AST-1545’s four blob-open handlers). Reverted those product files so this publish tip is tests/bible (+ plan-fix doc) only. Product remains on sibling `origin/sub/AST-1542/AST-1545-fix-false-popup-blocked-toast-on-print-open-html`. Betty `test(AST-1546)` / `merge-tests(AST-1546)` retained.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/be242495b452ed2d361f07fbebd9ed9a/d858b81a-8341-46e0-b3c6-696490b1d2f1/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/594d18ff-2183-43ec-b60a-ed0c3ea8e1a1/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/be242495b452ed2d361f07fbebd9ed9a/3a3b5524-54e1-429e-af83-63d3f0936ba8/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1542 (parent) | ftr/AST-1542-erroneous-error-occurs-for-print-buttons |
+| AST-1545 | sub/AST-1542/AST-1545-fix-false-popup-blocked-toast-on-print-open-html |
+| AST-1546 | sub/AST-1542/AST-1546-gap-align-print-blob-open-tests |
+
+**Epic worktree:** `astral-AST-1542/` — one active sub checked out at a time.
