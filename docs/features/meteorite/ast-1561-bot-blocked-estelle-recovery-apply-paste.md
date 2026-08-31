@@ -196,3 +196,37 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+**Rubric:** plan-rubric
+**Ticket:** AST-1561
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste` @ `116ca1352f65a3aa937b52ff00c450df1856fd08`
+
+### Traceability
+Parent AC4 → Stages 2–3 (`run_notify_meteorite_bot_blocked` first DM + nag/abandon stamps; `apply_paste` `BOT_BLOCKED`→`READY` without classify; `contact.py` thread + unprompted `paste` routing); parent functional scope #4 (Estelle notify, paste recovery, nag→`ABANDONED`, scrape never Slack) mapped to Stages 1–3.
+
+### Findings
+
+#### fix-now
+- **Location:** Stage 1 §7 — dispatcher notify branch
+- **Finding:** Plan calls `asyncio.run(run_notify_meteorite_bot_blocked(...))` inside `_dispatch_one`, which is already `async` and peers use `await` (`run_meteorite_email`, ingress transition runners). Nested `asyncio.run` will break the event loop.
+- **Recommendation:** `summary = await run_notify_meteorite_bot_blocked(task, debug=debug)` — mirror mailbox/AST-1560 ingress branches.
+
+#### acceptable
+- **Location:** Linear ticket — empty `## Citations` / `## Scope`
+- **Finding:** Dispatch template gap; plan Scope gate mirrors parent proposed child #5.
+- **Recommendation:** Chuckles backfill Linear fields when appending; plan content is scoped.
+
+#### acceptable
+- **Location:** Stage 2 §5 — `log_meteorite_row_transition(..., state="READY")`
+- **Finding:** AST-1560 helper logs only `BOT_BLOCKED` / `ERROR` / `LANDED`; `READY` is a no-op log.
+- **Recommendation:** Drop READY log call or accept silent paste recovery; not blocking AC4.
+
+#### discuss
+- **Location:** Stage 3 §2 — unprompted paste guard
+- **Finding:** Unprompted path runs only when `no row and anchor`; wording is easy to mis-implement vs "if no row after thread lookup."
+- **Recommendation:** Clarify: thread match first; else `find_meteorite_bot_blocked_paste_source` when `source_kind=paste` row exists (anchor optional).
+
+**In-session statute pass:** `entity_batch_id` golden ticket + claim/clear — **astral.batch.batch-id-first** conforms. Paste without `do_task`/classify — **astral.agent.do-task-delegation** conforms. Slack via `contact_post_message` only — **astral.layers.core-vs-external-bright-line** conforms. `BOT_BLOCKED`→`READY` / `ABANDONED` via core `update_meteorite` — **pattern.state.entity-state-transitions** conforms. Universal orch.* — N/A/conforms.
