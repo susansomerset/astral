@@ -487,3 +487,63 @@ Radia **Review Posted** — **no fix-now**; **discuss** none; **advisory** (`HTT
 **Product:** No changes — build @ `cc9b5f0` + Betty tests @ `50ae12a` + Radia doc @ `ae601ec` on publish ref unchanged.
 
 **§9a:** `origin/sub/AST-770/AST-779-error-toast-diagnostics` dry-run merge clean into `origin/dev` and `origin/ftr/AST-770-update-error-toast`.
+
+## Bug: AST-1553 — gap: Toast dismiss-without-copy tests + bible
+
+### As-is
+
+`tests/component/frontend/components/test_Toast.test.tsx` and `docs/test-bible/frontend/components.md` (AST-779 rows) still assume AST-779 Stage 3: whole-toast root is `.toast-error-clickable` / `role="button"`, error status glyph is `\u2717`, and there is no dismiss control. After sibling **AST-1549** splits dismiss vs copy, those assertions break and dismiss-without-copy is untested (`[board-betty] TESTS: REVISE` on AST-1549).
+
+### To-be
+
+Toast component tests + bible entries match AST-1549’s hit targets: copy from message/hint (`.toast-copy-target.toast-error-clickable`); dismiss via `icon-control` × with `aria-label="Dismiss"` writes nothing to the clipboard and completes dismiss; error status glyph is `\u26A0`. Product UI stays on AST-1549 — this ticket is test/bible only.
+
+### Repro
+
+Against product tip that includes AST-1549 (`Toast.tsx` with copy target + dismiss `icon-control`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx
+```
+
+Pre-gap (current tests): fail on `\u2717` glyph assert and/or ambiguous `getByRole('button')` (copy target + Dismiss both match). Missing case: dismiss click must not call `navigator.clipboard.writeText` and must invoke `onDone` after the exit animation.
+
+### Root cause
+
+AST-779 bible/tests encoded the whole-toast copy contract. AST-1549 changed the contract (narrowed copy target, dedicated dismiss, warning glyph) without a matching test/bible update — board filed this gap child instead of inline `qa-fix`.
+
+### Proposed change
+
+**Do not edit** `Toast.tsx` / `App.css` (AST-1549). Land test + bible only (astral-tests / Betty publish path for `tests/**` and `docs/test-bible/**`; engineer pre-commit bans those trees on product commits).
+
+1. **`tests/component/frontend/components/test_Toast.test.tsx`**
+   - In the variants smoke test: change error glyph expect from `\u2717` to `\u26A0`.
+   - In `AST-779: error toast is clickable and copies diagnostic bundle`:
+     - Assert `.toast-error-clickable` is on the **copy target** (e.g. `document.querySelector('.toast-copy-target.toast-error-clickable')`), not on the portal root `.toast`.
+     - Trigger copy via the copy target (e.g. `fireEvent.click` on that node, or `getByText('Click to copy')` / the copy-target `role="button"`) — **not** `getByRole('button')` alone (Dismiss is also a button).
+     - Keep existing bundle + “Copied to clipboard” / 2s restore assertions.
+   - **Add** `AST-1549` / `AST-1553` case — dismiss without copy:
+     - Render error toast with mocked `navigator.clipboard.writeText` and `onDone`.
+     - `fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))` (or `getByLabelText('Dismiss')`).
+     - Assert `writeText` was **not** called.
+     - Advance timers by **300ms** (exit animation) and assert `onDone` called once.
+   - Do **not** weaken 15s error / 3s success duration cases.
+
+2. **`docs/test-bible/frontend/components.md`** — § **AST-779 · AST-770** (and a short cross-ref for AST-1549/AST-1553):
+   - Update the Toast UX summary: error toasts have a dedicated dismiss (`icon-control` ×) that does not copy; click-to-copy is limited to the message / “Click to copy” region (`.toast-copy-target`); status glyph is warning `\u26A0`, not ✗.
+   - Extend the Toast component-tests cell to name dismiss-without-copy + retargeted click-copy / glyph coverage in `test_Toast.test.tsx`.
+   - Keep the existing Vitest narrowed-run command block.
+
+### Blast radius
+
+- Only Toast component Vitest + frontend components bible rows named above.
+- Sibling AST-1549 product behavior is the fixture under test — merge/order: tests expect AST-1549’s DOM; run against a tree that includes that product fix (ftr after merge-child, or combined tip).
+- No page tests, no `toastDiagnostics.ts` / API enrichment coverage expansion.
+
+### What must still hold
+
+1. AST-779 duration contracts remain tested (15s error default, 3s success default).
+2. Click-to-copy still asserts multi-line bundle contents (`message:`, `route:`, optional diagnostics) and 2s “Copied to clipboard” restore without claiming whole-toast clickability.
+3. Success/info remain non-interactive in product and unexpanded in this gap’s new cases.
+4. No product file edits in this ticket’s commits.
