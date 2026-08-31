@@ -174,6 +174,20 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         { tab_id: "summary", nav_label: "Summary" },
         { tab_id: "analysis", nav_label: "Analysis" },
         { tab_id: "artifacts", nav_label: "Artifacts" },
+        // AST-1550 / AST-1551: Discussion after Artifacts
+        { tab_id: "discussion", nav_label: "Discussion" },
+      ],
+      // AST-1550: nine hop slots for Recommended Job Report Discussion (AST-1551 consumes).
+      report_discussion_sections: [
+        { section_id: "contemplate_job", nav_label: "Contemplate Job", default_expanded: false },
+        { section_id: "advise_job_resume", nav_label: "Advise Job Resume", default_expanded: false },
+        { section_id: "draft_job_resume", nav_label: "Draft Job Resume", default_expanded: false },
+        { section_id: "check_job_resume", nav_label: "Check Job Resume", default_expanded: false },
+        { section_id: "finalize_job_resume", nav_label: "Finalize Job Resume", default_expanded: false },
+        { section_id: "draft_cover_letter", nav_label: "Draft Cover Letter", default_expanded: false },
+        { section_id: "check_cover_letter", nav_label: "Check Cover Letter", default_expanded: false },
+        { section_id: "finalize_cover_letter", nav_label: "Finalize Cover Letter", default_expanded: false },
+        { section_id: "propose_application_responses", nav_label: "Propose Application Responses", default_expanded: false },
       ],
       report_summary_sections: [
         { section_id: "job_summary", nav_label: "Job Summary", default_expanded: true },
