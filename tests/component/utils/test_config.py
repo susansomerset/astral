@@ -543,13 +543,23 @@ class TestBuildStateUiManifest:
         assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
-        # AST-948: report_fixed_tabs → report_top_tabs + report_summary_sections;
-        # phase/artifact rows keep keys but become section chrome labels.
+        # AST-948 / AST-1550: report_top_tabs + report_summary_sections;
+        # Discussion follows Artifacts (AST-1550).
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
         assert "report_fixed_tabs" not in rec
-        assert [t["tab_id"] for t in rec["report_top_tabs"]] == ["summary", "analysis", "artifacts"]
-        assert [t["nav_label"] for t in rec["report_top_tabs"]] == ["Summary", "Analysis", "Artifacts"]
+        assert [t["tab_id"] for t in rec["report_top_tabs"]] == [
+            "summary",
+            "analysis",
+            "artifacts",
+            "discussion",
+        ]
+        assert [t["nav_label"] for t in rec["report_top_tabs"]] == [
+            "Summary",
+            "Analysis",
+            "Artifacts",
+            "Discussion",
+        ]
         assert [s["section_id"] for s in rec["report_summary_sections"]] == [
             "job_summary",
             "company_upshot",
@@ -5229,3 +5239,54 @@ class TestAst1534AdhocImportConfigKeys:
     def test_adhoc_import_cap_and_visible_rows(self) -> None:
         assert cfg.UI_CONFIG["adhoc_import_runs_limit"] == 10
         assert cfg.UI_CONFIG["adhoc_import_picker_visible_rows"] == 5
+
+
+class TestAst1550DiscussionHopKeys:
+    """AST-1550: Discussion top tab + live run_next hop walk for section order."""
+
+    def test_top_tabs_discussion_after_artifacts(self) -> None:
+        tabs = cfg.JOBS_RECOMMENDED_REPORT_TOP_TABS
+        assert [t["tab_id"] for t in tabs] == [
+            "summary",
+            "analysis",
+            "artifacts",
+            "discussion",
+        ]
+        assert tabs[-1]["nav_label"] == "Discussion"
+
+    def test_hop_walk_follows_run_next(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Short chain starting at resume_artifact_chain.first_task_key.
+        first = (cfg.BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key")
+        assert first == "contemplate_job"
+        nxt = {
+            "contemplate_job": "draft_job_resume",
+            "draft_job_resume": "propose_application_responses",
+            "propose_application_responses": "",
+        }
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": nxt.get(tk, "")},
+        )
+        keys = cfg.build_artifacts_discussion_hop_task_keys()
+        assert keys == [
+            "contemplate_job",
+            "draft_job_resume",
+            "propose_application_responses",
+        ]
+        assert "anticipate_scan" not in keys
+
+    def test_hop_walk_empty_first_returns_empty(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(cfg.BUILD_CONFIG, "resume_artifact_chain", {"first_task_key": ""})
+        assert cfg.build_artifacts_discussion_hop_task_keys() == []
+
+    def test_hop_walk_cycle_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"},
+        )
+        with pytest.raises(RuntimeError, match="cycle"):
+            cfg.build_artifacts_discussion_hop_task_keys()
