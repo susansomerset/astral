@@ -1,0 +1,533 @@
+audit	file	grade	loe
+patt.entity.batch-criteria	src/core/dispatcher.py	A
+patt.entity.batch-criteria	src/core/tracker.py	A
+patt.entity.batch-criteria	src/core/roster.py	A
+patt.entity.batch-criteria	src/core/candidate.py	A
+patt.entity.batch-criteria	src/utils/config.py	A
+patt.entity.batch-criteria	src/ui/api/api_admin.py	A
+patt.entity.batch-criteria	src/data/database.py	D	3
+patt.entity.batch-processing	src/core/tracker.py	A
+patt.entity.batch-processing	src/core/dispatcher.py	F	5
+patt.entity.batch-processing	src/core/roster.py	A
+patt.entity.batch-processing	src/core/candidate.py	A
+patt.entity.batch-processing	src/core/consult.py	A
+patt.entity.batch-processing	src/core/gazer.py	A
+patt.entity.batch-processing	src/core/agent.py	A
+patt.entity.batch-processing	src/core/builder.py	X
+patt.entity.batch-processing	src/core/contact.py	X
+patt.entity.batch-processing	src/core/gaze_email.py	X
+patt.entity.batch-processing	src/core/inbox.py	X
+patt.entity.batch-processing	src/core/intake.py	A
+patt.entity.batch-processing	src/core/meteorite.py	B	1
+patt.entity.batch-processing	src/core/monitor.py	A
+patt.entity.batch-processing	src/core/repo_admin_json.py	X
+patt.entity.batch-processing	src/core/table_copy_upsert.py	X
+patt.entity.batch-processing	src/core/timesheets.py	X
+patt.entity.batch-processing	src/core/bootstrap.py	X
+patt.entity.batch-processing	src/core/auth_bootstrap.py	X
+patt.entity.batch-processing	src/core/deploy_status.py	X
+patt.entity.batch-processing	src/data/database.py	F	5
+patt.entity.batch-processing	src/data/contact_debug.py	X
+patt.entity.batch-processing	src/data/contact_estelle_activity.py	X
+patt.entity.batch-processing	src/data/contact_listen.py	X
+patt.entity.batch-processing	src/external/anthropic.py	A
+patt.entity.batch-processing	src/external/deepseek.py	A
+patt.entity.batch-processing	src/external/gmail.py	X
+patt.entity.batch-processing	src/external/google_cse.py	X
+patt.entity.batch-processing	src/external/linear.py	X
+patt.entity.batch-processing	src/external/playwright.py	X
+patt.entity.batch-processing	src/external/slack.py	X
+patt.entity.batch-processing	src/external/stytch.py	X
+patt.entity.batch-processing	src/utils/config.py	X
+patt.entity.batch-processing	src/utils/logging.py	A
+patt.entity.batch-processing	src/ui/api/api_admin.py	F	3
+patt.entity.batch-processing	src/ui/api/api_candidate.py	A
+patt.entity.batch-processing	src/ui/api/api_companies.py	A
+patt.entity.batch-processing	src/ui/api/api_contact.py	X
+patt.entity.batch-processing	src/ui/api/api_inbox.py	A
+patt.entity.batch-processing	src/ui/api/api_intake.py	A
+patt.entity.batch-processing	src/ui/api/api_jobs.py	A
+patt.entity.batch-processing	src/ui/api/api_meteorite.py	A
+patt.entity.batch-processing	src/ui/api/api_resume_html.py	X
+patt.entity.batch-processing	src/ui/api/api_slack.py	X
+patt.entity.batch-processing	src/ui/api/api_surfer.py	X
+patt.entity.batch-processing	src/ui/api/api_system.py	A
+patt.entity.batch-processing	src/ui/api_errors.py	X
+patt.entity.batch-processing	src/ui/auth.py	X
+patt.entity.batch-processing	src/ui/server.py	X
+patt.entity.batch-processing	src/ui/extension/src/lib/dwell.ts	X
+patt.entity.batch-processing	src/ui/extension/src/lib/fanOut.ts	X
+patt.entity.batch-processing	src/ui/extension/src/lib/pacingConfig.ts	X
+patt.entity.batch-processing	src/ui/extension/src/lib/surferConsent.ts	X
+patt.entity.batch-processing	src/ui/extension/src/lib/surferConsentGate.ts	X
+patt.entity.batch-processing	src/ui/extension/src/lib/surferDisclosureDom.ts	X
+patt.entity.batch-processing	src/ui/extension/src/lib/surferOffSwitch.ts	X
+patt.entity.batch-processing	src/ui/frontend/src/pages/AdminManageEmail.tsx	A
+patt.entity.batch-processing	src/ui/frontend/src/pages/AdminScheduledActions.tsx	A
+patt.entity.batch-processing	src/ui/frontend/src/pages/CompaniesIgnored.tsx	A
+patt.entity.batch-processing	src/ui/frontend/src/pages/CompaniesInactiveList.tsx	A
+patt.entity.batch-processing	src/ui/frontend/src/pages/CompaniesWatchList.tsx	A
+patt.entity.batch-processing	src/ui/frontend/src/pages/JobsSkipped.tsx	A
+patt.entity.batch-processing	src/ui/frontend/src/pages/CompaniesNewList.tsx	X
+patt.entity.batch-processing	src/ui/frontend/src/pages/AdminAgentTimesheets.tsx	X
+patt.entity.batch-processing	src/ui/frontend/src/components/BatchAgentDataModal.tsx	X
+patt.entity.batch-processing	src/ui/frontend/src/components/ListPage.tsx	X
+patt.entity.batch-processing	src/ui/frontend/src/lib/api.ts	X
+patt.entity.batch-processing	src/ui/frontend/src/lib/candidateJobActions.ts	X
+patt.entity.batch-processing	src/ui/frontend/src/hooks/useCandidateJobActions.ts	X
+patt.entity.batch-processing	src/ui/frontend/src/hooks/useInPlaceLiveRefresh.ts	X
+patt.entity.batch-processing	src/ui/frontend/src/contexts/CandidateContext.tsx	X
+patt.entity.batch-processing	src/ui/frontend/src/contexts/StateUiContext.tsx	X
+patt.task.dispatch-retry	src/core/agent.py	A
+patt.task.dispatch-retry	src/core/builder.py	X
+patt.task.dispatch-retry	src/core/candidate.py	A
+patt.task.dispatch-retry	src/core/consult.py	F	3
+patt.task.dispatch-retry	src/core/contact.py	X
+patt.task.dispatch-retry	src/core/dispatcher.py	A
+patt.task.dispatch-retry	src/core/gaze_email.py	F	4
+patt.task.dispatch-retry	src/core/gazer.py	X
+patt.task.dispatch-retry	src/core/inbox.py	X
+patt.task.dispatch-retry	src/core/intake.py	X
+patt.task.dispatch-retry	src/core/meteorite.py	X
+patt.task.dispatch-retry	src/core/monitor.py	X
+patt.task.dispatch-retry	src/core/repo_admin_json.py	X
+patt.task.dispatch-retry	src/core/roster.py	F	4
+patt.task.dispatch-retry	src/core/table_copy_upsert.py	X
+patt.task.dispatch-retry	src/core/tracker.py	A
+patt.task.dispatch-retry	src/data/database.py	A
+patt.task.dispatch-retry	src/external/anthropic.py	X
+patt.task.dispatch-retry	src/external/deepseek.py	X
+patt.task.dispatch-retry	src/external/google_cse.py	X
+patt.task.dispatch-retry	src/external/playwright.py	X
+patt.task.dispatch-retry	src/utils/config.py	B	1
+patt.task.dispatch-retry	src/utils/llm_external.py	X
+stat.component.public-then-helpers	src/__init__.py	X
+stat.component.public-then-helpers	src/core/__init__.py	X
+stat.component.public-then-helpers	src/core/agent.py	D	4
+stat.component.public-then-helpers	src/core/auth_bootstrap.py	A
+stat.component.public-then-helpers	src/core/bootstrap.py	C	1
+stat.component.public-then-helpers	src/core/builder.py	C	2
+stat.component.public-then-helpers	src/core/candidate.py	D	4
+stat.component.public-then-helpers	src/core/consult.py	D	4
+stat.component.public-then-helpers	src/core/contact.py	B	2
+stat.component.public-then-helpers	src/core/deploy_status.py	A
+stat.component.public-then-helpers	src/core/dispatcher.py	D	3
+stat.component.public-then-helpers	src/core/gaze_email.py	C	1
+stat.component.public-then-helpers	src/core/gazer.py	D	3
+stat.component.public-then-helpers	src/core/inbox.py	C	1
+stat.component.public-then-helpers	src/core/intake.py	D	3
+stat.component.public-then-helpers	src/core/meteorite.py	A
+stat.component.public-then-helpers	src/core/monitor.py	A
+stat.component.public-then-helpers	src/core/repo_admin_json.py	C	1
+stat.component.public-then-helpers	src/core/roster.py	D	4
+stat.component.public-then-helpers	src/core/table_copy_upsert.py	A
+stat.component.public-then-helpers	src/core/timesheets.py	A
+stat.component.public-then-helpers	src/core/tracker.py	C	2
+stat.component.public-then-helpers	src/data/__init__.py	X
+stat.component.public-then-helpers	src/data/contact_debug.py	C	1
+stat.component.public-then-helpers	src/data/contact_estelle_activity.py	C	1
+stat.component.public-then-helpers	src/data/contact_listen.py	C	1
+stat.component.public-then-helpers	src/data/database.py	D	3
+stat.component.public-then-helpers	src/external/__init__.py	X
+stat.component.public-then-helpers	src/external/anthropic.py	C	1
+stat.component.public-then-helpers	src/external/deepseek.py	C	1
+stat.component.public-then-helpers	src/external/gmail.py	A
+stat.component.public-then-helpers	src/external/google_cse.py	C	1
+stat.component.public-then-helpers	src/external/linear.py	C	1
+stat.component.public-then-helpers	src/external/playwright.py	D	3
+stat.component.public-then-helpers	src/external/slack.py	A
+stat.component.public-then-helpers	src/external/stytch.py	C	1
+stat.component.public-then-helpers	src/ui/__init__.py	X
+stat.component.public-then-helpers	src/ui/api/__init__.py	X
+stat.component.public-then-helpers	src/ui/api/api_admin.py	D	4
+stat.component.public-then-helpers	src/ui/api/api_candidate.py	C	1
+stat.component.public-then-helpers	src/ui/api/api_companies.py	C	1
+stat.component.public-then-helpers	src/ui/api/api_contact.py	C	1
+stat.component.public-then-helpers	src/ui/api/api_inbox.py	A
+stat.component.public-then-helpers	src/ui/api/api_intake.py	C	1
+stat.component.public-then-helpers	src/ui/api/api_jobs.py	C	1
+stat.component.public-then-helpers	src/ui/api/api_meteorite.py	A
+stat.component.public-then-helpers	src/ui/api/api_resume_html.py	C	1
+stat.component.public-then-helpers	src/ui/api/api_slack.py	A
+stat.component.public-then-helpers	src/ui/api/api_surfer.py	C	1
+stat.component.public-then-helpers	src/ui/api/api_system.py	C	1
+stat.component.public-then-helpers	src/ui/api_errors.py	A
+stat.component.public-then-helpers	src/ui/auth.py	C	1
+stat.component.public-then-helpers	src/ui/server.py	C	1
+stat.component.public-then-helpers	src/utils/__init__.py	X
+stat.component.public-then-helpers	src/utils/auth.py	A
+stat.component.public-then-helpers	src/utils/config.py	B	2
+stat.component.public-then-helpers	src/utils/cost_calculator.py	A
+stat.component.public-then-helpers	src/utils/deploy_status.py	B	1
+stat.component.public-then-helpers	src/utils/formatting.py	B	1
+stat.component.public-then-helpers	src/utils/integration_io.py	A
+stat.component.public-then-helpers	src/utils/llm_external.py	A
+stat.component.public-then-helpers	src/utils/logging.py	B	1
+stat.component.public-then-helpers	src/utils/merge_ticket_log.py	C	1
+stat.component.public-then-helpers	src/utils/network.py	A
+stat.component.public-then-helpers	src/utils/rubric_feedback.py	B	1
+stat.component.public-then-helpers	src/utils/rubric_text.py	C	1
+stat.component.public-then-helpers	src/ui/extension/src/lib/dwell.ts	A
+stat.component.public-then-helpers	src/ui/extension/src/lib/fanOut.ts	A
+stat.component.public-then-helpers	src/ui/extension/src/lib/pacingConfig.ts	A
+stat.component.public-then-helpers	src/ui/extension/src/lib/surferConsent.ts	A
+stat.component.public-then-helpers	src/ui/extension/src/lib/surferConsentGate.ts	A
+stat.component.public-then-helpers	src/ui/extension/src/lib/surferDisclosureDom.ts	C	1
+stat.component.public-then-helpers	src/ui/extension/src/lib/surferOffSwitch.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/App.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/AdminCandidateFilterControl.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/AdminDeployFooter.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/AdminRoute.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/AgentAnalysisHeader.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/AgentStoryTab.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/ArtifactEditor.tsx	C	2
+stat.component.public-then-helpers	src/ui/frontend/src/components/BatchAgentDataModal.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/CandidateActionNotesModal.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/CandidateJobRowActions.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/CollapsiblePanel.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/CompanyDetailModal.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/ConfidenceBullets.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/ContextTextPage.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/DetailsEditPage.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/ExperienceJobsEditor.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/FormFields.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/IntakeChatModal.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/IntakePreamblePanel.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/IntakeTopicMenuPanel.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/JobAnalysisReportModal.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/JobDetailModal.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/LabeledTextArea.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/ListPage.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/ListTableTruncatedCell.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/MaterialsPreviewModal.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/Modal.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/NavigationShell.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/ProfileTextPage.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/RecommendedJobReportHeader.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/ReportSectionList.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/RequireAuth.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/ResumeStructureEditor.tsx	X
+stat.component.public-then-helpers	src/ui/frontend/src/components/RubricModal.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/SectionExpandChrome.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/SideTabPanel.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/StateTimeline.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/TabbedTextArea.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/Time.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/Toast.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/components/TokenTextarea.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/components/UserPrompt.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/contexts/AuthContext.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/contexts/CandidateContext.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/contexts/StateUiContext.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/hooks/useAdminCandidateFilter.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/hooks/useCandidateJobActions.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/hooks/useDirtyLeaveSaveThenNavigate.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/hooks/useInPlaceLiveRefresh.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/hooks/useSectionExpandPolicy.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/analysisUpshot.ts	B	1
+stat.component.public-then-helpers	src/ui/frontend/src/lib/api.ts	B	1
+stat.component.public-then-helpers	src/ui/frontend/src/lib/artifactBlobHasContent.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/authPassthrough.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/authSessionPolicy.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/candidateJobActions.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/candidateLabel.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/copyJobSnapshot.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/documentTitle.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/fmt.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/listTableLayout.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/recommendedJobReport.tsx	B	1
+stat.component.public-then-helpers	src/ui/frontend/src/lib/rubricDisplay.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/sessionAuthMark.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/sessionExtend.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/stateUiSections.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/stytchAuthenticateHandoff.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/stytchClient.ts	X
+stat.component.public-then-helpers	src/ui/frontend/src/lib/stytchRedirect.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/taskKeySort.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/timesheetCost.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/toastDiagnostics.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/uiConfig.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/lib/useListTableColumnMeasure.ts	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/lib/useLocalStorage.ts	A
+stat.component.public-then-helpers	src/ui/frontend/src/main.tsx	X
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminAgentPrompts.tsx	D	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminAgentTimesheets.tsx	D	2
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminCostReconciliation.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminDataManagement.tsx	D	2
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminManageCandidates.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminManageEmail.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminManageSlack.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx	D	2
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminScheduledActions.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminScheduledQueries.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminSessionCoverLetter.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminSessionResumePaste.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminTaskPrompts.tsx	C	2
+stat.component.public-then-helpers	src/ui/frontend/src/pages/AdminVectorFeedback.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsCompanySearchTerms.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsCompanyWatchCriteria.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsDoJobCriteria.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsGetJobCriteria.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsJobDescCriteria.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsJobListCriteria.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsLikeJobCriteria.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/ArtifactsMeteoriteCriteria.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/Authenticate.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateBackstory.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateDealBreakers.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateIdealDay.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateIntake.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidatePriorities.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateProfile.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateStrengths.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateSurfer.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateSurferConsent.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CandidateWritingPreferences.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CompaniesIgnored.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CompaniesInactiveList.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CompaniesNewList.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CompaniesWatchHistory.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/CompaniesWatchList.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/JobsApplied.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/JobsInReview.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/JobsRecommended.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/JobsResponded.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/JobsSkipped.tsx	C	1
+stat.component.public-then-helpers	src/ui/frontend/src/pages/LogOffScreen.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/pages/Login.tsx	A
+stat.component.public-then-helpers	src/ui/frontend/src/routes.tsx	A
+stat.errors.raise-once-log-once	src/core/agent.py	A
+stat.errors.raise-once-log-once	src/core/candidate.py	D	1
+stat.errors.raise-once-log-once	src/core/inbox.py	D	1
+stat.errors.raise-once-log-once	src/core/intake.py	A
+stat.errors.raise-once-log-once	src/core/meteorite.py	A
+stat.errors.raise-once-log-once	src/core/monitor.py	A
+stat.errors.raise-once-log-once	src/core/repo_admin_json.py	A
+stat.errors.raise-once-log-once	src/core/table_copy_upsert.py	C	2
+stat.errors.raise-once-log-once	src/core/tracker.py	A
+stat.errors.raise-once-log-once	src/core/roster.py	D	2
+stat.errors.raise-once-log-once	src/core/consult.py	D	1
+stat.errors.raise-once-log-once	src/core/builder.py	D	1
+stat.errors.raise-once-log-once	src/data/contact_debug.py	D	2
+stat.errors.raise-once-log-once	src/data/contact_estelle_activity.py	D	2
+stat.errors.raise-once-log-once	src/data/contact_listen.py	D	2
+stat.errors.raise-once-log-once	src/data/database.py	D	3
+stat.errors.raise-once-log-once	src/external/anthropic.py	D	3
+stat.errors.raise-once-log-once	src/external/deepseek.py	D	3
+stat.errors.raise-once-log-once	src/external/gmail.py	D	2
+stat.errors.raise-once-log-once	src/external/google_cse.py	D	2
+stat.errors.raise-once-log-once	src/external/linear.py	A
+stat.errors.raise-once-log-once	src/external/playwright.py	D	3
+stat.errors.raise-once-log-once	src/external/slack.py	D	2
+stat.errors.raise-once-log-once	src/external/stytch.py	A
+stat.errors.raise-once-log-once	src/utils/auth.py	A
+stat.errors.raise-once-log-once	src/utils/config.py	D	2
+stat.errors.raise-once-log-once	src/utils/cost_calculator.py	X
+stat.errors.raise-once-log-once	src/utils/deploy_status.py	X
+stat.errors.raise-once-log-once	src/utils/formatting.py	D	2
+stat.errors.raise-once-log-once	src/utils/integration_io.py	X
+stat.errors.raise-once-log-once	src/utils/llm_external.py	D	2
+stat.errors.raise-once-log-once	src/utils/logging.py	A
+stat.errors.raise-once-log-once	src/utils/merge_ticket_log.py	A
+stat.errors.raise-once-log-once	src/utils/network.py	A
+stat.errors.raise-once-log-once	src/utils/rubric_feedback.py	D	1
+stat.errors.raise-once-log-once	src/utils/rubric_text.py	X
+stat.errors.raise-once-log-once	src/ui/api/api_admin.py	D	3
+stat.errors.raise-once-log-once	src/ui/api/api_candidate.py	D	3
+stat.errors.raise-once-log-once	src/ui/api/api_companies.py	X
+stat.errors.raise-once-log-once	src/ui/api/api_contact.py	D	2
+stat.errors.raise-once-log-once	src/ui/api/api_inbox.py	D	2
+stat.errors.raise-once-log-once	src/ui/api/api_intake.py	D	3
+stat.errors.raise-once-log-once	src/ui/api/api_jobs.py	D	3
+stat.errors.raise-once-log-once	src/ui/api/api_meteorite.py	A
+stat.errors.raise-once-log-once	src/ui/api/api_resume_html.py	D	2
+stat.errors.raise-once-log-once	src/ui/api/api_slack.py	X
+stat.errors.raise-once-log-once	src/ui/api/api_surfer.py	A
+stat.errors.raise-once-log-once	src/ui/api/api_system.py	A
+stat.layers.import-rules	src/core/agent.py	A
+stat.layers.import-rules	src/core/auth_bootstrap.py	A
+stat.layers.import-rules	src/core/bootstrap.py	A
+stat.layers.import-rules	src/core/builder.py	F	1
+stat.layers.import-rules	src/core/candidate.py	A
+stat.layers.import-rules	src/core/consult.py	A
+stat.layers.import-rules	src/core/contact.py	A
+stat.layers.import-rules	src/core/deploy_status.py	A
+stat.layers.import-rules	src/core/dispatcher.py	F	1
+stat.layers.import-rules	src/core/gaze_email.py	F	2
+stat.layers.import-rules	src/core/gazer.py	F	1
+stat.layers.import-rules	src/core/inbox.py	A
+stat.layers.import-rules	src/core/intake.py	A
+stat.layers.import-rules	src/core/meteorite.py	F	4
+stat.layers.import-rules	src/core/monitor.py	F	1
+stat.layers.import-rules	src/core/repo_admin_json.py	A
+stat.layers.import-rules	src/core/roster.py	A
+stat.layers.import-rules	src/core/table_copy_upsert.py	A
+stat.layers.import-rules	src/core/timesheets.py	A
+stat.layers.import-rules	src/core/tracker.py	A
+stat.layers.import-rules	src/data/contact_debug.py	A
+stat.layers.import-rules	src/data/contact_estelle_activity.py	A
+stat.layers.import-rules	src/data/contact_listen.py	A
+stat.layers.import-rules	src/data/database.py	D	3
+stat.layers.import-rules	src/external/anthropic.py	A
+stat.layers.import-rules	src/external/deepseek.py	A
+stat.layers.import-rules	src/external/gmail.py	A
+stat.layers.import-rules	src/external/google_cse.py	A
+stat.layers.import-rules	src/external/linear.py	A
+stat.layers.import-rules	src/external/playwright.py	A
+stat.layers.import-rules	src/external/slack.py	A
+stat.layers.import-rules	src/external/stytch.py	A
+stat.layers.import-rules	src/utils/auth.py	A
+stat.layers.import-rules	src/utils/config.py	D	5
+stat.layers.import-rules	src/utils/cost_calculator.py	A
+stat.layers.import-rules	src/utils/deploy_status.py	A
+stat.layers.import-rules	src/utils/formatting.py	A
+stat.layers.import-rules	src/utils/integration_io.py	A
+stat.layers.import-rules	src/utils/llm_external.py	A
+stat.layers.import-rules	src/utils/logging.py	A
+stat.layers.import-rules	src/utils/merge_ticket_log.py	A
+stat.layers.import-rules	src/utils/network.py	A
+stat.layers.import-rules	src/utils/rubric_feedback.py	A
+stat.layers.import-rules	src/utils/rubric_text.py	A
+stat.layers.import-rules	src/ui/api/api_admin.py	F	5
+stat.layers.import-rules	src/ui/api/api_candidate.py	A
+stat.layers.import-rules	src/ui/api/api_companies.py	A
+stat.layers.import-rules	src/ui/api/api_contact.py	A
+stat.layers.import-rules	src/ui/api/api_inbox.py	A
+stat.layers.import-rules	src/ui/api/api_intake.py	A
+stat.layers.import-rules	src/ui/api/api_jobs.py	A
+stat.layers.import-rules	src/ui/api/api_meteorite.py	A
+stat.layers.import-rules	src/ui/api/api_resume_html.py	A
+stat.layers.import-rules	src/ui/api/api_slack.py	A
+stat.layers.import-rules	src/ui/api/api_surfer.py	A
+stat.layers.import-rules	src/ui/api/api_system.py	A
+stat.layers.import-rules	src/ui/frontend/src/App.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/AdminCandidateFilterControl.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/AdminDeployFooter.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/AdminRoute.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/AgentAnalysisHeader.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/AgentStoryTab.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ArtifactEditor.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/BatchAgentDataModal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/CandidateActionNotesModal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/CandidateJobRowActions.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/CollapsiblePanel.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/CompanyDetailModal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ConfidenceBullets.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ContextTextPage.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/DetailsEditPage.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ExperienceJobsEditor.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/FormFields.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/IntakeChatModal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/IntakePreamblePanel.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/IntakeTopicMenuPanel.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/JobAnalysisReportModal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/JobDetailModal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/LabeledTextArea.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ListPage.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ListTableTruncatedCell.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/MaterialsPreviewModal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/Modal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/NavigationShell.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ProfileTextPage.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/RecommendedJobReportHeader.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ReportSectionList.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/RequireAuth.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/ResumeStructureEditor.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/RubricModal.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/SectionExpandChrome.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/SideTabPanel.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/StateTimeline.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/TabbedTextArea.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/Time.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/Toast.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/TokenTextarea.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/components/UserPrompt.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/contexts/AuthContext.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/contexts/CandidateContext.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/contexts/StateUiContext.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/hooks/useAdminCandidateFilter.ts	X
+stat.layers.import-rules	src/ui/frontend/src/hooks/useCandidateJobActions.ts	X
+stat.layers.import-rules	src/ui/frontend/src/hooks/useDirtyLeaveSaveThenNavigate.ts	X
+stat.layers.import-rules	src/ui/frontend/src/hooks/useInPlaceLiveRefresh.ts	X
+stat.layers.import-rules	src/ui/frontend/src/hooks/useSectionExpandPolicy.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/analysisUpshot.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/api.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/artifactBlobHasContent.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/authPassthrough.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/authSessionPolicy.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/candidateJobActions.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/candidateLabel.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/copyJobSnapshot.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/documentTitle.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/fmt.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/listTableLayout.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/recommendedJobReport.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/lib/rubricDisplay.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/sessionAuthMark.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/sessionExtend.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/stateUiSections.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/stytchAuthenticateHandoff.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/stytchClient.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/stytchRedirect.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/taskKeySort.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/timesheetCost.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/toastDiagnostics.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/uiConfig.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/useListTableColumnMeasure.ts	X
+stat.layers.import-rules	src/ui/frontend/src/lib/useLocalStorage.ts	X
+stat.layers.import-rules	src/ui/frontend/src/main.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminAgentPrompts.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminAgentTimesheets.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminCostReconciliation.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminDataManagement.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminManageCandidates.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminManageEmail.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminManageSlack.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminScheduledActions.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminScheduledQueries.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminSessionCoverLetter.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminSessionResumePaste.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminTaskPrompts.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/AdminVectorFeedback.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsCompanySearchTerms.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsCompanyWatchCriteria.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsDoJobCriteria.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsGetJobCriteria.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsJobDescCriteria.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsJobListCriteria.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsLikeJobCriteria.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/ArtifactsMeteoriteCriteria.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/Authenticate.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateBackstory.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateDealBreakers.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateIdealDay.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateIntake.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidatePriorities.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateProfile.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateStrengths.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateSurfer.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateSurferConsent.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CandidateWritingPreferences.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CompaniesIgnored.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CompaniesInactiveList.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CompaniesNewList.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CompaniesWatchHistory.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/CompaniesWatchList.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/JobsApplied.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/JobsInReview.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/JobsRecommended.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/JobsResponded.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/JobsSkipped.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/LogOffScreen.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/pages/Login.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/routes.tsx	X
+stat.layers.import-rules	src/ui/frontend/src/vite-env.d.ts	X
+stat.layers.import-rules	src/ui/frontend/vite.config.ts	X
+stat.layers.import-rules	src/ui/frontend/vitest.setup.ts	X

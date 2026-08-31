@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
 """Serve the canon corpus to pipeline agents.
 
-Two commands:
+Run with --help for the current commands; this docstring deliberately does not
+list them, so it cannot go stale.
 
-  index   Roster of every directive: id, kind, domain, status, and the
-          human-readable point (first line of the body). Cheap enough to
-          load on every pass — used by Chuckles/Joan/Radia to select.
+Directives in force live in directives/active; drafts and archived directives
+sit beside it and are never served. Status is a location, not a field.
 
-  expand  Full content for a curated list of ids, as one JSON object, so a
-          caller reads N directives in one call instead of N. Fed to the
-          implementing engineer in the issue thread and to Radia at review.
-
-The corpus is the directory tree this file sits in. No third-party
-dependencies are required, so the script travels with the corpus when it is
+No third-party dependencies, so the script travels with the corpus when it is
 copied into another repo.
 """
 
@@ -27,148 +22,92 @@ from pathlib import Path
 
 # Overridable so the clerk can be pointed at a migration tree (canon-v2) without
 # being copied into it.
-CANON_ROOT = Path(os.environ.get("CANON_ROOT", Path(__file__).resolve().parent))
+CANON_ROOT = Path(os.environ.get("CANON_ROOT",
+                                 Path(__file__).resolve().parent)).resolve()
 
-# Files that live in the corpus tree but are not directives.
-HARNESS_NAMES = {"README.md", "SCHEMA.md", "AUTHORING.md", "HARVEST.md"}
+# Directives in force. Drafts and archived directives sit beside this directory
+# and are never served: status is where a file lives, not a field inside it.
+ACTIVE_DIR = CANON_ROOT / "directives" / "active"
 
-# Subtree -> kind. Kind is structural today; it moves to frontmatter when the
-# corpus flattens.
-KIND_BY_SUBTREE = {
-    # current layout
-    "statutes": "statute", "patterns": "pattern",
-    # proposed flat layout (canon-v2)
-    "statute": "statute", "pattern": "pattern", "orchestrate": "orchestration",
-}
+# Filename prefix -> kind. The prefix is the first segment of the id.
+KIND_BY_PREFIX = {"stat": "statute", "patt": "pattern", "orch": "orchestration"}
 
-# The two kinds carry different status enums: statutes are active|retired,
-# patterns are proposed|approved|retired. These are the values a consumer is
-# meant to load — a proposed pattern is not citable until Archie approves it.
-LIVE_STATUS_BY_KIND = {"statute": "active", "pattern": "approved",
-                       "orchestration": "active"}
+# Prepended to every expansion. Exception handling is identical for every
+# directive, so it lives here once rather than in each file; rule-specific
+# guidance belongs in that directive's `# Resolution` section.
+PREAMBLE_FILE = CANON_ROOT / "instruction_preamble.md"
 
 
-def load_corpus(include_all: bool = False) -> list[dict]:
-    """Every directive in the corpus, sorted by id.
 
-    Defaults to the live set only — active statutes and approved patterns.
+
+
+def load_corpus() -> list[dict]:
+    """Every directive in force, sorted by id.
+
+    Everything in directives/active is served. Kind comes from the filename
+    prefix, so a directive's class is visible in a directory listing.
     """
     directives = []
-    for subtree, kind in KIND_BY_SUBTREE.items():
-        root = CANON_ROOT / subtree
-        if not root.is_dir():
+    for path in sorted(ACTIVE_DIR.glob("*.md")):
+        kind = KIND_BY_PREFIX.get(path.stem.split(".", 1)[0])
+        if kind is None:
             continue
-        for path in root.rglob("*.md"):
-            if path.name in HARNESS_NAMES:
-                continue
-            directives.append(_read_directive(path, kind))
-    if not include_all:
-        directives = [d for d in directives if _is_live(d)]
+        directives.append(_read_directive(path, kind))
     return sorted(directives, key=lambda d: d["id"])
 
 
-def _is_live(directive: dict) -> bool:
-    return directive["status"] == LIVE_STATUS_BY_KIND.get(directive["kind"])
+def usage_text() -> str:
+    """The instruction preamble. Absent means the corpus is incomplete."""
+    if not PREAMBLE_FILE.is_file():
+        raise FileNotFoundError(f"missing instruction preamble: {PREAMBLE_FILE}")
+    return PREAMBLE_FILE.read_text(encoding="utf-8")
 
 
-def build_index(include_all: bool = False) -> dict:
+def build_index() -> dict:
     """Roster without body content."""
-    fields = ("id", "kind", "namespace", "domain", "tier", "status", "point", "path")
+    fields = ("id", "kind", "scope", "point", "path")
     return {
         **_corpus_version(),
-        "directives": [
-            {k: d[k] for k in fields} for d in load_corpus(include_all)
-        ],
+        "directives": [{k: d[k] for k in fields} for d in load_corpus()],
     }
 
 
-def build_expansion(ids: list[str], include_all: bool = False) -> dict:
-    """Full content for a curated id list. Raises on anything unresolvable."""
-    by_id = {d["id"]: d for d in load_corpus(include_all=True)}
+def build_expansion(ids: list[str]) -> dict:
+    """Full content for a curated id list. Raises on anything unresolvable.
+
+    An id that does not resolve is either a typo or a directive that has been
+    moved out of the tree — both are failures, not omissions.
+    """
+    by_id = {d["id"]: d for d in load_corpus()}
 
     unknown = [i for i in ids if i not in by_id]
     if unknown:
         raise LookupError(f"unknown directive id(s): {', '.join(sorted(unknown))}")
 
-    if not include_all:
-        not_live = [i for i in ids if not _is_live(by_id[i])]
-        if not_live:
-            detail = ", ".join(f"{i} ({by_id[i]['status']})" for i in sorted(not_live))
-            raise LookupError(
-                f"directive id(s) not in the live set: {detail} "
-                "(pass --allow-any to read anyway)"
-            )
-
     selected = [by_id[i] for i in ids]
-    payload = {**_corpus_version(), "requested": ids, "resolved": len(selected)}
+    payload = {"usage": usage_text(), **_corpus_version(),
+               "requested": ids, "resolved": len(selected)}
     payload["directives"] = selected
     payload["size"] = _size_report(selected)
     return payload
 
 
-def full_text(ids: list[str] | None = None, kind: str | None = None,
-              include_all: bool = False) -> dict:
+def full_text(ids: list[str] | None = None, kind: str | None = None) -> dict:
     """Fat bodies for a curated selection — the call agents make.
 
     Pass explicit `ids` (the usual case: the issue's rubric list), or `kind`
     to take a whole class at once (`full_text(kind="pattern")`). Raises
-    LookupError on any id that is unknown or not in the live set, so a stale
-    rubric fails loudly instead of silently serving less than it claims.
+    LookupError on any id that does not resolve, so a stale rubric fails loudly
+    instead of silently serving less than it claims.
     """
     if ids is None:
         if kind is None:
             raise ValueError("full_text needs ids or kind")
-        ids = [d["id"] for d in load_corpus(include_all) if d["kind"] == kind]
+        ids = [d["id"] for d in load_corpus() if d["kind"] == kind]
     elif kind is not None:
-        by_id = {d["id"]: d for d in load_corpus(include_all=True)}
+        by_id = {d["id"]: d for d in load_corpus()}
         ids = [i for i in ids if by_id.get(i, {}).get("kind") == kind]
-    return build_expansion(ids, include_all=include_all)
-
-
-def verify_refs(include_all: bool = False) -> dict:
-    """Check every `canonical_refs` entry resolves to real code.
-
-    A directive that names a renamed function is the way canon rots, and it is
-    the one part of "is this accurate?" that does not need an opinion. Returns
-    one row per broken ref.
-    """
-    repo_root = CANON_ROOT.parent
-    broken = []
-    checked = 0
-    for directive in load_corpus(include_all):
-        for ref in directive["frontmatter"].get("canonical_refs") or []:
-            if not isinstance(ref, dict):
-                continue
-            checked += 1
-            path, symbol = ref.get("path"), ref.get("symbol")
-            target = repo_root / str(path)
-            if not target.is_file():
-                reason = "path not found"
-            elif not symbol:
-                reason = None
-            else:
-                reason = _symbol_missing(target, str(symbol))
-            if reason:
-                broken.append({"id": directive["id"], "path": path,
-                               "symbol": symbol, "reason": reason})
-    return {**_corpus_version(), "refs_checked": checked, "broken": broken}
-
-
-def _symbol_missing(target: Path, symbol: str) -> str | None:
-    """None when the symbol resolves, else the reason it does not.
-
-    Prose targets cite sections (`§2.4`); code targets cite identifiers. A
-    section resolves against a numbered heading, not a raw substring.
-    """
-    text = target.read_text(encoding="utf-8", errors="ignore")
-    section = symbol.lstrip("§ ").rstrip(".")
-    if target.suffix == ".md" and section and section[0].isdigit():
-        wanted = f"{section} "
-        if any(line.lstrip("# ").startswith(wanted)
-               for line in text.splitlines() if line.startswith("#")):
-            return None
-        return "section heading not found"
-    return None if symbol in text else "symbol not found in file"
+    return build_expansion(ids)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -177,36 +116,27 @@ def main(argv: list[str] | None = None) -> int:
 
     p_index = sub.add_parser("index", help="roster of directives, no body content")
     p_index.add_argument("--json", action="store_true", help="JSON instead of text")
-    p_index.add_argument("--kind", choices=sorted(set(KIND_BY_SUBTREE.values())))
-    p_index.add_argument("--namespace", help="filter by id namespace, e.g. astral, orch")
-    p_index.add_argument("--all", action="store_true",
-                         help="include retired and unapproved")
-
-    p_verify = sub.add_parser("verify", help="check canonical_refs resolve to real code")
-    p_verify.add_argument("--all", action="store_true", help="include retired and unapproved")
+    p_index.add_argument("--kind", choices=sorted(set(KIND_BY_PREFIX.values())))
+    p_index.add_argument("--scope", help="filter by scope, e.g. functions, errors")
 
     p_expand = sub.add_parser("expand", help="full content for a curated id list")
     p_expand.add_argument("ids", nargs="*", help="directive ids; omit to read stdin")
     p_expand.add_argument("--ids-file", type=Path, help="file with one id per line")
-    p_expand.add_argument("--allow-any", action="store_true",
-                          help="permit retired or unapproved ids")
 
     args = parser.parse_args(argv)
 
     if args.command == "index":
         return _run_index(args)
-    if args.command == "verify":
-        return _run_verify(args)
     return _run_expand(args)
 
 
 def _run_index(args) -> int:
-    index = build_index(include_all=args.all)
+    index = build_index()
     rows = index["directives"]
     if args.kind:
         rows = [r for r in rows if r["kind"] == args.kind]
-    if args.namespace:
-        rows = [r for r in rows if r["namespace"] == args.namespace]
+    if args.scope:
+        rows = [r for r in rows if r["scope"] == args.scope]
     index["directives"] = rows
     index["count"] = len(rows)
 
@@ -217,14 +147,8 @@ def _run_index(args) -> int:
     print(f"# canon index — {len(rows)} directives @ {index['corpus_sha'][:10]}"
           f"{' (DIRTY)' if index['corpus_dirty'] else ''}")
     for row in rows:
-        print(f"\n{row['id']}  [{row['kind']}/{row['status']}]\n    {row['point']}")
+        print(f"\n{row['id']}  [{row['kind']}]\n    {row['point']}")
     return 0
-
-
-def _run_verify(args) -> int:
-    report = verify_refs(include_all=args.all)
-    print(json.dumps(report, indent=2))
-    return 1 if report["broken"] else 0
 
 
 def _run_expand(args) -> int:
@@ -233,7 +157,7 @@ def _run_expand(args) -> int:
         print("expand: no ids given", file=sys.stderr)
         return 2
     try:
-        payload = build_expansion(ids, include_all=args.allow_any)
+        payload = build_expansion(ids)
     except LookupError as exc:
         print(f"expand: {exc}", file=sys.stderr)
         return 1
@@ -259,17 +183,13 @@ def _read_directive(path: Path, kind: str) -> dict:
     text = path.read_text(encoding="utf-8")
     frontmatter, body = _split_frontmatter(text)
     directive_id = frontmatter.get("id") or path.stem
-    namespace, _, remainder = directive_id.partition(".")
-    domain = remainder.partition(".")[0]
+    derived_scope = directive_id.partition(".")[2].partition(".")[0]
     # Frontmatter wins where the new anatomy states these explicitly; the
     # structural derivation is the fallback for the pre-v2 corpus.
     return {
         "id": directive_id,
         "kind": frontmatter.get("kind") or kind,
-        "namespace": namespace,
-        "domain": frontmatter.get("scope") or domain,
-        "tier": frontmatter.get("tier"),
-        "status": frontmatter.get("status", "active"),
+        "scope": frontmatter.get("scope") or derived_scope,
         "point": frontmatter.get("point") or _first_body_line(body),
         "path": str(path.relative_to(CANON_ROOT.parent)),
         "frontmatter": frontmatter,

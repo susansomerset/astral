@@ -1,0 +1,24 @@
+file	grade	loe
+src/core/agent.py	A
+src/core/builder.py	X
+src/core/candidate.py	A
+src/core/consult.py	F	3
+src/core/contact.py	X
+src/core/dispatcher.py	A
+src/core/gaze_email.py	F	4
+src/core/gazer.py	X
+src/core/inbox.py	X
+src/core/intake.py	X
+src/core/meteorite.py	X
+src/core/monitor.py	X
+src/core/repo_admin_json.py	X
+src/core/roster.py	F	4
+src/core/table_copy_upsert.py	X
+src/core/tracker.py	A
+src/data/database.py	A
+src/external/anthropic.py	X
+src/external/deepseek.py	X
+src/external/google_cse.py	X
+src/external/playwright.py	X
+src/utils/config.py	B	1
+src/utils/llm_external.py	X

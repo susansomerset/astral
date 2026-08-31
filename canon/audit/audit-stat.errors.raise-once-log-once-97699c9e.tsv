@@ -1,0 +1,48 @@
+src/core/agent.py	A
+src/core/candidate.py	D	1
+src/core/inbox.py	D	1
+src/core/intake.py	A
+src/core/meteorite.py	A
+src/core/monitor.py	A
+src/core/repo_admin_json.py	A
+src/core/table_copy_upsert.py	C	2
+src/core/tracker.py	A
+src/core/roster.py	D	2
+src/core/consult.py	D	1
+src/core/builder.py	D	1
+src/data/contact_debug.py	D	2
+src/data/contact_estelle_activity.py	D	2
+src/data/contact_listen.py	D	2
+src/data/database.py	D	3
+src/external/anthropic.py	D	3
+src/external/deepseek.py	D	3
+src/external/gmail.py	D	2
+src/external/google_cse.py	D	2
+src/external/linear.py	A
+src/external/playwright.py	D	3
+src/external/slack.py	D	2
+src/external/stytch.py	A
+src/utils/auth.py	A
+src/utils/config.py	D	2
+src/utils/cost_calculator.py	X
+src/utils/deploy_status.py	X
+src/utils/formatting.py	D	2
+src/utils/integration_io.py	X
+src/utils/llm_external.py	D	2
+src/utils/logging.py	A
+src/utils/merge_ticket_log.py	A
+src/utils/network.py	A
+src/utils/rubric_feedback.py	D	1
+src/utils/rubric_text.py	X
+src/ui/api/api_admin.py	D	3
+src/ui/api/api_candidate.py	D	3
+src/ui/api/api_companies.py	X
+src/ui/api/api_contact.py	D	2
+src/ui/api/api_inbox.py	D	2
+src/ui/api/api_intake.py	D	3
+src/ui/api/api_jobs.py	D	3
+src/ui/api/api_meteorite.py	A
+src/ui/api/api_resume_html.py	D	2
+src/ui/api/api_slack.py	X
+src/ui/api/api_surfer.py	A
+src/ui/api/api_system.py	A
