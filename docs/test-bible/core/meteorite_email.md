@@ -67,7 +67,7 @@ Candidate-bound `run_meteorite_email`: requires row `candidate_id`; filters From
 | Selected-ids config vocabulary | `src/utils/config.py` | **`TestAst1140GazeEmailSelectedConfig`** |
 | Candidate-bound runner + process_ helper (AST-1136 on tip) | `src/core/meteorite_email.py` | **`TestAst1136CandidateBoundMeteoriteEmail`**; revised **`TestAst1090RunMeteoriteEmail`** |
 
-**Broken / obsolete (Betty return pass — resolve `origin/dev` merge):** AST-1136 `_handle_bound` mocks must return 5-tuple `(processed, passed, failed, errors, outcome)` after AST-1140 helper change; sub tip must carry AST-1136 + AST-1140 test/bible surface from `origin/tests` / `origin/dev`.
+**Broken / obsolete (Betty return pass — resolve `origin/dev` merge):** AST-1136 `_handle_bound` mocks must return 5-tuple `(processed, passed, failed, errors, outcome)` after AST-1140 helper change; sub tip must carry AST-1136 + AST-1140 test/bible surface from `origin/tests` / `origin/dev`. **AST-1559:** remove spy on retired `create_meteorite_job_from_inbox_message` (**AST-1558**); dispatcher route is **`check_inbox**`.
 
 **Integration:** none — no existing scenario asserts Land Meteorite selected-ids; do not invent new coverage.
 

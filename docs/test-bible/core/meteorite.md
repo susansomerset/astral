@@ -228,3 +228,40 @@ Public `stage_meteorite`: blob + source handle → `invoke_stage_meteorite` → 
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+`check_inbox` fan-out + monitoring + archive; dispatcher repoint. See **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| check_inbox | `src/core/meteorite.py` | **`TestAst1559CheckInbox`** |
+| Email aliases | `src/core/candidate.py` | **`TestAst1559EmailAliasesForCandidate`** |
+| Monitoring config | `src/utils/config.py` | **`TestAst1559MonitoringConfig`**; revised **`TestAst1090GazeEmailRunnerConfig`**, **`TestAst1140GazeEmailSelectedConfig`** |
+| Dispatcher | `src/core/dispatcher.py` | revised **`TestAst1090GazeEmailDispatchOne`** |
+
+**Broken / obsolete:** `meteorite_email.run` config/dispatcher asserts; **`TestAst1140RunMeteoriteEmailSelectedIds`** create spy (**AST-1558**).
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst1559CheckInbox`
+2. `tests/component/core/test_candidate.py::TestAst1559EmailAliasesForCandidate`
+3. `tests/component/utils/test_config.py::TestAst1559MonitoringConfig`
+4. `tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne`
+5. Revised: `TestAst1090GazeEmailRunnerConfig`, `TestAst1140GazeEmailSelectedConfig`, `TestAst1140RunMeteoriteEmailSelectedIds`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox \
+  tests/component/core/test_candidate.py::TestAst1559EmailAliasesForCandidate \
+  tests/component/utils/test_config.py::TestAst1559MonitoringConfig \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
+  -q
+```

@@ -462,3 +462,9 @@ Ban automatic `dispatch_task` writers on scheduler start; script hard-fail on `d
   tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
   -q
 ```
+
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+Mailbox branch awaits **`check_inbox`** — revised **`TestAst1090GazeEmailDispatchOne`**.

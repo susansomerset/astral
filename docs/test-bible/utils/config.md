@@ -3450,3 +3450,10 @@ Retire `FETCH_EMAIL_CONFIG`, `INBOX_BIND_CONFIG`, `TASK_CONFIG["fetch_email"]`, 
   tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired \
   -q
 ```
+
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+`METEORITE_MONITORING_CONFIG`; `debug_func` → `meteorite.check_inbox`. **`TestAst1559MonitoringConfig`**.
+
