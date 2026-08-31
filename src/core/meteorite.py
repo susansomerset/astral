@@ -17,6 +17,7 @@ create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text →
 from __future__ import annotations
 
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -34,9 +35,11 @@ from src.data.database import (
     clear_meteorite_batch,
     get_company,
     get_job,
+    get_meteorite,
     get_meteorite_batch,
     insert_meteorite_rows,
     list_meteorites_by_source,
+    list_meteorites_by_state,
     save_company,
     save_job,
     update_candidate_last_email_check,
@@ -44,6 +47,7 @@ from src.data.database import (
 )
 from src.external.playwright import get_visible_text
 from src.utils.config import (
+    METEORITE_BOT_BLOCKED_NOTIFY_CONFIG,
     METEORITE_CONFIG,
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
@@ -52,6 +56,7 @@ from src.utils.config import (
     TASK_CONFIG,
     TRACKER_CONFIG,
 )
+from src.utils.formatting import normalize_pasted_list_email_html
 from src.utils.logging import get_logger, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -1421,4 +1426,183 @@ async def run_notify_meteorite_bot_blocked(
     task: Dict[str, Any], *, debug: bool = False
 ) -> Dict[str, int]:
     """Dispatch runner: BOT_BLOCKED → Estelle DM + nag → ABANDONED (AST-1561)."""
-    return dict(_ZERO_SUMMARY)
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    cfg = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
+    task_key = str((task or {}).get("task_key") or cfg["task_key"])
+    batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
+    batch_id = str((task or {}).get("entity_batch_id") or "").strip()
+    if not batch_id:
+        raise ValueError("entity_batch_id is required")
+
+    summary = dict(_ZERO_SUMMARY)
+    claim_meteorite_batch(batch_id, cfg["trigger_state"], limit=batch_size)
+    rows = get_meteorite_batch(batch_id)
+    if not rows:
+        return summary
+
+    nag_limit = int(cfg["nag_limit"])
+    try:
+        for row in rows:
+            summary["total_processed"] += 1
+            row_id = int(row["id"])
+            cid = str(row.get("candidate_id") or "")
+            nag_count = int(row.get("nag_count") or 0)
+            try:
+                if nag_count >= nag_limit:
+                    update_meteorite(
+                        row_id, state="ABANDONED", error="nag limit exceeded"
+                    )
+                    summary["total_passed"] += 1
+                    continue
+
+                channel = _resolve_slack_dm_channel_for_candidate(cid)
+                if not channel:
+                    update_meteorite(row_id, error="no slack dm channel")
+                    summary["total_failed"] += 1
+                    continue
+
+                first = row.get("estelle_notified_at") is None
+                message = _format_bot_blocked_dm(
+                    row,
+                    nag_count=nag_count + 1,
+                    nag_limit=nag_limit,
+                    first=first,
+                )
+                from src.core.contact import contact_post_message
+
+                resp = contact_post_message(
+                    channel=channel, text=message, thread_ts=None, debug=debug
+                )
+                if not resp.get("ok"):
+                    err = str(resp.get("error") or "slack post failed")
+                    update_meteorite(row_id, error=err)
+                    summary["total_failed"] += 1
+                    continue
+
+                thread_ts = str(
+                    resp.get("ts")
+                    or (resp.get("message") or {}).get("ts")
+                    or ""
+                ).strip()
+                notified_at = datetime.now(timezone.utc).isoformat()
+                update_meteorite(
+                    row_id,
+                    estelle_notified_at=notified_at,
+                    estelle_thread_ts=thread_ts or row.get("estelle_thread_ts"),
+                    nag_count=nag_count + 1,
+                    error=None,
+                )
+                summary["total_passed"] += 1
+            except Exception as exc:
+                summary["total_failed"] += 1
+                summary["total_errors"] += 1
+                log.warning(
+                    "[meteorite] run_notify_meteorite_bot_blocked row=%s failed: %s",
+                    row_id,
+                    exc,
+                )
+    finally:
+        clear_meteorite_batch(batch_id)
+    return summary
+
+
+def _normalize_apply_paste_content(raw: str) -> str:
+    text = (raw or "").strip()
+    if not text:
+        return ""
+    if "<" in text and ">" in text:
+        text = normalize_pasted_list_email_html(text)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"[ \t]+", " ", text)
+        return text.strip()
+    return "\n\n".join(line.strip() for line in text.splitlines() if line.strip())
+
+
+def _pick_single_bot_blocked_row(rows: List[dict]) -> Optional[dict]:
+    if not rows:
+        return None
+    if len(rows) == 1:
+        return rows[0]
+    return max(rows, key=lambda r: int(r["id"]))
+
+
+def find_meteorite_for_estelle_thread(
+    *, candidate_id: str, thread_ts: str
+) -> Optional[dict]:
+    cid = (candidate_id or "").strip()
+    anchor = (thread_ts or "").strip()
+    if not cid or not anchor:
+        return None
+    matches = [
+        row
+        for row in list_meteorites_by_state("BOT_BLOCKED")
+        if str(row.get("candidate_id") or "") == cid
+        and str(row.get("estelle_thread_ts") or "").strip() == anchor
+    ]
+    return _pick_single_bot_blocked_row(matches)
+
+
+def find_meteorite_bot_blocked_paste_source(*, candidate_id: str) -> Optional[dict]:
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return None
+    matches = [
+        row
+        for row in list_meteorites_by_state("BOT_BLOCKED")
+        if str(row.get("candidate_id") or "") == cid
+        and str(row.get("source_kind") or "").strip() == "paste"
+    ]
+    return _pick_single_bot_blocked_row(matches)
+
+
+def apply_paste(meteorite_id: int, pasted_text: str, *, debug: bool = False) -> dict:
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    row = get_meteorite(meteorite_id)
+    if not row:
+        return {"ok": False, "error": "not_found"}
+    if row.get("state") != "BOT_BLOCKED":
+        return {
+            "ok": False,
+            "error": "invalid_state",
+            "state": row.get("state"),
+        }
+    content = _normalize_apply_paste_content(pasted_text)
+    if not content:
+        return {"ok": False, "error": "empty_paste"}
+    update_meteorite(meteorite_id, content=content, state="READY", error=None)
+    return {"ok": True, "meteorite_id": meteorite_id, "state": "READY"}
+
+
+def _resolve_slack_dm_channel_for_candidate(candidate_id: str) -> Optional[str]:
+    row = get_candidate((candidate_id or "").strip())
+    if not row:
+        return None
+    cd = row.get("candidate_data") if isinstance(row.get("candidate_data"), dict) else {}
+    contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
+    uid = contact.get("slack_user_id")
+    if not isinstance(uid, str) or not uid.strip():
+        return None
+    from src.data.contact_estelle_activity import load_estelle_activity_store
+
+    store = load_estelle_activity_store()
+    by = store.get("by_slack_user_id")
+    if not isinstance(by, dict):
+        return None
+    activity = by.get(uid.strip())
+    if not isinstance(activity, dict):
+        return None
+    channel = activity.get("last_channel")
+    if isinstance(channel, str) and channel.startswith("D"):
+        return channel
+    return None
+
+
+def _format_bot_blocked_dm(
+    row: dict, *, nag_count: int, nag_limit: int, first: bool
+) -> str:
+    cfg = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
+    link = (row.get("link") or "").strip() or "(no link)"
+    tpl = cfg["dm_first_template"] if first else cfg["dm_nag_template"]
+    return tpl.format(link=link, nag_count=nag_count, nag_limit=nag_limit)
