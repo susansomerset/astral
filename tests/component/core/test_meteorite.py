@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import importlib.util
+from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -13,6 +15,7 @@ from src.utils.config import (
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
     METEORITE_MONITORING_CONFIG,
+    METEORITE_RETENTION_CONFIG,
 )
 
 
@@ -1196,6 +1199,87 @@ class TestAst1561RunNotifyBotBlocked:
         assert out["total_passed"] == 1
         assert db.get_meteorite(row_id)["state"] == "ABANDONED"
         post.assert_not_called()
+
+
+def _backdate_meteorite_state_changed(db, row_id: int, iso: str) -> None:
+    conn = db._get_connection()
+    try:
+        conn.execute(
+            "UPDATE meteorite SET state_changed_at = ? WHERE id = ?",
+            (iso, row_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "run_meteorite_retention"),
+    reason="AST-1562 retention runner not on this publish tip",
+)
+class TestAst1562RunMeteoriteRetention:
+    """AST-1562: purge old LANDED; info-list stale rows; module retired."""
+
+    def test_meteorite_email_module_deleted(self) -> None:
+        assert importlib.util.find_spec("src.core.meteorite_email") is None
+
+    @pytest.mark.asyncio
+    async def test_purges_old_landed_rows(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-retention-purge"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Purge"})
+        row_id = _insert_meteorite_row(db, cid, state="LANDED")
+        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _backdate_meteorite_state_changed(db, row_id, old)
+        out = await meteorite_mod.run_meteorite_retention(
+            {"batch_size": METEORITE_RETENTION_CONFIG["batch_size"]},
+            debug=False,
+        )
+        assert out["total_processed"] >= 1
+        assert out["total_passed"] >= 1
+        assert db.get_meteorite(row_id) is None
+
+    @pytest.mark.asyncio
+    async def test_stale_rows_info_logged_not_deleted(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-retention-stale"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Stale"})
+        row_id = _insert_meteorite_row(db, cid, state="ERROR", link="https://jobs.example/e")
+        old = (datetime.now(timezone.utc) - timedelta(days=30)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _backdate_meteorite_state_changed(db, row_id, old)
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
+        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        assert out["total_processed"] >= 1
+        assert out["total_passed"] >= 1
+        assert db.get_meteorite(row_id) is not None
+        stale_calls = [
+            c
+            for c in log.info.call_args_list
+            if c.args and "meteorite retention stale" in str(c.args[0])
+        ]
+        assert stale_calls
+        line = str(stale_calls[0].args[0])
+        assert str(row_id) in line
+        assert "ERROR" in line
+
+    @pytest.mark.asyncio
+    async def test_fresh_landed_not_purged(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-retention-fresh"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Fresh"})
+        row_id = _insert_meteorite_row(db, cid, state="LANDED")
+        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        assert out["total_processed"] == 0
+        assert db.get_meteorite(row_id) is not None
 
 
 def _check_inbox_msg(

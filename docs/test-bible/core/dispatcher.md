@@ -483,6 +483,18 @@ Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
 
 ---
 
+### AST-1562 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
+
+`_dispatch_one` retention branch → `run_meteorite_retention` with minted `entity_batch_id` (after notify, before mailbox `check_inbox`). **`TestAst1562RetentionDispatchOne`**. Runners + config: **`docs/test-bible/core/meteorite.md`** § AST-1562.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1562.
+
+---
+
 ### AST-1561 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
