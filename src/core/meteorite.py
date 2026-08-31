@@ -1,6 +1,9 @@
 """
 Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470 / AST-1493 / AST-1495).
 
+Dispatch `stage_meteorite` / `scrape_meteorite` / `land_meteorite` rows (AST-1560) are table
+transition runners — not Ruth consult hops; dispatcher custom branch only.
+
 Lazy-insert stem-keyed companies into METEORITE from METEORITE_CONFIG (default
 stem → meteorite-<candidate_id>). Track = company state METEORITE or legacy
 short_name_prefix. Public stage_meteorite (AST-1530): classify blob+source handle
@@ -19,9 +22,25 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.candidate import get_candidate
 from src.core import tracker
-from src.data.database import get_company, get_job, save_company, save_job
+from src.data.database import (
+    claim_meteorite_batch,
+    clear_meteorite_batch,
+    get_company,
+    get_job,
+    get_meteorite_batch,
+    save_company,
+    save_job,
+    update_meteorite,
+)
 from src.external.playwright import get_visible_text
-from src.utils.config import METEORITE_CONFIG, STAGE_METEORITE_CONFIG, TASK_CONFIG, TRACKER_CONFIG
+from src.utils.config import (
+    METEORITE_CONFIG,
+    METEORITE_INGRESS_DISPATCH_CONFIG,
+    METEORITE_MONITORING_CONFIG,
+    STAGE_METEORITE_CONFIG,
+    TASK_CONFIG,
+    TRACKER_CONFIG,
+)
 from src.utils.logging import get_logger, truncate_debug_content
 
 
@@ -814,19 +833,365 @@ _ZERO_SUMMARY: Dict[str, int] = {
 }
 
 
+def _is_http_url(link: str) -> bool:
+    return link.startswith("http://") or link.startswith("https://")
+
+
+def log_meteorite_row_transition(
+    *,
+    row_id: int,
+    candidate_id: str,
+    state: str,
+    task_key: str = "",
+    link: str = "",
+    astral_job_id: str = "",
+    error: str = "",
+) -> None:
+    """Always-on info row-transition line (AST-1560); not Style D."""
+    cfg = METEORITE_MONITORING_CONFIG
+    if state == "BOT_BLOCKED":
+        fmt = cfg["row_bot_blocked_line"]
+        line = fmt.format(
+            row_id=row_id,
+            candidate_id=candidate_id,
+            link=link or "",
+        )
+    elif state == "LANDED":
+        fmt = cfg["row_landed_line"]
+        line = fmt.format(
+            row_id=row_id,
+            candidate_id=candidate_id,
+            astral_job_id=astral_job_id or "",
+        )
+    elif state == "ERROR":
+        fmt = cfg["row_error_line"]
+        line = fmt.format(
+            row_id=row_id,
+            candidate_id=candidate_id,
+            task_key=task_key or "",
+            error=error or "",
+        )
+    else:
+        return
+    get_logger(__name__).info(line)
+
+
 async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: NEW → SCRAPE_LINK | READY (AST-1560 stub until Stage 2)."""
-    del task, debug
-    return dict(_ZERO_SUMMARY)
+    """Dispatch runner: NEW → SCRAPE_LINK | READY (AST-1560)."""
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    cfg = METEORITE_INGRESS_DISPATCH_CONFIG
+    task_key = str((task or {}).get("task_key") or cfg["stage_task_key"])
+    batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
+    batch_id = str((task or {}).get("entity_batch_id") or "").strip()
+    if not batch_id:
+        raise ValueError("entity_batch_id is required")
+
+    summary = dict(_ZERO_SUMMARY)
+    claim_meteorite_batch(batch_id, cfg["stage_trigger_state"], limit=batch_size)
+    rows = get_meteorite_batch(batch_id)
+    if not rows:
+        return summary
+
+    try:
+        for i, row in enumerate(rows, start=1):
+            summary["total_processed"] += 1
+            row_id = int(row["id"])
+            cid = str(row.get("candidate_id") or "")
+            try:
+                outcome = (row.get("classify_outcome") or "").strip()
+                if not outcome:
+                    update_meteorite(row_id, state="ERROR", error="missing classify_outcome")
+                    log_meteorite_row_transition(
+                        row_id=row_id,
+                        candidate_id=cid,
+                        state="ERROR",
+                        task_key=task_key,
+                        error="missing classify_outcome",
+                    )
+                    summary["total_failed"] += 1
+                    summary["total_errors"] += 1
+                    continue
+                if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+                    update_meteorite(row_id, state="ERROR", error="skip outcome on row")
+                    log_meteorite_row_transition(
+                        row_id=row_id,
+                        candidate_id=cid,
+                        state="ERROR",
+                        task_key=task_key,
+                        error="skip outcome on row",
+                    )
+                    summary["total_failed"] += 1
+                    summary["total_errors"] += 1
+                    continue
+                if outcome in STAGE_METEORITE_CONFIG["url_scrape_outcomes"]:
+                    link = (row.get("link") or "").strip()
+                    if not _is_http_url(link):
+                        update_meteorite(row_id, state="ERROR", error="missing link")
+                        log_meteorite_row_transition(
+                            row_id=row_id,
+                            candidate_id=cid,
+                            state="ERROR",
+                            task_key=task_key,
+                            error="missing link",
+                        )
+                        summary["total_failed"] += 1
+                        summary["total_errors"] += 1
+                        continue
+                    update_meteorite(row_id, state="SCRAPE_LINK", link=link)
+                    summary["total_passed"] += 1
+                    if debug:
+                        log.debug_index(
+                            func="meteorite.run_stage_meteorite",
+                            index=i,
+                            total=len(rows),
+                            identifier=str(row_id),
+                            outcome="SCRAPE_LINK",
+                        )
+                    continue
+                if outcome in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]:
+                    content = (row.get("content") or "").strip()
+                    if not content:
+                        update_meteorite(row_id, state="ERROR", error="missing content")
+                        log_meteorite_row_transition(
+                            row_id=row_id,
+                            candidate_id=cid,
+                            state="ERROR",
+                            task_key=task_key,
+                            error="missing content",
+                        )
+                        summary["total_failed"] += 1
+                        summary["total_errors"] += 1
+                        continue
+                    update_meteorite(row_id, state="READY")
+                    summary["total_passed"] += 1
+                    if debug:
+                        log.debug_index(
+                            func="meteorite.run_stage_meteorite",
+                            index=i,
+                            total=len(rows),
+                            identifier=str(row_id),
+                            outcome="READY",
+                        )
+                    continue
+                err = f"unhandled classify_outcome: {outcome}"
+                update_meteorite(row_id, state="ERROR", error=err)
+                log_meteorite_row_transition(
+                    row_id=row_id,
+                    candidate_id=cid,
+                    state="ERROR",
+                    task_key=task_key,
+                    error=err,
+                )
+                summary["total_failed"] += 1
+                summary["total_errors"] += 1
+            except Exception as exc:
+                summary["total_failed"] += 1
+                summary["total_errors"] += 1
+                log.warning("[meteorite] run_stage_meteorite row=%s failed: %s", row_id, exc)
+    finally:
+        clear_meteorite_batch(batch_id)
+    return summary
 
 
 async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: SCRAPE_LINK → READY | BOT_BLOCKED | ERROR (AST-1560 stub)."""
-    del task, debug
-    return dict(_ZERO_SUMMARY)
+    """Dispatch runner: SCRAPE_LINK → READY | BOT_BLOCKED | ERROR (AST-1560)."""
+    from src.core.gazer import _CONTACT_PAGE_STATUS, _classify_jd
+
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    cfg = METEORITE_INGRESS_DISPATCH_CONFIG
+    task_key = str((task or {}).get("task_key") or cfg["scrape_task_key"])
+    batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
+    batch_id = str((task or {}).get("entity_batch_id") or "").strip()
+    if not batch_id:
+        raise ValueError("entity_batch_id is required")
+    status_map = cfg["scrape_page_status_states"]
+
+    summary = dict(_ZERO_SUMMARY)
+    claim_meteorite_batch(batch_id, cfg["scrape_trigger_state"], limit=batch_size)
+    rows = get_meteorite_batch(batch_id)
+    if not rows:
+        return summary
+
+    try:
+        for i, row in enumerate(rows, start=1):
+            summary["total_processed"] += 1
+            row_id = int(row["id"])
+            cid = str(row.get("candidate_id") or "")
+            link = (row.get("link") or "").strip()
+            try:
+                if not _is_http_url(link):
+                    update_meteorite(row_id, state="ERROR", error="missing link")
+                    log_meteorite_row_transition(
+                        row_id=row_id,
+                        candidate_id=cid,
+                        state="ERROR",
+                        task_key=task_key,
+                        error="missing link",
+                    )
+                    summary["total_failed"] += 1
+                    summary["total_errors"] += 1
+                    continue
+
+                visible_text, final_url = await _land_fetch_link_text(link, debug=debug)
+                page_status = _CONTACT_PAGE_STATUS.get(_classify_jd(visible_text), "missing")
+
+                if page_status == "blocked":
+                    update_meteorite(row_id, state=status_map["blocked"])
+                    log_meteorite_row_transition(
+                        row_id=row_id,
+                        candidate_id=cid,
+                        state="BOT_BLOCKED",
+                        link=link,
+                    )
+                    summary["total_passed"] += 1
+                    if debug:
+                        log.debug_index(
+                            func="meteorite.run_scrape_meteorite",
+                            index=i,
+                            total=len(rows),
+                            identifier=link[:80],
+                            outcome="BOT_BLOCKED",
+                        )
+                    continue
+
+                if page_status == "ok" and visible_text.strip():
+                    update_meteorite(
+                        row_id,
+                        state="READY",
+                        content=visible_text,
+                        link=final_url or link,
+                    )
+                    summary["total_passed"] += 1
+                    if debug:
+                        log.debug_index(
+                            func="meteorite.run_scrape_meteorite",
+                            index=i,
+                            total=len(rows),
+                            identifier=link[:80],
+                            outcome="READY",
+                        )
+                    continue
+
+                err = "empty visible text" if page_status == "ok" else f"scrape_{page_status}"
+                update_meteorite(row_id, state=status_map.get(page_status, "ERROR"), error=err)
+                log_meteorite_row_transition(
+                    row_id=row_id,
+                    candidate_id=cid,
+                    state="ERROR",
+                    task_key=task_key,
+                    error=err,
+                )
+                summary["total_failed"] += 1
+                summary["total_errors"] += 1
+                if debug:
+                    log.debug_index(
+                        func="meteorite.run_scrape_meteorite",
+                        index=i,
+                        total=len(rows),
+                        identifier=link[:80],
+                        outcome="ERROR",
+                    )
+            except Exception as exc:
+                summary["total_failed"] += 1
+                summary["total_errors"] += 1
+                log.warning("[meteorite] run_scrape_meteorite row=%s failed: %s", row_id, exc)
+    finally:
+        clear_meteorite_batch(batch_id)
+    return summary
 
 
 async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: READY → LANDED + job create (AST-1560 stub)."""
-    del task, debug
-    return dict(_ZERO_SUMMARY)
+    """Dispatch runner: READY → LANDED + job create (AST-1560)."""
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    cfg = METEORITE_INGRESS_DISPATCH_CONFIG
+    task_key = str((task or {}).get("task_key") or cfg["land_task_key"])
+    batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
+    batch_id = str((task or {}).get("entity_batch_id") or "").strip()
+    if not batch_id:
+        raise ValueError("entity_batch_id is required")
+    jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+    ok_outcomes = (
+        METEORITE_CONFIG["land_outcome_created"],
+        METEORITE_CONFIG["land_outcome_duplicate_skip"],
+        METEORITE_CONFIG["land_outcome_superseded"],
+    )
+
+    summary = dict(_ZERO_SUMMARY)
+    claim_meteorite_batch(batch_id, cfg["land_trigger_state"], limit=batch_size)
+    rows = get_meteorite_batch(batch_id)
+    if not rows:
+        return summary
+
+    try:
+        for i, row in enumerate(rows, start=1):
+            summary["total_processed"] += 1
+            row_id = int(row["id"])
+            cid = str(row.get("candidate_id") or "")
+            try:
+                content = (row.get("content") or "").strip()
+                if not content:
+                    update_meteorite(row_id, state="ERROR", error="missing content")
+                    log_meteorite_row_transition(
+                        row_id=row_id,
+                        candidate_id=cid,
+                        state="ERROR",
+                        task_key=task_key,
+                        error="missing content",
+                    )
+                    summary["total_failed"] += 1
+                    summary["total_errors"] += 1
+                    continue
+
+                ensured = ensure_meteorite_company(cid, debug=debug)
+                existing_link = (row.get("link") or "").strip()
+                job_link = existing_link if _is_http_url(existing_link) else None
+                save = tracker.save_meteorite_job(
+                    cid,
+                    company=ensured["short_name"],
+                    job_data={jd_key: content},
+                    job_link=job_link,
+                    company_job_id=None,
+                    employer_name=None,
+                    debug=debug,
+                )
+                if save.get("outcome") in ok_outcomes:
+                    job_id = str(save.get("astral_job_id") or "")
+                    update_meteorite(row_id, state="LANDED", astral_job_id=job_id)
+                    log_meteorite_row_transition(
+                        row_id=row_id,
+                        candidate_id=cid,
+                        state="LANDED",
+                        astral_job_id=job_id,
+                    )
+                    summary["total_passed"] += 1
+                    if debug:
+                        log.debug_index(
+                            func="meteorite.run_land_meteorite",
+                            index=i,
+                            total=len(rows),
+                            identifier=job_id or str(row_id),
+                            outcome="LANDED",
+                        )
+                    continue
+
+                err = str(save.get("error") or "land failed")
+                update_meteorite(row_id, state="ERROR", error=err)
+                log_meteorite_row_transition(
+                    row_id=row_id,
+                    candidate_id=cid,
+                    state="ERROR",
+                    task_key=task_key,
+                    error=err,
+                )
+                summary["total_failed"] += 1
+                summary["total_errors"] += 1
+            except Exception as exc:
+                summary["total_failed"] += 1
+                summary["total_errors"] += 1
+                log.warning("[meteorite] run_land_meteorite row=%s failed: %s", row_id, exc)
+    finally:
+        clear_meteorite_batch(batch_id)
+    return summary
