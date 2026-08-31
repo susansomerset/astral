@@ -133,8 +133,11 @@ export default function SessionCoverLetter() {
       const blobUrl = URL.createObjectURL(
         new Blob([html], { type: "text/html;charset=utf-8" }),
       )
-      const win = window.open(blobUrl, "_blank", "noopener,noreferrer")
-      if (!win) {
+      // No noopener/noreferrer features — those force a null return even on success.
+      const win = window.open(blobUrl, "_blank")
+      if (win) {
+        win.opener = null
+      } else {
         setToast({
           text: "Popup blocked — allow popups to open the HTML tab.",
           variant: "error",
