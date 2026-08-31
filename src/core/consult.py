@@ -2650,11 +2650,12 @@ async def _run_cover_letter_for_job(
     ctx: Optional[Dict[str, Any]],
     debug: bool,
 ) -> None:
-    """AST-369: cover letter hop after resume_content exists (resume-first)."""
+    """AST-369/1556: cover letter hop after job resume body exists (table SoT / overlay)."""
     from src.core.agent import run_cover_letter_artifact_chain_for_job
 
     row = tracker.get_job(astral_job_id) or job
-    if not tracker.get_job_artifacts(row).get("resume_content"):
+    # Prefer job_has_persisted_resume_body (artifacts-table SoT + legacy blob fallback).
+    if not tracker.job_has_persisted_resume_body(astral_job_id, row):
         return
     chain_ctx: Dict[str, Any] = {**(ctx or {}), "batch_entities": [row], "job": row, "batch_size": 1}
     await run_cover_letter_artifact_chain_for_job(astral_job_id, chain_ctx, debug=debug)

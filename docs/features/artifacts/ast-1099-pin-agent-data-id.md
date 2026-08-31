@@ -1179,3 +1179,9 @@ AST-1548 (and earlier pin/`resume_content` work on this doc) treated “durable 
 **fix-now:** `consult.py` `_run_cover_letter_for_job` must accept overlaid `job_resume` / table SoT, not only `resume_content`.
 **[bug-repro]:** OK.
 
+## Resolution — AST-1556 (2026-08-31)
+
+**Outcome:** fix-now addressed.
+
+- **fix-now (consult resume-first):** `_run_cover_letter_for_job` now gates on `tracker.job_has_persisted_resume_body(astral_job_id, row)` (artifacts-table `job_resume` current + legacy blob fallback) instead of `job_data.artifacts.resume_content` only. `get_job` overlay still supplies in-memory `job_resume` for the chain ctx.
+
