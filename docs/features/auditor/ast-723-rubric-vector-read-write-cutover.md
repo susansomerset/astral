@@ -533,3 +533,24 @@ Every `grade_do` vector for somerset has a **unique two-letter code** (`HT` and 
 ### Review (Radia) — AST-1513
 
 **Publish tip:** `3d8eae67` — **CLEAN / PROCEED**. Steps 2–4 match plan; Step 1 correctly operational (Somerset HT reassignment via Artifacts before staging AC). `[bug-repro]` tests assert save guard, first-wins map, decode duplicate guard. No fix-now items. UAT: run Step 1 data fix before expecting green `meteorite_grade_do` on staging.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/f33eb8436e5bc3bee4882e8a48e056bb/ff448d88-668c-41f1-9d74-679e1a0dc2b0/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/7313a64c-5e00-4703-b951-094356808052/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/f33eb8436e5bc3bee4882e8a48e056bb/34618986-0a4d-4080-81ba-d6dd3281e651/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1510 (parent) | ftr/AST-1510-meteorite-grade-do-is-failing |
+| AST-1513 | sub/AST-1510/AST-1513-reject-duplicate-do-rubric-codes |
+
+**Epic worktree:** `astral-AST-1510/` — one active sub checked out at a time.
