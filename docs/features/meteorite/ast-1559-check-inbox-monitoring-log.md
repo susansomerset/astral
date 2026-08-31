@@ -425,3 +425,22 @@ AC1 → Stages 3–4 (`check_inbox` inline classify via `invoke_stage_meteorite`
 2. **Susan/Archie:** Decide AUTO `available_count` follow-up vs CLICK-only acceptance.
 3. **resolve-child:** Optional B1 comment on consult lazy import; no mandatory product changes for AC1/AC3.
 4. **Chuckles/datt:** Manage sibling-stack merge order on ftr.
+
+## Resolution
+
+**2026-08-31 — resolve-child (Katherine)**
+
+Radia **DISCUSS** @ `c8e5506a` — no fix-now product findings on AST-1559 footprint.
+
+| Finding | Action |
+|---------|--------|
+| Advisory — B1 lazy import in `check_inbox` | Added `# Late-import: consult loads is_meteorite_company at module top.` before inner-loop `invoke_stage_meteorite` import (matches `stage_meteorite`) |
+| Discuss — mailbox `available_count` stubs | **Deferred** — AST-1558 docstring deferral; plan forbids `inbox.py` edits; CLICK/manual UAT acceptable per Radia |
+| Discuss — sibling stack on publish ref | **No code change** — expected merge of AST-1557/1558 dependencies; Chuckles owns ftr merge order |
+| Discuss — `total_failed` never incremented | **No code change** — dispatcher ledger uses `total_errors`; advisory only |
+| Advisory — monitoring assert / config literals | **No code change** — Betty/Chuckles follow-up if needed |
+
+**§9a:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log` merges cleanly into `origin/dev`. `origin/ftr/AST-1555` not on origin — ftr dry-run skipped.
+
+**Manifest:** Betty §QA test manifest re-run green before User Testing.
+

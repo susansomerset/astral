@@ -1014,6 +1014,7 @@ async def check_inbox(task: dict, *, debug: bool = False) -> dict[str, int]:
             cand = get_candidate(cid)
             ctx = dict(cand) if isinstance(cand, dict) else {}
             ctx["astral_candidate_id"] = cid
+            # Late-import: consult loads is_meteorite_company at module top.
             from src.core.consult import invoke_stage_meteorite
 
             invoke = await invoke_stage_meteorite(
