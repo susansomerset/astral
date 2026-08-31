@@ -3397,3 +3397,39 @@ Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_a
   tests/component/utils/test_config.py::TestAst1534AdhocImportConfigKeys \
   -q
 ```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1550 · AST-1541
+
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`.
+
+Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + public `build_artifacts_discussion_hop_task_keys()` live `run_next` walk from `resume_artifact_chain.first_task_key` (excludes `anticipate_scan`; cycle → `RuntimeError`). Manifest sections + story `task_name`: **`docs/test-bible/ui/api/api_system.md`**, **`docs/test-bible/core/agent.md`**. React pane: sibling AST-1551.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Top tabs include Discussion | `src/utils/config.py` | **`TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`**; revised **`TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** |
+| Hop walk / empty start / cycle | same | **`TestAst1550DiscussionHopKeys`** |
+
+**Broken / obsolete:** AST-948 three-tab `report_top_tabs` assert — revised in place for Discussion.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Config tabs + hop walk: `tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys`
+2. Revised report tabs (AST-948→1550): `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`
+3. Manifest Discussion sections: `tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections`
+4. Story `task_name`: `tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
+  tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

@@ -1173,3 +1173,26 @@ Backend scoped import list: `UI_CONFIG` cap (10) + picker visible rows (5); `lis
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+
+### AST-1550 · AST-1541
+
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`.
+
+`get_entity_agent_story` attaches `task_name` from the live `agent_task` row when non-empty; omits the key when blank/missing (UI falls back to `task_key`). Additive — Agent Story tabs unchanged. Config hop walk + manifest sections: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Attach / omit `task_name` | `src/core/agent.py` (`get_entity_agent_story`) | **`TestAst1550AgentStoryTaskName`** |
+
+**Broken / obsolete:** none — additive field; existing **`TestEntityAgentStory`** still holds.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
