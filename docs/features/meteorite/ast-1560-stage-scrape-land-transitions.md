@@ -4,7 +4,7 @@
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation) — Meteorite ingress: staging table + inbox/meteorite consolidation  
 **Publish ref:** `sub/AST-1555/AST-1560-stage-scrape-land-transitions`
 
-After AST-1557 table spine: dispatcher-driven **single-transition** handlers on `meteorite` rows — NEW → SCRAPE_LINK or READY (stage), SCRAPE_LINK → Playwright → READY / BOT_BLOCKED / ERROR (scrape), READY → `METEORITE_NEW` job + `astral_job_id` → LANDED (land). Retires source-ref scrap synthesis and qualify enrich-in-front on the **table path**. Does not own `check_inbox`, monitoring, Estelle, or file delete.
+After AST-1557 table spine: dispatcher-driven **single-transition** handlers on `meteorite` rows — NEW → SCRAPE_LINK or READY (stage), SCRAPE_LINK → Playwright → READY / BOT_BLOCKED / ERROR (scrape), READY → `METEORITE_NEW` job + `astral_job_id` → LANDED (land). Retires source-ref scrap synthesis and qualify enrich-in-front on the **table path**. Adds always-on info row-transition monitoring (`BOT_BLOCKED` / `ERROR` / `LANDED job=`) per parent functional scope #6. Does not own `check_inbox` classify monitoring (AST-1559), Estelle, or file delete.
 
 ## Scope gate
 
@@ -32,19 +32,20 @@ All Files Changed / Stages stay inside that set.
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/utils/config.py` | `METEORITE_INGRESS_DISPATCH_CONFIG` (task keys, trigger states, batch sizes, scrape page_status → row state map, debug_func literals) + header bullet + asserts; `SEED_CONFIG` paste rows for three dispatch tasks | utils |
+| `src/utils/config.py` | `METEORITE_INGRESS_DISPATCH_CONFIG` (task keys, trigger states, batch sizes, scrape page_status → row state map, debug_func literals) + extend `METEORITE_MONITORING_CONFIG` with row-transition format strings (`BOT_BLOCKED` / `ERROR` / `LANDED job=`) + header bullets + asserts; `SEED_CONFIG` paste rows for three dispatch tasks | utils |
 | `data/admin/dispatch_task.json` | Seed rows for `stage_meteorite` / `scrape_meteorite` / `land_meteorite` transition runners (`auto_mode` false) | catalog |
 | `src/core/dispatcher.py` | Route the three task keys to meteorite transition runners (mailbox-style custom branch, not `_run_unified`) | core |
-| `src/core/meteorite.py` | `run_stage_meteorite` / `run_scrape_meteorite` / `run_land_meteorite` batch handlers + per-row helpers; remove `_map_stage_jobs_to_scraps`; strip blob `stage_meteorite` map→land enrich chain | core |
+| `src/core/meteorite.py` | `run_stage_meteorite` / `run_scrape_meteorite` / `run_land_meteorite` batch handlers + per-row helpers; `log_meteorite_row_transition` always-on info helper; remove `_map_stage_jobs_to_scraps`; strip blob `stage_meteorite` map→land enrich chain | core |
 | `src/core/consult.py` | **Only if** import cycle remains after Stage 3 — trim late-import / move `is_meteorite_company` import (no new classify path) | core |
 
 ## Stage 1: Config + dispatch seeds + dispatcher registration
 
-**Done when:** `METEORITE_INGRESS_DISPATCH_CONFIG` exposes task keys and `METEORITE_STATES` trigger literals; three idempotent `SEED_CONFIG` / admin dispatch rows exist; `dispatcher._dispatch_one` recognizes all three keys and delegates to meteorite runners (stub `{"total_processed": 0}` OK until Stage 2); `python3 -m py_compile src/utils/config.py src/core/dispatcher.py` succeeds.
+**Done when:** `METEORITE_INGRESS_DISPATCH_CONFIG` exposes task keys and `METEORITE_STATES` trigger literals; `METEORITE_MONITORING_CONFIG` exposes three row-transition format strings; three idempotent `SEED_CONFIG` / admin dispatch rows exist; `dispatcher._dispatch_one` recognizes all three keys, mints one `entity_batch_id`, passes it on `task`, sets `log_batch_id`, and delegates to meteorite runners (stub `{"total_processed": 0}` OK until Stage 2); `python3 -m py_compile src/utils/config.py src/core/dispatcher.py` succeeds.
 
 1. In `src/utils/config.py` header inventory, add:
 
    - `METEORITE_INGRESS_DISPATCH_CONFIG` — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560).
+   - Extend `METEORITE_MONITORING_CONFIG` bullet — row-transition format strings for `BOT_BLOCKED` / `ERROR` / `LANDED job=` (AST-1560).
 
 2. After `METEORITE_STATES` block (AST-1557 — must exist on branch before build), insert:
 
@@ -72,46 +73,81 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
 }
 ```
 
-3. Asserts immediately after:
+3. Extend existing `METEORITE_MONITORING_CONFIG` block (AST-1559 — must exist on branch) with row-transition format SSOT keys:
+
+```python
+    # AST-1560: always-on info row-transition lines (not inbox classify — AST-1559).
+    "row_bot_blocked_line": (
+        "meteorite scrape blocked id={row_id} candidate={candidate_id} link={link}"
+    ),
+    "row_error_line": (
+        "meteorite row error id={row_id} candidate={candidate_id} task={task_key} error={error}"
+    ),
+    "row_landed_line": (
+        "meteorite land id={row_id} candidate={candidate_id} job={astral_job_id}"
+    ),
+```
+
+4. Asserts immediately after `METEORITE_INGRESS_DISPATCH_CONFIG` block (and extend monitoring asserts after existing AST-1559 inbox asserts):
 
 - All three task keys are non-empty distinct strings.
 - All three trigger states ∈ `METEORITE_STATES`.
 - `set(METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"].values())` ⊆ `{"READY", "BOT_BLOCKED", "ERROR"}`.
 - `METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"] == STAGE_METEORITE_CONFIG["task_key"]` — **same string** as Ruth catalog key; dispatch row uses custom runner, not `TASK_CONFIG` consult hop.
+- Each `row_*_line` in `METEORITE_MONITORING_CONFIG` is a non-empty str containing required placeholders: `row_bot_blocked_line` → `{row_id}`, `{candidate_id}`, `{link}`; `row_error_line` → `{row_id}`, `{candidate_id}`, `{task_key}`, `{error}`; `row_landed_line` → `{row_id}`, `{candidate_id}`, `{astral_job_id}`.
 
-4. Add three `SEED_CONFIG` entries (`dispatch_task-stage-meteorite`, `dispatch_task-scrape-meteorite`, `dispatch_task-land-meteorite`) following existing `dispatch_task-fetch-email` shape:
+5. Add three `SEED_CONFIG` entries (`dispatch_task-stage-meteorite`, `dispatch_task-scrape-meteorite`, `dispatch_task-land-meteorite`) following existing `dispatch_task-fetch-email` shape:
 
    - `candidate_id` NULL (global pool — rows carry `candidate_id`; claim is cross-candidate like candidate batch).
    - `task_key` = each config key above.
    - `entity_type` NULL, `trigger_state` = matching trigger state literal.
    - `batch_size` from config, `auto_mode` 0, `freq_hrs` / `min_count` conservative defaults (match peer global tasks: e.g. `freq_hrs=0.1`, `min_count=1`).
 
-5. Add matching rows to `data/admin/dispatch_task.json` (same literals as SEED_CONFIG — admin SSOT).
+6. Add matching rows to `data/admin/dispatch_task.json` (same literals as SEED_CONFIG — admin SSOT).
 
-6. In `src/core/dispatcher.py`, add `_is_meteorite_ingress_transition_task_key(task_key) -> bool` comparing against the three config keys.
+7. In `src/core/dispatcher.py`, add `_is_meteorite_ingress_transition_task_key(task_key) -> bool` comparing against the three config keys.
 
-7. In `_dispatch_one`, **before** the mailbox `meteorite_email` branch, add a branch for ingress transition keys:
+8. In `_dispatch_one`, **before** the mailbox `meteorite_email` branch and **before** any `_run_unified` / `TASK_CONFIG` path, add a branch for ingress transition keys:
 
-   - Mint `entity_batch_id = f"{task_key}-{uuid4()}"`, ledger with `entity_type=None`, `candidate_id` from row when present else NULL.
+   - Mint **one** `entity_batch_id = f"{task_key}-{uuid4()}"` per dispatch invocation — this is the golden ticket for entity claim + ledger + `log_batch_id` (`pattern.batch.entity-claim-process-release` / `astral.batch.batch-id-first`).
+   - `save_dispatch_ledger(entity_batch_id, task_key, candidate_id or NULL, …, entity_type=None)`; `log_batch_id.set(entity_batch_id)`.
+   - Set `task["entity_batch_id"] = entity_batch_id` before calling the runner (do **not** let runners mint a second id).
    - Late-import `from src.core.meteorite import run_stage_meteorite, run_scrape_meteorite, run_land_meteorite` (exact names from Stage 2).
    - Dispatch to the matching `run_*` with `(task, debug=debug)` signature mirroring `run_meteorite_email(task, debug)`.
-   - Accumulate `total_processed` / `total_passed` / `total_failed` / `total_errors` from runner summary dict.
+   - Accumulate `total_processed` / `total_passed` / `total_failed` / `total_errors` from runner summary dict; clear `log_batch_id` in `finally` (same as mailbox branch).
 
 ⚠️ **Decision:** Global dispatch rows (NULL `candidate_id`) — meteorite claim SQL is not scoped by dispatch row candidate; row's `candidate_id` column is authoritative at land time.
 
+⚠️ **Decision:** Same `stage_meteorite` string serves Ruth inline classify (`do_task` in `check_inbox`) and the custom dispatch transition runner — disambiguation is dispatcher branch ordering only. Document in `meteorite.py` module header: dispatch `stage_meteorite` row is **not** a consult hop.
+
 ## Stage 2: Table transition handlers in `meteorite.py`
 
-**Done when:** Each runner claims one batch, processes each row with **one** state write (plus field updates), clears batch in `finally`, and returns a summary dict; scrape uses `get_visible_text` only via existing `_land_fetch_link_text` / Playwright external; land uses `tracker.save_meteorite_job` **without** `enrich_meteorite_land_packet`; `python3 -m py_compile src/core/meteorite.py` succeeds.
+**Done when:** Each runner uses dispatcher `entity_batch_id` for claim/clear, processes each row with **one** state write (plus field updates), emits row-transition monitoring on `BOT_BLOCKED` / `ERROR` / `LANDED`, clears batch in `finally`, and returns a summary dict; scrape uses `get_visible_text` only via existing `_land_fetch_link_text` / Playwright external; land uses `tracker.save_meteorite_job` **without** `enrich_meteorite_land_packet`; `python3 -m py_compile src/core/meteorite.py` succeeds.
 
 ### Shared batch pattern (all three runners)
 
 1. Read `task_key`, `batch_size` from dispatch row; read trigger state from `METEORITE_INGRESS_DISPATCH_CONFIG` for this runner.
-2. `batch_id = f"{task_key}-{uuid4()}"`; `claim_meteorite_batch(batch_id, trigger_state, limit=batch_size)`.
-3. `rows = get_meteorite_batch(batch_id)`; if empty return zero summary.
-4. `try:` loop rows; `finally: clear_meteorite_batch(batch_id)`.
-5. Per-row failures increment `total_failed` / `total_errors` but **do not** abort sibling rows in the batch.
+2. `batch_id = str((task or {}).get("entity_batch_id") or "").strip()` — **required**; if empty raise `ValueError("entity_batch_id is required")`. Do **not** mint a new uuid inside the runner.
+3. `claim_meteorite_batch(batch_id, trigger_state, limit=batch_size)`.
+4. `rows = get_meteorite_batch(batch_id)`; if empty return zero summary.
+5. `try:` loop rows; `finally: clear_meteorite_batch(batch_id)`.
+6. Per-row failures increment `total_failed` / `total_errors` but **do not** abort sibling rows in the batch.
 
-Import from `src.data.database`: `claim_meteorite_batch`, `get_meteorite_batch`, `clear_meteorite_batch`, `update_meteorite`. Import `METEORITE_INGRESS_DISPATCH_CONFIG`, `METEORITE_STATES`, `STAGE_METEORITE_CONFIG`, `METEORITE_CONFIG`, `TRACKER_CONFIG` from config.
+Import from `src.data.database`: `claim_meteorite_batch`, `get_meteorite_batch`, `clear_meteorite_batch`, `update_meteorite`. Import `METEORITE_INGRESS_DISPATCH_CONFIG`, `METEORITE_MONITORING_CONFIG`, `METEORITE_STATES`, `STAGE_METEORITE_CONFIG`, `METEORITE_CONFIG`, `TRACKER_CONFIG` from config.
+
+### 2d. `log_meteorite_row_transition` monitoring helper
+
+Add `log_meteorite_row_transition(*, row_id, candidate_id, state, task_key, link="", astral_job_id="", error="") -> None`:
+
+1. Select format string from `METEORITE_MONITORING_CONFIG`:
+   - `state == "BOT_BLOCKED"` → `row_bot_blocked_line`
+   - `state == "LANDED"` → `row_landed_line`
+   - `state == "ERROR"` → `row_error_line`
+   - else → return without logging (READY / SCRAPE_LINK / intermediate writes are not parent #6 audit lines).
+2. Coerce placeholders to str; empty optional fields → `""` (land line must include `job=` even when id empty — use `astral_job_id or ""`).
+3. `get_logger(__name__).info(line.format(...))` — **always**, regardless of `debug` (mirror `log_meteorite_inbox_classify` from AST-1559).
+
+⚠️ **Decision:** Row-transition monitoring is always-on info per parent functional scope #6; inbox classify lines remain AST-1559 only.
 
 ### 2a. `async def run_stage_meteorite(task, *, debug=False) -> dict`
 
@@ -119,15 +155,15 @@ Import from `src.data.database`: `claim_meteorite_batch`, `get_meteorite_batch`,
 
 For each claimed row:
 
-1. Read `classify_outcome` (required non-empty string). If missing → `update_meteorite(id, state="ERROR", error="missing classify_outcome")`; count fail; continue.
-2. If outcome ∈ `STAGE_METEORITE_CONFIG["skip_outcomes"]` → `update_meteorite(id, state="ERROR", error="skip outcome on row")` (should not happen if check_inbox fan-out correct); continue.
+1. Read `classify_outcome` (required non-empty string). If missing → `update_meteorite(id, state="ERROR", error="missing classify_outcome")`; `log_meteorite_row_transition(..., state="ERROR", task_key=task_key, error="missing classify_outcome")`; count fail; continue.
+2. If outcome ∈ `STAGE_METEORITE_CONFIG["skip_outcomes"]` → `update_meteorite(id, state="ERROR", error="skip outcome on row")` (should not happen if check_inbox fan-out correct); `log_meteorite_row_transition(..., state="ERROR", ...)`; continue.
 3. If outcome ∈ `STAGE_METEORITE_CONFIG["url_scrape_outcomes"]`:
    - Require `link` non-empty http(s) URL (from row `link` column).
    - `update_meteorite(id, state="SCRAPE_LINK", link=link)` — do **not** synthesize `source_ref` / `company_job_id`.
 4. If outcome ∈ `STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]` or other landable text path (`single_jd_no_link`, `multi_jd_inline` with content already on row):
    - Require `content` non-empty.
    - `update_meteorite(id, state="READY")`.
-5. Else unhandled outcome → `update_meteorite(id, state="ERROR", error=f"unhandled classify_outcome: {outcome}")`.
+5. Else unhandled outcome → `update_meteorite(id, state="ERROR", error=f"unhandled classify_outcome: {outcome}")`; `log_meteorite_row_transition(..., state="ERROR", ...)`.
 
 ⚠️ **Decision:** Stage runner does **not** call Ruth / `invoke_stage_meteorite` — classify already ran in `check_inbox`; this handler only routes fan-out rows by stored `classify_outcome` + fields.
 
@@ -137,13 +173,13 @@ For each claimed row:
 
 For each claimed row:
 
-1. `link = (row.get("link") or "").strip()` — if not http(s) → `update_meteorite(id, state="ERROR", error="missing link")`; continue.
+1. `link = (row.get("link") or "").strip()` — if not http(s) → `update_meteorite(id, state="ERROR", error="missing link")`; `log_meteorite_row_transition(..., state="ERROR", task_key=task_key, error="missing link")`; continue.
 2. Call existing `_land_fetch_link_text(link, debug=debug)` → `(visible_text, final_url)`.
 3. Classify visible text with **existing** gazer JD classifier — late-import `from src.core.gazer import _classify_jd` and map through `_CONTACT_PAGE_STATUS` the same way `contact_task_gazer_scrape` does (do **not** duplicate Playwright stack).
 4. Map `page_status` → staging state via `METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]`:
-   - `blocked` → `BOT_BLOCKED`
-   - `ok` + non-empty visible → `READY`, `update_meteorite(id, state="READY", content=visible_text, link=final_url or link)`
-   - `closed` / `missing` / empty visible on ok → `ERROR` with short `error` message.
+   - `blocked` → `BOT_BLOCKED`: `update_meteorite(id, state="BOT_BLOCKED")`; `log_meteorite_row_transition(..., state="BOT_BLOCKED", link=link)`.
+   - `ok` + non-empty visible → `READY`, `update_meteorite(id, state="READY", content=visible_text, link=final_url or link)` — no row-transition line (intermediate success).
+   - `closed` / `missing` / empty visible on ok → `ERROR` with short `error` message; `log_meteorite_row_transition(..., state="ERROR", task_key=task_key, error=<message>)`.
 5. Style D only when `debug=True` (index per row: found link vs recorded state).
 
 ⚠️ **Decision:** Reuse gazer classify + contact page_status vocabulary for Playwright outcomes; write **`METEORITE_STATES`** keys on the row, not `JOB_STATES.BOT_BLOCKED`.
@@ -154,7 +190,7 @@ For each claimed row:
 
 For each claimed row:
 
-1. `candidate_id = row["candidate_id"]`; `content = (row.get("content") or "").strip()` — if not content → `update_meteorite(id, state="ERROR", error="missing content")`; continue.
+1. `candidate_id = row["candidate_id"]`; `content = (row.get("content") or "").strip()` — if not content → `update_meteorite(id, state="ERROR", error="missing content")`; `log_meteorite_row_transition(..., state="ERROR", task_key=task_key, error="missing content")`; continue.
 2. `ensure_meteorite_company(candidate_id, debug=debug)` — default stem (no Ruth stem on table path unless `classify_outcome` stored employer elsewhere; employer_name optional empty).
 3. Call `tracker.save_meteorite_job` with:
    - `company` = ensured short_name
@@ -163,7 +199,8 @@ For each claimed row:
    - `employer_name` from row optional field if present else None
 4. On save outcome `created` (or acceptable duplicate per tracker):
    - `update_meteorite(id, state="LANDED", astral_job_id=save["astral_job_id"])`
-5. On save error outcome → `update_meteorite(id, state="ERROR", error=save.get("error") or "land failed")`.
+   - `log_meteorite_row_transition(..., state="LANDED", astral_job_id=save["astral_job_id"])`
+5. On save error outcome → `update_meteorite(id, state="ERROR", error=save.get("error") or "land failed")`; `log_meteorite_row_transition(..., state="ERROR", task_key=task_key, error=...)`.
 
 ⚠️ **Decision:** No `enrich_meteorite_land_packet` / no qualify pre-AI on table path — AC3 + AC4. Downstream `qualify_meteorite` dispatch on `METEORITE_NEW` unchanged.
 
@@ -183,7 +220,7 @@ For each claimed row:
 4. **`consult.py` cycle trim (only if still cyclic after step 2–3):**
    - If `consult` top-level `from src.core.meteorite import is_meteorite_company` + meteorite late-import consult creates an import cycle flagged by compile/runtime, move `is_meteorite_company` import inside the functions that need it in `consult.py` OR move `is_meteorite_company` to a tiny shared module — **minimal diff**; if no cycle, **skip** `consult.py` entirely (Scope allows optional).
 
-5. Do **not** add monitoring info lines (AST-1559), Estelle fields beyond what land already writes, or delete `meteorite_email.py`.
+5. Do **not** add inbox classify monitoring (AST-1559 `inbox_classify_line`), Estelle fields beyond what land already writes, or delete `meteorite_email.py`.
 
 ## Execution contract
 
@@ -197,6 +234,12 @@ The plan is binding. The agent:
 
 Confirm Chuckles estimate: 5 — agree
 
+## Revisions
+
+Revision 1 — 2026-08-31  
+Driven by: Joan `[plan-discuss] round=1 concern` fix-now — (1) dispatcher `entity_batch_id` must be sole claim/clear batch id; (2) row-transition monitoring helper + config formats for `BOT_BLOCKED` / `ERROR` / `LANDED job=`.  
+Changes: Stage 1 extends `METEORITE_MONITORING_CONFIG` with three row-transition format strings; dispatcher passes `task["entity_batch_id"]` + sets `log_batch_id`; shared batch pattern consumes it (no runner mint); Stage 2d adds `log_meteorite_row_transition`; scrape/land/stage ERROR paths + scrape BOT_BLOCKED + land LANDED call helper; Traceability gap closed; discuss item on `stage_meteorite` naming documented in Stage 1.
+
 ## Joan validate
 
 [plan-discuss] round=1 concern
@@ -207,7 +250,7 @@ Confirm Chuckles estimate: 5 — agree
 **Publish ref:** `sub/AST-1555/AST-1560-stage-scrape-land-transitions` @ `8434867243c5e28c15d839a090d79172c6365b3e`
 
 ## Traceability
-AC2 → Stages 1–2 (per-row `claim_meteorite_batch` / `clear_meteorite_batch` + single-transition `run_stage_meteorite` / `run_scrape_meteorite` / `run_land_meteorite`); AC3 → Stage 2c (`save_meteorite_job` → `METEORITE_NEW` + `astral_job_id` + `LANDED`, no enrich); AC4 → Stages 2–3 (no `source_ref` synthesis, `job_link`/`company_job_id` null at land). **Gap:** parent functional scope #6 row-transition always-on info lines (`BOT_BLOCKED` / `ERROR` / `LANDED job=`) — partitioned from AST-1559, not staged here.
+AC2 → Stages 1–2 (dispatcher `entity_batch_id` → per-row `claim_meteorite_batch` / `clear_meteorite_batch` + single-transition runners); AC3 → Stage 2c (`save_meteorite_job` → `METEORITE_NEW` + `astral_job_id` + `LANDED`, no enrich); AC4 → Stages 2–3 (no `source_ref` synthesis, `job_link`/`company_job_id` null at land); parent functional scope #6 → Stage 1 monitoring config + Stage 2d `log_meteorite_row_transition` on `BOT_BLOCKED` / `ERROR` / `LANDED`.
 
 ## Findings
 
