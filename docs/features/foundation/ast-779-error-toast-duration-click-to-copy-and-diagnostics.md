@@ -542,6 +542,10 @@ From AST-779 (and this ticket’s AC):
 3. Success/info toasts remain non-interactive (`pointer-events: none` path unchanged).
 4. No changes to toast consumers, API error enrichment, or `toastDiagnostics.ts` bundle formatting beyond what `Toast.tsx` already calls.
 
+## Resolution — AST-1549
+
+**2026-08-31** — Radia REVIEW then resolve: product tip cleaned of sync(dev). Docs-Acceptance — tests/bible on sibling AST-1553. User Testing.
+
 ## Bug: AST-1553 — gap: Toast dismiss-without-copy tests + bible
 
 ### As-is
