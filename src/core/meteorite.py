@@ -19,7 +19,7 @@ from __future__ import annotations
 import os
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.candidate import email_aliases_for_candidate, get_candidate
@@ -33,6 +33,7 @@ from src.core import tracker
 from src.data.database import (
     claim_meteorite_batch,
     clear_meteorite_batch,
+    delete_meteorites_by_ids,
     get_company,
     get_job,
     get_meteorite,
@@ -40,6 +41,7 @@ from src.data.database import (
     insert_meteorite_rows,
     list_meteorites_by_source,
     list_meteorites_by_state,
+    list_meteorites_for_retention,
     save_company,
     save_job,
     update_candidate_last_email_check,
@@ -52,6 +54,8 @@ from src.utils.config import (
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
     METEORITE_MONITORING_CONFIG,
+    METEORITE_RETENTION_CONFIG,
+    METEORITE_STATES_RETENTION,
     STAGE_METEORITE_CONFIG,
     TASK_CONFIG,
     TRACKER_CONFIG,
@@ -1511,7 +1515,43 @@ async def run_meteorite_retention(
     task: Dict[str, Any], *, debug: bool = False
 ) -> Dict[str, int]:
     """Dispatch runner: purge old LANDED + info-list stale rows (AST-1562)."""
-    return dict(_ZERO_SUMMARY)
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    cfg = METEORITE_RETENTION_CONFIG
+    batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
+    now = datetime.now(timezone.utc)
+    landed_cutoff = (now - timedelta(days=int(cfg["landed_purge_days"]))).isoformat()
+    stale_cutoff = (now - timedelta(days=int(cfg["stale_list_days"]))).isoformat()
+    summary = dict(_ZERO_SUMMARY)
+
+    purge_states = list(METEORITE_STATES_RETENTION["purge_states"])
+    landed_rows = list_meteorites_for_retention(
+        states=purge_states, older_than=landed_cutoff, limit=batch_size
+    )
+    if landed_rows:
+        ids = [int(r["id"]) for r in landed_rows]
+        n = delete_meteorites_by_ids(ids)
+        summary["total_processed"] += n
+        summary["total_passed"] += n
+        if n > 0:
+            log.info("meteorite retention purged landed count=%s", n)
+
+    stale_states = list(METEORITE_STATES_RETENTION["stale_list_states"])
+    stale_rows = list_meteorites_for_retention(
+        states=stale_states, older_than=stale_cutoff, limit=batch_size
+    )
+    for row in stale_rows:
+        summary["total_processed"] += 1
+        line = cfg["stale_list_line"].format(
+            row_id=int(row["id"]),
+            state=(row.get("state") or ""),
+            candidate_id=(row.get("candidate_id") or ""),
+            state_changed_at=(row.get("state_changed_at") or row.get("updated_at") or ""),
+        )
+        log.info(line)
+        summary["total_passed"] += 1
+
+    return summary
 
 
 def _normalize_apply_paste_content(raw: str) -> str:
