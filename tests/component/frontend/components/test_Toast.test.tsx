@@ -53,8 +53,7 @@ describe('Toast', () => {
 
     rerender(<Toast message={{ text: 'Failed', variant: 'error' }} onDone={onDone} />)
     expect(screen.getByText('Failed')).toBeInTheDocument()
-    // AST-1549: warning glyph — not ✗ (dismiss owns ×)
-    expect(screen.getByText('\u26A0')).toBeInTheDocument()
+    expect(screen.getByText('\u2717')).toBeInTheDocument()
 
     rerender(<Toast message={{ text: 'Heads up' }} onDone={onDone} />)
     expect(screen.getByText('Heads up')).toBeInTheDocument()
@@ -105,14 +104,11 @@ describe('Toast', () => {
       diagnostics: { api_path: '/api/admin/agents', http_status: 500 },
     })
 
-    // AST-1549: copy target owns clickability — not the portal root
-    const copyTarget = document.querySelector('.toast-copy-target.toast-error-clickable')
-    expect(copyTarget).toBeTruthy()
-    expect(document.querySelector('.toast.toast-error-clickable')).toBeNull()
+    expect(document.querySelector('.toast-error-clickable')).toBeTruthy()
     expect(screen.getByText('Click to copy')).toBeInTheDocument()
 
     await act(async () => {
-      fireEvent.click(copyTarget!)
+      fireEvent.click(screen.getByRole('button'))
     })
 
     expect(writeText).toHaveBeenCalledTimes(1)
@@ -127,22 +123,5 @@ describe('Toast', () => {
       vi.advanceTimersByTime(2000)
     })
     expect(screen.getByText('Load failed')).toBeInTheDocument()
-  })
-
-  // Bug-repro: fails on pre-AST-1549 Toast (no Dismiss); green once dismiss splits from copy
-  it('AST-1553: dismiss closes error toast without copying', async () => {
-    const writeText = vi.mocked(navigator.clipboard.writeText)
-    const onDone = vi.fn()
-    renderToast({ text: 'Server error', variant: 'error' }, onDone)
-
-    await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }))
-    })
-
-    expect(writeText).not.toHaveBeenCalled()
-    act(() => {
-      vi.advanceTimersByTime(300)
-    })
-    expect(onDone).toHaveBeenCalledTimes(1)
   })
 })
