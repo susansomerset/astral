@@ -216,3 +216,154 @@ context_tokens≈68000
 **Built:** `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `00c10b63edcb19b578b7fd50af8077fbd729c4ce`
 
 Stages 1–2: `JobDiscussionPane` RESPONSE-only stack; Discussion tab wired in `JobAnalysisReportModal` from `report_discussion_sections` + `agent_story`. Tests deferred to Betty.
+
+## Radia review
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1551
+**Publish ref:** `sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `9fab6df296e63a2f64c008bf174a3af7e01ddef2`
+**Overall:** DISCUSS
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` (11 files). **AST-1551 product surface:** `JobDiscussionPane.tsx` (new), `JobAnalysisReportModal.tsx` (wire-up). Diff also carries **AST-1550 backend** (`config.py`, `api_system.py`, `agent.py`) and both issue docs — sibling rollup on sub before `origin/dev` merge (commits `e9b5c46b` sync from AST-1550 sub, `3326b92f resolve(AST-1550)`); not Katherine product scope.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 match plan |
+| orch.roles.archie-approves-statutes | universal | conforms | N/A |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1551)` @ `253b780f`; AST-1552 bleed dropped @ `38a0b42d` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests`/`sync` |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub publish ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1541/AST-1551-…` |
+| orch.git.merge-on-checkout | universal | conforms | N/A |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No evidence |
+| orch.git.no-dev-agent-branches | universal | conforms | Sub only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1541 epic |
+| orch.git.three-permanent-branches | universal | conforms | Sub topology |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No product-policy drift |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed; empty-RESPONSE gap fixed @ `9fab6df2` |
+| orch.roles.betty-owns-test-tree | universal | conforms | Tests/bible/fixture on Betty path |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook violations visible |
+| astral.agent.confidence-bounds | scoped | not-applicable | No agent confidence paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | No do_task changes in 1551 product |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade logic |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | No dispatcher |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No batch reads |
+| astral.config.config-source-of-truth | scoped | conforms | Sections/tabs from manifest; no TSX hardcode |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spikes |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | Frontend-only product diff |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No seed |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | AST-1551 plan doc present |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Engineer frontend only |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | Engineer did not land tests |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | No coat-check |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No consult |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | No new API routes |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | No core/external product edits |
+| astral.layers.import-direction | scoped | conforms | Frontend imports components only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | `report_top_tabs` / `report_discussion_sections` from manifest; local cast per plan |
+| astral.seed.* | scoped | not-applicable | No seed JSON (5 statutes) |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | No data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | No SQL |
+| astral.standards.debug-contract-gated | scoped | not-applicable | No debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Small focused pane; Joan-approved `formatContent` duplication |
+| astral.standards.in-scope-only | scoped | conforms | Product TSX limited to plan files; no `App.css` / `AgentStoryTab` / `StateUiContext` |
+| astral.standards.logging-via-utils | scoped | not-applicable | No logging in frontend diff |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `JobDiscussionPane`, `responseBodyForTask` |
+| astral.standards.no-cross-contamination | scoped | conforms | No out-of-layer frontend deps |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Component TSX manifest-driven; test constants only in tests |
+| astral.standards.public-then-helpers | scoped | conforms | Default export first, helpers below |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils product changes (1550 carryover pre-reviewed) |
+| astral.state.core-decides-transitions | scoped | not-applicable | No transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | UI render only |
+| astral.ui.frontend-file-placement | scoped | conforms | New pane under `components/` |
+| astral.ui.naming-conventions | scoped | conforms | PascalCase component, camelCase helpers |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server config |
+
+**Active set scored:** 64 statute ids (registry rows excluding namespace paths). **0 violates** on AST-1551 product `src/ui/frontend/**`.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan/parent cite no `canon/patterns/**` ids; reuses `ReportSectionList` / `CollapsiblePanel` / `entity-story-content` by convention |
+
+## Plan adherence
+
+**Stage 1 — `JobDiscussionPane`:** New component renders `ReportSectionList`; RESPONSE-only via `responseBodyForTask`; JSON pretty-print / raw text (`formatDiscussionContent`); skips empty RESPONSE before selecting body (`9fab6df2`); handles `RESPONSE (2)` via `startsWith("RESPONSE")`; no prompt blocks; no hardcoded hop keys in component.
+
+**Stage 2 — `JobAnalysisReportModal`:** `agent_story?: AgentStoryEntry[]` on `JobDetail`; `discussionSections` memo from manifest local cast (no `StateUiContext` edit); Discussion pane branch after Artifacts; `topTabs` unchanged (manifest-driven); Summary/Analysis/Artifacts untouched; no `App.css`.
+
+**Dependency:** AST-1550 backend on same sub ref supplies `report_top_tabs`, `report_discussion_sections`, `agent_story[].task_name` — present in diff vs `origin/dev` via sibling sync; matches blockedBy AST-1550 @ User Testing.
+
+**Estimate 3:** Fits (two TSX files + wiring).
+
+Joan **APPROVED** @ `313778b1`; acceptable findings (duplicated `formatContent`, manifest hop-order vs timestamp) honored. No straggler excluded statute scored in-scope.
+
+## Findings
+
+### discuss — Manifest fixture hop keys drift from AST-1550 consume contract
+
+**Location:** `tests/component/frontend/fixtures/stateUiManifestFixture.ts` (`report_discussion_sections`); mirrored in `test_JobDiscussionPane.test.tsx` `NINE` constant
+
+**Finding:** Fixture/test constants use nine section_ids including `advise_job_resume`, `finalize_job_resume`, `finalize_cover_letter`. AST-1550’s documented live walk (and `test_api_system.py` `TestAst1550ReportDiscussionSections._NINE` on this branch) is:
+
+`contemplate_job` → `draft_job_resume` → `check_job_resume` → `draft_cover_letter` → `check_cover_letter` → `draft_application_responses` → `check_application_responses` → `polish_application_package` → `propose_application_responses`
+
+Fixture comment says “AST-1550: nine hop slots” but keys differ. Product TSX is manifest-driven and will render production keys correctly; component tests nonetheless assert labels (“Advise Job Resume”, etc.) that staging will not show.
+
+**Recommendation:** Betty align fixture + pane unit `NINE` with AST-1550 `_NINE` before UAT sign-off — not an engineer `resolve-child` item.
+
+### advisory — AST-1550 backend in three-dot diff vs `origin/dev`
+
+**Location:** `src/utils/config.py`, `src/ui/api/api_system.py`, `src/core/agent.py` in diff
+
+**Finding:** Expected sibling rollup on sub (`sync(publish-ref)` / `resolve(AST-1550)`). AST-1551 plan scope excludes these files; Katherine’s product commits are frontend-only (`cebb4f47`, `00c10b63`). No additional 1551-authored backend drift.
+
+### advisory — `formatDiscussionContent` duplication
+
+**Location:** `JobDiscussionPane.tsx` vs `AgentStoryTab.formatContent`
+
+**Finding:** Four-line duplicate per Joan acceptable finding; scope-correct (plan excludes `AgentStoryTab` edits).
+
+## What’s solid
+
+- Discussion pane wiring matches sibling consume contract in production code (manifest sections + `job.agent_story`).
+- RESPONSE-only filtering; PROMPT hidden; read-only `entity-story-content` textarea.
+- Empty RESPONSE no longer masks later non-empty body (Agent Story parity test green).
+- No hardcoded fourth tab; Discussion from `report_top_tabs`.
+- `default_expanded` preserved from manifest (all collapsed).
+- AST-1552 builder bleed removed from merge-tests; Toast not re-bled on this ref.
+- Modal integration tests cover nine collapsed slots, partial story, RESPONSE expand.
+
+## Frame diff
+
+- **New:** `JobDiscussionPane` — nine-slot RESPONSE-only collapsible stack
+- **`JobAnalysisReportModal`:** `agent_story` on `JobDetail`; Discussion tab pane when `activeTopTab === "discussion"`
+- **Tests/fixture:** Discussion tab + sections in manifest fixture; pane + modal component tests
+- **Out of 1551 frame (on diff):** AST-1550 backend + docs (sibling dependency)
+
+## Recommended actions (downstream — not Radia)
+
+1. **Betty:** Update `stateUiManifestFixture.ts` and `test_JobDiscussionPane` `NINE` to match AST-1550 `_NINE` hop keys/labels.
+2. **Ada/Katherine / resolve-child:** No product `src/ui/frontend/**` fixes required for AST-1551 scope.
+3. **Chuckles:** On merge-child, expect AST-1550 backend already on this sub; dedupe vs ftr if needed.
+
+**Notes:** AST-1550 blockedBy satisfied on branch tip. Product code alone: **CLEAN**.
+
+context_tokens≈58000
+
+---
+```
