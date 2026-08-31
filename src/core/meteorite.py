@@ -804,3 +804,29 @@ def _map_stage_jobs_to_scraps(
         return scraps, None
 
     return [], "unhandled stage outcome"
+
+
+_ZERO_SUMMARY: Dict[str, int] = {
+    "total_processed": 0,
+    "total_passed": 0,
+    "total_failed": 0,
+    "total_errors": 0,
+}
+
+
+async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
+    """Dispatch runner: NEW → SCRAPE_LINK | READY (AST-1560 stub until Stage 2)."""
+    del task, debug
+    return dict(_ZERO_SUMMARY)
+
+
+async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
+    """Dispatch runner: SCRAPE_LINK → READY | BOT_BLOCKED | ERROR (AST-1560 stub)."""
+    del task, debug
+    return dict(_ZERO_SUMMARY)
+
+
+async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
+    """Dispatch runner: READY → LANDED + job create (AST-1560 stub)."""
+    del task, debug
+    return dict(_ZERO_SUMMARY)
