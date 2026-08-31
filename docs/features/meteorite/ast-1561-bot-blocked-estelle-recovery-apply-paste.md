@@ -76,7 +76,7 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
 
    - Mint one `entity_batch_id = f"{task_key}-{uuid4()}"`; `save_dispatch_ledger(...)`; `log_batch_id.set(entity_batch_id)`; set `task["entity_batch_id"] = entity_batch_id`.
    - Late-import `from src.core.meteorite import run_notify_meteorite_bot_blocked`.
-   - Call `asyncio.run(run_notify_meteorite_bot_blocked(task, debug=debug))` (mirror ingress transition async runners).
+   - `summary = await run_notify_meteorite_bot_blocked(task, debug=debug)` — **do not** `asyncio.run` here (`_dispatch_one` is already async; nested `asyncio.run` breaks the loop — mirror `run_meteorite_email` / AST-1560 ingress `await` branches).
    - Accumulate summary counts from runner dict; clear `log_batch_id` in `finally`.
 
 ⚠️ **Decision:** Notify uses the same global NULL-`candidate_id` dispatch row shape as scrape/land — row `candidate_id` column is authoritative at DM time.
@@ -116,7 +116,7 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
    - Require `row["state"] == "BOT_BLOCKED"` else `{"ok": False, "error": "invalid_state", "state": row["state"]}`.
    - `content = _normalize_apply_paste_content(pasted_text)`; if not content → `{"ok": False, "error": "empty_paste"}`.
    - `update_meteorite(meteorite_id, content=content, state="READY", error=None)` — **no** `invoke_stage_meteorite`, **no** Playwright, **no** classify.
-   - If `log_meteorite_row_transition` exists (AST-1560), log info line with `state="READY"`, `task_key="apply_paste"`, `error=None` (use existing helper signature — pass `row_id`, `candidate_id`, `state`, `task_key`; omit link unless helper requires it).
+   - Do **not** call `log_meteorite_row_transition` for `READY` — AST-1560 helper only formats `BOT_BLOCKED` / `ERROR` / `LANDED` lines; paste recovery is silent at info (Joan acceptable).
    - Return `{"ok": True, "meteorite_id": meteorite_id, "state": "READY"}`.
 
 6. Add **`_resolve_slack_dm_channel_for_candidate(candidate_id: str) -> Optional[str]`**:
@@ -163,8 +163,9 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
 2. Add **`try_meteorite_apply_paste_from_slack(*, astral_candidate_id: Optional[str], channel: str, thread_ts: Optional[str], message_ts: Optional[str], text: str, debug: bool = False) -> dict`**:
 
    - If no `astral_candidate_id` or empty `text.strip()` → `{"applied": False}`.
-   - **Thread path:** Let `anchor = (thread_ts or message_ts or "").strip()`. If anchor: `row = find_meteorite_for_estelle_thread(candidate_id=astral_candidate_id, thread_ts=anchor)` (late-import from meteorite).
-   - **Unprompted paste path:** If no row and anchor: `row = find_meteorite_bot_blocked_paste_source(candidate_id=astral_candidate_id)`.
+   - Late-import lookup helpers from meteorite.
+   - **Thread path (first):** When `(thread_ts or message_ts)` is non-empty, set `anchor = (thread_ts or message_ts).strip()` and `row = find_meteorite_for_estelle_thread(candidate_id=astral_candidate_id, thread_ts=anchor)`.
+   - **Unprompted `paste` source_kind (second):** If `row` is still `None`, `row = find_meteorite_bot_blocked_paste_source(candidate_id=astral_candidate_id)` — runs regardless of whether `anchor` was set (candidate may paste in the main DM without threading to the notify `ts`; match is by `source_kind=paste` + `BOT_BLOCKED` only).
    - If no row → `{"applied": False}`.
    - Call `apply_paste(int(row["id"]), text, debug=debug)`; return `{"applied": True, "result": ...}`.
 
@@ -196,6 +197,12 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Revisions
+
+Revision 1 — 2026-08-31  
+Driven by: Joan `[plan-rubric]` REVISE @ `116ca135` (Plan Discuss)  
+Changes: Stage 1 §7 — notify branch uses `await run_notify_meteorite_bot_blocked` (no nested `asyncio.run`). Stage 2 §5 — drop `READY` monitoring log (AST-1560 helper has no format). Stage 3 §2 — unprompted paste: thread lookup first, then `find_meteorite_bot_blocked_paste_source` when no thread match (anchor optional).
 
 ## Joan validate
 
