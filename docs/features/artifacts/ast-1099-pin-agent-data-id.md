@@ -912,19 +912,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/4f6469835de76b2c9a126ba58b2efbb2/d2215b5e-b37d-4149-bd1d-557eb7ab857d/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/ae332cfb-e3e3-43b4-b1d7-4df0f331aa0b/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/4f6469835de76b2c9a126ba58b2efbb2/cd101524-f16d-43f0-9b6b-e0fd61ad486c/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/cb028d939d41dfcd8e478a8c8ee91601/4a0092bc-fdf3-47f6-8865-307221a318f2/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/6756c75f-4c53-4e2b-855b-38d80ad347c8/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/cb028d939d41dfcd8e478a8c8ee91601/28e31dc0-4096-4933-950e-8a814e0d5963/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1422 (parent) | ftr/AST-1422-finalize-job-resume-not-parsed |
-| AST-1428 | sub/AST-1422/AST-1428-copy-job-resume-blob-keep-pin |
-| AST-1430 | sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin |
+| AST-1547 (parent) | ftr/AST-1547-job-resume-content-not-saving |
+| AST-1548 | sub/AST-1547/AST-1548-fix-job-resume-body-replica |
+| AST-1554 | sub/AST-1547/AST-1554-gap-job-resume-body-replica-tests |
 
-**Epic worktree:** `astral-AST-1422/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-1547/` — one active sub checked out at a time.
 
 ## Bug: AST-1548 — Job resume/cover letter body replica on job (not agent_data pin)
 
