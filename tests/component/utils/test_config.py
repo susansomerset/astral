@@ -5299,3 +5299,37 @@ class TestAst1550DiscussionHopKeys:
         )
         with pytest.raises(RuntimeError, match="cycle"):
             cfg.build_artifacts_discussion_hop_task_keys()
+
+
+class TestAst1557MeteoriteStates:
+    """AST-1557: METEORITE_STATES staging registry + retention partitions (not JOB_STATES)."""
+
+    def test_seven_keys_and_new_entry(self) -> None:
+        assert set(cfg.METEORITE_STATES) == {
+            "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+        }
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] is None
+        assert all("prior_states" in entry for entry in cfg.METEORITE_STATES.values())
+
+    def test_distinct_from_job_states_meteorite_labels(self) -> None:
+        assert "METEORITE_NEW" not in cfg.METEORITE_STATES
+        assert "METEORITE_NEW" in cfg.JOB_STATES
+        assert "NEW" in cfg.METEORITE_STATES
+        assert "NEW" in cfg.JOB_STATES
+
+    def test_retention_partitions(self) -> None:
+        purge = set(cfg.METEORITE_STATES_RETENTION["purge_states"])
+        stale = set(cfg.METEORITE_STATES_RETENTION["stale_list_states"])
+        assert purge == {"LANDED"}
+        assert stale == {"ERROR", "BOT_BLOCKED", "ABANDONED"}
+        assert purge.isdisjoint(stale)
+        assert purge | stale <= set(cfg.METEORITE_STATES)
+
+    def test_priors_are_registry_keys(self) -> None:
+        keys = set(cfg.METEORITE_STATES)
+        for name, entry in cfg.METEORITE_STATES.items():
+            priors = entry["prior_states"]
+            if priors is None:
+                continue
+            for p in priors:
+                assert p in keys, f"{name} prior {p!r} not in METEORITE_STATES"

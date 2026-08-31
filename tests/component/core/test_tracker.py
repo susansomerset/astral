@@ -1134,13 +1134,22 @@ class TestAst1504CoverLetterHydrateDisplayGaps:
 
 
 class TestAst1554BodyReplicaPersistHelpers:
-    """AST-1554: dual-write resume body + cover replica persist; coat-check empty."""
+    """AST-1554 body-replica helpers — SoT flipped to artifacts table under AST-1556."""
 
-    def test_save_job_artifact_job_resume_body_dual_writes(
+    def test_save_job_artifact_job_resume_body_writes_artifacts_table(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        saved: list[dict[str, object]] = []
-        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
+        # AST-1556: authoritative write is database.save_artifact, not job_data dual-write.
+        table: list[tuple] = []
+        job_data: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data: table.append((et, eid, at, data)) or "uuid-jr",
+        )
+        monkeypatch.setattr(
+            tracker_mod, "save_job_data", lambda jid, payload, **k: job_data.append(payload)
+        )
         monkeypatch.setattr(
             tracker_mod,
             "_candidate_data_for_job",
@@ -1156,26 +1165,46 @@ class TestAst1554BodyReplicaPersistHelpers:
         tracker_mod.save_job_artifact_job_resume_body(
             "job-1554", {"professional_summary": "S", "experience": []}
         )
-        art = saved[0]["artifacts"]
-        assert art["job_resume"]["professional_summary"] == "S"
-        assert art["resume_content"] == art["job_resume"]
+        assert table, "expected artifacts-table write for job_resume"
+        assert table[0][0] == "job"
+        assert table[0][1] == "job-1554"
+        assert table[0][2] == "job_resume"
+        assert table[0][3]["professional_summary"] == "S"
+        for payload in job_data:
+            art = (payload or {}).get("artifacts") or {}
+            assert "job_resume" not in art
+            assert "resume_content" not in art
 
     def test_persist_finalize_job_resume_content_coat_check(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        saved: list = []
-        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: saved.append(1))
+        table: list = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda *a, **k: table.append(1),
+            raising=False,
+        )
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: table.append(1))
         monkeypatch.setattr(
             tracker_mod, "parsed_matches_job_resume_content", lambda jid, parsed: False
         )
         assert tracker_mod.persist_finalize_job_resume_content("job-1554", {}) is False
-        assert saved == []
+        assert table == []
 
-    def test_persist_finalize_cover_letter_content_writes_normalized(
+    def test_persist_finalize_cover_letter_content_writes_artifacts_table(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        saved: list[dict[str, object]] = []
-        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
+        table: list[tuple] = []
+        job_data: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data: table.append((et, eid, at, data)) or "uuid-cl",
+        )
+        monkeypatch.setattr(
+            tracker_mod, "save_job_data", lambda jid, payload, **k: job_data.append(payload)
+        )
         assert (
             tracker_mod.persist_finalize_cover_letter_content(
                 "job-1554",
@@ -1183,17 +1212,28 @@ class TestAst1554BodyReplicaPersistHelpers:
             )
             is True
         )
-        assert saved[0]["artifacts"]["cover_letter"] == {
+        assert table
+        assert table[0][:3] == ("job", "job-1554", "cover_letter")
+        assert table[0][3] == {
             "Subject": "Re: Role",
             "Letter": "Hello",
             "signature": "Ada",
         }
+        for payload in job_data:
+            art = (payload or {}).get("artifacts") or {}
+            assert "cover_letter" not in art
 
     def test_persist_finalize_cover_letter_content_coat_check_empty(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        saved: list = []
-        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: saved.append(1))
+        table: list = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda *a, **k: table.append(1),
+            raising=False,
+        )
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: table.append(1))
         assert (
             tracker_mod.persist_finalize_cover_letter_content(
                 "job-1554",
@@ -1201,7 +1241,138 @@ class TestAst1554BodyReplicaPersistHelpers:
             )
             is False
         )
-        assert saved == []
+        assert table == []
+
+
+class TestAst1556JobArtifactsTableSoT:
+    """AST-1556 [bug-repro]: job_resume/cover_letter SoT is artifacts table (not job_data blob)."""
+
+    def _resume_cd(self) -> dict:
+        return {
+            "artifacts": {
+                "resume_structure": [
+                    {"id": "professional_summary", "enabled": True, "order": 1},
+                    {"id": "experience", "enabled": True, "order": 2},
+                ]
+            }
+        }
+
+    def test_save_job_resume_body_writes_artifacts_table_not_job_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] After Save/finalize, current row must exist in artifacts table — not job_data."""
+        table: list[tuple] = []
+        job_data: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data: table.append((et, eid, at, data)) or "uuid-1556",
+        )
+        monkeypatch.setattr(
+            tracker_mod, "save_job_data", lambda jid, payload, **k: job_data.append(payload)
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._resume_cd())
+        tracker_mod.save_job_artifact_job_resume_body(
+            "job-1556", {"professional_summary": "Table SoT", "experience": []}
+        )
+        assert table, "pre-fix writes job_data only — make-fix must call save_artifact"
+        assert table[0] == (
+            "job",
+            "job-1556",
+            "job_resume",
+            table[0][3],
+        )
+        assert table[0][3]["professional_summary"] == "Table SoT"
+        for payload in job_data:
+            art = (payload or {}).get("artifacts") or {}
+            assert "job_resume" not in art and "resume_content" not in art
+
+    def test_save_cover_letter_writes_artifacts_table_not_job_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Cover editable body must land as artifacts-table current row."""
+        table: list[tuple] = []
+        job_data: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data: table.append((et, eid, at, data)) or "uuid-cl",
+        )
+        monkeypatch.setattr(
+            tracker_mod, "save_job_data", lambda jid, payload, **k: job_data.append(payload)
+        )
+        tracker_mod.save_job_artifact_cover_letter(
+            "job-1556", {"re_line": "Re: Role", "body": "Hello", "signature": "Ada"}
+        )
+        assert table, "pre-fix cover save writes job_data only"
+        assert table[0][:3] == ("job", "job-1556", "cover_letter")
+        assert table[0][3] == {
+            "Subject": "Re: Role",
+            "Letter": "Hello",
+            "signature": "Ada",
+        }
+        for payload in job_data:
+            assert "cover_letter" not in ((payload or {}).get("artifacts") or {})
+
+    def test_hydrate_overlays_artifacts_table_currents(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Operator hydrate must read get_current_artifact for job_resume/cover_letter."""
+        import inspect
+
+        gets: list[tuple] = []
+
+        def _get(et: str, eid: str, at: str):
+            gets.append((et, eid, at))
+            if at == "job_resume":
+                return {"artifact_data": {"professional_summary": "from-table"}, "current": 1}
+            if at == "cover_letter":
+                return {
+                    "artifact_data": {"Subject": "Re", "Letter": "Hi", "signature": "A"},
+                    "current": 1,
+                }
+            return None
+
+        monkeypatch.setattr(tracker_mod.database, "get_current_artifact", _get)
+        sig = inspect.signature(tracker_mod.hydrate_job_artifacts_for_display)
+        kwargs = {"astral_job_id": "job-1556"} if "astral_job_id" in sig.parameters else {}
+        out = tracker_mod.hydrate_job_artifacts_for_display({}, **kwargs)
+        assert ("job", "job-1556", "job_resume") in gets
+        assert ("job", "job-1556", "cover_letter") in gets
+        assert out.get("job_resume", {}).get("professional_summary") == "from-table"
+        assert out.get("cover_letter", {}).get("Letter") == "Hi"
+
+    def test_clear_job_build_artifacts_retires_table_currents(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Cancel must retire artifacts-table currents for job_resume/cover_letter."""
+        retired: list[tuple] = []
+
+        def _retire(et: str, eid: str, at: str) -> bool:
+            retired.append((et, eid, at))
+            return True
+
+        monkeypatch.setattr(
+            tracker_mod.database, "retire_current_artifact", _retire, raising=False
+        )
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_job",
+            lambda jid: {
+                "astral_job_id": jid,
+                "job_data": {
+                    "artifacts": {
+                        "job_resume": {"professional_summary": "x"},
+                        "cover_letter": {"Subject": "Re"},
+                        "resume_content": {"professional_summary": "x"},
+                    }
+                },
+            },
+        )
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: None)
+        tracker_mod.clear_job_build_artifacts("job-1556")
+        assert ("job", "job-1556", "job_resume") in retired
+        assert ("job", "job-1556", "cover_letter") in retired
 
 
 class TestAst1270NestedResumePayloadBody:
