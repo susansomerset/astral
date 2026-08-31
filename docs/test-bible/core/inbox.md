@@ -236,3 +236,42 @@ Shared header+body HTML assembly: `strip_extract_email_html` embeds From/To/Subj
 ```
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+Shrink inbox to candidate-scoped `fetch_candidate_email` / `archive_candidate_email` + unenriched `list_inbox_messages`; retire From-then-To bind, `run_fetch_email`, land-bound helpers, and `create_meteorite_job_from_inbox_message`. Bind-count helpers remain importable but stub to `{}` / `0` until AST-1559. Config retirements: **`docs/test-bible/utils/config.md`** § AST-1558. Manage Email API/UI: **`docs/test-bible/ui/api/api_inbox.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unenriched list + Style D `inbox.list` | `src/core/inbox.py` | revised **`TestListInboxMessages`** |
+| Alias From/To filter + archive + count stubs + deleted symbols | same | **`TestAst1558CandidateInboxVerbs`** |
+| Strip/normalize keepers | same | **`TestAst1049StripExtractEmailHtml`**, **`TestAst1131StripNormalizePastedList`**, **`TestGetMessageHtml`** |
+
+**Broken / obsolete (revised or removed this pass):** **`TestAst1047InboxFromBind`**, **`TestAst1313FromThenToBind`**, **`TestAst1049CreateMeteoriteJobFromInboxMessage`**, **`TestAst1135InboxBoundCounts`**, **`TestAst1531InboxStageCutover`** — bind/create/land-bound product surfaces deleted. Historical AST-1313 / AST-1495 / AST-1531 bible blocks above describe pre-1558 behavior; do not re-run those node ids.
+
+**Integration:** none — no existing integration scenario asserts inbox bind / fetch_email; do not invent.
+
+## QA test manifest
+
+1. Core inbox verbs: `tests/component/core/test_inbox.py`
+2. Config retirements: `tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired`
+3. Manage Email API: `tests/component/ui/api/test_api_inbox.py`
+4. Manage Email page (§6c): `tests/component/frontend/pages/test_AdminManageEmail.test.tsx`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py \
+  tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired \
+  tests/component/ui/api/test_api_inbox.py \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums:** recorded after publish in this block (Betty §9).

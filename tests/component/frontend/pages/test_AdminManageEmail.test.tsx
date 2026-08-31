@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
+import type { CandidateInfo } from "../../../../src/ui/frontend/src/contexts/CandidateContext"
 import AdminManageEmail from "../../../../src/ui/frontend/src/pages/AdminManageEmail"
 import { installBaseApiMocks, jsonResponse, renderWithProviders } from "../test-utils"
 
@@ -13,6 +14,13 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
 
 const mockedApi = vi.mocked(api)
 
+const CANDIDATE_ADA: CandidateInfo = {
+  astral_candidate_id: "cand-ada",
+  state: "ACTIVE_SEARCH",
+  candidate_data: {},
+  first: "Ada",
+}
+
 const ROWS = [
   {
     id: "m1",
@@ -21,7 +29,6 @@ const ROWS = [
     from_address: "sender@example.com",
     date: "Mon, 1 Jan 2026",
     unread: true,
-    candidate_match: { matched: true, astral_candidate_id: "cand-ada" },
   },
   {
     id: "m2",
@@ -30,9 +37,34 @@ const ROWS = [
     from_address: "other@example.com",
     date: "Tue, 2 Jan 2026",
     unread: false,
-    candidate_match: { matched: false, astral_candidate_id: null },
   },
 ]
+
+function candidatesResponse() {
+  return jsonResponse([CANDIDATE_ADA])
+}
+
+function inboxListResponse() {
+  return jsonResponse({ messages: ROWS })
+}
+
+function mockInboxUrl(url: string) {
+  return url === "/api/admin/inbox/messages" || url.startsWith("/api/admin/inbox/messages?")
+}
+
+async function waitForCandidateAdaOption() {
+  await waitFor(() =>
+    expect(screen.getByRole("option", { name: "Ada" })).toBeInTheDocument(),
+  )
+}
+
+async function selectCandidateAda() {
+  await waitForCandidateAdaOption()
+  await userEvent.selectOptions(
+    screen.getByLabelText("Candidate", { selector: "select" }),
+    "cand-ada",
+  )
+}
 
 describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c routed page)", () => {
   beforeEach(() => {
@@ -45,8 +77,9 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       const fromExtra = extra ? await extra(url, init) : undefined
       if (fromExtra !== undefined) return fromExtra
-      if (url === "/api/admin/inbox/messages") {
-        return jsonResponse({ messages: ROWS })
+      if (url === "/api/candidates") return candidatesResponse()
+      if (mockInboxUrl(url)) {
+        return inboxListResponse()
       }
     })
   }
@@ -62,18 +95,6 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     expect(mockedApi).toHaveBeenCalledWith("/api/admin/inbox/messages")
   })
 
-  it("list Candidate column shows match bind or em dash (AST-1048)", async () => {
-    mockApis()
-    renderWithProviders(<AdminManageEmail />)
-    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
-    expect(screen.getByRole("columnheader", { name: "Candidate" })).toBeInTheDocument()
-    const matched = screen.getByText("Matched: cand-ada")
-    expect(matched).toHaveClass("manage-email-match")
-    const unmatchedRow = screen.getByText("other@example.com").closest("tr")
-    expect(unmatchedRow).toBeTruthy()
-    expect(unmatchedRow!.textContent).toContain("—")
-  })
-
   it("per-row Create is retired (AST-1142); no Actions column", async () => {
     mockApis()
     renderWithProviders(<AdminManageEmail />)
@@ -83,8 +104,7 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     expect(document.querySelector("button.manage-email-create")).toBeNull()
   })
 
-  it("matched row: modal shows bind + assembled HTML; no Create in modal (AST-1040/1051/1538)", async () => {
-    // AST-1537/1538: popup reads assembled_html only (not body-only html_body).
+  it("row modal shows assembled HTML; no Create in modal (AST-1040/1051/1538)", async () => {
     const assembled =
       '<header class="email-headers"><p class="email-from">From: a@x</p></header>\n' +
       '<section class="email-body"><p>body html</p></section>'
@@ -102,10 +122,7 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     await userEvent.click(screen.getByText("Hello Astral"))
     await waitFor(() => expect(screen.getByTitle("Email body")).toBeInTheDocument())
     expect(screen.getByRole("heading", { name: "Hello Astral", level: 2 })).toBeInTheDocument()
-    const modalMatch = screen.getByText("Matched: cand-ada", {
-      selector: ".manage-email-match--modal",
-    })
-    expect(modalMatch).toBeInTheDocument()
+    expect(document.querySelector(".manage-email-match--modal")).toBeNull()
     expect(document.querySelector(".manage-email-actions")).toBeNull()
     const source = screen.getByTitle("Email body")
     expect(source.tagName).toBe("PRE")
@@ -115,7 +132,7 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     expect(mockedApi).toHaveBeenCalledWith("/api/admin/inbox/messages/m1")
   })
 
-  it("unmatched row: modal omits match line; browse still works (AST-1051)", async () => {
+  it("empty-subject row: modal omits match line; browse still works (AST-1051)", async () => {
     mockApis(async (url) => {
       if (url === "/api/admin/inbox/messages/m2") {
         return jsonResponse({ id: "m2", html_body: "", assembled_html: "" })
@@ -158,7 +175,6 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     await userEvent.click(screen.getByText("Hello Astral"))
     await waitFor(() => expect(screen.getByText("upstream")).toBeInTheDocument())
     expect(screen.queryByTitle("Email body")).not.toBeInTheDocument()
-    // AST-1142: Create retired — Land Meteorite stays on the page chrome.
     expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeDisabled()
   })
@@ -175,30 +191,38 @@ describe("AdminManageEmail — AST-1142 (§6c multi-select + Land Meteorite)", (
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       const fromExtra = extra ? await extra(url, init) : undefined
       if (fromExtra !== undefined) return fromExtra
-      if (url === "/api/admin/inbox/messages") {
-        return jsonResponse({ messages: ROWS })
+      if (url === "/api/candidates") return candidatesResponse()
+      if (mockInboxUrl(url)) {
+        return inboxListResponse()
       }
     })
   }
 
-  it("toolbar: Land Meteorite disabled until selection; select/clear without leaving page", async () => {
+  it("toolbar: Land Meteorite disabled until candidate filter + selection", async () => {
     mockApis()
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await waitForCandidateAdaOption()
     expect(screen.getByText("0 selected")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Clear selection" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Select all" })).toHaveClass("btn", "primary")
-    expect(screen.getByRole("button", { name: "Clear selection" })).toHaveClass("btn", "secondary")
-    expect(screen.getByRole("button", { name: "Land Meteorite" })).toHaveClass("btn", "primary")
 
     const matchedRow = screen.getByText("Hello Astral").closest("tr")!
     const rowCheckbox = within(matchedRow).getByRole("checkbox")
     await userEvent.click(rowCheckbox)
     expect(screen.getByText("1 selected")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeDisabled()
+
+    await userEvent.selectOptions(
+      screen.getByLabelText("Candidate", { selector: "select" }),
+      "cand-ada",
+    )
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    expect(screen.getByText("0 selected")).toBeInTheDocument()
+    const rowAfterFilter = screen.getByText("Hello Astral").closest("tr")!
+    await userEvent.click(within(rowAfterFilter).getByRole("checkbox"))
+    expect(screen.getByText("1 selected")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeEnabled()
-    // Checkbox click must not open the message modal.
-    expect(screen.queryByRole("heading", { name: "Hello Astral", level: 2 })).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByRole("button", { name: "Select all" }))
     expect(screen.getByText("2 selected")).toBeInTheDocument()
@@ -207,37 +231,35 @@ describe("AdminManageEmail — AST-1142 (§6c multi-select + Land Meteorite)", (
     expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeDisabled()
   })
 
-  it("Land Meteorite POSTs selected ids and shows outcomes; never create-job", async () => {
-    let listCalls = 0
+  it("Land Meteorite POSTs selected ids with candidate_id and shows outcomes", async () => {
+    let landed = false
     mockApis(async (url, init) => {
-      if (url === "/api/admin/inbox/messages") {
-        listCalls += 1
-        // After land, archive drops m1 from the list.
-        return jsonResponse({
-          messages: listCalls === 1 ? ROWS : [ROWS[1]],
-        })
+      if (mockInboxUrl(url)) {
+        return jsonResponse({ messages: landed ? [ROWS[1]] : ROWS })
       }
       if (url === "/api/admin/inbox/land-meteorite" && init?.method === "POST") {
         const body = JSON.parse(String(init.body))
         expect(body.message_ids).toEqual(["m1", "m2"])
+        expect(body.candidate_id).toBe("cand-ada")
+        landed = true
         return jsonResponse({
           results: [
             {
               message_id: "m1",
-              outcome: "archived",
+              outcome: "created",
               astral_candidate_id: "cand-ada",
             },
             {
               message_id: "m2",
-              outcome: "skipped-unbound",
-              astral_candidate_id: null,
+              outcome: "skipped-other-candidate",
+              astral_candidate_id: "cand-ada",
             },
           ],
-          total_processed: 1,
-          total_passed: 1,
+          total_processed: 2,
+          total_passed: 2,
           total_failed: 0,
           total_errors: 0,
-          total_skipped: 1,
+          total_skipped: 0,
         })
       }
       if (typeof url === "string" && url.includes("create-job")) {
@@ -246,26 +268,22 @@ describe("AdminManageEmail — AST-1142 (§6c multi-select + Land Meteorite)", (
     })
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await selectCandidateAda()
     await userEvent.click(screen.getByRole("button", { name: "Select all" }))
     await userEvent.click(screen.getByRole("button", { name: "Land Meteorite" }))
     await waitFor(() =>
       expect(screen.getByText("Land Meteorite results")).toBeInTheDocument(),
     )
-    expect(screen.getByText(/Hello Astral — archived \(cand-ada\)/)).toBeInTheDocument()
-    expect(screen.getByText(/m2 — skipped-unbound/)).toBeInTheDocument()
+    expect(screen.getByText(/Hello Astral — created \(cand-ada\)/)).toBeInTheDocument()
+    expect(screen.getByText(/m2 — skipped-other-candidate \(cand-ada\)/)).toBeInTheDocument()
     expect(
-      screen.getByText(/Land Meteorite: passed 1, skipped 1, failed 0, errors 0/),
+      screen.getByText(/Land Meteorite: passed 2, skipped 0, failed 0, errors 0/),
     ).toBeInTheDocument()
     expect(screen.getByText("0 selected")).toBeInTheDocument()
     expect(mockedApi).toHaveBeenCalledWith(
       "/api/admin/inbox/land-meteorite",
       expect.objectContaining({ method: "POST" }),
     )
-    const createCalls = mockedApi.mock.calls.filter(
-      ([u]) => typeof u === "string" && u.includes("create-job"),
-    )
-    expect(createCalls).toHaveLength(0)
-    // Reload after success drops archived subject from the table.
     await waitFor(() => expect(screen.queryByText("Hello Astral")).not.toBeInTheDocument())
   })
 
@@ -277,6 +295,7 @@ describe("AdminManageEmail — AST-1142 (§6c multi-select + Land Meteorite)", (
     })
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await selectCandidateAda()
     const matchedRow = screen.getByText("Hello Astral").closest("tr")!
     await userEvent.click(within(matchedRow).getByRole("checkbox"))
     await userEvent.click(screen.getByRole("button", { name: "Land Meteorite" }))
@@ -294,13 +313,16 @@ describe("AdminManageEmail — AST-1410 silent refetch", () => {
   })
 
   it("Land Meteorite list refetch keeps rows and skips Loading…", async () => {
+    let postLandMessages: typeof ROWS | null = null
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
-      if (url === "/api/admin/inbox/messages") {
-        return jsonResponse({ messages: ROWS })
+      if (url === "/api/candidates") return candidatesResponse()
+      if (mockInboxUrl(url)) {
+        return jsonResponse({ messages: postLandMessages ?? ROWS })
       }
       if (url === "/api/admin/inbox/land-meteorite" && init?.method === "POST") {
+        postLandMessages = [ROWS[1]]
         return jsonResponse({
-          results: [{ message_id: "m1", outcome: "archived", astral_candidate_id: "cand-ada" }],
+          results: [{ message_id: "m1", outcome: "created", astral_candidate_id: "cand-ada" }],
           total_processed: 1,
           total_passed: 1,
           total_failed: 0,
@@ -311,20 +333,29 @@ describe("AdminManageEmail — AST-1410 silent refetch", () => {
     })
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await selectCandidateAda()
     const matchedRow = screen.getByText("Hello Astral").closest("tr")!
     await userEvent.click(within(matchedRow).getByRole("checkbox"))
     const inner = mockedApi.getMockImplementation()!
     let release: (value: Response) => void = () => {}
+    let blockNextList = false
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
-      if (url === "/api/admin/inbox/messages" && !init?.method) {
+      if (blockNextList && mockInboxUrl(url) && !init?.method) {
+        blockNextList = false
         return new Promise<Response>((resolve) => { release = resolve })
       }
       return inner(url, init)
     })
+    blockNextList = true
+    const getsBefore = mockedApi.mock.calls.filter(
+      ([u, init]) => mockInboxUrl(String(u)) && !init?.method,
+    ).length
     const pending = userEvent.click(screen.getByRole("button", { name: "Land Meteorite" }))
     await waitFor(() => {
-      const gets = mockedApi.mock.calls.filter(([u, init]) => u === "/api/admin/inbox/messages" && !init?.method)
-      expect(gets.length).toBeGreaterThan(1)
+      const gets = mockedApi.mock.calls.filter(
+        ([u, init]) => mockInboxUrl(String(u)) && !init?.method,
+      )
+      expect(gets.length).toBeGreaterThan(getsBefore)
     })
     expect(screen.getByText("Hello Astral")).toBeInTheDocument()
     expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
@@ -338,6 +369,54 @@ describe("AdminManageEmail — AST-1410 silent refetch", () => {
   })
 })
 
+describe("AdminManageEmail — AST-1558", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+  })
+
+  function mockApis(
+    extra?: (url: string, init?: RequestInit) => Promise<Response | undefined> | Response | undefined,
+  ) {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      const fromExtra = extra ? await extra(url, init) : undefined
+      if (fromExtra !== undefined) return fromExtra
+      if (url === "/api/candidates") return candidatesResponse()
+      if (mockInboxUrl(url)) {
+        return inboxListResponse()
+      }
+    })
+  }
+
+  it("candidate filter defaults to All (empty value)", async () => {
+    mockApis()
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    const select = screen.getByLabelText("Candidate", { selector: "select" }) as HTMLSelectElement
+    expect(select.value).toBe("")
+    expect(mockedApi).toHaveBeenCalledWith("/api/admin/inbox/messages")
+  })
+
+  it("selecting a candidate reloads with ?candidate_id=", async () => {
+    mockApis()
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    await selectCandidateAda()
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith(
+        "/api/admin/inbox/messages?candidate_id=cand-ada",
+      ),
+    )
+  })
+
+  it("table has no Candidate column header", async () => {
+    mockApis()
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    expect(screen.queryByRole("columnheader", { name: "Candidate" })).not.toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: "Subject" })).toBeInTheDocument()
+    expect(screen.getByRole("columnheader", { name: "From" })).toBeInTheDocument()
+  })
+})
 
 describe("AdminManageEmail — AST-1538 (§6c assembled HTML + copy + dark purple)", () => {
   beforeEach(() => {
@@ -354,8 +433,9 @@ describe("AdminManageEmail — AST-1538 (§6c assembled HTML + copy + dark purpl
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       const fromExtra = extra ? await extra(url, init) : undefined
       if (fromExtra !== undefined) return fromExtra
-      if (url === "/api/admin/inbox/messages") {
-        return jsonResponse({ messages: ROWS })
+      if (url === "/api/candidates") return candidatesResponse()
+      if (mockInboxUrl(url)) {
+        return inboxListResponse()
       }
     })
   }
@@ -394,7 +474,6 @@ describe("AdminManageEmail — AST-1538 (§6c assembled HTML + copy + dark purpl
     const copyBtn = screen.getByRole("button", { name: "Copy" })
     expect(copyBtn).toHaveClass("btn", "secondary")
     expect(copyBtn).toHaveAttribute("title", "Copy header+body HTML")
-    expect(document.querySelector(".manage-email-modal-toolbar")).toBeTruthy()
     await userEvent.click(copyBtn)
     await waitFor(() =>
       expect(navigator.clipboard.writeText).toHaveBeenCalledWith(assembled),

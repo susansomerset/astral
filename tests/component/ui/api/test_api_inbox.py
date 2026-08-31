@@ -1,8 +1,7 @@
-"""Component tests for src/ui/api/api_inbox.py (AST-1033)."""
+"""Component tests for src/ui/api/api_inbox.py (AST-1033 / AST-1558)."""
 
 from __future__ import annotations
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -11,7 +10,6 @@ from flask.testing import FlaskClient
 from ui.api import api_inbox as inbox_mod
 
 
-# Branches: list 200; list 502; get 200; get 400 blank id; get 502; auth 401/403.
 class TestAst1033InboxApi:
     def test_list_messages_ok(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -24,7 +22,6 @@ class TestAst1033InboxApi:
                 "from_address": "a@x",
                 "date": "Mon",
                 "unread": True,
-                "candidate_match": {"matched": False, "astral_candidate_id": None},
             }
         ]
         list_mock = MagicMock(return_value=rows)
@@ -34,6 +31,23 @@ class TestAst1033InboxApi:
         assert resp.status_code == 200
         assert resp.get_json() == {"messages": rows}
         list_mock.assert_called_once_with(debug=False)
+
+    def test_list_with_candidate_id(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rows = [{"id": "m1", "from_address": "ada@ex.com"}]
+        aliases_mock = MagicMock(return_value=["ada@ex.com"])
+        fetch_mock = MagicMock(return_value=rows)
+        monkeypatch.setattr(inbox_mod, "_email_aliases_for_candidate", aliases_mock)
+        monkeypatch.setattr(inbox_mod, "fetch_candidate_email", fetch_mock)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        resp = inbox_client.get(
+            "/api/admin/inbox/messages?candidate_id=cand-ada", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == {"messages": rows}
+        aliases_mock.assert_called_once_with("cand-ada")
+        fetch_mock.assert_called_once_with(["ada@ex.com"], debug=False)
 
     def test_list_passes_ui_llm_debug(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -61,12 +75,7 @@ class TestAst1033InboxApi:
     def test_get_message_ok(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1537: get wires get_message_with_assembled_html (assembled_html + raw fields).
-        payload = {
-            "id": "m1",
-            "html_body": "<p>x</p>",
-            "assembled_html": '<header class="email-headers"></header>\n<section class="email-body"><p>x</p></section>',
-        }
+        payload = {"id": "m1", "html_body": "<p>x</p>", "assembled_html": "<p>assembled</p>"}
         monkeypatch.setattr(
             inbox_mod,
             "get_message_with_assembled_html",
@@ -122,246 +131,97 @@ class TestAst1033InboxApi:
         )
 
 
-# AST-1049: POST create-job orchestration endpoint.
-# AST-1061: multi created/skipped payload; 201 if any created, 200 if only skips.
-class TestAst1049InboxCreateJobApi:
-    def test_create_job_201(
-        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        created_row = {
-            "astral_job_id": "job-1",
-            "company": "meteorite-cand-1",
-            "state": "METEORITE_NEW",
-            "latest_score": 10.0,
-            "company_inserted": True,
-        }
-        create = MagicMock(
-            return_value={
-                "astral_job_id": "job-1",
-                "company": "meteorite-cand-1",
-                "state": "METEORITE_NEW",
-                "latest_score": 10.0,
-                "company_inserted": True,
-                "astral_candidate_id": "cand-1",
-                "mode": "body",
-                "created": [created_row],
-                "skipped": [],
-            }
-        )
-        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
-        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
-        resp = inbox_client.post(
-            "/api/admin/inbox/messages/m1/create-job",
-            headers=auth_headers,
-            json={},
-        )
-        assert resp.status_code == 201
-        body = resp.get_json()
-        assert body["astral_job_id"] == "job-1"
-        assert body["astral_candidate_id"] == "cand-1"
-        assert body["mode"] == "body"
-        assert body["created"] == [
-            {
-                "astral_job_id": "job-1",
-                "company": "meteorite-cand-1",
-                "state": "METEORITE_NEW",
-                "latest_score": 10.0,
-                "company_inserted": True,
-            }
-        ]
-        assert body["skipped"] == []
-        create.assert_called_once_with("m1", debug=False)
-
-    def test_create_job_all_skipped_200(
-        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        skipped = [
-            {
-                "reason": "known_job_link",
-                "url": "https://jobs.example.com/x",
-                "matched_company_job_id": None,
-            }
-        ]
-        create = MagicMock(
-            return_value={
-                "astral_job_id": None,
-                "company": "meteorite-cand-1",
-                "state": None,
-                "latest_score": None,
-                "company_inserted": False,
-                "astral_candidate_id": "cand-1",
-                "mode": "links",
-                "created": [],
-                "skipped": skipped,
-            }
-        )
-        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
-        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
-        resp = inbox_client.post(
-            "/api/admin/inbox/messages/m1/create-job",
-            headers=auth_headers,
-            json={},
-        )
-        assert resp.status_code == 200
-        body = resp.get_json()
-        assert body["created"] == []
-        assert body["skipped"] == skipped
-        assert body["astral_job_id"] is None
-
-    def test_create_job_passes_debug(
-        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        create = MagicMock(
-            return_value={
-                "astral_job_id": "job-1",
-                "company": "meteorite-cand-1",
-                "state": "METEORITE_NEW",
-                "latest_score": 10.0,
-                "company_inserted": False,
-                "astral_candidate_id": "cand-1",
-                "mode": "body",
-                "created": [
-                    {
-                        "astral_job_id": "job-1",
-                        "company": "meteorite-cand-1",
-                        "state": "METEORITE_NEW",
-                        "latest_score": 10.0,
-                        "company_inserted": False,
-                    }
-                ],
-                "skipped": [],
-            }
-        )
-        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
-        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=True))
-        resp = inbox_client.post(
-            "/api/admin/inbox/messages/m1/create-job?debug=1",
-            headers=auth_headers,
-            json={"debug": True},
-        )
-        assert resp.status_code == 201
-        create.assert_called_once_with("m1", debug=True)
-
-    def test_create_job_value_error_400(
-        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            inbox_mod,
-            "create_meteorite_job_from_inbox_message",
-            MagicMock(side_effect=ValueError("message is not matched to a candidate")),
-        )
-        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
-        resp = inbox_client.post(
-            "/api/admin/inbox/messages/m1/create-job",
-            headers=auth_headers,
-            json={},
-        )
-        assert resp.status_code == 400
-        assert resp.get_json() == {"error": "message is not matched to a candidate"}
-
-    def test_create_job_blank_id_400(
+class TestAst1049InboxCreateJobApiRetired:
+    def test_create_job_returns_404(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str]
     ) -> None:
         resp = inbox_client.post(
-            "/api/admin/inbox/messages/%20%20/create-job",
-            headers=auth_headers,
-            json={},
-        )
-        assert resp.status_code == 400
-        assert resp.get_json() == {"error": "message_id is required"}
-
-    def test_create_job_upstream_502(
-        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            inbox_mod,
-            "create_meteorite_job_from_inbox_message",
-            MagicMock(side_effect=RuntimeError("gmail down")),
-        )
-        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
-        warn = MagicMock()
-        monkeypatch.setattr(inbox_mod.logger, "warning", warn)
-        resp = inbox_client.post(
             "/api/admin/inbox/messages/m1/create-job",
             headers=auth_headers,
             json={},
         )
-        assert resp.status_code == 502
-        assert resp.get_json() == {"error": "gmail down"}
-        warn.assert_called_once()
+        assert resp.status_code == 404
 
-    def test_create_job_requires_auth(self, inbox_client: FlaskClient) -> None:
-        assert (
-            inbox_client.post("/api/admin/inbox/messages/m1/create-job", json={}).status_code
-            == 401
-        )
 
-    def test_create_job_non_admin_forbidden(
-        self, inbox_client: FlaskClient, non_admin_headers: dict[str, str]
+class TestAst1558InboxLandMeteoriteApi:
+    def test_land_meteorite_requires_candidate_id_400(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str]
     ) -> None:
-        assert (
-            inbox_client.post(
-                "/api/admin/inbox/messages/m1/create-job",
-                headers=non_admin_headers,
-                json={},
-            ).status_code
-            == 403
+        resp = inbox_client.post(
+            "/api/admin/inbox/land-meteorite",
+            headers=auth_headers,
+            json={"message_ids": ["m1"]},
         )
+        assert resp.status_code == 400
+        assert resp.get_json() == {"error": "candidate_id is required"}
 
-
-# AST-1141: POST land-meteorite → run_meteorite_email_selected_ids (no Create strip/extract).
-class TestAst1141InboxLandMeteoriteApi:
-    _CORE_OK: dict[str, Any] = {
-        "results": [
-            {
-                "message_id": "m1",
-                "outcome": "archived",
-                "astral_candidate_id": "cand-1",
-            },
-            {
-                "message_id": "m2",
-                "outcome": "skipped-unbound",
-                "astral_candidate_id": None,
-            },
-        ],
-        "total_processed": 1,
-        "total_passed": 1,
-        "total_failed": 0,
-        "total_errors": 0,
-        "total_skipped": 1,
-    }
-
-    def test_land_meteorite_200_passthrough(
+    def test_land_meteorite_happy_path(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        core = AsyncMock(return_value=dict(self._CORE_OK))
-        create = MagicMock()
-        monkeypatch.setattr(inbox_mod, "run_meteorite_email_selected_ids", core)
-        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "subject": "Role",
+                    "html_body": "<p>JD body</p>",
+                    "from_address": "a@b.c",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            inbox_mod, "strip_extract_email_html", MagicMock(return_value="<p>stripped</p>")
+        )
+        stage = AsyncMock(
+            return_value={
+                "skipped": False,
+                "outcome": created,
+                "land": {"outcome": created, "error": None},
+            }
+        )
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", stage)
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
         resp = inbox_client.post(
             "/api/admin/inbox/land-meteorite",
             headers=auth_headers,
-            json={"message_ids": ["m1", "  ", "m2"]},
+            json={"message_ids": ["m1"], "candidate_id": "cand-1"},
         )
         assert resp.status_code == 200
-        assert resp.get_json() == self._CORE_OK
-        core.assert_awaited_once_with(["m1", "m2"], debug=False)
-        create.assert_not_called()
+        body = resp.get_json()
+        assert body["total_processed"] == 1
+        assert body["total_passed"] == 1
+        assert body["total_failed"] == 0
+        assert body["total_skipped"] == 0
+        assert body["results"][0]["message_id"] == "m1"
+        assert body["results"][0]["outcome"] == created
+        assert body["results"][0]["astral_candidate_id"] == "cand-1"
+        stage.assert_awaited_once()
 
     def test_land_meteorite_passes_debug(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        core = AsyncMock(return_value=dict(self._CORE_OK))
-        monkeypatch.setattr(inbox_mod, "run_meteorite_email_selected_ids", core)
+        from src.utils.config import METEORITE_CONFIG
+
+        created = METEORITE_CONFIG["land_outcome_created"]
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(return_value={"subject": "S", "html_body": "<p>x</p>", "from_address": "a"}),
+        )
+        monkeypatch.setattr(inbox_mod, "strip_extract_email_html", MagicMock(return_value="<p>x</p>"))
+        stage = AsyncMock(return_value={"skipped": False, "outcome": created, "land": {}})
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", stage)
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=True))
         resp = inbox_client.post(
             "/api/admin/inbox/land-meteorite?debug=1",
             headers=auth_headers,
-            json={"message_ids": ["m1"], "debug": True},
+            json={"message_ids": ["m1"], "candidate_id": "cand-1", "debug": True},
         )
         assert resp.status_code == 200
-        core.assert_awaited_once_with(["m1"], debug=True)
+        assert stage.await_args.kwargs["debug"] is True
 
     def test_land_meteorite_rejects_non_list_400(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str]
@@ -369,7 +229,7 @@ class TestAst1141InboxLandMeteoriteApi:
         resp = inbox_client.post(
             "/api/admin/inbox/land-meteorite",
             headers=auth_headers,
-            json={"message_ids": "m1"},
+            json={"message_ids": "m1", "candidate_id": "cand-1"},
         )
         assert resp.status_code == 400
         assert resp.get_json() == {"error": "message_ids must be a list"}
@@ -377,15 +237,17 @@ class TestAst1141InboxLandMeteoriteApi:
     def test_land_meteorite_rejects_empty_400(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str]
     ) -> None:
-        # Missing key is non-list (same 400 vocabulary as wrong type).
         missing = inbox_client.post(
             "/api/admin/inbox/land-meteorite",
             headers=auth_headers,
-            json={},
+            json={"candidate_id": "cand-1"},
         )
         assert missing.status_code == 400
         assert missing.get_json() == {"error": "message_ids must be a list"}
-        for body in ({"message_ids": []}, {"message_ids": ["  ", ""]}):
+        for body in (
+            {"message_ids": [], "candidate_id": "cand-1"},
+            {"message_ids": ["  ", ""], "candidate_id": "cand-1"},
+        ):
             resp = inbox_client.post(
                 "/api/admin/inbox/land-meteorite",
                 headers=auth_headers,
@@ -394,29 +256,17 @@ class TestAst1141InboxLandMeteoriteApi:
             assert resp.status_code == 400
             assert resp.get_json() == {"error": "message_ids is required"}
 
-    def test_land_meteorite_value_error_400(
-        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            inbox_mod,
-            "run_meteorite_email_selected_ids",
-            AsyncMock(side_effect=ValueError("bad selection")),
-        )
-        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
-        resp = inbox_client.post(
-            "/api/admin/inbox/land-meteorite",
-            headers=auth_headers,
-            json={"message_ids": ["m1"]},
-        )
-        assert resp.status_code == 400
-        assert resp.get_json() == {"error": "bad selection"}
-
     def test_land_meteorite_upstream_502(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
             inbox_mod,
-            "run_meteorite_email_selected_ids",
+            "get_message_html",
+            MagicMock(return_value={"subject": "S", "html_body": "<p>x</p>", "from_address": "a"}),
+        )
+        monkeypatch.setattr(inbox_mod, "strip_extract_email_html", MagicMock(return_value="<p>x</p>"))
+        monkeypatch.setattr(
+            "src.core.meteorite.stage_meteorite",
             AsyncMock(side_effect=RuntimeError("core boom")),
         )
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
@@ -425,7 +275,7 @@ class TestAst1141InboxLandMeteoriteApi:
         resp = inbox_client.post(
             "/api/admin/inbox/land-meteorite",
             headers=auth_headers,
-            json={"message_ids": ["m1"]},
+            json={"message_ids": ["m1"], "candidate_id": "cand-1"},
         )
         assert resp.status_code == 502
         assert resp.get_json() == {"error": "core boom"}
@@ -434,7 +284,8 @@ class TestAst1141InboxLandMeteoriteApi:
     def test_land_meteorite_requires_auth(self, inbox_client: FlaskClient) -> None:
         assert (
             inbox_client.post(
-                "/api/admin/inbox/land-meteorite", json={"message_ids": ["m1"]}
+                "/api/admin/inbox/land-meteorite",
+                json={"message_ids": ["m1"], "candidate_id": "cand-1"},
             ).status_code
             == 401
         )
@@ -446,7 +297,7 @@ class TestAst1141InboxLandMeteoriteApi:
             inbox_client.post(
                 "/api/admin/inbox/land-meteorite",
                 headers=non_admin_headers,
-                json={"message_ids": ["m1"]},
+                json={"message_ids": ["m1"], "candidate_id": "cand-1"},
             ).status_code
             == 403
         )

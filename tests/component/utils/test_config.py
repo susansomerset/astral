@@ -5030,17 +5030,12 @@ class TestAst1305ResumeStructureExtraDefault:
         assert cfg.RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
 
 
-@pytest.mark.skipif(
-    not hasattr(cfg, "INBOX_BIND_CONFIG"),
-    reason="AST-1313 INBOX_BIND_CONFIG not on this publish tip",
-)
-class TestAst1313InboxBindConfig:
-    def test_header_order_and_inbox_address_alias(self) -> None:
-        bind = cfg.INBOX_BIND_CONFIG
-        assert bind["header_order"] == ("from", "to")
-        assert bind["inbox_address"] == cfg.METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
-        assert isinstance(bind["inbox_address"], str)
-        assert "@" in bind["inbox_address"]
+class TestAst1558FetchEmailBindRetired:
+    def test_fetch_email_and_inbox_bind_config_retired(self) -> None:
+        assert not hasattr(cfg, "FETCH_EMAIL_CONFIG")
+        assert not hasattr(cfg, "INBOX_BIND_CONFIG")
+        assert "fetch_email" not in cfg.TASK_CONFIG
+        assert "dispatch_task-fetch-email" not in cfg.SEED_CONFIG
 
 
 class TestAst1365IdealDayLibraryToken:
