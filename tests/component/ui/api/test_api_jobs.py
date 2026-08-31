@@ -582,10 +582,10 @@ class TestAst1100JobArtifactPinResolveApi:
         assert art["job_resume"] == {"professional_summary": "from-pin"}
         assert art["analysis_upshot"] == {"s": 1}
 
-    def test_put_job_resume_dual_writes_job_resume_body(
+    def test_put_job_resume_persists_via_tracker_body_helper(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1548/1554: editor save dual-writes body via save_job_artifact_job_resume_body.
+        # AST-1554/1556: PUT stays thin → save_job_artifact_job_resume_body (table SoT in tracker).
         body_writes: list[tuple[str, dict]] = []
         sibling_only: list[tuple[str, dict]] = []
         raw_saves: list[tuple[str, dict]] = []
@@ -594,7 +594,7 @@ class TestAst1100JobArtifactPinResolveApi:
             "get_job",
             lambda job_id: {
                 "astral_job_id": job_id,
-                "job_data": {"artifacts": {"job_resume": {"professional_summary": "prior"}}},
+                "job_data": {"artifacts": {}},
             },
         )
         monkeypatch.setattr(

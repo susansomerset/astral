@@ -5022,17 +5022,12 @@ class TestAst1305ResumeStructureExtraDefault:
         assert cfg.RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
 
 
-@pytest.mark.skipif(
-    not hasattr(cfg, "INBOX_BIND_CONFIG"),
-    reason="AST-1313 INBOX_BIND_CONFIG not on this publish tip",
-)
-class TestAst1313InboxBindConfig:
-    def test_header_order_and_inbox_address_alias(self) -> None:
-        bind = cfg.INBOX_BIND_CONFIG
-        assert bind["header_order"] == ("from", "to")
-        assert bind["inbox_address"] == cfg.METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
-        assert isinstance(bind["inbox_address"], str)
-        assert "@" in bind["inbox_address"]
+class TestAst1558FetchEmailBindRetired:
+    def test_fetch_email_and_inbox_bind_config_retired(self) -> None:
+        assert not hasattr(cfg, "FETCH_EMAIL_CONFIG")
+        assert not hasattr(cfg, "INBOX_BIND_CONFIG")
+        assert "fetch_email" not in cfg.TASK_CONFIG
+        assert "dispatch_task-fetch-email" not in cfg.SEED_CONFIG
 
 
 class TestAst1365IdealDayLibraryToken:
@@ -5299,3 +5294,37 @@ class TestAst1550DiscussionHopKeys:
         )
         with pytest.raises(RuntimeError, match="cycle"):
             cfg.build_artifacts_discussion_hop_task_keys()
+
+
+class TestAst1557MeteoriteStates:
+    """AST-1557: METEORITE_STATES staging registry + retention partitions (not JOB_STATES)."""
+
+    def test_seven_keys_and_new_entry(self) -> None:
+        assert set(cfg.METEORITE_STATES) == {
+            "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+        }
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] is None
+        assert all("prior_states" in entry for entry in cfg.METEORITE_STATES.values())
+
+    def test_distinct_from_job_states_meteorite_labels(self) -> None:
+        assert "METEORITE_NEW" not in cfg.METEORITE_STATES
+        assert "METEORITE_NEW" in cfg.JOB_STATES
+        assert "NEW" in cfg.METEORITE_STATES
+        assert "NEW" in cfg.JOB_STATES
+
+    def test_retention_partitions(self) -> None:
+        purge = set(cfg.METEORITE_STATES_RETENTION["purge_states"])
+        stale = set(cfg.METEORITE_STATES_RETENTION["stale_list_states"])
+        assert purge == {"LANDED"}
+        assert stale == {"ERROR", "BOT_BLOCKED", "ABANDONED"}
+        assert purge.isdisjoint(stale)
+        assert purge | stale <= set(cfg.METEORITE_STATES)
+
+    def test_priors_are_registry_keys(self) -> None:
+        keys = set(cfg.METEORITE_STATES)
+        for name, entry in cfg.METEORITE_STATES.items():
+            priors = entry["prior_states"]
+            if priors is None:
+                continue
+            for p in priors:
+                assert p in keys, f"{name} prior {p!r} not in METEORITE_STATES"
