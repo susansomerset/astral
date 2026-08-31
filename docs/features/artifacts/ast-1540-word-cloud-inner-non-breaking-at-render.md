@@ -106,3 +106,148 @@ context_tokens≈42000
 **Built:** `origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render` @ `bc5ad81a` — `_glue_word_cloud_bullet_separators` after `\u00a0•\u00a0` glue replaces remaining `" "` → `\u00a0` and `"-"` → `\u2011`; call site still `word_cloud` arm only.
 
 **Out of build scope (Betty / qa-child):** inner NBSP / non-breaking-hyphen asserts on `word_cloud` emit; format-switch / left-only marker locks stay hers.
+
+## Radia review
+
+# Radia review — AST-1540
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1540  
+**Publish ref:** `sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render` @ `fe3c62794030ad19cdbfa45c1ff3367c99bd88d5`  
+**Overall:** CLEAN
+
+**Diff change set:** `src/core/builder.py` (modify, layer `core`); `docs/features/artifacts/ast-1540-word-cloud-inner-non-breaking-at-render.md` (add, `docs`); `docs/test-bible/core/builder.md` (modify, `docs`); `tests/component/core/test_builder.py` (modify, tests tree); `docs/features/artifacts/ast-1528-word-cloud-nbsp-bullet-glue.md` (modify, `docs` — AST-1526 epic-registry mirror, orthogonal).
+
+**Notes:** Joan `[plan-rubric]` APPROVED attached; no `Excluded` statute list in that artifact (straggler check N/A). Engineer `code(AST-1540)` @ `bc5ad81a` touches only `src/core/builder.py`; Betty `test(AST-1540)` @ `7a961801` owns tests/bible; `merge-tests(AST-1540)` @ `fe3c6279` present.
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no `src/agent` / agent-task diff paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no dispatcher / do_task diff |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grading diff |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch claim paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch id diff |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/release diff |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity-agent-response diff |
+| `astral.config.config-source-of-truth` | scoped | conforms | bullet glue still reads `COVER_FROM_BLOCK_CONFIG["emit_separator"]`; no new config keys |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env diff |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact paths |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike paths |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch/seed diff |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run_next diff |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | AST-1540 plan lives at `docs/features/artifacts/ast-1540-…md` |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty commit `7a961801` — tests + bible only, no `src/**` |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer `bc5ad81a` — `src/core/builder.py` only; tests landed in separate Betty commit |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | core render helper only; no external I/O |
+| `astral.layers.import-direction` | scoped | conforms | no import changes in `builder.py` diff |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/**` diff |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | no `src/ui/**` diff |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check diff |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | `builder.py` emit path, not consult orchestration |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API/auth diff |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON diff |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no catalog diff |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no boot/seed hot-path diff |
+| `astral.seed.define-approved` | scoped | not-applicable | no define/seed diff |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator-row diff |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage-join diff |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no `src/data/**` diff |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB/migration diff |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no debug-contract emission added |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | extends `_glue_word_cloud_bullet_separators` in place per plan DRY decision |
+| `astral.standards.in-scope-only` | scoped | conforms | single helper extension on `word_cloud` arm; markers/generation untouched |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | no logging added |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | existing helper name retained |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no out-of-layer imports |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | no new behavior-driving sets; Unicode glue literals match prior AST-1536 pattern |
+| `astral.standards.public-then-helpers` | scoped | conforms | private helper extended; single `word_cloud` call site unchanged |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no `src/utils/**` diff |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transition diff |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job-state diff |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run-chain diff |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no frontend diff |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no UI naming diff |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server worker diff |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1540)` @ `fe3c6279` records Betty SHA |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary correct |
+| `orch.git.flow-direction-inviolable` | universal | conforms | child `sub/AST-1539/…` topology |
+| `orch.git.ftr-sub-topology` | universal | conforms | publish ref matches parent/child convention |
+| `orch.git.merge-on-checkout` | universal | conforms | no merge-law violation in diff |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | no forbidden git ops in artifact |
+| `orch.git.no-dev-agent-branches` | universal | conforms | no agent-named branches in diff |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | epic worktree pattern respected |
+| `orch.git.three-permanent-branches` | universal | conforms | diff vs `origin/dev` only |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | scope matches approved parent/child plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | implementation matches Stage 1 order-of-ops and boundaries |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A to code substance |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed gate |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A to diff |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty owns `tests/**` + bible manifest |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Katherine at Tests Passed |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | implementer retained |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | role boundaries observed in commit split |
+
+**Active set count:** 64 rows (harvested corpus table in `canon/statutes/README.md`).
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | reuses `COVER_FROM_BLOCK_CONFIG["emit_separator"]` for bullet glue; no second separator vocabulary |
+| `pattern.layers.import-discipline` | conforms | non-breaking treatment stays in core `builder.py` emit; no UI spacer logic |
+
+---
+
+## Plan adherence
+
+Stage 1 landed exactly as specified: `_glue_word_cloud_bullet_separators` keeps name and sole call site (`elif fmt == "word_cloud":`); order is early return → `emit_sep` bullet glue → `" "` → `\u00a0` → `"-"` → `\u2011`; docstring updated; `_resume_site_markers` and non-cloud format arms untouched. Betty qa-child delivered `TestAst1540WordCloudInnerNonBreaking` (helper, markers left-only/digraphs, session cloud emit, free_prose isolation), revised `TestAst1528WordCloudNbspBulletGlue` and `TestAst1029UatCompetenciesBulletsEmit`, and bible manifest aligned. Estimate **2** matches footprint. Parent acceptance criteria 1–5 satisfied on diff evidence.
+
+**C6 aids (§5a–§5g):** imports/layers/logging/debug/external/batch/UI-config — no issues on touched `builder.py` hunk.
+
+---
+
+## Frame diff
+
+(none) — plan frame unchanged; implementation fills approved Stage 1 only.
+
+---
+
+## Findings
+
+### advisory — Sibling doc mirror on publish ref
+- **Location:** commit `5fa373a9` (`docs(AST-1526): mirror epic registry Threads`) on `origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render`
+- **Finding:** Appends Team Threads to `docs/features/artifacts/ast-1528-word-cloud-nbsp-bullet-glue.md` — orthogonal to AST-1540 product scope.
+- **Recommendation:** Harmless epic-worktree housekeeping; optional cherry-pick hygiene on future rollups if sibling branches are still open. Not blocking.
+
+### advisory — Bible shasum placeholder
+- **Location:** `docs/test-bible/core/builder.md` AST-1540 section
+- **Finding:** Manifest says “record via `git show … | shasum`” but no recorded hash in-file.
+- **Recommendation:** Betty or Chuckles may record on next bible touch; not blocking review.
+
+**fix-now:** none  
+**discuss:** none
+
+---
+
+## What's solid
+
+- Minimal, plan-faithful core change: three lines in the glue helper with correct operation order.
+- Format-switch safety preserved: helper remains `word_cloud`-arm-only; tests lock `_resume_site_markers` and `free_prose` non-inheritance.
+- Clean engineer/Betty commit split matches `astral.git.engineer-test-tree-ban` intent.
+- Test coverage maps directly to parent acceptance criteria (inner space/hyphen, separator regression, format switch, default competencies UAT).
+
+---
+
+## Recommended actions (downstream — not Radia)
+
+1. Chuckles: append this artifact to issue doc; `docs(AST-1540): Radia review — clean`; post slim upshot; → **Review Posted** → **resolve-child** queue (PROCEED).
+2. Optional: record bible shasum on next Betty pass.
+
+context_tokens≈72000
