@@ -268,6 +268,47 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 
 ---
 
+### AST-1561 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
+
+`apply_paste` (`BOT_BLOCKED` → `READY`, no classify); lookup helpers; `run_notify_meteorite_bot_blocked` (Estelle DM + nag → `ABANDONED`). Config/dispatcher: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**. Contact paste routing: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| apply_paste + lookups + notify runner | `src/core/meteorite.py` | **`TestAst1561ApplyPaste`**, **`TestAst1561BotBlockedLookup`**, **`TestAst1561RunNotifyBotBlocked`** |
+| Slack paste hook | `src/core/contact.py` | **`TestAst1561ContactPasteRouting`** |
+| Notify config + seed | `src/utils/config.py` | **`TestAst1561BotBlockedNotifyConfig`** |
+| Dispatcher notify branch | `src/core/dispatcher.py` | **`TestAst1561BotBlockedNotifyDispatchOne`** |
+
+**Broken / obsolete:** none — additive on AST-1560 `BOT_BLOCKED` scrape path.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst1561ApplyPaste`
+2. `tests/component/core/test_meteorite.py::TestAst1561BotBlockedLookup`
+3. `tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked`
+4. `tests/component/core/test_contact.py::TestAst1561ContactPasteRouting`
+5. `tests/component/utils/test_config.py::TestAst1561BotBlockedNotifyConfig`
+6. `tests/component/core/test_dispatcher.py::TestAst1561BotBlockedNotifyDispatchOne`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste \
+  tests/component/core/test_meteorite.py::TestAst1561BotBlockedLookup \
+  tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked \
+  tests/component/core/test_contact.py::TestAst1561ContactPasteRouting \
+  tests/component/utils/test_config.py::TestAst1561BotBlockedNotifyConfig \
+  tests/component/core/test_dispatcher.py::TestAst1561BotBlockedNotifyDispatchOne \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1559 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.

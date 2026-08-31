@@ -3469,3 +3469,15 @@ Retire `FETCH_EMAIL_CONFIG`, `INBOX_BIND_CONFIG`, `TASK_CONFIG["fetch_email"]`, 
 
 Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
 
+---
+
+### AST-1561 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
+
+`METEORITE_BOT_BLOCKED_NOTIFY_CONFIG` (task key, `BOT_BLOCKED` trigger, nag limit, DM templates); `SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]`. **`TestAst1561BotBlockedNotifyConfig`**. Runners + contact routing: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+

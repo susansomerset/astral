@@ -1652,3 +1652,150 @@ class TestAst1531ContactLandStageCutover:
         assert "blob" in (out.get("error") or "").lower()
         stage.assert_not_awaited()
 
+
+@pytest.mark.skipif(
+    not hasattr(contact_mod, "try_meteorite_apply_paste_from_slack"),
+    reason="AST-1561 contact paste routing not on this publish tip",
+)
+class TestAst1561ContactPasteRouting:
+    """AST-1561: Slack paste → apply_paste before Estelle classify."""
+
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def test_try_apply_paste_thread_match(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-slack-paste"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        row_id = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": cid,
+                    "source_kind": "email",
+                    "source_id": "m1",
+                    "link": "https://x/j",
+                }
+            ]
+        )[0]
+        db.update_meteorite(
+            row_id,
+            state="BOT_BLOCKED",
+            estelle_thread_ts="7777.8888",
+        )
+        out = contact_mod.try_meteorite_apply_paste_from_slack(
+            astral_candidate_id=cid,
+            channel="D1",
+            thread_ts="7777.8888",
+            message_ts=None,
+            text="Pasted JD " + ("y" * 40),
+        )
+        assert out["applied"] is True
+        assert out["result"]["ok"] is True
+        assert db.get_meteorite(row_id)["state"] == "READY"
+
+    def test_handle_slack_event_skips_estelle_turn_on_paste(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-slack-hook"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "H"})
+        row_id = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": cid,
+                    "source_kind": "paste",
+                    "source_id": "blob-hook",
+                }
+            ]
+        )[0]
+        db.update_meteorite(row_id, state="BOT_BLOCKED")
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": cid,
+                    "state": "PROSPECT",
+                    "created": False,
+                }
+            ),
+        )
+        turn = _stub_estelle_turn(monkeypatch)
+        monkeypatch.setattr(
+            contact_mod,
+            "contact_post_message",
+            MagicMock(return_value={"ok": True, "ts": "1.1"}),
+        )
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-paste-hook",
+                "event": {
+                    "type": "message",
+                    "user": "U1",
+                    "channel": "D1",
+                    "ts": "1.0",
+                    "text": "JD body " + ("z" * 40),
+                },
+            },
+            debug=False,
+        )
+        assert out["accepted"] is True
+        assert out["estelle_turn"]["outcome"] == "paste_applied"
+        turn.assert_not_called()
+        assert db.get_meteorite(row_id)["state"] == "READY"
+
+    def test_estelle_turn_land_calls_use_apply_paste(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-turn-paste"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        row_id = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": cid,
+                    "source_kind": "paste",
+                    "source_id": "blob-turn",
+                }
+            ]
+        )[0]
+        db.update_meteorite(row_id, state="BOT_BLOCKED")
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "load_slack_conversation_context",
+            MagicMock(return_value={"channel": "D1", "thread_ts": "", "messages": [], "source": "cache"}),
+        )
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(return_value=None))
+        monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
+        monkeypatch.setattr(contact_mod, "contact_post_message", MagicMock(return_value={"ok": True}))
+        monkeypatch.setattr(contact_mod, "format_contact_reply_text", lambda t: t)
+        land = MagicMock()
+        monkeypatch.setattr(contact_mod, "contact_land_meteorite", land)
+
+        async def _do_task(*_a, **_k):
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {
+                    "reply": "thanks",
+                    "land_calls": [{"text": "ignored"}],
+                },
+            }
+
+        import src.core.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="D1",
+            text="Turn paste " + ("q" * 40),
+            astral_candidate_id=cid,
+            debug=False,
+        )
+        assert out["ok"] is True
+        assert out["land_results"][0]["via"] == "apply_paste"
+        land.assert_not_called()
+        assert db.get_meteorite(row_id)["state"] == "READY"
+

@@ -480,3 +480,15 @@ Mailbox branch awaits **`check_inbox`** — revised **`TestAst1090GazeEmailDispa
 **Integration:** none revised.
 
 Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
+---
+
+### AST-1561 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
+
+`_dispatch_one` notify branch → `run_notify_meteorite_bot_blocked` with minted `entity_batch_id`. **`TestAst1561BotBlockedNotifyDispatchOne`**. Runners + paste: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.

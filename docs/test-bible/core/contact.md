@@ -306,3 +306,21 @@ Child #1: `CONTACT_TASK_CONFIG` block (six keys pre-registered), markup parse/st
   tests/component/core/test_contact.py::TestAst1531ContactLandStageCutover \
   -q
 ```
+
+---
+
+### AST-1561 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
+
+`try_meteorite_apply_paste_from_slack` (thread-first, then unprompted `paste` source_kind); `handle_slack_event` short-circuits Estelle turn on successful paste; `run_contact_estelle_turn` `land_calls` uses `apply_paste` when paste-source row exists. Meteorite helpers: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Slack paste routing | `src/core/contact.py` | **`TestAst1561ContactPasteRouting`** |
+
+**Broken / obsolete:** none — additive; existing Estelle turn stubs unchanged for non-paste paths.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.

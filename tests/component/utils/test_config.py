@@ -5377,3 +5377,24 @@ class TestAst1560IngressDispatchConfig:
         assert "stage_meteorite" in blob
         assert "scrape_meteorite" in blob
         assert "land_meteorite" in blob
+
+
+class TestAst1561BotBlockedNotifyConfig:
+    """AST-1561: METEORITE_BOT_BLOCKED_NOTIFY_CONFIG + dispatch seed."""
+
+    def test_notify_config_literals(self) -> None:
+        notify = cfg.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
+        assert notify["task_key"] == "meteorite_bot_blocked_notify"
+        assert notify["trigger_state"] == "BOT_BLOCKED"
+        assert notify["trigger_state"] in cfg.METEORITE_STATES
+        assert notify["debug_func"] == "meteorite.run_notify_meteorite_bot_blocked"
+        assert "{link}" in notify["dm_first_template"]
+        assert "{nag_count}" in notify["dm_nag_template"]
+        assert "{nag_limit}" in notify["dm_nag_template"]
+
+    def test_seed_catalog_has_notify_dispatch_row(self) -> None:
+        assert "dispatch_task-meteorite-bot-blocked-notify" in cfg.SEED_CONFIG
+        sql = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
+        blob = sql if isinstance(sql, str) else "\n".join(sql)
+        assert "meteorite_bot_blocked_notify" in blob
+        assert "BOT_BLOCKED" in blob

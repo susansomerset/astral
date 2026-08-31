@@ -8,6 +8,7 @@ import pytest
 
 from src.core import meteorite as meteorite_mod
 from src.utils.config import (
+    METEORITE_BOT_BLOCKED_NOTIFY_CONFIG,
     METEORITE_CONFIG,
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
@@ -768,7 +769,7 @@ def _insert_meteorite_row(db, cid: str, **fields: object) -> int:
         [
             {
                 "candidate_id": cid,
-                "source_kind": "email",
+                "source_kind": str(fields.get("source_kind") or "email"),
                 "source_id": str(fields.get("source_id") or f"mid-{cid}"),
                 "classify_outcome": fields.get("classify_outcome"),
                 "content": fields.get("content"),
@@ -777,17 +778,32 @@ def _insert_meteorite_row(db, cid: str, **fields: object) -> int:
         ]
     )[0]
     state = fields.get("state")
-    if state and state != "NEW":
-        db.update_meteorite(
-            row_id,
-            state=str(state),
-            **{
-                k: fields[k]
-                for k in ("content", "link", "error")
-                if k in fields and fields[k] is not None
-            },
+    extra = {
+        k: fields[k]
+        for k in (
+            "content",
+            "link",
+            "error",
+            "estelle_thread_ts",
+            "nag_count",
+            "estelle_notified_at",
         )
+        if k in fields and fields[k] is not None
+    }
+    if state and state != "NEW":
+        db.update_meteorite(row_id, state=str(state), **extra)
+    elif extra:
+        db.update_meteorite(row_id, **extra)
     return row_id
+
+
+def _notify_task(*, batch_id: str) -> dict:
+    cfg = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
+    return {
+        "task_key": cfg["task_key"],
+        "entity_batch_id": batch_id,
+        "batch_size": cfg["batch_size"],
+    }
 
 
 @pytest.mark.skipif(
@@ -1036,6 +1052,150 @@ class TestAst1560RunLandMeteorite:
         )
         assert out["total_errors"] == 1
         assert db.get_meteorite(row_id)["state"] == "ERROR"
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "apply_paste"),
+    reason="AST-1561 BOT_BLOCKED paste recovery not on this publish tip",
+)
+class TestAst1561ApplyPaste:
+    """AST-1561: BOT_BLOCKED → READY via paste (no classify)."""
+
+    def test_moves_bot_blocked_to_ready(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-paste-ok"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "P"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="BOT_BLOCKED",
+            link="https://blocked.example/j",
+        )
+        out = meteorite_mod.apply_paste(row_id, "Full JD paste " + ("x" * 40))
+        assert out == {"ok": True, "meteorite_id": row_id, "state": "READY"}
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "READY"
+        assert row["content"].startswith("Full JD paste")
+
+    def test_rejects_non_bot_blocked_state(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-paste-bad"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
+        row_id = _insert_meteorite_row(db, cid, state="READY", content="already")
+        out = meteorite_mod.apply_paste(row_id, "text")
+        assert out["ok"] is False
+        assert out["error"] == "invalid_state"
+        assert out["state"] == "READY"
+
+    def test_empty_paste_errors(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-paste-empty"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
+        row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED")
+        assert meteorite_mod.apply_paste(row_id, "   ")["error"] == "empty_paste"
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "find_meteorite_for_estelle_thread"),
+    reason="AST-1561 lookup helpers not on this publish tip",
+)
+class TestAst1561BotBlockedLookup:
+    def test_find_by_estelle_thread(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-thread"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="BOT_BLOCKED",
+            estelle_thread_ts="1234.5678",
+        )
+        found = meteorite_mod.find_meteorite_for_estelle_thread(
+            candidate_id=cid, thread_ts="1234.5678"
+        )
+        assert found is not None
+        assert int(found["id"]) == row_id
+
+    def test_find_paste_source_kind(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-paste-src"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_kind="paste",
+            source_id="blob-1",
+            state="BOT_BLOCKED",
+        )
+        found = meteorite_mod.find_meteorite_bot_blocked_paste_source(candidate_id=cid)
+        assert found is not None
+        assert int(found["id"]) == row_id
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "run_notify_meteorite_bot_blocked"),
+    reason="AST-1561 notify runner not on this publish tip",
+)
+class TestAst1561RunNotifyBotBlocked:
+    """AST-1561: scheduled notify → Estelle DM + nag → ABANDONED."""
+
+    @pytest.mark.asyncio
+    async def test_first_dm_stamps_thread(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-notify-1"
+        db.save_candidate(
+            cid,
+            state="NEW_CANDIDATE",
+            candidate_data={"name": "N", "contact": {"slack_user_id": "U-notify"}},
+        )
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="BOT_BLOCKED",
+            link="https://jobs.example/blocked",
+        )
+        monkeypatch.setattr(
+            meteorite_mod,
+            "_resolve_slack_dm_channel_for_candidate",
+            lambda _c: "D-notify",
+        )
+        monkeypatch.setattr(
+            "src.core.contact.contact_post_message",
+            lambda **kw: {"ok": True, "ts": "9999.0001"},
+        )
+        out = await meteorite_mod.run_notify_meteorite_bot_blocked(
+            _notify_task(batch_id="notify-batch-1")
+        )
+        assert out["total_passed"] == 1
+        row = db.get_meteorite(row_id)
+        assert row["estelle_notified_at"]
+        assert row["estelle_thread_ts"] == "9999.0001"
+        assert int(row["nag_count"]) == 1
+
+    @pytest.mark.asyncio
+    async def test_nag_limit_moves_to_abandoned(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-abandon"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "A"})
+        nag_limit = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["nag_limit"]
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="BOT_BLOCKED",
+            nag_count=nag_limit,
+        )
+        post = MagicMock()
+        monkeypatch.setattr("src.core.contact.contact_post_message", post)
+        out = await meteorite_mod.run_notify_meteorite_bot_blocked(
+            _notify_task(batch_id="notify-batch-abandon")
+        )
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "ABANDONED"
+        post.assert_not_called()
 
 
 def _check_inbox_msg(
