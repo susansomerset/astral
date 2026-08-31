@@ -263,3 +263,9 @@ Parent AC4 → Stages 2–3 (`run_notify_meteorite_bot_blocked` Estelle DM + nag
 **Round=1 resolution:** `await` notify runner, unprompted-paste ordering clarified, READY monitoring log dropped — revision @ `fa4b1935`.
 
 **In-session statute pass:** `entity_batch_id` claim/clear — **astral.batch.batch-id-first** conforms. No re-classify on paste — **astral.agent.do-task-delegation** conforms. Slack via `contact_post_message` only — **astral.layers.core-vs-external-bright-line** conforms. State transitions via core `update_meteorite` — **pattern.state.entity-state-transitions** conforms. Universal orch.* — N/A/conforms.
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`
+- **Tip:** `a1e91843b7252c48a4a3de17e6f329503b87fc5c`
+- **Stages:** 1 notify config/dispatch · 2 apply_paste + notify runner · 3 contact paste routing
