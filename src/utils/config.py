@@ -50,6 +50,7 @@ Config sections:
   METEORITE_MONITORING_CONFIG — always-on info inbox classify + row-transition line formats (AST-1559 / AST-1560); not Style D
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
+  METEORITE_RETENTION_CONFIG — scheduled LANDED purge + stale-row info list + day cutoffs (AST-1562)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -2646,6 +2647,32 @@ for _tpl_key in ("dm_first_template", "dm_nag_template"):
 assert "{nag_count}" in _mid_notify["dm_nag_template"]
 assert "{nag_limit}" in _mid_notify["dm_nag_template"]
 
+# AST-1562: scheduled retention — purge old LANDED; info-list stale ERROR/BOT_BLOCKED/ABANDONED.
+METEORITE_RETENTION_CONFIG = {
+    "task_key": "meteorite_retention",
+    "landed_purge_days": 90,
+    "stale_list_days": 14,
+    "batch_size": 200,
+    "debug_func": "meteorite.run_meteorite_retention",
+    "stale_list_line": (
+        "meteorite retention stale id={row_id} state={state} candidate={candidate_id} "
+        "changed={state_changed_at}"
+    ),
+}
+_mid_retention = METEORITE_RETENTION_CONFIG
+assert isinstance(_mid_retention["task_key"], str) and _mid_retention["task_key"]
+assert isinstance(_mid_retention["debug_func"], str) and _mid_retention["debug_func"]
+assert isinstance(_mid_retention["stale_list_line"], str) and _mid_retention["stale_list_line"]
+assert isinstance(_mid_retention["landed_purge_days"], int) and _mid_retention["landed_purge_days"] >= 1
+assert isinstance(_mid_retention["stale_list_days"], int) and _mid_retention["stale_list_days"] >= 1
+assert isinstance(_mid_retention["batch_size"], int) and _mid_retention["batch_size"] >= 1
+for _ph in ("{row_id}", "{state}", "{candidate_id}", "{state_changed_at}"):
+    assert _ph in _mid_retention["stale_list_line"]
+assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
+assert set(METEORITE_STATES_RETENTION["stale_list_states"]) == {
+    "ERROR", "BOT_BLOCKED", "ABANDONED",
+}
+
 # ---------------------------------------------------------------------------
 # SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
 # Dwell is centre ± spread seconds, re-rolled per page. max_tabs ships at 1 —
@@ -3165,6 +3192,19 @@ SEED_CONFIG = {
         "  WHERE d.candidate_id IS NULL "
         "    AND d.task_key = 'meteorite_bot_blocked_notify' "
         "    AND d.trigger_state = 'BOT_BLOCKED'"
+        ")",
+    ),
+    # AST-1562: global meteorite retention runner (NULL candidate_id; daily hygiene).
+    "dispatch_task-meteorite-retention": (
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'meteorite_retention', NULL, NULL, 'updated_at', "
+        "0, 24, 0, 200, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id IS NULL "
+        "    AND d.task_key = 'meteorite_retention'"
         ")",
     ),
 }

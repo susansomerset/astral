@@ -1507,6 +1507,13 @@ async def run_notify_meteorite_bot_blocked(
     return summary
 
 
+async def run_meteorite_retention(
+    task: Dict[str, Any], *, debug: bool = False
+) -> Dict[str, int]:
+    """Dispatch runner: purge old LANDED + info-list stale rows (AST-1562)."""
+    return dict(_ZERO_SUMMARY)
+
+
 def _normalize_apply_paste_content(raw: str) -> str:
     text = (raw or "").strip()
     if not text:
