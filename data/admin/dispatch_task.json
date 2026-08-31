@@ -37,5 +37,18 @@
     "batch_size": 10,
     "auto_mode": 0,
     "score_floor": null
+  },
+  {
+    "candidate_id": null,
+    "task_key": "meteorite_bot_blocked_notify",
+    "entity_type": null,
+    "trigger_state": "BOT_BLOCKED",
+    "sort_by": "updated_at",
+    "batch_call_mode": 0,
+    "freq_hrs": 0.1,
+    "min_count": 1,
+    "batch_size": 10,
+    "auto_mode": 0,
+    "score_floor": null
   }
 ]

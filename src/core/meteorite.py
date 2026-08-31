@@ -1415,3 +1415,10 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
     finally:
         clear_meteorite_batch(batch_id)
     return summary
+
+
+async def run_notify_meteorite_bot_blocked(
+    task: Dict[str, Any], *, debug: bool = False
+) -> Dict[str, int]:
+    """Dispatch runner: BOT_BLOCKED → Estelle DM + nag → ABANDONED (AST-1561)."""
+    return dict(_ZERO_SUMMARY)

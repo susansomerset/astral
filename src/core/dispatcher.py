@@ -36,6 +36,7 @@ from src.utils.config import (
     METEORITE_DISPATCH_TASKS,
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
+    METEORITE_BOT_BLOCKED_NOTIFY_CONFIG,
     dispatch_claim_uses_score_floor,
     effective_dispatch_score_floor,
     dispatch_claim_states,
@@ -68,6 +69,11 @@ def _is_meteorite_ingress_transition_task_key(task_key: str) -> bool:
         METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
         METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
     )
+
+
+def _is_meteorite_bot_blocked_notify_task_key(task_key: str) -> bool:
+    """True for BOT_BLOCKED Estelle notify runner (AST-1561)."""
+    return (task_key or "").strip() == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
 
 def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
     """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
@@ -835,6 +841,91 @@ async def _dispatch_one(task: Dict) -> None:
             final_status = "FAILED"
             failure_reason = "meteorite ingress runner crashed"
             _sched_log.exception("[%s/%s] meteorite ingress crashed", task_key, entity_batch_id)
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        finally:
+            if dispatch_ledger_id:
+                try:
+                    total_cost = compute_batch_cost(dispatch_ledger_id)
+                    total_processed = accumulated.get("total_processed", 0)
+                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
+                    database.update_dispatch_ledger(
+                        dispatch_ledger_id,
+                        status=final_status,
+                        completed_at=_now_iso(),
+                        total_cost=total_cost,
+                        entity_cost=round(entity_cost, 7),
+                        **accumulated,
+                    )
+                    if final_status in ("FAILED", "INTERRUPTED"):
+                        logger.error(
+                            "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
+                            task_key,
+                            dispatch_ledger_id,
+                            final_status,
+                            failure_reason or "see scheduler log",
+                            accumulated.get("total_processed", 0),
+                            accumulated.get("total_passed", 0),
+                            accumulated.get("total_failed", 0),
+                            accumulated.get("total_errors", 0),
+                        )
+                except Exception as e:
+                    _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
+            flush_log_buffer()
+            log_batch_id.set(None)
+            try:
+                _db_update_dispatch_task(task_id, last_run_at=_now_iso())
+            except Exception as e:
+                _sched_log.error("Failed to update dispatch task %s: %s", task_id, e)
+        return
+
+    # AST-1561: BOT_BLOCKED Estelle notify — custom branch before mailbox / check_inbox.
+    if _is_meteorite_bot_blocked_notify_task_key(task_key):
+        from src.core.meteorite import run_notify_meteorite_bot_blocked
+
+        entity_batch_id = f"{task_key}-{uuid.uuid4()}"
+        ledger_cid = str(candidate_id or "").strip() or None
+        if debug:
+            logger.debug_index(
+                func="dispatcher._dispatch_one",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="task start",
+            )
+            logger.debug_detail(
+                f"meteorite bot_blocked notify entity_batch_id={entity_batch_id} "
+                f"candidate_id={ledger_cid!r} mode={'AUTO' if not is_click else 'CLICK'}"
+            )
+        database.save_dispatch_ledger(
+            entity_batch_id,
+            task_key,
+            ledger_cid,
+            _now_iso(),
+            "RUNNING",
+            entity_type=None,
+        )
+        log_batch_id.set(entity_batch_id)
+        dispatch_ledger_id = entity_batch_id
+        task["entity_batch_id"] = entity_batch_id
+        with _registry_lock:
+            entry = _task_registry.get(task_id)
+            if entry:
+                entry["asyncio_task"] = asyncio.current_task()
+        accumulated = dict(_SUMMARY_ZERO)
+        final_status = "COMPLETED"
+        try:
+            summary = await run_notify_meteorite_bot_blocked(task, debug=debug)
+            for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
+                accumulated[k] = int(summary.get(k, 0) or 0)
+        except asyncio.CancelledError:
+            final_status = "INTERRUPTED"
+            failure_reason = "dispatch cancelled by admin"
+            _sched_log.warning("[%s/%s] KILLED by admin — bot_blocked notify", task_key, entity_batch_id)
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        except Exception:
+            final_status = "FAILED"
+            failure_reason = "bot_blocked notify runner crashed"
+            _sched_log.exception("[%s/%s] bot_blocked notify crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:

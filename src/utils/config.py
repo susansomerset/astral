@@ -49,6 +49,7 @@ Config sections:
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
   METEORITE_MONITORING_CONFIG — always-on info inbox classify + row-transition line formats (AST-1559 / AST-1560); not Style D
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
+  METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -2616,6 +2617,35 @@ assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
     "READY", "BOT_BLOCKED", "ERROR",
 }
 
+# AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
+METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
+    "task_key": "meteorite_bot_blocked_notify",
+    "trigger_state": "BOT_BLOCKED",
+    "batch_size": 10,
+    "nag_limit": 3,
+    "debug_func": "meteorite.run_notify_meteorite_bot_blocked",
+    "dm_first_template": (
+        "That job link hit a bot block. Please paste the full job description text here "
+        "(copy from the listing page). Blocked link: {link}"
+    ),
+    "dm_nag_template": (
+        "Still waiting on the job description paste for the blocked listing. "
+        "Link: {link} ({nag_count}/{nag_limit})"
+    ),
+}
+_mid_notify = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
+assert isinstance(_mid_notify["task_key"], str) and _mid_notify["task_key"]
+assert _mid_notify["trigger_state"] == "BOT_BLOCKED"
+assert _mid_notify["trigger_state"] in METEORITE_STATES
+assert isinstance(_mid_notify["batch_size"], int) and _mid_notify["batch_size"] >= 1
+assert isinstance(_mid_notify["nag_limit"], int) and _mid_notify["nag_limit"] >= 1
+assert isinstance(_mid_notify["debug_func"], str) and _mid_notify["debug_func"]
+for _tpl_key in ("dm_first_template", "dm_nag_template"):
+    _tpl = _mid_notify[_tpl_key]
+    assert isinstance(_tpl, str) and _tpl and "{link}" in _tpl
+assert "{nag_count}" in _mid_notify["dm_nag_template"]
+assert "{nag_limit}" in _mid_notify["dm_nag_template"]
+
 # ---------------------------------------------------------------------------
 # SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
 # Dwell is centre ± spread seconds, re-rolled per page. max_tabs ships at 1 —
@@ -3121,6 +3151,20 @@ SEED_CONFIG = {
         "  WHERE d.candidate_id IS NULL "
         "    AND d.task_key = 'land_meteorite' "
         "    AND d.trigger_state = 'READY'"
+        ")",
+    ),
+    # AST-1561: global BOT_BLOCKED Estelle notify runner (NULL candidate_id pool).
+    "dispatch_task-meteorite-bot-blocked-notify": (
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'meteorite_bot_blocked_notify', NULL, 'BOT_BLOCKED', 'updated_at', "
+        "0, 0.1, 1, 10, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id IS NULL "
+        "    AND d.task_key = 'meteorite_bot_blocked_notify' "
+        "    AND d.trigger_state = 'BOT_BLOCKED'"
         ")",
     ),
 }
