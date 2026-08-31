@@ -1878,11 +1878,6 @@ input.side-tab-heading-editable:focus {
 .toast-error   { background: var(--danger); }
 .toast-info    { background: var(--bg-elevated); border: 1px solid var(--border); }
 
-/* Copy affordance lives on the narrowed target, not the whole toast chrome. */
-.toast-copy-target {
-  flex: 1;
-  min-width: 0;
-}
 .toast-error-clickable {
   pointer-events: auto;
   cursor: pointer;
@@ -1895,11 +1890,6 @@ input.side-tab-heading-editable:focus {
   font-size: 12px;
   font-weight: 500;
   opacity: 0.85;
-}
-/* Parent .toast is pointer-events: none; dismiss reuses Modal's icon-control. */
-.toast .icon-control {
-  pointer-events: auto;
-  flex-shrink: 0;
 }
 
 /* === 12. Agent Timesheets === */

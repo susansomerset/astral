@@ -547,3 +547,11 @@ AST-779 bible/tests encoded the whole-toast copy contract. AST-1549 changed the 
 2. Click-to-copy still asserts multi-line bundle contents (`message:`, `route:`, optional diagnostics) and 2s “Copied to clipboard” restore without claiming whole-toast clickability.
 3. Success/info remain non-interactive in product and unexpanded in this gap’s new cases.
 4. No product file edits in this ticket’s commits.
+
+## Resolution (AST-1553 — 2026-08-31)
+
+Radia **Review Posted** — **discuss:** drop AST-1549 product UI from this gap sub (tests/bible only); sibling AST-1549 owns `Toast.tsx` / `App.css`.
+
+**Product:** Reverted the `code(AST-1553): bring AST-1549…` tip so this publish ref no longer carries `Toast.tsx` / `App.css` deltas. Betty’s `test(AST-1553):` / bible commits and plan-fix doc section remain.
+
+**§9a:** dry-run merge of publish ref into `origin/dev` and `origin/ftr/AST-1543-close-button-on-error-toast-copies-error` before User Testing.
