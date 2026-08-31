@@ -281,3 +281,21 @@ AC6 → Stages 3–4 (delete `meteorite_email.py`, retire unbound/selected-id ma
 - Mailbox config cleaned; Stage 4 greps clean; Betty manifest tests green.
 
 **Notes:** No fix-now product violations. Recommended downstream: Betty fixes `test_meteorite_email.py` collection; no mandatory resolve-child product changes for AC6/AC7.
+
+## Resolution
+
+**2026-08-31 — resolve-child (Katherine)**
+
+Radia **DISCUSS** @ `8042b856` — no fix-now product findings on AST-1562 footprint.
+
+| Finding | Action |
+|---------|--------|
+| Discuss — `test_meteorite_email.py` collection after module delete | **Deferred to Betty** — `[qa-handoff]` not filed; manifest-scoped green; Betty bible note + prep-uat broad collect |
+| Discuss — stacked sibling product on publish ref | **No code change** — expected AST-1557–1561 merges; Chuckles owns ftr merge order |
+| Advisory — retention `debug=True` no per-row Style D on stale loop | **No code change** — plan makes stale lines always-on info |
+| Advisory — purge + stale each honor `batch_size` (up to 2×) | **No code change** — accept at current scale per Radia |
+| Advisory — Review stub tip stale | Updated in this Resolution pass |
+
+**§9a:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email` merges cleanly into `origin/dev`. `origin/ftr/AST-1555` not on origin — ftr dry-run skipped.
+
+**Manifest:** Betty §QA test manifest green @ `f2f9de2c` (18 passed); no product commits at resolve.
