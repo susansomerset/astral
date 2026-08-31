@@ -162,7 +162,7 @@ def inbox_land_meteorite():
     )
     debug = ui_llm_debug(explicit_debug=explicit)
 
-    skip_missing = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"]
+    skip_missing = "skipped-not-in-inbox"
     created_k = METEORITE_CONFIG["land_outcome_created"]
     skip_k = METEORITE_CONFIG["land_outcome_duplicate_skip"]
     super_k = METEORITE_CONFIG["land_outcome_superseded"]

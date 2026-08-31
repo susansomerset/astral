@@ -41,7 +41,7 @@ Config sections:
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
-  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, unbound retention, dispatch row seed (AST-1134 / AST-1466) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
+  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
   STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
@@ -2812,7 +2812,6 @@ assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 METEORITE_EMAIL_MAILBOX_CONFIG = {
     "task_key": "meteorite_email",
     "account_address": "astral.career.match@gmail.com",
-    "unbound_retention_days": 7,
     "auto_mode": False,
     "min_count": 1,
     "batch_size": 1,
@@ -2824,23 +2823,11 @@ METEORITE_EMAIL_MAILBOX_CONFIG = {
     "subject_url_schemes": ("http", "https"),
     # Style D func= string for the runner.
     "debug_func": "meteorite.check_inbox",
-    # AST-1140 — Style D func= for selected-ids Land Meteorite ingest.
-    "debug_func_selected": "meteorite_email.selected_ids",
-    # Per-id outcome strings returned to AST-1141 / recorded in Style D.
-    "selected_outcome_skipped_unbound": "skipped-unbound",
-    "selected_outcome_skipped_not_in_inbox": "skipped-not-in-inbox",
-    "selected_outcome_skipped_unmatched": "skipped-unmatched",
 }
 
-assert isinstance(METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"], int)
-assert METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"] > 0
 assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
 assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "https"}
 assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite.check_inbox"
-assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func_selected"] == "meteorite_email.selected_ids"
-assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unbound"] == "skipped-unbound"
-assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
-assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
 # AST-1559: always-on info monitoring for meteorite ingress (not Style D).
