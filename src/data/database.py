@@ -4006,6 +4006,33 @@ def save_artifact(
     return _run_with_retry(_with_conn)
 
 
+
+def retire_current_artifact(
+    entity_type: str, entity_id: str, artifact_type: str
+) -> bool:
+    """AST-1556: set current=0 for the natural key; no new row. True if a row was retired."""
+    et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
+    now = _utc_now()
+
+    def _with_conn() -> bool:
+        conn = _get_connection()
+        try:
+            _ensure_artifacts_table(conn)
+            cur = conn.execute(
+                """UPDATE artifacts
+                      SET current = 0, updated_at = ?
+                    WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
+                      AND current = 1""",
+                (now, et, eid, at),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def get_current_artifact(
     entity_type: str, entity_id: str, artifact_type: str
 ) -> Optional[Dict[str, Any]]:

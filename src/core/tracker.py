@@ -22,6 +22,8 @@ from src.utils.config import (
     BUILD_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
+    JOB_ARTIFACT_ENTITY_TYPE,
+    JOB_EDITABLE_ARTIFACT_TYPES,
     JOB_SOURCE_DEFAULT,
     JOB_SOURCE_METEORITE,
     JOB_STATES,
@@ -441,17 +443,28 @@ def cover_letter_artifact_for_display(
 
 
 def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, Any]) -> None:
-    """Merge cover_letter object into job_data.artifacts. AST-309."""
-    save_job_data(astral_job_id, {"artifacts": {"cover_letter": normalize_cover_letter_artifact(cover_letter)}})
+    """AST-1556: persist cover letter as artifacts-table current row (not job_data SoT)."""
+    if not astral_job_id or not str(astral_job_id).strip():
+        return
+    normalized = normalize_cover_letter_artifact(cover_letter)
+    if not _cover_letter_display_nonempty(normalized):
+        return
+    database.save_artifact(
+        JOB_ARTIFACT_ENTITY_TYPE, astral_job_id, "cover_letter", normalized
+    )
 
 
 def save_job_artifact_job_resume_body(astral_job_id: str, resume_body: Dict[str, Any]) -> None:
-    """AST-1548: operator job_resume replica + compat dual-write to resume_content."""
+    """AST-1556: persist job_resume as artifacts-table current row (not job_data SoT)."""
+    if not astral_job_id or not str(astral_job_id).strip():
+        return
     cd = _candidate_data_for_job(astral_job_id)
     prepared = _prepare_job_resume_content(resume_body, cd)
-    save_job_data(
-        astral_job_id,
-        {"artifacts": {"job_resume": prepared, "resume_content": prepared}},
+    # Coat-check: never store empty section body.
+    if not any(_resume_section_has_body(sid, val) for sid, val in prepared.items()):
+        return
+    database.save_artifact(
+        JOB_ARTIFACT_ENTITY_TYPE, astral_job_id, "job_resume", prepared
     )
 
 
@@ -497,7 +510,7 @@ def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
 
 
 def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1548: copy unwrapped finalize resume onto job_resume (+ resume_content dual-write)."""
+    """AST-1556: copy unwrapped finalize resume onto artifacts-table job_resume."""
     if not parsed_matches_job_resume_content(astral_job_id, parsed):
         return False
     save_job_artifact_job_resume_body(astral_job_id, _resume_payload_body(parsed))
@@ -505,7 +518,7 @@ def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool
 
 
 def persist_finalize_cover_letter_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1548: copy normalized cover fields onto artifacts.cover_letter; coat-check empty."""
+    """AST-1556: copy normalized cover onto artifacts-table cover_letter; coat-check empty."""
     if not isinstance(parsed, dict):
         return False
     body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
@@ -586,20 +599,40 @@ def resolve_job_artifact_agent_data_body(
 def hydrate_job_artifacts_for_display(
     artifacts: Any,
     *,
+    astral_job_id: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """AST-1100/1548: shallow-copy; operator job_resume/cover from job body only; pin-resolve proposed_answers."""
+    """AST-1100/1548/1556: shallow-copy; overlay artifacts-table currents for job_resume/cover."""
     if not isinstance(artifacts, dict):
-        return {}
-    out = dict(artifacts)
-    rc = out.get("resume_content")
-    sibling_resume = rc if isinstance(rc, dict) and rc else None
-    jr = out.get("job_resume")
-    # AST-1548: job body dict first; legacy resume_content overlay; never pin→agent_data for operators.
-    if isinstance(jr, dict) and jr:
-        out["job_resume"] = dict(jr)
-    elif sibling_resume is not None:
-        out["job_resume"] = dict(sibling_resume)
+        out: Dict[str, Any] = {}
+    else:
+        out = dict(artifacts)
+    # AST-1556: operator SoT is artifacts table when job id is known.
+    if astral_job_id and str(astral_job_id).strip():
+        jid = str(astral_job_id).strip()
+        for atype in JOB_EDITABLE_ARTIFACT_TYPES:
+            row = database.get_current_artifact(JOB_ARTIFACT_ENTITY_TYPE, jid, atype)
+            if not row:
+                continue
+            data = row.get("artifact_data")
+            if atype == "job_resume" and isinstance(data, dict) and data:
+                out["job_resume"] = dict(data)
+            elif atype == "cover_letter" and isinstance(data, dict):
+                display_cover = cover_letter_artifact_for_display(data, debug=debug)
+                if display_cover is not None:
+                    out["cover_letter"] = display_cover
+    else:
+        rc = out.get("resume_content")
+        sibling_resume = rc if isinstance(rc, dict) and rc else None
+        jr = out.get("job_resume")
+        # Legacy blob path when no job id (tests without table overlay).
+        if isinstance(jr, dict) and jr:
+            out["job_resume"] = dict(jr)
+        elif sibling_resume is not None:
+            out["job_resume"] = dict(sibling_resume)
+        display_cover = cover_letter_artifact_for_display(out.get("cover_letter"), debug=debug)
+        if display_cover is not None:
+            out["cover_letter"] = display_cover
     for key in _JOB_ARTIFACT_PIN_KEYS:
         if key in ("job_resume", "cover_letter"):
             continue
@@ -610,10 +643,6 @@ def hydrate_job_artifacts_for_display(
         if body is None:
             continue
         out[key] = body
-    # AST-1116/1499/1548: cover overlay from job dict only (pin strings → no overlay).
-    display_cover = cover_letter_artifact_for_display(out.get("cover_letter"), debug=debug)
-    if display_cover is not None:
-        out["cover_letter"] = display_cover
     return out
 
 
@@ -684,13 +713,20 @@ def parsed_matches_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
 
 
 def job_has_persisted_resume_body(astral_job_id: str, job: Optional[Dict[str, Any]] = None) -> bool:
-    """Non-empty resume_content for an enabled non-contact section (post-persist gate)."""
-    row = job if job is not None else get_job(astral_job_id)
-    if not row:
-        return False
-    rc = get_job_artifacts(row).get("resume_content")
+    """Non-empty job_resume body for an enabled non-contact section (AST-1556 table SoT)."""
+    row = database.get_current_artifact(
+        JOB_ARTIFACT_ENTITY_TYPE, astral_job_id, "job_resume"
+    )
+    rc = row.get("artifact_data") if row else None
     if not isinstance(rc, dict) or not rc:
-        return False
+        # Legacy blob fallback for pre-migration rows.
+        job_row = job if job is not None else database.get_job(astral_job_id)
+        if not job_row:
+            return False
+        legacy = get_job_artifacts(job_row)
+        rc = legacy.get("resume_content") or legacy.get("job_resume")
+        if not isinstance(rc, dict) or not rc:
+            return False
     cd = _candidate_data_for_job(astral_job_id)
     structure = candidate_mod.resolve_resume_structure(cd)
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
@@ -770,10 +806,13 @@ def persist_job_artifact_from_parsed(
 
 
 def clear_job_build_artifacts(astral_job_id: str) -> None:
-    """Remove partial build artifact keys on cancel (AST-552 replace-merge pattern). AST-562."""
+    """Remove partial build artifact keys on cancel; retire table currents (AST-552/1556)."""
     job = get_job(astral_job_id)
     if not job:
         raise ValueError(f"Job not found: {astral_job_id}")
+    # AST-1556: retire artifacts-table currents for editable job types (SoT).
+    for atype in JOB_EDITABLE_ARTIFACT_TYPES:
+        database.retire_current_artifact(JOB_ARTIFACT_ENTITY_TYPE, astral_job_id, atype)
     jd = job.get("job_data")
     if not isinstance(jd, dict):
         return
@@ -892,8 +931,17 @@ async def get_job_data(job: Dict[str, Any], key: str) -> Any:
 
 def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
     """Job-by-ID for render and id-only callers; not ``get_job_batch`` (dispatch-scoped).
-    Thin delegate to the data layer. Consult should migrate off ``database.get_job`` per AST-372."""
-    return database.get_job(astral_job_id)
+    Thin delegate to the data layer. AST-1556: overlay artifacts-table currents in-memory."""
+    job = database.get_job(astral_job_id)
+    if not job:
+        return None
+    jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
+    art = jd.get("artifacts") if isinstance(jd.get("artifacts"), dict) else {}
+    overlaid = hydrate_job_artifacts_for_display(art, astral_job_id=astral_job_id)
+    # Shallow copy so overlay never writes back as SoT.
+    out = dict(job)
+    out["job_data"] = {**jd, "artifacts": overlaid}
+    return out
 
 
 def assemble_job_copy_snapshot(

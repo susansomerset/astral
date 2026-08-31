@@ -203,7 +203,7 @@ def detail(astral_job_id):
         return jsonify({"error": "Not found"}), 404
     job = _flatten_grades(job)
     _attach_skipped_edit_meta(job)
-    # AST-1100: pin-slot strings → resolved bodies for JAR / ArtifactEditor (no persist).
+    # AST-1100: pin-resolve proposed_answers; job_resume/cover already table-overlaid via get_job.
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     art = hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))
     job["job_data"] = {**jd, "artifacts": art}
@@ -273,7 +273,7 @@ def copy_snapshot(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/artifacts/resume_content", methods=["PUT"])
 @require_auth
 def put_job_resume_content(astral_job_id):
-    """Merge section-keyed resume draft into job_data.artifacts.resume_content (AST-553)."""
+    """AST-1556: legacy URL redirects to job_resume artifacts-table SoT."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -281,14 +281,14 @@ def put_job_resume_content(astral_job_id):
     body = data.get("resume_content")
     if not isinstance(body, dict):
         return jsonify({"error": "resume_content must be a dict"}), 400
-    save_job_artifact_resume_content(astral_job_id, body)
+    save_job_artifact_job_resume_body(astral_job_id, body)
     return jsonify({"ok": True})
 
 
 @jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
 @require_auth
 def put_job_resume_pin_key(astral_job_id):
-    """AST-1548: ArtifactEditor PUTs job_resume; body dual-writes job_resume + resume_content."""
+    """AST-1556: ArtifactEditor PUTs job_resume → artifacts-table current row."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -303,7 +303,7 @@ def put_job_resume_pin_key(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/artifacts/cover_letter", methods=["PUT"])
 @require_auth
 def put_job_cover_letter(astral_job_id):
-    """Merge cover letter artifact into job_data.artifacts.cover_letter (AST-565)."""
+    """AST-1556: persist cover letter as artifacts-table current row."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
