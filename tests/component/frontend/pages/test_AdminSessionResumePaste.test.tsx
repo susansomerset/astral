@@ -31,7 +31,7 @@ describe("AdminSessionResumePaste — AST-987", () => {
     mockedApi.mockReset()
     vi.stubGlobal(
       "open",
-      vi.fn(() => ({ closed: false })),
+      vi.fn(() => ({ closed: false, opener: {} as Window | null })),
     )
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:session-html"),
@@ -160,9 +160,10 @@ describe("AdminSessionResumePaste — AST-987", () => {
     renderWithProviders(<SessionResumePaste />)
     await waitFor(() => expect(screen.getByRole("button", { name: "Open HTML" })).toBeEnabled())
     await userEvent.click(screen.getByRole("button", { name: "Open HTML" }))
-    await waitFor(() =>
-      expect(window.open).toHaveBeenCalledWith("blob:session-html", "_blank", "noopener,noreferrer"),
-    )
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith("blob:session-html", "_blank"))
+    const openWin = vi.mocked(window.open).mock.results[0]?.value as { opener: Window | null }
+    expect(openWin.opener).toBeNull()
+    expect(screen.queryByText("Popup blocked — allow popups to open the HTML tab.")).not.toBeInTheDocument()
   })
 
   it("Open HTML error shows message and does not open tab", async () => {
