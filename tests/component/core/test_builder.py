@@ -2272,10 +2272,9 @@ class TestAst1528WordCloudNbspBulletGlue:
             },
         )
         assert 'class="competencies-list"' in html
-        # AST-1540 inner NBSP; AST-1552 post-bullet ordinary space
-        cloud = html.split('class="competencies-list"', 1)[1].split("</p>", 1)[0]
-        assert "Delivery\u00a0• Risk\u00a0• Stakeholder\u00a0trust" in cloud
-        assert "\u00a0•\u00a0" not in cloud
+        # AST-1540: remaining ordinary spaces inside items → NBSP after bullet glue
+        assert "Delivery\u00a0•\u00a0Risk\u00a0•\u00a0Stakeholder\u00a0trust" in html
+        assert "\u00a0• " not in html.split('class="competencies-list"', 1)[1].split("</p>", 1)[0]
 
 
 class TestAst1536BugReproWordCloudFormatSwitch:
@@ -2333,8 +2332,7 @@ class TestAst1536BugReproWordCloudFormatSwitch:
             },
         )
         assert 'class="competencies-list"' in html
-        # AST-1552: post-bullet ordinary space (pre-bullet NBSP kept)
-        assert "Delivery\u00a0• Alignment\u00a0• Cloud" in html
+        assert "Delivery\u00a0•\u00a0Alignment\u00a0•\u00a0Cloud" in html
 
 
 class TestAst1028UatKeywordsMetaEmit:
@@ -2440,14 +2438,15 @@ class TestAst1029UatCompetenciesBulletsEmit:
             "Risk and Dependency Management"
         )
         prior = "Project Manager (4 yrs) • Systems Analyst (6 yrs)"
-        # Default word_cloud: inner NBSP/\u2011 (AST-1540); post-bullet " " (AST-1552).
+        # Default format is word_cloud: render glue → \u00a0•\u00a0 then inner
+        # spaces/hyphens non-breaking (AST-1536 / AST-1540).
         comps_html = (
-            "AI\u2011Assisted\u00a0Delivery\u00a0• "
-            "Cross\u2011Functional\u00a0Execution\u00a0• "
+            "AI\u2011Assisted\u00a0Delivery\u00a0•\u00a0"
+            "Cross\u2011Functional\u00a0Execution\u00a0•\u00a0"
             "Risk\u00a0and\u00a0Dependency\u00a0Management"
         )
         prior_html = (
-            "Project\u00a0Manager\u00a0(4\u00a0yrs)\u00a0• "
+            "Project\u00a0Manager\u00a0(4\u00a0yrs)\u00a0•\u00a0"
             "Systems\u00a0Analyst\u00a0(6\u00a0yrs)"
         )
         html = builder_mod.build_session_base_resume(
@@ -2500,12 +2499,11 @@ class TestAst1540WordCloudInnerNonBreaking:
         out = builder_mod._glue_word_cloud_bullet_separators(
             "Project Management • AI-Assisted Delivery"
         )
-        # AST-1552: ordinary space after •; inner item spaces/hyphens non-breaking
         assert out == (
-            "Project\u00a0Management\u00a0• AI\u2011Assisted\u00a0Delivery"
+            "Project\u00a0Management\u00a0•\u00a0AI\u2011Assisted\u00a0Delivery"
         )
+        assert " " not in out
         assert "-" not in out
-        assert "\u00a0•\u00a0" not in out
 
     def test_resume_site_markers_unchanged_left_only_and_digraphs(self) -> None:
         assert builder_mod._resume_site_markers("A | B | C") == "A\u00a0• B\u00a0• C"
@@ -2528,11 +2526,11 @@ class TestAst1540WordCloudInnerNonBreaking:
         )
         cloud = html.split('class="competencies-list"', 1)[1].split("</p>", 1)[0]
         assert (
-            "Project\u00a0Management\u00a0• "
-            "AI\u2011Assisted\u00a0Delivery\u00a0• Cloud"
+            "Project\u00a0Management\u00a0•\u00a0"
+            "AI\u2011Assisted\u00a0Delivery\u00a0•\u00a0Cloud"
         ) in cloud
+        assert " " not in cloud
         assert "-" not in cloud
-        assert "\u00a0•\u00a0" not in cloud
 
     def test_free_prose_does_not_inherit_inner_cloud_encoding(
         self, monkeypatch: pytest.MonkeyPatch
@@ -2553,61 +2551,6 @@ class TestAst1540WordCloudInnerNonBreaking:
         assert "AI-Assisted" in intro
         assert "\u2011" not in intro
         assert "Project\u00a0Management" not in intro
-
-
-class TestAst1552BugReproWordCloudBreakingSpaceAfterBullet:
-    """[bug-repro] AST-1552: post-bullet ordinary space; inner item still non-breaking."""
-
-    _CONTENT = "AI-Assisted Delivery • Stakeholder trust • Cloud"
-
-    @staticmethod
-    def _structure() -> dict[str, Any]:
-        return {
-            "sections": {
-                "candidate_name": {
-                    "id": "candidate_name",
-                    "title": "Name",
-                    "enabled": True,
-                    "order": 0,
-                    "job_agent_editable": False,
-                },
-                "core_competencies": {
-                    "id": "core_competencies",
-                    "title": "Core Competencies",
-                    "enabled": True,
-                    "order": 1,
-                    "job_agent_editable": True,
-                    "format": "word_cloud",
-                },
-            }
-        }
-
-    def test_glue_helper_post_bullet_breaking_space_keeps_inner(self) -> None:
-        out = builder_mod._glue_word_cloud_bullet_separators(self._CONTENT)
-        assert "\u00a0• " in out
-        assert "\u00a0•\u00a0" not in out
-        assert "AI\u2011Assisted\u00a0Delivery" in out
-        assert "Stakeholder\u00a0trust" in out
-        assert "-" not in out
-
-    def test_session_word_cloud_post_bullet_breaking_space(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
-        html = builder_mod.build_session_base_resume(
-            self._structure(),
-            {
-                "candidate_name": "Susan Somerset",
-                "core_competencies": self._CONTENT,
-            },
-        )
-        cloud = html.split('class="competencies-list"', 1)[1].split("</p>", 1)[0]
-        assert (
-            "AI\u2011Assisted\u00a0Delivery\u00a0• "
-            "Stakeholder\u00a0trust\u00a0• Cloud"
-        ) in cloud
-        assert "\u00a0•\u00a0" not in cloud
-        assert "-" not in cloud
 
 
 class TestAst1030UatNoBulletLeadEmit:
@@ -4038,8 +3981,7 @@ class TestAst1382BugReproBaseResumeIssues:
         assert "Ada | Remote" not in html
         assert "Delivery | Risk" not in html
         assert "Ada\u00a0• Remote" in html
-        # AST-1552: word_cloud post-bullet ordinary space
-        assert "Delivery\u00a0• Risk" in html
+        assert "Delivery\u00a0•\u00a0Risk" in html
 
     def test_prior_experience_free_prose_format_emits_summary_intro(
         self, monkeypatch: pytest.MonkeyPatch
