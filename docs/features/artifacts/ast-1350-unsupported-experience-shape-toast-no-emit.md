@@ -275,3 +275,49 @@ context_tokens≈48000
 **2026-08-13** — Radia CLEAN (no fix-now / discuss). Advisory left as-is (ftr-aggregate diff noise; AST-1353 piggyback; legacy fixture hygiene for Betty; Session/Materials out of scope).
 
 §9a: `origin/dev` dry-run clean. `origin/ftr/AST-1345-clarify-candidate-data-artifacts-base-resume-experience-node` merge-tree previously flagged overlap on `candidate.py` / `JobAnalysisReportModal.tsx` / `config.py` — resolved by merging ftr onto sub (`merge-resume(AST-1350)`); both dry-runs clean after (line-anchored conflict check).
+
+## Bug: AST-1545 — Fix false popup-blocked toast on Print / Open HTML
+
+### As-is
+
+On Recommended JAR Print Resume (and Base Resume Print, Session Open HTML, Session Cover Open HTML), validate-then-blob succeeds and the HTML tab opens, but the UI still toasts `Popup blocked — allow popups to open the HTML tab.` because each handler calls `window.open(blobUrl, "_blank", "noopener,noreferrer")` then `if (!win)` → toast — and with those features the browser returns `null` even when the tab opened.
+
+### To-be
+
+When the HTML tab actually opens, no popup-blocked toast. That exact toast only appears when `window.open` truly fails to open a tab (real popup block).
+
+### Repro
+
+1. On `/jobs/recommended`, open a job JAR and click Print Resume for a candidate with a valid (emit-ok) resume.
+2. Observe: a new HTML tab loads the resume, **and** an error toast shows `Popup blocked — allow popups to open the HTML tab.` (diagnostic: route `/jobs/recommended`).
+3. Same false toast on Base Resume Print, Admin Session Resume Open HTML, and Admin Session Cover Open HTML after a successful blob open.
+
+### Root cause
+
+The four validate-then-blob handlers treat a null return from `window.open(..., "noopener,noreferrer")` as "blocked." Spec/browsers return `null` for opens that include `noopener` / `noreferrer` even when the tab succeeded, so the check is a false positive while the page still loads.
+
+### Proposed change
+
+⚠️ **Decision:** Open the blob URL with `window.open(blobUrl, "_blank")` — **no** features string. If `win` is non-null, set `win.opener = null` immediately (noopener-equivalent isolation without forcing a null return). If `win` is null, toast the existing literal `Popup blocked — allow popups to open the HTML tab.` Keep fetch/validate, blob creation, and `revokeObjectURL` timeout unchanged. Apply the same three-line success-vs-blocked decision at all four call sites (no new shared util file — Component scope lists only these four modules).
+
+1. In `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` `handlePrintResume`: replace
+   `const win = window.open(blobUrl, "_blank", "noopener,noreferrer")` + `if (!win) { setToast({ text: "Popup blocked — allow popups to open the HTML tab.", variant: "error" }) }`
+   with: open without features; on success `win.opener = null`; on null toast the same blocked string. Do not change the fetch-then-blob / persist-structure path above.
+2. In `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` `handlePrint`: identical open / `opener = null` / blocked-toast decision after the blob URL is created.
+3. In `src/ui/frontend/src/pages/AdminSessionResumePaste.tsx` `handleOpenHtml`: identical decision after blob create.
+4. In `src/ui/frontend/src/pages/AdminSessionCoverLetter.tsx` `handleOpenHtml`: identical decision after blob create.
+
+Do **not** change print HTML emit, API error mapping, unsupported-shape toast text, or any non-blob `window.open` (e.g. job_link / cover Print URL opens outside this pattern).
+
+### Blast radius
+
+- Same four UI surfaces that share this toast string (JAR Print Resume introduced the Recommended report path in AST-1350 Stage 2; Base/Session patterns from earlier tickets).
+- Real popup-block path still depends on a null `window.open` return when features are omitted — that remains the blocked signal.
+- Fetch failure / empty HTML paths are untouched; unsupported-experience 400 + exact toast from AST-1350 still holds.
+
+### What must still hold
+
+- AST-1350 AC: unsupported/non-array `experience` still toasts exact `unsupported resume structure, please regenerate`, opens no HTML tab, and does not emit Experience-omitted HTML (core gate + API 400 unchanged).
+- Successful Print / Open HTML still opens a blob tab with usable HTML.
+- A truly blocked popup still shows `Popup blocked — allow popups to open the HTML tab.` when no tab opens.
+- New tab stays isolated from the opener (`opener` cleared after open).
