@@ -700,13 +700,13 @@ Same `_store_response_block` / `debug=True` `result` bind as **AST-1076** (intak
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
 
-After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_letter` / `propose_application_responses`, `do_task` pins the RESPONSE `agent_data_id` into `job_data.artifacts` **before** `run_next` (mid-chain + terminal). Failed hops do not pin. Terminal body-copy via `persist_job_artifact_from_parsed` removed for finalize hops. Sibling `resume_content` copy after the resume pin is **AST-1430**. Config map: **`docs/test-bible/utils/config.md`**. Tracker helper: **`docs/test-bible/core/tracker.md`**.
+Originally pinned RESPONSE `agent_data_id` for finalize + propose hops. **AST-1548 / AST-1554:** finalize hops write **body replicas** instead; only `propose_application_responses` → `proposed_answers` still pins. Failed hops do not pin/replica. Config maps: **`docs/test-bible/utils/config.md`**. Tracker helpers: **`docs/test-bible/core/tracker.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Mid-chain / terminal pin + no `persist_job_artifact_from_parsed` | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`** |
+| Finalize body replica + propose pin only | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`** |
 
-**Broken / obsolete:** terminal `persist_job_artifact_from_parsed` for finalize hops (still unused). Cover / `proposed_answers` stay pin-only. Resume sibling blob copy is **AST-1430**.
+**Broken / obsolete:** pin asserts for `finalize_job_resume` / `finalize_cover_letter` — superseded by AST-1548 body replica (see **AST-1554**).
 
 **Integration:** none — do not invent new integration coverage.
 
@@ -720,20 +720,27 @@ After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_lett
 
 **Parent:** [AST-1422](https://linear.app/astralcareermatch/issue/AST-1422/finalize-job-resume-isnt-getting-parsed-into-the-job-resume-renderer). **Publish:** `origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin`. Product fix: **AST-1428**.
 
-After a successful `finalize_job_resume` pin, `do_task` calls `persist_finalize_job_resume_content(index, parsed)` (best-effort; does not revive `persist_job_artifact_from_parsed`). Pin string stays. PUT keep-pin: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1430.
+Historical keep-pin + sibling-`resume_content` copy. **Broken / obsolete under AST-1548/AST-1554:** `test_finalize_copies_resume_content_keeps_pin` — replaced by body-on-`job_resume` nodes below.
+
+### AST-1554 · AST-1547 (gap — body replica tests)
+
+**Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). Product fix: **AST-1548**. **Publish:** `origin/sub/AST-1547/AST-1554-gap-job-resume-body-replica-tests`.
+
+After successful RESPONSE store, `do_task` calls `persist_finalize_job_resume_content` / `persist_finalize_cover_letter_content` for finalize hops (no `pin_job_artifact_agent_data_id` on those slots). PUT dual-write: **`docs/test-bible/ui/api/api_jobs.md`**. Hydrate / persist helpers: **`docs/test-bible/core/tracker.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Sibling copy after pin | `src/core/agent.py` | **`TestAst1430DoTaskResumeContentCopy::test_finalize_copies_resume_content_keeps_pin`** |
+| Resume + cover body replica, no pin | `src/core/agent.py` | **`TestAst1554DoTaskBodyReplica`** (+ revised **`TestAst1099DoTaskArtifactPin`**) |
 
-**Broken / obsolete:** none on the pin suite — `TestAst1099DoTaskArtifactPin` still asserts `persist_job_artifact_from_parsed` unused.
+**Broken / obsolete:** AST-1430 keep-pin copy node; AST-1099 finalize pin asserts.
 
 **Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_agent.py::TestAst1430DoTaskResumeContentCopy \
-  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin \
+  tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_dual_writes_job_resume_body \
   -q
 ```
 

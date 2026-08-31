@@ -7136,7 +7136,7 @@ class TestAst1076StoreResponseDebugResult:
 
 
 class TestAst1099DoTaskArtifactPin:
-    """AST-1099: do_task pins RESPONSE agent_data_id for artifact hops (mid-chain + terminal)."""
+    """AST-1099/1548: do_task body-replica for finalize hops; pin only proposed_answers."""
 
     def _pin_ctx(self) -> Dict[str, Any]:
         return {"candidate_data": {"artifacts": {}}}
@@ -7173,20 +7173,21 @@ class TestAst1099DoTaskArtifactPin:
         }
 
     @pytest.mark.asyncio
-    async def test_pins_finalize_job_resume_mid_chain(
+    async def test_finalize_job_resume_body_replica_mid_chain(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
+        # AST-1548/1554: finalize resume writes body replica; does not pin operator slot.
         pin = MagicMock(return_value=True)
         persist = MagicMock(return_value=True)
+        persist_copy = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist)
-        # AST-1430 helper lands at make-fix; swallow so this pin-only case stays isolated.
         monkeypatch.setattr(
             "src.core.tracker.persist_finalize_job_resume_content",
-            MagicMock(return_value=True),
+            persist_copy,
             raising=False,
         )
         monkeypatch.setattr(
@@ -7218,23 +7219,30 @@ class TestAst1099DoTaskArtifactPin:
         assert out["success"] is True
         assert "finalize_job_resume" in calls
         assert "draft_cover_letter" in calls
-        # Resume pin fires before run_next; cover hop is not a pin task.
-        assert pin.call_count == 1
-        assert pin.call_args.args[:2] == ("job-1099", "job_resume")
-        assert isinstance(pin.call_args.args[2], str) and pin.call_args.args[2]
+        pin.assert_not_called()
         persist.assert_not_called()
+        persist_copy.assert_called_once()
+        assert persist_copy.call_args.args[0] == "job-1099"
+        assert persist_copy.call_args.args[1].get("professional_summary") == "Summary"
 
     @pytest.mark.asyncio
-    async def test_pins_finalize_cover_letter_mid_chain(
+    async def test_finalize_cover_letter_body_replica_then_propose_pin(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
+        # AST-1548/1554: cover replica mid-chain; only propose_application_responses pins.
         pin = MagicMock(return_value=True)
         persist = MagicMock(return_value=True)
+        persist_cover = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist)
+        monkeypatch.setattr(
+            "src.core.tracker.persist_finalize_cover_letter_content",
+            persist_cover,
+            raising=False,
+        )
         calls: list[str] = []
 
         def _resolve(task_key: str) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -7260,13 +7268,11 @@ class TestAst1099DoTaskArtifactPin:
         assert out["success"] is True
         assert "finalize_cover_letter" in calls
         assert "propose_application_responses" in calls
-        # Mid-chain finalize pin + terminal propose pin — never body-copy via persist helper.
-        assert pin.call_count == 2
-        assert pin.call_args_list[0].args[:2] == ("job-1099", "cover_letter")
-        assert isinstance(pin.call_args_list[0].args[2], str) and pin.call_args_list[0].args[2]
-        assert pin.call_args_list[1].args[:2] == ("job-1099", "proposed_answers")
+        persist_cover.assert_called_once()
+        assert persist_cover.call_args.args[0] == "job-1099"
+        pin.assert_called_once()
+        assert pin.call_args.args[:2] == ("job-1099", "proposed_answers")
         persist.assert_not_called()
-
     @pytest.mark.asyncio
     async def test_pins_propose_application_responses_terminal(
         self,
@@ -7290,14 +7296,20 @@ class TestAst1099DoTaskArtifactPin:
         assert pin.call_args.kwargs.get("debug") is False
 
     @pytest.mark.asyncio
-    async def test_failure_does_not_pin(
+    async def test_failure_does_not_pin_or_replica(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         pin = MagicMock(return_value=True)
+        persist_cover = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
+        monkeypatch.setattr(
+            "src.core.tracker.persist_finalize_cover_letter_content",
+            persist_cover,
+            raising=False,
+        )
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
@@ -7319,9 +7331,10 @@ class TestAst1099DoTaskArtifactPin:
         )
         assert out["success"] is False
         pin.assert_not_called()
+        persist_cover.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_debug_skip_when_missing_resp_id(
+    async def test_debug_skip_replica_when_store_fails(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
@@ -7329,7 +7342,13 @@ class TestAst1099DoTaskArtifactPin:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         pin = MagicMock(return_value=True)
+        persist_cover = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
+        monkeypatch.setattr(
+            "src.core.tracker.persist_finalize_cover_letter_content",
+            persist_cover,
+            raising=False,
+        )
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock(return_value=self._ok_cover()))
@@ -7347,12 +7366,13 @@ class TestAst1099DoTaskArtifactPin:
         )
         assert out["success"] is True
         pin.assert_not_called()
+        persist_cover.assert_not_called()
         combined = "\n".join(r.message for r in caplog.records)
-        assert "artifact_pin key=cover_letter skipped reason=store_failed" in combined
+        assert "artifact_body_replica key=cover_letter skipped reason=store_failed" in combined
 
 
-class TestAst1430DoTaskResumeContentCopy:
-    """AST-1430: finalize_job_resume copies unwrapped resume onto resume_content; pin stays."""
+class TestAst1554DoTaskBodyReplica:
+    """AST-1554 / AST-1548: finalize_job_resume body replica; no pin on operator slot."""
 
     def _pin_ctx(self) -> Dict[str, Any]:
         return {"candidate_data": {"artifacts": {}}}
@@ -7368,8 +7388,16 @@ class TestAst1430DoTaskResumeContentCopy:
             "timesheet": {},
         }
 
+    def _ok_cover(self) -> Dict[str, Any]:
+        return {
+            "success": True,
+            "parsed_response": {"re_line": "Re: Role", "body": "Hello", "signature": "Ada"},
+            "api_response": _api_response('{"re_line":"Re: Role","body":"Hello","signature":"Ada"}'),
+            "timesheet": {},
+        }
+
     @pytest.mark.asyncio
-    async def test_finalize_copies_resume_content_keeps_pin(
+    async def test_finalize_writes_job_resume_body_replica_no_pin(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
@@ -7398,20 +7426,50 @@ class TestAst1430DoTaskResumeContentCopy:
         )
         out = await agent_mod.do_task(
             "finalize_job_resume",
-            index="job-1430",
+            index="job-1554",
             ctx=self._pin_ctx(),
         )
         assert out["success"] is True
         persist_parsed.assert_not_called()
-        pin.assert_called_once()
-        assert pin.call_args.args[:2] == ("job-1430", "job_resume")
-        assert isinstance(pin.call_args.args[2], str) and pin.call_args.args[2]
+        pin.assert_not_called()
         persist_copy.assert_called_once()
-        assert persist_copy.call_args.args[0] == "job-1430"
+        assert persist_copy.call_args.args[0] == "job-1554"
         parsed_arg = persist_copy.call_args.args[1]
         assert isinstance(parsed_arg, dict)
         assert parsed_arg.get("professional_summary") == "Summary"
 
+    @pytest.mark.asyncio
+    async def test_finalize_cover_writes_body_replica_no_pin(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        pin = MagicMock(return_value=True)
+        persist_cover = MagicMock(return_value=True)
+        monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
+        monkeypatch.setattr(
+            "src.core.tracker.persist_finalize_cover_letter_content",
+            persist_cover,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="")
+        )
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod, "send_to_anthropic", AsyncMock(return_value=self._ok_cover())
+        )
+        out = await agent_mod.do_task(
+            "finalize_cover_letter",
+            index="job-1554",
+            ctx=self._pin_ctx(),
+        )
+        assert out["success"] is True
+        pin.assert_not_called()
+        persist_cover.assert_called_once()
+        assert persist_cover.call_args.args[0] == "job-1554"
+        assert isinstance(persist_cover.call_args.args[1], dict)
 
 # Branches: same RESPONSE debug result= bind on intake initiate path (AST-1083 UAT).
 class TestAst1083StoreResponseDebugResult:

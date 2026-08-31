@@ -4280,11 +4280,20 @@ class TestAst1099JobArtifactAgentDataPinConfig:
     """AST-1099: task_key → artifact slot pin map + cancel clear keys include pin slots."""
 
     def test_pin_by_task_map(self) -> None:
+        # AST-1548: finalize hops moved to BODY_REPLICA; pin map is proposed_answers only.
         assert cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK == {
-            "finalize_job_resume": "job_resume",
-            "finalize_cover_letter": "cover_letter",
             "propose_application_responses": "proposed_answers",
         }
+
+    def test_body_replica_by_task_map(self) -> None:
+        assert cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK == {
+            "finalize_job_resume": "job_resume",
+            "finalize_cover_letter": "cover_letter",
+        }
+        assert not (
+            set(cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK)
+            & set(cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK)
+        )
 
     def test_clear_keys_include_pin_slots(self) -> None:
         keys = cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS

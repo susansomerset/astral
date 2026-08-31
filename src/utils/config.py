@@ -3038,12 +3038,19 @@ assert "notes" in JOB_BUILD_ARTIFACT_CLEAR_KEYS
 assert "resume_advice" not in JOB_BUILD_ARTIFACT_CLEAR_KEYS
 assert "advice_adherence" not in JOB_BUILD_ARTIFACT_CLEAR_KEYS
 
-# AST-1099: do_task pins RESPONSE agent_data_id under job_data.artifacts[<slot>] (pointer only).
+# AST-1099 / AST-1548: pin RESPONSE id only for slots that stay pointer-only (not operator body).
 JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
-    "finalize_job_resume": "job_resume",
-    "finalize_cover_letter": "cover_letter",
     "propose_application_responses": "proposed_answers",
 }
+
+# AST-1548: finalize hops write unwrapped body onto the operator artifact slot (base_resume pattern).
+JOB_ARTIFACT_BODY_REPLICA_BY_TASK = {
+    "finalize_job_resume": "job_resume",
+    "finalize_cover_letter": "cover_letter",
+}
+assert not (
+    set(JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK) & set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK)
+)
 
 _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION = {
     "action_key": "cancel_build",
