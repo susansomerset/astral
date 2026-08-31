@@ -582,29 +582,35 @@ class TestAst1100JobArtifactPinResolveApi:
         assert art["job_resume"] == {"professional_summary": "from-pin"}
         assert art["analysis_upshot"] == {"s": 1}
 
-    def test_put_job_resume_writes_resume_content_keeps_pin(
+    def test_put_job_resume_dual_writes_job_resume_body(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1430 / AST-1428: editor save writes the sibling blob, never a dict onto the pin.
-        blob: list[tuple[str, dict]] = []
-        pin_writes: list[tuple[str, dict]] = []
+        # AST-1548/1554: editor save dual-writes body via save_job_artifact_job_resume_body.
+        body_writes: list[tuple[str, dict]] = []
+        sibling_only: list[tuple[str, dict]] = []
+        raw_saves: list[tuple[str, dict]] = []
         monkeypatch.setattr(
             jobs_mod,
             "get_job",
             lambda job_id: {
                 "astral_job_id": job_id,
-                "job_data": {"artifacts": {"job_resume": "pin-keep"}},
+                "job_data": {"artifacts": {"job_resume": {"professional_summary": "prior"}}},
             },
         )
         monkeypatch.setattr(
             jobs_mod,
+            "save_job_artifact_job_resume_body",
+            lambda job_id, content: body_writes.append((job_id, content)),
+        )
+        monkeypatch.setattr(
+            jobs_mod,
             "save_job_artifact_resume_content",
-            lambda job_id, content: blob.append((job_id, content)),
+            lambda job_id, content: sibling_only.append((job_id, content)),
         )
         monkeypatch.setattr(
             jobs_mod,
             "save_job_data",
-            lambda job_id, payload: pin_writes.append((job_id, payload)),
+            lambda job_id, payload: raw_saves.append((job_id, payload)),
         )
         resp = jobs_client.put(
             "/api/jobs/job-1100/artifacts/job_resume",
@@ -612,8 +618,9 @@ class TestAst1100JobArtifactPinResolveApi:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        assert blob == [("job-1100", {"professional_summary": "Edited"})]
-        assert pin_writes == []
+        assert body_writes == [("job-1100", {"professional_summary": "Edited"})]
+        assert sibling_only == []
+        assert raw_saves == []
 
     def test_put_proposed_answers_writes_body_dict(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch

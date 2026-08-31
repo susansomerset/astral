@@ -393,18 +393,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-779 · AST-770
 
-**Error toast diagnostics:** **`Toast.tsx`** — error variant defaults to **15s** dismiss, **click-to-copy** multi-line diagnostic bundle (route + optional candidate id from context; optional **`diagnostics`** from **`ApiError`**). Success/info unchanged (~3s, non-interactive). Helpers in **`toastDiagnostics.ts`**.
+**Error toast diagnostics:** **`Toast.tsx`** — error variant defaults to **15s** auto-dismiss; **click-to-copy** is limited to the message / “Click to copy” region (`.toast-copy-target.toast-error-clickable`); dedicated dismiss (`icon-control` ×, `aria-label="Dismiss"`) closes without clipboard write; status glyph is warning `\u26A0` (not ✗). Success/info unchanged (~3s, non-interactive). Helpers in **`toastDiagnostics.ts`**. Product split dismiss vs copy = **AST-1549**; tests/bible alignment = **AST-1553**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Toast UX + copy bundle | `src/ui/frontend/src/components/Toast.tsx`, `src/ui/frontend/src/lib/toastDiagnostics.ts`, `App.css` | `tests/component/frontend/components/test_Toast.test.tsx` — **AST-779** describe (15s error dismiss, 3s success, click-copy + copied feedback, `.toast-error-clickable` hint) |
+| Toast UX + copy bundle + dismiss | `src/ui/frontend/src/components/Toast.tsx`, `src/ui/frontend/src/lib/toastDiagnostics.ts`, `App.css` | `tests/component/frontend/components/test_Toast.test.tsx` — **AST-779** (15s error / 3s success, copy-target click-copy + copied feedback); **AST-1553** dismiss-without-copy; glyph `\u26A0` |
 | Representative ApiError wiring | `AdminAgentPrompts.tsx`, `CandidateProfile.tsx` | Existing page tests cover error toast text paths; **no new page manifest** — Toast auto-context satisfies AC 3–4 for pages passing `{ text, variant: "error" }` only |
 
-**AST-779** narrowed run (Vitest only):
+**AST-779** / **AST-1553** narrowed run (Vitest only):
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_Toast.test.tsx
+```
+
+### AST-1553 · AST-1543 (gap)
+
+**Gap sibling of AST-1549.** Retarget Toast click-copy / glyph assertions to AST-1549 hit targets; land dismiss-without-copy coverage. Product UI is AST-1549 — this ticket is tests/bible only.
+
+## QA test manifest
+
+1. **Bug-repro (must flip red→green with AST-1549 product):** `tests/component/frontend/components/test_Toast.test.tsx` — **`AST-1553: dismiss closes error toast without copying`** (Dismiss → no `clipboard.writeText`; `onDone` after 300ms)
+2. Retargeted click-copy: same file — **`AST-779: error toast is clickable and copies diagnostic bundle`** (`.toast-copy-target.toast-error-clickable`, not root)
+3. Glyph: variants smoke — error status `\u26A0`
+4. Duration contracts unchanged: **`AST-779: error toast defaults to 15000ms dismiss`**, **`AST-779: success toast still dismisses at 3000ms default`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx \
+  --testNamePattern="AST-1553|AST-779|shows success"
 ```
 
 ---
