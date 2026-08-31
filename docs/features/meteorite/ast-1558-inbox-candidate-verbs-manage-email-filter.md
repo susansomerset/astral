@@ -141,3 +141,55 @@ All Files Changed / Stages stay inside the Scope file set above.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1558
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter` @ `81c44eb91a13ff71c363e609643e4eac65251ca5`
+
+## Traceability
+
+AC6 (child slice): Stages 1–3 retire `run_fetch_email` / `fetch_email` / From-then-To bind + dispatcher/config surfaces; AC6 remainder (`meteorite_email.py` delete, meteorite→gmail ban, unbound Trash hygiene) explicitly N/A here → AST-1559/1562 per Boundaries. AC7: Stages 2+4+5 — All default list, candidate filter → aliases → `fetch_candidate_email`, Matched column removed, Land → `stage_meteorite` with required `candidate_id`.
+
+## Findings
+
+### acceptable
+- **Location:** Scope gate / Boundaries  
+  **Finding:** Parent AC6 is split across siblings; plan documents AST-1562 for file delete and AST-1559 for runner rehome.  
+  **Recommendation:** Keep boundary comments during build; do not expand into `meteorite_email.py` or `meteorite.py` beyond Stage 4 late-import.
+
+- **Location:** Stage 1 step 6  
+  **Finding:** Live-DB `dispatch_task` rows with `task_key='fetch_email'` may linger; plan correctly limits scope to stopping seed/ensure/run.  
+  **Recommendation:** Accept orphans until operator/#6 cleanup.
+
+- **Location:** Stage 2 step 6  
+  **Finding:** `archive_candidate_email` is added but unused in this slice — required by parent Functional scope #2 for AST-1559.  
+  **Recommendation:** Land as specified; no API wiring needed here.
+
+### discuss
+- **Location:** Stage 4 step 3 (`_email_aliases_for_candidate`)  
+  **Finding:** Reimplements `CANDIDATE_LOOKUP_CONFIG` path walking that `_lookup_path_value` / `_iter_uniqueness_path_values` already own in `candidate.py`. Scope gate forbids `candidate.py` touch.  
+  **Recommendation:** Accept for this ticket; consider a shared `core` helper in a follow-up if duplication bites.
+
+- **Location:** Stage 4 step 6 vs current `land_inbox_message_ids` in `inbox.py`  
+  **Finding:** Land orchestration (strip loop + `asyncio.run` + `stage_meteorite`) moves from core to `api_inbox.py` because inbox land-bound helpers are deleted and `meteorite.py` is out of scope.  
+  **Recommendation:** Proceed as planned; heavier than thin-wrapper ideal but scope-consistent.
+
+- **Location:** Stage 2 step 4 (`fetch_candidate_email`)  
+  **Finding:** Candidate filter loads full inbox then filters in memory — fine for admin scale today, not Gmail-query-optimal.  
+  **Recommendation:** No plan change unless Susan wants query-shaped fetch in this slice.
+
+## R6 checklist (summary)
+
+Definition fidelity: passes — Files Changed ⊆ parent #2 Scope; sibling work explicitly excluded.  
+Layer/config/placement: passes — ui→core only; config retirements in `config.py`; `AdminManageEmail.tsx` stays flat under `pages/`.  
+Pattern compliance: cited patterns (`import-discipline`, `admin-endpoint`, layer statutes, `seed-auto-false`) match plan shape; `stage_meteorite` signature on tree matches Stage 4 call (`candidate_id`, `blob`, `source_kind`, `source_id`, `debug`).  
+DRY/scope: no scope creep; bind-count stubs documented for AST-1559.  
+Self-assessment: absent — not blocking (no `!!-NONE` conf gap).
+
+**Considered (in-session):** universal orch.* statutes — conform (orchestration/process, not product plan content). Scoped product statutes on `core`/`utils`/`ui` paths — conform except `astral.standards.dry-and-focused-functions` → needs-discussion (alias helper duplication), not fix-now.
+
+context_tokens≈38000
