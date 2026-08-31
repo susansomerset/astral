@@ -156,3 +156,26 @@ Open `GET /api/auth_session_policy` returns non-secret session duration + extend
 
 **Pass criterion:** pytest green on the narrowed component + existing integration scenario — not zero-arg harness / branch-lock gate.
 
+
+### AST-1550 · AST-1541
+
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`.
+
+`GET /api/state_ui_manifest` attaches `jobs.recommended.report_discussion_sections` (ordered `{section_id, nav_label, default_expanded: false}` from hop walk + live `task_name`; blank name → `task_key`). Walk failure → `[]` (rest of manifest 200). Top-tab Discussion rides `report_top_tabs` from config. Primary hop walk: **`docs/test-bible/utils/config.md`** § AST-1550. Story enrichment: **`docs/test-bible/core/agent.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nine sections + labels + soft-fail | `src/ui/api/api_system.py` | **`TestAst1550ReportDiscussionSections`** |
+
+**Broken / obsolete:** none for this endpoint (AST-1253 chain fields unchanged).
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+

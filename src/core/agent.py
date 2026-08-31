@@ -75,6 +75,7 @@ from src.utils.config import (
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
     JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
+    JOB_ARTIFACT_BODY_REPLICA_BY_TASK,
     resolve_task_key_for_content,
     is_task_alias,
     METEORITE_EMAIL_PARSE_CONFIG,
@@ -3033,7 +3034,7 @@ async def do_task(
                     completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 )
 
-    # AST-1099: pin RESPONSE id into job_data.artifacts after successful store (mid-chain + terminal).
+    # AST-1099/1548: pin proposed_answers; body replica for finalize resume/cover (before run_next).
     resp_id = None
     store_failed = False
     if _should_store and raw_text:
@@ -3045,24 +3046,38 @@ async def do_task(
             store_failed = True
             logger.debug("_store_response_block failed", exc_info=True)
 
+    replica_slot = JOB_ARTIFACT_BODY_REPLICA_BY_TASK.get(task_key)
     pin_slot = JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK.get(task_key)
-    if pin_slot and result.get("success"):
+    if result.get("success") and replica_slot:
+        if index and resp_id:
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            try:
+                if task_key == "finalize_job_resume":
+                    from src.core.tracker import persist_finalize_job_resume_content
+                    persist_finalize_job_resume_content(index, parsed)
+                elif task_key == "finalize_cover_letter":
+                    from src.core.tracker import persist_finalize_cover_letter_content
+                    persist_finalize_cover_letter_content(index, parsed)
+            except Exception as persist_err:
+                logger.error(
+                    "persist_job_artifact_body_replica failed task=%s index=%s err=%s",
+                    task_key,
+                    index,
+                    persist_err,
+                )
+        elif debug:
+            reason = (
+                "store_failed" if store_failed
+                else ("missing_index" if not index else "missing_resp_id")
+            )
+            _do_task_debug_logger(debug).debug_detail(
+                f"artifact_body_replica key={replica_slot} skipped reason={reason}"
+            )
+    elif pin_slot and result.get("success"):
         if index and resp_id:
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             from src.core.tracker import pin_job_artifact_agent_data_id
             pin_job_artifact_agent_data_id(index, pin_slot, resp_id, debug=debug)
-            # AST-1428: sibling resume blob after pin; do not re-enable persist_job_artifact_from_parsed.
-            if task_key == "finalize_job_resume":
-                try:
-                    from src.core.tracker import persist_finalize_job_resume_content
-                    persist_finalize_job_resume_content(index, parsed)
-                except Exception as persist_err:
-                    logger.error(
-                        "persist_finalize_job_resume_content failed task=%s index=%s err=%s",
-                        task_key,
-                        index,
-                        persist_err,
-                    )
         elif debug:
             reason = (
                 "store_failed" if store_failed
@@ -3219,7 +3234,8 @@ async def do_task(
             effective_next = ""
 
     if not effective_next:
-        # AST-1099: finalize_* hops pin agent_data_id (above); no terminal body-copy here.
+        # AST-1548: finalize resume/cover body replicas (+ proposed_answers pin) already ran above;
+        # do not re-enable terminal persist_job_artifact_from_parsed here.
         if result.get("success") and index:
             _maybe_graduate_dispatch_chain(
                 job_id=index,

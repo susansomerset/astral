@@ -427,15 +427,14 @@ def cover_letter_artifact_for_display(
     *,
     debug: bool = False,
 ) -> Optional[Dict[str, str]]:
-    """AST-1499: pin or dict → nonempty Subject/Letter/signature for JAR; else None (no empty overlay)."""
-    body: Any = raw
+    """AST-1499/1548: job body dict → nonempty Subject/Letter/signature; pin strings → None (no agent_data)."""
+    # debug retained for call-site parity; operator hydrate must not resolve pins (AST-1548).
+    _ = debug
     if isinstance(raw, str) and raw.strip():
-        body = resolve_job_artifact_agent_data_body(raw, debug=debug)
-        if not isinstance(body, dict):
-            return None
-    elif not isinstance(raw, dict):
         return None
-    normalized = normalize_cover_letter_artifact(_cover_letter_dict_for_normalize(body))
+    if not isinstance(raw, dict):
+        return None
+    normalized = normalize_cover_letter_artifact(_cover_letter_dict_for_normalize(raw))
     if not _cover_letter_display_nonempty(normalized):
         return None
     return normalized
@@ -444,6 +443,16 @@ def cover_letter_artifact_for_display(
 def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, Any]) -> None:
     """Merge cover_letter object into job_data.artifacts. AST-309."""
     save_job_data(astral_job_id, {"artifacts": {"cover_letter": normalize_cover_letter_artifact(cover_letter)}})
+
+
+def save_job_artifact_job_resume_body(astral_job_id: str, resume_body: Dict[str, Any]) -> None:
+    """AST-1548: operator job_resume replica + compat dual-write to resume_content."""
+    cd = _candidate_data_for_job(astral_job_id)
+    prepared = _prepare_job_resume_content(resume_body, cd)
+    save_job_data(
+        astral_job_id,
+        {"artifacts": {"job_resume": prepared, "resume_content": prepared}},
+    )
 
 
 
@@ -488,10 +497,25 @@ def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
 
 
 def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1428: copy unwrapped finalize resume onto resume_content; pin slot untouched."""
+    """AST-1548: copy unwrapped finalize resume onto job_resume (+ resume_content dual-write)."""
     if not parsed_matches_job_resume_content(astral_job_id, parsed):
         return False
-    save_job_artifact_resume_content(astral_job_id, _resume_payload_body(parsed))
+    save_job_artifact_job_resume_body(astral_job_id, _resume_payload_body(parsed))
+    return True
+
+
+def persist_finalize_cover_letter_content(astral_job_id: str, parsed: Any) -> bool:
+    """AST-1548: copy normalized cover fields onto artifacts.cover_letter; coat-check empty."""
+    if not isinstance(parsed, dict):
+        return False
+    body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
+    if not isinstance(body, dict):
+        return False
+    source = _cover_letter_dict_for_normalize(body)
+    normalized = normalize_cover_letter_artifact(source)
+    if not _cover_letter_display_nonempty(normalized):
+        return False
+    save_job_artifact_cover_letter(astral_job_id, normalized)
     return True
 
 
@@ -564,19 +588,20 @@ def hydrate_job_artifacts_for_display(
     *,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """AST-1100: shallow-copy artifacts; replace pin-slot strings with resolved bodies (no save)."""
+    """AST-1100/1548: shallow-copy; operator job_resume/cover from job body only; pin-resolve proposed_answers."""
     if not isinstance(artifacts, dict):
         return {}
     out = dict(artifacts)
     rc = out.get("resume_content")
-    job_resume_blob = rc if isinstance(rc, dict) and rc else None
+    sibling_resume = rc if isinstance(rc, dict) and rc else None
+    jr = out.get("job_resume")
+    # AST-1548: job body dict first; legacy resume_content overlay; never pin→agent_data for operators.
+    if isinstance(jr, dict) and jr:
+        out["job_resume"] = dict(jr)
+    elif sibling_resume is not None:
+        out["job_resume"] = dict(sibling_resume)
     for key in _JOB_ARTIFACT_PIN_KEYS:
-        if key == "job_resume" and job_resume_blob is not None:
-            # AST-1428: JAR reads job_resume; overlay sibling blob (disk pin unchanged).
-            out[key] = dict(job_resume_blob)
-            continue
-        # AST-1499: cover display helper owns pin resolve + nonempty Subject/Letter (no empty overwrite).
-        if key == "cover_letter":
+        if key in ("job_resume", "cover_letter"):
             continue
         raw = out.get(key)
         if not isinstance(raw, str) or not raw.strip():
@@ -584,14 +609,8 @@ def hydrate_job_artifacts_for_display(
         body = resolve_job_artifact_agent_data_body(raw, debug=debug)
         if body is None:
             continue
-        if key == "job_resume":
-            # Pin resolve is agent_payload; unwrap .resume so section ids are top-level.
-            unwrapped = _resume_payload_body(body)
-            if unwrapped:
-                out[key] = unwrapped
-            continue
         out[key] = body
-    # AST-1116/1499: Subject/Letter spine for ArtifactEditor only when nonempty (overlay only).
+    # AST-1116/1499/1548: cover overlay from job dict only (pin strings → no overlay).
     display_cover = cover_letter_artifact_for_display(out.get("cover_letter"), debug=debug)
     if display_cover is not None:
         out["cover_letter"] = display_cover
