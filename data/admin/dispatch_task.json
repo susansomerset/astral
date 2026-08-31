@@ -1,0 +1,41 @@
+[
+  {
+    "candidate_id": null,
+    "task_key": "stage_meteorite",
+    "entity_type": null,
+    "trigger_state": "NEW",
+    "sort_by": "updated_at",
+    "batch_call_mode": 0,
+    "freq_hrs": 0.1,
+    "min_count": 1,
+    "batch_size": 10,
+    "auto_mode": 0,
+    "score_floor": null
+  },
+  {
+    "candidate_id": null,
+    "task_key": "scrape_meteorite",
+    "entity_type": null,
+    "trigger_state": "SCRAPE_LINK",
+    "sort_by": "updated_at",
+    "batch_call_mode": 0,
+    "freq_hrs": 0.1,
+    "min_count": 1,
+    "batch_size": 10,
+    "auto_mode": 0,
+    "score_floor": null
+  },
+  {
+    "candidate_id": null,
+    "task_key": "land_meteorite",
+    "entity_type": null,
+    "trigger_state": "READY",
+    "sort_by": "updated_at",
+    "batch_call_mode": 0,
+    "freq_hrs": 0.1,
+    "min_count": 1,
+    "batch_size": 10,
+    "auto_mode": 0,
+    "score_floor": null
+  }
+]

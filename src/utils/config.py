@@ -47,7 +47,8 @@ Config sections:
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
-  METEORITE_MONITORING_CONFIG — always-on info inbox classify line format + subject sanitize limit (AST-1559); not Style D
+  METEORITE_MONITORING_CONFIG — always-on info inbox classify + row-transition line formats (AST-1559 / AST-1560); not Style D
+  METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -2582,6 +2583,39 @@ for _ms, _mcfg in METEORITE_STATES.items():
     if _priors is not None:
         assert all(p in METEORITE_STATES for p in _priors), _ms
 
+# AST-1560: dispatcher-driven meteorite row transitions (not Ruth classify — inline in check_inbox).
+METEORITE_INGRESS_DISPATCH_CONFIG = {
+    "stage_task_key": "stage_meteorite",
+    "scrape_task_key": "scrape_meteorite",
+    "land_task_key": "land_meteorite",
+    "stage_trigger_state": "NEW",
+    "scrape_trigger_state": "SCRAPE_LINK",
+    "land_trigger_state": "READY",
+    "batch_size": 10,
+    "debug_func_stage": "meteorite.run_stage_meteorite",
+    "debug_func_scrape": "meteorite.run_scrape_meteorite",
+    "debug_func_land": "meteorite.run_land_meteorite",
+    "scrape_page_status_states": {
+        "blocked": "BOT_BLOCKED",
+        "ok": "READY",
+        "closed": "ERROR",
+        "missing": "ERROR",
+    },
+}
+_mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
+assert len({
+    _mid_ingress["stage_task_key"],
+    _mid_ingress["scrape_task_key"],
+    _mid_ingress["land_task_key"],
+}) == 3
+for _tk in ("stage_task_key", "scrape_task_key", "land_task_key"):
+    assert isinstance(_mid_ingress[_tk], str) and _mid_ingress[_tk]
+for _tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
+    assert _mid_ingress[_tr] in METEORITE_STATES
+assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
+    "READY", "BOT_BLOCKED", "ERROR",
+}
+
 # ---------------------------------------------------------------------------
 # SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
 # Dwell is centre ± spread seconds, re-rolled per page. max_tabs ships at 1 —
@@ -2760,6 +2794,16 @@ METEORITE_MONITORING_CONFIG = {
         "meteorite inbox classify from={from_address} mid={message_id} ts={internal_date_ms} "
         "subj={subject} candidate={candidate_id} outcome={classify_outcome} jobs={job_count}"
     ),
+    # AST-1560: always-on info row-transition lines (not inbox classify — AST-1559).
+    "row_bot_blocked_line": (
+        "meteorite scrape blocked id={row_id} candidate={candidate_id} link={link}"
+    ),
+    "row_error_line": (
+        "meteorite row error id={row_id} candidate={candidate_id} task={task_key} error={error}"
+    ),
+    "row_landed_line": (
+        "meteorite land id={row_id} candidate={candidate_id} job={astral_job_id}"
+    ),
 }
 
 assert isinstance(METEORITE_MONITORING_CONFIG["subject_max_len"], int)
@@ -2777,6 +2821,15 @@ for _placeholder in (
     "{job_count}",
 ):
     assert _placeholder in _inbox_line
+for _row_key, _row_placeholders in (
+    ("row_bot_blocked_line", ("{row_id}", "{candidate_id}", "{link}")),
+    ("row_error_line", ("{row_id}", "{candidate_id}", "{task_key}", "{error}")),
+    ("row_landed_line", ("{row_id}", "{candidate_id}", "{astral_job_id}")),
+):
+    _row_line = METEORITE_MONITORING_CONFIG[_row_key]
+    assert isinstance(_row_line, str) and _row_line
+    for _ph in _row_placeholders:
+        assert _ph in _row_line
 
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(
@@ -2824,6 +2877,7 @@ STAGE_METEORITE_CONFIG = {
     ),
 }
 assert STAGE_METEORITE_CONFIG["task_key"] == "stage_meteorite"
+assert METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"] == STAGE_METEORITE_CONFIG["task_key"]
 assert len(STAGE_METEORITE_CONFIG["outcomes"]) == 6
 assert (
     set(STAGE_METEORITE_CONFIG["landable_outcomes"])
@@ -3031,6 +3085,42 @@ SEED_CONFIG = {
         "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_upshot' "
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
+        ")",
+    ),
+    # AST-1560: global meteorite ingress transition runners (NULL candidate_id pool).
+    "dispatch_task-meteorite-ingress": (
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'stage_meteorite', NULL, 'NEW', 'updated_at', "
+        "0, 0.1, 1, 10, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id IS NULL "
+        "    AND d.task_key = 'stage_meteorite' "
+        "    AND d.trigger_state = 'NEW'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'scrape_meteorite', NULL, 'SCRAPE_LINK', 'updated_at', "
+        "0, 0.1, 1, 10, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id IS NULL "
+        "    AND d.task_key = 'scrape_meteorite' "
+        "    AND d.trigger_state = 'SCRAPE_LINK'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'land_meteorite', NULL, 'READY', 'updated_at', "
+        "0, 0.1, 1, 10, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id IS NULL "
+        "    AND d.task_key = 'land_meteorite' "
+        "    AND d.trigger_state = 'READY'"
         ")",
     ),
 }

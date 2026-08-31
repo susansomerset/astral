@@ -35,6 +35,7 @@ from src.utils.config import (
     TASK_CONFIG,
     METEORITE_DISPATCH_TASKS,
     METEORITE_EMAIL_MAILBOX_CONFIG,
+    METEORITE_INGRESS_DISPATCH_CONFIG,
     dispatch_claim_uses_score_floor,
     effective_dispatch_score_floor,
     dispatch_claim_states,
@@ -57,6 +58,16 @@ logger = get_logger(__name__)
 def _is_inbox_mailbox_task_key(task_key: str) -> bool:
     """meteorite mailbox fold (parse_meteorite_email / meteorite_email) — AST-1282 / AST-1466."""
     return is_meteorite_email_mailbox_task_key(task_key)
+
+
+def _is_meteorite_ingress_transition_task_key(task_key: str) -> bool:
+    """True for table transition runners (AST-1560) — not Ruth classify / consult hop."""
+    tk = (task_key or "").strip()
+    return tk in (
+        METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+    )
 
 def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
     """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
@@ -766,6 +777,100 @@ async def _dispatch_one(task: Dict) -> None:
     debug = bool(task.get("debug")) or (ui_initiated and is_local_deploy_env())
     if debug:
         logger.set_debug_flag(True)
+
+    # AST-1560: meteorite table transition runners — custom branch before mailbox / _run_unified.
+    if _is_meteorite_ingress_transition_task_key(task_key):
+        from src.core.meteorite import (
+            run_land_meteorite,
+            run_scrape_meteorite,
+            run_stage_meteorite,
+        )
+
+        runners = {
+            METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]: run_stage_meteorite,
+            METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]: run_scrape_meteorite,
+            METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]: run_land_meteorite,
+        }
+        entity_batch_id = f"{task_key}-{uuid.uuid4()}"
+        ledger_cid = str(candidate_id or "").strip() or None
+        if debug:
+            logger.debug_index(
+                func="dispatcher._dispatch_one",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="task start",
+            )
+            logger.debug_detail(
+                f"meteorite ingress transition entity_batch_id={entity_batch_id} "
+                f"candidate_id={ledger_cid!r} mode={'AUTO' if not is_click else 'CLICK'}"
+            )
+        database.save_dispatch_ledger(
+            entity_batch_id,
+            task_key,
+            ledger_cid,
+            _now_iso(),
+            "RUNNING",
+            entity_type=None,
+        )
+        log_batch_id.set(entity_batch_id)
+        dispatch_ledger_id = entity_batch_id
+        task["entity_batch_id"] = entity_batch_id
+        with _registry_lock:
+            entry = _task_registry.get(task_id)
+            if entry:
+                entry["asyncio_task"] = asyncio.current_task()
+        accumulated = dict(_SUMMARY_ZERO)
+        final_status = "COMPLETED"
+        try:
+            summary = await runners[task_key](task, debug=debug)
+            for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
+                accumulated[k] = int(summary.get(k, 0) or 0)
+        except asyncio.CancelledError:
+            final_status = "INTERRUPTED"
+            failure_reason = "dispatch cancelled by admin"
+            _sched_log.warning("[%s/%s] KILLED by admin — meteorite ingress", task_key, entity_batch_id)
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        except Exception:
+            final_status = "FAILED"
+            failure_reason = "meteorite ingress runner crashed"
+            _sched_log.exception("[%s/%s] meteorite ingress crashed", task_key, entity_batch_id)
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        finally:
+            if dispatch_ledger_id:
+                try:
+                    total_cost = compute_batch_cost(dispatch_ledger_id)
+                    total_processed = accumulated.get("total_processed", 0)
+                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
+                    database.update_dispatch_ledger(
+                        dispatch_ledger_id,
+                        status=final_status,
+                        completed_at=_now_iso(),
+                        total_cost=total_cost,
+                        entity_cost=round(entity_cost, 7),
+                        **accumulated,
+                    )
+                    if final_status in ("FAILED", "INTERRUPTED"):
+                        logger.error(
+                            "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
+                            task_key,
+                            dispatch_ledger_id,
+                            final_status,
+                            failure_reason or "see scheduler log",
+                            accumulated.get("total_processed", 0),
+                            accumulated.get("total_passed", 0),
+                            accumulated.get("total_failed", 0),
+                            accumulated.get("total_errors", 0),
+                        )
+                except Exception as e:
+                    _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
+            flush_log_buffer()
+            log_batch_id.set(None)
+            try:
+                _db_update_dispatch_task(task_id, last_run_at=_now_iso())
+            except Exception as e:
+                _sched_log.error("Failed to update dispatch task %s: %s", task_id, e)
+        return
 
     # AST-1134 / AST-1282: candidate-bound inbox mailbox — ledger uses row candidate_id.
     if _is_inbox_mailbox_task_key(task_key):
