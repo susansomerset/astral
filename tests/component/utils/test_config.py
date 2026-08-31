@@ -4096,7 +4096,7 @@ class TestAst1090GazeEmailRunnerConfig:
     def test_runner_literals(self) -> None:
         g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
         assert set(g["subject_url_schemes"]) == {"http", "https"}
-        assert g["debug_func"] == "meteorite_email.run"
+        assert g["debug_func"] == "meteorite.check_inbox"
         assert "dispatch_ledger_candidate_id" not in g
         assert g["task_key"] == "meteorite_email"
         assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
@@ -4116,7 +4116,7 @@ class TestAst1140GazeEmailSelectedConfig:
         assert g["selected_outcome_skipped_unbound"] == "skipped-unbound"
         assert g["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
         assert g["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
-        assert g["debug_func"] == "meteorite_email.run"
+        assert g["debug_func"] == "meteorite.check_inbox"
 
 
 # Branches: STAGE_METEORITE_CONFIG + stage_meteorite TASK_CONFIG; PARSE fold stub (AST-1529).
@@ -5028,6 +5028,20 @@ class TestAst1558FetchEmailBindRetired:
         assert not hasattr(cfg, "INBOX_BIND_CONFIG")
         assert "fetch_email" not in cfg.TASK_CONFIG
         assert "dispatch_task-fetch-email" not in cfg.SEED_CONFIG
+
+class TestAst1559MonitoringConfig:
+    """AST-1559: always-on inbox classify monitoring + mailbox runner repoint."""
+
+    def test_monitoring_config_literals(self) -> None:
+        mon = cfg.METEORITE_MONITORING_CONFIG
+        assert mon["subject_max_len"] == 120
+        assert mon["outcome_already_ingested"] == "already_ingested"
+        for ph in ("{from_address}", "{message_id}", "{candidate_id}", "{classify_outcome}", "{job_count}"):
+            assert ph in mon["inbox_classify_line"]
+
+    def test_mailbox_runner_debug_func_repointed(self) -> None:
+        g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
+        assert g["debug_func"] == "meteorite.check_inbox"
 
 
 class TestAst1365IdealDayLibraryToken:

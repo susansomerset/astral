@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.core import meteorite as meteorite_mod
-from src.utils.config import METEORITE_CONFIG
+from src.utils.config import (
+    METEORITE_CONFIG,
+    METEORITE_EMAIL_MAILBOX_CONFIG,
+    METEORITE_MONITORING_CONFIG,
+)
 
 
 # Branches: empty id; insert once; idempotent no-op; Style D debug on/off.
@@ -829,3 +833,166 @@ class TestAst1530StageMeteorite:
         ]
         assert len(stage_calls) >= 1
         assert stage_calls[0].kwargs.get("outcome") == "not_original_posting"
+
+
+def _check_inbox_msg(
+    mid: str,
+    *,
+    from_address: str = "sender@ex.com",
+    internal_date_ms: int = 1_700_000_000_000,
+    subject: str = "Role at ACME",
+) -> dict:
+    return {
+        "id": mid,
+        "from_address": from_address,
+        "internal_date_ms": internal_date_ms,
+        "subject": subject,
+    }
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "check_inbox"),
+    reason="AST-1559 check_inbox not on this publish tip",
+)
+class TestAst1559CheckInbox:
+    """AST-1559: aliases → fetch → classify → fan-out rows → archive + monitoring."""
+
+    @pytest.mark.asyncio
+    async def test_candidate_id_required(self) -> None:
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            await meteorite_mod.check_inbox({}, debug=False)
+
+    @pytest.mark.asyncio
+    async def test_fan_out_n_rows_archives_and_monitors(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-inbox-fan"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Fan"})
+        mid = "msg-fan"
+        monkeypatch.setattr(meteorite_mod, "email_aliases_for_candidate", lambda _c: ["ada@ex.com"])
+        monkeypatch.setattr(
+            meteorite_mod, "fetch_candidate_email", lambda _a, debug=False: [_check_inbox_msg(mid)]
+        )
+        monkeypatch.setattr(
+            meteorite_mod,
+            "get_message_html",
+            lambda _m: {"subject": "Two roles", "html_body": "<p>jd</p>", "from_address": "a"},
+        )
+        monkeypatch.setattr(meteorite_mod, "strip_extract_email_html", lambda *a, **k: "blob")
+        archive = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "archive_candidate_email", archive)
+
+        async def _invoke(*_a, **_k):
+            return {
+                "success": True,
+                "outcome": "link_list",
+                "jobs": [
+                    {"job_link": "https://jobs.example/a", "jd_text": "A"},
+                    {"job_link": "https://jobs.example/b", "jd_text": "B"},
+                ],
+                "error": None,
+                "batch_id": "b",
+            }
+
+        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
+        assert out["total_passed"] == 1
+        assert len(db.list_meteorites_by_source("email", mid)) == 2
+        archive.assert_called_once_with(mid)
+        assert db.get_candidate(cid)["last_email_check"]
+
+    @pytest.mark.asyncio
+    async def test_classify_failed_zero_rows_no_archive(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-inbox-fail"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Fail"})
+        mid = "msg-fail"
+        monkeypatch.setattr(meteorite_mod, "email_aliases_for_candidate", lambda _c: ["x@y.z"])
+        monkeypatch.setattr(
+            meteorite_mod, "fetch_candidate_email", lambda _a, debug=False: [_check_inbox_msg(mid)]
+        )
+        monkeypatch.setattr(
+            meteorite_mod, "get_message_html", lambda _m: {"subject": "s", "html_body": "", "from_address": "a"}
+        )
+        monkeypatch.setattr(meteorite_mod, "strip_extract_email_html", lambda *a, **k: "blob")
+        archive = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "archive_candidate_email", archive)
+
+        async def _invoke(*_a, **_k):
+            return {"success": False, "outcome": "", "jobs": [], "error": "llm timeout", "batch_id": None}
+
+        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
+        assert out["total_errors"] == 1
+        assert db.list_meteorites_by_source("email", mid) == []
+        archive.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_skip_outcome_zero_rows_monitor_archive(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-inbox-skip"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Skip"})
+        mid = "msg-skip"
+        monkeypatch.setattr(meteorite_mod, "email_aliases_for_candidate", lambda _c: ["x@y.z"])
+        monkeypatch.setattr(
+            meteorite_mod, "fetch_candidate_email", lambda _a, debug=False: [_check_inbox_msg(mid)]
+        )
+        monkeypatch.setattr(
+            meteorite_mod, "get_message_html", lambda _m: {"subject": "n", "html_body": "", "from_address": "a"}
+        )
+        monkeypatch.setattr(meteorite_mod, "strip_extract_email_html", lambda *a, **k: "blob")
+        archive = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "archive_candidate_email", archive)
+
+        async def _invoke(*_a, **_k):
+            return {"success": True, "outcome": "not_job_content", "jobs": [], "error": None, "batch_id": "b"}
+
+        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
+        assert out["total_passed"] == 1
+        assert db.list_meteorites_by_source("email", mid) == []
+        archive.assert_called_once_with(mid)
+
+    @pytest.mark.asyncio
+    async def test_already_ingested_skips_classify_archives(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-inbox-dedup"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Dedup"})
+        mid = "msg-dedup"
+        db.insert_meteorite_rows(
+            [{"candidate_id": cid, "source_kind": "email", "source_id": mid, "link": "https://x/j"}]
+        )
+        invoke = AsyncMock()
+        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", invoke)
+        monkeypatch.setattr(meteorite_mod, "email_aliases_for_candidate", lambda _c: ["x@y.z"])
+        monkeypatch.setattr(
+            meteorite_mod, "fetch_candidate_email", lambda _a, debug=False: [_check_inbox_msg(mid)]
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "archive_candidate_email", archive)
+        out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
+        invoke.assert_not_awaited()
+        archive.assert_called_once_with(mid)
+
+    @pytest.mark.asyncio
+    async def test_empty_aliases_still_stamps_last_check(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-inbox-empty"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Empty"})
+        monkeypatch.setattr(meteorite_mod, "email_aliases_for_candidate", lambda _c: [])
+        monkeypatch.setattr(meteorite_mod, "fetch_candidate_email", lambda _a, debug=False: [])
+        await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
+        assert db.get_candidate(cid)["last_email_check"]
+
+    def test_sanitize_monitor_subject(self) -> None:
+        out = meteorite_mod._sanitize_meteorite_monitor_subject("a\nb\t" + ("x" * 200))
+        assert len(out) <= METEORITE_MONITORING_CONFIG["subject_max_len"]

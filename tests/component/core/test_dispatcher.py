@@ -2451,7 +2451,7 @@ class TestAst1090GazeEmailDispatchOne:
     async def test_calls_runner_with_bound_ledger_cid(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.core import meteorite_email as ge_mod
+        from src.core import meteorite as meteorite_mod
 
         get_cand = MagicMock(side_effect=AssertionError("must not load candidate"))
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", get_cand)
@@ -2463,7 +2463,7 @@ class TestAst1090GazeEmailDispatchOne:
                 "total_errors": 0,
             }
         )
-        monkeypatch.setattr(ge_mod, "run_meteorite_email", runner)
+        monkeypatch.setattr(meteorite_mod, "check_inbox", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -2493,10 +2493,10 @@ class TestAst1090GazeEmailDispatchOne:
 
     @pytest.mark.asyncio
     async def test_skips_unbound_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.core import meteorite_email as ge_mod
+        from src.core import meteorite as meteorite_mod
 
         runner = AsyncMock()
-        monkeypatch.setattr(ge_mod, "run_meteorite_email", runner)
+        monkeypatch.setattr(meteorite_mod, "check_inbox", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())

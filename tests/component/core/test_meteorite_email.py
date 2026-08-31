@@ -336,19 +336,12 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
         archive = MagicMock()
         trash = MagicMock()
         stamp = MagicMock()
-        create_strip = MagicMock()
         monkeypatch.setattr(ge, "archive_message", archive)
         monkeypatch.setattr(ge, "trash_message", trash)
-        # Forbidden call sites — must never be invoked from selected-ids.
-        import src.core.inbox as inbox_mod
         import src.data.database as database_mod
 
-        # Stamp may be absent on older tips; still spy when present on AST-1128+.
         monkeypatch.setattr(
             database_mod, "update_candidate_last_email_check", stamp, raising=False
-        )
-        monkeypatch.setattr(
-            inbox_mod, "create_meteorite_job_from_inbox_message", create_strip
         )
 
         out = await ge.run_meteorite_email_selected_ids(
@@ -378,7 +371,6 @@ class TestAst1140RunMeteoriteEmailSelectedIds:
         archive.assert_called_once_with("bound")
         trash.assert_not_called()
         stamp.assert_not_called()
-        create_strip.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_does_not_process_non_selected_inbox_messages(

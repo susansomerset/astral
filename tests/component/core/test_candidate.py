@@ -3657,6 +3657,40 @@ class TestAst1085EvaluateJdEmbeddedMerge:
         assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
 
 
+@pytest.mark.skipif(
+    not hasattr(candidate_mod, "email_aliases_for_candidate"),
+    reason="AST-1559 email_aliases_for_candidate not on this publish tip",
+)
+class TestAst1559EmailAliasesForCandidate:
+    def _row(self, **kwargs) -> dict:
+        cd: dict = {"contact": {}}
+        if kwargs.get("contact_email"):
+            cd["contact"]["contact_email"] = kwargs["contact_email"]
+        if kwargs.get("reply_email"):
+            cd["contact"]["reply_email"] = kwargs["reply_email"]
+        if kwargs.get("extra_emails") is not None:
+            cd["contact"]["extra_emails"] = kwargs["extra_emails"]
+        if kwargs.get("profile_contact"):
+            cd["profile"] = {"contact_email": kwargs["profile_contact"]}
+        return {"astral_candidate_id": "c1", "candidate_data": cd}
+
+    def test_empty_and_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert candidate_mod.email_aliases_for_candidate("") == []
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda _c: None)
+        assert candidate_mod.email_aliases_for_candidate("missing") == []
+
+    def test_paths_dedupe_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = self._row(
+            contact_email="Ada Lovelace <ada@ex.com>",
+            reply_email="REPLY@EX.COM",
+            extra_emails=["bob@ex.com", "Ada Lovelace <ada@ex.com>"],
+            profile_contact="legacy@ex.com",
+        )
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda _c: row)
+        assert candidate_mod.email_aliases_for_candidate("c1") == [
+            "ada@ex.com", "REPLY@EX.COM", "legacy@ex.com", "bob@ex.com"
+        ]
+
 
 # AST-1092: extra_emails coerce + bind via email_list_paths (not websites).
 class TestAst1092ExtraBindingEmails:
