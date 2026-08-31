@@ -224,13 +224,13 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
 
-`resolve_job_artifact_agent_data_body` loads RESPONSE `block_data` by pin id (coat-check empty/missing). `hydrate_job_artifacts_for_display` shallow-copies artifacts and replaces pin-slot strings with resolved bodies (no `save_job_data`). Pin write = **AST-1099**.
+`resolve_job_artifact_agent_data_body` loads RESPONSE `block_data` by pin id (coat-check empty/missing). `hydrate_job_artifacts_for_display` shallow-copies artifacts; **AST-1548:** operator `job_resume` / `cover_letter` use job body only (no pin→`agent_data`); `proposed_answers` still pin-resolves. Pin write = **AST-1099** (propose only after AST-1548).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Resolve + hydrate overlay | `src/core/tracker.py` | **`TestAst1100ResolveHydrateJobArtifactPins`** |
 
-**Broken / obsolete:** none on tracker pin-write suites.
+**Broken / obsolete:** hydrate asserts that replace `job_resume`/`cover_letter` pin strings via resolve — AST-1554.
 
 **Integration:** none — do not invent new integration coverage.
 
@@ -246,13 +246,13 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 **Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1116-cover-letter-field-defs`.
 
-`hydrate_job_artifacts_for_display` normalizes `cover_letter` dict values via `normalize_cover_letter_artifact` (Subject/Letter/signature) after pin resolve — overlay only. Field defs: **`docs/test-bible/utils/config.md`**.
+`hydrate_job_artifacts_for_display` normalizes `cover_letter` **dict** values via `normalize_cover_letter_artifact` (Subject/Letter/signature) — overlay only. **AST-1548:** pin strings on cover are not resolved for operator hydrate. Field defs: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Hydrate cover normalize | `src/core/tracker.py` | **`TestAst1116HydrateCoverLetterNormalize`** (+ revised **`TestAst1100ResolveHydrateJobArtifactPins::test_hydrate_replaces_pin_strings_leaves_legacy_dicts`**) |
+| Hydrate cover normalize | `src/core/tracker.py` | **`TestAst1116HydrateCoverLetterNormalize`** (+ revised **`TestAst1100ResolveHydrateJobArtifactPins`**) |
 
-**Broken / obsolete:** AST-1100 hydrate assert that a partial `{"Subject": "keep"}` stays un-normalized — superseded by AST-1116 spine normalize.
+**Broken / obsolete:** AST-1100 hydrate assert that a partial `{"Subject": "keep"}` stays un-normalized — superseded by AST-1116 spine normalize; pin-resolve cover node — AST-1554.
 
 **Integration:** none.
 
@@ -269,20 +269,19 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 **Parent:** [AST-1491](https://linear.app/astralcareermatch/issue/AST-1491/cover-letter-content-does-not-appear-for-editing). **Publish:** `origin/sub/AST-1491/AST-1504-gap-cover-letter-hydrate-tests`. Product fix: **AST-1499**.
 
-Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap → Subject/Letter/signature, nonempty gate (no all-empty spine overwrite), pin leave-on-miss when resolve returns a nonempty **non-cover** body (must keep `"pin-cover"` — not empty spine). All three nodes red against pre-AST-1499 product; green after AST-1499 hydrate helper.
+Originally pin-resolve cover gaps. **AST-1548/1554:** same behaviors asserted on **job cover dicts**; pin strings stay unresolved on operator hydrate.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Nested unwrap / empty spine / pin miss | `src/core/tracker.py` | **`TestAst1504CoverLetterHydrateDisplayGaps`** (bug-repro) |
+| Nested unwrap / empty spine / pin leave | `src/core/tracker.py` | **`TestAst1504CoverLetterHydrateDisplayGaps`** |
 
-**Broken / obsolete:** prior `test_hydrate_leaves_pin_when_resolve_misses` with resolve `None` (already green pre-fix) — strengthened to nonempty non-cover body + assert pin preserved (Radia fix-now / Katherine `[qa-handoff]`).
+**Broken / obsolete:** resolve-on-hydrate cover pin nodes — flipped in AST-1554.
 
 **Integration:** none — do not invent.
 
 ## QA test manifest
 
-1. Bug-repro (nested unwrap + empty-spine gate + pin leave-on-miss): `tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps`
-   - Pin leave-on-miss red-first: `::test_hydrate_leaves_pin_when_resolve_misses` (resolve `{"unrelated": "meta"}` → keep `"pin-cover"`)
+1. Cover dict unwrap + empty-spine gate + pin leave: `tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -290,7 +289,24 @@ Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap
   -q
 ```
 
-**Pass criterion:** all three nodes red on pre-AST-1499 product; green after AST-1499 hydrate — `test-fix` / resolve verifies the flip. Not zero-arg harness / branch-lock gate.
+### AST-1554 · AST-1547 (gap — body replica persist + hydrate)
+
+**Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). Product: **AST-1548**.
+
+Dual-write `save_job_artifact_job_resume_body`; `persist_finalize_*` coat-checks; hydrate job-body-only for operator slots.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Persist dual-write + cover replica + hydrate | `src/core/tracker.py` | **`TestAst1554BodyReplicaPersistHelpers`** (+ hydrate suites above) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  tests/component/core/test_tracker.py::TestAst1100ResolveHydrateJobArtifactPins \
+  tests/component/core/test_tracker.py::TestAst1116HydrateCoverLetterNormalize \
+  tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps \
+  -q
+```
 
 ---
 

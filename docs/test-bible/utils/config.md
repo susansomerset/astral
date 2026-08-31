@@ -1947,13 +1947,13 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
 
-`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps the three hop keys → `job_resume` / `cover_letter` / `proposed_answers`. `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those pin slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
+`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps **only** `propose_application_responses` → `proposed_answers` (**AST-1548** removed finalize hops). `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` maps `finalize_job_resume` / `finalize_cover_letter` → operator slots. `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those body slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Pin map + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
+| Pin map + body-replica map + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
 
-**Broken / obsolete:** none.
+**Broken / obsolete:** three-key pin map including finalize hops — AST-1554.
 
 **Integration:** none.
 
