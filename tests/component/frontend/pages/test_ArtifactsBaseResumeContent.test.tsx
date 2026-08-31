@@ -107,7 +107,7 @@ describe("ArtifactsBaseResumeContent", () => {
     installMocks()
     vi.stubGlobal(
       "open",
-      vi.fn(() => ({ closed: false })),
+      vi.fn(() => ({ closed: false, opener: {} as Window | null })),
     )
     vi.stubGlobal("URL", {
       createObjectURL: vi.fn(() => "blob:base-resume-html"),
@@ -744,13 +744,10 @@ describe("ArtifactsBaseResumeContent", () => {
     renderWithProviders(<ArtifactsBaseResumeContent />)
     await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
     await userEvent.click(screen.getByRole("button", { name: "Print" }))
-    await waitFor(() =>
-      expect(window.open).toHaveBeenCalledWith(
-        "blob:base-resume-html",
-        "_blank",
-        "noopener,noreferrer",
-      ),
-    )
+    await waitFor(() => expect(window.open).toHaveBeenCalledWith("blob:base-resume-html", "_blank"))
+    const printWin = vi.mocked(window.open).mock.results[0]?.value as { opener: Window | null }
+    expect(printWin.opener).toBeNull()
+    expect(screen.queryByText("Popup blocked — allow popups to open the HTML tab.")).not.toBeInTheDocument()
     expect(URL.createObjectURL).toHaveBeenCalled()
     expect(mockedApi.mock.calls.some(([u]) => String(u).startsWith("/candidate/resume/base?"))).toBe(true)
   })

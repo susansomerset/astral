@@ -177,9 +177,10 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.getByRole("heading", { name: "Globex" })).toHaveClass("modal-title")
   })
 
-  it("Print Resume fetch-then-blob; Print Cover still window.open (AST-1350)", async () => {
-    // AST-1350: Resume uses fetch-then-blob so unsupported shapes can toast without a tab.
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+  it("AST-1546: Print Resume success — two-arg open, opener null, no popup-blocked toast; Cover still noopener (AST-1350)", async () => {
+    // Bug-repro: success must not toast popup-blocked; blob open has no features string (AST-1545).
+    const fakeWin = { opener: {} as Window | null }
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin as unknown as Window)
     const createSpy = vi.fn(() => "blob:jar-resume-html")
     const revokeSpy = vi.fn()
     vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: revokeSpy })
@@ -222,9 +223,9 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j-print" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
-    await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank", "noopener,noreferrer"),
-    )
+    await waitFor(() => expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank"))
+    expect(fakeWin.opener).toBeNull()
+    expect(screen.queryByText("Popup blocked — allow popups to open the HTML tab.")).not.toBeInTheDocument()
     expect(createSpy).toHaveBeenCalled()
     expect(mockedApi.mock.calls.some(([u]) => u === "/candidate/resume/j-print")).toBe(true)
     await userEvent.click(screen.getByRole("button", { name: "Print Cover Letter" }))
@@ -858,7 +859,8 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
       },
     ]
     const apiCallLog: { url: string; method: string }[] = []
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+    const fakeWin1489 = { opener: {} as Window | null }
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin1489 as unknown as Window)
     const createSpy = vi.fn(() => "blob:jar-resume-html")
     vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: vi.fn() })
     installBaseApiMocks(mockedApi, (url, init) => {
@@ -912,7 +914,7 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
     await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
     await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank", "noopener,noreferrer"),
+      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank"),
     )
     const putIdx = apiCallLog.findIndex(c => c.url === `/api/candidates/${cid}/data` && c.method === "PUT")
     const printIdx = apiCallLog.findIndex(c => c.url === "/candidate/resume/j-1489")
@@ -974,7 +976,8 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
       },
     ]
     const apiCallLog: { url: string; method: string }[] = []
-    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+    const fakeWin1490 = { opener: {} as Window | null }
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => fakeWin1490 as unknown as Window)
     const createSpy = vi.fn(() => "blob:jar-resume-html")
     vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: vi.fn() })
     installBaseApiMocks(mockedApi, (url, init) => {
@@ -1057,7 +1060,7 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     expect(screen.getByDisplayValue("Draft prior")).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
     await waitFor(() =>
-      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank", "noopener,noreferrer"),
+      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank"),
     )
     const putIdx = apiCallLog.findIndex(c => c.url === `/api/candidates/${cid}/data` && c.method === "PUT")
     const printIdx = apiCallLog.findIndex(c => c.url === "/candidate/resume/j-1490")
