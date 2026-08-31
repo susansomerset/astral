@@ -237,3 +237,29 @@ Parent AC4 → Stages 2–3 (`run_notify_meteorite_bot_blocked` first DM + nag/a
 - **Recommendation:** Clarify: thread match first; else `find_meteorite_bot_blocked_paste_source` when `source_kind=paste` row exists (anchor optional).
 
 **In-session statute pass:** `entity_batch_id` golden ticket + claim/clear — **astral.batch.batch-id-first** conforms. Paste without `do_task`/classify — **astral.agent.do-task-delegation** conforms. Slack via `contact_post_message` only — **astral.layers.core-vs-external-bright-line** conforms. `BOT_BLOCKED`→`READY` / `ABANDONED` via core `update_meteorite` — **pattern.state.entity-state-transitions** conforms. Universal orch.* — N/A/conforms.
+
+## Joan validate (round 2)
+
+**Rubric:** plan-rubric
+**Ticket:** AST-1561
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste` @ `fa4b19353058dfeb606ad7e44f2132a1a4bda826`
+
+### Traceability
+Parent AC4 → Stages 2–3 (`run_notify_meteorite_bot_blocked` Estelle DM + nag/abandon stamps; `apply_paste` `BOT_BLOCKED`→`READY` without classify; `contact.py` thread-first then unprompted `paste` routing); parent functional scope #4 (notify, paste recovery, nag→`ABANDONED`, scrape never Slack).
+
+### Findings
+
+#### acceptable
+- **Location:** Linear ticket — empty `## Citations` / `## Scope`
+- **Finding:** Dispatch template gap; plan Scope gate mirrors parent proposed child #5.
+- **Recommendation:** Chuckles backfill Linear fields when appending.
+
+#### acceptable
+- **Location:** Stage 2 §8 — `log_meteorite_row_transition` on `ABANDONED`
+- **Finding:** AST-1560 helper has no `ABANDONED` format (no-op if called).
+- **Recommendation:** Harmless; optional drop in build.
+
+**Round=1 resolution:** `await` notify runner, unprompted-paste ordering clarified, READY monitoring log dropped — revision @ `fa4b1935`.
+
+**In-session statute pass:** `entity_batch_id` claim/clear — **astral.batch.batch-id-first** conforms. No re-classify on paste — **astral.agent.do-task-delegation** conforms. Slack via `contact_post_message` only — **astral.layers.core-vs-external-bright-line** conforms. State transitions via core `update_meteorite` — **pattern.state.entity-state-transitions** conforms. Universal orch.* — N/A/conforms.
