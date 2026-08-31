@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1357 archived 2026-08-31 -->
+
+## Linear archive (AST-1357)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1357/unlock-profile-original-resume-text-make-profile-original-resume-text  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1356 — Make profile original resume text read/write  
+**Blocked by / blocks / related:** parent: AST-1356
+
+### Description
+
+## What this implements
+
+Remove the Candidate Profile lock that disables Original Resume Text when a base resume exists (including the lock placeholder copy). Field stays bound to the existing Profile shapes/save path; no Artifacts regenerate redesign; no new warning/config lock. Single vertical slice — UI unlock + persist behavior only.
+
+## Citations
+
+`pattern.ui.dirty-leave-save-then-navigate`; `astral.layers.ui-config-driven-business-logic`; `astral.standards.in-scope-only`; `astral.ui.frontend-file-placement`; `astral.docs.features-single-file-per-ticket`.
+
+## Acceptance criteria
+
+- [X] 1. With a candidate that already has a base resume, Candidate Profile → Original Resume Text is enabled (not disabled) and accepts typed/pasted edits.
+- [X] 2. Saving Profile with a changed Original Resume Text persists that text; reopen/reload Profile shows the same text.
+- [X] 3. Cancel on Profile still restores Original Resume Text to the last loaded/saved value (same as other Profile text fields).
+- [X] 4. After saving fresh Original Resume Text, regenerating via the existing Artifacts base-resume generate/regenerate path uses the updated text (observable in the regenerated result / generation input behavior already product-owned).
+- [X] 5. Candidates without a base resume keep editable Original Resume Text as today (no regression).
+- [X] 6. Profile dirty-leave still prompts on unsaved Original Resume Text edits the same way it does for other Profile text fields.
+
+## Boundaries
+
+- [X] Does not change Artifacts generate/regenerate UX. Does not auto-clear base resume on edit. Does not add warning/config lock. Does not change Contact fields, other Profile text tabs, Intake preamble, or Admin session resume paste.
+
+## Notes for planning
+
+Citations as above. Adjacent dirty-leave AST-1315 / AST-1336 must not regress.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-13T16:42:11.083Z
+[code-rubric] PROCEED (Commit: e12a541be4af08eba8c97b63e352a0c29cda7415) unlock resume lock removed
+
+#### betty — 2026-08-13T16:37:37.837Z
+`origin/sub/AST-1356/AST-1357-unlock-profile-original-resume-text` @ `e12a541b` · unlock resume tests
+
+#### joan — 2026-08-13T16:31:54.295Z
+[plan-rubric] PROCEED (Commit: 58dd9eccca6aebbb7be87d0f4668691acaf5dea3) unlock resume lock
+
+#### katherine — 2026-08-13T16:28:46.908Z
+`origin/sub/AST-1356/AST-1357-unlock-profile-original-resume-text` @ `58dd9eccca6aebbb7be87d0f4668691acaf5dea3` · unlock resume plan ready
+
+---
+
 # AST-1357 — Unlock Profile Original Resume Text
 
 **Linear:** [AST-1357](https://linear.app/astralcareermatch/issue/AST-1357)
