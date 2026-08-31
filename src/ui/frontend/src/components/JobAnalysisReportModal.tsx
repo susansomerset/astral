@@ -245,11 +245,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       const blobUrl = URL.createObjectURL(
         new Blob([html], { type: "text/html;charset=utf-8" }),
       )
-      // No noopener/noreferrer features — those force a null return even on success.
-      const win = window.open(blobUrl, "_blank")
-      if (win) {
-        win.opener = null
-      } else {
+      const win = window.open(blobUrl, "_blank", "noopener,noreferrer")
+      if (!win) {
         setToast({
           text: "Popup blocked — allow popups to open the HTML tab.",
           variant: "error",

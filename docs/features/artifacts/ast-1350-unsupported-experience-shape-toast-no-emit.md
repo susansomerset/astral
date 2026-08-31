@@ -332,3 +332,7 @@ Against product tip that includes AST-1545 (open without features + `opener = nu
 - Failed / empty HTML paths still never call `window.open`.
 - AST-1545 product behavior: success opens blob tab without popup-blocked toast; real null open still can toast blocked.
 - No product UI edits on this ticket.
+
+## Resolution — AST-1546
+
+**2026-08-31** — Radia discuss: product UI was stacked on this gap sub (`code(AST-1546)` cherry-pick of AST-1545’s four blob-open handlers). Reverted those product files so this publish tip is tests/bible (+ plan-fix doc) only. Product remains on sibling `origin/sub/AST-1542/AST-1545-fix-false-popup-blocked-toast-on-print-open-html`. Betty `test(AST-1546)` / `merge-tests(AST-1546)` retained.
