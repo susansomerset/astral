@@ -1309,7 +1309,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report`.
 
-`JobDiscussionPane` — RESPONSE-only nine-hop stack via `ReportSectionList` / `entity-story-content` (JSON pretty-print / raw text; empty hops stay panels). `JobAnalysisReportModal` wires Discussion from `report_discussion_sections` + `agent_story` (no hardcode). Fixture gains Discussion top tab + nine section defs. Config/manifest/`task_name`: sibling **AST-1550**. No page-file product diff — §6c routed-page rule N/A.
+`JobDiscussionPane` — RESPONSE-only nine-hop stack via `ReportSectionList` / `entity-story-content` (JSON pretty-print / raw text; empty hops stay panels). `JobAnalysisReportModal` wires Discussion from `report_discussion_sections` + `agent_story` (no hardcode). Fixture + pane `NINE` keys lockstep with **AST-1550** `TestAst1550ReportDiscussionSections._NINE` (`contemplate_job` → … → `propose_application_responses`). Config/manifest/`task_name`: sibling **AST-1550**. No page-file product diff — §6c routed-page rule N/A.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
