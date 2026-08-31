@@ -1053,3 +1053,14 @@ Split or gate `cover_letter_artifact_for_display` so operator hydrate cannot res
 - Cancel / clear still removes operator job body keys in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`.
 - Import direction: core writes via existing `save_job_data`; UI PUT stays thin → tracker save.
 - Do not copy full hop JSON envelopes into the operator slots — store the unwrapped resume section dict / normalized cover fields only (same shapes JAR already edits).
+
+---
+
+## Radia review — AST-1548 (2026-08-31)
+
+**Overall:** DISCUSS / REVIEW — product matches plan; bible keep-pin suites pending on gap sibling AST-1554.
+**Publish:** `origin/sub/AST-1547/AST-1548-fix-job-resume-body-replica` @ `d5113a8b`
+**fix-now:** none on product.
+**discuss:** Board TESTS:REVISE + AST-1554 gap must land before orphaned finish-up merges to `dev`.
+**advisory:** Stale `agent.py` comment still mentions finalize pin; builder pin-fallback left in blast radius.
+
