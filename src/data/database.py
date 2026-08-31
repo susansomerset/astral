@@ -3785,6 +3785,61 @@ def update_meteorite(meteorite_id: int, **fields: Any) -> None:
 
 
 
+
+def list_meteorites_for_retention(
+    *,
+    states: List[str],
+    older_than: str,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Rows in states with state_changed_at older than cutoff (caller owns day math)."""
+    state_sql, state_params = _state_in_sql(states)
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            params: List[Any] = [*state_params, older_than]
+            lim_sql = ""
+            if limit is not None:
+                lim_sql = " LIMIT ?"
+                params.append(int(limit))
+            rows = conn.execute(
+                f"""SELECT * FROM meteorite
+                   WHERE {state_sql} AND state_changed_at < ?
+                   ORDER BY state_changed_at ASC{lim_sql}""",
+                tuple(params),
+            ).fetchall()
+            return [_meteorite_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def delete_meteorites_by_ids(ids: List[int]) -> int:
+    """Delete meteorite rows by id list. Empty list → 0."""
+    if not ids:
+        return 0
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            placeholders = ",".join("?" for _ in ids)
+            cur = conn.execute(
+                f"DELETE FROM meteorite WHERE id IN ({placeholders})",
+                tuple(int(i) for i in ids),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def count_candidates_unclaimed_in_states(
     states: List[str], candidate_id: Optional[str] = None
 ) -> int:
