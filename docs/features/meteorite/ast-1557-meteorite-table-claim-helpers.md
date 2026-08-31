@@ -405,3 +405,26 @@ Joan validate cites these patterns informally; no invalid/unapproved pattern ids
 context_tokens≈58000
 
 ---
+
+## Resolution
+
+**Date:** 2026-08-31  
+**Engineer:** Ada  
+**Publish tip before resolve:** `2296d57b` (Radia `docs(AST-1557): Radia review — DISCUSS sibling test bleed`)
+
+### discuss — sibling AST-1556 test/bible on publish ref
+
+**Acknowledged.** Chuckles (2026-08-31 Linear note) accepted AST-1556 test/bible hunks as parallel-track carry from shared `origin/tests` ancestry; Betty's AST-1557 manifest stayed scoped to meteorite tests only. No revert on this sub tip before User Testing; strip only if `merge-child` / ftr conflicts. No AST-1557 product change.
+
+### advisory — `NEW` / `BOT_BLOCKED` string collision
+
+No code change — plan Decision + Radia note stand; siblings import `METEORITE_STATES` explicitly.
+
+### advisory — `claim_meteorite_batch` state not registry-gated
+
+No code change — matches plan (validate on `update_meteorite` only).
+
+### Fix-now
+
+None.
+
