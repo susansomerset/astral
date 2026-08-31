@@ -1,13 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
+import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
+import { useCandidate } from "../contexts/CandidateContext"
+import type { AdminCandidateFilterValue } from "../hooks/useAdminCandidateFilter"
 import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
-
-type CandidateMatch = {
-  matched: boolean
-  astral_candidate_id: string | null
-}
 
 type InboxMessage = {
   id: string
@@ -16,7 +14,6 @@ type InboxMessage = {
   from_address: string
   date: string
   unread: boolean
-  candidate_match?: CandidateMatch
 }
 
 type LandMeteoriteResultRow = {
@@ -43,6 +40,10 @@ function outcomeKind(outcome: string): "skip" | "fail" | "ok" {
 }
 
 export default function AdminManageEmail() {
+  const { candidates } = useCandidate()
+  // Default All — do not sync to nav selected candidate (AST-1558 AC).
+  const [candidateFilter, setCandidateFilter] =
+    useState<AdminCandidateFilterValue>("")
   const [messages, setMessages] = useState<InboxMessage[]>([])
   const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [error, setError] = useState<string | null>(null)
@@ -59,7 +60,7 @@ export default function AdminManageEmail() {
   const clearToast = useCallback(() => setToast(null), [])
 
   const selectionCount = selectedIds.size
-  const landEnabled = selectionCount > 0 && !landBusy
+  const landEnabled = Boolean(candidateFilter) && selectionCount > 0 && !landBusy
   const allSelected =
     messages.length > 0 && selectedIds.size === messages.length
 
@@ -80,11 +81,19 @@ export default function AdminManageEmail() {
     setSelectedIds(new Set())
   }
 
+  function onFilterChange(next: AdminCandidateFilterValue) {
+    setCandidateFilter(next)
+    clearSelection()
+  }
+
   const loadMessages = useCallback(async (showSpinner = false) => {
     beginRefresh(showSpinner)
     setError(null)
     try {
-      const r = await api("/api/admin/inbox/messages")
+      const url = candidateFilter
+        ? `/api/admin/inbox/messages?candidate_id=${encodeURIComponent(candidateFilter)}`
+        : "/api/admin/inbox/messages"
+      const r = await api(url)
       const data = await r.json().catch(() => ({} as Record<string, unknown>))
       if (!r.ok) {
         const msg =
@@ -102,7 +111,7 @@ export default function AdminManageEmail() {
     } finally {
       endRefresh()
     }
-  }, [beginRefresh, endRefresh])
+  }, [beginRefresh, endRefresh, candidateFilter])
 
   useEffect(() => {
     void loadMessages(true)
@@ -141,14 +150,9 @@ export default function AdminManageEmail() {
 
   const selected = messages.find(m => m.id === selectedId)
   const modalTitle = (selected?.subject || "").trim() || "Message"
-  const selectedMatchId =
-    selected?.candidate_match?.matched === true &&
-    (selected.candidate_match.astral_candidate_id || "").trim()
-      ? (selected.candidate_match.astral_candidate_id as string)
-      : null
 
   async function onLandMeteorite() {
-    if (selectedIds.size === 0 || landBusy) return
+    if (!candidateFilter || selectedIds.size === 0 || landBusy) return
     const ordered = messages.filter(m => selectedIds.has(m.id)).map(m => m.id)
     const orderedSet = new Set(ordered)
     const leftovers = [...selectedIds].filter(id => !orderedSet.has(id))
@@ -163,7 +167,10 @@ export default function AdminManageEmail() {
       const r = await api("/api/admin/inbox/land-meteorite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message_ids: ids }),
+        body: JSON.stringify({
+          message_ids: ids,
+          candidate_id: candidateFilter,
+        }),
       })
       const data = (await r.json().catch(() => ({}))) as LandMeteoriteResponse
       if (!r.ok) {
@@ -194,18 +201,6 @@ export default function AdminManageEmail() {
     }
   }
 
-  function matchCell(row: InboxMessage) {
-    const m = row.candidate_match
-    if (m?.matched === true && (m.astral_candidate_id || "").trim()) {
-      return (
-        <td>
-          <span className="manage-email-match">Matched: {m.astral_candidate_id}</span>
-        </td>
-      )
-    }
-    return <td>—</td>
-  }
-
   return (
     <div style={{ padding: 24 }}>
       <h1 style={{ margin: "0 0 16px", fontSize: 22, color: "var(--text-primary)" }}>
@@ -218,6 +213,11 @@ export default function AdminManageEmail() {
       {!loading && !error && (
         <>
           <div className="manage-email-toolbar">
+            <AdminCandidateFilterControl
+              value={candidateFilter}
+              onChange={onFilterChange}
+              candidates={candidates}
+            />
             <button
               type="button"
               className="btn primary"
@@ -289,7 +289,6 @@ export default function AdminManageEmail() {
                   </th>
                   <th>Subject</th>
                   <th>From</th>
-                  <th>Candidate</th>
                   <th>Date</th>
                   <th>Status</th>
                 </tr>
@@ -310,14 +309,13 @@ export default function AdminManageEmail() {
                     </td>
                     <td>{row.subject}</td>
                     <td>{row.from_address}</td>
-                    {matchCell(row)}
                     <td>{row.date}</td>
                     <td>{row.unread ? "Unread" : "Read"}</td>
                   </tr>
                 ))}
                 {messages.length === 0 && (
                   <tr>
-                    <td colSpan={6}>No messages in inbox.</td>
+                    <td colSpan={5}>No messages in inbox.</td>
                   </tr>
                 )}
               </tbody>
@@ -332,11 +330,6 @@ export default function AdminManageEmail() {
         title={modalTitle}
         size="wide"
       >
-        {selectedMatchId && (
-          <p className="manage-email-match manage-email-match--modal">
-            Matched: {selectedMatchId}
-          </p>
-        )}
         {bodyLoading && <p style={{ padding: 20 }}>Loading…</p>}
         {!bodyLoading && bodyError && (
           <p style={{ padding: 20, color: "var(--danger)", fontSize: 13 }}>{bodyError}</p>
