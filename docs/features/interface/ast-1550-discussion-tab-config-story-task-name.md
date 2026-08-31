@@ -145,3 +145,25 @@ Every **Files Changed** row and every Stage step names only those files / that k
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1550
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `6a05e07e893fa93469e42cb0547da4b277711981`
+
+## Traceability
+AC1 → Stage 1 (`JOBS_RECOMMENDED_REPORT_TOP_TABS` → `build_state_ui_manifest` `report_top_tabs`); AC2 → Stages 2–3 (`report_discussion_sections` manifest labels + `get_entity_agent_story` `task_name` enrichment). Parent AC2/4–7 N/A — sibling AST-1551 (React pane / RESPONSE bodies).
+
+## Findings
+
+### acceptable — `astral.standards.utils-data-late-import-only` vs in-tree precedent
+**Location:** Stage 1 (`build_artifacts_discussion_hop_task_keys` late-imports `get_agent_task` in `config.py`)
+**Finding:** Statute text forbids utils→data late-import outside `logging.py`; the same file already uses that pattern in `_agent_task_parents_with_run_next` / `dispatch_chain_row_matches_job`. Parent Component/Technical scope assigns the hop walk to `config.py`; core’s `_current_agent_task_run_next` is not importable from utils.
+**Recommendation:** Proceed as planned — matches parent definition and existing config chain helpers. Not a plan defect.
+
+context_tokens≈52000
+```
