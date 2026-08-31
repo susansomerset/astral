@@ -769,8 +769,8 @@ async def _dispatch_one(task: Dict) -> None:
 
     # AST-1134 / AST-1282: candidate-bound inbox mailbox — ledger uses row candidate_id.
     if _is_inbox_mailbox_task_key(task_key):
-        # late: keep meteorite_email off module-top load (peer late imports in this file)
-        from src.core.meteorite_email import run_meteorite_email
+        # late: keep check_inbox off module-top load (peer late imports in this file)
+        from src.core.meteorite import check_inbox
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip()
@@ -790,7 +790,7 @@ async def _dispatch_one(task: Dict) -> None:
                 outcome="task start",
             )
             logger.debug_detail(
-                f"mailbox runner (meteorite_email path) entity_batch_id={entity_batch_id} "
+                f"mailbox runner (check_inbox path) entity_batch_id={entity_batch_id} "
                 f"candidate_id={ledger_cid} "
                 f"mode={'AUTO' if not is_click else 'CLICK'}"
             )
@@ -811,18 +811,18 @@ async def _dispatch_one(task: Dict) -> None:
         accumulated = dict(_SUMMARY_ZERO)
         final_status = "COMPLETED"
         try:
-            summary = await run_meteorite_email(task, debug=debug)
+            summary = await check_inbox(task, debug=debug)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             failure_reason = "dispatch cancelled by admin"
-            _sched_log.warning("[%s/%s] KILLED by admin — meteorite_email", task_key, entity_batch_id)
+            _sched_log.warning("[%s/%s] KILLED by admin — check_inbox", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception:
             final_status = "FAILED"
-            failure_reason = "meteorite_email runner crashed"
-            _sched_log.exception("[%s/%s] meteorite_email crashed", task_key, entity_batch_id)
+            failure_reason = "check_inbox runner crashed"
+            _sched_log.exception("[%s/%s] check_inbox crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:
