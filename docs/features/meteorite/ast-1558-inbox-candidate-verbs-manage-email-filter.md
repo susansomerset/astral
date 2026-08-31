@@ -409,3 +409,32 @@ context_tokens≈38000
 4. **resolve-child:** No AST-1558 product changes required; proceed to UT after discuss acknowledged.
 
 context_tokens≈62000
+
+## Resolution
+
+**Date:** 2026-08-31  
+**Review tip:** `158e73aa` (Radia DISCUSS — no fix-now product items)  
+**Resolve tip:** (this commit)
+
+### Outcome
+
+**Clean resolve — no AST-1558 product changes.** Radia recommended proceeding to User Testing after discuss items are acknowledged; all fix-now slots empty.
+
+### Discuss items (acknowledged, no action this ticket)
+
+| Item | Disposition |
+|------|-------------|
+| AST-1557 `METEORITE_STATES` + sibling test/bible bleed on publish ref | Sibling stacking on parallel `sub/*` tracks — Chuckles `merge-child` / ftr rollup hygiene, not AST-1558 defect |
+| `test_ast1467_gaze_email_retire.py` still references deleted `INBOX_BIND_CONFIG` | Off-manifest — Betty follow-up on next sweep |
+| `_email_aliases_for_candidate` duplication in `api_inbox.py` | Scope-accepted (plan forbids `candidate.py` touch) |
+| Land orchestration in API layer | Plan- and Joan-approved; AST-1560 may rehome |
+| Advisory: skip-missing vs error mapping, in-memory filter, `@require_admin` | No change unless Susan directs |
+
+### Rollup alignment
+
+Merged `origin/ftr/AST-1555-meteorite-ingress-staging-table-inbox-meteorite-consolidation` (AST-1557 resolve @ `5408b867`) into this publish ref so §9a ftr dry-run is clean before User Testing. Plan doc retained (modify/delete conflict — ftr had no per-child plan files).
+
+### §9a dry-run
+
+- `origin/dev`: clean
+- `origin/ftr/AST-1555-meteorite-ingress-staging-table-inbox-meteorite-consolidation`: clean after ftr merge
