@@ -267,5 +267,5 @@ Parent AC4 → Stages 2–3 (`run_notify_meteorite_bot_blocked` Estelle DM + nag
 ## Review
 
 - **Publish ref:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`
-- **Tip:** `a1e91843b7252c48a4a3de17e6f329503b87fc5c`
+- **Tip:** `3a210773eb6f33664d98d56e2dcafa892411714c`
 - **Stages:** 1 notify config/dispatch · 2 apply_paste + notify runner · 3 contact paste routing
