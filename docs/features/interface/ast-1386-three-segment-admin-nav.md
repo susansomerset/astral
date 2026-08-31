@@ -1,3 +1,71 @@
+<!-- linear-archive: AST-1386 archived 2026-08-31 -->
+
+## Linear archive (AST-1386)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1386/three-segment-admin-nav-group-admin-in-the-ui-into-three-segments  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1370 — Group admin in the UI into three segments  
+**Blocked by / blocks / related:** parent: AST-1370
+
+### Description
+
+## What this implements
+
+One vertical slice: regroup `NAV_CONFIG` into Operations / Admin / Tools with Susan's membership, order, and paste labels; update the non-admin nav omit so all three segments stay admin-only via config (not a hard-coded API label list); leave routes, pages, and shell chrome alone. Intentionally single child — regroup and omit must ship together or Operations/Tools leak to non-admins.
+
+## Citations
+
+`pattern.config.config-block`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.layers.ui-config-driven-business-logic`.
+
+## Acceptance criteria
+
+- [X] An admin user sees exactly three admin-facing sidebar groups — **Operations**, **Admin**, **Tools** — with the item lists and order in the parent Functional scope, and no leftover single catch-all Admin group that still holds those items.
+- [X] Nav labels for the paste screens read **Resume Paste** and **Cover Letter Paste**; clicking them opens the same screens as today's Session Resume Paste / Session Cover Letter routes.
+- [X] A non-admin user sees zero of Operations, Admin, or Tools (and still cannot open those admin routes via the existing admin route gate).
+- [X] Jobs / Companies / Artifacts / Candidate groups still resolve and render as before for the same candidate state.
+- [X] Wide and narrow left-nav shell behavior (drawer, hamburger, pinned chrome, deploy footer rules) is unchanged aside from the new group labels appearing in the scrollable nav body.
+
+## Boundaries
+
+- [X] Does not redesign admin page layouts, tables, modals, or APIs.
+- [X] Does not change Jobs / Companies / Artifacts / Candidate groups, visibility gates, badges/counts, expand/collapse chrome, responsive hamburger shell, or pinned logo/candidate chrome.
+- [X] Does not add, remove, or rename admin URL paths — only sidebar group membership and display labels for the paste items.
+- [X] Does not change who is an admin or how `is_admin` is resolved.
+
+## Notes for planning
+
+Citations as above. NAV_CONFIG regroup + config-driven non-admin omit must land together.
+
+## Git branch (authoritative)
+
+Per orientation Branch law: parent `ftr/AST-1370-group-admin-ui-three-segments`, child `sub/AST-1370/<this-id>-three-segment-admin-nav`. Created at dispatch-parent.
+
+### Comments
+
+#### betty — 2026-08-15T01:32:51.784Z
+`origin/sub/AST-1370/AST-1386-three-segment-admin-nav` @ `8a9734ab` · merge-tests ancestry fixed
+
+#### chuckles — 2026-08-15T01:31:40.654Z
+[merge-child] blocked: missing test(AST-1386): on origin/sub/AST-1370/AST-1386-three-segment-admin-nav — merge-tests(AST-1386) @ 34a3307e brought tree changes but not the test() subject (origin/tests has 92733b1d test(AST-1386): …). @Betty White — redo merge-tests as a real merge so test(AST-1386): appears on the publish-ref log, then Chuckles retries merge-child.
+
+#### radia — 2026-08-15T01:30:33.293Z
+[code-rubric] PROCEED (Commit: 34a3307e) three-segment nav clean
+
+#### betty — 2026-08-15T01:27:22.079Z
+`origin/sub/AST-1370/AST-1386-three-segment-admin-nav` @ `34a3307e` · three-segment nav tests
+
+#### joan — 2026-08-15T01:21:41.864Z
+[plan-rubric] PROCEED (Commit: 08df6c51) config-driven three-segment nav
+
+#### ada — 2026-08-15T01:20:17.663Z
+`origin/sub/AST-1370/AST-1386-three-segment-admin-nav` @ `08df6c51` · plan ready
+
+---
+
 # AST-1386 — Three-segment admin nav (Group admin in the UI into three segments)
 
 **Linear:** [AST-1386](https://linear.app/astralcareermatch/issue/AST-1386/three-segment-admin-nav-group-admin-in-the-ui-into-three-segments)  

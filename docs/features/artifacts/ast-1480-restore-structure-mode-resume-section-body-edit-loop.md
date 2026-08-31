@@ -343,3 +343,88 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1480 | sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop |
 
 **Epic worktree:** `astral-AST-1459/` — one active sub checked out at a time.
+
+## Bug: AST-1490 — Print Resume contact-only after section reorder
+
+### As-is
+
+On Base Resume Content and JAR Job Resume structure authoring, moving a section **Up** or **Down** then clicking **Print Resume** (with or without **Save sections**) produces HTML with the contact/header block only — enabled body sections are missing from the printed output. The on-screen editor may flash **Loading…** after reorder because the shared artifact loader re-runs.
+
+### To-be
+
+After a structure Up/Down reorder, **Print Resume** still emits the full resume body (contact plus every enabled content section) in the new section order. Reorder alone must not trigger a spurious candidate/job artifact re-GET or wipe hydrated section bodies.
+
+### Repro
+
+1. Open Artifacts → Base Resume Content for a candidate with printable saved `base_resume` (non-empty prose in at least two body sections, e.g. Professional Summary and Prior Experience).
+2. Expand structure authoring; click **Up** or **Down** on any movable body section header. Observe brief **Loading…** (optional).
+3. Do **not** click **Save sections** (AST-1489 auto-persist on Print is sufficient).
+4. Click **Print** / **Print Resume**; open the blob HTML tab.
+5. **Actual:** contact/header renders; body `<section>` blocks for summary/experience/etc. are absent or empty.
+6. **Expected:** full body sections present in the reordered structure order.
+7. Repeat on JAR → Artifacts → Job Resume tab with the same reorder → **Print Resume** pattern.
+
+Component repro (mock): after hydrate, fire `onStructureRowsChange` with two rows swapped (`order` reindexed); assert `GET /api/candidates/{id}` count does **not** increment; click Print; assert structure `PUT` (AST-1489) precedes resume `GET` and returned HTML includes body section ids.
+
+### Root cause
+
+AST-1480 added `fixedFieldKeys = fixedFields.map(f => f.key).join("\0")` (~L300) so **label-only** structure header edits would not re-trigger candidate/job load effects. The signature is **order-sensitive**: Up/Down reorder changes `structureRows` → `setShapeFields(structureRows.map…)` (~L424) → same id **set** but different join string → candidate load `useEffect` (~L583–596) and job load effect (~L567–580) fire again (`setLoaded(false)` → re-GET).
+
+The companion label-sync effect (~L486–505) also compares **ordered** `prev.map(t => t.id).join("\0")` vs `fixedFields.map(f => f.key).join("\0")`. On reorder-only, those strings differ even though the id set is unchanged, so the effect returns stale `prev` tabs instead of reordering them to match structure chrome order — editor structure panels and `tabs[]` diverge.
+
+Builder emit with a correctly saved reordered structure still produces full body HTML on the server (`build_base_resume` / `_structure_ordered_body_ids` verified on tip) — this is **not** a `builder.py` regression. The operator-visible Print failure is the UI reload / structure-vs-content desync path above, compounded by AST-1489’s print-time structure auto-persist firing after reorder while the loader signature treats order as a content-key change.
+
+### Proposed change
+
+**Primary — `src/ui/frontend/src/components/ArtifactEditor.tsx` — Hedy at make-fix:**
+
+1. **Order-insensitive load signature:** Replace order-sensitive `fixedFieldKeys` with a stable id-set signature, e.g. sort keys before join:
+
+   ```ts
+   const fixedFieldKeys = fixedFields
+     ? [...fixedFields.map(f => f.key)].sort().join("\0")
+     : ""
+   ```
+
+   Keep the existing comment intent (“label-only structure header edits do not re-GET”) and extend it to cover reorder-only churn. Candidate/job load effects (~L567–596) and Cancel guards (~L948–956) keep depending on this variable — no new deps.
+
+2. **Reorder tabs without re-GET:** In the label-sync effect (~L486–505), detect reorder vs add/remove:
+   - Build `prevSet` / `nextSet` as sorted id arrays (or sort before join).
+   - If the **set** of ids differs → return `prev` (add/remove still handled by load effect when `fixedFieldKeys` changes).
+   - If the set is the same but order differs → return `fixedFields.map(f => ({ …content from byId[f.key]… }))` so `tabs[]` order matches structure row order without clearing `content`.
+
+3. **Do not** change structure Up/Down handlers (`moveStructureRow` / `reindexStructureRows`) — they already emit correct `order` indices.
+
+**Print surfaces — verify only (likely no code change):**
+
+- `ArtifactsBaseResumeContent.tsx` `handlePrint` / `persistStructureRows` (AST-1489) — already auto-persists `allSections` before resume `GET`; after fix §1–2, confirm reorder → Print sends full structure dict and print HTML includes body sections.
+- `JobAnalysisReportModal.tsx` `handlePrintResume` — same verification.
+
+**Out of scope:** `src/core/builder.py`, `api_resume_html.py`, `candidate.py` normalize/emit, new API routes, structure Save button UX.
+
+**Tests (Betty at qa-fix / fix-board):**
+
+- **Bug-repro:** Reorder structure row → Print without Save sections → resume `GET` HTML includes body sections; structure `PUT` before `GET` (extends AST-1489 pattern).
+- **Regression:** `AST-1480: structure title rename keeps hydrated body` — candidate `GET` count must still not increment on title-only edit (sorted-key signature preserves label-churn guard).
+- **Regression:** Reorder alone must not increment candidate/job artifact `GET` count after initial hydrate.
+- Bible: `docs/test-bible/frontend/components.md` (+ pages if Base Print repro lives there) — AST-1490 manifest row.
+
+### Blast radius
+
+- **Shared editor:** Base Resume Content and JAR Job Resume both use `ArtifactEditor` structure mode — one fix covers both Print paths.
+- **AST-1480:** Label-only rename must remain a no-re-GET path (sorted keys).
+- **AST-1489:** Print-time structure auto-persist stays; this fix makes reorder + Print reliable.
+- **Add/remove section:** Id-set change still changes `fixedFieldKeys` → legitimate reload (unchanged).
+- **Explicit content Save:** `buildPayload` / `doSave` unchanged; reorder no longer risks mid-reload tab mismatch.
+
+### What must still hold
+
+- AST-1480 AC: structure-mode bodies hydrate, edit, and Save; tab chrome stays off; label rename does not re-GET; JAR `resume_content` overlay; Experience unsupported path.
+- AST-1489: Print auto-persists current structure rows (incl. `page_break_policy`) before validate-then-blob resume `GET`; body content still from saved artifacts, not editor buffer.
+- AST-1487 / AST-1476: print CSS and page-break dropdown behavior unchanged.
+- AST-1323 / AST-1306: structure header Up/Down / Save sections UX unchanged.
+- Section add/remove/extra-id mint still triggers reload when the id **set** changes.
+
+## Review (AST-1490)
+
+Radia review-fix @ 0338900a — CLEAN, PROCEED. Sorted fixedFieldKeys + tab reorder sync; [bug-repro] substantive; ## What must still hold intact.

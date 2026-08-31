@@ -1,3 +1,85 @@
+<!-- linear-archive: AST-1393 archived 2026-08-31 -->
+
+## Linear archive (AST-1393)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1393/serialize-ad-hoc-success-body-to-text-ad-hoc-agent-is-failing  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1392 — Ad hoc Agent is failing  
+**Blocked by / blocks / related:** parent: AST-1392; blocks: AST-1394
+
+### Description
+
+## What this implements
+
+Own the workbench success path so any successful model body becomes text before RESPONSE write (JSON text for objects/lists, otherwise the raw text), using one stringify habit rather than a second store helper. Persist that text; with `debug=True` show found type/shape → recorded text; never let a non-string payload raise a storage type error as the Test outcome. Does **not** own React chrome or production `do_task` schema validation (see #2 and Boundaries).
+
+## Citations
+
+`pattern.batch.entity-agent-responses`; `astral.standards.data-raises-caller-logs`; `astral.batch.entity-agent-responses-latest-only`; `astral.standards.debug-contract-gated`; `astral.standards.dry-and-focused-functions`; `astral.agent.do-task-delegation`.
+
+## Acceptance criteria
+
+- [X] 1. An Agent Ad Hoc Test whose model returns a successful JSON envelope with an object payload (the `craft_company_search_terms` shape in the original brief) completes as success: the workbench shows the payload as JSON text, and no `_store_response_block failed` / `block_data must be a str` traceback appears for that run.
+- [X] 2. Execution History inspection for that Test run includes a RESPONSE body equal to the text shown in the workbench (JSON text of the payload, not an empty or missing block).
+- [X] 3. A successful reply that is already plain text still displays and stores as that text — no extra JSON wrapping.
+- [X] 4. With `debug=True`, the serialized store is visible as found→recorded under Style D; with `debug=False`, this path adds no new debug lines.
+
+## Boundaries
+
+- [X] Does **not** own React chrome, Admin Test HTTP display overlay, or production `do_task` schema validation / AST-1289 coerce. Sibling #2 owns showing the Test body without type invalidation. Does **not** relax `save_agent_data` to accept non-text `block_data`. Does **not** treat provider/API failures as success.
+
+## Notes for planning
+
+Reuse the existing `do_task` habit of JSON-serializing object/list payloads before RESPONSE write. Data layer still raises on non-text; core serializes. Ad Hoc Test stays on the workbench wrapper, not routed through production `do_task` validation just to get a store.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1392-ad-hoc-agent-is-failing`, child `sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Existing string-payload ledger + store: `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
+2. Object/list/plain-text stringify + debug Style D: `tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody`
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum** (`origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text`):
+
+* `docs/test-bible/core/agent.md` `ef3348a750fe36f10629fa51b7b88f3510442bc4`
+
+### Comments
+
+#### radia — 2026-08-16T01:50:20.466Z
+[code-rubric] PROCEED (Commit: a45fff61) core stringify clean
+
+#### betty — 2026-08-16T01:46:00.211Z
+`origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text` @ `a45fff61` · object payload stringify coverage
+
+#### joan — 2026-08-16T01:33:02.943Z
+[plan-rubric] PROCEED (Commit: 2a87dcd5) stringify before store
+
+#### ada — 2026-08-16T01:29:58.092Z
+`origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text` @ `2a87dcd5` · stringify before store
+
+---
+
 # Serialize Ad Hoc success body to text
 
 - **Linear:** [AST-1393](https://linear.app/astralcareermatch/issue/AST-1393)

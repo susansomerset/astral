@@ -1,11 +1,14 @@
 """API endpoints for Jobs screens: list, detail, bulk state."""
 
 from datetime import datetime, timezone
+from typing import Optional
+
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_auth
 from src.core.consult import _phase_score_breakdown
 from src.core.agent import get_entity_agent_story
+from src.core.roster import get_company, update_company
 from src.core.tracker import (
     assemble_job_copy_snapshot,
     cancel_artifact_build,
@@ -19,6 +22,7 @@ from src.core.tracker import (
     list_jobs_below_dispatch_score_floor,
     persist_skipped_job_edits,
     save_job_artifact_cover_letter,
+    save_job_artifact_job_resume_body,
     save_job_artifact_resume_content,
     save_job_data,
     score_floor_by_trigger_for_candidate,
@@ -29,6 +33,7 @@ from src.core.tracker import (
 from src.utils.config import (
     APPLIED_JOB_STATES,
     IN_REVIEW_STATES,
+    METEORITE_CONFIG,
     PHASE_SCORE_BREAKDOWN_KEY_SUFFIX,
     RECOMMENDED_JOB_STATES,
     SKIPPED_STATES,
@@ -88,6 +93,44 @@ def _attach_skipped_edit_meta(job: dict) -> dict:
     return job
 
 
+def _list_applied_jobs_for_candidate(candidate_id: Optional[str]) -> list[dict]:
+    """Applied rows via company.candidate_id scope, plus stem/meteorite repair-on-read."""
+    rows = list_jobs(
+        states=list(APPLIED_JOB_STATES),
+        candidate_id=candidate_id,
+        order_by="state_changed_at",
+    )
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return rows
+
+    seen = {r.get("astral_job_id") for r in rows if r.get("astral_job_id")}
+    default_meteorite = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+    suffix = f"-{cid}"
+
+    for job in list_jobs(states=list(APPLIED_JOB_STATES), candidate_id=None, order_by="state_changed_at"):
+        jid = job.get("astral_job_id")
+        if not jid or jid in seen:
+            continue
+        co_name = (job.get("company") or "").strip()
+        if not co_name or (co_name != default_meteorite and not co_name.endswith(suffix)):
+            continue
+        company = get_company(co_name)
+        if not company:
+            continue
+        existing = (company.get("candidate_id") or "").strip()
+        if existing == cid:
+            rows.append(job)
+            seen.add(jid)
+        elif existing == "":
+            update_company(co_name, candidate_id=cid)
+            rows.append(job)
+            seen.add(jid)
+
+    rows.sort(key=lambda j: (j.get("state_changed_at") or ""), reverse=True)
+    return rows
+
+
 @jobs_bp.route("")
 @require_auth
 def list_view():
@@ -125,11 +168,7 @@ def list_view():
         rows = list_jobs(states=list(RECOMMENDED_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
         return jsonify([_flatten_grades(r) for r in rows])
     elif view == "applied":
-        rows = list_jobs(
-            states=list(APPLIED_JOB_STATES),
-            candidate_id=candidate_id,
-            order_by="state_changed_at",
-        )
+        rows = _list_applied_jobs_for_candidate(candidate_id)
         return jsonify([_flatten_grades(r) for r in rows])
     else:
         return jsonify([])
@@ -249,7 +288,7 @@ def put_job_resume_content(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
 @require_auth
 def put_job_resume_pin_key(astral_job_id):
-    """AST-1428: ArtifactEditor PUTs job_resume URL; body writes resume_content, pin stays."""
+    """AST-1548: ArtifactEditor PUTs job_resume; body dual-writes job_resume + resume_content."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -257,7 +296,7 @@ def put_job_resume_pin_key(astral_job_id):
     body = data.get("job_resume")
     if not isinstance(body, dict):
         return jsonify({"error": "job_resume must be a dict"}), 400
-    save_job_artifact_resume_content(astral_job_id, body)
+    save_job_artifact_job_resume_body(astral_job_id, body)
     return jsonify({"ok": True})
 
 
@@ -391,6 +430,17 @@ def candidate_action(astral_job_id):
     to_state = _CANDIDATE_ACTION_STATE.get(action)
     if not to_state:
         return jsonify({"error": "invalid action"}), 400
+    candidate_id = (data.get("candidate_id") or request.args.get("candidate_id") or "").strip()
+    if candidate_id and action in _CANDIDATE_ACTION_STATE:
+        co_name = (job.get("company") or "").strip()
+        if co_name:
+            co = get_company(co_name)
+            if co:
+                existing = (co.get("candidate_id") or "").strip()
+                if existing == "":
+                    update_company(co["short_name"], candidate_id=candidate_id)
+                elif existing != candidate_id:
+                    return jsonify({"error": "Job belongs to another candidate"}), 409
     notes = data.get("notes")
     if action != "review":
         set_candidate_result(astral_job_id, action, notes=notes)

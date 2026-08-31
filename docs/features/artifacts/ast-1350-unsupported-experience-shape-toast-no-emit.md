@@ -1,3 +1,61 @@
+<!-- linear-archive: AST-1350 archived 2026-08-31 -->
+
+## Linear archive (AST-1350)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1350/unsupported-experience-shape-toast-no-emit-clarify-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1345 — Clarify candidate_data.artifacts.base_resume.experience node  
+**Blocked by / blocks / related:** parent: AST-1345
+
+### Description
+
+## What this implements
+
+Owns operator-visible failure when experience is a legacy string or non-array: toast exactly `unsupported resume structure, please regenerate` on Base Resume / Print / Open HTML (and job artifact edit) paths; no HTML tab opens and no Experience-omitted resume is emitted. Does **not** migrate data. Does **not** own schema text or per-job HTML layout (siblings). Sequencing: after Experience array contract so “unsupported” matches the same contract.
+
+## Citations
+
+`pattern.layers.import-discipline`, `astral.layers.ui-config-driven-business-logic`, `astral.layers.import-direction`, `astral.standards.in-scope-only`
+
+## Acceptance criteria
+
+- [X] 7. Opening or printing a resume whose experience is still a string (or other non-array shape) shows toast text `unsupported resume structure, please regenerate`, opens no HTML tab, and does not emit a resume with Experience omitted.
+
+## Boundaries
+
+- [X] Does **not** migrate data. Does **not** own schema text or per-job HTML layout (siblings).
+
+## Notes for planning
+
+After contract sibling; toast + no emit only.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### hedy — 2026-08-13T00:28:03.821Z
+`origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ `5550df342c947eb33ca0768d92688e20e37c1905` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-08-13T00:26:47.879Z
+[code-rubric] PROCEED (Commit: 81463c4c) unsupported shape toast no emit
+
+#### betty — 2026-08-13T00:23:21.872Z
+`origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ 81463c4c · unsupported toast tests ready
+
+#### joan — 2026-08-13T00:17:59.207Z
+[plan-rubric] PROCEED (Commit: 8984d14e) toast gate before emit
+
+#### hedy — 2026-08-13T00:16:19.158Z
+`origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ `8984d14e09ec7af614fd0973b3ad066d995dceef` · plan ready
+
+---
+
 # Unsupported experience shape — toast, no emit (Clarify candidate_data.artifacts.base_resume.experience node)
 
 **Linear:** [AST-1350](https://linear.app/astralcareermatch/issue/AST-1350/unsupported-experience-shape-toast-no-emit-clarify)
@@ -275,3 +333,136 @@ context_tokens≈48000
 **2026-08-13** — Radia CLEAN (no fix-now / discuss). Advisory left as-is (ftr-aggregate diff noise; AST-1353 piggyback; legacy fixture hygiene for Betty; Session/Materials out of scope).
 
 §9a: `origin/dev` dry-run clean. `origin/ftr/AST-1345-clarify-candidate-data-artifacts-base-resume-experience-node` merge-tree previously flagged overlap on `candidate.py` / `JobAnalysisReportModal.tsx` / `config.py` — resolved by merging ftr onto sub (`merge-resume(AST-1350)`); both dry-runs clean after (line-anchored conflict check).
+
+## Bug: AST-1545 — Fix false popup-blocked toast on Print / Open HTML
+
+### As-is
+
+On Recommended JAR Print Resume (and Base Resume Print, Session Open HTML, Session Cover Open HTML), validate-then-blob succeeds and the HTML tab opens, but the UI still toasts `Popup blocked — allow popups to open the HTML tab.` because each handler calls `window.open(blobUrl, "_blank", "noopener,noreferrer")` then `if (!win)` → toast — and with those features the browser returns `null` even when the tab opened.
+
+### To-be
+
+When the HTML tab actually opens, no popup-blocked toast. That exact toast only appears when `window.open` truly fails to open a tab (real popup block).
+
+### Repro
+
+1. On `/jobs/recommended`, open a job JAR and click Print Resume for a candidate with a valid (emit-ok) resume.
+2. Observe: a new HTML tab loads the resume, **and** an error toast shows `Popup blocked — allow popups to open the HTML tab.` (diagnostic: route `/jobs/recommended`).
+3. Same false toast on Base Resume Print, Admin Session Resume Open HTML, and Admin Session Cover Open HTML after a successful blob open.
+
+### Root cause
+
+The four validate-then-blob handlers treat a null return from `window.open(..., "noopener,noreferrer")` as "blocked." Spec/browsers return `null` for opens that include `noopener` / `noreferrer` even when the tab succeeded, so the check is a false positive while the page still loads.
+
+### Proposed change
+
+⚠️ **Decision:** Open the blob URL with `window.open(blobUrl, "_blank")` — **no** features string. If `win` is non-null, set `win.opener = null` immediately (noopener-equivalent isolation without forcing a null return). If `win` is null, toast the existing literal `Popup blocked — allow popups to open the HTML tab.` Keep fetch/validate, blob creation, and `revokeObjectURL` timeout unchanged. Apply the same three-line success-vs-blocked decision at all four call sites (no new shared util file — Component scope lists only these four modules).
+
+1. In `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` `handlePrintResume`: replace
+   `const win = window.open(blobUrl, "_blank", "noopener,noreferrer")` + `if (!win) { setToast({ text: "Popup blocked — allow popups to open the HTML tab.", variant: "error" }) }`
+   with: open without features; on success `win.opener = null`; on null toast the same blocked string. Do not change the fetch-then-blob / persist-structure path above.
+2. In `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` `handlePrint`: identical open / `opener = null` / blocked-toast decision after the blob URL is created.
+3. In `src/ui/frontend/src/pages/AdminSessionResumePaste.tsx` `handleOpenHtml`: identical decision after blob create.
+4. In `src/ui/frontend/src/pages/AdminSessionCoverLetter.tsx` `handleOpenHtml`: identical decision after blob create.
+
+Do **not** change print HTML emit, API error mapping, unsupported-shape toast text, or any non-blob `window.open` (e.g. job_link / cover Print URL opens outside this pattern).
+
+### Blast radius
+
+- Same four UI surfaces that share this toast string (JAR Print Resume introduced the Recommended report path in AST-1350 Stage 2; Base/Session patterns from earlier tickets).
+- Real popup-block path still depends on a null `window.open` return when features are omitted — that remains the blocked signal.
+- Fetch failure / empty HTML paths are untouched; unsupported-experience 400 + exact toast from AST-1350 still holds.
+
+### What must still hold
+
+- AST-1350 AC: unsupported/non-array `experience` still toasts exact `unsupported resume structure, please regenerate`, opens no HTML tab, and does not emit Experience-omitted HTML (core gate + API 400 unchanged).
+- Successful Print / Open HTML still opens a blob tab with usable HTML.
+- A truly blocked popup still shows `Popup blocked — allow popups to open the HTML tab.` when no tab opens.
+- New tab stays isolated from the opener (`opener` cleared after open).
+
+## Resolution — AST-1545
+
+**2026-08-31** — Radia CLEAN / PROCEED (`fdc47334`). Four-site blob-open fix matches plan. Tests/bible on sibling AST-1546 (Docs-Acceptance for this product-only sub). §3h clean-review shortcut → User Testing (no resolve-child).
+
+## Bug: AST-1546 — gap: align Print blob-open tests with false popup-blocked toast fix
+
+### As-is
+
+Frontend component/page tests and bible rows still require `window.open(blobUrl, "_blank", "noopener,noreferrer")` on the four validate-then-blob Print / Open HTML success paths. JAR Print Resume success spies mock `window.open` → `null`, so there is no repro that a successful tab omits `Popup blocked — allow popups to open the HTML tab.` After AST-1545’s open-without-features + `opener = null` product fix, those third-arg asserts break and a null mock would still toast “blocked” on an otherwise successful print.
+
+### To-be
+
+Bible + tests match AST-1545’s blob-open shape (`window.open(blobUrl, "_blank")` with no features string; `win.opener = null` on success). At least one repro fails if success still surfaces the popup-blocked toast. Non-blob opens (e.g. JAR Print Cover Letter URL) stay on their existing `noopener,noreferrer` asserts.
+
+### Repro
+
+Against product tip that includes AST-1545 (open without features + `opener = null`):
+
+1. Run `test_JobAnalysisReportModal.test.tsx` — **Print Resume fetch-then-blob…** with current third-arg assert → fails (call shape) or, if only the mock returns `null`, success path still toasts popup-blocked.
+2. Same third-arg breakage on `test_ArtifactsBaseResumeContent` **AST-1337: … success opens blob tab**, `test_AdminSessionResumePaste` Open HTML success, `test_AdminSessionCoverLetter` Open HTML success.
+
+### Root cause
+
+`[board-betty] TESTS: REVISE` on AST-1545: coverage locked the old `noopener,noreferrer` third arg and never asserted “success ⇒ no popup-blocked toast.” Gap sibling owns the test/bible delta; AST-1545 owns product UI only.
+
+### Proposed change
+
+⚠️ **Decision:** This ticket changes **only** `docs/test-bible/frontend/components.md`, `docs/test-bible/frontend/pages.md`, and the matching component/page tests under `tests/component/frontend/`. Do **not** edit product UI (`JobAnalysisReportModal.tsx` / Base Resume / Session pages) — that is AST-1545. Do **not** change non-blob `window.open` asserts (JAR **Print Cover Letter** `/candidate/cover/…` with `"noopener,noreferrer"` stays).
+
+1. **`tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx`**
+   - In **Print Resume fetch-then-blob; Print Cover still window.open (AST-1350)** and every other Print Resume success path that currently expects `toHaveBeenCalledWith("blob:…", "_blank", "noopener,noreferrer")` (including AST-1489 / AST-1490 Print Resume success spies around those blob asserts): change the blob-open expectation to `toHaveBeenCalledWith(<blobUrl>, "_blank")` — **no** third-arg `"noopener,noreferrer"`.
+   - For those success paths: mock `window.open` to return a mutable fake window `{ opener: {} }` (not `null`). After Print Resume succeeds, assert `fakeWin.opener === null` and that the UI does **not** show text `Popup blocked — allow popups to open the HTML tab.` (same `getByText` / `queryByText` style as the existing unsupported-toast assert). That no-blocked-toast check is the **bug-repro** Betty flagged.
+   - Leave Print Cover Letter `toHaveBeenCalledWith("/candidate/cover/…", "_blank", "noopener,noreferrer")` unchanged.
+   - Leave **AST-1350: Print Resume unsupported toast — no tab** unchanged (still no `window.open` on 400).
+
+2. **`tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`**
+   - In **AST-1337: Print disabled with no candidate; success opens blob tab (§6c)**: replace the three-arg `window.open` expect with two-arg `("_blank")` only; assert returned stub’s `opener` is null after success; assert popup-blocked toast text is absent. Keep error/empty paths “never open a tab.”
+
+3. **`tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx`**
+   - Open HTML success: same two-arg open expect + `opener === null` + no popup-blocked toast. Error path unchanged.
+
+4. **`tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx`**
+   - Open HTML success: same two-arg open expect + `opener === null` + no popup-blocked toast. Error/empty paths unchanged.
+
+5. **`docs/test-bible/frontend/components.md`** — under **AST-1350 · AST-1345**: note blob Print Resume opens with `window.open(url, "_blank")` then `opener = null` (no features string); success must not toast popup-blocked; point the existing table/run command at the revised fetch-then-blob success case (and the no-blocked-toast repro). Do not claim Cover Letter print changed.
+
+6. **`docs/test-bible/frontend/pages.md`** — under **AST-1337**, **AST-987**, and **AST-1025** blob-open rows: drop/rewrite any implication that success uses `"noopener,noreferrer"`; record success-path no-blocked-toast + `opener` cleared. Keep failed/empty → no tab.
+
+### Blast radius
+
+- Same four UI surfaces AST-1545 fixes; tests will fail against pre-AST-1545 product (third-arg / null-mock toast) and pass once AST-1545 is on the tree under test.
+- AST-1489 / AST-1490 Print Resume success spies that reuse the third-arg blob assert must be updated in the same pass or they stay red.
+- Unsupported-shape toast / no-tab coverage (AST-1350) and non-blob Cover `window.open` stay load-bearing.
+
+### What must still hold
+
+- AST-1350: unsupported experience still toasts exact `unsupported resume structure, please regenerate` with no tab.
+- Failed / empty HTML paths still never call `window.open`.
+- AST-1545 product behavior: success opens blob tab without popup-blocked toast; real null open still can toast blocked.
+- No product UI edits on this ticket.
+
+## Resolution — AST-1546
+
+**2026-08-31** — Radia discuss: product UI was stacked on this gap sub (`code(AST-1546)` cherry-pick of AST-1545’s four blob-open handlers). Reverted those product files so this publish tip is tests/bible (+ plan-fix doc) only. Product remains on sibling `origin/sub/AST-1542/AST-1545-fix-false-popup-blocked-toast-on-print-open-html`. Betty `test(AST-1546)` / `merge-tests(AST-1546)` retained.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/be242495b452ed2d361f07fbebd9ed9a/d858b81a-8341-46e0-b3c6-696490b1d2f1/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/594d18ff-2183-43ec-b60a-ed0c3ea8e1a1/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/be242495b452ed2d361f07fbebd9ed9a/3a3b5524-54e1-429e-af83-63d3f0936ba8/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1542 (parent) | ftr/AST-1542-erroneous-error-occurs-for-print-buttons |
+| AST-1545 | sub/AST-1542/AST-1545-fix-false-popup-blocked-toast-on-print-open-html |
+| AST-1546 | sub/AST-1542/AST-1546-gap-align-print-blob-open-tests |
+
+**Epic worktree:** `astral-AST-1542/` — one active sub checked out at a time.

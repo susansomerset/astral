@@ -11,6 +11,7 @@ _run_batch_consult: shared scaffolding for batch AI tasks (ID reconciliation, au
 qualify_job_listings: batch job list screen (Pattern A) — thin wrapper over _run_batch_consult.
 qualify_meteorite: meteorite pre-AI enrich (Pattern A, fields) — thin wrapper over _run_batch_consult.
 enrich_meteorite_land_packet: land pre-create packet enrich via same qualify_meteorite task_key (no claim/transition).
+invoke_stage_meteorite: ingress classify via stage_meteorite do_task (blob + source handle; no claim/land) (AST-1530).
 evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over _run_batch_consult.
 grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(task_key=grade_*).
 """
@@ -40,6 +41,7 @@ from src.utils.config import (
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     METEORITE_CONFIG,
+    STAGE_METEORITE_CONFIG,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
     dispatch_row_task_key,
@@ -192,8 +194,30 @@ def _rubric_criteria_for_cfg(candidate_id: str, cfg: dict) -> list:
     return rubric_criteria_for_task(candidate_id, owner)
 
 
-def _vector_labels_map(rubric_criteria: list) -> Dict[str, str]:
-    return {item["code"]: item["label"] for item in rubric_criteria if item.get("code") and item.get("label")}
+def _vector_labels_map(rubric_criteria: list, *, debug: bool = False) -> Dict[str, str]:
+    """Map rubric code → label for encoded grade decode. First-wins on duplicate codes (AST-1513)."""
+    pairs: List[Tuple[str, str]] = []
+    for item in rubric_criteria or []:
+        if not isinstance(item, dict):
+            continue
+        code = item.get("code")
+        label = item.get("label")
+        if code and label:
+            pairs.append((str(code).strip().upper(), str(label).strip()))
+    by_code: Dict[str, List[str]] = {}
+    for code, label in pairs:
+        by_code.setdefault(code, []).append(label)
+    dupes = {code: labels for code, labels in by_code.items() if len(labels) > 1}
+    if dupes:
+        detail = "; ".join(f"{code}→{labels!r}" for code, labels in sorted(dupes.items()))
+        logger.warning("duplicate rubric codes: %s", detail)
+        if debug:
+            logger.debug_detail(detail)
+    # First-wins keeps decode stable until duplicate rows are data-fixed (not silent last-wins).
+    out: Dict[str, str] = {}
+    for code, label in pairs:
+        out.setdefault(code, label)
+    return out
 
 
 def _lookup_rubric_reason_for_grade(rubric_criteria: list, vector_label: str, letter: str) -> str:
@@ -1239,7 +1263,7 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     # Encoded consult tasks need batch_entities + vector_labels for decode (same as _run_batch_consult).
     cd = (ctx or {}).get("candidate_data", {})
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
-    vector_labels = _vector_labels_map(rubric_criteria)
+    vector_labels = _vector_labels_map(rubric_criteria, debug=debug)
     job_row = dict(job)
     task_ctx: Dict[str, Any] = {**(ctx or {}), "batch_entities": [job_row], "vector_labels": vector_labels, "batch_size": 1}
 
@@ -1402,7 +1426,7 @@ async def _run_batch_consult(
     live_content = assemble_fn(jobs)
     # Build code→label map from candidate's rubric so _decode_payload can hydrate vector names
     rubric_criteria = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
-    vector_labels = _vector_labels_map(rubric_criteria)
+    vector_labels = _vector_labels_map(rubric_criteria, debug=debug)
     # batch_entities + vector_labels passed so do_task/_decode_payload can map pos→id and code→label
     cid = _candidate_id_from_ctx(ctx)
     task_ctx = {**(ctx or {}), "batch_size": len(jobs), "batch_entities": jobs, "vector_labels": vector_labels}
@@ -1987,6 +2011,116 @@ async def enrich_meteorite_land_packet(
             )
 
     return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
+
+
+async def invoke_stage_meteorite(
+    candidate_id: str,
+    blob: str,
+    *,
+    source_kind: str,
+    source_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Ingress classify via stage_meteorite do_task (AST-1530). No claim, no land."""
+    empty = {"success": False, "outcome": None, "jobs": [], "batch_id": None}
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return {**empty, "error": "candidate_id is required"}
+    kind = (source_kind or "").strip()
+    if kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"]:
+        return {**empty, "error": "invalid source_kind"}
+    sid = (source_id or "").strip()
+    if not sid:
+        return {**empty, "error": "source_id is required"}
+    body = blob if isinstance(blob, str) else ""
+    if not body.strip():
+        return {**empty, "error": "blob is required"}
+
+    # Source handle for core source-refs + Style D; Ruth classifies CONTENT.
+    live_content = f"SOURCE_KIND: {kind}\nSOURCE_ID: {sid}\nCONTENT:\n{body}"
+    task_key = STAGE_METEORITE_CONFIG["task_key"]
+    batch_id = f"{task_key}-stage-{uuid4()}"
+    do_index = f"{task_key}_batch_{batch_id}"
+    task_ctx: Dict[str, Any] = {**(ctx or {}), "astral_candidate_id": cid}
+    if ctx and ctx.get("candidate_data") is not None:
+        task_ctx["candidate_data"] = ctx["candidate_data"]
+    if ctx and ctx.get("candidate_api_key") is not None:
+        task_ctx["candidate_api_key"] = ctx["candidate_api_key"]
+
+    log_batch_id.set(batch_id)
+    try:
+        result = await do_task(
+            task_key=task_key,
+            live_content=live_content,
+            index=do_index,
+            ctx=task_ctx,
+            debug=debug,
+        )
+    finally:
+        log_batch_id.set(None)
+
+    if not result.get("success"):
+        if debug:
+            logger.set_debug_flag(True)
+            logger.debug_index(
+                func="consult.invoke_stage_meteorite",
+                index=1,
+                total=1,
+                identifier=cid,
+                outcome="stage_failed",
+            )
+            logger.debug_detail(
+                f"batch_id={batch_id} error={result.get('error')!r}"
+            )
+        return {
+            "success": False,
+            "error": result.get("error") or "do_task failed",
+            "outcome": None,
+            "jobs": [],
+            "batch_id": batch_id,
+            "raw": result,
+        }
+
+    parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+    raw_outcome = parsed.get("outcome")
+    outcome = raw_outcome.strip() if isinstance(raw_outcome, str) else ""
+    raw_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
+    jobs = [j for j in raw_jobs if isinstance(j, dict)]
+
+    if outcome not in STAGE_METEORITE_CONFIG["outcomes"]:
+        return {
+            "success": False,
+            "error": "invalid stage outcome",
+            "outcome": outcome or None,
+            "jobs": [],
+            "batch_id": batch_id,
+            "raw": result,
+        }
+    if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+        jobs = []
+
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_index(
+            func="consult.invoke_stage_meteorite",
+            index=1,
+            total=1,
+            identifier=cid,
+            outcome=outcome,
+        )
+        logger.debug_detail(
+            f"batch_id={batch_id} job_count={len(jobs)} source_kind={kind}"
+        )
+
+    return {
+        "success": True,
+        "outcome": outcome,
+        "jobs": jobs,
+        "error": None,
+        "batch_id": batch_id,
+        "raw": result,
+    }
 
 
 async def qualify_meteorite(

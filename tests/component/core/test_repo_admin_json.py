@@ -58,121 +58,32 @@ class TestLoadRepoAdminJsonFile:
         assert repo_json_mod.load_repo_admin_json_file("agent") == rows
 
 
-class TestAst1505RepoAdminJsonCompareAndWrite:
-    """AST-1505: structured compare, per-table export; boot apply removed."""
-
-    def test_startup_apply_entry_point_removed(self) -> None:
-        assert "apply_repo_admin_json_at_startup" not in repo_json_mod.__all__
-        assert not hasattr(repo_json_mod, "apply_repo_admin_json_at_startup")
-
-    def _patch_repo_paths(
-        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
-    ) -> tuple[Path, Path]:
-        agent_path = tmp_path / "admin" / "agent.json"
-        task_path = tmp_path / "admin" / "agent_task.json"
-        monkeypatch.setattr(
-            repo_json_mod,
-            "get_repo_admin_json_path",
-            lambda key: agent_path if key == "agent" else task_path,
-        )
-        return agent_path, task_path
-
-    def test_comparison_empty_when_db_matches_repo_file(
-        self, sqlite_in_memory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+class TestApplyRepoAdminJsonAtStartup:
+    @pytest.mark.parametrize("deploy_env", ["staging", "production", "local"])
+    def test_startup_apply_is_noop_on_all_deploy_envs(
+        self, monkeypatch: pytest.MonkeyPatch, deploy_env: str,
     ) -> None:
-        agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
-        db = sqlite_in_memory
-        db.save_agent("agent_a", "prompt-body", brain_setting="Medium")
-        conn = db._get_connection()
-        try:
-            file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
-        finally:
-            conn.close()
-        _write_json(agent_path, [file_row])
-        _write_json(task_path, [])
-
-        cmp = repo_json_mod.get_repo_admin_json_table_comparison("agent")
-
-        assert cmp["diverged"] is False
-        assert cmp["only_in_database"] == []
-        assert cmp["only_in_file"] == []
-        assert cmp["changed_rows"] == []
-
-    def test_comparison_changed_rows_after_db_edit(
-        self, sqlite_in_memory, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        agent_path, task_path = self._patch_repo_paths(monkeypatch, tmp_path)
-        db = sqlite_in_memory
-        db.save_agent("agent_a", "on-disk", brain_setting="Medium")
-        conn = db._get_connection()
-        try:
-            file_row = db.fetch_agent_repo_json_export_rows(conn)[0]
-        finally:
-            conn.close()
-        _write_json(agent_path, [file_row])
-        _write_json(task_path, [])
-        db.save_agent("agent_a", "edited-in-db", brain_setting="Medium")
-
-        cmp = repo_json_mod.get_repo_admin_json_table_comparison("agent")
-
-        assert cmp["diverged"] is True
-        assert cmp["only_in_database"] == []
-        assert cmp["only_in_file"] == []
-        assert len(cmp["changed_rows"]) == 1
-        assert cmp["changed_rows"][0]["row_key"] == "agent_a"
-        fields = {f["field"]: f for f in cmp["changed_rows"][0]["fields"]}
-        assert fields["content"]["file_value"] == "on-disk"
-        assert fields["content"]["database_value"] == "edited-in-db"
-
-    def test_export_table_to_file_writes_one_table_only(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        agent_path = tmp_path / "admin" / "agent.json"
-        task_path = tmp_path / "admin" / "agent_task.json"
-        agent_rows = [
-            {
-                "agent_id": "estelle",
-                "content": "prompt",
-                "brain_setting": "Medium",
-                "temperature": 0.2,
-                "max_tokens": 100,
-                "updated_at": "2026-06-24 00:00:00",
-            },
-        ]
-        task_rows = [{"task_key": "craft_resume_base", "current": 1}]
+        # AST-1502 / AST-1497 kill-switch: boot-time repo JSON apply disabled in every env.
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", deploy_env)
         conn = MagicMock()
-        task_path.parent.mkdir(parents=True, exist_ok=True)
-        task_path.write_text('["unchanged"]\n', encoding="utf-8")
-
+        load = MagicMock()
+        apply_agent = MagicMock()
+        apply_task = MagicMock()
         monkeypatch.setattr(repo_json_mod.database, "_get_connection", lambda: conn)
+        monkeypatch.setattr(repo_json_mod, "load_repo_admin_json_file", load)
+        monkeypatch.setattr(repo_json_mod.database, "apply_agent_repo_json_startup", apply_agent)
         monkeypatch.setattr(
-            repo_json_mod,
-            "_fetch_db_repo_json_rows",
-            lambda _c, key: agent_rows if key == "agent" else task_rows,
-        )
-        monkeypatch.setattr(
-            repo_json_mod,
-            "get_repo_admin_json_path",
-            lambda key: agent_path if key == "agent" else task_path,
+            repo_json_mod.database, "apply_agent_task_repo_json_startup", apply_task,
         )
 
-        result = repo_json_mod.export_repo_admin_json_table_to_file("agent")
+        repo_json_mod.apply_repo_admin_json_at_startup()
 
-        assert result == {
-            "table_key": "agent",
-            "row_count": 1,
-            "repo_relative_path": repo_json_mod.REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["repo_relative_path"],
-        }
-        assert json.loads(agent_path.read_text(encoding="utf-8")) == agent_rows
-        assert task_path.read_text(encoding="utf-8") == '["unchanged"]\n'
-
-    def test_comparison_unknown_table_raises(self) -> None:
-        with pytest.raises(ValueError, match="unknown repo admin JSON table"):
-            repo_json_mod.get_repo_admin_json_table_comparison("__nope__")
-
-    def test_export_unknown_table_raises(self) -> None:
-        with pytest.raises(ValueError, match="unknown repo admin JSON table"):
-            repo_json_mod.export_repo_admin_json_table_to_file("__nope__")
+        load.assert_not_called()
+        apply_agent.assert_not_called()
+        apply_task.assert_not_called()
+        conn.execute.assert_not_called()
+        conn.commit.assert_not_called()
+        conn.close.assert_not_called()
 
 
 class TestExportRepoAdminJsonToFiles:

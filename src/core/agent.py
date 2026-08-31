@@ -75,6 +75,7 @@ from src.utils.config import (
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
     JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
+    JOB_ARTIFACT_BODY_REPLICA_BY_TASK,
     resolve_task_key_for_content,
     is_task_alias,
     METEORITE_EMAIL_PARSE_CONFIG,
@@ -286,6 +287,13 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
 
         if meta and not with_meta and not with_notes:
             raise ValueError(f"[{task_key}] unexpected trailing content in grades-only line: {line!r}")
+
+        codes = [seg[:2] for seg in grade_segs]
+        if len(codes) != len(set(codes)):
+            dupes = sorted({c for c in codes if codes.count(c) > 1})
+            raise ValueError(
+                f"[{task_key}] duplicate vector code {','.join(dupes)} in encoded line: {line!r}"
+            )
 
         grade_rows: List[Dict[str, Any]] = []
         for seg in grade_segs:
@@ -1436,27 +1444,6 @@ def _validation_failure_audit_body(err: str, raw_text: Optional[str], parsed: An
     """RESPONSE row body for schema/catalog failures — error message always visible (AST-594)."""
     body = _audit_response_body(raw_text, parsed, None)
     return f"Validation failed: {err}\n\n--- model response ---\n{body}"
-
-
-def _draft_job_resume_adherence_validation_err(
-    task_config: dict,
-    parsed: Any,
-    index: Optional[str],
-    *,
-    debug: bool = False,
-) -> Optional[str]:
-    """AST-1508: validate per-code advice adherence against job resume_advice artifact."""
-    if not task_config.get("advice_adherence_required"):
-        return None
-    if not index:
-        return "Job id required for draft_job_resume advice adherence validation"
-    from src.core.candidate import validate_draft_job_resume_advice_adherence
-    from src.core.tracker import get_job_resume_advice_codes
-
-    expected, load_err = get_job_resume_advice_codes(index)
-    if load_err:
-        return load_err
-    return validate_draft_job_resume_advice_adherence(parsed, expected or [], debug=debug)
 
 
 def _provider_failure_audit_body(
@@ -2787,30 +2774,6 @@ async def do_task(
                 return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
                         "error": cat_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
 
-            adherence_err = _draft_job_resume_adherence_validation_err(
-                task_config, parsed, index, debug=debug,
-            )
-            if adherence_err:
-                logger.error("do_task validation failed. task_key=%r error=%s", task_key, adherence_err)
-                if log_batch_id.get():
-                    flush_log_buffer()
-                if _should_store:
-                    try:
-                        _store_response_block(
-                            entity_type,
-                            task_key,
-                            batch_id,
-                            _failure_response_block_data(
-                                index, _validation_failure_audit_body(adherence_err, raw_text, parsed)
-                            ),
-                            index=index,
-                        debug=debug)
-                    except Exception:
-                        logger.debug("_store_response_block failed", exc_info=True)
-                _close_hop_ledger(success=False, clear_log=True, failure_error=str(adherence_err))
-                return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                        "error": adherence_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
-
         inner_payload = _inner_task_payload(parsed)
         if isinstance(inner_payload, dict):
             conf_err = _validate_grade_confidence_in_payload(inner_payload, task_key)
@@ -2874,43 +2837,6 @@ async def do_task(
         if isinstance(parsed, list):
             parsed = "\n".join(str(item) for item in parsed)
         result["parsed_response"] = parsed
-
-    # AST-1507: validate coded RESUME BRIEF list on advise text response (post-unwrap).
-    if (
-        task_key == "advise_job_resume"
-        and task_config.get("resume_advice_coded_list")
-        and isinstance(parsed, str)
-    ):
-        from src.core.candidate import validate_advise_job_resume_coded_list
-
-        advice_err = validate_advise_job_resume_coded_list(parsed, debug=debug)
-        if advice_err:
-            logger.error("do_task validation failed. task_key=%r error=%s", task_key, advice_err)
-            if log_batch_id.get():
-                flush_log_buffer()
-            if _should_store:
-                try:
-                    _store_response_block(
-                        entity_type,
-                        task_key,
-                        batch_id,
-                        _failure_response_block_data(
-                            index, _validation_failure_audit_body(advice_err, raw_text, parsed)
-                        ),
-                        index=index,
-                        debug=debug,
-                    )
-                except Exception:
-                    logger.debug("_store_response_block failed", exc_info=True)
-            _close_hop_ledger(success=False, clear_log=True, failure_error=str(advice_err))
-            return {
-                "success": False,
-                "api_response": result.get("api_response"),
-                "parsed_response": None,
-                "error": advice_err,
-                "raw_response": parsed,
-                "timesheet": result.get("timesheet", {}),
-            }
 
     output_type = task_config.get("output_type", "")
     if debug and "_encoded" in output_type:
@@ -3025,29 +2951,6 @@ async def do_task(
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
                 return {"success": False, "api_response": result.get("api_response"),
                         "parsed_response": None, "error": cat_err, "timesheet": result.get("timesheet", {})}
-            adherence_err = _draft_job_resume_adherence_validation_err(
-                task_config, parsed, index, debug=debug,
-            )
-            if adherence_err:
-                logger.error("do_task validation failed after decode. task_key=%r error=%s", task_key, adherence_err)
-                if log_batch_id.get():
-                    flush_log_buffer()
-                if _should_store:
-                    try:
-                        _store_response_block(
-                            entity_type,
-                            task_key,
-                            batch_id,
-                            _failure_response_block_data(
-                                index, _validation_failure_audit_body(adherence_err, raw_text, parsed)
-                            ),
-                            index=index,
-                        debug=debug)
-                    except Exception:
-                        logger.debug("_store_response_block failed", exc_info=True)
-                _close_hop_ledger(success=False, clear_log=True, failure_error=str(adherence_err))
-                return {"success": False, "api_response": result.get("api_response"),
-                        "parsed_response": None, "error": adherence_err, "timesheet": result.get("timesheet", {})}
         if isinstance(parsed, dict):
             conf_err = _validate_grade_confidence_in_payload(parsed, task_key)
             if conf_err:
@@ -3131,7 +3034,7 @@ async def do_task(
                     completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 )
 
-    # AST-1099: pin RESPONSE id into job_data.artifacts after successful store (mid-chain + terminal).
+    # AST-1099/1548: pin proposed_answers; body replica for finalize resume/cover (before run_next).
     resp_id = None
     store_failed = False
     if _should_store and raw_text:
@@ -3143,24 +3046,38 @@ async def do_task(
             store_failed = True
             logger.debug("_store_response_block failed", exc_info=True)
 
+    replica_slot = JOB_ARTIFACT_BODY_REPLICA_BY_TASK.get(task_key)
     pin_slot = JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK.get(task_key)
-    if pin_slot and result.get("success"):
+    if result.get("success") and replica_slot:
+        if index and resp_id:
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            try:
+                if task_key == "finalize_job_resume":
+                    from src.core.tracker import persist_finalize_job_resume_content
+                    persist_finalize_job_resume_content(index, parsed)
+                elif task_key == "finalize_cover_letter":
+                    from src.core.tracker import persist_finalize_cover_letter_content
+                    persist_finalize_cover_letter_content(index, parsed)
+            except Exception as persist_err:
+                logger.error(
+                    "persist_job_artifact_body_replica failed task=%s index=%s err=%s",
+                    task_key,
+                    index,
+                    persist_err,
+                )
+        elif debug:
+            reason = (
+                "store_failed" if store_failed
+                else ("missing_index" if not index else "missing_resp_id")
+            )
+            _do_task_debug_logger(debug).debug_detail(
+                f"artifact_body_replica key={replica_slot} skipped reason={reason}"
+            )
+    elif pin_slot and result.get("success"):
         if index and resp_id:
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             from src.core.tracker import pin_job_artifact_agent_data_id
             pin_job_artifact_agent_data_id(index, pin_slot, resp_id, debug=debug)
-            # AST-1428: sibling resume blob after pin; do not re-enable persist_job_artifact_from_parsed.
-            if task_key == "finalize_job_resume":
-                try:
-                    from src.core.tracker import persist_finalize_job_resume_content
-                    persist_finalize_job_resume_content(index, parsed)
-                except Exception as persist_err:
-                    logger.error(
-                        "persist_finalize_job_resume_content failed task=%s index=%s err=%s",
-                        task_key,
-                        index,
-                        persist_err,
-                    )
         elif debug:
             reason = (
                 "store_failed" if store_failed
@@ -3170,40 +3087,21 @@ async def do_task(
                 f"artifact_pin key={pin_slot} skipped reason={reason}"
             )
 
-    # AST-1508: retain draft per-code advice adherence as job artifact metadata (best-effort).
+    # AST-1523: retain draft freeform notes as job artifact metadata (best-effort; do not fail hop).
     if task_key == "draft_job_resume" and result.get("success") and index:
         try:
-            from src.core.tracker import persist_draft_job_resume_advice_adherence
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            from src.core.tracker import persist_draft_job_resume_notes
 
-            saved_items = persist_draft_job_resume_advice_adherence(index, parsed)
-            if debug and saved_items:
-                art_key = TASK_CONFIG["draft_job_resume"]["advice_adherence_artifact_key"]
+            saved = persist_draft_job_resume_notes(index, parsed)
+            if debug and saved:
+                art_key = TASK_CONFIG["draft_job_resume"]["notes_artifact_key"]
                 _do_task_debug_logger(debug).debug_detail(
-                    f"recorded artifact_key={art_key} item_count={len(saved_items)}"
+                    f"recorded artifact_key={art_key}"
                 )
         except Exception as persist_err:
             logger.error(
-                "persist_draft_job_resume_advice_adherence failed task=%s index=%s err=%s",
-                task_key,
-                index,
-                persist_err,
-            )
-
-    # AST-1507: persist coded resume advice as job artifact metadata (best-effort after success).
-    if task_key == "advise_job_resume" and result.get("success") and index:
-        try:
-            from src.core.tracker import persist_advise_job_resume_coded_advice
-
-            advice_text = parsed if isinstance(parsed, str) else ""
-            saved_items = persist_advise_job_resume_coded_advice(index, advice_text)
-            if debug and saved_items:
-                art_key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
-                _do_task_debug_logger(debug).debug_detail(
-                    f"recorded artifact_key={art_key} item_count={len(saved_items)}"
-                )
-        except Exception as persist_err:
-            logger.error(
-                "persist_advise_job_resume_coded_advice failed task=%s index=%s err=%s",
+                "persist_draft_job_resume_notes failed task=%s index=%s err=%s",
                 task_key,
                 index,
                 persist_err,
@@ -3336,7 +3234,8 @@ async def do_task(
             effective_next = ""
 
     if not effective_next:
-        # AST-1099: finalize_* hops pin agent_data_id (above); no terminal body-copy here.
+        # AST-1548: finalize resume/cover body replicas (+ proposed_answers pin) already ran above;
+        # do not re-enable terminal persist_job_artifact_from_parsed here.
         if result.get("success") and index:
             _maybe_graduate_dispatch_chain(
                 job_id=index,
@@ -3973,6 +3872,11 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         entry = {**e, "blocks": blocks}
 
+        # AST-1550: optional display name from live agent_task (omit when blank).
+        task_name = ((get_agent_task(task_key) or {}).get("task_name") or "").strip()
+        if task_name:
+            entry["task_name"] = task_name
+
         if is_scored:
             grades_key = task_cfg.get("grades_key")
             data_blob = entity.get("job_data") if entity.get("astral_job_id") else entity.get("company_data")
@@ -4041,9 +3945,19 @@ def get_agent_data(
     return result
 
 
-def list_agent_data_runs(*, debug: bool = False) -> List[Dict[str, Any]]:
-    """Ad Hoc import list: one dict per stored batch, newest first."""
-    rows = list_agent_data_batches()
+def list_agent_data_runs(
+    *,
+    candidate_id: Optional[str] = None,
+    task_key: Optional[str] = None,
+    limit: Optional[int] = None,
+    debug: bool = False,
+) -> List[Dict[str, Any]]:
+    """Ad Hoc import list: filtered/capped agent_data batches, newest first."""
+    rows = list_agent_data_batches(
+        candidate_id=candidate_id,
+        task_key=task_key,
+        limit=limit,
+    )
     if debug:
         dbg = get_logger(__name__, debug_flag=True)
         total = len(rows)
@@ -4051,7 +3965,7 @@ def list_agent_data_runs(*, debug: bool = False) -> List[Dict[str, Any]]:
             batch_id = row.get("batch_id") or ""
             created_at = row.get("created_at")
             entity_id = row.get("entity_id")
-            task_key = row.get("task_key")
+            row_task_key = row.get("task_key")
             dbg.debug_index(
                 func="list_agent_data_runs",
                 index=i,
@@ -4060,11 +3974,11 @@ def list_agent_data_runs(*, debug: bool = False) -> List[Dict[str, Any]]:
                 outcome="listed",
             )
             dbg.debug_detail(
-                f"found created_at={created_at!r} entity_id={entity_id!r} task_key={task_key!r}"
+                f"found created_at={created_at!r} entity_id={entity_id!r} task_key={row_task_key!r}"
             )
             dbg.debug_detail(
                 f"recorded batch_id={batch_id!r} created_at={created_at!r} "
-                f"entity_id={entity_id!r} task_key={task_key!r}"
+                f"entity_id={entity_id!r} task_key={row_task_key!r}"
             )
     return rows
 

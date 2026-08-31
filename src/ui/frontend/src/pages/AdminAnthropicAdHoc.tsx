@@ -35,6 +35,10 @@ const PREVIEW_TABS: { key: PreviewKey; label: string }[] = [
   { key: "live_content", label: "Live Content" },
 ]
 
+// Layout mirrors of App.css .list-page-table th/td — used only to size the picker viewport.
+const ADHOC_IMPORT_PICKER_HEAD_PX = 33
+const ADHOC_IMPORT_PICKER_ROW_PX = 29
+
 interface TaskSummary {
   task_key: string
   user_prompt_len?: number
@@ -125,12 +129,23 @@ export default function AnthropicAdHoc() {
   const [selectedImportBatchId, setSelectedImportBatchId] = useState<string>("")
   const [importEntityLock, setImportEntityLock] = useState<string | null>(null)
   const [confirmLoad, setConfirmLoad] = useState<string | null>(null)
+  const [importPickerVisibleRows, setImportPickerVisibleRows] = useState<number | null>(null)
   const saveRef = useRef<HTMLDivElement>(null)
   const isInitialMount = useRef(true)
   const skipCatalogFetchRef = useRef(false)
 
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
+
+  useEffect(() => {
+    api("/api/ui_config")
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(cfg => {
+        const n = cfg?.adhoc_import_picker_visible_rows
+        setImportPickerVisibleRows(typeof n === "number" && n > 0 ? n : null)
+      })
+      .catch(() => setImportPickerVisibleRows(null))
+  }, [])
 
   useEffect(() => {
     const qs = selectedId ? `?candidate_id=${encodeURIComponent(selectedId)}` : ""
@@ -149,13 +164,34 @@ export default function AnthropicAdHoc() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
 
+  // AST-1535: scoped import list — candidate required; optional task_key filter.
   useEffect(() => {
-    api("/api/admin/adhoc/runs")
+    if (!selectedId) {
+      setImportRuns([])
+      setSelectedImportBatchId("")
+      return
+    }
+    const params = new URLSearchParams({ candidate_id: selectedId })
+    if (taskKey) params.set("task_key", taskKey)
+    let cancelled = false
+    api(`/api/admin/adhoc/runs?${params}`)
       .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
-      .then(d => setImportRuns(Array.isArray(d) ? d : []))
-      .catch(e => setToast({ text: e.message, variant: "error" }))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+      .then(d => {
+        if (cancelled) return
+        const rows: ImportRun[] = Array.isArray(d) ? d : []
+        setImportRuns(rows)
+        setSelectedImportBatchId(prev =>
+          prev && rows.some(r => r.batch_id === prev) ? prev : ""
+        )
+      })
+      .catch(e => {
+        if (cancelled) return
+        setImportRuns([])
+        setSelectedImportBatchId("")
+        setToast({ text: e.message, variant: "error" })
+      })
+    return () => { cancelled = true }
+  }, [selectedId, taskKey])
 
   // Dismiss save-as dropdown on outside click
   useEffect(() => {
@@ -471,8 +507,16 @@ export default function AnthropicAdHoc() {
         </div>
       )}
 
-      <div className="list-page-table-wrap" style={{ marginBottom: 16, maxHeight: "none" }}>
-        <table className="list-page-table">
+      <div
+        className="list-page-table-wrap list-page-table-wrap--scroll"
+        style={{
+          marginBottom: 16,
+          maxHeight: importPickerVisibleRows == null
+            ? undefined
+            : ADHOC_IMPORT_PICKER_HEAD_PX + importPickerVisibleRows * ADHOC_IMPORT_PICKER_ROW_PX,
+          overflowY: "auto",
+        }}
+      >        <table className="list-page-table">
           <thead>
             <tr>
               <th>timestamp</th>

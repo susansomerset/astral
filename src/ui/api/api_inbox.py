@@ -13,7 +13,7 @@ from flask import Blueprint, jsonify, request
 from ui.auth import require_admin
 from src.core.inbox import (
     create_meteorite_job_from_inbox_message,
-    get_message_html,
+    get_message_with_assembled_html,
     land_inbox_message_ids,
     list_inbox_messages,
 )
@@ -47,7 +47,7 @@ def inbox_get_message(message_id: str):
     if not mid:
         return jsonify({"error": "message_id is required"}), 400
     try:
-        payload = get_message_html(mid)
+        payload = get_message_with_assembled_html(mid)
     except Exception as e:
         logger.warning("[api_inbox] get failed id=%s: %s", mid, e)
         return jsonify({"error": str(e)}), 502

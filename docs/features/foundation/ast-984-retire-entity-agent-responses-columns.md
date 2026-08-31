@@ -1318,3 +1318,25 @@ Publish ref tip `545900e4`. Diff: `origin/ftr/AST-1423-entity-id-not-populated-f
 
 **Next:** Review Posted → User Testing (§3h clean shortcut; resolve-child skipped).
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/d65b59634830d412931c6cbae6007f1b/c08eded8-0edd-4263-9845-2c4a9d6e11fd/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/a20e397e-df4e-410c-af83-de2caab1015a/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/d65b59634830d412931c6cbae6007f1b/64407f6d-bf0d-4fc5-899a-d779df1bcc93/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1423 (parent) | ftr/AST-1423-entity-id-not-populated-for-all-agent-data-rows |
+| AST-1429 | sub/AST-1423/AST-1429-stamp-entity-id-on-all-agent-data-rows |
+| AST-1431 | sub/AST-1423/AST-1431-gap-tests-for-prompt-row-entity-id-stamp |
+| AST-1486 | sub/AST-1423/AST-1486-feedback-block-type-still-has-null-entity-id |
+
+**Epic worktree:** `astral-AST-1423/` — one active sub checked out at a time.

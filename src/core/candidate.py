@@ -1238,6 +1238,23 @@ def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
     return surfer_consent_dto(candidate_id)
 
 
+def _assert_unique_rubric_codes(criteria: list, artifact_key: str) -> None:
+    """Reject duplicate two-letter codes within one rubric artifact list (AST-1513)."""
+    seen: Dict[str, str] = {}
+    for idx, item in enumerate(criteria):
+        if not isinstance(item, dict):
+            continue
+        label = (item.get("label") or item.get("code") or "").strip() or f"#{idx + 1}"
+        code = (item.get("code") or "").strip() or f"V{idx + 1:02d}"
+        code_key = code.upper()
+        if code_key in seen:
+            raise ValueError(
+                f"Rubric {artifact_key!r}: duplicate code {code!r} on vectors "
+                f"{seen[code_key]!r} and {label!r}"
+            )
+        seen[code_key] = label
+
+
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
     """For each rubric criteria artifact in ``artifacts``, parse trailing grade tables, set
     ``grade_descriptions``, and coerce ``importance`` (1–10). Mutates criterion dicts in place.
@@ -1264,6 +1281,7 @@ def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
                 item["importance"] = _normalize_importance_value(item.get("importance"), ci)
             except ValueError as e:
                 raise ValueError(f"Rubric {key!r}, vector {label!r}: {e}") from e
+        _assert_unique_rubric_codes(val, key)
 
 
 def _rubric_rows_to_criteria(rows: list) -> list:
@@ -2575,229 +2593,6 @@ _DRAFT_JOB_RESUME_SECTION_ALIASES = {
 }
 
 
-def _advise_resume_advice_task_cfg() -> dict:
-    return TASK_CONFIG["advise_job_resume"]
-
-
-def _extract_advise_section_text(full_text: str, cfg: dict) -> Optional[str]:
-    """Body between resume_advice_section_header and resume_advice_section_end_header lines."""
-    if not isinstance(full_text, str) or not full_text.strip():
-        return None
-    start_hdr = cfg["resume_advice_section_header"]
-    end_hdr = cfg["resume_advice_section_end_header"]
-    in_section = False
-    lines: list[str] = []
-    for raw_line in full_text.splitlines():
-        line = raw_line.strip()
-        if line == start_hdr:
-            in_section = True
-            continue
-        if in_section and line == end_hdr:
-            return "\n".join(lines).strip()
-        if in_section:
-            lines.append(raw_line)
-    return None
-
-
-def _advise_coded_line_re(cfg: dict) -> re.Pattern[str]:
-    open_b = re.escape(str(cfg["resume_advice_bracket_open"]))
-    close_b = re.escape(str(cfg["resume_advice_bracket_close"]))
-    prefix = re.escape(str(cfg["resume_advice_code_prefix"]))
-    return re.compile(rf"^{open_b}{prefix}(\d+){close_b}\s+(.+)$")
-
-
-def _parse_advise_coded_line(line: str, cfg: dict) -> Optional[dict]:
-    stripped = line.strip()
-    if not stripped:
-        return None
-    match = _advise_coded_line_re(cfg).match(stripped)
-    if not match:
-        return None
-    prefix = str(cfg["resume_advice_code_prefix"])
-    code = f"{prefix}{match.group(1)}"
-    remainder = match.group(2).strip()
-    if not remainder:
-        return None
-    cite_sep = str(cfg["resume_advice_cite_separator"])
-    instruction = remainder
-    citation = ""
-    if cite_sep in remainder:
-        left, right = remainder.split(cite_sep, 1)
-        instruction = left.strip()
-        citation = right.strip().strip('"').strip("'").strip()
-    if not instruction:
-        return None
-    return {"code": code, "instruction": instruction, "citation": citation}
-
-
-def _collect_advise_coded_advice(full_text: str) -> tuple[Optional[list[dict]], Optional[str]]:
-    """Return (items, error). Items only when every non-blank line in section parses."""
-    cfg = _advise_resume_advice_task_cfg()
-    if not isinstance(full_text, str):
-        return None, "RESUME BRIEF section missing or incomplete"
-    section = _extract_advise_section_text(full_text, cfg)
-    if section is None:
-        return None, "RESUME BRIEF section missing or incomplete"
-    items: list[dict] = []
-    seen: set[str] = set()
-    for raw_line in section.splitlines():
-        if not raw_line.strip():
-            continue
-        parsed_line = _parse_advise_coded_line(raw_line, cfg)
-        if parsed_line is None:
-            snippet = raw_line.strip()[:120]
-            return None, f"RESUME BRIEF line is not a coded advice item: {snippet}"
-        code = parsed_line["code"]
-        if code in seen:
-            return None, f"Duplicate resume advice code: {code}"
-        seen.add(code)
-        items.append(parsed_line)
-    if len(items) < int(cfg["resume_advice_min_items"]):
-        return None, "RESUME BRIEF must include at least one coded advice item"
-    return items, None
-
-
-def parse_advise_job_resume_coded_advice(full_text: str) -> Optional[list[dict]]:
-    """Extract coded resume advice items from Estelle text; None when section/parse invalid."""
-    items, err = _collect_advise_coded_advice(full_text)
-    if err:
-        return None
-    return items
-
-
-def validate_advise_job_resume_coded_list(full_text: str, *, debug: bool = False) -> Optional[str]:
-    """Validate RESUME BRIEF coded list in advise_job_resume text response; None when OK."""
-    items, err = _collect_advise_coded_advice(full_text)
-    if err:
-        return err
-    if debug and items:
-        cfg = _advise_resume_advice_task_cfg()
-        logger.set_debug_flag(debug)
-        logger.debug_index(
-            func="candidate.validate_advise_job_resume_coded_list",
-            index=1,
-            total=1,
-            identifier="",
-            outcome="validated",
-        )
-        logger.debug_detail(
-            f"found section={cfg['resume_advice_section_header']} item_count={len(items)}"
-        )
-        for row in items:
-            logger.debug_detail(
-                f"found code={row['code']} instruction_chars={len(row.get('instruction') or '')}"
-            )
-    return None
-
-
-def _draft_advice_adherence_task_cfg() -> dict:
-    return TASK_CONFIG["draft_job_resume"]
-
-
-def _draft_job_resume_envelope(parsed: dict) -> Optional[dict]:
-    if not isinstance(parsed, dict):
-        return None
-    payload = parsed.get("agent_payload")
-    if isinstance(payload, dict):
-        return payload
-    return parsed
-
-
-def normalize_draft_job_resume_advice_adherence(parsed: dict) -> None:
-    """Coerce advice_adherence list on draft payload envelope (AST-1508)."""
-    inner = _draft_job_resume_envelope(parsed)
-    if inner is None:
-        return
-    cfg = _draft_advice_adherence_task_cfg()
-    meta_key = cfg["advice_adherence_artifact_key"]
-    if meta_key not in inner:
-        return
-    raw = inner.get(meta_key)
-    if not isinstance(raw, list):
-        return
-    code_k = cfg["advice_adherence_code_key"]
-    status_k = cfg["advice_adherence_status_key"]
-    note_k = cfg["advice_adherence_note_key"]
-    out: list[dict] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        row = {
-            code_k: str(item.get(code_k) or "").strip(),
-            status_k: str(item.get(status_k) or "").strip(),
-            note_k: str(item.get(note_k) or "").strip(),
-        }
-        out.append(row)
-    inner[meta_key] = out
-
-
-def validate_draft_job_resume_advice_adherence(
-    parsed: dict, expected_codes: list[str], *, debug: bool = False,
-) -> Optional[str]:
-    """Validate per-code advice adherence on draft_job_resume; None when OK."""
-    normalize_draft_job_resume_advice_adherence(parsed)
-    inner = _draft_job_resume_envelope(parsed)
-    cfg = _draft_advice_adherence_task_cfg()
-    meta_key = cfg["advice_adherence_artifact_key"]
-    code_k = cfg["advice_adherence_code_key"]
-    status_k = cfg["advice_adherence_status_key"]
-    note_k = cfg["advice_adherence_note_key"]
-    applied = cfg["advice_adherence_status_applied"]
-    skipped = cfg["advice_adherence_status_skipped"]
-    allowed_status = {applied, skipped}
-
-    if inner is None or meta_key not in inner:
-        return "advice_adherence is required on draft_job_resume"
-    raw = inner.get(meta_key)
-    if not isinstance(raw, list):
-        return "advice_adherence must be a list"
-
-    seen: set[str] = set()
-    returned: set[str] = set()
-    for item in raw:
-        if not isinstance(item, dict):
-            return "advice_adherence items must be objects"
-        code = str(item.get(code_k) or "").strip()
-        status = str(item.get(status_k) or "").strip()
-        note = str(item.get(note_k) or "").strip()
-        if not code:
-            return "advice_adherence item missing code"
-        if code in seen:
-            return f"Duplicate advice adherence code: {code}"
-        seen.add(code)
-        returned.add(code)
-        if status not in allowed_status:
-            return f"Invalid advice adherence status for code {code}"
-        if not note:
-            return f"advice_adherence note required for code {code}"
-
-    expected_set = set(expected_codes)
-    for code in expected_set:
-        if code not in returned:
-            return f"Missing advice adherence for code: {code}"
-    for code in returned:
-        if code not in expected_set:
-            return f"Unknown advice adherence code: {code}"
-
-    if debug and raw:
-        logger.set_debug_flag(debug)
-        logger.debug_index(
-            func="candidate.validate_draft_job_resume_advice_adherence",
-            index=1,
-            total=1,
-            identifier="",
-            outcome="validated",
-        )
-        logger.debug_detail(f"found expected_codes={','.join(expected_codes)}")
-        for row in raw:
-            if isinstance(row, dict):
-                logger.debug_detail(
-                    f"found code={row.get(code_k)} status={row.get(status_k)} "
-                    f"note_chars={len(str(row.get(note_k) or ''))}"
-                )
-    return None
-
-
 def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
     """Section keys from artifacts.base_resume (including extras); not ∩ KNOWN."""
     cd = candidate_data if isinstance(candidate_data, dict) else {}
@@ -2878,7 +2673,6 @@ def normalize_draft_job_resume_agent_payload(parsed: dict, *, debug: bool = Fals
             if text:
                 inner[key] = text
     _apply_draft_job_resume_section_aliases(inner)
-    normalize_draft_job_resume_advice_adherence(parsed)
 
 
 def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> None:

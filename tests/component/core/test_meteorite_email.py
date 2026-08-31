@@ -514,7 +514,7 @@ class TestAst1522NoSubjectJdLandsAndArchives:
 
 
 class TestAst1531MailboxStageCutover:
-    """Mailbox stages header+body strip blob with source_kind=email / source_id=mid."""
+    """Mailbox builds subject+html blob and stages with source_kind=email / source_id=mid."""
 
     @pytest.mark.asyncio
     async def test_bound_stage_land_archives_with_email_source(
@@ -541,9 +541,7 @@ class TestAst1531MailboxStageCutover:
                 return_value={
                     "subject": "Role at Acme",
                     "html_body": "<p>Full JD HTML</p>",
-                    "from_address": "recruiter@ex.com",
-                    "to_address": "susan@ex.com",
-                    "date": "Thu, 27 Aug 2026",
+                    "from_address": "a@b.c",
                 }
             ),
         )
@@ -589,14 +587,6 @@ class TestAst1531MailboxStageCutover:
         assert seen["source_id"] == mid
         assert "Role at Acme" in seen["blob"]
         assert "Full JD HTML" in seen["blob"]
-        # AST-1537: shared strip — not plain "subject\\n\\nhtml" prepend.
-        assert "Role at Acme\n\n" not in seen["blob"]
-        assert 'class="email-from"' in seen["blob"]
-        assert "recruiter@ex.com" in seen["blob"]
-        assert 'class="email-to"' in seen["blob"]
-        assert "susan@ex.com" in seen["blob"]
-        assert 'class="email-date"' in seen["blob"]
-        assert "Thu, 27 Aug 2026" in seen["blob"]
         archive.assert_called_once_with(mid)
         trash.assert_not_called()
 

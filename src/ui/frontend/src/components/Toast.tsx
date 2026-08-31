@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type KeyboardEvent } from "react"
+import { useCallback, useEffect, useState, type KeyboardEvent, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { useLocation } from "react-router-dom"
 import { useCandidate } from "../contexts/CandidateContext"
@@ -18,7 +18,7 @@ interface ToastProps {
 
 const ICONS: Record<NonNullable<ToastMessage["variant"]>, string> = {
   success: "\u2713",
-  error: "\u2717",
+  error: "\u26A0", // warning — not an X lookalike (dismiss owns ×)
   info: "\u2139",
 }
 
@@ -67,22 +67,50 @@ export default function Toast({ message, onDone }: ToastProps) {
     [handleClick],
   )
 
+  // Same exit animation as the auto-dismiss timer — no clipboard write.
+  const handleDismiss = useCallback(
+    (e: MouseEvent) => {
+      e.stopPropagation()
+      e.preventDefault()
+      setVisible(false)
+      setTimeout(onDone, 300)
+    },
+    [onDone],
+  )
+
   if (!message) return null
   const variant = message.variant ?? "info"
   const isError = variant === "error"
 
   return createPortal(
     <div
-      className={`toast toast-${variant} ${visible ? "toast-visible" : ""}${isError ? " toast-error-clickable" : ""}`}
-      role={isError ? "button" : undefined}
-      tabIndex={isError ? 0 : undefined}
-      onClick={isError ? () => void handleClick() : undefined}
-      onKeyDown={isError ? handleKeyDown : undefined}
+      className={`toast toast-${variant} ${visible ? "toast-visible" : ""}`}
     >
       <span className="toast-icon">{ICONS[variant]}</span>
-      <span className="toast-text">{copied ? "Copied to clipboard" : message.text}</span>
-      {isError && !copied && (
-        <span className="toast-copy-hint">Click to copy</span>
+      {isError ? (
+        <span
+          className="toast-copy-target toast-error-clickable"
+          role="button"
+          tabIndex={0}
+          onClick={() => void handleClick()}
+          onKeyDown={handleKeyDown}
+        >
+          <span className="toast-text">{copied ? "Copied to clipboard" : message.text}</span>
+          {!copied && <span className="toast-copy-hint">Click to copy</span>}
+        </span>
+      ) : (
+        <span className="toast-text">{message.text}</span>
+      )}
+      {isError && (
+        <button
+          type="button"
+          className="icon-control"
+          title="Dismiss"
+          aria-label="Dismiss"
+          onClick={handleDismiss}
+        >
+          ×
+        </button>
       )}
     </div>,
     document.body,

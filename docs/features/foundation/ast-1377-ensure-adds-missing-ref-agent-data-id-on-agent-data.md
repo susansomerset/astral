@@ -1,3 +1,62 @@
+<!-- linear-archive: AST-1377 archived 2026-08-31 -->
+
+## Linear archive (AST-1377)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1377/ensure-adds-missing-ref-agent-data-id-on-agent-data-missing-bootstrap  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1376 — Missing bootstrap steps for ref_agent_data_id  
+**Blocked by / blocks / related:** parent: AST-1376
+
+### Description
+
+## What this implements
+
+Extend the existing `agent_data` schema-ensure so legacy tables gain nullable `ref_agent_data_id` when absent; keep create-path and already-migrated DBs idempotent; rely on the existing upsert-registry / startup ensure registration for `agent_data`. Does **not** own historical backfill or craft_do_rubric token limits.
+
+## Citations
+
+`astral.standards.database-header-inventory`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.standards.data-raises-caller-logs`, `astral.layers.import-direction`
+
+## Acceptance criteria
+
+- [X] On a database whose `agent_data` table exists but has no `ref_agent_data_id` column, running the normal `agent_data` schema-ensure once makes `PRAGMA table_info(agent_data)` include nullable `ref_agent_data_id`.
+- [X] Running that ensure a second time is a no-op (no error, column still present once).
+- [X] On a fresh database, create-path `agent_data` still includes `ref_agent_data_id` as today.
+- [X] After ensure has run, an agent_data write/read path that uses `ref_agent_data_id` no longer fails with `OperationalError('no such column: ref_agent_data_id')`.
+- [X] Process bootstrap that already ensures upsert-registry tables (including `agent_data`) leaves the column present without a manual ALTER.
+
+## Boundaries
+
+- [X] Does not own historical backfill (AST-978). Does not fix craft_do_rubric max_tokens truncation. Does not change dedupe write/read semantics.
+
+## Notes for planning
+
+Follow existing `_ensure_agent_data_schema` ADD COLUMN idiom (same as `entity_id`). `agent_data` is already in `_UPSERT_LAZY_SCHEMA_HANDLERS`.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1376-missing-bootstrap-steps-for-ref-agent-data-id`, child `sub/AST-1376/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-14T21:41:18.307Z
+[code-rubric] REVIEW (Commit: fc347a37) ALTER clean; sync dev
+
+#### betty — 2026-08-14T21:37:35.640Z
+`origin/sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data` @ `fc347a37` · legacy ensure covered
+
+#### joan — 2026-08-14T21:32:54.527Z
+[plan-rubric] PROCEED (Commit: 1065d54d) legacy ALTER idempotent
+
+#### ada — 2026-08-14T21:30:16.638Z
+`origin/sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data` @ `1065d54d9115007bb3025071278f25fa6bc577ea` · plan published
+
+---
+
 # AST-1377 — Ensure adds missing ref_agent_data_id on agent_data
 
 - **Linear:** [AST-1377](https://linear.app/astralcareermatch/issue/AST-1377/ensure-adds-missing-ref-agent-data-id-on-agent-data-missing-bootstrap)

@@ -183,4 +183,90 @@ Why is gaze_email running here at all??  I thought I said it was a DISPATCH TASK
 
 ---
 
+## Bug: AST-1512 — Suppress gmail discovery_cache log noise
+
+### As-is
+
+Railway staging deploy logs (and local console when Gmail env vars are present) emit `file_cache is only supported with oauth2client<4.0.0` from `googleapiclient.discovery_cache` on every Gmail API client build — boot dispatch paths that touch inbox/Gmail (e.g. `gaze_email`) trigger it repeatedly. Railway's log UI can surface the line at error severity even though it is third-party informational chatter, not an Astral failure.
+
+### To-be
+
+Deploy and runtime logs do not emit the oauth2client `file_cache` discovery-cache message when Gmail clients are built; all Gmail send/list/get/archive/trash behavior is unchanged.
+
+### Repro
+
+1. Ensure Gmail env vars are set (`GMAIL_USER`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REFRESH_TOKEN`).
+2. Start the app (local `flask run` or Railway staging deploy).
+3. Trigger any path that calls `src/external/gmail.py` `_build_service()` — e.g. scheduler claims a Gmail-touching dispatch task, or invoke `list_inbox_messages()` / `send_email()` directly.
+4. Observe log output contains: `file_cache is only supported with oauth2client<4.0.0` (logger `googleapiclient.discovery_cache`).
+
+### Root cause
+
+`_build_service()` calls `googleapiclient.discovery.build("gmail", "v1", credentials=...)` with the default `cache_discovery=True`. That path attempts file-based discovery-document caching via oauth2client's `file_cache`, which is incompatible with the current `google.oauth2.credentials.Credentials` stack (not oauth2client). The library logs the warning at INFO on each build.
+
+### Proposed change
+
+In `src/external/gmail.py`:
+
+1. **`_build_service()`** — pass `cache_discovery=False` to `build()`:
+
+   ```python
+   return build("gmail", "v1", credentials=_build_credentials(), cache_discovery=False)
+   ```
+
+2. **Module import (belt-and-suspenders)** — after existing imports, mirror `src/external/anthropic.py` third-party logger quieting:
+
+   ```python
+   import logging as _logging
+   _logging.getLogger("googleapiclient.discovery_cache").setLevel(_logging.WARNING)
+   ```
+
+   No other files. Do not change `_GMAIL_SCOPES`, credential construction, or any public function signatures.
+
+### Blast radius
+
+- **All Gmail I/O** routes through `_build_service()` (`send_email`, `list_inbox_messages`, `get_message_html`, `archive_message`, `trash_message`) — behavior unchanged; only third-party log emission stops.
+- **Dispatch boot** — tasks that build a Gmail client on tick (e.g. `gaze_email`, monitor email paths) stop flooding deploy logs with this line.
+- **Tests** — `tests/component/external/test_gmail.py` monkeypatches `gmail_mod.build`; existing tests stay green. Optional: one test asserting `_build_service()` passes `cache_discovery=False` (not required for plan-fix).
+- **Out of scope (unchanged)** — Railway stderr→error severity remapping, Stytch UserWarning, Gmail `invalid_scope` / OAuth remint (AST-1087 ops).
+
+### What must still hold
+
+- AST-1093 original epic: seeded `dispatch_task` rows remain `auto_mode` false (CLICK); statute `astral.dispatch.seed-auto-false` unchanged.
+- `send_email` returns `True`/`False` and does not raise on transient failures.
+- `list_inbox_messages`, `get_message_html`, `archive_message`, `trash_message` still raise on hard API failures.
+- `require_controlled_external_io(...)` gates on all public Gmail entrypoints remain.
+- External-layer rule: no business logic added to `gmail.py`; Gmail modify scope and env validation at import unchanged.
+
+### Resolution
+
+**Date:** 2026-08-26  
+**Review ref:** Radia `[code-rubric] PROCEED` @ `d2a68e99` — clean, no fix-now.
+
+- **Fix-now:** none — `_build_service()` passes `cache_discovery=False`; `googleapiclient.discovery_cache` logger quieted at WARNING; Betty `[bug-repro]` `TestAst1512DiscoveryCache` green on tip.
+- **§9a:** `origin/sub/AST-1509/AST-1512-suppress-gmail-discovery-cache-log-noise` merges cleanly into `origin/dev` and `origin/ftr/AST-1509-suppress-gmail-discovery-cache-log-noise` (2026-08-26).
+
+---
+
 _Implementation detail may live in git history on `origin/dev`._
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/17a50f0eb5b952512b4f11a4b497fc23/c4f2a6f8-16eb-4170-8ee8-a27e271cb428/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/1ef72414-32f5-4c69-8107-61df23778f5d/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/17a50f0eb5b952512b4f11a4b497fc23/6f209629-8ff9-4375-b3cb-40b29d5b5d3d/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1509 (parent) | ftr/AST-1509-suppress-gmail-discovery-cache-log-noise |
+| AST-1512 | sub/AST-1509/AST-1512-suppress-gmail-discovery-cache-log-noise |
+
+**Epic worktree:** `astral-AST-1509/` — one active sub checked out at a time.

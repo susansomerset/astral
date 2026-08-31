@@ -1,3 +1,74 @@
+<!-- linear-archive: AST-1351 archived 2026-08-31 -->
+
+## Linear archive (AST-1351)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1351/experience-array-ui-renderprint-parity-clarify-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1345 — Clarify candidate_data.artifacts.base_resume.experience node  
+**Blocked by / blocks / related:** parent: AST-1345
+
+### Description
+
+## What this implements
+
+Owns Base Resume Content presenting/persisting the experience array as the base template, job artifact surfaces using the same structure by default, plus render/print emitting each role from the array. Does **not** own prompt/schema wording or the unsupported toast / no-emit path (siblings). After contract sibling; may land in parallel with toast sibling once the contract is fixed.
+
+## Citations
+
+`pattern.config.config-block`, `pattern.layers.import-discipline`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.debug-contract-gated`
+
+## Acceptance criteria
+
+- [X] 5. In the Base Resume Content UI, Susan can view and save experience as the job-array template (not as one undifferentiated prose field that round-trips as a string).
+- [X] 6. Render and Print of a base (and job, where applicable) resume show each experience job with role metadata and accomplishments from the array — not one merged experience string.
+
+## Boundaries
+
+- [X] Does **not** own prompt/schema wording or the unsupported toast / no-emit path (siblings).
+
+## Notes for planning
+
+After contract; parallel with toast sibling when unblocked.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. ExperienceJobsEditor add/remove/reorder: `tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx`
+2. ArtifactEditor array Save + legacy abort: `test_ArtifactEditor.test.tsx` AST-996/AST-1351 + AST-1351 legacy
+3. Config field spine: `TestAst1351ExperienceJobUiFields`
+4. ui_config exposure: `TestAst1351ExperienceJobUiConfig`
+5. Builder Style D debug jobs: `TestAst1351ExperienceDebugJobs`
+
+**Bible shasums** (`origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`):
+
+* `docs/test-bible/frontend/components.md` `21be7d7295630c7f71f661082a60426b6c6d7455`
+* `docs/test-bible/utils/config.md` `6e6bd060716789cefebf741f42d2814ce360b7c8`
+* `docs/test-bible/ui/api/api_system.md` `fb07e384e225ab9a95fa83fba23d28d577a512f5`
+* `docs/test-bible/core/builder.md` `7fc963135154cc3ccec0d8801b04069406186325`
+
+### Comments
+
+#### radia — 2026-08-13T00:42:13.470Z
+[code-rubric] PROCEED (Commit: 863871fb) experience job UI emit parity
+
+#### betty — 2026-08-13T00:39:42.159Z
+`origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity` @ `863871fb4e29b12d0522d396d57ab69eeb950a68` · experience UI tests landed
+
+#### joan — 2026-08-13T00:33:45.456Z
+[plan-rubric] PROCEED (Commit: a6e36b19) array UI + emit parity
+
+#### katherine — 2026-08-13T00:32:25.042Z
+`origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity` @ `a6e36b1908841ddb5640bf572f30e12784ef5618` · plan ready
+
+---
+
 # Experience array UI + render/print parity (Clarify candidate_data.artifacts.base_resume.experience node)
 
 **Linear:** [AST-1351](https://linear.app/astralcareermatch/issue/AST-1351/experience-array-ui-render-print-parity-clarify)

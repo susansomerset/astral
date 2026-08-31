@@ -6206,23 +6206,61 @@ def get_agent_data_by_batch(
     return _run_with_retry(_with_conn)
 
 
-def list_agent_data_batches() -> List[Dict[str, Any]]:
-    """One metadata row per agent_data.batch_id, newest batch first. No filter, no cap."""
+def list_agent_data_batches(
+    *,
+    candidate_id: Optional[str] = None,
+    task_key: Optional[str] = None,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """One metadata row per agent_data.batch_id for a candidate, newest first.
+
+    Joins dispatch_ledger on batch_id for candidate_id scope. Optional task_key
+    match strips one leading ``adhoc-`` from stored agent_data.task_key.
+    Empty/blank candidate_id → []. Optional limit caps rows (ORDER BY created_at DESC).
+    """
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return []
+
+    catalog_task_key = (task_key or "").strip()
+    if catalog_task_key.startswith("adhoc-"):
+        catalog_task_key = catalog_task_key[len("adhoc-"):]
+
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
             _ensure_agent_data_schema(conn)
-            rows = conn.execute(
-                """
-                SELECT batch_id,
-                       MAX(created_at) AS created_at,
-                       MAX(task_key) AS task_key,
-                       MAX(entity_id) AS entity_id
-                FROM agent_data
-                GROUP BY batch_id
+            _ensure_dispatch_ledger_schema(conn)
+            clauses = ["dl.candidate_id = ?"]
+            params: List[Any] = [cid]
+            if catalog_task_key:
+                # Strip one leading adhoc- from stored task_key for catalog compare.
+                clauses.append(
+                    """(
+                        CASE
+                            WHEN ad.task_key LIKE 'adhoc-%'
+                            THEN substr(ad.task_key, 7)
+                            ELSE ad.task_key
+                        END
+                    ) = ?"""
+                )
+                params.append(catalog_task_key)
+            where = " AND ".join(clauses)
+            sql = f"""
+                SELECT ad.batch_id,
+                       MAX(ad.created_at) AS created_at,
+                       MAX(ad.task_key) AS task_key,
+                       MAX(ad.entity_id) AS entity_id
+                FROM agent_data ad
+                INNER JOIN dispatch_ledger dl ON dl.batch_id = ad.batch_id
+                WHERE {where}
+                GROUP BY ad.batch_id
                 ORDER BY created_at DESC
-                """
-            ).fetchall()
+            """
+            if limit is not None and int(limit) > 0:
+                sql += " LIMIT ?"
+                params.append(int(limit))
+            rows = conn.execute(sql, params).fetchall()
             return [_row_to_dict(row) for row in rows]
         finally:
             conn.close()

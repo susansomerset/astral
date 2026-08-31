@@ -5,6 +5,7 @@ In-scope: ingest_jobs, save_meteorite_job, save_job_data, get_job_data, initiali
 transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot.
 All writes go through database.save_job (upsert); state transition logic lives here, not in data layer.
 get_job_data: coat-check pattern — return value if present, self-heal if missing (e.g. fetch JD via playwright).
+AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no coat-check scrape).
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from src.utils.config import (
     validate_job_source,
     validate_value,
 )
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, truncate_debug_content
 from src.utils.formatting import parse_text
 
 logger = get_logger(__name__)
@@ -426,15 +427,14 @@ def cover_letter_artifact_for_display(
     *,
     debug: bool = False,
 ) -> Optional[Dict[str, str]]:
-    """AST-1499: pin or dict → nonempty Subject/Letter/signature for JAR; else None (no empty overlay)."""
-    body: Any = raw
+    """AST-1499/1548: job body dict → nonempty Subject/Letter/signature; pin strings → None (no agent_data)."""
+    # debug retained for call-site parity; operator hydrate must not resolve pins (AST-1548).
+    _ = debug
     if isinstance(raw, str) and raw.strip():
-        body = resolve_job_artifact_agent_data_body(raw, debug=debug)
-        if not isinstance(body, dict):
-            return None
-    elif not isinstance(raw, dict):
         return None
-    normalized = normalize_cover_letter_artifact(_cover_letter_dict_for_normalize(body))
+    if not isinstance(raw, dict):
+        return None
+    normalized = normalize_cover_letter_artifact(_cover_letter_dict_for_normalize(raw))
     if not _cover_letter_display_nonempty(normalized):
         return None
     return normalized
@@ -445,93 +445,77 @@ def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, A
     save_job_data(astral_job_id, {"artifacts": {"cover_letter": normalize_cover_letter_artifact(cover_letter)}})
 
 
-
-def get_job_resume_advice_codes(astral_job_id: str) -> tuple[Optional[List[str]], Optional[str]]:
-    """Expected resume-advice codes from job artifact (AST-1508)."""
-    job = get_job(astral_job_id)
-    if not job:
-        return None, "Job not found"
-    artifacts = get_job_artifacts(job)
-    key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
-    raw = artifacts.get(key)
-    if not isinstance(raw, list) or not raw:
-        return None, "No coded resume advice on job; advise_job_resume must run first"
-    codes: List[str] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            return None, "resume_advice artifact has invalid item"
-        code = str(item.get("code") or "").strip()
-        if not code:
-            return None, "resume_advice artifact has invalid item"
-        codes.append(code)
-    return codes, None
+def save_job_artifact_job_resume_body(astral_job_id: str, resume_body: Dict[str, Any]) -> None:
+    """AST-1548: operator job_resume replica + compat dual-write to resume_content."""
+    cd = _candidate_data_for_job(astral_job_id)
+    prepared = _prepare_job_resume_content(resume_body, cd)
+    save_job_data(
+        astral_job_id,
+        {"artifacts": {"job_resume": prepared, "resume_content": prepared}},
+    )
 
 
-def extract_draft_job_resume_advice_adherence(parsed: Any) -> Optional[List[dict]]:
-    """Normalize advice_adherence from nested or flat draft payload; None if key absent."""
+
+def extract_draft_job_resume_notes(parsed: Any) -> Optional[List[str]]:
+    """Normalize notes from nested or flat draft payload; None if key absent."""
     if not isinstance(parsed, dict):
         return None
-    candidate_mod.normalize_draft_job_resume_advice_adherence(parsed)
     body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
     if not isinstance(body, dict):
         return None
-    meta_key = TASK_CONFIG["draft_job_resume"]["advice_adherence_artifact_key"]
+    meta_key = TASK_CONFIG["draft_job_resume"]["notes_artifact_key"]
+    # Nested resume body is a sibling of notes — always read meta from the outer envelope.
     if meta_key not in body:
         return None
     raw = body.get(meta_key)
     if raw is None:
         return []
-    if not isinstance(raw, list):
-        return None
-    return [dict(item) for item in raw if isinstance(item, dict)]
+    if isinstance(raw, str):
+        text = raw.strip()
+        return [text] if text else []
+    if isinstance(raw, list):
+        return [str(item) for item in raw if str(item).strip()]
+    text = str(raw).strip()
+    return [text] if text else []
 
 
-def save_job_artifact_advice_adherence(astral_job_id: str, items: List[dict]) -> None:
-    """Merge per-code advice adherence into job_data.artifacts (AST-1508)."""
+def save_job_artifact_notes(astral_job_id: str, notes: List[str]) -> None:
+    """Merge freeform notes list into job_data.artifacts (AST-1523 / AST-1271 shape)."""
     if not astral_job_id or not str(astral_job_id).strip():
         return
-    key = TASK_CONFIG["draft_job_resume"]["advice_adherence_artifact_key"]
-    save_job_data(astral_job_id, {"artifacts": {key: list(items)}})
+    key = TASK_CONFIG["draft_job_resume"]["notes_artifact_key"]
+    save_job_data(astral_job_id, {"artifacts": {key: list(notes)}})
 
 
-def persist_draft_job_resume_advice_adherence(
-    astral_job_id: str, parsed: Any,
-) -> Optional[List[dict]]:
-    """Extract advice_adherence from parsed draft response and save when the key is present."""
-    extracted = extract_draft_job_resume_advice_adherence(parsed)
+def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
+    """Extract notes from parsed draft response and save when the key is present."""
+    extracted = extract_draft_job_resume_notes(parsed)
     if extracted is None:
-        return None
-    save_job_artifact_advice_adherence(astral_job_id, extracted)
-    return extracted
-
-
-def extract_advise_job_resume_coded_advice(full_text: str) -> Optional[List[dict]]:
-    """Parse coded resume advice from advise_job_resume text; None when invalid."""
-    return candidate_mod.parse_advise_job_resume_coded_advice(full_text)
-
-
-def save_job_artifact_resume_advice(astral_job_id: str, items: List[dict]) -> None:
-    """Merge coded resume advice list into job_data.artifacts (AST-1507)."""
-    key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
-    save_job_data(astral_job_id, {"artifacts": {key: list(items)}})
-
-
-def persist_advise_job_resume_coded_advice(
-    astral_job_id: str, full_text: str,
-) -> Optional[List[dict]]:
-    """Extract coded advice from advise text and save; None when parse fails."""
-    items = extract_advise_job_resume_coded_advice(full_text)
-    if items is None:
-        return None
-    save_job_artifact_resume_advice(astral_job_id, items)
-    return items
+        return False
+    save_job_artifact_notes(astral_job_id, extracted)
+    return True
 
 
 def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1428: copy unwrapped finalize resume onto resume_content; pin slot untouched."""
+    """AST-1548: copy unwrapped finalize resume onto job_resume (+ resume_content dual-write)."""
     if not parsed_matches_job_resume_content(astral_job_id, parsed):
         return False
-    save_job_artifact_resume_content(astral_job_id, _resume_payload_body(parsed))
+    save_job_artifact_job_resume_body(astral_job_id, _resume_payload_body(parsed))
+    return True
+
+
+def persist_finalize_cover_letter_content(astral_job_id: str, parsed: Any) -> bool:
+    """AST-1548: copy normalized cover fields onto artifacts.cover_letter; coat-check empty."""
+    if not isinstance(parsed, dict):
+        return False
+    body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
+    if not isinstance(body, dict):
+        return False
+    source = _cover_letter_dict_for_normalize(body)
+    normalized = normalize_cover_letter_artifact(source)
+    if not _cover_letter_display_nonempty(normalized):
+        return False
+    save_job_artifact_cover_letter(astral_job_id, normalized)
     return True
 
 
@@ -604,19 +588,20 @@ def hydrate_job_artifacts_for_display(
     *,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """AST-1100: shallow-copy artifacts; replace pin-slot strings with resolved bodies (no save)."""
+    """AST-1100/1548: shallow-copy; operator job_resume/cover from job body only; pin-resolve proposed_answers."""
     if not isinstance(artifacts, dict):
         return {}
     out = dict(artifacts)
     rc = out.get("resume_content")
-    job_resume_blob = rc if isinstance(rc, dict) and rc else None
+    sibling_resume = rc if isinstance(rc, dict) and rc else None
+    jr = out.get("job_resume")
+    # AST-1548: job body dict first; legacy resume_content overlay; never pin→agent_data for operators.
+    if isinstance(jr, dict) and jr:
+        out["job_resume"] = dict(jr)
+    elif sibling_resume is not None:
+        out["job_resume"] = dict(sibling_resume)
     for key in _JOB_ARTIFACT_PIN_KEYS:
-        if key == "job_resume" and job_resume_blob is not None:
-            # AST-1428: JAR reads job_resume; overlay sibling blob (disk pin unchanged).
-            out[key] = dict(job_resume_blob)
-            continue
-        # AST-1499: cover display helper owns pin resolve + nonempty Subject/Letter (no empty overwrite).
-        if key == "cover_letter":
+        if key in ("job_resume", "cover_letter"):
             continue
         raw = out.get(key)
         if not isinstance(raw, str) or not raw.strip():
@@ -624,14 +609,8 @@ def hydrate_job_artifacts_for_display(
         body = resolve_job_artifact_agent_data_body(raw, debug=debug)
         if body is None:
             continue
-        if key == "job_resume":
-            # Pin resolve is agent_payload; unwrap .resume so section ids are top-level.
-            unwrapped = _resume_payload_body(body)
-            if unwrapped:
-                out[key] = unwrapped
-            continue
         out[key] = body
-    # AST-1116/1499: Subject/Letter spine for ArtifactEditor only when nonempty (overlay only).
+    # AST-1116/1499/1548: cover overlay from job dict only (pin strings → no overlay).
     display_cover = cover_letter_artifact_for_display(out.get("cover_letter"), debug=debug)
     if display_cover is not None:
         out["cover_letter"] = display_cover
@@ -784,8 +763,8 @@ def persist_job_artifact_from_parsed(
             )
             save_job_artifact_resume_content(astral_job_id, filtered)
             wrote = True
-    # AST-1508: sibling metadata (manual/API defense-in-depth; live path is do_task).
-    if persist_draft_job_resume_advice_adherence(astral_job_id, parsed):
+    # AST-1523: sibling notes metadata (manual/API defense-in-depth; live path is do_task).
+    if persist_draft_job_resume_notes(astral_job_id, parsed):
         wrote = True
     return wrote
 
@@ -1372,3 +1351,404 @@ def count_jobs_below_dispatch_score_floor(candidate_id: str) -> int:
 
 def list_jobs_below_dispatch_score_floor(candidate_id: str) -> List[Dict[str, Any]]:
     return database.list_jobs_below_dispatch_score_floor(candidate_id)
+
+
+# ---- AST-1518: contact-task reads (pattern resolve + hydrated getters) ----
+
+
+def _contact_task_hydrate_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    """Shallow-copy job and attach agent_story (no coat-check / gazer)."""
+    out = dict(job)
+    from src.core.agent import get_entity_agent_story
+
+    out["agent_story"] = get_entity_agent_story(out)
+    return out
+
+
+def _job_owned_by_candidate(job: Dict[str, Any], cid: str) -> bool:
+    """True when job's company.candidate_id matches cid (not job['candidate_id'])."""
+    company_key = job.get("company")
+    if not isinstance(company_key, str) or not company_key.strip():
+        return False
+    company = get_company(company_key.strip())
+    if not company:
+        return False
+    owner = company.get("candidate_id")
+    return isinstance(owner, str) and bool(owner.strip()) and owner.strip() == cid
+
+
+def _match_jobs_by_pattern(cid: str, pat: str) -> List[Dict[str, Any]]:
+    """Candidate-scoped jobs whose title/company/link/id match pattern (casefold)."""
+    pat_cf = pat.casefold()
+    matches: List[Dict[str, Any]] = []
+    for job in list_jobs(candidate_id=cid):
+        if not isinstance(job, dict):
+            continue
+        for field in ("astral_job_id", "job_title", "company", "job_link"):
+            raw = job.get(field)
+            if not isinstance(raw, str) or not raw:
+                continue
+            if raw == pat or raw.casefold() == pat_cf or pat_cf in raw.casefold():
+                matches.append(job)
+                break
+    return matches
+
+
+def get_job_by_pattern(
+    astral_candidate_id: str, pattern: str
+) -> Optional[Dict[str, Any]]:
+    """Return the single candidate-scoped job matching pattern, or None if 0/many."""
+    cid = (astral_candidate_id or "").strip()
+    pat = (pattern or "").strip()
+    if not cid or not pat:
+        return None
+    matches = _match_jobs_by_pattern(cid, pat)
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def _contact_task_style_d(
+    log,
+    *,
+    func: str,
+    identifier: str,
+    found_detail: str,
+    recorded_detail: str,
+    debug: bool,
+) -> None:
+    if not debug:
+        return
+    log.set_debug_flag(True)
+    log.debug_index(func=func, index=1, total=2, identifier=identifier, outcome="found")
+    for line in truncate_debug_content(found_detail):
+        log.debug_detail(line)
+    log.debug_index(
+        func=func, index=2, total=2, identifier=identifier, outcome="recorded"
+    )
+    for line in truncate_debug_content(recorded_detail):
+        log.debug_detail(line)
+
+
+def contact_task_get_job_by_pattern(
+    astral_candidate_id: str, param: str, *, debug: bool = False
+) -> dict:
+    """CONTACT_TASK_CONFIG handler: resolve one hydrated job by text pattern."""
+    log = get_logger(__name__)
+    task_key = "get_job_by_pattern"
+    cid = (astral_candidate_id or "").strip()
+    pat = (param or "").strip()
+    found = f"param={pat!r}"
+
+    if not cid:
+        row = {"ok": False, "error": "no_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=no_candidate",
+            debug=debug,
+        )
+        return row
+    if not pat:
+        row = {"ok": False, "error": "unmatched_pattern", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=unmatched_pattern",
+            debug=debug,
+        )
+        return row
+
+    matches = _match_jobs_by_pattern(cid, pat)
+    if len(matches) == 0:
+        row = {"ok": False, "error": "unmatched_pattern", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=unmatched_pattern",
+            debug=debug,
+        )
+        return row
+    if len(matches) > 1:
+        row = {"ok": False, "error": "ambiguous_pattern", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=ambiguous_pattern",
+            debug=debug,
+        )
+        return row
+
+    job = matches[0]
+    if not _job_owned_by_candidate(job, cid):
+        row = {"ok": False, "error": "refused_cross_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=refused_cross_candidate",
+            debug=debug,
+        )
+        return row
+
+    hydrated = _contact_task_hydrate_job(job)
+    row = {"ok": True, "task_key": task_key, "result": hydrated}
+    _contact_task_style_d(
+        log,
+        func="tracker.contact_task_get_job_by_pattern",
+        identifier=task_key,
+        found_detail=found,
+        recorded_detail=f"ok=True astral_job_id={hydrated.get('astral_job_id')!r}",
+        debug=debug,
+    )
+    return row
+
+
+def contact_task_get_job_data(
+    astral_candidate_id: str, param: str, *, debug: bool = False
+) -> dict:
+    """CONTACT_TASK_CONFIG handler: hydrated job by id (candidate-owned only)."""
+    log = get_logger(__name__)
+    task_key = "get_job_data"
+    cid = (astral_candidate_id or "").strip()
+    jid = (param or "").strip()
+    found = f"param={jid!r}"
+
+    if not cid:
+        row = {"ok": False, "error": "no_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=no_candidate",
+            debug=debug,
+        )
+        return row
+    if not jid:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+
+    job = get_job(jid)
+    if not job:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+    if not _job_owned_by_candidate(job, cid):
+        row = {"ok": False, "error": "refused_cross_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=refused_cross_candidate",
+            debug=debug,
+        )
+        return row
+
+    hydrated = _contact_task_hydrate_job(job)
+    row = {"ok": True, "task_key": task_key, "result": hydrated}
+    _contact_task_style_d(
+        log,
+        func="tracker.contact_task_get_job_data",
+        identifier=task_key,
+        found_detail=found,
+        recorded_detail=f"ok=True astral_job_id={hydrated.get('astral_job_id')!r}",
+        debug=debug,
+    )
+    return row
+
+
+def contact_task_get_company_data(
+    astral_candidate_id: str, param: str, *, debug: bool = False
+) -> dict:
+    """CONTACT_TASK_CONFIG handler: company by short_name (candidate-scoped)."""
+    log = get_logger(__name__)
+    task_key = "get_company_data"
+    cid = (astral_candidate_id or "").strip()
+    sn = (param or "").strip()
+    found = f"param={sn!r}"
+
+    if not cid:
+        row = {"ok": False, "error": "no_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_company_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=no_candidate",
+            debug=debug,
+        )
+        return row
+    if not sn:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_company_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+
+    company = get_company(sn)
+    if not company:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_company_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+
+    owner = company.get("candidate_id")
+    if isinstance(owner, str) and owner.strip():
+        scoped = owner.strip() == cid
+    else:
+        short = company.get("short_name") or sn
+        scoped = any(
+            isinstance(j, dict) and j.get("company") == short
+            for j in list_jobs(candidate_id=cid)
+        )
+    if not scoped:
+        row = {"ok": False, "error": "refused_cross_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_company_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=refused_cross_candidate",
+            debug=debug,
+        )
+        return row
+
+    from src.core.agent import get_entity_agent_story
+
+    out = dict(company)
+    out["agent_story"] = get_entity_agent_story(out)
+    row = {"ok": True, "task_key": task_key, "result": out}
+    _contact_task_style_d(
+        log,
+        func="tracker.contact_task_get_company_data",
+        identifier=task_key,
+        found_detail=found,
+        recorded_detail=f"ok=True short_name={out.get('short_name')!r}",
+        debug=debug,
+    )
+    return row
+
+
+def contact_task_get_candidate_data(
+    astral_candidate_id: str, param: str, *, debug: bool = False
+) -> dict:
+    """CONTACT_TASK_CONFIG handler: candidate row or dotted candidate_data path."""
+    log = get_logger(__name__)
+    task_key = "get_candidate_data"
+    cid = (astral_candidate_id or "").strip()
+    path = (param or "").strip()
+    found = f"param={path!r}"
+
+    if not cid:
+        row = {"ok": False, "error": "no_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_candidate_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=no_candidate",
+            debug=debug,
+        )
+        return row
+
+    cand = candidate_mod.get_candidate(cid)
+    if not cand:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_candidate_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+
+    if path:
+        cur: Any = cand.get("candidate_data")
+        if not isinstance(cur, dict):
+            row = {"ok": False, "error": "not_found", "task_key": task_key}
+            _contact_task_style_d(
+                log,
+                func="tracker.contact_task_get_candidate_data",
+                identifier=task_key,
+                found_detail=found,
+                recorded_detail="ok=False error=not_found",
+                debug=debug,
+            )
+            return row
+        for part in path.split("."):
+            if not isinstance(cur, dict) or part not in cur:
+                row = {"ok": False, "error": "not_found", "task_key": task_key}
+                _contact_task_style_d(
+                    log,
+                    func="tracker.contact_task_get_candidate_data",
+                    identifier=task_key,
+                    found_detail=found,
+                    recorded_detail="ok=False error=not_found",
+                    debug=debug,
+                )
+                return row
+            cur = cur[part]
+        row = {"ok": True, "task_key": task_key, "result": cur}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_candidate_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail=f"ok=True path={path!r}",
+            debug=debug,
+        )
+        return row
+
+    from src.core.agent import get_entity_agent_story
+
+    out = dict(cand)
+    out["agent_story"] = get_entity_agent_story(out)
+    row = {"ok": True, "task_key": task_key, "result": out}
+    _contact_task_style_d(
+        log,
+        func="tracker.contact_task_get_candidate_data",
+        identifier=task_key,
+        found_detail=found,
+        recorded_detail=f"ok=True astral_candidate_id={cid!r}",
+        debug=debug,
+    )
+    return row
