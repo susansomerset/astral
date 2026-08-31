@@ -225,3 +225,10 @@ AC6 → Stages 3–4 (delete `meteorite_email.py`, retire unbound/selected-id ma
 - **Recommendation:** Chuckles backfill Linear fields when appending.
 
 **In-session statute pass:** Retention config block + seed `auto_mode` 0 — **pattern.config.config-block** / **astral.dispatch.seed-auto-false** conform. Purge/list isolated to `run_meteorite_retention` — **astral.standards.in-scope-only** conform. `entity_batch_id` + `await` dispatcher branch — **astral.batch.batch-id-first** conforms (ledger id; no row claim). Day cutoffs in config, state partitions from AST-1557 — **astral.config.config-source-of-truth** conforms. Universal orch.* — N/A/conforms.
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`
+- **Tip:** `0eff452b8a2ff1f7760135964f1f5f395dc420ae`
+- **Stages:** 1 retention config/seed/dispatcher · 2 `run_meteorite_retention` · 3 delete `meteorite_email.py` · 4 grep verify + consult late import
+- **Build notes:** Merged sibling tips AST-1557–1561 locally (no origin/ftr). Minimal `api_inbox` literal for land skip outcome after mailbox config key removal.
