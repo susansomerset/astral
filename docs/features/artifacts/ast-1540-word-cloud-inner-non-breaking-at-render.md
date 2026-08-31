@@ -100,3 +100,9 @@ Confirm Chuckles estimate: 2 — agree
 No `fix-now` or `discuss` findings on plan substance.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render` @ `bc5ad81a` — `_glue_word_cloud_bullet_separators` after `\u00a0•\u00a0` glue replaces remaining `" "` → `\u00a0` and `"-"` → `\u2011`; call site still `word_cloud` arm only.
+
+**Out of build scope (Betty / qa-child):** inner NBSP / non-breaking-hyphen asserts on `word_cloud` emit; format-switch / left-only marker locks stay hers.
