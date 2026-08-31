@@ -322,6 +322,10 @@ Do **not** change print HTML emit, API error mapping, unsupported-shape toast te
 - A truly blocked popup still shows `Popup blocked — allow popups to open the HTML tab.` when no tab opens.
 - New tab stays isolated from the opener (`opener` cleared after open).
 
+## Resolution — AST-1545
+
+**2026-08-31** — Radia CLEAN / PROCEED (`fdc47334`). Four-site blob-open fix matches plan. Tests/bible on sibling AST-1546 (Docs-Acceptance for this product-only sub). §3h clean-review shortcut → User Testing (no resolve-child).
+
 ## Bug: AST-1546 — gap: align Print blob-open tests with false popup-blocked toast fix
 
 ### As-is
