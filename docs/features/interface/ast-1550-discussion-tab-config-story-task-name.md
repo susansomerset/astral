@@ -185,3 +185,164 @@ context_tokens≈52000
 **Built:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `7b103e5a6be93581bff8a1d6f69d2df77281d497`
 
 Stages 1–3: Discussion on `JOBS_RECOMMENDED_REPORT_TOP_TABS`; `build_artifacts_discussion_hop_task_keys`; `report_discussion_sections` on `state_ui_manifest`; `task_name` on `get_entity_agent_story`. Tests deferred to Betty.
+
+## Radia review
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1550
+**Publish ref:** `sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `814c237ca81681a24d2eea0153e19277bc074e84`
+**Overall:** FIX-NOW
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` (12 files; product: `src/utils/config.py`, `src/ui/api/api_system.py`, `src/core/agent.py`)
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match plan literally |
+| orch.roles.archie-approves-statutes | universal | conforms | N/A to diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1550)` @ `814c237c` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests` prefixes used |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub-branch publish ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1541/AST-1550-…` |
+| orch.git.merge-on-checkout | universal | conforms | N/A to review |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No evidence in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | Sub publish ref only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree AST-1541 |
+| orch.git.three-permanent-branches | universal | conforms | Sub topology correct |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No product-policy drift |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A |
+| orch.pipeline.status-gates-skill-entry | universal | needs-discussion | Tests Passed but Toast cases appear red on tip (see fix-now) |
+| orch.roles.archie-approves-statutes | universal | conforms | — |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible edits on Betty path |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook violations visible |
+| astral.agent.confidence-bounds | scoped | not-applicable | No agent confidence paths touched |
+| astral.agent.do-task-delegation | scoped | not-applicable | No do_task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | Story enrichment only; no grade logic change |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | No dispatcher/claim changes |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No batch read path changes |
+| astral.config.config-source-of-truth | scoped | conforms | Tabs/sections sourced from config + live agent_task |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets/env changes |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spikes |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | Hop walk follows live `run_next` |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No seed/dispatch rows |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single plan doc for AST-1550 |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Engineer src only; Betty test tree |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | Engineer did not land tests |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | No coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `state_ui_manifest` remains `@require_auth` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | No external layer |
+| astral.layers.import-direction | scoped | conforms | ui→data allowed; utils late-import matches file precedent |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Discussion chrome config-driven |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON edits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No catalog conflict |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | Request-time manifest enrichment only |
+| astral.seed.define-approved | scoped | not-applicable | Post-plan build |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage join |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | No data layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | No DB schema/SQL |
+| astral.standards.debug-contract-gated | scoped | not-applicable | No debug= emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Focused helpers; walk parallels existing chain walkers |
+| astral.standards.in-scope-only | scoped | conforms | Src touches limited to plan’s three files |
+| astral.standards.logging-via-utils | scoped | conforms | `_log.warning` via `get_logger` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Public names domain-shaped |
+| astral.standards.no-cross-contamination | scoped | conforms | No out-of-layer src deps |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Nine-hop list from live `run_next`, not static array |
+| astral.standards.public-then-helpers | scoped | conforms | `build_artifacts_discussion_hop_task_keys` public |
+| astral.standards.utils-data-late-import-only | scoped | conforms | Late-import in `config.py` — Joan-approved + `_agent_task_parents_with_run_next` precedent |
+| astral.state.core-decides-transitions | scoped | not-applicable | No state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | Manifest walk only; no run loop |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No frontend src in diff |
+| astral.ui.naming-conventions | scoped | not-applicable | No frontend src |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server config |
+
+**Active set scored:** 64 statute ids from registry (excludes namespace path rows). **0 violates** in product `src/`. **1 needs-discussion** (status gate vs Toast red tests).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan/parent cite no `canon/patterns/**` ids; AST-1253 soft-fail shape reused by convention |
+
+## Plan adherence
+
+Stages 1–3 land as specified:
+
+- **Stage 1:** `JOBS_RECOMMENDED_REPORT_TOP_TABS` gains Discussion after Artifacts; `build_artifacts_discussion_hop_task_keys()` walks `resume_artifact_chain.first_task_key` via live `run_next` with cycle guard.
+- **Stage 2:** `state_ui_manifest()` attaches `jobs.recommended.report_discussion_sections` outside `build_state_ui_manifest()`, soft-fails to `[]` on walk/DB error (AST-1253 mirror).
+- **Stage 3:** `get_entity_agent_story` adds optional `task_name` when non-empty; omits key when blank.
+
+Estimate **3** still fits the real footprint. Scope gate honored for **product** `src/`. **Test-tree scope bleed** from sibling AST-1549/AST-1553 (below) is outside the plan gate.
+
+Joan plan-rubric **APPROVED** @ `6a05e07e`; `astral.standards.utils-data-late-import-only` flagged acceptable there — justification chain satisfied by existing `config.py` chain helpers. No straggler excluded statute scored in-scope.
+
+## Findings
+
+### fix-now — Sibling Toast tests on AST-1550 publish ref without product code
+
+**Location:** `tests/component/frontend/components/test_Toast.test.tsx` (in diff; commit `72b918e3` `test(AST-1553)` on sub)
+
+**Finding:** Three test cases assert AST-1549/AST-1553 Toast behavior (`\u26A0` error glyph, `.toast-copy-target`, `Dismiss` button / no-copy-on-dismiss). `src/ui/frontend/src/components/Toast.tsx` is **unchanged** on tip `814c237c` vs `origin/dev` — still uses `\u2717`, whole-toast click, no Dismiss. Static review: at least `shows success, error, and default info variants`, `error toast is clickable and copies diagnostic bundle`, and `AST-1553: dismiss closes error toast without copying` will fail if the frontend component suite runs on this ref.
+
+**Why fix-now:** Publish ref is not self-consistent; `Tests Passed` is misleading for anyone running `test_Toast.test.tsx`. Not AST-1550 product scope — Betty/Chuckles should revert or relocate these deltas to the AST-1553/1549 sub (or land sibling product first), not route to Ada via `resolve-child`.
+
+### discuss — Cross-ticket test commit on child sub
+
+**Location:** Branch history: `72b918e3 test(AST-1553)` precedes `merge-tests(AST-1550)`
+
+**Finding:** AST-1553 test work sits on the AST-1550 publish ref alongside Betty’s AST-1550 manifest. `orch.git.betty-merge-tests-one-sha` is satisfied (one merge-tests), but the direct `test(AST-1553)` commit blurs sibling boundaries under parent AST-1541.
+
+**Question:** Was Tests Passed gated on a manifest that excluded `test_Toast.test.tsx`? If yes, document manifest scope on the issue; if no, status should not have advanced.
+
+### advisory — Duplicate walk pattern
+
+**Location:** `src/utils/config.py` `build_artifacts_discussion_hop_task_keys` vs `src/core/candidate.py` `_walk_requested_artifacts_chain_task_keys`
+
+**Finding:** Same run_next-walk shape, different start keys/layers. Layer law prevents utils→core import; duplication is bounded and acceptable. Optional future consolidation if a shared utils walker emerges.
+
+### advisory — Per-hop double `get_agent_task` in manifest path
+
+**Location:** `src/ui/api/api_system.py` `state_ui_manifest` loop + internal walk in `build_artifacts_discussion_hop_task_keys`
+
+**Finding:** ~2 DB reads per hop (N≤9). Within plan’s “N is small” allowance; optimize only if profiling warrants.
+
+## What’s solid
+
+- Product implementation is plan-faithful and ready for sibling AST-1551 consume contract.
+- Cycle detection and empty-`first_task_key` → `[]` behavior tested.
+- `task_name` omission-on-blank matches parent Technical and keeps payloads clean.
+- AST-1550-scoped tests (`test_config`, `test_api_system`, `test_agent`) align with manifest intent.
+- Soft-fail manifest enrichment preserves 200 on broken chains.
+
+## Frame diff
+
+- `JOBS_RECOMMENDED_REPORT_TOP_TABS`: +`discussion` tab after `artifacts`
+- `GET /api/state_ui_manifest`: +`jobs.recommended.report_discussion_sections` `[{section_id, nav_label, default_expanded}]`
+- `get_entity_agent_story` entries: +optional `task_name` string
+- **Out of frame (on diff):** `test_Toast.test.tsx` AST-1549/1553 expectations — sibling tickets, no matching `Toast.tsx` change
+
+## Recommended actions (downstream — not Radia)
+
+1. **Betty/Chuckles:** Remove or relocate `test_Toast.test.tsx` AST-1549/1553 deltas from `sub/AST-1541/AST-1550-…`; keep AST-1550 tests only on this ref.
+2. **Chuckles:** Confirm Tests Passed manifest excluded Toast; if not, regress status until test tree is green on tip.
+3. **Ada / resolve-child:** No product `src/` fixes required for AST-1550 scope once test-tree fix-now is handled separately.
+
+**Notes:** Joan validate artifact attached; no excluded statute straggler. Product `src/` alone would be **CLEAN / PROCEED**.
+
+context_tokens≈72000
+
+---
+
+[code-rubric] REVIEW (Commit: 814c237c) Sibling Toast tests orphan
+```
