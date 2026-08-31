@@ -208,3 +208,11 @@ AC1→Stage 2 (manifest `report_top_tabs` + Discussion pane branch); AC2–AC6�
 
 context_tokens≈68000
 ```
+
+---
+
+## Review
+
+**Built:** `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `00c10b63edcb19b578b7fd50af8077fbd729c4ce`
+
+Stages 1–2: `JobDiscussionPane` RESPONSE-only stack; Discussion tab wired in `JobAnalysisReportModal` from `report_discussion_sections` + `agent_story`. Tests deferred to Betty.
