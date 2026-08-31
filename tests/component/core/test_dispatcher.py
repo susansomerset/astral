@@ -2451,7 +2451,7 @@ class TestAst1090GazeEmailDispatchOne:
     async def test_calls_runner_with_bound_ledger_cid(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.core import meteorite_email as ge_mod
+        from src.core import meteorite as meteorite_mod
 
         get_cand = MagicMock(side_effect=AssertionError("must not load candidate"))
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", get_cand)
@@ -2463,7 +2463,7 @@ class TestAst1090GazeEmailDispatchOne:
                 "total_errors": 0,
             }
         )
-        monkeypatch.setattr(ge_mod, "run_meteorite_email", runner)
+        monkeypatch.setattr(meteorite_mod, "check_inbox", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -2493,10 +2493,10 @@ class TestAst1090GazeEmailDispatchOne:
 
     @pytest.mark.asyncio
     async def test_skips_unbound_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.core import meteorite_email as ge_mod
+        from src.core import meteorite as meteorite_mod
 
         runner = AsyncMock()
-        monkeypatch.setattr(ge_mod, "run_meteorite_email", runner)
+        monkeypatch.setattr(meteorite_mod, "check_inbox", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -2513,6 +2513,57 @@ class TestAst1090GazeEmailDispatchOne:
         await dispatcher_mod._dispatch_one(task)
         runner.assert_not_awaited()
         save_ledger.assert_not_called()
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "_is_meteorite_ingress_transition_task_key"),
+    reason="AST-1560 meteorite ingress dispatch branch not on this publish tip",
+)
+class TestAst1560IngressTransitionDispatchOne:
+    """AST-1560: _dispatch_one routes stage/scrape/land transition runners."""
+
+    @pytest.mark.asyncio
+    async def test_routes_stage_runner_with_entity_batch_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_stage_meteorite", runner)
+        monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", AsyncMock())
+        monkeypatch.setattr(meteorite_mod, "run_land_meteorite", AsyncMock())
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        loop = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
+        tk = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]
+        task = {
+            "id": 1560,
+            "task_key": tk,
+            "candidate_id": None,
+            "auto_mode": 1,
+            "debug": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[1560] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        runner.assert_awaited_once()
+        assert runner.await_args.args[0]["entity_batch_id"]
+        assert runner.await_args.args[0]["entity_batch_id"].startswith(f"{tk}-")
+        loop.assert_not_called()
+        save_ledger.assert_called_once()
+        assert save_ledger.call_args.args[1] == tk
 
 
 @pytest.mark.skipif(

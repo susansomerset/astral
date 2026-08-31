@@ -205,26 +205,100 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1530-core-stage-scrap-land`.
 
-Public `stage_meteorite`: blob + source handle → `invoke_stage_meteorite` → scrap map (`_map_stage_jobs_to_scraps`) → `land_meteorite` for landable outcomes, or structured skip for `not_job_content` / `not_original_posting`. Text outcomes overwrite agent URLs with source-refs; URL outcomes keep `http(s)` links and set source-ref `company_job_id`. No second Playwright stack. Catalog/config: **`docs/test-bible/utils/config.md`** (**AST-1529**). Invoke helper: **`docs/test-bible/core/consult.md`**. Callers: sibling **AST-1531**.
+Public `stage_meteorite`: blob + source handle → `invoke_stage_meteorite` → classify outcome + `jobs[]` only (**AST-1560** retires inline scrap map / land on the table path). Skip outcomes return `skipped=True` with empty `jobs`. Catalog/config: **`docs/test-bible/utils/config.md`** (**AST-1529**). Invoke helper: **`docs/test-bible/core/consult.md`**. Table transitions: **AST-1560** dispatch runners.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Scrap map + stage gates / skip / land / Style D | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`** |
+| Classify-only stage gates / skip / Style D | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`** (revised AST-1560) |
 
-**Broken / obsolete:** none — additive public entry; existing `land_meteorite` tests unchanged.
+**Broken / obsolete (AST-1560):** `_map_stage_jobs_to_scraps` tests and land-via-`stage_meteorite` assertions — removed; classify-only contract.
 
 **Integration:** none — do not invent new integration coverage.
 
 ## QA test manifest
 
-1. Stage + scrap map: `tests/component/core/test_meteorite.py::TestAst1530StageMeteorite`
-2. Invoke helper: `tests/component/core/test_consult.py::TestAst1530InvokeStageMeteorite`
+1. `tests/component/core/test_meteorite.py::TestAst1530StageMeteorite`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_meteorite.py::TestAst1530StageMeteorite \
-  tests/component/core/test_consult.py::TestAst1530InvokeStageMeteorite \
   -q
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1560 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
+
+Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAPE_LINK | READY), `run_scrape_meteorite` (Playwright → READY | BOT_BLOCKED | ERROR), `run_land_meteorite` (READY → `METEORITE_NEW` job + LANDED, no enrich-in-front). Always-on row-transition monitoring via `log_meteorite_row_transition`. Config/dispatcher wiring: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage / scrape / land runners + monitoring | `src/core/meteorite.py` | **`TestAst1560RunStageMeteorite`**, **`TestAst1560RunScrapeMeteorite`**, **`TestAst1560RunLandMeteorite`** |
+| Revised classify-only public stage | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`** |
+
+**Broken / obsolete:** **`TestAst1530StageMeteorite`** scrap-map / land-via-stage tests (AST-1560).
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst1530StageMeteorite`
+2. `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite`
+3. `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite`
+4. `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
+5. `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne`
+6. `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1530StageMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+`check_inbox` fan-out + monitoring + archive; dispatcher repoint. See **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| check_inbox | `src/core/meteorite.py` | **`TestAst1559CheckInbox`** |
+| Email aliases | `src/core/candidate.py` | **`TestAst1559EmailAliasesForCandidate`** |
+| Monitoring config | `src/utils/config.py` | **`TestAst1559MonitoringConfig`**; revised **`TestAst1090GazeEmailRunnerConfig`**, **`TestAst1140GazeEmailSelectedConfig`** |
+| Dispatcher | `src/core/dispatcher.py` | revised **`TestAst1090GazeEmailDispatchOne`** |
+
+**Broken / obsolete:** `meteorite_email.run` config/dispatcher asserts; **`TestAst1140RunMeteoriteEmailSelectedIds`** create spy (**AST-1558**).
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. `tests/component/core/test_meteorite.py::TestAst1559CheckInbox`
+2. `tests/component/core/test_candidate.py::TestAst1559EmailAliasesForCandidate`
+3. `tests/component/utils/test_config.py::TestAst1559MonitoringConfig`
+4. `tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne`
+5. Revised: `TestAst1090GazeEmailRunnerConfig`, `TestAst1140GazeEmailSelectedConfig`, `TestAst1140RunMeteoriteEmailSelectedIds`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox \
+  tests/component/core/test_candidate.py::TestAst1559EmailAliasesForCandidate \
+  tests/component/utils/test_config.py::TestAst1559MonitoringConfig \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
+  -q
+```

@@ -3412,3 +3412,60 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1557 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1557-meteorite-table-claim-helpers`.
+
+`METEORITE_STATES` staging-row registry (`prior_states` per key; distinct from `JOB_STATES` `METEORITE_*` labels) + `METEORITE_STATES_RETENTION` purge/stale partitions. Data helpers: **`docs/test-bible/data/database/meteorites.md`** § AST-1557.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven keys, NEW entry, priors ⊆ registry | `src/utils/config.py` | **`TestAst1557MeteoriteStates`** |
+| Retention partitions disjoint + ⊆ states | same | **`TestAst1557MeteoriteStates::test_retention_partitions`** |
+
+**Broken / obsolete:** none — additive registry.
+
+**Integration:** none — do not invent.
+
+Primary numbered manifest: **`docs/test-bible/data/database/meteorites.md`** § AST-1557.
+
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+Retire `FETCH_EMAIL_CONFIG`, `INBOX_BIND_CONFIG`, `TASK_CONFIG["fetch_email"]`, `SEED_CONFIG["dispatch_task-fetch-email"]`. Primary inbox/Manage Email map: **`docs/test-bible/core/inbox.md`** § AST-1558.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config + task/seed retirement | `src/utils/config.py` | **`TestAst1558FetchEmailBindRetired`** |
+
+**Broken / obsolete:** **`TestAst1313InboxBindConfig`** — `INBOX_BIND_CONFIG` removed (replaced by retirement asserts).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired \
+  -q
+```
+
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+`METEORITE_MONITORING_CONFIG`; `debug_func` → `meteorite.check_inbox`. **`TestAst1559MonitoringConfig`**.
+
+---
+
+### AST-1560 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
+
+`METEORITE_INGRESS_DISPATCH_CONFIG` (task keys, trigger states, scrape page_status map); row-transition monitoring lines in `METEORITE_MONITORING_CONFIG`; `SEED_CONFIG["dispatch_task-meteorite-ingress"]`. **`TestAst1560IngressDispatchConfig`**. Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+

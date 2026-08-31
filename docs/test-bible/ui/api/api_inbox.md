@@ -97,3 +97,46 @@ Create-job JSON includes `created`/`skipped`/`mode`; **201** when any created, *
   tests/component/ui/api/test_api_inbox.py::TestAst1141InboxLandMeteoriteApi \
   -q
 ```
+
+
+### AST-1537 · AST-1533
+
+**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify`.
+
+`GET /api/admin/inbox/messages/<id>` returns `get_message_with_assembled_html` (includes `assembled_html` + raw fields). Primary map: **`docs/test-bible/core/inbox.md`** (**AST-1537**). React render/copy = **AST-1538**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Get → assembled payload | `src/ui/api/api_inbox.py` | revised **`TestAst1033InboxApi`** (`get_message_with_assembled_html` mocks) |
+
+**Broken / obsolete:** get mocks of `get_message_html` — product no longer imports that name in `api_inbox`.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi \
+  -q
+```
+
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+`GET /messages` All vs `candidate_id` → aliases → `fetch_candidate_email`; get uses `get_message_with_assembled_html`; `POST /land-meteorite` requires `candidate_id` and calls `stage_meteorite`; create-job route retired (404). Core verbs: **`docs/test-bible/core/inbox.md`** § AST-1558. React: **`docs/test-bible/frontend/pages.md`** § AST-1558.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| All list + candidate_id filter + assembled get | `src/ui/api/api_inbox.py` | revised **`TestAst1033InboxApi`** (+ **`test_list_with_candidate_id`**) |
+| create-job retired | same | **`TestAst1049InboxCreateJobApiRetired`** |
+| Land requires candidate_id → stage_meteorite | same | **`TestAst1558InboxLandMeteoriteApi`** |
+
+**Broken / obsolete:** **`TestAst1049InboxCreateJobApi`** (route gone); **`TestAst1141InboxLandMeteoriteApi`** (`run_meteorite_email_selected_ids` / no `candidate_id`) — replaced by AST-1558 classes.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py \
+  -q
+```

@@ -40,14 +40,15 @@ Config sections:
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
-  INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases METEORITE_EMAIL_MAILBOX_CONFIG["account_address"])
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, unbound retention, dispatch row seed (AST-1134 / AST-1466) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
-  FETCH_EMAIL_CONFIG — fetch_email mailbox-shell seed literals (AST-1469; runner/ensure = sibling)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
+  METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
+  METEORITE_MONITORING_CONFIG — always-on info inbox classify + row-transition line formats (AST-1559 / AST-1560); not Style D
+  METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -1029,12 +1030,6 @@ TASK_CONFIG = {
         "trigger_state": None,
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
-    },
-    # AST-1469: fetch_email mailbox-shell seed (runner/ensure = sibling inbox slice).
-    "fetch_email": {
-        "entity_type": None,
-        "requires_candidate_key": False,
-        "trigger_state": None,
     },
 }
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["astral_job_id"]["required"] is False
@@ -2538,6 +2533,89 @@ assert isinstance(METEORITE_CONFIG["land_outcome_error"], str) and METEORITE_CON
 assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
 assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 
+# AST-1557: flat meteorite staging-row states (table spine). Keys are NOT JOB_STATES
+# METEORITE_* job lifecycle labels — core transitions decide targets; data accepts state as param.
+METEORITE_STATES = {
+    "NEW": {
+        "prior_states": None,  # insert-only entry from classify fan-out
+    },
+    "SCRAPE_LINK": {
+        "prior_states": ["NEW", "ERROR"],  # link outcomes; retry from ERROR
+    },
+    "READY": {
+        # text fan-out from NEW; scrape success; Estelle paste recovery (sibling)
+        "prior_states": ["NEW", "SCRAPE_LINK", "BOT_BLOCKED"],
+    },
+    "BOT_BLOCKED": {
+        "prior_states": ["SCRAPE_LINK"],
+    },
+    "ERROR": {
+        "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
+    },
+    "LANDED": {
+        "prior_states": ["READY"],
+    },
+    "ABANDONED": {
+        "prior_states": ["BOT_BLOCKED", "ERROR"],  # nag limit / terminal stale
+    },
+}
+
+# Retention partitions (state literals only — day cutoffs are caller/config for AST-1562).
+METEORITE_STATES_RETENTION = {
+    "purge_states": ("LANDED",),
+    "stale_list_states": ("ERROR", "BOT_BLOCKED", "ABANDONED"),
+}
+
+assert set(METEORITE_STATES) == {
+    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+}
+assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
+assert METEORITE_STATES["NEW"]["prior_states"] is None
+assert (
+    set(METEORITE_STATES_RETENTION["purge_states"])
+    | set(METEORITE_STATES_RETENTION["stale_list_states"])
+) <= set(METEORITE_STATES)
+assert set(METEORITE_STATES_RETENTION["purge_states"]).isdisjoint(
+    METEORITE_STATES_RETENTION["stale_list_states"]
+)
+for _ms, _mcfg in METEORITE_STATES.items():
+    _priors = _mcfg["prior_states"]
+    if _priors is not None:
+        assert all(p in METEORITE_STATES for p in _priors), _ms
+
+# AST-1560: dispatcher-driven meteorite row transitions (not Ruth classify — inline in check_inbox).
+METEORITE_INGRESS_DISPATCH_CONFIG = {
+    "stage_task_key": "stage_meteorite",
+    "scrape_task_key": "scrape_meteorite",
+    "land_task_key": "land_meteorite",
+    "stage_trigger_state": "NEW",
+    "scrape_trigger_state": "SCRAPE_LINK",
+    "land_trigger_state": "READY",
+    "batch_size": 10,
+    "debug_func_stage": "meteorite.run_stage_meteorite",
+    "debug_func_scrape": "meteorite.run_scrape_meteorite",
+    "debug_func_land": "meteorite.run_land_meteorite",
+    "scrape_page_status_states": {
+        "blocked": "BOT_BLOCKED",
+        "ok": "READY",
+        "closed": "ERROR",
+        "missing": "ERROR",
+    },
+}
+_mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
+assert len({
+    _mid_ingress["stage_task_key"],
+    _mid_ingress["scrape_task_key"],
+    _mid_ingress["land_task_key"],
+}) == 3
+for _tk in ("stage_task_key", "scrape_task_key", "land_task_key"):
+    assert isinstance(_mid_ingress[_tk], str) and _mid_ingress[_tk]
+for _tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
+    assert _mid_ingress[_tr] in METEORITE_STATES
+assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
+    "READY", "BOT_BLOCKED", "ERROR",
+}
+
 # ---------------------------------------------------------------------------
 # SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
 # Dwell is centre ± spread seconds, re-rolled per page. max_tabs ships at 1 —
@@ -2669,10 +2747,9 @@ assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 # AST-1134/AST-1135 / AST-1466: candidate-bound meteorite_email mailbox dispatch rows
 # (one per candidate; no null shell). Live mailbox identity remains GMAIL_USER environ;
 # account_address is the product expectation. entity_type/trigger_state stay None —
-# mailbox poller, not an ENTITY_TYPES claim queue. Avail/eligible count is the live
-# bind-filtered inbox count (core inbox helpers, AST-1135). Runner is candidate-bound
-# (AST-1136): filter From→row candidate_id, stamp last_email_check, unbound Trash
-# hygiene via unbound_retention_days. Live Ruth classify is stage_meteorite
+# mailbox poller, not an ENTITY_TYPES claim queue. Runner is candidate-bound
+# (AST-1559): aliases → fetch_candidate_email → inline classify → fan-out rows →
+# archive → last_email_check stamp. Live Ruth classify is stage_meteorite
 # (STAGE_METEORITE_CONFIG / AST-1529); METEORITE_EMAIL_PARSE_CONFIG is a fold stub only.
 # Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 METEORITE_EMAIL_MAILBOX_CONFIG = {
@@ -2689,7 +2766,7 @@ METEORITE_EMAIL_MAILBOX_CONFIG = {
     # Runner — subject-is-URL detection (urlparse.scheme).
     "subject_url_schemes": ("http", "https"),
     # Style D func= string for the runner.
-    "debug_func": "meteorite_email.run",
+    "debug_func": "meteorite.check_inbox",
     # AST-1140 — Style D func= for selected-ids Land Meteorite ingest.
     "debug_func_selected": "meteorite_email.selected_ids",
     # Per-id outcome strings returned to AST-1141 / recorded in Style D.
@@ -2702,29 +2779,57 @@ assert isinstance(METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"], int)
 assert METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"] > 0
 assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
 assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "https"}
-assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite_email.run"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite.check_inbox"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func_selected"] == "meteorite_email.selected_ids"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unbound"] == "skipped-unbound"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
-# AST-1469: fetch_email dispatch seed literals (wired by sibling inbox / fetch_email slice).
-# Mailbox-style shell — not an ENTITY_TYPES claim queue. auto_mode stays CLICK (false).
-FETCH_EMAIL_CONFIG = {
-    "task_key": "fetch_email",
-    "auto_mode": False,
-    "min_count": 1,
-    "batch_size": 1,
-    "freq_hrs": 0.1,
-    "entity_type": None,
-    "trigger_state": None,
-    "debug_func": "inbox.fetch_email",
+# AST-1559: always-on info monitoring for meteorite ingress (not Style D).
+METEORITE_MONITORING_CONFIG = {
+    "subject_max_len": 120,
+    "outcome_already_ingested": "already_ingested",
+    "inbox_classify_line": (
+        "meteorite inbox classify from={from_address} mid={message_id} ts={internal_date_ms} "
+        "subj={subject} candidate={candidate_id} outcome={classify_outcome} jobs={job_count}"
+    ),
+    # AST-1560: always-on info row-transition lines (not inbox classify — AST-1559).
+    "row_bot_blocked_line": (
+        "meteorite scrape blocked id={row_id} candidate={candidate_id} link={link}"
+    ),
+    "row_error_line": (
+        "meteorite row error id={row_id} candidate={candidate_id} task={task_key} error={error}"
+    ),
+    "row_landed_line": (
+        "meteorite land id={row_id} candidate={candidate_id} job={astral_job_id}"
+    ),
 }
-assert FETCH_EMAIL_CONFIG["task_key"] == "fetch_email"
-assert FETCH_EMAIL_CONFIG["auto_mode"] is False
-assert FETCH_EMAIL_CONFIG["entity_type"] is None
-assert FETCH_EMAIL_CONFIG["trigger_state"] is None
+
+assert isinstance(METEORITE_MONITORING_CONFIG["subject_max_len"], int)
+assert METEORITE_MONITORING_CONFIG["subject_max_len"] > 0
+assert (
+    isinstance(METEORITE_MONITORING_CONFIG["outcome_already_ingested"], str)
+    and METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
+)
+_inbox_line = METEORITE_MONITORING_CONFIG["inbox_classify_line"]
+for _placeholder in (
+    "{from_address}",
+    "{message_id}",
+    "{candidate_id}",
+    "{classify_outcome}",
+    "{job_count}",
+):
+    assert _placeholder in _inbox_line
+for _row_key, _row_placeholders in (
+    ("row_bot_blocked_line", ("{row_id}", "{candidate_id}", "{link}")),
+    ("row_error_line", ("{row_id}", "{candidate_id}", "{task_key}", "{error}")),
+    ("row_landed_line", ("{row_id}", "{candidate_id}", "{astral_job_id}")),
+):
+    _row_line = METEORITE_MONITORING_CONFIG[_row_key]
+    assert isinstance(_row_line, str) and _row_line
+    for _ph in _row_placeholders:
+        assert _ph in _row_line
 
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(
@@ -2732,19 +2837,6 @@ assert all(
     for e in CANDIDATE_STAGE_DISPATCH.values()
     if "auto_mode" in e
 )
-# AST-1313: one bind rule for Manage Email / Avail / meteorite_email / Land Meteorite / create rematch.
-# header_order is the only allowed sequence (From unique hit wins; To is fallback).
-# inbox_address is the product mailbox identity — same object as
-# METEORITE_EMAIL_MAILBOX_CONFIG["account_address"].
-# Live OAuth user remains GMAIL_USER environ; do not read os.environ here.
-INBOX_BIND_CONFIG = {
-    "header_order": ("from", "to"),
-    "inbox_address": METEORITE_EMAIL_MAILBOX_CONFIG["account_address"],
-}
-assert INBOX_BIND_CONFIG["header_order"] == ("from", "to")
-assert INBOX_BIND_CONFIG["inbox_address"] == METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
-assert isinstance(INBOX_BIND_CONFIG["inbox_address"], str)
-assert "@" in INBOX_BIND_CONFIG["inbox_address"]
 
 # AST-1529: closed-outcome ingress classify (stage_meteorite). Outcome strings and
 # source-ref prefixes are config SSOT — core/prompts must not invent parallel sets.
@@ -2785,6 +2877,7 @@ STAGE_METEORITE_CONFIG = {
     ),
 }
 assert STAGE_METEORITE_CONFIG["task_key"] == "stage_meteorite"
+assert METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"] == STAGE_METEORITE_CONFIG["task_key"]
 assert len(STAGE_METEORITE_CONFIG["outcomes"]) == 6
 assert (
     set(STAGE_METEORITE_CONFIG["landable_outcomes"])
@@ -2994,17 +3087,40 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
         ")",
     ),
-    # AST-1469 / AST-1496: null-candidate fetch_email SQL — Linear paste only; not executed.
-    "dispatch_task-fetch-email": (
+    # AST-1560: global meteorite ingress transition runners (NULL candidate_id pool).
+    "dispatch_task-meteorite-ingress": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'fetch_email', NULL, NULL, NULL, "
-        "0, 0.1, 1, 1, 0, NULL "
+        ") SELECT NULL, 'stage_meteorite', NULL, 'NEW', 'updated_at', "
+        "0, 0.1, 1, 10, 0, NULL "
         "WHERE NOT EXISTS ("
-        "  SELECT 1 FROM dispatch_task "
-        "  WHERE task_key = 'fetch_email' "
-        "    AND (candidate_id IS NULL OR TRIM(candidate_id) = '')"
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id IS NULL "
+        "    AND d.task_key = 'stage_meteorite' "
+        "    AND d.trigger_state = 'NEW'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'scrape_meteorite', NULL, 'SCRAPE_LINK', 'updated_at', "
+        "0, 0.1, 1, 10, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id IS NULL "
+        "    AND d.task_key = 'scrape_meteorite' "
+        "    AND d.trigger_state = 'SCRAPE_LINK'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'land_meteorite', NULL, 'READY', 'updated_at', "
+        "0, 0.1, 1, 10, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id IS NULL "
+        "    AND d.task_key = 'land_meteorite' "
+        "    AND d.trigger_state = 'READY'"
         ")",
     ),
 }

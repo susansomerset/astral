@@ -293,20 +293,47 @@ Originally pin-resolve cover gaps. **AST-1548/1554:** same behaviors asserted on
 
 **Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). Product: **AST-1548**.
 
-Dual-write `save_job_artifact_job_resume_body`; `persist_finalize_*` coat-checks; hydrate job-body-only for operator slots.
+Historical dual-write into `job_data.artifacts`. **AST-1556:** SoT moves to `artifacts` table — helpers rewritten to assert `save_artifact` / no job_data body keys.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Persist dual-write + cover replica + hydrate | `src/core/tracker.py` | **`TestAst1554BodyReplicaPersistHelpers`** (+ hydrate suites above) |
+| Persist table write + cover + coat-check | `src/core/tracker.py` | **`TestAst1554BodyReplicaPersistHelpers`** (+ hydrate suites above) |
+
+**Broken / obsolete:** dual-write `job_resume`+`resume_content` into `job_data` — AST-1556.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
-  tests/component/core/test_tracker.py::TestAst1100ResolveHydrateJobArtifactPins \
-  tests/component/core/test_tracker.py::TestAst1116HydrateCoverLetterNormalize \
-  tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps \
   -q
 ```
+
+### AST-1556 · AST-1547 (bug-repro — artifacts table SoT)
+
+**Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). **Publish:** `origin/sub/AST-1547/AST-1556-job-artifacts-in-artifacts-table`.
+
+Editable `job_resume` / `cover_letter` persist via `database.save_artifact("job", …)`; hydrate overlays `get_current_artifact`; cancel retires table currents. Not `job_data.artifacts.*` as SoT.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Table save / hydrate / cancel-retire | `src/core/tracker.py` | **`TestAst1556JobArtifactsTableSoT`** (bug-repro) |
+
+**Broken / obsolete:** AST-1554 job_data dual-write asserts.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Bug-repro (table SoT save + hydrate overlay + cancel retire): `tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT`
+   - Primary red-first: `::test_save_job_resume_body_writes_artifacts_table_not_job_data`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  -q
+```
+
+**Pass criterion:** red on pre-AST-1556 product (job_data dual-write); green after make-fix table writers — `test-fix` verifies the flip.
 
 ---
 

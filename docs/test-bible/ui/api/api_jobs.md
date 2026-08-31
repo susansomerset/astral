@@ -38,17 +38,19 @@ Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT `…/artifa
 
 **Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). Product: **AST-1548**.
 
-`PUT /api/jobs/<id>/artifacts/job_resume` calls `save_job_artifact_job_resume_body` (dual-write `job_resume` + `resume_content`). Never writes an `agent_data_id` string onto the operator slot.
+`PUT /api/jobs/<id>/artifacts/job_resume` stays thin → `save_job_artifact_job_resume_body` (table SoT under **AST-1556**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| PUT body dual-write | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_dual_writes_job_resume_body`** |
+| PUT via tracker body helper | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper`** |
+
+**Broken / obsolete:** dual-write / keep-pin PUT node names — AST-1556.
 
 **Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_dual_writes_job_resume_body \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper \
   -q
 ```
 

@@ -893,6 +893,13 @@ Append-merge `EMBEDDED_EVALUATE_JD_CRITERIA` (QC then GC; AST-1084) into `evalua
 
 
 ---
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+`email_aliases_for_candidate` — **`TestAst1559EmailAliasesForCandidate`**.
+
+---
 
 ### AST-1092 · AST-1065 (UAT)
 

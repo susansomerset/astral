@@ -31,11 +31,11 @@ from src.core.agent import _current_agent_task_run_next, compute_batch_cost
 from src.utils.deploy_status import is_local_deploy_env
 from src.utils.config import (
     ASTRAL_CONFIG,
-    FETCH_EMAIL_CONFIG,
     INFLOW_CONFIG,
     TASK_CONFIG,
     METEORITE_DISPATCH_TASKS,
     METEORITE_EMAIL_MAILBOX_CONFIG,
+    METEORITE_INGRESS_DISPATCH_CONFIG,
     dispatch_claim_uses_score_floor,
     effective_dispatch_score_floor,
     dispatch_claim_states,
@@ -58,6 +58,16 @@ logger = get_logger(__name__)
 def _is_inbox_mailbox_task_key(task_key: str) -> bool:
     """meteorite mailbox fold (parse_meteorite_email / meteorite_email) — AST-1282 / AST-1466."""
     return is_meteorite_email_mailbox_task_key(task_key)
+
+
+def _is_meteorite_ingress_transition_task_key(task_key: str) -> bool:
+    """True for table transition runners (AST-1560) — not Ruth classify / consult hop."""
+    tk = (task_key or "").strip()
+    return tk in (
+        METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+    )
 
 def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
     """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
@@ -359,52 +369,6 @@ def ensure_meteorite_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
     )
     return {
         "candidate_id": cid,
-        "task_key": tk,
-        "added": 1,
-        "skipped": 0,
-        "skipped_missing_config": 0,
-        "id": new_id,
-    }
-
-
-def ensure_fetch_email_dispatch_task() -> Dict[str, Any]:
-    """Idempotent null-candidate fetch_email CLICK shell (AST-1472)."""
-    tk = str(FETCH_EMAIL_CONFIG["task_key"]).strip()
-    if tk not in TASK_CONFIG:
-        return {
-            "task_key": tk,
-            "added": 0,
-            "skipped": 0,
-            "skipped_missing_config": 1,
-            "id": None,
-        }
-    existing = None
-    for row in database.list_dispatch_tasks():
-        if (row.get("task_key") or "").strip() != tk:
-            continue
-        cid = row.get("candidate_id")
-        if cid is None or str(cid).strip() == "":
-            existing = row
-            break
-    if existing is not None:
-        return {
-            "task_key": tk,
-            "added": 0,
-            "skipped": 1,
-            "skipped_missing_config": 0,
-            "id": existing.get("id"),
-        }
-    new_id = database.save_dispatch_task(
-        candidate_id=None,
-        task_key=tk,
-        min_count=int(FETCH_EMAIL_CONFIG["min_count"]),
-        auto_mode=bool(FETCH_EMAIL_CONFIG["auto_mode"]),
-        entity_type=FETCH_EMAIL_CONFIG["entity_type"],
-        trigger_state=FETCH_EMAIL_CONFIG["trigger_state"],
-        batch_size=FETCH_EMAIL_CONFIG["batch_size"],
-        freq_hrs=float(FETCH_EMAIL_CONFIG["freq_hrs"] or 0),
-    )
-    return {
         "task_key": tk,
         "added": 1,
         "skipped": 0,
@@ -814,12 +778,21 @@ async def _dispatch_one(task: Dict) -> None:
     if debug:
         logger.set_debug_flag(True)
 
-    # AST-1472: null-candidate fetch_email → inbox.run_fetch_email (no API key).
-    if (task_key or "").strip() == FETCH_EMAIL_CONFIG["task_key"]:
-        from src.core.inbox import run_fetch_email
+    # AST-1560: meteorite table transition runners — custom branch before mailbox / _run_unified.
+    if _is_meteorite_ingress_transition_task_key(task_key):
+        from src.core.meteorite import (
+            run_land_meteorite,
+            run_scrape_meteorite,
+            run_stage_meteorite,
+        )
 
+        runners = {
+            METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]: run_stage_meteorite,
+            METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]: run_scrape_meteorite,
+            METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]: run_land_meteorite,
+        }
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
-        ledger_cid = ""
+        ledger_cid = str(candidate_id or "").strip() or None
         if debug:
             logger.debug_index(
                 func="dispatcher._dispatch_one",
@@ -829,8 +802,8 @@ async def _dispatch_one(task: Dict) -> None:
                 outcome="task start",
             )
             logger.debug_detail(
-                f"fetch_email runner entity_batch_id={entity_batch_id} "
-                f"mode={'AUTO' if not is_click else 'CLICK'}"
+                f"meteorite ingress transition entity_batch_id={entity_batch_id} "
+                f"candidate_id={ledger_cid!r} mode={'AUTO' if not is_click else 'CLICK'}"
             )
         database.save_dispatch_ledger(
             entity_batch_id,
@@ -842,6 +815,7 @@ async def _dispatch_one(task: Dict) -> None:
         )
         log_batch_id.set(entity_batch_id)
         dispatch_ledger_id = entity_batch_id
+        task["entity_batch_id"] = entity_batch_id
         with _registry_lock:
             entry = _task_registry.get(task_id)
             if entry:
@@ -849,18 +823,18 @@ async def _dispatch_one(task: Dict) -> None:
         accumulated = dict(_SUMMARY_ZERO)
         final_status = "COMPLETED"
         try:
-            summary = await run_fetch_email(task, debug=debug)
+            summary = await runners[task_key](task, debug=debug)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             failure_reason = "dispatch cancelled by admin"
-            _sched_log.warning("[%s/%s] KILLED by admin — fetch_email", task_key, entity_batch_id)
+            _sched_log.warning("[%s/%s] KILLED by admin — meteorite ingress", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception:
             final_status = "FAILED"
-            failure_reason = "fetch_email runner crashed"
-            _sched_log.exception("[%s/%s] fetch_email crashed", task_key, entity_batch_id)
+            failure_reason = "meteorite ingress runner crashed"
+            _sched_log.exception("[%s/%s] meteorite ingress crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:
@@ -900,8 +874,8 @@ async def _dispatch_one(task: Dict) -> None:
 
     # AST-1134 / AST-1282: candidate-bound inbox mailbox — ledger uses row candidate_id.
     if _is_inbox_mailbox_task_key(task_key):
-        # late: keep meteorite_email off module-top load (peer late imports in this file)
-        from src.core.meteorite_email import run_meteorite_email
+        # late: keep check_inbox off module-top load (peer late imports in this file)
+        from src.core.meteorite import check_inbox
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip()
@@ -921,7 +895,7 @@ async def _dispatch_one(task: Dict) -> None:
                 outcome="task start",
             )
             logger.debug_detail(
-                f"mailbox runner (meteorite_email path) entity_batch_id={entity_batch_id} "
+                f"mailbox runner (check_inbox path) entity_batch_id={entity_batch_id} "
                 f"candidate_id={ledger_cid} "
                 f"mode={'AUTO' if not is_click else 'CLICK'}"
             )
@@ -942,18 +916,18 @@ async def _dispatch_one(task: Dict) -> None:
         accumulated = dict(_SUMMARY_ZERO)
         final_status = "COMPLETED"
         try:
-            summary = await run_meteorite_email(task, debug=debug)
+            summary = await check_inbox(task, debug=debug)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             failure_reason = "dispatch cancelled by admin"
-            _sched_log.warning("[%s/%s] KILLED by admin — meteorite_email", task_key, entity_batch_id)
+            _sched_log.warning("[%s/%s] KILLED by admin — check_inbox", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception:
             final_status = "FAILED"
-            failure_reason = "meteorite_email runner crashed"
-            _sched_log.exception("[%s/%s] meteorite_email crashed", task_key, entity_batch_id)
+            failure_reason = "check_inbox runner crashed"
+            _sched_log.exception("[%s/%s] check_inbox crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:
@@ -1271,18 +1245,7 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
     et = task.get("entity_type")
     ts = task.get("trigger_state")
     cid = task.get("candidate_id", "")
-    if (task_key or "").strip() == FETCH_EMAIL_CONFIG["task_key"]:
-        try:
-            from src.core.inbox import count_inbox_bound_by_candidate
-            task["available_count"] = sum(count_inbox_bound_by_candidate(debug=False).values())
-        except Exception:
-            _sched_log.warning(
-                "run_task: fetch_email available_count failed task_id=%s",
-                task_id,
-                exc_info=True,
-            )
-            task["available_count"] = 0
-    elif _is_inbox_mailbox_task_key(task_key) and str(cid or "").strip():
+    if _is_inbox_mailbox_task_key(task_key) and str(cid or "").strip():
         try:
             from src.core.inbox import count_inbox_messages_bound_to_candidate
             task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
