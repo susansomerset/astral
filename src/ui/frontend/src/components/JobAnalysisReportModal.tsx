@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import AgentAnalysisHeader from "./AgentAnalysisHeader"
+import { type AgentStoryEntry } from "./AgentStoryTab"
 import ArtifactEditor from "./ArtifactEditor"
+import JobDiscussionPane from "./JobDiscussionPane"
 import Modal from "./Modal"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
@@ -56,6 +58,7 @@ interface JobDetail {
   do_rubric?: unknown
   get_rubric?: unknown
   like_rubric?: unknown
+  agent_story?: AgentStoryEntry[]
 }
 
 interface Props {
@@ -326,6 +329,25 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       }
     })
   }, [manifest, job])
+
+  // AST-1551: Discussion hop slots from AST-1550 manifest (local cast — Scope omits StateUiContext).
+  const discussionSections = useMemo((): ReportSectionDef[] => {
+    const recommended = manifest?.jobs.recommended as
+      | {
+          report_discussion_sections?: Array<{
+            section_id: string
+            nav_label: string
+            default_expanded: boolean
+          }>
+        }
+      | undefined
+    const rows = recommended?.report_discussion_sections ?? []
+    return rows.map(s => ({
+      section_id: s.section_id,
+      nav_label: s.nav_label,
+      default_expanded: s.default_expanded,
+    }))
+  }, [manifest])
 
   const artifactTabs = manifest?.jobs.recommended.report_artifact_tabs
   const artifacts = job?.job_data?.artifacts
@@ -694,6 +716,12 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
                 />
               )}
               {activeTopTab === "artifacts" && renderArtifactsPane()}
+              {activeTopTab === "discussion" && (
+                <JobDiscussionPane
+                  sections={discussionSections}
+                  agentStory={job?.agent_story ?? []}
+                />
+              )}
             </div>
           )}
         </div>

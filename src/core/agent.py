@@ -3872,6 +3872,11 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
 
         entry = {**e, "blocks": blocks}
 
+        # AST-1550: optional display name from live agent_task (omit when blank).
+        task_name = ((get_agent_task(task_key) or {}).get("task_name") or "").strip()
+        if task_name:
+            entry["task_name"] = task_name
+
         if is_scored:
             grades_key = task_cfg.get("grades_key")
             data_blob = entity.get("job_data") if entity.get("astral_job_id") else entity.get("company_data")

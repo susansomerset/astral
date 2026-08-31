@@ -83,7 +83,7 @@ function topTabBar() {
 describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  it("renders Summary / Analysis / Artifacts horizontal tabs with Summary default", async () => {
+  it("renders Summary / Analysis / Artifacts / Discussion horizontal tabs with Summary default", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j948"))
     renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
     await waitForShell()
@@ -91,6 +91,8 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
     expect(within(bar).getByRole("button", { name: "Analysis" })).toBeInTheDocument()
     expect(within(bar).getByRole("button", { name: "Artifacts" })).toBeInTheDocument()
+    // AST-1551: Discussion follows Artifacts via report_top_tabs (fixture + AST-1550)
+    expect(within(bar).getByRole("button", { name: "Discussion" })).toBeInTheDocument()
     expect(document.querySelector(".side-tab-list")).toBeNull()
     // Summary section chrome (bodies filled by AST-949)
     expect(screen.getByText("Job Summary")).toBeInTheDocument()
@@ -1187,6 +1189,58 @@ describe("JobAnalysisReportModal — AST-1421 snapshot Copy", () => {
       () => expect(screen.getByRole("button", { name: /^Copy$/ })).toBeInTheDocument(),
       { timeout: 3000 },
     )
+  })
+})
+
+describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("Discussion tab shows nine collapsed hop labels from manifest", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j1551"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1551" onClose={() => {}} />)
+    await waitForShell()
+    const bar = topTabBar()
+    const discussion = within(bar).getByRole("button", { name: "Discussion" })
+    // Discussion is last top tab (after Artifacts)
+    const tabs = within(bar).getAllByRole("button")
+    expect(tabs.map(t => t.textContent)).toEqual([
+      "Summary",
+      "Analysis",
+      "Artifacts",
+      "Discussion",
+    ])
+    await userEvent.click(discussion)
+    expect(screen.getByText("Contemplate Job")).toBeInTheDocument()
+    expect(screen.getByText("Propose Application Responses")).toBeInTheDocument()
+    expect(screen.getAllByRole("button", { name: "Expand section" })).toHaveLength(9)
+    expect(screen.queryByRole("button", { name: "Collapse section" })).not.toBeInTheDocument()
+  })
+
+  it("partial agent_story still nine slots; expand shows RESPONSE body", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1551-partial", {
+        agent_story: [
+          {
+            task_key: "contemplate_job",
+            blocks: [
+              { type: "PROMPT", id: "p", content: "hidden" },
+              { type: "RESPONSE", id: "r", content: '{"hop":1}' },
+            ],
+          },
+        ],
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1551-partial" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Discussion" }))
+    expect(screen.getAllByRole("button", { name: "Expand section" })).toHaveLength(9)
+    await userEvent.click(screen.getAllByRole("button", { name: "Expand section" })[0])
+    const area = document.querySelector("textarea.entity-story-content") as HTMLTextAreaElement
+    expect(area).toBeTruthy()
+    expect(area.readOnly).toBe(true)
+    expect(area.value).toContain('"hop": 1')
+    expect(screen.queryByDisplayValue("hidden")).not.toBeInTheDocument()
   })
 })
 

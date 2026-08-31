@@ -1304,5 +1304,38 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+
+### AST-1551 · AST-1541
+
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report`.
+
+`JobDiscussionPane` — RESPONSE-only nine-hop stack via `ReportSectionList` / `entity-story-content` (JSON pretty-print / raw text; empty hops stay panels). `JobAnalysisReportModal` wires Discussion from `report_discussion_sections` + `agent_story` (no hardcode). Fixture + pane `NINE` keys lockstep with **AST-1550** `TestAst1550ReportDiscussionSections._NINE` (`contemplate_job` → … → `propose_application_responses`). Config/manifest/`task_name`: sibling **AST-1550**. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pane RESPONSE-only / formatting / empty hops | `JobDiscussionPane.tsx` | **`test_JobDiscussionPane.test.tsx`** — **`JobDiscussionPane — AST-1551`** |
+| Modal Discussion tab + nine slots + partial story | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1551 Discussion tab`**; revised AST-948 top-tab assert |
+| Manifest fixture Discussion | `stateUiManifestFixture.ts` | consumed by JAR / pane tests |
+
+**Broken / obsolete:** AST-948 three-tab shell assert — Discussion added; tip Toast tests realigned to `origin/dev` (product already has AST-1549 dismiss).
+
+**Product gap (engineer — test-child):** `JobDiscussionPane.responseBodyForTask` selects the first `RESPONSE*` block even when `content === ""`, so a blank RESPONSE hides a later non-empty body. AgentStoryTab filters empty RESPONSE first. Fix: first `RESPONSE*` with non-empty content. Repro: **`skips empty RESPONSE and shows the next RESPONSE body (Agent Story parity)`** (red until fixed).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Pane: `tests/component/frontend/components/test_JobDiscussionPane.test.tsx`
+2. Modal Discussion: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1551|AST-948 horizontal shell"`
+3. Toast align (product on tip): `tests/component/frontend/components/test_Toast.test.tsx`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDiscussionPane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx \
+  --testNamePattern="AST-1551|AST-948 horizontal shell|Toast"
+```
+
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
