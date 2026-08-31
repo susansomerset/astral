@@ -167,3 +167,21 @@ AC1 → Stage 1 (`JOBS_RECOMMENDED_REPORT_TOP_TABS` → `build_state_ui_manifest
 
 context_tokens≈52000
 ```
+
+---
+
+## Self-Assessment
+
+**Scope:** `Single-Component` — config top tab + hop walk, api_system Discussion sections, agent story `task_name`; no React pane.
+
+**Conf:** `High` — live `run_next` walk mirrors AST-1253; nine hops verified against DB; additive `task_name` field.
+
+**Risk:** `Low` — soft-fail empty sections if walk fails; empty `task_name` omitted (UI falls back to `task_key`).
+
+---
+
+## Review
+
+**Built:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `7b103e5a6be93581bff8a1d6f69d2df77281d497`
+
+Stages 1–3: Discussion on `JOBS_RECOMMENDED_REPORT_TOP_TABS`; `build_artifacts_discussion_hop_task_keys`; `report_discussion_sections` on `state_ui_manifest`; `task_name` on `get_entity_agent_story`. Tests deferred to Betty.
