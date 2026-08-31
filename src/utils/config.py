@@ -40,13 +40,11 @@ Config sections:
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
-  INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases METEORITE_EMAIL_MAILBOX_CONFIG["account_address"])
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, unbound retention, dispatch row seed (AST-1134 / AST-1466) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
-  FETCH_EMAIL_CONFIG — fetch_email mailbox-shell seed literals (AST-1469; runner/ensure = sibling)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
@@ -1029,12 +1027,6 @@ TASK_CONFIG = {
         "trigger_state": None,
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
-    },
-    # AST-1469: fetch_email mailbox-shell seed (runner/ensure = sibling inbox slice).
-    "fetch_email": {
-        "entity_type": None,
-        "requires_candidate_key": False,
-        "trigger_state": None,
     },
 }
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["astral_job_id"]["required"] is False
@@ -2709,42 +2701,12 @@ assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"] =
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
-# AST-1469: fetch_email dispatch seed literals (wired by sibling inbox / fetch_email slice).
-# Mailbox-style shell — not an ENTITY_TYPES claim queue. auto_mode stays CLICK (false).
-FETCH_EMAIL_CONFIG = {
-    "task_key": "fetch_email",
-    "auto_mode": False,
-    "min_count": 1,
-    "batch_size": 1,
-    "freq_hrs": 0.1,
-    "entity_type": None,
-    "trigger_state": None,
-    "debug_func": "inbox.fetch_email",
-}
-assert FETCH_EMAIL_CONFIG["task_key"] == "fetch_email"
-assert FETCH_EMAIL_CONFIG["auto_mode"] is False
-assert FETCH_EMAIL_CONFIG["entity_type"] is None
-assert FETCH_EMAIL_CONFIG["trigger_state"] is None
-
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(
     not bool(e.get("auto_mode"))
     for e in CANDIDATE_STAGE_DISPATCH.values()
     if "auto_mode" in e
 )
-# AST-1313: one bind rule for Manage Email / Avail / meteorite_email / Land Meteorite / create rematch.
-# header_order is the only allowed sequence (From unique hit wins; To is fallback).
-# inbox_address is the product mailbox identity — same object as
-# METEORITE_EMAIL_MAILBOX_CONFIG["account_address"].
-# Live OAuth user remains GMAIL_USER environ; do not read os.environ here.
-INBOX_BIND_CONFIG = {
-    "header_order": ("from", "to"),
-    "inbox_address": METEORITE_EMAIL_MAILBOX_CONFIG["account_address"],
-}
-assert INBOX_BIND_CONFIG["header_order"] == ("from", "to")
-assert INBOX_BIND_CONFIG["inbox_address"] == METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
-assert isinstance(INBOX_BIND_CONFIG["inbox_address"], str)
-assert "@" in INBOX_BIND_CONFIG["inbox_address"]
 
 # AST-1529: closed-outcome ingress classify (stage_meteorite). Outcome strings and
 # source-ref prefixes are config SSOT — core/prompts must not invent parallel sets.
@@ -2992,19 +2954,6 @@ SEED_CONFIG = {
         "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_upshot' "
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
-        ")",
-    ),
-    # AST-1469 / AST-1496: null-candidate fetch_email SQL — Linear paste only; not executed.
-    "dispatch_task-fetch-email": (
-        "INSERT INTO dispatch_task ("
-        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
-        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'fetch_email', NULL, NULL, NULL, "
-        "0, 0.1, 1, 1, 0, NULL "
-        "WHERE NOT EXISTS ("
-        "  SELECT 1 FROM dispatch_task "
-        "  WHERE task_key = 'fetch_email' "
-        "    AND (candidate_id IS NULL OR TRIM(candidate_id) = '')"
         ")",
     ),
 }
