@@ -352,3 +352,25 @@ All edits in `src/core/builder.py` only (parent Component/Technical scope).
 ## Radia review (AST-1536)
 
 Clean — render-only `_glue_word_cloud_bullet_separators` on `word_cloud` arm; generation-path global glue reverted. [bug-repro] format-switch OK. §3h shortcut — no resolve().
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/b9d9e2cabfb9bed52af8854e9c8072c6/e73b9b2e-99ca-4b19-b04d-b1f325fd1de1/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/a07517f2-63f6-4c1a-916b-133b35d1361b/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/b9d9e2cabfb9bed52af8854e9c8072c6/4038f701-7757-4bcf-a96d-5ba87a0b4858/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1526 (parent) | ftr/AST-1526-resume-word-clouds-need-non-breaking-spaces |
+| AST-1528 | sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue |
+| AST-1536 | sub/AST-1526/AST-1536-word-cloud-nbsp-glue-at-render |
+
+**Epic worktree:** `astral-AST-1526/` — one active sub checked out at a time.
