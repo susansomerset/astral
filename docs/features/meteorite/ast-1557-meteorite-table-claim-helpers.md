@@ -228,3 +228,180 @@ context_tokens≈42000
 
 - **Publish tip:** `7ae8111a90cc75c499aaf3126094d8de2aa87849` on `sub/AST-1555/AST-1557-meteorite-table-claim-helpers`
 - **Built:** METEORITE_STATES + meteorite table claim/insert/update + retention helpers
+
+## Radia review
+
+# Radia review — AST-1557
+
+`[code-rubric] revision=2`  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1557  
+**Publish ref:** `sub/AST-1555/AST-1557-meteorite-table-claim-helpers` @ `a83b8dd517351a6dfe245a4d3abe7d12b9966be7`  
+**Overall:** DISCUSS  
+**Internal grade:** DISCUSS (product clean; branch hygiene question)
+
+**Baseline:** `git diff origin/dev...origin/sub/AST-1555/AST-1557-meteorite-table-claim-helpers`  
+**Status gate:** Tests Passed (spawn prompt — trusted)
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent/LLM paths in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | conforms | `claim_meteorite_batch(batch_id, …)` batch_id first; get/clear peers |
+| astral.batch.batch-id-format | scoped | conforms | string batch_id; no format violation |
+| astral.batch.claim-process-release | scoped | conforms | claim/get/clear trio; unclaimed filter; clear nulls batch columns |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no agent_responses |
+| astral.config.config-source-of-truth | scoped | conforms | `METEORITE_STATES` / retention partitions in config with asserts |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seeds |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single `ast-1557-*.md` plan doc |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Radia scope; Betty test commits expected |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | engineer `src/` only; tests via Betty/test-child |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | data/utils only |
+| astral.layers.import-direction | scoped | conforms | `database.py` imports `METEORITE_STATES` from config only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no routes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog edits |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot seed |
+| astral.seed.define-approved | scoped | not-applicable | child implement, not define |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage join |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `ValueError` on bad fields/state; no data-layer logging |
+| astral.standards.database-header-inventory | scoped | conforms | `meteorite` bullet added to module inventory |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | helpers mirror candidate/job batch shape |
+| astral.standards.in-scope-only | scoped | conforms | `src/` footprint is `database.py` + `config.py` only |
+| astral.standards.logging-via-utils | scoped | conforms | no new loggers/print in touched `src/` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names (`meteorite`, `METEORITE_STATES`) |
+| astral.standards.no-cross-contamination | scoped | conforms | no unrelated product modules touched |
+| astral.standards.no-hardcoded-sets | scoped | conforms | state keys from config; retention states parameterized |
+| astral.standards.public-then-helpers | scoped | conforms | public helpers before `_ensure_*` / row mapper |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | config does not import data |
+| astral.state.core-decides-transitions | scoped | conforms | `update_meteorite` validates key ∈ registry, not `prior_states` |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | staging registry, not `JOB_STATES` enforcement site |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | data spine only; no runners |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1557)` present on tip |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`test`/`docs`/`merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub under AST-1555 parent |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1555/AST-1557-…` |
+| orch.git.merge-on-checkout | universal | conforms | no rebase violation observed |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | engineer sub branch only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | epic worktree AST-1555 |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy invention |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches Stages 1–3 |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Meteorite child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review |
+| orch.roles.archie-approves-statutes | universal | conforms | no new statutes |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty test/bible commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Ada assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer still assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | no hook bypass in diff |
+
+**Active set scored:** 64 rows (registry lists 65; all listed corpus ids covered).
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.state.entity-state-transitions | conforms | `METEORITE_STATES` registry in config; data accepts `state` param; no data-chosen transitions |
+| pattern.batch.entity-claim-process-release | conforms | `claim_meteorite_batch` / `get_meteorite_batch` / `clear_meteorite_batch`; batch_id first; mirrors candidate peers |
+
+Joan validate cites these patterns informally; no invalid/unapproved pattern ids.
+
+---
+
+## Plan adherence
+
+**Product (Stages 1–3):** Matches plan.
+
+- **Stage 1:** `METEORITE_STATES` (7 keys, `NEW` entry-only), `METEORITE_STATES_RETENTION`, header bullet, full assert lockstep — as specified.
+- **Stage 2:** Table schema + indexes, claim trio (`batch_id` first, `_state_in_sql`, `ORDER BY rowid`), `insert_meteorite_rows` forces `NEW` in one transaction, read/update/list helpers, `update_meteorite` whitelist + state-key gate without `prior_states`, `_run_with_retry` on all public helpers.
+- **Stage 3:** `list_meteorites_for_retention` + `delete_meteorites_by_ids` with parameterized state/cutoff/id lists; no day literals in SQL.
+- **Affordance:** `list_meteorites_by_source` — plan-acceptable (Joan flagged in issue doc).
+- **Estimate 5:** Honest for ~340 LOC data helpers + config registry + Betty tests.
+
+**Out-of-scope respected in `src/`:** No inbox verbs, classify runner, Estelle, monitoring format, dispatch seeds, retention runner, or `meteorite_email.py` deletion.
+
+---
+
+## Findings
+
+### discuss — sibling AST-1556 test/bible on publish ref
+
+- **Location:** `tests/component/core/test_tracker.py`, `tests/component/ui/api/test_api_jobs.py`, `docs/test-bible/core/tracker.md`, `docs/test-bible/ui/api/api_jobs.md` (commit `4fafcc21` in branch ancestry via `origin/tests` / merge-base with ftr AST-1547 track)
+- **Finding:** Three-dot diff vs `origin/dev` includes AST-1556 bug-repro test/bible deltas (artifacts-table SoT) but **no** AST-1556 product changes on tip — `tracker.py` still dual-writes `job_data`. Modified `TestAst1554BodyReplicaPersistHelpers` and new `TestAst1556JobArtifactsTableSoT` expect `save_artifact` calls that product does not make.
+- **Recommendation:** Not an AST-1557 product defect. Betty manifest correctly scopes green to meteorite tests only. **Chuckles/datt:** decide whether to revert AST-1556 hunks on this sub tip before ftr merge, or accept as parallel-track carry from shared `origin/tests` ancestry. **Do not** ask resolve-child to implement AST-1556 product here.
+
+### advisory — `NEW` / `BOT_BLOCKED` string collision across registries
+
+- **Location:** `src/utils/config.py` `METEORITE_STATES` vs `JOB_STATES`
+- **Finding:** Plan documents separate-dict import discipline; collision is intentional.
+- **Recommendation:** Sibling core children (AST-1559+) must import `METEORITE_STATES` explicitly — already in plan Decision callout.
+
+### advisory — `claim_meteorite_batch` does not validate state ∈ registry
+
+- **Location:** `claim_meteorite_batch` in `database.py`
+- **Finding:** Plan requires state-key validation on `update_meteorite` only; claim accepts caller-supplied state strings.
+- **Recommendation:** Acceptable for data layer; core callers should pass registry keys.
+
+---
+
+## What's solid
+
+- Clean data-layer spine: idempotent schema, batch claim parity with candidate helpers, insert fan-out forces `NEW`, retention helpers parameterized.
+- Config registry with startup asserts prevents drift.
+- Component tests cover schema, insert, claim/clear/reclaim, read/update gates, retention, and config partitions.
+- Layer compliance: data imports config only; no logging in data; no scope creep in `src/`.
+
+---
+
+## Frame diff
+
+| Area | Paths | Verdict |
+|------|-------|---------|
+| Product | `src/utils/config.py`, `src/data/database.py` | In-scope; plan-faithful |
+| AST-1557 tests | `tests/component/data/database/test_meteorites.py`, `tests/component/utils/test_config.py`, data conftest/README | In-scope |
+| AST-1557 bible | `docs/test-bible/data/database/meteorites.md`, `utils/config.md`, `data/database.md` | In-scope |
+| Sibling bleed | `tests/component/core/test_tracker.py`, `tests/component/ui/api/test_api_jobs.py`, bible tracker/api_jobs | Discuss — not AST-1557 product |
+| Plan doc | `docs/features/meteorite/ast-1557-meteorite-table-claim-helpers.md` | Present |
+
+---
+
+## Notes
+
+- Joan plan-rubric APPROVED @ `9e494330`; no Excluded-statute attachment for straggler sweep.
+- C6 lenses (imports, layers, silent failure, fallbacks, logging, batch/transitions, debug §5f, external §5g): no violations in touched `src/`.
+- `_log_db_failure` satisfied via `_run_with_retry` wrapper (peer pattern).
+- No fix-now product findings on AST-1557 scope.
+
+---
+
+## Recommended actions (downstream — not Radia)
+
+1. **Chuckles:** Append this verdict to issue doc; post slim upshot; move to Review Posted.
+2. **Chuckles/datt:** Resolve discuss item — strip or document AST-1556 test/bible hunks on sub tip.
+3. **resolve-child:** No product changes required for AST-1557; proceed to User Testing after discuss acknowledged.
+4. **Sibling implementers:** Use `METEORITE_STATES` import discipline when touching staging rows.
+
+context_tokens≈58000
+
+---
