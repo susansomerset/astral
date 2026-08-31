@@ -9,6 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (gazed|meteorite; AST-1469), etc.
+- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
@@ -83,6 +84,7 @@ from src.utils.config import (
     COMPANY_STATES,
     METEORITE_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
+    METEORITE_STATES,
     JOB_SOURCE_DEFAULT,
     validate_job_source,
     ENTITY_TYPES,
@@ -192,6 +194,7 @@ _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
 _agent_data_schema_ensured = False
 _scheduled_query_schema_ensured = False
+_meteorite_schema_ensured = False
 
 # ---- TODO:Cleanup ----
 # refactor callers of claim_company_batch to use set_company_batch.
@@ -3498,6 +3501,288 @@ def clear_candidate_batch(batch_id: str) -> int:
             conn.close()
 
     return _run_with_retry(_with_conn)
+
+
+# ---- meteorite staging (AST-1557) ----
+
+_UPDATE_METEORITE_ALLOWED = frozenset({
+    "state",
+    "content",
+    "classify_outcome",
+    "link",
+    "astral_job_id",
+    "estelle_thread_ts",
+    "estelle_notified_at",
+    "nag_count",
+    "error",
+    "source_ref",
+})
+
+
+def _ensure_meteorite_schema(conn: sqlite3.Connection) -> None:
+    """Create meteorite staging table if missing. Idempotent."""
+    global _meteorite_schema_ensured
+    if _meteorite_schema_ensured:
+        return
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='meteorite'"
+    )
+    if cursor.fetchone()[0] == 0:
+        conn.execute(
+            """
+            CREATE TABLE meteorite (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id TEXT NOT NULL,
+                source_kind TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_ref TEXT,
+                state TEXT NOT NULL,
+                content TEXT,
+                classify_outcome TEXT,
+                link TEXT,
+                astral_job_id TEXT,
+                estelle_thread_ts TEXT,
+                estelle_notified_at TIMESTAMP,
+                nag_count INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                batch_id TEXT,
+                batch_created_at TIMESTAMP,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL,
+                state_changed_at TIMESTAMP NOT NULL
+            )
+            """
+        )
+        conn.commit()
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meteorite_state_batch ON meteorite(state, batch_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meteorite_source ON meteorite(source_kind, source_id)"
+    )
+    conn.commit()
+    _meteorite_schema_ensured = True
+
+
+def _meteorite_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    return _row_to_dict(row)
+
+
+def claim_meteorite_batch(
+    batch_id: str,
+    state: str,
+    limit: int,
+    *,
+    states: Optional[List[str]] = None,
+) -> int:
+    """Claim up to limit unclaimed meteorite rows in state. batch_id first."""
+    now = _utc_now()
+    claim_states = states if states is not None else [state]
+    state_sql, state_params = _state_in_sql(claim_states)
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            params = [batch_id, now, *state_params, int(limit)]
+            cur = conn.execute(
+                f"""UPDATE meteorite SET batch_id = ?, batch_created_at = ?
+                   WHERE id IN (
+                     SELECT id FROM meteorite
+                     WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                     ORDER BY rowid
+                     LIMIT ?
+                   )""",
+                tuple(params),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_meteorite_batch(batch_id: str) -> List[Dict[str, Any]]:
+    """Return meteorite rows for batch_id."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM meteorite WHERE batch_id = ?",
+                (batch_id,),
+            ).fetchall()
+            return [_meteorite_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def clear_meteorite_batch(batch_id: str) -> int:
+    """Release batch: null batch_id and batch_created_at. Returns count."""
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            cur = conn.execute(
+                "UPDATE meteorite SET batch_id = NULL, batch_created_at = NULL WHERE batch_id = ?",
+                (batch_id,),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
+    """Insert N staging rows at state NEW in one transaction; return new ids."""
+    if not rows:
+        return []
+
+    def _with_conn() -> List[int]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            now = _utc_now()
+            ids: List[int] = []
+            for row in rows:
+                candidate_id = row["candidate_id"]
+                source_kind = row["source_kind"]
+                source_id = row["source_id"]
+                cur = conn.execute(
+                    """INSERT INTO meteorite (
+                        candidate_id, source_kind, source_id, source_ref, state,
+                        content, classify_outcome, link, nag_count,
+                        error, created_at, updated_at, state_changed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)""",
+                    (
+                        candidate_id,
+                        source_kind,
+                        source_id,
+                        row.get("source_ref"),
+                        "NEW",
+                        row.get("content"),
+                        row.get("classify_outcome"),
+                        row.get("link"),
+                        row.get("error"),
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+                ids.append(int(cur.lastrowid))
+            conn.commit()
+            return ids
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_meteorite(meteorite_id: int) -> Optional[Dict[str, Any]]:
+    """Return one meteorite row by id, or None."""
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            row = conn.execute(
+                "SELECT * FROM meteorite WHERE id = ?",
+                (int(meteorite_id),),
+            ).fetchone()
+            return _meteorite_row_to_dict(row) if row else None
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_meteorites_by_state(
+    state: str, *, limit: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """List meteorite rows in state (any claim); optional LIMIT."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            if limit is None:
+                rows = conn.execute(
+                    "SELECT * FROM meteorite WHERE state = ? ORDER BY rowid",
+                    (state,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM meteorite WHERE state = ? ORDER BY rowid LIMIT ?",
+                    (state, int(limit)),
+                ).fetchall()
+            return [_meteorite_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_meteorites_by_source(
+    source_kind: str, source_id: str
+) -> List[Dict[str, Any]]:
+    """List meteorite rows for a source (dedup on re-fetch)."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM meteorite WHERE source_kind = ? AND source_id = ? ORDER BY rowid",
+                (source_kind, source_id),
+            ).fetchall()
+            return [_meteorite_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def update_meteorite(meteorite_id: int, **fields: Any) -> None:
+    """Update whitelisted fields; state must be a METEORITE_STATES key (no prior check)."""
+    unknown = set(fields) - _UPDATE_METEORITE_ALLOWED
+    if unknown:
+        raise ValueError(f"unknown meteorite fields: {sorted(unknown)}")
+    if "state" in fields and fields["state"] not in METEORITE_STATES:
+        raise ValueError(f"unknown meteorite state: {fields['state']!r}")
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            now = _utc_now()
+            cols = [k for k in fields if k in _UPDATE_METEORITE_ALLOWED]
+            sets = [f"{c} = ?" for c in cols]
+            params: List[Any] = [fields[c] for c in cols]
+            sets.append("updated_at = ?")
+            params.append(now)
+            if "state" in fields:
+                sets.append("state_changed_at = ?")
+                params.append(now)
+            params.append(int(meteorite_id))
+            conn.execute(
+                f"UPDATE meteorite SET {', '.join(sets)} WHERE id = ?",
+                tuple(params),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
 
 
 def count_candidates_unclaimed_in_states(
