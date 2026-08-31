@@ -3433,3 +3433,21 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1557 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1557-meteorite-table-claim-helpers`.
+
+`METEORITE_STATES` staging-row registry (`prior_states` per key; distinct from `JOB_STATES` `METEORITE_*` labels) + `METEORITE_STATES_RETENTION` purge/stale partitions. Data helpers: **`docs/test-bible/data/database/meteorites.md`** § AST-1557.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven keys, NEW entry, priors ⊆ registry | `src/utils/config.py` | **`TestAst1557MeteoriteStates`** |
+| Retention partitions disjoint + ⊆ states | same | **`TestAst1557MeteoriteStates::test_retention_partitions`** |
+
+**Broken / obsolete:** none — additive registry.
+
+**Integration:** none — do not invent.
+
+Primary numbered manifest: **`docs/test-bible/data/database/meteorites.md`** § AST-1557.
