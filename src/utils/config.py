@@ -3239,6 +3239,12 @@ assert not (
     set(JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK) & set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK)
 )
 
+# AST-1556: editable job drafts SoT = artifacts table (entity_type "job" + these artifact_types).
+JOB_EDITABLE_ARTIFACT_TYPES = tuple(JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values())
+assert JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
+JOB_ARTIFACT_ENTITY_TYPE = "job"
+
+
 _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION = {
     "action_key": "cancel_build",
     "label": "Cancel",

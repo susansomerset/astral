@@ -1073,3 +1073,115 @@ Split or gate `cover_letter_artifact_for_display` so operator hydrate cannot res
 - **advisory (stale `agent.py` finalize-pin comment):** Updated terminal `do_task` comment so it no longer claims finalize hops pin `agent_data_id`; notes AST-1548 body replicas (+ `proposed_answers` pin) already ran above and forbids re-enabling `persist_job_artifact_from_parsed`.
 - **advisory (builder pin-fallback):** Left as planned blast radius — Print dict/`resume_content` paths hit first for new replicas; `builder.py` remains out of AST-1548 scope (plan §6 Explicit non-edits).
 
+## Bug: AST-1556 — Job artifacts in artifacts table, not job_data
+
+Parent mini-epic / UAT batch: [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). UAT-batch Bug child (single-ticket, no subissues). Product sibling [AST-1548](https://linear.app/astralcareermatch/issue/AST-1548/fix-job-resumecover-letter-body-replica-on-job-not-agent-data-pin) put editable replicas under `job_data.artifacts.*`; **Susan corrected** that — editable job resume/cover must live in the **`artifacts` table** (same versioned current-row pattern as Save Base Resume / AST-1352–AST-1353 / `database.save_artifact`). Ancestor feature doc remains this file (AST-1099 line). Table writers: `docs/features/artifacts/ast-1352-astral-artifacts-table-and-current-flag-writers.md`; Save wire parallel: `docs/features/artifacts/ast-1353-save-base-resume-writes-base-resume-snapshot.md`.
+
+### As-is
+
+Editable job resume / cover letter bodies are persisted under `job_data.artifacts.*` on the job JSON blob (AST-1548 `save_job_artifact_job_resume_body` dual-writes `job_resume` + `resume_content`; cover via `save_job_artifact_cover_letter`). JAR PUT/GET and hydrate read those blob fields. The `artifacts` table (`entity_type` / `entity_id` / `artifact_type` / `current`) already hosts candidate `base_resume` snapshots via `database.save_artifact` / `get_current_artifact`, but job editable drafts are not first-class rows there.
+
+### To-be
+
+Persist job-related editable drafts as **current** `artifacts` table rows keyed by `entity_type="job"`, `entity_id=<astral_job_id>`, `artifact_type` in `{job_resume, cover_letter}`. UI load/save uses that table by entity id (thin job artifact GET/PUT → tracker → `get_current_artifact` / `save_artifact`) — **not** `job_data.artifacts.*` as the editable body store. `agent_data` RESPONSE rows stay pristine. Parallel: candidate Save Base Resume already snapshots via `save_artifact("candidate", …, "base_resume", …)`.
+
+### Repro
+
+Fixture / live shape after AST-1548 finalize + editor Save (file/JSON job row — not SQL for `job_data`):
+
+```json
+{
+  "job_data": {
+    "artifacts": {
+      "job_resume": { "title": "…", "professional_summary": "…" },
+      "resume_content": { "title": "…", "professional_summary": "…" },
+      "cover_letter": { "Subject": "…", "Letter": "…", "signature": "…" }
+    }
+  }
+}
+```
+
+`artifacts` table has **no** `current=1` row for `(job, <astral_job_id>, job_resume|cover_letter)`. Operator edits round-trip only through the job JSON blob.
+
+### Root cause
+
+AST-1548 (and earlier pin/`resume_content` work on this doc) treated “durable replica on the job” as **`job_data.artifacts` fields**. Susan’s UAT correction: editable drafts belong in the versioned **`artifacts` table** (entity-scoped current row), matching the astral_artifacts / Save Base Resume line — not buried in the job record’s JSON.
+
+### Proposed change
+
+**Scope gate (UAT-batch):** Parent AST-1547 Component/Technical scope still names `agent.py` / `tracker.py` / optional `config.py` / job artifact PUT–GET. This bug **keeps those call sites** but **redirects the editable body store** to the existing `artifacts` table APIs (`database.save_artifact`, `get_current_artifact`) — destination corrected by this ticket’s Description. Do **not** re-open AST-1548 pin semantics. Do **not** migrate candidate live `candidate_data.artifacts.base_resume` editor SoT in this pass (snapshot path already exists; job path is the UAT fix). `proposed_answers` pin-on-`job_data` stays unless explicitly pulled in later.
+
+**1. Config (optional literals) — `src/utils/config.py`**
+
+- Add a small map or constants for job editable artifact types written to the table, e.g. `JOB_EDITABLE_ARTIFACT_TYPES = ("job_resume", "cover_letter")` and/or reuse `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` values as `artifact_type` strings (`entity_type` literal `"job"`).
+- Leave `JOB_BUILD_ARTIFACT_CLEAR_KEYS` for legacy `job_data` key stripping on cancel; extend cancel behavior in tracker (§4) so table currents for those types are retired too.
+
+**2. Tracker — persist / load / hydrate — `src/core/tracker.py`**
+
+- Change `save_job_artifact_job_resume_body` (and cover save used by finalize/PUT) so the **authoritative write** is:
+
+  `database.save_artifact("job", astral_job_id, "job_resume"|"cover_letter", prepared_body)`
+
+  Coat-check: skip save when body empty (same never-store-empty discipline as today); do not write `agent_data`.
+- **Stop** dual-writing editable bodies into `job_data.artifacts.job_resume` / `resume_content` / `cover_letter` as the operator SoT (no more “buried in job JSON”). Optional: leave unrelated metadata keys (`notes`, `proposed_answers` pin, etc.) on `job_data` unchanged.
+- `persist_finalize_job_resume_content` / `persist_finalize_cover_letter_content`: keep agent call signatures; route through the table writes above (unwrapped resume sections / normalized cover fields only).
+- **Load path:** helpers used by GET/hydrate (and any in-memory job overlay) read `get_current_artifact("job", astral_job_id, artifact_type)` and expose `artifact_data` as the body dict. `hydrate_job_artifacts_for_display` (pass `astral_job_id` if needed) overlays table currents for `job_resume` / `cover_letter` onto the outbound artifacts dict for JAR; **do not** pin-resolve those slots from `agent_data` (AST-1548 hold).
+- So Print/builder keep working **without editing `builder.py`**: overlay table bodies onto the in-memory `job_data.artifacts` view returned from tracker (`get_job` shallow copy overlay, or ensure every Print entry loads via a tracker path that overlays) — never persist that overlay back as the SoT.
+
+**3. Cancel / clear — tracker (+ thin data helper if required)**
+
+- On `cancel_artifact_build` / clear of build artifact keys: after stripping legacy `job_data` keys in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`, **retire** `current=1` rows for `(job, id, job_resume)` and `(job, id, cover_letter)` so GET shows empty until regenerate.
+- Prefer a minimal data-layer `retire_current_artifact(entity_type, entity_id, artifact_type) -> bool` next to `save_artifact` (UPDATE `current=0` only; no empty insert) if cancel cannot be expressed with existing public APIs. No schema change.
+
+**4. Agent — `src/core/agent.py`**
+
+- Keep post-RESPONSE success hooks calling the persist helpers for `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` keys (mid-chain before `run_next`). No new pin into `job_data` for those slots. Storage change is entirely in the tracker helpers.
+
+**5. Thin API — `src/ui/api/api_jobs.py`**
+
+- `PUT …/artifacts/job_resume` and `PUT …/artifacts/cover_letter`: persist via tracker table writers (`save_job_artifact_job_resume_body` / cover save → `save_artifact`); never write human edits into `agent_data`; never treat `job_data` blob as SoT.
+- Job GET: hydrate outbound artifacts from table currents for those types (existing `hydrate_job_artifacts_for_display` path).
+- `PUT …/artifacts/resume_content`: either retire, redirect to `job_resume` table write, or leave as legacy no-op/compat — pick one in implementation and document; do not keep a second editable SoT on `job_data`.
+
+**6. Explicit non-edits**
+
+- No frontend route redesign required if PUT/GET URLs stay and backends move to the table (ArtifactEditor already keys by artifact name + job id).
+- Do not edit `builder.py` if tracker overlay supplies bodies to `get_job` / hydrate consumers.
+- Do not change `artifacts` table schema (AST-1352/1364 already shipped).
+- Do not write human edits into `agent_data`.
+- Gap/test flips for keep-pin (AST-1554) stay on that sibling unless this ticket’s storage change forces additional bible rows — Betty owns test-tree.
+
+### Blast radius
+
+- AST-1548 job_data dual-write / blob SoT is **superseded** for editable `job_resume` / `cover_letter`.
+- Consult resume-first gates or Print paths that still key only on `job_data.artifacts.resume_content` must see table overlay (tracker) or they go blank until overlay lands.
+- Cancel must retire table currents or regenerate will appear to “not clear” the editor.
+- Candidate `base_resume` snapshot path unchanged; live candidate editor blob unchanged in this pass.
+- `proposed_answers` pin-on-`job_data` unchanged.
+- Copy-snapshot / debug surfaces that assumed bodies only in `job_data` will see overlay or empty blob keys — document in Betty handoff.
+
+### What must still hold
+
+- `agent_data` RESPONSE rows for finalize hops remain pristine; human Save never updates them.
+- Coat-check: empty/failed hops do not store empty artifact rows / do not wipe a good prior current with blank.
+- Mid-chain finalize still writes the replica before `run_next`.
+- Exactly one `current=1` row per `(job, astral_job_id, artifact_type)` after a successful save; a later save retires the prior row (AST-1352 writer semantics).
+- Import direction: UI → core/tracker → `database.save_artifact` / `get_current_artifact`; no UI→data.
+- Unwrapped resume section dict / normalized cover fields only in `artifact_data` (no full hop envelopes).
+
+
+---
+
+## Radia review — AST-1556 (2026-08-31)
+
+**Overall:** FIX-NOW / REVIEW — table SoT solid; consult resume-first still keys `resume_content` only.
+**Publish:** `origin/sub/AST-1547/AST-1556-job-artifacts-in-artifacts-table` @ `17445a51`
+**fix-now:** `consult.py` `_run_cover_letter_for_job` must accept overlaid `job_resume` / table SoT, not only `resume_content`.
+**[bug-repro]:** OK.
+
+## Resolution — AST-1556 (2026-08-31)
+
+**Outcome:** fix-now addressed.
+
+- **fix-now (consult resume-first):** `_run_cover_letter_for_job` now gates on `tracker.job_has_persisted_resume_body(astral_job_id, row)` (artifacts-table `job_resume` current + legacy blob fallback) instead of `job_data.artifacts.resume_content` only. `get_job` overlay still supplies in-memory `job_resume` for the chain ctx.
+
