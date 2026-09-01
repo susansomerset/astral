@@ -923,6 +923,7 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1547 (parent) | ftr/AST-1547-job-resume-content-not-saving |
 | AST-1548 | sub/AST-1547/AST-1548-fix-job-resume-body-replica |
 | AST-1554 | sub/AST-1547/AST-1554-gap-job-resume-body-replica-tests |
+| AST-1556 | sub/AST-1547/AST-1556-job-artifacts-in-artifacts-table |
 
 **Epic worktree:** `astral-AST-1547/` — one active sub checked out at a time.
 
