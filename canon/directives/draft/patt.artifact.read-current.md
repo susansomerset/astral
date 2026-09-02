@@ -29,10 +29,12 @@ A **current read** returns the **`current=1`** artifact row for a catalog key an
 
 # Implementation
 
-1. API handlers: read-current on GET, write-operative on POST/PUT for the same key.
-2. Candidate-scoped cache (Contact): freshen candidate artifact subset on conversation start; fetch by id/key surgically — not full-table preload.
-3. Missing current row returns empty shape per catalog contract; **no** lazy fetch from `*_data` blob in new code.
-4. Frontend receives already-resolved bodies from API — server performs read-current, not client-side blob traversal.
+1. **Load** — Call `get_current_artifact(entity_type, entity_id, artifact_type)` (or data-layer equivalent) with `candidate_id` when catalog marks the key candidate-scoped.
+2. **API** — GET handlers return deserialized body or catalog empty shape; POST/PUT on the same route use write-operative, then invalidate candidate cache for that key.
+3. **UI** — Editor opens with GET read-current; save posts write-operative; do not hydrate from stale `*_data` blob fields on the client.
+4. **Contact** — On conversation start, freshen candidate-scoped artifact cache; fetch only keys the turn needs (surgical by id/key, not full-table preload).
+5. **Batch/consult** — Pre-dispatch assembly calls read-current for latest operator bodies when the step needs current content, not a historical pin.
+6. **On miss** — Return empty contract; queue ingestion state per no-coat-check — no lazy blob fetch.
 
 # OPEN QUESTIONS / DECISIONS
 

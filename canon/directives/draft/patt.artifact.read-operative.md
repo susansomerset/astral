@@ -29,11 +29,12 @@ An **operative read** returns the artifact body that was **current when some dow
 
 # Implementation
 
-1. Primary path: load row by **`artifact_id`** when pin present.
-2. Secondary path: query artifacts table with entity_type, entity_id, artifact_type, and `current=1` **only** when reproducing a write-time snapshot without a stored pin — prefer storing pins at write time instead.
-3. Pass **candidate_id** when the catalog entry is candidate-scoped.
-4. agent_data string pins in legacy blobs resolve through agent_data RESPONSE lookup first, then replicate to operative artifacts on migration — operative read does not re-parse agent markup at runtime for new code.
-5. Partially replaces `get_<entity>_data` dotted-path reads for **pinned** content only.
+1. **By pin** — When caller holds `artifact_id`, load that row from the artifacts table and deserialize `artifact_data`.
+2. **By scope** — Only when no pin exists and ticket explicitly allows it: query by entity_type, entity_id, artifact_type (prefer storing pins at write time instead).
+3. **Candidate scope** — Include `candidate_id` in scoped queries when catalog entry requires it.
+4. **Wire consumers** — Grade explainability, analysis upshot renderers, and Contact historical answers call read-operative with stored pins; remove blob dotted-path reads for the same content in the same ticket.
+5. **On miss** — Return empty or surface ingestion gap; do not coat-check or read from `*_data` blob in new code.
+6. **Legacy pins** — Migration tickets may resolve agent_data string pins once; new runtime paths use artifact_id only.
 
 # OPEN QUESTIONS / DECISIONS
 
