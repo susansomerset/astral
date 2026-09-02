@@ -176,6 +176,12 @@ Confirm Chuckles estimate: 5 — agree
 
 Agent craft-persist rewire + dual-dispatch save + API retarget + catalog delete is a multi-component known pattern (write-operative + manage-catalog), not a new architecture — 5 fits; not 3 because agent + candidate + API all move together.
 
+## Review (build)
+
+**Built @ `f66d8ac7`** — `origin/sub/AST-1569/AST-1576-generic-save-candidate-data`
+
+Stages 1–6 landed: blind `save_artifact` docstring lock; `craft_resume_base.artifact_key`; `artifact_catalog` deleted; dual-dispatch `save_candidate_data` + hydrate in `get_candidate`; agent craft-persist rewire; API pilot operative save. Betty owns catalog test/bible retarget.
+
 ## Joan validate
 
 ```
