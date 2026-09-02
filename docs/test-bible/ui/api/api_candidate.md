@@ -98,8 +98,10 @@ After successful **`save_candidate_data`** on PUT `/data` when the request inclu
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| PUT Save snapshots + second Save history + AC4 craft overwrite | `src/ui/api/api_candidate.py` | **`TestAst1353SaveBaseResumeSnapshotApi`** |
-| Mocked PUT base_resume still green (snapshot stubbed) | `src/ui/api/api_candidate.py` | revised **`TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`**; revised **`TestAst1305LegacyLabelIngestApi`** |
+| PUT Save snapshots + second Save history + AC4 craft overwrite | `src/ui/api/api_candidate.py` | **`TestAst1353SaveBaseResumeSnapshotApi`** (**rewritten AST-1576** as **`TestAst1576PutBaseResumeOperativeApi`**) |
+| Mocked PUT base_resume still green (snapshot stubbed) | `src/ui/api/api_candidate.py` | revised **`TestAst519…`** / **`TestAst1305…`** — snapshot stub removed AST-1576 |
+
+**Superseded by AST-1576:** PUT pops `base_resume` and calls generic `save_candidate_data(candidate_id, artifact_key, blob)`.
 
 **Broken / obsolete this pass:** mocked `save_candidate_data` PUT tests that include `base_resume` must stub **`snapshot_saved_base_resume_artifact`** (otherwise snapshot hits real DB / missing candidate).
 
@@ -107,7 +109,7 @@ After successful **`save_candidate_data`** on PUT `/data` when the request inclu
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_candidate.py::TestAst1353SaveBaseResumeSnapshotApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst1576PutBaseResumeOperativeApi \
   tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
   tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
   -q
@@ -143,3 +145,20 @@ GET `/resume_structure` catalog exposes page-break policy lists/labels/defaults;
   tests/component/ui/api/test_api_candidate.py::TestAst1474PageBreakPolicyCatalogApi \
   -q
 ```
+
+---
+
+### AST-1576 · AST-1569
+
+**Publish:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data`.
+
+PUT `/data` pops `artifacts.base_resume` then `save_candidate_data(candidate_id, TASK_CONFIG["craft_resume_base"]["artifact_key"], blob)`. GET/PUT response hydrate overlays operative current. Primary: **`docs/test-bible/core/candidate.md`** § AST-1576.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT operative write + retire + library blob isolation | `src/ui/api/api_candidate.py` | **`TestAst1576PutBaseResumeOperativeApi`** |
+| Mocked PUT dual-call (library vs artifact_key) | same | revised **`TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`**; **`TestAst1305LegacyLabelIngestApi`** |
+
+**Broken / obsolete:** `TestAst1353SaveBaseResumeSnapshotApi`; snapshot stub on mocked PUT.
+
+**Integration:** none.

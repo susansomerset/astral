@@ -10,6 +10,39 @@ from flask.testing import FlaskClient
 
 from ui.api import api_candidate as candidate_mod
 
+_PILOT_ARTIFACT_KEY = "candidate.artifacts.base_resume"
+
+
+def _library_and_operative(save_data: MagicMock) -> tuple[list, list]:
+    """Split mocked save_candidate_data calls: dict library vs str artifact_key."""
+    library: list = []
+    operative: list = []
+    for c in save_data.call_args_list:
+        second = c.args[1] if len(c.args) > 1 else None
+        (operative if isinstance(second, str) else library).append(c)
+    return library, operative
+
+
+def _resume_content_blob(**overrides) -> dict:
+    body = {
+        "candidate_name": "Ada Lovelace",
+        "candidate_title": "Engineer",
+        "candidate_contact_detail": "ada@example.com",
+        "professional_summary": "summary",
+        "core_competencies": "python",
+        "experience": [
+            {
+                "company": "Acme",
+                "title": "Engineer",
+                "dates": "2020",
+                "location": "Remote",
+                "accomplishments": ["Shipped"],
+            }
+        ],
+    }
+    body.update(overrides)
+    return body
+
 
 class TestSanitizeCandidate:
     def test_strips_api_key_and_sets_flag(self) -> None:
@@ -466,8 +499,6 @@ class TestAst519ResumeStructureApi:
     ) -> None:
         save_data = MagicMock()
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
-        # AST-1353: snapshot runs after save when base_resume present — stub when save is mocked
-        monkeypatch.setattr(candidate_mod, "snapshot_saved_base_resume_artifact", MagicMock())
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._three_section_cd())
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
@@ -477,8 +508,10 @@ class TestAst519ResumeStructureApi:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        payload = save_data.call_args.args[1]
-        assert payload["artifacts"]["base_resume"] == {"professional_summary": "ok"}
+        library, operative = _library_and_operative(save_data)
+        assert operative[0].args[1] == _PILOT_ARTIFACT_KEY
+        assert operative[0].args[2] == {"professional_summary": "ok"}
+        assert "base_resume" not in library[0].args[1].get("artifacts", {})
 
     def test_put_resume_structure_merges_and_normalizes_accent(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
@@ -1058,7 +1091,6 @@ class TestAst1305LegacyLabelIngestApi:
     ) -> None:
         save_data = MagicMock()
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
-        monkeypatch.setattr(candidate_mod, "snapshot_saved_base_resume_artifact", MagicMock())
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
@@ -1074,11 +1106,14 @@ class TestAst1305LegacyLabelIngestApi:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        arts = save_data.call_args.args[1]["artifacts"]
-        assert arts["base_resume"]["highlights"] == "Won awards"
-        assert arts["base_resume"]["publications"] == "Paper one"
-        assert arts["base_resume"]["professional_summary"] == "Summary body"
-        assert "experience" not in arts["base_resume"]
+        library, operative = _library_and_operative(save_data)
+        content = operative[0].args[2]
+        assert content["highlights"] == "Won awards"
+        assert content["publications"] == "Paper one"
+        assert content["professional_summary"] == "Summary body"
+        assert "experience" not in content
+        arts = library[0].args[1]["artifacts"]
+        assert "base_resume" not in arts
         assert arts["resume_structure"]["sections"]["highlights"]["format"] == "bullet_list"
         assert arts["resume_structure"]["sections"]["publications"]["title"] == "Publications"
 
@@ -1091,7 +1126,6 @@ class TestAst1305LegacyLabelIngestApi:
         # AST-1322 bug-repro: title-case keys must mint extras before orphan filter.
         save_data = MagicMock()
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
-        monkeypatch.setattr(candidate_mod, "snapshot_saved_base_resume_artifact", MagicMock())
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
@@ -1109,11 +1143,14 @@ class TestAst1305LegacyLabelIngestApi:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        arts = save_data.call_args.args[1]["artifacts"]
-        assert arts["base_resume"]["highlights"] == "Won awards"
-        assert arts["base_resume"]["publications"] == "Paper one"
-        assert arts["base_resume"]["professional_summary"] == "Summary body"
-        assert "Highlights" not in arts["base_resume"]
+        library, operative = _library_and_operative(save_data)
+        content = operative[0].args[2]
+        assert content["highlights"] == "Won awards"
+        assert content["publications"] == "Paper one"
+        assert content["professional_summary"] == "Summary body"
+        assert "Highlights" not in content
+        arts = library[0].args[1]["artifacts"]
+        assert "base_resume" not in arts
         assert arts["resume_structure"]["sections"]["highlights"]["format"] == "bullet_list"
         assert arts["resume_structure"]["sections"]["publications"]["title"] == "Publications"
 
@@ -1170,9 +1207,9 @@ class TestAst1324HydrateResumeStructureFromBaseResumeGet:
         assert by_id["publications"]["format"] == "free_prose"
         assert "publications" in {s["id"] for s in body["sections"]}
 
-# Branches: PUT base_resume snapshots; second save retires; craft overwrite leaves snapshot.
-class TestAst1353SaveBaseResumeSnapshotApi:
-    def test_put_base_resume_writes_current_astral_artifact(
+# Branches: PUT operative save; second save retires; library blob write does not rotate table.
+class TestAst1576PutBaseResumeOperativeApi:
+    def test_put_base_resume_writes_current_artifact(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
@@ -1183,7 +1220,7 @@ class TestAst1353SaveBaseResumeSnapshotApi:
 
         db = sqlite_in_memory
         db.save_candidate(
-            "c1353",
+            "c1576",
             state="NEW_CANDIDATE",
             candidate_data={
                 "artifacts": {"resume_structure": core_candidate.default_resume_structure()}
@@ -1191,19 +1228,27 @@ class TestAst1353SaveBaseResumeSnapshotApi:
         )
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
-        payload = {"professional_summary": "saved v1", "experience": []}
+        payload = _resume_content_blob(professional_summary="saved v1")
         resp = candidate_client.put(
-            "/api/candidates/c1353/data",
+            "/api/candidates/c1576/data",
             json={"artifacts": {"base_resume": payload}},
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-        row = db.get_current_artifact("candidate", "c1353", "base_resume")
+        assert resp.status_code == 200, resp.get_json()
+        row = db.get_current_artifact("candidate", "c1576", "base_resume")
         assert row is not None
         assert row["current"] == 1
         assert row["artifact_data"]["professional_summary"] == "saved v1"
+        raw = db.get_candidate("c1576")["candidate_data"]
+        assert "base_resume" not in (raw.get("artifacts") or {})
+        assert (
+            resp.get_json()["candidate_data"]["artifacts"]["base_resume"][
+                "professional_summary"
+            ]
+            == "saved v1"
+        )
 
-    def test_second_put_retires_prior_snapshot(
+    def test_second_put_retires_prior(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
@@ -1214,7 +1259,7 @@ class TestAst1353SaveBaseResumeSnapshotApi:
 
         db = sqlite_in_memory
         db.save_candidate(
-            "c1353b",
+            "c1576b",
             state="NEW_CANDIDATE",
             candidate_data={
                 "artifacts": {"resume_structure": core_candidate.default_resume_structure()}
@@ -1223,43 +1268,43 @@ class TestAst1353SaveBaseResumeSnapshotApi:
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
         r1 = candidate_client.put(
-            "/api/candidates/c1353b/data",
-            json={"artifacts": {"base_resume": {"professional_summary": "v1"}}},
+            "/api/candidates/c1576b/data",
+            json={"artifacts": {"base_resume": _resume_content_blob(professional_summary="v1")}},
             headers=auth_headers,
         )
-        assert r1.status_code == 200
-        uid1 = db.get_current_artifact("candidate", "c1353b", "base_resume")[
+        assert r1.status_code == 200, r1.get_json()
+        uid1 = db.get_current_artifact("candidate", "c1576b", "base_resume")[
             "artifact_uuid"
         ]
         r2 = candidate_client.put(
-            "/api/candidates/c1353b/data",
-            json={"artifacts": {"base_resume": {"professional_summary": "v2"}}},
+            "/api/candidates/c1576b/data",
+            json={"artifacts": {"base_resume": _resume_content_blob(professional_summary="v2")}},
             headers=auth_headers,
         )
-        assert r2.status_code == 200
-        current = db.get_current_artifact("candidate", "c1353b", "base_resume")
+        assert r2.status_code == 200, r2.get_json()
+        current = db.get_current_artifact("candidate", "c1576b", "base_resume")
         assert current["artifact_uuid"] != uid1
         assert current["artifact_data"]["professional_summary"] == "v2"
         history = db.list_artifacts(
-            "candidate", "c1353b", "base_resume", current_only=False
+            "candidate", "c1576b", "base_resume", current_only=False
         )
         assert len(history) == 2
         assert history[0]["current"] == 0
         assert history[0]["artifact_data"]["professional_summary"] == "v1"
 
-    def test_direct_save_candidate_does_not_replace_snapshot(
+    def test_library_save_candidate_does_not_replace_operative(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
         sqlite_in_memory,
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """AC4: craft-style database.save_candidate overwrite leaves prior Save snapshot."""
+        """Dict-path blob write does not rotate the artifacts table (operative is SoT)."""
         from src.core import candidate as core_candidate
 
         db = sqlite_in_memory
         db.save_candidate(
-            "c1353c",
+            "c1576c",
             state="NEW_CANDIDATE",
             candidate_data={
                 "artifacts": {"resume_structure": core_candidate.default_resume_structure()}
@@ -1268,24 +1313,23 @@ class TestAst1353SaveBaseResumeSnapshotApi:
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
         resp = candidate_client.put(
-            "/api/candidates/c1353c/data",
-            json={"artifacts": {"base_resume": {"professional_summary": "intentional"}}},
+            "/api/candidates/c1576c/data",
+            json={"artifacts": {"base_resume": _resume_content_blob(professional_summary="intentional")}},
             headers=auth_headers,
         )
-        assert resp.status_code == 200
-        before = db.get_current_artifact("candidate", "c1353c", "base_resume")
+        assert resp.status_code == 200, resp.get_json()
+        before = db.get_current_artifact("candidate", "c1576c", "base_resume")
         assert before is not None
-        # Simulate Generate/Regenerate persist (bypasses update_candidate_data snapshot wire)
         db.save_candidate(
-            "c1353c",
+            "c1576c",
             candidate_data={
-                "artifacts": {"base_resume": {"professional_summary": "craft overwrite"}}
+                "artifacts": {"base_resume": {"professional_summary": "library overwrite"}}
             },
             merge=True,
         )
-        live = db.get_candidate("c1353c")["candidate_data"]["artifacts"]["base_resume"]
-        assert live["professional_summary"] == "craft overwrite"
-        after = db.get_current_artifact("candidate", "c1353c", "base_resume")
+        live = db.get_candidate("c1576c")["candidate_data"]["artifacts"]["base_resume"]
+        assert live["professional_summary"] == "library overwrite"
+        after = db.get_current_artifact("candidate", "c1576c", "base_resume")
         assert after["artifact_uuid"] == before["artifact_uuid"]
         assert after["artifact_data"]["professional_summary"] == "intentional"
 

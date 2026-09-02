@@ -3493,3 +3493,19 @@ Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1562.
 
 Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
 
+---
+
+### AST-1576 · AST-1569
+
+**Publish:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data`.
+
+`TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"` (in `ARTIFACT_CONFIG`). Wrapper `src/utils/artifact_catalog.py` deleted. Primary: **`docs/test-bible/core/candidate.md`** § AST-1576.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| artifact_key + ARTIFACT_CONFIG SoT; module gone | `src/utils/config.py` | **`TestAst1576CraftResumeBaseArtifactKey`** |
+
+**Broken / obsolete:** `tests/component/utils/test_artifact_catalog.py`.
+
+**Integration:** none.
+

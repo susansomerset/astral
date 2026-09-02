@@ -1363,8 +1363,10 @@ Core helper **`snapshot_saved_base_resume_artifact`** re-reads live `artifacts.b
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Snapshot live blob / retire / validation | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume`** |
-| Craft generate does not write artifacts store | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume::test_craft_generation_does_not_call_save_artifact`** |
+| Snapshot live blob / retire / validation | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume`** (**removed AST-1576**) |
+| Craft generate does not write artifacts store | `src/core/candidate.py` | **`test_craft_generation_does_not_call_save_artifact`** (**inverted AST-1576** — generate now writes via generic save) |
+
+**Superseded by AST-1576:** `snapshot_saved_base_resume_artifact` deleted; coverage in **`TestAst1576SaveCandidateDataOperative`**.
 
 **Broken / obsolete this pass:** none in core (API mock revisions live under **`api_candidate.md`**).
 
@@ -1733,3 +1735,40 @@ Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST
   tests/component/core/test_candidate.py::TestAst1513DuplicateRubricCodes \
   -q
 ```
+
+---
+
+### AST-1576 · AST-1569
+
+**Parent:** [AST-1569 — Implement patt.artifact.write-operative](https://linear.app/astralcareermatch/issue/AST-1569/implement-pattartifactwrite-operative). **Publish:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data`.
+
+Dual-dispatch `save_candidate_data(candidate_id, artifact_key, blob)` against `ARTIFACT_CONFIG`; hydrate GET via `get_current_artifact`; parse / UI generate land the pilot body operatively (no `candidate_data` blob mirror); `_persist_craft_dispatch_success` no longer handles `craft_resume_base`; `snapshot_saved_base_resume_artifact` gone. Agent persist + API PUT: **`docs/test-bible/core/agent.md`**, **`docs/test-bible/ui/api/api_candidate.md`**. Config key: **`docs/test-bible/utils/config.md`**. Catalog wrapper retired: **`docs/test-bible/utils/artifact_catalog.md`**. Data retire+insert: **`tests/component/data/database/test_artifacts.py::TestAst1352Artifacts`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dual-dispatch / fail-fast / retire / hydrate / generate write | `src/core/candidate.py` | **`TestAst1576SaveCandidateDataOperative`** |
+| Parse + generate land structure library + body operative | same | revised **`TestParseCandidateResume::test_persists_parsed_resume`**; **`TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success`**; **`TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array`** |
+| Snapshot class | same | **`TestAst1353SnapshotSavedBaseResume`** removed |
+
+**Broken / obsolete this pass:** snapshot helper tests; generate “does not call save_artifact”; parse/generate asserts of `artifacts.base_resume` on the library blob; dummy `{"x": 1}` generate success (empty operative body).
+
+**Integration:** none — artifact pipeline remains a should-have gap; no existing scenario asserted snapshot/catalog wrappers.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1576SaveCandidateDataOperative \
+  tests/component/core/test_candidate.py::TestParseCandidateResume::test_persists_parsed_resume \
+  tests/component/core/test_candidate.py::TestParseCandidateResumeExtended::test_never_auto_transitions_state \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array \
+  tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops \
+  tests/component/ui/api/test_api_candidate.py::TestAst1576PutBaseResumeOperativeApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
+  tests/component/data/database/test_artifacts.py::TestAst1352Artifacts \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

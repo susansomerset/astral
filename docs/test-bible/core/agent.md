@@ -1203,3 +1203,20 @@ Backend scoped import list: `UI_CONFIG` cap (10) + picker visible rows (5); `lis
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-1576 · AST-1569
+
+**Publish:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data`.
+
+`do_task` persist_candidate_craft_hops: when `TASK_CONFIG[task_key]["artifact_key"]` is set, land via `save_candidate_data` (library structure + operative body); else `_persist_craft_dispatch_success`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1576.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Operative persist (not helper) | `src/core/agent.py` | **`TestAst1576CraftPersistOperative`** |
+| Source hook + rubric helper still live | same | revised **`TestAst1252PersistCandidateCraftHops`** |
+
+**Broken / obsolete:** none in agent besides source-hook expansion.
+
+**Integration:** none.
+
