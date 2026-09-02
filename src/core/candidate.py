@@ -5,8 +5,10 @@ In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
 contact uniqueness enforcement on save (AST-1080),
 get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
-snapshot_saved_base_resume_artifact (AST-1353; rename AST-1364).
-All writes go through database.save_candidate (upsert); state transition logic lives here.
+operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
+get_current_artifact (AST-1576).
+All writes go through database.save_candidate (upsert) or save_artifact (operative);
+state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
 never from Flask request handlers — AI calls don't belong in synchronous web requests.
@@ -34,6 +36,7 @@ from src.core import dispatcher as _dispatcher
 from src.utils import rubric_text
 from src.utils.config import (
     ASTRAL_CONFIG,
+    ARTIFACT_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
@@ -752,26 +755,54 @@ def initiate_prospect_candidate(
 
 def save_candidate_data(
     candidate_id: str,
-    data: Dict[str, Any],
+    data_or_artifact_key: Any,
+    blob: Any = None,
     replace: bool = False,
     *,
     debug: bool = False,
-) -> None:
-    """Merge (or replace) library blobs + optional name columns (AST-1014).
-    Pure data persistence — no AI calls. Rejects legacy ``profile`` writes."""
+) -> Optional[str]:
+    """Library merge (dict) or operative artifact write (artifact_key str) — AST-1576.
+
+    Dict path: merge/replace library blobs + optional name columns (AST-1014); returns None.
+    Str path: ARTIFACT_CONFIG → validate body_shape → save_artifact; returns new uuid.
+    """
+    # Operative write-operative path (pilot: candidate.artifacts.base_resume).
+    if isinstance(data_or_artifact_key, str):
+        artifact_key = data_or_artifact_key.strip()
+        if not artifact_key:
+            raise ValueError("artifact_key required")
+        entry = ARTIFACT_CONFIG.get(artifact_key)
+        if entry is None:
+            raise ValueError(f"unknown catalog key: {artifact_key!r}")
+        if blob is None:
+            raise ValueError("artifact body required")
+        shape = BUILD_CONFIG["artifact_shapes"][entry["body_shape"]]
+        if entry["body_shape"] == "resume_content":
+            if not isinstance(blob, dict) or not blob:
+                raise ValueError("resume_content body must be a non-empty dict")
+            for key, spec in shape.items():
+                if isinstance(spec, dict) and spec.get("required") and key not in blob:
+                    raise ValueError(f"resume_content missing required key: {key!r}")
+        artifact_type = artifact_key.rsplit(".", 1)[-1]
+        return database.save_artifact(
+            entry["entity_type"], candidate_id, artifact_type, blob
+        )
+
+    if not isinstance(data_or_artifact_key, dict):
+        raise ValueError("candidate data must be a dict or artifact_key str")
+    data = data_or_artifact_key
+
     logger.set_debug_flag(debug)
-    if not isinstance(data, dict):
-        raise ValueError("candidate data must be a dict")
     if "profile" in data:
         raise ValueError("profile was renamed to contact; refuse shadow write")
 
     col_kwargs: Dict[str, Any] = {}
-    blob: Dict[str, Any] = {}
+    blob_merge: Dict[str, Any] = {}
     for key, val in data.items():
         if key in _NAME_COLUMNS:
             col_kwargs[key] = "" if val is None else str(val)
         else:
-            blob[key] = val
+            blob_merge[key] = val
 
     # Empty/whitespace full → library join; omit full when first/last change → same
     if "full" in col_kwargs:
@@ -794,7 +825,7 @@ def save_candidate_data(
         if pref and pref not in PRONOUN_PREFERENCE_OPTIONS:
             raise ValueError(f"Invalid pronouns value: {pref!r}")
 
-    contact = blob.get("contact")
+    contact = blob_merge.get("contact")
     if isinstance(contact, dict):
         _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
@@ -825,15 +856,15 @@ def save_candidate_data(
         else:
             proposed = copy.deepcopy(contact)
         _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
-        blob["contact"] = proposed
+        blob_merge["contact"] = proposed
 
     steps = []
     if col_kwargs:
         steps.append(("columns", sorted(col_kwargs.keys())))
     for bk in _LIBRARY_BLOB_KEYS:
-        if bk in blob:
+        if bk in blob_merge:
             steps.append((bk, "recorded"))
-    meta_keys = [k for k in blob if k not in _LIBRARY_BLOB_KEYS]
+    meta_keys = [k for k in blob_merge if k not in _LIBRARY_BLOB_KEYS]
     if meta_keys:
         steps.append(("meta", meta_keys))
 
@@ -850,14 +881,15 @@ def save_candidate_data(
             logger.debug_detail(f"{label}={detail!r}")
 
     save_kwargs: Dict[str, Any] = dict(col_kwargs)
-    if blob:
-        save_kwargs["candidate_data"] = blob
+    if blob_merge:
+        save_kwargs["candidate_data"] = blob_merge
         save_kwargs["merge"] = not replace
     elif col_kwargs:
         pass
     else:
-        return
+        return None
     database.save_candidate(candidate_id, **save_kwargs)
+    return None
 
 
 def _topic_menu_key() -> str:
@@ -1349,28 +1381,6 @@ def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
     return rubric_criteria_for_task(candidate_id, owner_task_key)
 
 
-def snapshot_saved_base_resume_artifact(candidate_id: str) -> str:
-    """Record live artifacts.base_resume into artifacts after Save Base Resume.
-
-    Reads the post-persist candidate blob so the snapshot matches deep-merged
-    candidate_data (AC2). Returns the new artifact_uuid from the data layer.
-    """
-    candidate = database.get_candidate(candidate_id)
-    if not candidate:
-        raise ValueError(f"Candidate not found: {candidate_id}")
-    cd = candidate.get("candidate_data") or {}
-    if not isinstance(cd, dict):
-        cd = {}
-    arts = cd.get("artifacts") or {}
-    if not isinstance(arts, dict):
-        arts = {}
-    base = arts.get("base_resume")
-    if base is None:
-        raise ValueError("artifacts.base_resume missing after save")
-    # Literal artifact_type matches AST-1352 Save Base Resume contract
-    return database.save_artifact("candidate", candidate_id, "base_resume", base)
-
-
 def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
     """Sync rubric criteria artifacts to rubric_vector; drop keys from artifacts blob (AST-723).
 
@@ -1407,6 +1417,20 @@ def hydrate_rubric_artifacts_for_response(candidate_id: str, cd: dict) -> None:
         cd["artifacts"] = arts
     for artifact_key, owner in RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.items():
         arts[artifact_key] = rubric_criteria_for_task(candidate_id, owner)
+
+
+def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current base_resume into candidate_data (display only)."""
+    if not isinstance(cd, dict):
+        return
+    row = database.get_current_artifact("candidate", candidate_id, "base_resume")
+    if row is None:
+        return
+    arts = cd.get("artifacts")
+    if not isinstance(arts, dict):
+        arts = {}
+        cd["artifacts"] = arts
+    arts["base_resume"] = row["artifact_data"]
 
 
 def _normalize_search_term_lines(val: str) -> list[str]:
@@ -1492,7 +1516,15 @@ def apply_company_search_terms_save(candidate_id: str, artifacts: dict) -> None:
 
 def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
     """Fetch candidate by ID. Needed because the API layer can't import database directly."""
-    return database.get_candidate(candidate_id)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return None
+    cd = candidate.get("candidate_data")
+    if not isinstance(cd, dict):
+        cd = {}
+    hydrate_operative_base_resume_for_response(candidate_id, cd)
+    candidate["candidate_data"] = cd
+    return candidate
 
 
 def list_candidates(include_deleted: bool = False) -> list:
@@ -2978,10 +3010,11 @@ async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> D
         return {"success": False, "error": "parse_resume returned None parsed_response"}
 
     structure, content = split_craft_resume_base_payload(parsed)
-    database.save_candidate(
+    save_candidate_data(candidate_id, {"artifacts": {"resume_structure": structure}})
+    save_candidate_data(
         candidate_id,
-        candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-        merge=True,
+        TASK_CONFIG["craft_resume_base"]["artifact_key"],
+        content,
     )
     if debug:
         logger.debug_index(
@@ -3111,16 +3144,6 @@ def get_pending_craft_generation(
 
 def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: Any) -> None:
     """Persist craft success for REQUESTED_* dispatch (AST-972) — no nested ledger."""
-    if task_key == "craft_resume_base":
-        if not isinstance(parsed, dict):
-            raise ValueError("craft_resume_base parsed_response must be a dict")
-        structure, content = split_craft_resume_base_payload(parsed)
-        database.save_candidate(
-            candidate_id,
-            candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-            merge=True,
-        )
-        return
     if task_key == "craft_company_search_terms":
         if not isinstance(parsed, dict):
             raise ValueError("craft_company_search_terms parsed_response must be a dict")
@@ -3596,10 +3619,13 @@ def run_candidate_artifact_generation(
                 )
         if task_key == "craft_resume_base" and parsed_response is not None:
             structure, content = split_craft_resume_base_payload(parsed_response)
-            database.save_candidate(
+            save_candidate_data(
+                candidate_id, {"artifacts": {"resume_structure": structure}}
+            )
+            save_candidate_data(
                 candidate_id,
-                candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-                merge=True,
+                TASK_CONFIG["craft_resume_base"]["artifact_key"],
+                content,
             )
             if debug:
                 logger.debug_index(
