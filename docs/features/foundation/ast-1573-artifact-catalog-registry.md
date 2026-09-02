@@ -416,3 +416,165 @@ Delete every remaining `ARTIFACT_CATALOG` identifier in this file (no compatibil
 - No new runtime blob reads or coat-check registrations.
 - Callers reach catalog via `artifact_catalog` helpers, not by scraping config internals (AST-1573 AC5).
 - Parent boundaries: no job keys, no product read/write path wiring, no UI/API, no coat-check retirement.
+
+## Radia review (AST-1575)
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1575
+**Publish ref:** `origin/sub/AST-1568/AST-1575-artifact-config-hierarchical-keys` @ `7b96d9f866f6d3e2ac805707654fc4695bc9c9c0`
+**Diff base:** `origin/ftr/AST-1568-artifact-catalog` (`bfc55e22`) … publish tip
+**Parent shape:** Normal (ftr present; not orphaned)
+**Overall:** CLEAN
+
+**Diff change set:** 6 paths — `src/utils/config.py` (modify), `src/utils/artifact_catalog.py` (modify), `tests/component/utils/test_artifact_catalog.py` (modify), `docs/test-bible/utils/artifact_catalog.md` (modify), `docs/features/foundation/ast-1573-artifact-catalog-registry.md` (plan-fix append), `scripts/git/validate-tests-branch.sh` (modify, AST-1574 ride-along). Layers: `utils`, `docs`/tests, `scripts`. Change types: `modify` (+ plan patch).
+
+## Fix-specific checks
+
+### `[bug-repro]` — OK
+
+`TestAst1575ArtifactConfigRename::test_artifact_config_symbol_and_hierarchical_pilot` (docstring tagged `[bug-repro]`) pins concrete **To-be** behavior, not tautology:
+
+| Assertion | Pre-fix (AST-1573 flat tree) | Post-fix |
+|-----------|------------------------------|----------|
+| `hasattr(cfg, "ARTIFACT_CONFIG")` | False | True |
+| `not hasattr(cfg, "ARTIFACT_CATALOG")` | False (symbol existed) | True |
+| Key set `{"candidate.artifacts.base_resume"}` | `{"base_resume"}` — fails | passes |
+| `require_catalog_entry("candidate.artifacts.base_resume")` | raises | returns entry |
+| `get_catalog_entry("base_resume") is None` | False (flat key resolved) | True |
+| `require_catalog_entry("base_resume")` raises | succeeded — fails | raises |
+
+Repro-first contract satisfied. Bible note citing `ImportError` on import is slightly imprecise (test uses `hasattr` on `cfg` module); assertion body is still correct — **advisory** only.
+
+### `## What must still hold` — OK
+
+| Item | Verdict |
+|------|---------|
+| Exactly one pilot entry keyed `candidate.artifacts.base_resume` | ✓ startup assert + tests |
+| Unknown keys fail fast; no flat-key alias | ✓ `unknown catalog key:` + flat `base_resume` rejected in `test_unknown_blank_and_flat_key_fail_fast` and bug-repro |
+| Catalog-derived identity → `save_artifact` / `get_current_artifact` with leaf `base_resume` | ✓ round-trip uses `_LEAF_TYPE = _PILOT_KEY.rsplit(".", 1)[-1]` |
+| No new runtime blob reads or coat-check registrations | ✓ utils/tests only |
+| Callers via `artifact_catalog` helpers, not config scraping | ✓ unchanged accessor pattern |
+| Parent boundaries (no job keys, product wiring, UI/API, coat-check) | ✓ no scope expansion |
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `orch.pipeline.plan-is-bible` | universal | conforms | make-fix matches plan-fix `## Proposed change` steps 1–3 |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | UAT-driven rename; no policy fork |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | N/A |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty `test()` + bible; engineer `code()` only `src/utils/` |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | N/A |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | N/A |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1575)` present |
+| `orch.git.commit-vocabulary` | universal | conforms | `code`/`test`/`docs`/`merge-tests` on AST-1575 |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub on ftr stack |
+| `orch.git.ftr-sub-topology` | universal | conforms | fix sub under AST-1568 |
+| `orch.git.merge-on-checkout` | universal | conforms | N/A |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Clean ftr…sub diff |
+| `orch.git.no-dev-agent-branches` | universal | conforms | N/A |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | N/A |
+| `orch.git.three-permanent-branches` | universal | conforms | N/A |
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No agent paths |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grading |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No batch |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No batch |
+| `astral.config.config-source-of-truth` | scoped | conforms | `ARTIFACT_CONFIG` block in `config.py` |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run_next |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | plan-fix patches existing AST-1573 doc |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty: tests + bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | `code(1575)` → `src/utils/` only |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | No core/external |
+| `astral.layers.import-direction` | scoped | conforms | `artifact_catalog` → `config` only |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | conforms | Script change exempt; see advisory on ride-along |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | No UI |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | Coat-check OOS |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No render |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No API |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No seed |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No boot |
+| `astral.seed.define-approved` | scoped | not-applicable | No define |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No seed |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No seed |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No data layer |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No `database.py` |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | No debug logging |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Rename + key retarget; no bloat |
+| `astral.standards.in-scope-only` | scoped | conforms | AST-1575 product fix in scope; AST-1574 script noted advisory |
+| `astral.standards.logging-via-utils` | scoped | conforms | No logging added |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `ARTIFACT_CONFIG` domain name; ticket ids in comments only |
+| `astral.standards.no-cross-contamination` | scoped | not-applicable | No cross-module bleed |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Registry + asserts in config |
+| `astral.standards.public-then-helpers` | scoped | conforms | Public API unchanged |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No data imports |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | No frontend |
+| `astral.ui.naming-conventions` | scoped | not-applicable | No UI |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server |
+
+**Sweep count:** 64 active harvested statutes scored.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `patt.artifact.manage-catalog` | conforms | Register-half retarget: hierarchical `_data` path key + `_CONFIG` suffix per UAT; metadata fields unchanged |
+
+## Plan adherence
+
+`make-fix` (`7b96d9f8`) implements plan-fix steps 1–3: `ARTIFACT_CATALOG` → `ARTIFACT_CONFIG`, sole key `candidate.artifacts.base_resume`, helper import/lookup/error-prefix retarget, shallow-copy preserved, no flat alias, no path parsing inside get/require. Betty retarget (`4c4d106b`) covers step 4: hierarchical lookup, flat reject, leaf-derived round-trip, bible manifest. Blast radius contained to AST-1573 catalog surface (no AST-1569+ consumers landed yet).
+
+## Findings
+
+*(none — no fix-now / discuss)*
+
+### Advisory
+
+- **AST-1574 ride-along:** `scripts/git/validate-tests-branch.sh` hardening (`76747cbe`) appears in ftr…sub-1575 diff but outside AST-1575 plan-fix `## Proposed change`. Likely intentional epic-branch stack; confirm Chuckles lands AST-1574 explicitly or documents the bundle before ftr merge.
+- **Commit prefix:** `docs(AST-1574)` commit carries `scripts/git/` change — consider `code` or dedicated AST-1574 prefix on future similar commits.
+
+## What's solid
+
+- Clean rename with zero compatibility alias (per plan decision).
+- Error prefix `unknown catalog key:` consistently applied in product + tests.
+- Retargeted `TestAst1573ArtifactCatalog` preserves AC3 scaffold contract with leaf `base_resume` for data layer.
+- `[bug-repro]` class isolates the UAT regression from the broader scaffold suite.
+
+## Frame diff
+
+| Area | Change |
+|------|--------|
+| `src/utils/config.py` | `ARTIFACT_CATALOG` → `ARTIFACT_CONFIG`; key `base_resume` → `candidate.artifacts.base_resume` |
+| `src/utils/artifact_catalog.py` | Import/param/error-prefix retarget; hierarchical docstring |
+| `tests/.../test_artifact_catalog.py` | Retargeted scaffold + `[bug-repro]` class |
+| `docs/test-bible/utils/artifact_catalog.md` | AST-1575 manifest block |
+| `docs/features/.../ast-1573-*.md` | plan-fix patch appended |
+| `scripts/git/validate-tests-branch.sh` | AST-1574 additive-range gate (sibling; not plan-fix) |
+
+## Notes for Chuckles
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | Normal | → **Review Posted** → `do-all-the-things` §3h clean shortcut → **User Testing** (`resolve-child` skipped) |
+
+context_tokens≈42000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 7b96d9f8) hierarchical keys clean
+```
