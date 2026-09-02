@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); pilot = candidate.artifacts.base_resume (AST-1573 / AST-1575)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); pilot = candidate.artifacts.base_resume; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
@@ -201,6 +201,7 @@ TASK_CONFIG = {
         "entity_type": None,
         "requires_candidate_key": True,
         "trigger_state": None,
+        "artifact_key": "candidate.artifacts.base_resume",
     },
     # SIMPLE RESUME PARSE - Ruth / Little (AST-1037); Admin session wire = AST-1038
     "simple_resume_parse": {
@@ -5762,6 +5763,8 @@ assert set(_br.keys()) == {
     "body_shape",
     "ingestion_owner",
 }
+assert TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"
+assert TASK_CONFIG["craft_resume_base"]["artifact_key"] in ARTIFACT_CONFIG
 
 
 def get_cover_letter_render_token(name: str) -> dict:

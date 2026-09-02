@@ -4311,7 +4311,12 @@ def save_artifact(
     artifact_type: str,
     artifact_data: Any,
 ) -> str:
-    """Retire prior current=1 row for the natural key; insert new current row. Returns UUID."""
+    """Blind retire-by-key + insert (patt.artifact.write-operative).
+
+    Sets prior current=1 row(s) for (entity_type, entity_id, artifact_type) to
+    current=0, then inserts a new UUID row with current=1. Never SELECT the prior
+    uuid first; never UPDATE artifact_data in place. Returns the new uuid.
+    """
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
     if artifact_data is None:
         raise ValueError("artifact_data required")
