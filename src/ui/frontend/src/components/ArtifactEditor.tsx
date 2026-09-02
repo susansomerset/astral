@@ -98,6 +98,8 @@ interface ArtifactEditorProps {
   taskKey: string              // craft_* task to call for Generate
   shapesKey?: string           // key in DATA_SHAPES.candidates.detail — if set, tabs are fixed
   useCandidateResumeStructure?: boolean
+  /** Catalog body_shape (BUILD_CONFIG artifact_shapes / ARTIFACT_CONFIG). Pilot: resume_content. AST-1577 / patt.artifacts.ui-consistency — structure-dict mode by shape. */
+  bodyShape?: string
   structureSections?: StructureSection[] | null
   /** AST-1323: Base Resume Content structure authoring on collapsible headers. */
   structureCatalog?: Catalog | null
@@ -140,6 +142,7 @@ export default function ArtifactEditor({
   taskKey,
   shapesKey,
   useCandidateResumeStructure = false,
+  bodyShape,
   structureSections = undefined,
   structureCatalog = null,
   structureRows,
@@ -189,7 +192,8 @@ export default function ArtifactEditor({
     }
   }, [])
 
-  const structureMode = !!useCandidateResumeStructure
+  const structureMode =
+    !!useCandidateResumeStructure || bodyShape === "resume_content"
   // Tab chrome (rename/add/remove/rubric) stays off in structure/shapes mode; bodies use bodiesEditable.
   const tabChromeEditable = !shapesKey && !structureMode
   const structureAuthoring = !!(
@@ -398,7 +402,7 @@ export default function ArtifactEditor({
   // Base Resume: show Generate/Regenerate when experience is unsupported, except in-flight hide states.
   const baseResumeUnsupportedEscape =
     !jobPersistence
-    && artifactKey === "base_resume"
+    && (bodyShape === "resume_content" || artifactKey === "base_resume")
     && experienceUnsupported
     && !inflightHideStates.has(candidateState)
   const canGenerate =
