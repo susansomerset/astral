@@ -201,3 +201,143 @@ AC1→S1; AC2→S4+S5+S6; AC3→S2; AC4→S5 (+S4 step 8 removes `craft_resume_b
 
 context_tokens≈42000
 ```
+
+## Radia review
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1576
+**Publish ref:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data` @ `47ed93bdb6aaffec06d0fd325e7a65250582598a`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Tip is merge-tests(AST-1576) @ `81cab02f`; Betty test/bible deltas land at one SHA with product |
+| orch.git.commit-vocabulary | universal | conforms | Branch ancestry uses standard `code` / `merge-tests` / `docs` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Work on `sub/AST-1569/AST-1576-*`; no reverse merges in diff |
+| orch.git.ftr-sub-topology | universal | conforms | Child publish ref matches `sub/<parent>/<child-slug>` |
+| orch.git.merge-on-checkout | universal | conforms | No checkout/merge mechanics in product diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named branches in diff |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1569 epic worktree; sub ref topology correct |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches introduced |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No unresolved product-policy forks |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–6 match landed product code |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A to code content |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed per pipeline |
+| orch.roles.archie-approves-statutes | universal | conforms | N/A to code content |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible retarget via Betty merge-tests, not engineer `code()` |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to code content |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee at Tests Passed; expected handoff |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook-bypass in diff |
+| astral.agent.confidence-bounds | scoped | conforms | No confidence-bound changes in agent craft-persist path |
+| astral.agent.do-task-delegation | scoped | conforms | `do_task` still delegates; craft persist branches on `artifact_key` only |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade-vector write paths touched |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch-claim/dispatch batch changes |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch id format changes |
+| astral.batch.claim-process-release | scoped | not-applicable | No claim/process/release helpers changed |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No entity-agent-response retention changes |
+| astral.config.config-source-of-truth | scoped | conforms | `ARTIFACT_CONFIG` / `TASK_CONFIG["craft_resume_base"]["artifact_key"]` are SoT; `artifact_catalog` deleted |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets/env surface in diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No repo-root artifact dir changes |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No debug spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No dispatch seed changes |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No run_next chain edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single plan doc `docs/features/foundation/ast-1576-generic-save-candidate-data.md` |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Betty changes are tests/bible only on merge-tests SHA |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Product diff has no engineer-authored `tests/` commits; Betty merge-tests owns test tree |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | No `src/external/**` changes |
+| astral.layers.import-direction | scoped | conforms | Agent lazy-import cycle break preserved; layers respected (core→data/config, ui→core) |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Pilot key from `TASK_CONFIG`, not hardcoded in UI handler |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | Coat-check paths out of scope and untouched |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No render-verdict/consult changes |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `api_candidate` routes retain `@require_auth`; no new unauthenticated surfaces |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON changes |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No seed catalog contention |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | No seed boot-path changes |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed work |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator-row seed edits |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage-join seed work |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `save_artifact` raises `ValueError`; operative path raises; API returns 400 on failure |
+| astral.standards.database-header-inventory | scoped | conforms | `config.py` module docstring updated for `ARTIFACT_CONFIG` SoT |
+| astral.standards.debug-contract-gated | scoped | conforms | Existing `debug_index` on craft persist/parse/generate unchanged; no new ungated `[DEBUG]` spam |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Dual-dispatch is plan-approved; helpers focused (`hydrate_operative_base_resume_for_response`) |
+| astral.standards.in-scope-only | scoped | conforms | Product touches only scoped paths; AST-1577 React/editor OOS |
+| astral.standards.logging-via-utils | scoped | conforms | No new raw `logging` / `print()` in touched runtime modules |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Symbols are domain-named, not ticket-prefixed |
+| astral.standards.no-cross-contamination | scoped | conforms | Library merge vs operative write paths cleanly separated |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Pilot key from config asserts, not inline string sets |
+| astral.standards.public-then-helpers | scoped | conforms | Public `save_candidate_data` / `get_candidate` hydrate before private craft helpers |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No new utils→data imports; catalog module deleted |
+| astral.state.core-decides-transitions | scoped | conforms | No ad hoc state writes introduced |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job-state transition changes |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | No run-chain edits |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No `src/ui/frontend/**` changes |
+| astral.ui.naming-conventions | scoped | not-applicable | No frontend naming surface |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server worker config changes |
+
+**Sweep count:** 65 active statutes scored in-session (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `patt.artifact.write-operative` (parent draft directive) | conforms | Blind retire+insert `save_artifact`; operative `save_candidate_data(key, blob)`; no blob mirror; hydrate on read |
+| none cited in plan `Patterns to reuse` | — | Parent AST-1569 mandates write-operative; implementation matches draft `# Implementation` steps 1–6 |
+
+## Plan adherence
+
+Stages 1–6 land as specced: `save_artifact` docstring lock; `craft_resume_base.artifact_key` + asserts; `artifact_catalog` deleted with no `src/` imports remaining; dual-dispatch `save_candidate_data` with `resume_content` validation; `snapshot_saved_base_resume_artifact` removed; `_persist_craft_dispatch_success` no longer handles `craft_resume_base`; agent craft-persist branches on `TASK_CONFIG[task_key]["artifact_key"]`; API PUT pops pilot body from library merge and operative-saves; GET/PUT responses hydrate via `get_candidate` (+ idempotent API overlay). Explicit scope gate honored — no AST-1577 React/editor, no new catalog keys, no `artifact_id` API field. Estimate **5** still fits footprint. Cross-ticket boundary clean (AST-1573 catalog delete completes manage-catalog helper retirement; AST-1577 deferred).
+
+## Findings
+
+(none — no fix-now; no discuss blockers)
+
+### advisory — operative `body_shape` validation is pilot-specific today
+
+- **Location:** `src/core/candidate.py` `save_candidate_data` operative branch (~L779–785)
+- **Finding:** Required-key validation runs only when `body_shape == "resume_content"`. Future `ARTIFACT_CONFIG` keys with other shapes would pass through to `save_artifact` without shape checks until extended.
+- **Recommendation:** Acceptable for this ticket (pilot-only). When the next catalog key ships, generalize the required-key loop for all `BUILD_CONFIG["artifact_shapes"]` entries — not resolve-child scope here.
+
+### advisory — redundant `pilot_body = None` reset
+
+- **Location:** `src/ui/api/api_candidate.py` ~L291 inside the `arts` block
+- **Finding:** `pilot_body` is initialized `None` at L255 then reset `None` again before the `base_resume_in_save` branch.
+- **Recommendation:** Cosmetic only; optional cleanup in resolve-child or a later hygiene pass.
+
+### advisory — `list_candidates` does not hydrate operative `base_resume`
+
+- **Location:** `src/core/candidate.py` `list_candidates` vs `get_candidate`
+- **Finding:** Only `get_candidate` overlays operative current. List API (`GET /api/candidates`) may show stale/missing `artifacts.base_resume` if legacy blob was cleared.
+- **Recommendation:** Plan targets detail/token paths via `get_candidate`; confirm list UI does not depend on inline `base_resume` (likely AST-1577 territory). No block for this ticket.
+
+## What's solid
+
+- Write-operative contract is tight: blind retire+insert documented and unchanged in body; operative writes never library-merge pilot body.
+- Config wiring is correct: `TASK_CONFIG["craft_resume_base"]["artifact_key"]` locked to sole `ARTIFACT_CONFIG` key with startup asserts.
+- Agent rewire is minimal and guarded: `artifact_key` branch uses generic save; rubric/search-term crafts still use `_persist_craft_dispatch_success`.
+- `{$BASE_RESUME}` safety: `_token_view_for_do_task` reloads via `get_candidate(cid)` when `astral_candidate_id` is present (normal craft/generate paths).
+- Betty merge-tests coverage is strong: operative round-trip, retire prior, hydrate overlay, API library+operative split, agent craft-persist wiring.
+
+## Frame diff
+
+| Area | Paths | Verdict |
+|------|-------|---------|
+| Product (in-scope) | `src/data/database.py`, `src/utils/config.py`, `src/utils/artifact_catalog.py` (deleted), `src/core/candidate.py`, `src/core/agent.py`, `src/ui/api/api_candidate.py` | In-scope; plan-faithful |
+| Plan doc | `docs/features/foundation/ast-1576-generic-save-candidate-data.md` | Present |
+| Betty tests | `tests/component/core/test_candidate.py`, `test_agent.py`, `test_api_candidate.py`, `test_config.py`; deleted `test_artifact_catalog.py` | In-scope via merge-tests |
+| Betty bible | `docs/test-bible/core/candidate.md`, `agent.md`, `ui/api/api_candidate.md`, `utils/config.md`, `utils/artifact_catalog.md` | In-scope via merge-tests |
+| Sibling OOS | AST-1577 React/editor, `patt.artifacts.ui-consistency` | Not touched ✓ |
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute straggler list — C4 clear.
+- `grep` on `src/` shows zero remaining `artifact_catalog` / `snapshot_saved_base_resume_artifact` references.
+- C7 complete: full artifact + frame diff present.
+
+context_tokens≈38000
+```
