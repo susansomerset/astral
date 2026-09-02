@@ -1634,4 +1634,52 @@ describe("ArtifactEditor", () => {
       ),
     ).toBe(true)
   })
+
+  it("AST-1577: bodyShape resume_content structures without useCandidateResumeStructure", async () => {
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: { professional_summary: "Struct body", orphan_section: "skip" },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        bodyShape="resume_content"
+        structureSections={[
+          { id: "professional_summary", label: "Custom Summary" },
+          { id: "technical_skills", label: "Custom Skills" },
+        ]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Struct body")).toBeInTheDocument())
+    expect(screen.queryByDisplayValue("skip")).not.toBeInTheDocument()
+    expect(mockedApi.mock.calls.some(([u]) => u === "/api/shapes/candidates")).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    const putCall = mockedApi.mock.calls.find(
+      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
+    )
+    const body = JSON.parse(String(putCall?.[1]?.body))
+    expect(body.artifacts.base_resume.professional_summary).toBe("Struct body")
+  })
 })

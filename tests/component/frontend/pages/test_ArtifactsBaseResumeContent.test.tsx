@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -882,5 +885,36 @@ describe("ArtifactsBaseResumeContent", () => {
     const printIdx = labels.findIndex(t => t === "Print" || t === "Opening…")
     expect(regenIdx).toBeGreaterThanOrEqual(0)
     expect(printIdx).toBe(regenIdx + 1)
+  })
+
+  it("AST-1577: wires bodyShape resume_content; Save PUTs base_resume leaf (§6c)", async () => {
+    renderWithProviders(<ArtifactsBaseResumeContent />)
+    const field = await screen.findByDisplayValue("Saved summary")
+    await userEvent.clear(field)
+    await userEvent.type(field, "Operative body")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    const putCall = mockedApi.mock.calls.find(
+      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
+    )
+    const body = JSON.parse(String(putCall?.[1]?.body))
+    expect(body.artifacts.base_resume.professional_summary).toBe("Operative body")
+    expect(body.artifacts["candidate.artifacts.base_resume"]).toBeUndefined()
+  })
+
+  it("AST-1577: page and draft follow ui-consistency (no write-operative link)", () => {
+    const root = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
+    const page = readFileSync(
+      resolve(root, "src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx"),
+      "utf8",
+    )
+    expect(page).toMatch(/bodyShape="resume_content"/)
+    expect(page).not.toMatch(/useCandidateResumeStructure/)
+    const draft = readFileSync(
+      resolve(root, "canon/directives/draft/patt.artifacts.ui-consistency.md"),
+      "utf8",
+    )
+    expect(draft).toMatch(/^id: patt\.artifacts\.ui-consistency$/m)
+    expect(draft).not.toMatch(/write-operative/)
   })
 })
