@@ -32,6 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
+  ARTIFACT_CATALOG — versioned artifact-type registry (entity, candidate_scoped, body_shape, ingestion_owner); pilot = base_resume only (AST-1573)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
@@ -5730,6 +5731,36 @@ BUILD_CONFIG = {
             "missing_or_rejected_image_policy": "omit",
         },
     },
+}
+
+
+# AST-1573: authoritative artifact-type registry (patt.artifact.manage-catalog register half).
+# Key = artifact_type string. Pilot only: candidate base_resume. Job keys = siblings.
+ARTIFACT_CATALOG = {
+    "base_resume": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"] (resume section contract).
+        "body_shape": "resume_content",
+        # Core component that owns first-row ingestion for this key (UI save / snapshot today).
+        "ingestion_owner": "candidate",
+    },
+}
+
+assert set(ARTIFACT_CATALOG.keys()) == {"base_resume"}
+_br = ARTIFACT_CATALOG["base_resume"]
+assert _br["entity_type"] == "candidate"
+assert _br["entity_type"] in ENTITY_TYPES
+assert _br["candidate_scoped"] is True
+assert isinstance(_br["candidate_scoped"], bool)
+assert _br["body_shape"] == "resume_content"
+assert _br["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _br["ingestion_owner"] == "candidate"
+assert set(_br.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
 }
 
 
