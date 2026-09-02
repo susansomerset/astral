@@ -12,9 +12,9 @@ Every versioned content slot the platform reads or writes is an **artifact key**
 
 # Arc
 
-1. **Before** — A use case needs durable, versioned, or UI-editable content for an entity. The planner names entity type, logical key path, and consumers (batch, UI, consult grade, Contact).
-2. **During** — Engineer adds catalog entry (entity type, artifact type string, scope metadata). Implements `read-current` for edit surfaces and `write-operative` for persistence. Grades or analysis that must explain *which* body was used store an **operative pin** (`artifact_id`), not a blob snapshot.
-3. **After** — All new reads for that content go through artifact APIs. Legacy blob paths are migration targets, not approved shortcuts.
+1. **Before** — Product scope names a new versioned body (UI-editable, grade input, or agent output). Ticket states entity type, consumers, and whether grades must pin `artifact_id`.
+2. **During** — Engineer registers the key in catalog config, wires read-current / write-operative (and read-operative pins where required), and removes new blob reads for that content in the same change.
+3. **After** — Runtime code resolves the key only through artifact APIs; missing rows trigger ingestion states, not coat-check.
 
 # Applications
 
@@ -29,11 +29,12 @@ Every versioned content slot the platform reads or writes is an **artifact key**
 
 # Implementation
 
-1. Catalog entry declares: entity type, artifact type identifier, which read/write patterns apply, and owning component for ingestion when content is missing.
-2. Do **not** document keys inside pattern prose — only the registration *process* and ticket template.
-3. Entity examples (candidate, job, company) are allowed; enumerating every registered key is not.
-4. Config holds the authoritative key list; patterns describe how engineers extend that list safely.
-5. New keys must have a test or manifest row proving read-current + write-operative round-trip before consumers switch.
+1. **Register** — Add catalog metadata in config (entity type, artifact type string, candidate-scoped flag, body shape contract, owning component for ingestion). Config is the authoritative key list; this pattern does not enumerate keys.
+2. **Read path** — UI/API GET handlers call read-current; batch/consult/Contact callers call read-current or read-operative per use case. No new `entity["*_data"]` reads for this key.
+3. **Write path** — Saves and agent lands call write-operative; grades/analysis persist returned `artifact_id` when explainability applies.
+4. **Ingestion** — When content may be absent at dispatch, wire a trigger state or contact handler to populate the first operative row (no-coat-check). Do not register coat-check fetchers for greenfield keys.
+5. **Verify** — Component test or manifest row: empty → write-operative → read-current → read-operative pin round-trip before switching production consumers.
+6. **Retire blob** — Same ticket removes or gates legacy blob writes for that content; migration tickets may backfill historical rows separately.
 
 # OPEN QUESTIONS / DECISIONS
 
