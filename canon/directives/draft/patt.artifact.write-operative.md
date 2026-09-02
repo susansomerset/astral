@@ -29,11 +29,12 @@ An **operative write** stores (or replaces) the current version of an artifact b
 
 # Implementation
 
-1. Versioning matches **agent_task**: retire + insert, never in-place overwrite of historical rows.
-2. Always pass **candidate_id** for candidate-scoped artifacts (Contact cache, Estelle context) even when `entity_id` is a job or company id.
-3. Empty or invalid bodies must not create a current row (callers validate before write).
-4. Return value is the new **`artifact_id`**; callers that need audit trails persist it on grades, analysis upshots, or dispatch metadata.
-5. Writable shapes follow catalog contracts (JSON dict, structured sections); serialization lives in the data layer.
+1. **Invoke** — Call `save_artifact(entity_type, entity_id, artifact_type, body)` in the data layer; never UPDATE artifact rows in place.
+2. **Scope** — Pass `candidate_id` when the catalog marks the key candidate-scoped (job/company keys still carry owning candidate).
+3. **Validate** — Caller checks body shape against catalog contract before invoke; skip write when empty or invalid.
+4. **Version** — Data layer sets prior `current=1` row to `current=0`, inserts new UUID row with `current=1`.
+5. **Pin** — Persist returned `artifact_id` on grades, analysis upshots, or dispatch metadata when downstream explainability is required.
+6. **Replicate** — After agent_data RESPONSE land, call write-operative to create the first operative row; do not leave new keys as agent_data-only pins.
 
 # OPEN QUESTIONS / DECISIONS
 

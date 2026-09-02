@@ -30,11 +30,12 @@ point: >
 
 # Implementation
 
-1. Do not add new coat-check registrations or expand `*_data_keys` fetch maps for greenfield keys — use artifacts catalog + ingestion states.
-2. Batch paths: entity must reach trigger state with required artifact rows or explicit empty contract before claim.
-3. Consult grading: `_prep_live_content` and peers assemble pinned/current bodies **before** `do_task`, not via nested get during agent execution.
-4. When content is missing at dispatch, fail visibly or queue ingestion — never hide latency inside an LLM tool loop.
-5. Audits (job/company/candidate data) document legacy dual paths; new work closes gaps toward this anti-pattern, not grandfather them.
+1. **Ban new coat-check** — Do not register fetch-if-missing handlers or expand `*_data_keys` maps for greenfield catalog keys.
+2. **Batch** — Entity must reach trigger_state with required artifact rows (or explicit empty contract) before claim; component loads rows in pre-dispatch, not inside `do_task`.
+3. **Consult** — `_prep_live_content` and token assembly resolve read-current / read-operative bodies before agent entry; no nested `get_*_data` during LLM execution.
+4. **Contact** — Pre-load candidate scope and surgical artifact reads at turn start; registered contact-task row loaders are explicit loads, not coat-check — migrate them to read-current as keys land in catalog.
+5. **On miss** — Fail visibly, transition to ingestion state, or return user-facing gap — never hide I/O inside an agent tool loop.
+6. **Review** — Reject PRs that add runtime `get_job_data` / `get_company_data` / direct `entity["*_data"]` reads for catalog-covered keys outside migration tickets.
 
 # OPEN QUESTIONS / DECISIONS
 
