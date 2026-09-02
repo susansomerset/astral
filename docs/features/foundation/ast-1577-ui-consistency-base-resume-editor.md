@@ -130,3 +130,23 @@ Confirm Chuckles estimate: 3 — agree
 
 Pattern draft + two React files on an existing editor path; sibling already owns operative save/hydrate. Not 2 because the pattern must be detailed enough for Archie approval and the editor prop contract must preserve JAR backward compat without touching that file.
 
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1577
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor` @ `5cdee55b020c817921373cc4751c1ff494699bbd`
+
+## Traceability
+AC6→S2 (`bodyShape="resume_content"` + leaf `base_resume` save/load via existing candidate API; operative hydrate from merged AST-1576 on GET/reload); AC7→S1 (new draft pattern, explicit no cross-link to write-operative); AC8→S1 hard bans + explicit OOS (no new catalog keys / coat-check / grade pins / backend edits).
+
+## Findings
+(none — no fix-now; no discuss blockers)
+
+**Considered (in-session):** Universal orch.* set + scoped statutes matching plan layers `{ui, docs}` and paths (`src/ui/frontend/**`, canon draft) — all `conforms` (scope gate matches child `## Scope` exactly; `bodyShape` prop preserves `useCandidateResumeStructure` for `JobAnalysisReportModal` without editing that file; layer imports unchanged; pilot literal `resume_content` matches parent-approved pattern shape; AST-1576 is ancestor on publish ref so operative save/hydrate dependency is satisfied).
+
+context_tokens≈52000
+```
