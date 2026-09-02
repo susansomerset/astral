@@ -149,3 +149,42 @@ Betty implements approximately:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1573
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1568/AST-1573-artifact-catalog-registry` @ `c4215e2e08fd805d848f87ce6996c1ba8c4c3c43`
+
+## Traceability
+AC1→Stage 1 (`ARTIFACT_CATALOG` + asserts); AC2→Stage 2 (`require_catalog_entry` / `is_candidate_scoped` fail-fast); AC3→Betty scaffold test contract (`save_artifact`→`get_current_artifact`); AC4→Explicit scope gate + OOS list (no coat-check/blob reads); AC5→Stage 2 (`artifact_catalog.py` accessors, no config scraping).
+
+## Findings
+
+### acceptable — Draft pattern citation path
+- **Location:** Parent Architectural definition / plan intro
+- **Finding:** `patt.artifact.manage-catalog` lives under `canon/directives/draft/`, not `canon/patterns/**` with `status: approved`.
+- **Recommendation:** Accept for this epic per parent definition + Archie supersede note; draft promotion explicitly OOS. Register-half stages match pattern Implementation §1.
+
+### acceptable — Superseded conflicting guidance (not co-equal)
+- **Location:** Plan boundaries vs legacy idioms
+- **Finding:** Parent requires catalog authority over ad-hoc `base_resume` tuples, coat-check registration, and direct blob reads for this key.
+- **Recommendation:** Plan correctly defers read/write-operative wiring (AST-1569+), coat-check retirement (AST-1572), and UI/API; no conflicting steps in Files Changed or Stages.
+
+### acceptable — No formal `## Self-assessment` block
+- **Location:** Plan structure
+- **Finding:** Scope/Conf/Risk axes absent; `## Estimate` confirm line present.
+- **Recommendation:** Catalog-only vertical with explicit scope gate and stage Done-when lines — sufficient for this slice (cf. AST-1529 precedent).
+
+### acceptable — Assignee at fetch time
+- **Location:** Linear ticket
+- **Finding:** Assignee was Ada Lovelace at `get-issue`, not Joan.
+- **Recommendation:** Chuckles handoff in flight; validation proceeded per spawn. No plan defect.
+
+**In-session (R1/R2/R3/R4 — not in attachment):** Universal `orch.*` statutes considered — all `conforms`. Scoped statutes considered: `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only` — all `conforms`. Layer/import/file-placement/config/DRY checklist: pass (`utils`-only product footprint; `body_shape` references existing `BUILD_CONFIG["artifact_shapes"]["resume_content"]`; Betty owns test path per `orch.roles.betty-owns-test-tree`).
+
+context_tokens≈42000
+
+---
