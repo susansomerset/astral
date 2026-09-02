@@ -578,3 +578,25 @@ context_tokens≈42000
 ```
 [code-rubric] PROCEED (Commit: 7b96d9f8) hierarchical keys clean
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/68de20d5e270ffa44113d6969b5051e3/71c6ec2b-e9b2-41ff-994d-5dbc957fe25e/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/6e4512b2-1da5-494a-8e75-6a8192906116/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/68de20d5e270ffa44113d6969b5051e3/875c3a09-6886-40ca-9e80-2bba53d69a2c/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1568 (parent) | ftr/AST-1568-artifact-catalog |
+| AST-1573 | sub/AST-1568/AST-1573-artifact-catalog-registry |
+| AST-1575 | sub/AST-1568/AST-1575-artifact-config-hierarchical-keys |
+
+**Epic worktree:** `astral-AST-1568/` — one active sub checked out at a time.
