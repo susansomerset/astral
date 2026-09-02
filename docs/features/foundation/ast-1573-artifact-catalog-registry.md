@@ -322,3 +322,97 @@ All frame deltas are expected post-plan execution; no unplanned product surface.
 - Branch history includes merged sibling meteorite work; **three-dot diff vs `origin/dev` is AST-1573-only** (5 files) — correct review surface.
 
 context_tokens≈38000
+
+## Bug: AST-1575 — Rename ARTIFACT_CATALOG→ARTIFACT_CONFIG and hierarchical catalog keys
+
+### As-is
+
+Landed AST-1573 pilot registers flat catalog key `base_resume` under top-level config block `ARTIFACT_CATALOG`. Helpers in `src/utils/artifact_catalog.py` import that symbol and look up by the flat key; Betty’s scaffold (`tests/component/utils/test_artifact_catalog.py` + bible) asserts the same names.
+
+### To-be
+
+Config block is `ARTIFACT_CONFIG` (standard `_CONFIG` suffix). Sole pilot catalog key is the hierarchical `_data` path `candidate.artifacts.base_resume`. Helpers, startup asserts, and catalog tests/bible use `ARTIFACT_CONFIG` and that hierarchical key. Flat `base_resume` no longer resolves. Data-layer `artifacts.artifact_type` for the pilot remains the leaf `base_resume`.
+
+### Repro
+
+1. `from src.utils.config import ARTIFACT_CATALOG` succeeds; `ARTIFACT_CONFIG` is missing.
+2. `require_catalog_entry("base_resume")` returns the pilot entry; `require_catalog_entry("candidate.artifacts.base_resume")` raises `ValueError`.
+3. Module docstring inventory still lists `ARTIFACT_CATALOG`.
+
+### Root cause
+
+AST-1573 Stage 1 chose a dedicated top-level `ARTIFACT_CATALOG` keyed by bare artifact-type strings. UAT on the parent asks for the platform’s usual `_CONFIG` block suffix and for catalog keys that match existing entity `_data` dotted paths (`candidate.artifacts.*`, etc.).
+
+### Proposed change
+
+⚠️ **Decision:** Keep the four metadata fields (`entity_type`, `candidate_scoped`, `body_shape`, `ingestion_owner`) unchanged. Hierarchical key is the dict key only. For `save_artifact` / `get_current_artifact`, callers use `entry["entity_type"]` and the leaf segment of the catalog key (`catalog_key.rsplit(".", 1)[-1]` → `base_resume`). Do **not** add a fifth metadata field; do **not** alias flat `base_resume` as a second lookup key.
+
+1. In `src/utils/config.py` module docstring **Config sections:** line, replace `ARTIFACT_CATALOG — …` with:
+
+```
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); pilot = candidate.artifacts.base_resume (AST-1573 / AST-1575)
+```
+
+2. In `src/utils/config.py`, rename the block and sole key (same placement after `BUILD_CONFIG`):
+
+```python
+ARTIFACT_CONFIG = {
+    "candidate.artifacts.base_resume": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        "body_shape": "resume_content",
+        "ingestion_owner": "candidate",
+    },
+}
+
+assert set(ARTIFACT_CONFIG.keys()) == {"candidate.artifacts.base_resume"}
+_br = ARTIFACT_CONFIG["candidate.artifacts.base_resume"]
+assert _br["entity_type"] == "candidate"
+assert _br["entity_type"] in ENTITY_TYPES
+assert _br["candidate_scoped"] is True
+assert isinstance(_br["candidate_scoped"], bool)
+assert _br["body_shape"] == "resume_content"
+assert _br["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _br["ingestion_owner"] == "candidate"
+assert set(_br.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+```
+
+Delete every remaining `ARTIFACT_CATALOG` identifier in this file (no compatibility alias).
+
+3. In `src/utils/artifact_catalog.py`:
+   - Import `ARTIFACT_CONFIG` (not `ARTIFACT_CATALOG`).
+   - Update module docstring to name `ARTIFACT_CONFIG` and hierarchical catalog keys.
+   - Keep public function names `get_catalog_entry`, `require_catalog_entry`, `is_candidate_scoped`.
+   - Parameter remains a string key; document it as the hierarchical catalog key. Lookup uses `ARTIFACT_CONFIG.get(key.strip())` exactly as today (no path parsing inside get/require).
+   - Error message prefix becomes `unknown catalog key:` (was `unknown artifact type:`). Betty updates `match=` / message asserts in the same fix wave.
+   - Flat `base_resume`, blank, and unknown hierarchical strings still fail soft (`None`) / hard (`ValueError`) with no silent fallback.
+   - Shallow-copy return behavior unchanged.
+
+4. **Betty-owned (qa-fix / make-fix board):** update `tests/component/utils/test_artifact_catalog.py` and `docs/test-bible/utils/artifact_catalog.md` so:
+   - Imports and key-set asserts use `ARTIFACT_CONFIG` and `{"candidate.artifacts.base_resume"}`.
+   - Lookup / fail-fast / shallow-copy cases call helpers with `candidate.artifacts.base_resume` (and whitespace trim on that hierarchical key).
+   - Unknown-key case still uses a non-registered string (e.g. `not_a_real_artifact`); assert flat `base_resume` does **not** resolve via `get_catalog_entry` / `require_catalog_entry`.
+   - Scaffold round-trip: `entry = require_catalog_entry("candidate.artifacts.base_resume")`; `artifact_type = "candidate.artifacts.base_resume".rsplit(".", 1)[-1]` (or equivalent literal leaf derived from that key); `save_artifact(entry["entity_type"], …, artifact_type, payload)` then `get_current_artifact` — assert `artifact_type == "base_resume"` on the row.
+   - Engineer does **not** commit under `tests/` or `docs/test-bible/**`.
+
+5. Do **not** register `job.artifacts.cover_letter` / `candidate.context.strengths` (UAT examples only). Do **not** wire write-operative / read-current / coat-check / UI/API. Do **not** rename the `artifact_catalog.py` module path this ticket.
+
+### Blast radius
+
+- Any future AST-1569+ code or docs that cite `ARTIFACT_CATALOG` or flat `base_resume` catalog lookup must use `ARTIFACT_CONFIG` + hierarchical keys (none landed yet outside AST-1573 helpers/tests).
+- Betty scaffold + bible for AST-1573 must retarget in the same fix wave or the existing node ids go red.
+- `save_artifact` / artifacts-table natural key for this content remains leaf `base_resume` — no schema change.
+
+### What must still hold
+
+- Exactly one pilot catalog entry (now keyed `candidate.artifacts.base_resume`).
+- Unknown catalog keys fail fast — no silent fallback / no flat-key alias.
+- Catalog-derived identity still drives scaffold `save_artifact` → `get_current_artifact` for leaf `base_resume`.
+- No new runtime blob reads or coat-check registrations.
+- Callers reach catalog via `artifact_catalog` helpers, not by scraping config internals (AST-1573 AC5).
+- Parent boundaries: no job keys, no product read/write path wiring, no UI/API, no coat-check retirement.
