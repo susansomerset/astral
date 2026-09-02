@@ -3112,16 +3112,44 @@ async def do_task(
     if result.get("success") and (ctx or {}).get("persist_candidate_craft_hops") and index:
         try:
             # Lazy import breaks agent↔candidate cycle (candidate imports agent).
-            from src.core.candidate import _persist_craft_dispatch_success
+            from src.core.candidate import (
+                _persist_craft_dispatch_success,
+                save_candidate_data,
+                split_craft_resume_base_payload,
+            )
             from src.utils.config import CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
             from src.utils.logging import truncate_debug_content
 
             parsed_for_persist = result.get("parsed_response")
-            _persist_craft_dispatch_success(str(index), task_key, parsed_for_persist)
+            task_cfg = TASK_CONFIG.get(task_key) or {}
+            artifact_key = task_cfg.get("artifact_key")
+            if isinstance(artifact_key, str) and artifact_key.strip():
+                if not isinstance(parsed_for_persist, dict):
+                    raise ValueError(
+                        f"{task_key} parsed_response must be a dict"
+                    )
+                structure, content = split_craft_resume_base_payload(
+                    parsed_for_persist
+                )
+                save_candidate_data(
+                    str(index), {"artifacts": {"resume_structure": structure}}
+                )
+                save_candidate_data(str(index), artifact_key, content)
+            else:
+                _persist_craft_dispatch_success(
+                    str(index), task_key, parsed_for_persist
+                )
             candidate_craft_persisted = True
             if debug:
-                art = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key) or (
-                    "company_search_terms" if task_key == "craft_company_search_terms" else task_key
+                art = (
+                    artifact_key
+                    if isinstance(artifact_key, str) and artifact_key.strip()
+                    else CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+                    or (
+                        "company_search_terms"
+                        if task_key == "craft_company_search_terms"
+                        else task_key
+                    )
                 )
                 dbg = _do_task_debug_logger(debug)
                 dbg.debug_index(
