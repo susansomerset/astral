@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CATALOG — versioned artifact-type registry (entity, candidate_scoped, body_shape, ingestion_owner); pilot = base_resume only (AST-1573)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); pilot = candidate.artifacts.base_resume (AST-1573 / AST-1575)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
@@ -5734,10 +5734,10 @@ BUILD_CONFIG = {
 }
 
 
-# AST-1573: authoritative artifact-type registry (patt.artifact.manage-catalog register half).
-# Key = artifact_type string. Pilot only: candidate base_resume. Job keys = siblings.
-ARTIFACT_CATALOG = {
-    "base_resume": {
+# AST-1573 / AST-1575: authoritative artifact registry (patt.artifact.manage-catalog register half).
+# Key = entity._data path. Pilot only: candidate.artifacts.base_resume. Job keys = siblings.
+ARTIFACT_CONFIG = {
+    "candidate.artifacts.base_resume": {
         "entity_type": "candidate",
         "candidate_scoped": True,
         # Name into BUILD_CONFIG["artifact_shapes"] (resume section contract).
@@ -5747,8 +5747,8 @@ ARTIFACT_CATALOG = {
     },
 }
 
-assert set(ARTIFACT_CATALOG.keys()) == {"base_resume"}
-_br = ARTIFACT_CATALOG["base_resume"]
+assert set(ARTIFACT_CONFIG.keys()) == {"candidate.artifacts.base_resume"}
+_br = ARTIFACT_CONFIG["candidate.artifacts.base_resume"]
 assert _br["entity_type"] == "candidate"
 assert _br["entity_type"] in ENTITY_TYPES
 assert _br["candidate_scoped"] is True
