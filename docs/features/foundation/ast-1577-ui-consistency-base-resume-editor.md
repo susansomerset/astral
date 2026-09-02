@@ -150,3 +150,9 @@ AC6→S2 (`bodyShape="resume_content"` + leaf `base_resume` save/load via existi
 
 context_tokens≈52000
 ```
+
+## Review (build)
+
+**Built @ `8f0b8a46`** — `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`
+
+Stages 1–2 landed: draft `patt.artifacts.ui-consistency.md` (no write-operative cross-link); `ArtifactEditor` `bodyShape` + Base Resume page `bodyShape="resume_content"` (leaf `base_resume` unchanged; `useCandidateResumeStructure` retained for JAR).
