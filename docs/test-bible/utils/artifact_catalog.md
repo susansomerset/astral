@@ -7,7 +7,7 @@
 | Source | Test file | Branch lock |
 | --- | --- | --- |
 | `src/utils/artifact_catalog.py` | `tests/component/utils/test_artifact_catalog.py` | no |
-| `src/utils/config.py` (`ARTIFACT_CATALOG` pilot) | same (lookup asserts) | yes (`config.py` lock unchanged) |
+| `src/utils/config.py` (`ARTIFACT_CONFIG` pilot) | same (lookup asserts) | yes (`config.py` lock unchanged) |
 
 ---
 
@@ -15,35 +15,62 @@
 
 **Parent:** [AST-1568 — Implement patt.artifact.manage-catalog](https://linear.app/astralcareermatch/issue/AST-1568/implement-pattartifactmanage-catalog). **Publish:** `origin/sub/AST-1568/AST-1573-artifact-catalog-registry`.
 
-Pilot `ARTIFACT_CATALOG` with sole key `base_resume` (candidate-scoped, `body_shape=resume_content`, `ingestion_owner=candidate`) plus read-only helpers `get_catalog_entry` / `require_catalog_entry` / `is_candidate_scoped`. Unknown keys fail fast (`ValueError` / soft `None`). Scaffold proves catalog-derived identity plugs into existing `save_artifact` → `get_current_artifact` — not write-operative / read-current product paths (AST-1569+), not coat-check retirement (AST-1572).
+Pilot registry + read-only helpers `get_catalog_entry` / `require_catalog_entry` / `is_candidate_scoped`. Scaffold proves catalog-derived identity plugs into existing `save_artifact` → `get_current_artifact`. **AST-1575** retargets block/key naming (see below) — do not assert flat `ARTIFACT_CATALOG` / bare `base_resume` catalog keys.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Catalog lookup + fail-fast + shallow copy | `src/utils/artifact_catalog.py`, `ARTIFACT_CATALOG` | **`TestAst1573ArtifactCatalog`** |
+| Catalog lookup + fail-fast + shallow copy | `src/utils/artifact_catalog.py`, `ARTIFACT_CONFIG` | **`TestAst1573ArtifactCatalog`** |
 | Catalog identity → data-layer round-trip | `src/data/database.py` (existing APIs) | **`TestAst1573ArtifactCatalog::test_catalog_identity_save_get_round_trip`** |
 
-**Broken / obsolete:** none for this slice. Existing `tests/component/data/database/test_artifacts.py` base_resume table coverage stays (data-layer identity). Candidate `artifacts.base_resume` blob / coat-check retargets remain siblings AST-1569–AST-1572 — do not invent coat-check or blob-read expectations here.
+**Broken / obsolete:** flat-key / `ARTIFACT_CATALOG` asserts retired by **AST-1575**.
 
-**Integration:** none (no existing scenario invalidated; artifact-pipeline integration gap stays should-have — do not invent).
+**Integration:** none.
 
-## QA test manifest
-
-1. **Lookup + fail-fast + copy (required):**
+## QA test manifest (AST-1573 — superseded naming by AST-1575)
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog::test_pilot_entry_lookup_and_scope \
-  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog::test_unknown_and_blank_fail_fast \
-  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog::test_require_returns_shallow_copy \
+  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog \
   -q
 ```
 
-2. **Scaffold round-trip (required — AC3):**
+**Pass criterion:** pytest green on those node ids — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-1575 · AST-1568 (bug — ARTIFACT_CONFIG + hierarchical keys)
+
+**Parent:** [AST-1568](https://linear.app/astralcareermatch/issue/AST-1568/implement-pattartifactmanage-catalog). **Publish:** `origin/sub/AST-1568/AST-1575-artifact-config-hierarchical-keys`.
+
+Rename `ARTIFACT_CATALOG` → `ARTIFACT_CONFIG`; pilot key `candidate.artifacts.base_resume`; error prefix `unknown catalog key:`; flat `base_resume` must not resolve via helpers. Data-layer `artifact_type` leaf remains `base_resume`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config rename + hierarchical pilot ([bug-repro]) | `config.py`, `artifact_catalog.py` | **`TestAst1575ArtifactConfigRename::test_artifact_config_symbol_and_hierarchical_pilot`** |
+| Retargeted scaffold (lookup / fail-fast / flat reject / round-trip) | same | **`TestAst1573ArtifactCatalog`** (rewritten) |
+
+**Broken / obsolete (this pass):** prior AST-1573 asserts on `ARTIFACT_CATALOG` / flat `base_resume` / `unknown artifact type` — rewritten in-place.
+
+**Integration:** none.
+
+## QA test manifest (AST-1575 — test-fix)
+
+1. **[bug-repro] (required):**
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog::test_catalog_identity_save_get_round_trip \
+  tests/component/utils/test_artifact_catalog.py::TestAst1575ArtifactConfigRename::test_artifact_config_symbol_and_hierarchical_pilot \
   -q
 ```
 
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+Expect **red** on pre-fix tree (`ImportError: cannot import name 'ARTIFACT_CONFIG'`); **green** after make-fix.
+
+2. **Retargeted scaffold (required with make-fix):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog \
+  -q
+```
+
+**Pass criterion (test-fix):** item 1 flips red→green; item 2 green — not zero-arg harness.
