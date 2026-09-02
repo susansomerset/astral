@@ -150,6 +150,12 @@ Betty implements approximately:
 
 Confirm Chuckles estimate: 3 — agree
 
+## Review (build)
+
+**Built @ `cdf7fe63`** — `origin/sub/AST-1568/AST-1573-artifact-catalog-registry`
+
+Product stages 1–2 landed (`ARTIFACT_CATALOG` + `artifact_catalog.py`). Scaffold test path remains Betty `qa-child` (AC3).
+
 ## Joan validate
 
 [plan-rubric]
