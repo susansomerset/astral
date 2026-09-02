@@ -194,3 +194,131 @@ AC1→Stage 1 (`ARTIFACT_CATALOG` + asserts); AC2→Stage 2 (`require_catalog_en
 context_tokens≈42000
 
 ---
+
+## Radia review
+
+# Radia code review — AST-1573
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1573
+**Publish ref:** `origin/sub/AST-1568/AST-1573-artifact-catalog-registry` @ `2de65c08cf46c2fcf4e25b08a0646388269de8e2`
+**Overall:** CLEAN
+
+**Diff change set:** 5 paths — `src/utils/config.py` (modify), `src/utils/artifact_catalog.py` (add), `tests/component/utils/test_artifact_catalog.py` (add), `docs/test-bible/utils/artifact_catalog.md` (add), `docs/features/foundation/ast-1573-artifact-catalog-registry.md` (add). Layers: `utils`, `docs`/tests. Change types: `add`, `modify`.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `orch.pipeline.plan-is-bible` | universal | conforms | Product + tests match staged plan; no scope drift |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | No product-policy forks |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A to diff |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | N/A to diff |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A to diff |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Test + bible on Betty `test()` / `merge-tests()` SHAs |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A to diff |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada assignee; engineer `code()` only `src/utils/` |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No hook-evasion signals in diff |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1573)` present |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | `sub/AST-1568/…` publish topology |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child sub under parent AST-1568 |
+| `orch.git.merge-on-checkout` | universal | conforms | No rebase/cherry-pick on diff |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Clean three-dot diff vs `origin/dev` |
+| `orch.git.no-dev-agent-branches` | universal | conforms | No agent-named publish refs |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Epic worktree path correct |
+| `orch.git.three-permanent-branches` | universal | conforms | N/A to diff |
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent/dispatch paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No agent paths |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grading paths |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch paths |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No batch paths |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No batch paths |
+| `astral.config.config-source-of-truth` | scoped | conforms | `ARTIFACT_CATALOG` authoritative block in `config.py` |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env reads |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifact paths |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch/seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run_next |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single `ast-1573-*.md` feature doc |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty diff: tests + test-bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer `code()` SHAs touch only `src/utils/` |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | No core/external |
+| `astral.layers.import-direction` | scoped | conforms | `artifact_catalog` → `config` only (utils→utils) |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No scripts |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | No UI |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | Coat-check OOS (AST-1572) |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No render/consult |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No API |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed tables |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No seed catalog |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No boot SQL |
+| `astral.seed.define-approved` | scoped | not-applicable | No define |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No seed |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No `src/data` edits |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No `database.py` |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | No debug logging |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Three small accessors; no duplication |
+| `astral.standards.in-scope-only` | scoped | conforms | Pilot key only; siblings deferred |
+| `astral.standards.logging-via-utils` | scoped | conforms | No logging added |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `AST-1573` only in comments/docstring carve-out |
+| `astral.standards.no-cross-contamination` | scoped | not-applicable | No cross-module contamination |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Registry + startup asserts in config |
+| `astral.standards.public-then-helpers` | scoped | conforms | Public API only; no private helpers |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No data imports |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state machine |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | No frontend |
+| `astral.ui.naming-conventions` | scoped | not-applicable | No UI |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server config |
+
+**Sweep count:** 64 active harvested statutes scored (per `canon/statutes/README.md` harvested table; `astral.config.pass-threshold-vs-score-floor` retired — excluded).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `patt.artifact.manage-catalog` | conforms | Register-half matches draft Implementation §1; Joan APPROVED draft-directive citation at plan time; promotion OOS |
+
+## Plan adherence
+
+Stages 1–2 land exactly as specced: `ARTIFACT_CATALOG` with sole `base_resume`, module-docstring inventory line, startup asserts wired to `ENTITY_TYPES` and `BUILD_CONFIG["artifact_shapes"]`, and read-only `artifact_catalog.py` helpers with soft `None` / hard `ValueError` fail-fast and shallow-copy returns. Betty scaffold (`test_artifact_catalog.py` + bible manifest) covers AC1–AC3 including catalog-derived `entity_type` → `save_artifact` / `get_current_artifact` round-trip. Explicit scope gate honored: no job keys, coat-check, core/UI/API, or write-operative wiring. Estimate **3** still fits footprint. Cross-ticket boundaries clean (AST-1569+ / AST-1572 deferred).
+
+**Joan straggler (C4):** No Excluded-statute list in Joan attachment; no straggler rows.
+
+## Findings
+
+*(none — no fix-now / discuss / advisory code findings)*
+
+## What's solid
+
+- Thin utils accessor module with correct layer imports and zero I/O.
+- Startup asserts prevent catalog drift from `ENTITY_TYPES` / `artifact_shapes`.
+- Tests exercise whitespace trimming, blank/unknown fail-fast, shallow-copy isolation, and data-layer scaffold without hardcoding a parallel `(entity, type)` tuple.
+- Engineer/test ownership split respected (`code()` → `src/utils/` only; Betty → tests + bible).
+
+## Frame diff
+
+Post-Joan (`c4215e2e`) → tip (`2de65c08`):
+
+| Area | Change |
+|------|--------|
+| `src/utils/config.py` | `+ARTIFACT_CATALOG` block + asserts (Stage 1) |
+| `src/utils/artifact_catalog.py` | New module (Stage 2) |
+| `tests/component/utils/test_artifact_catalog.py` | Betty AC1–AC3 scaffold |
+| `docs/test-bible/utils/artifact_catalog.md` | Betty manifest |
+| Issue doc | Build review stub + Joan block (pre-existing on branch) |
+
+All frame deltas are expected post-plan execution; no unplanned product surface.
+
+## Notes
+
+- Pattern id `patt.artifact.manage-catalog` lives under `canon/directives/draft/` (not approved `canon/patterns/**`); Joan closed this at plan validate — no re-litigation.
+- Product callers should route through `artifact_catalog` helpers per plan (AST-1569 AC); tests may import `ARTIFACT_CATALOG` for key-set asserts per scaffold contract.
+- Branch history includes merged sibling meteorite work; **three-dot diff vs `origin/dev` is AST-1573-only** (5 files) — correct review surface.
+
+context_tokens≈38000
