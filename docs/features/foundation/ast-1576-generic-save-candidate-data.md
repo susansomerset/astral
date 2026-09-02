@@ -175,3 +175,23 @@ save_candidate_data(
 Confirm Chuckles estimate: 5 — agree
 
 Agent craft-persist rewire + dual-dispatch save + API retarget + catalog delete is a multi-component known pattern (write-operative + manage-catalog), not a new architecture — 5 fits; not 3 because agent + candidate + API all move together.
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1576
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data` @ `aa259b450ea3572e54cf080b4afa02965db6225f`
+
+## Traceability
+AC1→S1; AC2→S4+S5+S6; AC3→S2; AC4→S5 (+S4 step 8 removes `craft_resume_base` branch / `snapshot_saved_base_resume_artifact`); AC5→S3; AC6→S2 asserts + explicit OOS (no new keys / coat-check / grade pins / job finalize).
+
+## Findings
+(none — no fix-now; no discuss blockers)
+
+**Considered (in-session):** Universal orch.* set + scoped product statutes matching plan layers `{data, utils, core, ui}` and paths under `src/**` — all `conforms` (config SoT via `ARTIFACT_CONFIG`/`TASK_CONFIG`; blind retire+insert matches existing `save_artifact`; layer imports respected; data raises / callers log; `artifact_catalog` delete aligns with parent manage-catalog mandate; explicit scope gate matches child `## Scope`; Betty owns test retarget).
+
+context_tokens≈42000
+```
