@@ -1339,3 +1339,20 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-1577 · AST-1569
+
+**Publish:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`.
+
+`bodyShape === "resume_content"` is structure-dict mode (JAR keeps `useCandidateResumeStructure`). Primary: **`docs/test-bible/frontend/pages.md`** § AST-1577.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| bodyShape without legacy prop | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1577:`** |
+| JAR / legacy structure still holds | same | **`loads fixed tabs from structureSections without shapes fetch`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
