@@ -22,6 +22,7 @@ from src.core.candidate import (
     ingest_legacy_label_content_base_resume,
     get_candidate,
     get_pending_craft_generation,
+    hydrate_operative_base_resume_for_response,
     hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
     IllegalCandidateTransition,
@@ -34,7 +35,6 @@ from src.core.candidate import (
     run_candidate_artifact_generation,
     save_candidate_admin,
     save_candidate_data,
-    snapshot_saved_base_resume_artifact,
     start_requested_artifacts,
     transition_candidate_state,
 )
@@ -204,6 +204,7 @@ def get_candidate_detail(candidate_id):
     candidate["company_search_terms"] = company_search_terms_joined_text(candidate_id)
     cd = candidate.get("candidate_data") or {}
     hydrate_rubric_artifacts_for_response(candidate_id, cd)
+    hydrate_operative_base_resume_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
 
@@ -251,6 +252,7 @@ def update_candidate_data(candidate_id):
         ):
             return jsonify({"error": "Admin access required"}), 403
         base_resume_in_save = False
+        pilot_body = None
         if body:
             arts = body.get("artifacts")
             if isinstance(arts, dict):
@@ -286,6 +288,10 @@ def update_candidate_data(candidate_id):
                         arts["base_resume"], section_ids
                     )
                     base_resume_in_save = True
+                pilot_body = None
+                if base_resume_in_save:
+                    # Operative write — do not library-merge the pilot body.
+                    pilot_body = arts.pop("base_resume", None)
                 if not arts:
                     body.pop("artifacts", None)
                 else:
@@ -303,9 +309,13 @@ def update_candidate_data(candidate_id):
             if body:
                 # AST-1014 / AC8: gate library-write found/recorded lines on deploy debug.
                 save_candidate_data(candidate_id, body, replace=False, debug=ui_llm_debug())
-                # AST-1353: preserve intentional Save into artifacts (not craft paths)
-                if base_resume_in_save:
-                    snapshot_saved_base_resume_artifact(candidate_id)
+                # AST-1576: pilot body via generic operative save (no blob mirror / snapshot).
+                if base_resume_in_save and pilot_body is not None:
+                    save_candidate_data(
+                        candidate_id,
+                        TASK_CONFIG["craft_resume_base"]["artifact_key"],
+                        pilot_body,
+                    )
                 # Clear pending only after persist — keys captured before apply del
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
