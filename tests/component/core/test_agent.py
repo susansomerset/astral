@@ -7794,6 +7794,8 @@ class TestAst1252PersistCandidateCraftHops:
         src = inspect.getsource(agent_mod.do_task)
         assert "persist_candidate_craft_hops" in src
         assert "_persist_craft_dispatch_success" in src
+        assert "save_candidate_data" in src
+        assert 'task_cfg.get("artifact_key")' in src
         assert "truncate_debug_content" in src
 
     def test_persist_helper_supports_craft_get_rubric(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -7817,6 +7819,72 @@ class TestAst1252PersistCandidateCraftHops:
             {"criteria": [{"criterion": "x", "grade_descriptions": {"A": "y"}}]},
         )
         assert any("arts" in (s or {}) for s in saved)
+
+
+class TestAst1576CraftPersistOperative:
+    """AST-1576: persist_candidate_craft_hops with artifact_key uses generic save."""
+
+    def _stub_llm(self, monkeypatch: pytest.MonkeyPatch, send: AsyncMock) -> None:
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        monkeypatch.setattr(agent_mod, "_task_references_caller_tokens", lambda *a, **k: False)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+
+    @pytest.mark.asyncio
+    async def test_craft_resume_base_persist_uses_save_candidate_data(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        saves: list = []
+        helper = MagicMock()
+        monkeypatch.setattr(
+            "src.core.candidate.save_candidate_data",
+            lambda *a, **k: saves.append((a, k)) or "uid",
+        )
+        monkeypatch.setattr(
+            "src.core.candidate._persist_craft_dispatch_success", helper
+        )
+        jobs = [
+            {
+                "company": "Acme",
+                "title": "Engineer",
+                "dates": "2020-2023",
+                "location": "Remote",
+                "accomplishments": ["Shipped"],
+            }
+        ]
+        payload = {
+            "resume_structure": {"sections": {}},
+            "candidate_name": "Ada",
+            "candidate_title": "Eng",
+            "candidate_contact_detail": "a@b.c",
+            "professional_summary": "S",
+            "core_competencies": "C",
+            "highlights": "",
+            "experience": jobs,
+        }
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": payload,
+                },
+                "api_response": _api_response("{}"),
+                "timesheet": {},
+            }
+        )
+        self._stub_llm(monkeypatch, send)
+        out = await agent_mod.do_task(
+            "craft_resume_base",
+            index="cand-1576",
+            ctx={"persist_candidate_craft_hops": True},
+        )
+        assert out.get("success") is True, out.get("error")
+        helper.assert_not_called()
+        assert any(isinstance(c[0][1], str) and "candidate.artifacts.base_resume" in c[0] for c in saves)
+        assert any(isinstance(c[0][1], dict) for c in saves)
 
 
 

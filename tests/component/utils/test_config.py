@@ -5438,3 +5438,23 @@ class TestAst1562RetentionConfig:
         blob = sql if isinstance(sql, str) else "\n".join(sql)
         assert "meteorite_retention" in blob
         assert "NULL" in blob.upper()
+
+
+class TestAst1576CraftResumeBaseArtifactKey:
+    """AST-1576: craft_resume_base.artifact_key + ARTIFACT_CONFIG SoT; wrapper gone."""
+
+    def test_craft_artifact_key_is_hierarchical_pilot(self) -> None:
+        assert not hasattr(cfg, "ARTIFACT_CATALOG")
+        assert set(cfg.ARTIFACT_CONFIG.keys()) == {"candidate.artifacts.base_resume"}
+        assert (
+            cfg.TASK_CONFIG["craft_resume_base"]["artifact_key"]
+            == "candidate.artifacts.base_resume"
+        )
+        assert cfg.TASK_CONFIG["craft_resume_base"]["artifact_key"] in cfg.ARTIFACT_CONFIG
+        assert "base_resume" not in cfg.ARTIFACT_CONFIG
+
+    def test_artifact_catalog_module_removed(self) -> None:
+        import importlib
+
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("src.utils.artifact_catalog")
