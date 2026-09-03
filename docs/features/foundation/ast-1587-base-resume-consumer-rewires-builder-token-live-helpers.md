@@ -244,3 +244,16 @@ None.
 
 context_tokens≈56000
 ```
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires` @ `c53c8ab7`.
+
+**Stages delivered:**
+- Prerequisite: merged `origin/sub/AST-1570/AST-1586-current-read-helper-get-hydrate-pattern-revise` — `1176722f`.
+- Stage 1: candidate live helpers + `candidate_id_for_current_read` / `load_pilot_base_resume_for_candidate` — `2117c638`.
+- Stage 2: builder consumer rewires + Style D current-read in `build_base_resume` — `c53c8ab7`.
+- Stage 3: config `{$BASE_RESUME}` audit — no change (`format_base_resume_for_token` covers serialize branch).
+- Stage 4: `api_resume_html` audit — no change (thin `build_base_resume` caller only).
+
+**Betty:** at **Code Complete** — builder/candidate current-read consumer coverage; whitelist debug label; `build_base_resume` Style D 2/2 headers.
