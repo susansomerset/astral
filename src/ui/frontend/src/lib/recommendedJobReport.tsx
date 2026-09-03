@@ -18,6 +18,35 @@ export type ReportPrimaryAction = {
   path_suffix: string
 }
 
+/** AST-1585: read pin from job_data when a prior writer left one (this ticket never writes it). */
+export function jobBaseResumeArtifactId(jobData: unknown): string | null {
+  if (!jobData || typeof jobData !== "object" || Array.isArray(jobData)) return null
+  const raw = (jobData as Record<string, unknown>).base_resume_artifact_id
+  if (typeof raw !== "string") return null
+  const pin = raw.trim()
+  return pin || null
+}
+
+export async function fetchOperativeBaseResume(
+  candidateId: string,
+  artifactId: string,
+  apiFn: (path: string, init?: RequestInit) => Promise<Response>,
+): Promise<{ ok: true; base_resume: unknown } | { ok: false; error: string }> {
+  const url =
+    `/api/candidates/${encodeURIComponent(candidateId)}/operative/base_resume` +
+    `?artifact_id=${encodeURIComponent(artifactId)}`
+  const resp = await apiFn(url)
+  const data = await resp.json().catch(() => ({}))
+  if (!resp.ok) {
+    const err =
+      data && typeof data === "object" && typeof (data as { error?: unknown }).error === "string"
+        ? (data as { error: string }).error
+        : `HTTP ${resp.status}`
+    return { ok: false, error: err }
+  }
+  return { ok: true, base_resume: (data as { base_resume?: unknown }).base_resume }
+}
+
 export function primaryActionsForState(
   manifest: StateUiManifest | null,
   state: string,
