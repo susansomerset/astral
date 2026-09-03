@@ -111,7 +111,7 @@ def format_base_resume_for_token(candidate_data: dict) -> str:
 5. In `pin_experience_job_facts_from_base`, replace:
 
 ```python
-    cid = _candidate_id_for_current_read(candidate_data)
+    cid = candidate_id_for_current_read(candidate_data)
     base = (
         get_candidate_current(cid, _PILOT_BASE_RESUME_ARTIFACT_KEY)
         if cid
@@ -198,6 +198,14 @@ def format_base_resume_for_token(candidate_data: dict) -> str:
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Revisions
+
+```
+Revision 1 — 2026-09-03
+Driven by: Joan [plan-discuss] round=1 — fix-now Stage 1 step 5 helper name typo
+Changes: Stage 1 step 5 `pin_experience_job_facts_from_base` — `_candidate_id_for_current_read` → `candidate_id_for_current_read` (matches step 1 definition).
+```
 
 ## Joan validate
 
