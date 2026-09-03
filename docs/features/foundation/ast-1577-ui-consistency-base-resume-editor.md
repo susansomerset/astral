@@ -156,3 +156,146 @@ context_tokens≈52000
 **Built @ `8f0b8a46`** — `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`
 
 Stages 1–2 landed: draft `patt.artifacts.ui-consistency.md` (no write-operative cross-link); `ArtifactEditor` `bodyShape` + Base Resume page `bodyShape="resume_content"` (leaf `base_resume` unchanged; `useCandidateResumeStructure` retained for JAR).
+
+## Radia review
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1577
+**Publish ref:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor` @ `07f5a248da40078a35f399e20c8338a0d9992e0d`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Tip is `merge-tests(AST-1577)` @ `4c1689b8`; Betty frontend test/bible deltas at one SHA |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary on branch |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub publish ref; no reverse-merge mechanics in product |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1569/AST-1577-ui-consistency-base-resume-editor` |
+| orch.git.merge-on-checkout | universal | conforms | N/A to code content |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1569 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No unresolved product-policy forks |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 match AST-1577 engineer commits |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A to code content |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | Draft pattern states Archie approval required before active |
+| orch.roles.betty-owns-test-tree | universal | conforms | Frontend tests/bible via Betty `test(AST-1577)` + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to code content |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook bypass |
+| astral.agent.confidence-bounds | scoped | not-applicable | No agent-layer changes in AST-1577 commits |
+| astral.agent.do-task-delegation | scoped | not-applicable | No agent changes in AST-1577 commits |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch changes |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch id changes |
+| astral.batch.claim-process-release | scoped | not-applicable | No claim helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No entity-response retention |
+| astral.config.config-source-of-truth | scoped | conforms | Pilot `bodyShape="resume_content"` matches config `body_shape`; leaf key `base_resume` unchanged; no frontend catalog fetch |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets surface |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug dir changes |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No dispatch seed |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No run_next edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single plan doc `ast-1577-ui-consistency-base-resume-editor.md` |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Betty changes are tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | AST-1577 `code()` commits touch only scoped frontend + canon draft |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | No core/external changes in AST-1577 commits |
+| astral.layers.import-direction | scoped | conforms | Frontend diff adds no `src/data` / `src/core` imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No scripts changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Plan-approved pilot literal `resume_content`; no new state-string lists in React |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | Coat-check untouched |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No render-verdict changes |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | No API route changes in AST-1577 commits |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No seed catalog |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | No seed boot |
+| astral.seed.define-approved | scoped | not-applicable | No define work |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage join |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | No data-layer changes in AST-1577 commits |
+| astral.standards.database-header-inventory | scoped | not-applicable | No config header edits in AST-1577 commits |
+| astral.standards.debug-contract-gated | scoped | not-applicable | No backend debug surfaces in AST-1577 commits |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Minimal prop widening; no editor fork |
+| astral.standards.in-scope-only | scoped | conforms | Engineer commits: canon draft + 2 frontend files only; backend in three-dot diff is sibling AST-1576 ancestry |
+| astral.standards.logging-via-utils | scoped | not-applicable | No new runtime logging in frontend diff |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `bodyShape` / `resume_content` are domain names |
+| astral.standards.no-cross-contamination | scoped | conforms | Rubric/jobPersistence paths unchanged; JAR keeps `useCandidateResumeStructure` |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Pilot literal permitted per plan OPEN QUESTIONS §1 |
+| astral.standards.public-then-helpers | scoped | conforms | Public `ArtifactEditor` prop; page wires it |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils changes in AST-1577 commits |
+| astral.state.core-decides-transitions | scoped | not-applicable | No state transition changes |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job-state changes |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | No run-chain edits |
+| astral.ui.frontend-file-placement | scoped | conforms | Changes only under `src/ui/frontend/src/components/` and `pages/` |
+| astral.ui.naming-conventions | scoped | conforms | `bodyShape` camelCase prop; no new file naming violations |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server config |
+
+**Sweep count:** 65 active statutes scored in-session (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `patt.artifacts.ui-consistency` (new draft) | conforms | Draft landed with required sections; `bodyShape` prop + Base Resume wiring; no `write-operative` cross-link |
+| none cited as approved `canon/patterns/**` | — | Draft-directive citation per parent/child naming; Joan closed at plan validate |
+
+## Plan adherence
+
+**Stage 1** — `canon/directives/draft/patt.artifacts.ui-consistency.md` created with frontmatter (`id: patt.artifacts.ui-consistency`), Abstract/Arc/Applications/Exceptions/Implementation/OPEN QUESTIONS, Archie-approval note, and zero `write-operative` mentions (verified).
+
+**Stage 2** — `ArtifactEditor` gains optional `bodyShape`; `structureMode = useCandidateResumeStructure || bodyShape === "resume_content"`; `baseResumeUnsupportedEscape` widened per plan; `ArtifactsBaseResumeContent` passes `bodyShape="resume_content"` and drops `useCandidateResumeStructure` on this page only; `JobAnalysisReportModal.tsx` untouched (still `useCandidateResumeStructure`). Save still PUTs `artifacts.base_resume` leaf; no new API fields or `ARTIFACT_CONFIG` frontend fetch.
+
+**Dependency** — Sibling AST-1576 operative save/hydrate is on branch ancestry (required for Save→reload); not introduced by AST-1577 engineer commits.
+
+**Estimate 3** — still fits (draft + two React files + Betty tests).
+
+**Cross-ticket boundaries** — No backend/core/api/config edits in AST-1577 `code()` commits; rubric editors and JAR deferred per plan.
+
+## Findings
+
+(none — no fix-now; no discuss blockers)
+
+### advisory — three-dot diff includes full AST-1576 backend stack
+
+- **Location:** `git diff origin/dev...origin/sub/AST-1569/AST-1577-*` (25 files)
+- **Finding:** Three-dot diff vs `origin/dev` includes AST-1576 product (`src/core/**`, `src/data/**`, `src/ui/api/**`, etc.) because sibling landed on the same epic tip before `dev` absorbs the parent. AST-1577 engineer commits (`93b4d953`, `8f0b8a46`) touch only canon draft + 2 frontend files.
+- **Recommendation:** Not an AST-1577 scope violation. **Chuckles/merge-child:** expect diff to shrink once AST-1576 is on `origin/dev` or ftr merges in blockedBy order. Do not ask resolve-child to re-review 1576 backend here.
+
+### advisory — dual trigger for unsupported-experience Generate escape
+
+- **Location:** `ArtifactEditor.tsx` ~L402–405
+- **Finding:** `baseResumeUnsupportedEscape` fires on `bodyShape === "resume_content" || artifactKey === "base_resume"` — intentional JAR backward compat per plan step 3.
+- **Recommendation:** When job editors adopt `bodyShape`, prefer shape-driven check; `artifactKey === "base_resume"` can remain until JAR migrates.
+
+## What's solid
+
+- Minimal, plan-exact React diff: one prop, one boolean widening, one page wire.
+- JAR backward compatibility preserved without editing `JobAnalysisReportModal.tsx`.
+- Draft pattern is self-contained (no write-operative cross-link); status line calls for Archie approval.
+- Betty tests cover `bodyShape` structure mode, leaf PUT contract, and draft/page source assertions.
+- Operative dependency satisfied on tip — Save PUT + GET hydrate path from AST-1576 enables reload verification.
+
+## Frame diff
+
+| Area | Paths | Verdict |
+|------|-------|---------|
+| AST-1577 product (in-scope) | `canon/directives/draft/patt.artifacts.ui-consistency.md`, `ArtifactEditor.tsx`, `ArtifactsBaseResumeContent.tsx` | In-scope; plan-faithful |
+| AST-1577 tests/bible | `tests/component/frontend/components/test_ArtifactEditor.test.tsx`, `pages/test_ArtifactsBaseResumeContent.test.tsx`, `docs/test-bible/frontend/components.md`, `pages.md` | In-scope via Betty merge-tests |
+| Plan doc | `docs/features/foundation/ast-1577-ui-consistency-base-resume-editor.md` | Present |
+| Sibling ancestry (not 1577 engineer) | `src/core/**`, `src/data/**`, `src/ui/api/**`, `src/utils/**`, AST-1576 tests/bible | Expected AST-1576 stack on epic tip — not 1577 scope creep |
+| Sibling OOS | `JobAnalysisReportModal.tsx`, rubric pages, coat-check, new catalog keys | Not touched ✓ |
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute straggler list — C4 clear.
+- AST-1576 Radia CLEAN review (`12c360df`) on same branch ancestry; no regressions flagged in 1577 frontend layer.
+- C7 complete: full artifact + frame diff present.
+
+context_tokens≈22000
+```
+```
