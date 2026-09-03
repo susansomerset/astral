@@ -187,3 +187,13 @@ None.
 
 context_tokens≈42000
 ```
+
+## Radia review
+
+**Overall:** CLEAN — no fix-now, discuss, or advisory items.
+
+```
+[code-rubric] PROCEED (Commit: 9b7e16f0ad0ddd356521cf3665bb7fae6989446b) Read-current helper clean
+```
+
+All four engineer stages delivered per plan. `get_candidate_current` → `get_current_artifact`; hydrate strips stale blob on miss. Betty manifest covers helper hit/miss, hydrate strip, GET detail overlay. Pattern draft scope revised. Sibling AST-1587 consumer rewires correctly deferred.
