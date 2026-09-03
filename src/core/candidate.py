@@ -9,6 +9,8 @@ operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
 get_current_artifact (AST-1576).
 get_operative_base_resume(artifact_uuid) pin→body for pilot
 candidate.artifacts.base_resume (AST-1584 / patt.artifact.read-operative).
+get_candidate_current(candidate_id, artifact_key) current-read by catalog key
+(AST-1586 / patt.artifact.read-current).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -1440,18 +1442,46 @@ def get_operative_base_resume(artifact_uuid: str) -> Optional[Any]:
     return row.get("artifact_data")
 
 
+def get_candidate_current(candidate_id: str, artifact_key: str) -> Optional[Any]:
+    """Current-read body for a catalog artifact key (patt.artifact.read-current).
+
+    Resolves ARTIFACT_CONFIG, calls database.get_current_artifact for the scoped
+    entity + leaf artifact_type. Returns deserialized artifact_data, or None on
+    miss. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    return row.get("artifact_data")
+
+
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
     """Overlay operative current base_resume into candidate_data (display only)."""
     if not isinstance(cd, dict):
         return
-    row = database.get_current_artifact("candidate", candidate_id, "base_resume")
-    if row is None:
-        return
+    pilot_key = "candidate.artifacts.base_resume"
+    body = get_candidate_current(candidate_id, pilot_key)
     arts = cd.get("artifacts")
+    if body is None:
+        if isinstance(arts, dict) and "base_resume" in arts:
+            arts.pop("base_resume")
+        return
     if not isinstance(arts, dict):
         arts = {}
         cd["artifacts"] = arts
-    arts["base_resume"] = row["artifact_data"]
+    arts["base_resume"] = body
 
 
 def _normalize_search_term_lines(val: str) -> list[str]:
