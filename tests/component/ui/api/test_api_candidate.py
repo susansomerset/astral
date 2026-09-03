@@ -1489,3 +1489,111 @@ class TestAst1585OperativeBaseResumeApi:
         )
         assert wrong.status_code == 404
 
+
+# Branches: GET detail/resume_structure table-only; stale blob stripped on miss; overlay on hit.
+class TestAst1586ReadCurrentGetApi:
+    """AST-1586: GET edit/live surfaces use read-current hydrate only."""
+
+    @staticmethod
+    def _patch_get_detail_extras(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod, "company_search_terms_joined_text", lambda cid: ""
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "hydrate_rubric_artifacts_for_response",
+            lambda cid, cd: None,
+        )
+
+    def test_get_detail_strips_stale_blob_without_current_row(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as core_candidate
+
+        self._patch_get_detail_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c1586",
+            state="NEW_CANDIDATE",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="stale"),
+                    "resume_structure": core_candidate.default_resume_structure(),
+                }
+            },
+        )
+        resp = candidate_client.get("/api/candidates/c1586", headers=auth_headers)
+        assert resp.status_code == 200
+        arts = resp.get_json()["candidate_data"].get("artifacts") or {}
+        assert "base_resume" not in arts
+
+    def test_get_detail_overlays_table_current(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as core_candidate
+
+        self._patch_get_detail_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c1586b",
+            state="NEW_CANDIDATE",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="stale"),
+                    "resume_structure": core_candidate.default_resume_structure(),
+                }
+            },
+        )
+        core_candidate.save_candidate_data(
+            "c1586b",
+            _PILOT_ARTIFACT_KEY,
+            _resume_content_blob(professional_summary="table-current"),
+        )
+        resp = candidate_client.get("/api/candidates/c1586b", headers=auth_headers)
+        assert resp.status_code == 200
+        assert (
+            resp.get_json()["candidate_data"]["artifacts"]["base_resume"][
+                "professional_summary"
+            ]
+            == "table-current"
+        )
+
+    def test_get_resume_structure_ignores_stale_blob_without_current(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+    ) -> None:
+        from src.core import candidate as core_candidate
+        from src.utils.config import BUILD_CONFIG
+
+        structure = core_candidate.default_resume_structure()
+        structure["accent_color"] = (
+            (BUILD_CONFIG.get("accent_palette") or ["#1A1A2E"])[0].upper()
+        )
+        sqlite_in_memory.save_candidate(
+            "c1586c",
+            state="NEW_CANDIDATE",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="stale"),
+                    "resume_structure": structure,
+                }
+            },
+        )
+        resp = candidate_client.get(
+            "/api/candidates/c1586c/resume_structure", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["accent_color"] == structure["accent_color"]
+        assert len(body["sections"]) > 0
+

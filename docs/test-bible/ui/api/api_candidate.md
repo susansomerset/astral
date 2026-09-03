@@ -179,3 +179,19 @@ PUT `/data` pops `artifacts.base_resume` then `save_candidate_data(candidate_id,
 
 **Integration:** none.
 
+---
+
+### AST-1586 · AST-1570
+
+**Publish:** `origin/sub/AST-1570/AST-1586-current-read-helper-get-hydrate-pattern-revise`.
+
+`GET /<id>` and `GET /<id>/resume_structure` obtain `base_resume` only through `get_candidate` → `hydrate_operative_base_resume_for_response` (stale blob stripped on miss). Operative pin GET unchanged (**AST-1585**). Primary helper: **`docs/test-bible/core/candidate.md`** § AST-1586.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| GET detail / resume_structure read-current | `src/ui/api/api_candidate.py` | **`TestAst1586ReadCurrentGetApi`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+

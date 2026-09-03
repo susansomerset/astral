@@ -5584,3 +5584,88 @@ class TestAst1584GetOperativeBaseResume:
         assert candidate_mod.get_operative_base_resume("missing-pin-uuid") is None
         assert calls == []
 
+
+# Branches: current hit/miss; catalog fail-fast; hydrate strips stale blob on miss; no blob fallback.
+class TestAst1586GetCandidateCurrent:
+    """AST-1586: get_candidate_current + hydrate read-current for pilot key."""
+
+    def test_hit_returns_current_body(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="current-read")
+        candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        body = candidate_mod.get_candidate_current("cand-1", _PILOT_ARTIFACT_KEY)
+        assert body == blob
+        assert body["professional_summary"] == "current-read"
+
+    def test_miss_returns_none(self, seeded_db) -> None:
+        assert (
+            candidate_mod.get_candidate_current("cand-1", _PILOT_ARTIFACT_KEY) is None
+        )
+
+    def test_unknown_and_blank_keys_fail_fast(self) -> None:
+        with pytest.raises(ValueError, match="unknown catalog key"):
+            candidate_mod.get_candidate_current("c1", "not.in.catalog")
+        with pytest.raises(ValueError, match="artifact_key required"):
+            candidate_mod.get_candidate_current("c1", "   ")
+        with pytest.raises(ValueError, match="candidate_id required"):
+            candidate_mod.get_candidate_current("   ", _PILOT_ARTIFACT_KEY)
+
+    def test_non_candidate_scoped_key_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(
+            candidate_mod.ARTIFACT_CONFIG,
+            "job.artifacts.base_resume",
+            {
+                "entity_type": "job",
+                "candidate_scoped": False,
+                "body_shape": "resume_content",
+                "ingestion_owner": "tracker",
+            },
+        )
+        with pytest.raises(ValueError, match="not candidate-scoped"):
+            candidate_mod.get_candidate_current("c1", "job.artifacts.base_resume")
+
+    def test_no_candidate_data_blob_fallback(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="blob-only")
+                }
+            },
+        )
+        assert (
+            candidate_mod.get_candidate_current("cand-1", _PILOT_ARTIFACT_KEY) is None
+        )
+
+    def test_hydrate_strips_stale_blob_on_miss(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="stale"),
+                    "resume_structure": {"sections": {}},
+                }
+            },
+        )
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        candidate_mod.hydrate_operative_base_resume_for_response("cand-1", cd)
+        assert "base_resume" not in cd.get("artifacts", {})
+        assert "resume_structure" in cd["artifacts"]
+
+    def test_get_candidate_strips_stale_blob_on_miss(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="stale"),
+                }
+            },
+        )
+        row = candidate_mod.get_candidate("cand-1")
+        arts = row["candidate_data"].get("artifacts") or {}
+        assert "base_resume" not in arts
+
