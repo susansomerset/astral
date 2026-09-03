@@ -168,3 +168,40 @@ class TestAst1364RenameArtifacts:
         row = db.get_current_artifact("candidate", "cand-1", "base_resume")
         assert row is not None
         assert row["artifact_uuid"] == uid
+
+# Branches: PK hit/miss; blank uuid; retired pin still by-uuid; shape matches get_current.
+class TestAst1584GetArtifact:
+    """AST-1584: database.get_artifact by artifact_uuid (patt.artifact.read-operative)."""
+
+    def test_get_by_uuid_returns_row_dict(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        payload = {"text": "pinned body", "sections": ["summary"]}
+        uid = db.save_artifact("candidate", "cand-1", "base_resume", payload)
+        row = db.get_artifact(uid)
+        assert row is not None
+        assert row["artifact_uuid"] == uid
+        assert row["entity_type"] == "candidate"
+        assert row["entity_id"] == "cand-1"
+        assert row["artifact_type"] == "base_resume"
+        assert row["artifact_data"] == payload
+        assert row["current"] == 1
+
+    def test_get_by_uuid_returns_retired_row(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        uid1 = db.save_artifact("candidate", "cand-1", "base_resume", {"v": 1})
+        uid2 = db.save_artifact("candidate", "cand-1", "base_resume", {"v": 2})
+        assert uid1 != uid2
+        assert db.get_current_artifact("candidate", "cand-1", "base_resume")["artifact_uuid"] == uid2
+        retired = db.get_artifact(uid1)
+        assert retired is not None
+        assert retired["artifact_uuid"] == uid1
+        assert retired["current"] == 0
+        assert retired["artifact_data"] == {"v": 1}
+
+    def test_get_by_uuid_miss_and_blank(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.get_artifact("00000000-0000-0000-0000-000000000000") is None
+        with pytest.raises(ValueError, match="artifact_uuid required"):
+            db.get_artifact("")
+        with pytest.raises(ValueError, match="artifact_uuid required"):
+            db.get_artifact("   ")

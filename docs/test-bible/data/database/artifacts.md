@@ -62,3 +62,42 @@ Rename table/API from `astral_artifacts` / `save_astral_artifact` / `astral_arti
 ```
 
 **Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix; remaining lines green — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1584 · AST-1571
+
+**Parent:** [AST-1571 — Implement patt.artifact.read-operative](https://linear.app/astralcareermatch/issue/AST-1571/implement-pattartifactread-operative). **Publish:** `origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability`.
+
+`database.get_artifact(artifact_uuid)` PK fetch (full row dict via `_artifact_row_dict`, including retired `current=0` rows); blank uuid → `ValueError`. No coat-check / blob. Core pin→body: **`docs/test-bible/core/candidate.md`** § AST-1584. Traceability draft is docs-acceptance only (canon path on publish tip).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PK hit / retired pin / miss+blank | `src/data/database.py` | **`TestAst1584GetArtifact`** |
+
+**Broken / obsolete this pass:** none — additive PK reader; existing `TestAst1352Artifacts` / `TestAst1364RenameArtifacts` stay.
+
+**Integration:** none — no existing `tests/integration/` scenario asserts by-uuid operative read.
+
+## QA test manifest (AST-1584)
+
+1. Data PK fetch: `tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact`
+2. Candidate pin→body: `tests/component/core/test_candidate.py::TestAst1584GetOperativeBaseResume`
+3. **docs-acceptance** — draft `canon/directives/draft/patt.artifacts.traceability.md` on publish tip (id + versioned agent_id / agent_task_id / seed artifact id array / manual-edit inheritance; no product persist)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact \
+  tests/component/core/test_candidate.py::TestAst1584GetOperativeBaseResume \
+  -q
+```
+
+```bash
+# docs-acceptance (publish tip)
+test -f canon/directives/draft/patt.artifacts.traceability.md
+rg -n 'id: patt.artifacts.traceability|versioned `agent_id`|versioned `agent_task_id`|seed `artifact_id\[\]`|manual' \
+  canon/directives/draft/patt.artifacts.traceability.md
+```
+
+**Pass criterion:** pytest green on lines 1–2 + docs-acceptance line 3 — not zero-arg harness / branch-lock gate.
+
