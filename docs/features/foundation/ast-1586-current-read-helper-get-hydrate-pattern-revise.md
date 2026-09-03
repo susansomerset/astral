@@ -158,6 +158,18 @@ Entity-owned wrappers (e.g. `get_candidate_current(candidate_id, artifact_key)` 
 
 Confirm Chuckles estimate: 3 — agree
 
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1570/AST-1586-current-read-helper-get-hydrate-pattern-revise` @ `8cbe5486`.
+
+**Stages delivered:**
+- Stage 1: `get_current_artifact` read-current docstring — `d91d508b`.
+- Stage 2: `get_candidate_current` + hydrate strips stale blobs on miss — `25530082`.
+- Stage 3: `api_candidate` GET edit/live paths confirmed (no blob reads; no file change).
+- Stage 4: `patt.artifact.read-current` tracker example-only scope — `8cbe5486`.
+
+**Betty:** at **Code Complete** — cover `get_candidate_current` hit/miss/unknown key; hydrate pops stale `artifacts.base_resume` on miss when no current row; GET detail/resume_structure table-only overlay.
+
 ## Joan validate
 
 ```
