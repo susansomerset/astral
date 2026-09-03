@@ -360,3 +360,19 @@ npm run test:component -- \
 
 - `docs/test-bible/frontend/lib.md` — `7be9f2eaeb94e425f4f8e6bd1dca957c1c3753c3`
 
+---
+
+### AST-1585 · AST-1571
+
+**Publish:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`.
+
+`jobBaseResumeArtifactId` + `fetchOperativeBaseResume` for JAR source panel. Modal wiring: **`docs/test-bible/frontend/components.md`** § AST-1585.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pin parse + fetch helper | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`AST-1585`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
