@@ -63,6 +63,34 @@ def seeded_db(sqlite_in_memory):
 
 
 @pytest.fixture(autouse=True)
+def _operative_current_read_stub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub load_pilot_base_resume_for_candidate from operative_fixture registry."""
+    from src.core import candidate as candidate_mod
+
+    from tests.component.core.operative_fixture import (
+        OPERATIVE_BODY_BY_CID,
+        clear_operative_bases,
+    )
+
+    clear_operative_bases()
+    _real_load = candidate_mod.load_pilot_base_resume_for_candidate
+
+    def _load(cid: str):
+        key = (cid or "").strip()
+        if key in OPERATIVE_BODY_BY_CID:
+            return OPERATIVE_BODY_BY_CID[key]
+        return _real_load(cid)
+
+    monkeypatch.setattr(
+        candidate_mod,
+        "load_pilot_base_resume_for_candidate",
+        _load,
+    )
+    yield
+    clear_operative_bases()
+
+
+@pytest.fixture(autouse=True)
 def _core_default_anthropic_llm_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     """Legacy core mocks patch send_to_anthropic; product default active_provider is deepseek."""
     from src.utils import config as cfg_mod
