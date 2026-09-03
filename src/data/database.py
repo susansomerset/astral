@@ -4381,7 +4381,11 @@ def retire_current_artifact(
 def get_current_artifact(
     entity_type: str, entity_id: str, artifact_type: str
 ) -> Optional[Dict[str, Any]]:
-    """Return the current=1 row for the natural key, or None."""
+    """Return the current=1 artifacts row for the natural key, or None (patt.artifact.read-current).
+
+    Deserializes artifact_data via _artifact_row_dict. Empty on miss. Never reads
+    candidate_data / job_data blobs. No coat-check. No logging (callers log).
+    """
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
 
     def _with_conn() -> Optional[Dict[str, Any]]:
