@@ -1830,5 +1830,7 @@ Public `get_operative_base_resume(artifact_uuid)` pin→body for pilot `candidat
 
 **Pass criterion:** pytest green on manifest lines + docs-acceptance item 3 — not zero-arg harness / branch-lock gate.
 
-**Bible shasum (post-publish):** record after `merge-tests`.
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — `b3455e7dc171c1f118fb6e085f46afddb29103f464f48bf6d2ef90b607250406`
+- `docs/test-bible/ui/api/api_candidate.md` — `2f7beabeffcbe194e1342fb85d4ffd7d3a13b7c1556b0d6a4a30b1fe0d7519ce`
 
