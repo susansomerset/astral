@@ -226,3 +226,9 @@ AC2→S1 (Contact `resolve_pinned_base_resume` + dispatch UUID short-circuit; bl
 
 context_tokens≈32000
 ```
+
+## Review (build)
+
+**Built @ `fca9711a`** — `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`
+
+Stages 1–3 landed: Contact `resolve_pinned_base_resume` + Estelle raft strip + dispatch UUID/`pin_required` short-circuit; `GET /api/candidates/<id>/operative/base_resume?artifact_id=`; JAR Source base resume panel via `fetchOperativeBaseResume` (no blob fallback; pin read-only from `job_data.base_resume_artifact_id`).
