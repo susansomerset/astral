@@ -157,3 +157,21 @@ Entity-owned wrappers (e.g. `get_candidate_current(candidate_id, artifact_key)` 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1586
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1570/AST-1586-current-read-helper-get-hydrate-pattern-revise` @ `13f7454226e0a117e6c72bbce99814a32c7bea12`
+
+## Traceability
+AC1→Stage2; AC2→Stage2; AC3→Stages2–3; AC4→Stage4; parent AC4/AC7→N/A (sibling AST-1587); parent AC6→Explicit scope gate + Boundaries
+
+## Findings
+None.
+
+context_tokens≈42000
+```
