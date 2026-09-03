@@ -194,3 +194,35 @@ export async function fetchOperativeBaseResume(
 Confirm Chuckles estimate: 5 — agree
 
 Cross-layer Contact + candidate API + JAR panel on a known helper; no schema; pin persist explicitly excluded. Five points matches multi-surface glue without new pattern invention.
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1585
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve` @ `0fcf6d4dc3483f065ad89cd257f9fbedd8a2f0d3`
+
+## Traceability
+AC2→S1 (Contact `resolve_pinned_base_resume` + dispatch UUID short-circuit; blob strip; `pin_required` on `artifacts.base_resume`) · AC3→S2+S3 (operative API pin-in/body-out; JAR fetch via `fetchOperativeBaseResume`; no candidate blob fallback on panel) · AC4→Explicit scope gate + Out-of-scope table (no database/candidate edits, no pin persist, no grade writers/new keys/read-current/coat-check/HTTP `artifact_id`)
+
+## Findings
+
+### discuss — Contact dispatch short-circuit debug parity
+**Location:** Stage 1 step 5  
+**Finding:** UUID / `pin_required` branches bypass the tracker handler; plan does not spell out that short-circuit rows must still emit the same Style D `debug_index`/`debug_detail` epilog the loop already uses for handler results.  
+**Recommendation:** When implementing, append the row and run through the existing per-span debug block (or mirror `_contact_task_style_d`) so `debug=True` stays complete.
+
+### acceptable — JAR pin source without in-epic writer
+**Location:** Stage 3 Decision  
+**Finding:** `job_data.base_resume_artifact_id` is read-only; no product writer until traceability — UAT needs fixture/out-of-band pin. Parent AC3 is “when a pin is supplied”; functional scope #3 matches.  
+**Recommendation:** No plan change; Betty/UAT should seed a pin on a test job.
+
+### acceptable — UI API routes through `contact.resolve_pinned_base_resume`
+**Location:** Stage 2  
+**Finding:** Handler lives in `api_candidate.py` but calls Contact wrapper (ownership gate + `get_operative_base_resume`) rather than importing candidate directly. Matches parent “same read-operative path” for UI and Estelle.  
+**Recommendation:** Keep as planned.
+
+context_tokens≈32000
+```
