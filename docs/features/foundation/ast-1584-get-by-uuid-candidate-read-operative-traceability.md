@@ -188,6 +188,11 @@ Confirm Chuckles estimate: 3 — agree
 
 One data PK fetch + one core helper + one draft directive; known pattern parallel to write-operative / `get_agent_data`; no schema migration; sibling owns UI/Contact.
 
+## Review (build)
+
+**Built @ `635931b3`** — `origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability`
+
+Stages 1–3 landed: `database.get_artifact` by PK; `candidate.get_operative_base_resume` pin→body for pilot `candidate.artifacts.base_resume`; draft `canon/directives/draft/patt.artifacts.traceability.md` (docs only). Sibling AST-1585 owns UI/Contact wire.
 
 ## Joan validate
 
