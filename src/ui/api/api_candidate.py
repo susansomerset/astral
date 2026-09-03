@@ -38,6 +38,7 @@ from src.core.candidate import (
     start_requested_artifacts,
     transition_candidate_state,
 )
+from src.core.contact import resolve_pinned_base_resume
 from src.utils.config import (
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
@@ -207,6 +208,23 @@ def get_candidate_detail(candidate_id):
     hydrate_operative_base_resume_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
+
+
+@candidate_bp.route("/<candidate_id>/operative/base_resume", methods=["GET"])
+@require_auth
+def get_operative_base_resume_api(candidate_id):
+    """AST-1585: pin→body for pilot base_resume (patt.artifact.read-operative)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    artifact_id = (request.args.get("artifact_id") or "").strip()
+    if not artifact_id:
+        return jsonify({"error": "artifact_id required"}), 400
+    body = resolve_pinned_base_resume(
+        candidate_id, artifact_id, debug=ui_llm_debug()
+    )
+    if body is None:
+        return jsonify({"error": "base_resume not found for pin"}), 404
+    return jsonify({"base_resume": body})
 
 
 @candidate_bp.route("", methods=["POST"])
