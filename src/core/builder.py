@@ -91,6 +91,7 @@ def _coerce_candidate_blob(raw: Dict[str, Any]) -> Dict[str, Any]:
         out["_first"] = raw.get("first") or ""
         out["_last"] = raw.get("last") or ""
         out["_full"] = raw.get("full") or ""
+        out["_astral_candidate_id"] = str(raw.get("astral_candidate_id") or "").strip()
         return out
     return raw
 
@@ -106,9 +107,10 @@ def _resume_content_source_label(job_data: dict, candidate_data: dict) -> str:
     rc = artifacts.get("resume_content")
     if _is_nonempty_resume_dict(rc):
         return "job_data.artifacts.resume_content"
-    br = ((candidate_data or {}).get("artifacts") or {}).get("base_resume")
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if _is_nonempty_resume_dict(br):
-        return "candidate_data.artifacts.base_resume"
+        return "get_candidate_current(candidate.artifacts.base_resume)"
     return "missing"
 
 
@@ -130,11 +132,12 @@ def _accent_source_label(candidate_data: dict) -> str:
     ac = structure.get("accent_color")
     if isinstance(ac, str) and ac.strip():
         return "resume_structure.accent_color"
-    br = ((candidate_data or {}).get("artifacts") or {}).get("base_resume")
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if isinstance(br, dict):
         legacy = br.get("accent_color")
         if isinstance(legacy, str) and legacy.strip():
-            return "artifacts.base_resume.accent_color"
+            return "get_candidate_current.accent_color"
     return "BUILD_CONFIG.default_style"
 
 
@@ -405,7 +408,19 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         raise ValueError(msg)
     cd = _coerce_candidate_blob(row)
     structure = candidate_mod.resolve_resume_structure(cd)
-    raw = (cd.get("artifacts") or {}).get("base_resume")
+    raw = candidate_mod.load_pilot_base_resume_for_candidate(candidate_id)
+    if debug:
+        _log.debug_index(
+            func="builder.build_base_resume",
+            index=1,
+            total=2,
+            identifier=identifier,
+            outcome="found",
+        )
+        _log.debug_detail(
+            f"found artifact_key=candidate.artifacts.base_resume "
+            f"current_read={'hit' if raw is not None else 'miss'}"
+        )
     # Same ingest as candidate PUT / Base Resume Content display (list or dict).
     if isinstance(raw, (list, dict)):
         content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
@@ -446,12 +461,12 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         content_keys = _render_content_keys(markers)
         _log.debug_index(
             func="builder.build_base_resume",
-            index=1,
-            total=1,
+            index=2,
+            total=2,
             identifier=identifier,
-            outcome="success — base resume html",
+            outcome="recorded — base resume html",
         )
-        _log.debug_detail("resume_source=candidate_data.artifacts.base_resume")
+        _log.debug_detail("resume_source=get_candidate_current(candidate.artifacts.base_resume)")
         _log.debug_detail(f"enabled_sections={enabled!r}")
         _log.debug_detail(f"body_section_ids={ordered_body!r}")
         _log.debug_detail(f"render_keys={content_keys!r}")
@@ -955,7 +970,8 @@ def _resolve_resume_sections(job_data: dict, candidate_data: dict) -> dict:
             return dict(unwrapped)
     if isinstance(pin, dict) and _is_nonempty_resume_dict(pin):
         return dict(pin)
-    br = (candidate_data.get("artifacts") or {}).get("base_resume")
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if _is_nonempty_resume_dict(br):
         return dict(br)
     raise ValueError("No resume_content on job and no base_resume on candidate")
@@ -1040,7 +1056,8 @@ def _merge_effective_style(candidate_data: dict) -> dict:
         colors["default_accent"] = ac.strip()
         colors["default_header"] = ac.strip()
     else:
-        br = (candidate_data.get("artifacts") or {}).get("base_resume")
+        cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+        br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
         if isinstance(br, dict):
             legacy = br.get("accent_color")
             if isinstance(legacy, str) and legacy.strip():
