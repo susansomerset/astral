@@ -4403,6 +4403,33 @@ def get_current_artifact(
     return _run_with_retry(_with_conn)
 
 
+def get_artifact(artifact_uuid: str) -> Optional[Dict[str, Any]]:
+    """Return one artifacts row by primary key, or None (patt.artifact.read-operative).
+
+    Deserializes artifact_data via _artifact_row_dict. No coat-check; no blob fallback.
+    """
+    uid = (artifact_uuid or "").strip()
+    if not uid:
+        raise ValueError("artifact_uuid required")
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_artifacts_table(conn)
+            row = conn.execute(
+                f"""SELECT {_ARTIFACT_SELECT}
+                      FROM artifacts
+                     WHERE artifact_uuid = ?
+                     LIMIT 1""",
+                (uid,),
+            ).fetchone()
+            return _artifact_row_dict(row) if row else None
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def list_artifacts(
     entity_type: str,
     entity_id: str,
