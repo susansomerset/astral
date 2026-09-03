@@ -870,5 +870,6 @@ Builder live paths load pilot base_resume via `load_pilot_base_resume_for_candid
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-**Bible shasum (after publish):** record via `git show origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires:docs/test-bible/core/builder.md | shasum`.
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/builder.md` — `e4123fd99fd3dc048b72c905534dc48c3bbc23bfaf15359a3ea14815e3136540`
 
