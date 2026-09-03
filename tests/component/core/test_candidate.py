@@ -5528,3 +5528,59 @@ class TestAst1474PageBreakPolicyNormalize:
             structure["sections"]["publications"]["page_break_policy"]
             == RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
         )
+
+
+# Branches: pilot pin→body; retired pin; miss; wrong entity/type; no blob fallback.
+class TestAst1584GetOperativeBaseResume:
+    """AST-1584: candidate.get_operative_base_resume pin→body for pilot key."""
+
+    def test_pin_returns_pilot_body(self, seeded_db) -> None:
+        db = seeded_db
+        blob = _resume_content_blob(professional_summary="operative-pin")
+        uid = candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        body = candidate_mod.get_operative_base_resume(uid)
+        assert body == blob
+        assert body["professional_summary"] == "operative-pin"
+        # sanity: same pin still works after a newer current write
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _PILOT_ARTIFACT_KEY, _resume_content_blob(professional_summary="newer")
+        )
+        assert uid2 != uid
+        assert candidate_mod.get_operative_base_resume(uid)["professional_summary"] == "operative-pin"
+        assert candidate_mod.get_operative_base_resume(uid2)["professional_summary"] == "newer"
+        assert db.get_current_artifact("candidate", "cand-1", "base_resume")["artifact_uuid"] == uid2
+
+    def test_miss_wrong_entity_wrong_type_return_none(self, seeded_db) -> None:
+        db = seeded_db
+        assert candidate_mod.get_operative_base_resume("00000000-0000-0000-0000-000000000000") is None
+        job_uid = db.save_artifact(
+            "job", "job-1", "base_resume", _resume_content_blob(professional_summary="job")
+        )
+        assert candidate_mod.get_operative_base_resume(job_uid) is None
+        other_uid = db.save_artifact(
+            "candidate", "cand-1", "cover_letter", {"text": "not pilot"}
+        )
+        assert candidate_mod.get_operative_base_resume(other_uid) is None
+
+    def test_no_candidate_data_blob_fallback(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = seeded_db
+        # Library blob present — operative miss must not walk it
+        db.save_candidate(
+            "cand-1",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="blob-only")
+                }
+            },
+        )
+        calls: list = []
+        real_get = db.get_candidate
+
+        def _spy_get(cid: str):
+            calls.append(cid)
+            return real_get(cid)
+
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", _spy_get)
+        assert candidate_mod.get_operative_base_resume("missing-pin-uuid") is None
+        assert calls == []
+

@@ -1772,3 +1772,29 @@ Dual-dispatch `save_candidate_data(candidate_id, artifact_key, blob)` against `A
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1584 · AST-1571
+
+**Parent:** [AST-1571 — Implement patt.artifact.read-operative](https://linear.app/astralcareermatch/issue/AST-1571/implement-pattartifactread-operative). **Publish:** `origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability`.
+
+Public `get_operative_base_resume(artifact_uuid)` pin→body for pilot `candidate.artifacts.base_resume` via `database.get_artifact`; miss / wrong entity / wrong `artifact_type` → `None`; never walks `candidate_data` blob / coat-check. Data PK fetch: **`docs/test-bible/data/database/artifacts.md`** § AST-1584. UI/Contact wire is sibling **AST-1585**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pilot pin→body / retired pin / miss / wrong type / no blob fallback | `src/core/candidate.py` | **`TestAst1584GetOperativeBaseResume`** |
+
+**Broken / obsolete this pass:** none — additive helper; `TestAst1576SaveCandidateDataOperative` hydrate (read-current) unchanged.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact \
+  tests/component/core/test_candidate.py::TestAst1584GetOperativeBaseResume \
+  -q
+```
+
+**Pass criterion:** pytest green on both classes + docs-acceptance for `patt.artifacts.traceability` draft (see artifacts bible § AST-1584) — not zero-arg harness / branch-lock gate.
+
