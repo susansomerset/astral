@@ -218,3 +218,153 @@ AC1→S1+S2 (by-uuid fetch + operative path; no coat-check/blob fallback) · AC2
 **Recommendation:** No plan change required.
 
 context_tokens≈48000
+
+
+## Radia review
+
+# Radia review — AST-1584
+
+**Status gate:** Spawn prompt `Tests Passed` — trusted; no re-fetch.
+
+**Baseline:** `origin/dev`  
+**Publish ref:** `origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability` @ `cd309487`
+
+---
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1584
+**Publish ref:** origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability @ cd309487
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+Full active set (64 per `canon/statutes/README.md` § Harvested corpus). Diff layers: `core`, `data`, `docs`; paths include `src/core/candidate.py`, `src/data/database.py`, `canon/directives/draft/patt.artifacts.traceability.md`, `docs/features/**`, `docs/test-bible/**`, `tests/component/**`.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | No `src/utils/config.py` or agent-confidence paths in diff |
+| astral.agent.do-task-delegation | scoped | conforms | Read helper only; no `do_task` / delegation change |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade-vector logic touched |
+| astral.batch.batch-id-first | scoped | conforms | No batch-id write paths changed |
+| astral.batch.batch-id-format | scoped | conforms | No batch-id formatting changed |
+| astral.batch.claim-process-release | scoped | conforms | No claim/process/release paths changed |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | No entity-agent-responses paths changed |
+| astral.config.config-source-of-truth | scoped | conforms | Pilot identity from `ARTIFACT_CONFIG["candidate.artifacts.base_resume"]` |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets/env wiring in diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No repo-root `artifacts/` dir changes |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No `debug/` spike paths in diff |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No `dispatcher.py` / dispatch config paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No run-next / chain paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `docs/features/foundation/ast-1584-…md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits touch test-tree only; product `src/` from engineer lane |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Test-tree on branch via Betty `test()` + `merge-tests()` — not engineer build commits |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Core read helper; no external imports |
+| astral.layers.import-direction | scoped | conforms | `candidate.py` → `database` only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | No `src/ui/**` changes |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | Explicit no coat-check / no blob fallback on read-operative path |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | No consult/render orchestration changed |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | No `src/ui/**` API surface |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON / bootstrap paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No dispatcher/catalog seed paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | No boot/migration hot-path changes |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed approval paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator-row seed paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage-join paths |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `get_artifact` returns/raises; no data-layer logging |
+| astral.standards.database-header-inventory | scoped | conforms | Uses existing `artifacts` table; no schema/header inventory change needed |
+| astral.standards.debug-contract-gated | scoped | conforms | No `debug=` surfaces added |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Two focused PK fetch + pin→body helpers |
+| astral.standards.in-scope-only | scoped | conforms | Three planned product paths; sibling OOS paths untouched |
+| astral.standards.logging-via-utils | scoped | conforms | No new `print` / raw `logging` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `get_artifact`, `get_operative_base_resume` — domain names; ticket ids comments only |
+| astral.standards.no-cross-contamination | scoped | conforms | Pilot gate via config; no foreign-entity body leak |
+| astral.standards.no-hardcoded-sets | scoped | conforms | `entity_type` / `artifact_type` from `ARTIFACT_CONFIG`, not ad-hoc literals |
+| astral.standards.public-then-helpers | scoped | conforms | Public `get_operative_base_resume` placed before hydrate helper |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No `src/utils/**` changes |
+| astral.state.core-decides-transitions | scoped | conforms | Read-only; no ad-hoc state writes |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job-state config paths |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No in-run chain changes |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No frontend files |
+| astral.ui.naming-conventions | scoped | not-applicable | No UI files |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No gunicorn/config UI paths |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1584): origin/tests 63bbc4a9` present |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary on branch |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1571/AST-1584-…` topology |
+| orch.git.ftr-sub-topology | universal | conforms | Child on `sub/<parent>/<child>` |
+| orch.git.merge-on-checkout | universal | conforms | No rebase/cherry-pick signals in reviewed commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | Clean linear child history |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named branches in publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1571 epic worktree pattern |
+| orch.git.three-permanent-branches | universal | conforms | Diff vs `origin/dev` only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No product-policy decisions smuggled in code |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match plan shape |
+| orch.pipeline.project-scoped-queues | universal | conforms | Foundation child within AST-1571 epic |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No `canon/statutes/**` edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | `tests/` + `docs/test-bible/` from Betty lane |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada (engineer) |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook-evasion patterns in diff |
+
+**Straggler (C4):** Joan `[plan-rubric] APPROVED` attached; no Excluded statute list — no straggler rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `patt.artifact.read-operative` (parent draft directive) | conforms | By-pin `database.get_artifact`; core pilot gate; no coat-check / blob fallback; retired pins readable |
+| `patt.artifacts.traceability` (Stage 3 draft) | conforms | Docs-only draft under `canon/directives/draft/`; no product persist/wire |
+| none cited in plan `Patterns to reuse` | — | Parent mandates read-operative; implementation matches draft `# Implementation` steps 1–2 |
+
+## Plan adherence
+
+- **Stage 1:** `get_artifact` matches plan snippet — PK SELECT via `_ARTIFACT_SELECT`, `_artifact_row_dict`, `_run_with_retry`, blank uuid → `ValueError`, no logging, no coat-check, placement after `get_current_artifact`.
+- **Stage 2:** `get_operative_base_resume` matches plan — `ARTIFACT_CONFIG` pilot gate, wrong entity/type → `None`, no `candidate_data` walk; module docstring In-scope updated; placed immediately before `hydrate_operative_base_resume_for_response`.
+- **Stage 3:** `patt.artifacts.traceability` draft matches plan structure and content; not promoted.
+- **Estimate 3:** Footprint fits — one data PK fetch, one core helper, one draft directive (+ expected Betty test-tree).
+- **Cross-ticket (AST-1585):** No `contact.py`, `src/ui/api/**`, JAR UI, or pin writers in diff.
+- **C6 lenses (§5a–§5g):** Imports top-level; layer direction clean; no silent failure / fallback on operative path; no debug or external-layer touch.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Issue doc vs test-bible sync** — `docs/test-bible/core/candidate.md` and `docs/test-bible/data/database/artifacts.md` carry AST-1584 QA manifest sections; issue doc on publish tip stops at Joan validate (no qa-child block). Chuckles may append manifest pointer when writing back — not blocking.
+- **Plan wording (Joan carry-forward)** — Stage 1 Decision cites `get_agent_data` as PK parallel; actual parallel is `get_agent`. Cosmetic plan note only.
+
+## What's solid
+
+- Operative read shape is correct: retired pins remain addressable by uuid; miss/wrong-type/entity return `None`; blob fallback explicitly tested absent (`TestAst1584GetOperativeBaseResume::test_no_candidate_data_blob_fallback`).
+- Data layer stays thin — no schema drift, no logging, mirrors `get_current_artifact` deserialization path.
+- Traceability draft is appropriately scoped as implement-later documentation.
+
+## Frame diff
+
+| Planned | Landed |
+|---------|--------|
+| `src/data/database.py` — `get_artifact` | ✓ |
+| `src/core/candidate.py` — `get_operative_base_resume` | ✓ |
+| `canon/directives/draft/patt.artifacts.traceability.md` | ✓ |
+| Betty test-tree (`tests/`, `docs/test-bible/`) | ✓ via `63bbc4a9` + `cd309487 merge-tests` |
+| Issue doc qa manifest section | (none) — test-bible holds manifest |
+
+## Notes
+
+- Joan plan-rubric verdict attached; no Excluded statutes to straggle-check.
+- Review diff: `git diff origin/dev...origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability` (8 files, +494).
+
+context_tokens≈72000
+
+---
