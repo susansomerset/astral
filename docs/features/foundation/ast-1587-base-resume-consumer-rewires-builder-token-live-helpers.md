@@ -226,3 +226,21 @@ AC4→Stages1–2 (+Stages3–4 audit/no-op); AC5→Stage1:6, Stage2:3–7; pare
 
 context_tokens≈52000
 ```
+
+### Joan validate (round 2)
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1587
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1570/AST-1587-base-resume-consumer-rewires` @ `eefcd796463eb8c7c38fc41e803b4d6945f1839e`
+
+## Traceability
+AC4→Stages1–2 (+Stages3–4 audit/no-op); AC5→Stage1:6, Stage2:3–7; parent AC1–3,5,6→N/A (AST-1586); parent AC7→AC5
+
+## Findings
+None.
+
+context_tokens≈56000
+```
