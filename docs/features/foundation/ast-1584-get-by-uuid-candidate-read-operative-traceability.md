@@ -187,3 +187,29 @@ themselves.
 Confirm Chuckles estimate: 3 — agree
 
 One data PK fetch + one core helper + one draft directive; known pattern parallel to write-operative / `get_agent_data`; no schema migration; sibling owns UI/Contact.
+
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1584
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability` @ `361d33257f74fcc1202772c9a536844af9535893`
+
+## Traceability
+AC1→S1+S2 (by-uuid fetch + operative path; no coat-check/blob fallback) · AC2→S2 (`get_operative_base_resume` pilot pin→body) · AC3→S3 (traceability draft; docs-only, no persist/wire) · AC4→Explicit scope gate + Out-of-scope table (no UI/Contact/grade writers/new catalog keys/read-current/coat-check/HTTP `artifact_id`)
+
+## Findings
+
+### acceptable — Stage 1 Decision note cites `get_agent_data` as PK parallel
+**Location:** Stage 1 ⚠️ Decision  
+**Finding:** Existing PK helper is `get_agent`, not `get_agent_data`.  
+**Recommendation:** Optional wording fix only; placement/shape parallel to `get_agent` is correct.
+
+### acceptable — Child AC1 “pilot body” vs data-layer row dict
+**Location:** Stage 1 vs child AC1  
+**Finding:** `get_artifact` returns full row dict; body extraction is in S2 — matches parent Technical scope (“structured result”) and read-operative pattern (core enforces pilot identity before body).  
+**Recommendation:** No plan change required.
+
+context_tokens≈48000
