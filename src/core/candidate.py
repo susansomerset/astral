@@ -7,6 +7,8 @@ contact uniqueness enforcement on save (AST-1080),
 get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
 operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
 get_current_artifact (AST-1576).
+get_operative_base_resume(artifact_uuid) pin→body for pilot
+candidate.artifacts.base_resume (AST-1584 / patt.artifact.read-operative).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -1417,6 +1419,25 @@ def hydrate_rubric_artifacts_for_response(candidate_id: str, cd: dict) -> None:
         cd["artifacts"] = arts
     for artifact_key, owner in RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.items():
         arts[artifact_key] = rubric_criteria_for_task(candidate_id, owner)
+
+
+def get_operative_base_resume(artifact_uuid: str) -> Optional[Any]:
+    """Pin→body for pilot candidate.artifacts.base_resume (patt.artifact.read-operative).
+
+    Returns deserialized artifact_data, or None on miss / non-pilot row.
+    No coat-check; no candidate_data blob fallback.
+    """
+    row = database.get_artifact(artifact_uuid)
+    if row is None:
+        return None
+    pilot_key = "candidate.artifacts.base_resume"
+    entry = ARTIFACT_CONFIG[pilot_key]
+    artifact_type = pilot_key.rsplit(".", 1)[-1]
+    if row.get("entity_type") != entry["entity_type"]:
+        return None
+    if row.get("artifact_type") != artifact_type:
+        return None
+    return row.get("artifact_data")
 
 
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
