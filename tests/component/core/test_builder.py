@@ -11,6 +11,8 @@ import pytest
 from src.core import builder as builder_mod
 from src.core import candidate as candidate_mod
 
+from tests.component.core.operative_fixture import register_operative_base
+
 
 def _resume_blob(**sections: str) -> Dict[str, Any]:
     return {
@@ -22,11 +24,16 @@ def _resume_blob(**sections: str) -> Dict[str, Any]:
 
 
 def _candidate_row(**artifacts: Any) -> Dict[str, Any]:
+    cid = "cand-1"
+    if "base_resume" in artifacts:
+        register_operative_base(cid, artifacts["base_resume"])
     return {
+        "astral_candidate_id": cid,
         "first": "Ada",
         "last": "Lovelace",
         "full": "Ada Lovelace",
         "candidate_data": {
+            "_astral_candidate_id": cid,
             "contact": {
                 "contact_email": "ada@example.com",
                 "cover_letter_signature_image": "https://example.com/sig.png",
@@ -35,6 +42,40 @@ def _candidate_row(**artifacts: Any) -> Dict[str, Any]:
             "context": {"raw_sample": "Dear team,\nThanks"},
         },
     }
+
+
+def _install_candidate_for_base_resume(
+    monkeypatch: pytest.MonkeyPatch,
+    cd: Dict[str, Any],
+    *,
+    candidate_id: str = "cand-1",
+) -> None:
+    """Patch get_candidate + operative current-read for build_base_resume tests."""
+    inner = cd.get("candidate_data") if isinstance(cd.get("candidate_data"), dict) else cd
+    arts = (inner or {}).get("artifacts") or {}
+    if "base_resume" in arts:
+        register_operative_base(candidate_id, arts["base_resume"])
+    row = cd
+    if "candidate_data" not in cd:
+        row = {
+            "astral_candidate_id": candidate_id,
+            "first": cd.get("first", "Ada"),
+            "last": cd.get("last", "Lovelace"),
+            "full": cd.get("full", "Ada Lovelace"),
+            "candidate_data": cd,
+        }
+    elif "astral_candidate_id" not in cd:
+        row = {**cd, "astral_candidate_id": candidate_id}
+    monkeypatch.setattr(
+        builder_mod.candidate_mod,
+        "get_candidate",
+        lambda cid: row if cid == candidate_id else None,
+    )
+    monkeypatch.setattr(
+        builder_mod.database,
+        "get_candidate",
+        lambda cid: row if cid == candidate_id else None,
+    )
 
 
 class TestCoerceCandidateBlob:
@@ -46,6 +87,7 @@ class TestCoerceCandidateBlob:
             "_first": "Ada",
             "_last": "Lovelace",
             "_full": "Ada Lovelace",
+            "_astral_candidate_id": "",
         }
         assert builder_mod._coerce_candidate_blob(inner) == inner
         assert builder_mod._coerce_candidate_blob("bad") == {}
@@ -95,8 +137,6 @@ class TestBuildResumeFromJob:
                     "resume_content": _resume_blob(
                         professional_summary="Para one\n\nPara two",
                         core_competencies="Python",
-                        experience="Role A",
-                        prior_experience="Role B",
                         education_certifications="School",
                         technical_skills="SQL",
                     ),
@@ -214,19 +254,22 @@ class TestBuildBaseResume:
     def test_ast1341_list_shaped_base_resume_prints(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # bug-repro: list {label, content} is visible in Base Resume Content but pre-fix
         # build_base_resume rejects non-dict with Candidate missing artifacts.base_resume.
+        list_blob = [
+            {"label": "Summary", "content": "Visible in editor"},
+            {"label": "Skills", "content": "Also visible"},
+        ]
+        register_operative_base("cand-1", list_blob)
         monkeypatch.setattr(
             builder_mod.candidate_mod,
             "get_candidate",
             lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
                 "first": "Ada",
                 "last": "Lovelace",
                 "full": "Ada Lovelace",
                 "candidate_data": {
                     "artifacts": {
-                        "base_resume": [
-                            {"label": "Summary", "content": "Visible in editor"},
-                            {"label": "Skills", "content": "Also visible"},
-                        ],
+                        "base_resume": list_blob,
                         "resume_structure": {"sections": {}},
                     }
                 },
@@ -282,7 +325,15 @@ class TestBuilderHelpers:
         body = builder_mod._emit_body_sections_html(
             {
                 "professional_summary": "\n\n",
-                "experience": ["role-a", "role-b"],
+                "experience": [
+                    {
+                        "company": "Acme",
+                        "title": "Eng",
+                        "dates": "2020",
+                        "location": "",
+                        "accomplishments": ["Shipped"],
+                    }
+                ],
                 "technical_skills": "Python",
             },
             ordered,
@@ -330,11 +381,19 @@ class TestBuilderHelpers:
         assert "Cover sign-off" in cover
 
     def test_merges_accent_color_into_style(self) -> None:
-        style = builder_mod._merge_effective_style({"artifacts": {"base_resume": {"accent_color": "#112233"}}})
+        register_operative_base("c-style", {"accent_color": "#112233"})
+        style = builder_mod._merge_effective_style(
+            {"_astral_candidate_id": "c-style", "artifacts": {}}
+        )
         assert style["colors"]["default_accent"] == "#112233"
-        plain = builder_mod._merge_effective_style({"artifacts": {"base_resume": {"accent_color": 123}}})
+        register_operative_base("c-style-bad", {"accent_color": 123})
+        plain = builder_mod._merge_effective_style(
+            {"_astral_candidate_id": "c-style-bad", "artifacts": {}}
+        )
         assert "default_accent" in plain["colors"]
-        no_accent = builder_mod._merge_effective_style({"artifacts": {"base_resume": "not-a-dict"}})
+        no_accent = builder_mod._merge_effective_style(
+            {"_astral_candidate_id": "c-missing", "artifacts": {}}
+        )
         assert "default_accent" in no_accent["colors"]
 
     def test_formats_experience_and_filters_image_sources(self) -> None:
@@ -382,51 +441,27 @@ class TestAst518BuilderResumeStructure:
 
     def _candidate_with_structure(self, structure: dict, **base_sections: str) -> dict:
         blob = _resume_blob(**base_sections)
+        cid = "c-ast518"
+        register_operative_base(cid, blob)
         return {
+            "astral_candidate_id": cid,
             "first": "Ada",
             "last": "Lovelace",
             "full": "Ada Lovelace",
             "candidate_data": {
+                "_astral_candidate_id": cid,
                 "contact": {"contact_email": "ada@example.com"},
-                "artifacts": {"resume_structure": structure, "base_resume": blob},
+                "artifacts": {"resume_structure": structure},
             },
         }
 
     def test_renders_catalog_section_titles_not_hardcoded_headings(self) -> None:
-        structure = {
-            "sections": {
-                "professional_summary": {
-                    "id": "professional_summary",
-                    "title": "Executive Pitch",
-                    "enabled": True,
-                    "order": 0,
-                    "job_agent_editable": True,
-                },
-                "candidate_name": {
-                    "id": "candidate_name",
-                    "title": "Name",
-                    "enabled": True,
-                    "order": 1,
-                    "job_agent_editable": False,
-                },
-                "candidate_title": {
-                    "id": "candidate_title",
-                    "title": "Title",
-                    "enabled": True,
-                    "order": 2,
-                    "job_agent_editable": False,
-                },
-                "candidate_contact_detail": {
-                    "id": "candidate_contact_detail",
-                    "title": "Contact",
-                    "enabled": True,
-                    "order": 3,
-                    "job_agent_editable": False,
-                },
-            },
-        }
-        job = {"job_data": {"artifacts": {"resume_content": _resume_blob(professional_summary="Body text")}}}
-        html = builder_mod.build_resume_from_job(job, self._candidate_with_structure(structure, professional_summary="Base"))
+        structure = candidate_mod.default_resume_structure()
+        structure["sections"]["professional_summary"]["title"] = "Executive Pitch"
+        job = {"job_data": {"artifacts": {}}}
+        html = builder_mod.build_resume_from_job(
+            job, self._candidate_with_structure(structure, professional_summary="Body text")
+        )
         assert "Executive Pitch" in html
         assert "Professional Summary" not in html
 
@@ -480,23 +515,15 @@ class TestAst518BuilderResumeStructure:
     def test_accent_from_resume_structure_before_legacy_base_resume(self) -> None:
         palette = list((builder_mod.BUILD_CONFIG.get("accent_palette") or ["#1A1A2E"]))
         accent = palette[0].upper()
-        structure = {
-            "accent_color": accent,
-            "sections": {
-                "professional_summary": {
-                    "id": "professional_summary",
-                    "title": "S",
-                    "enabled": True,
-                    "order": 0,
-                    "job_agent_editable": True,
-                },
-            },
-        }
+        structure = candidate_mod.default_resume_structure()
+        structure["accent_color"] = accent
+        cid = "c-ast518-accent"
+        register_operative_base(cid, {"professional_summary": "x"})
         cd = {
+            "_astral_candidate_id": cid,
             "artifacts": {
                 "resume_structure": structure,
-                "base_resume": {"accent_color": "#000000", "professional_summary": "x"},
-            }
+            },
         }
         style = builder_mod._merge_effective_style(cd)
         assert style["colors"]["default_accent"] == accent
@@ -540,7 +567,7 @@ class TestBuilderIdentifierHelpers:
         cd = _candidate_row(base_resume=_resume_blob(professional_summary="base"))
         assert (
             builder_mod._resume_content_source_label({"artifacts": {}}, cd["candidate_data"])
-            == "candidate_data.artifacts.base_resume"
+            == "get_candidate_current(candidate.artifacts.base_resume)"
         )
         assert builder_mod._resume_content_source_label({}, {}) == "missing"
 
@@ -562,37 +589,34 @@ class TestBuilderIdentifierHelpers:
         assert builder_mod._cover_letter_source_label({"artifacts": {}}, {"context": {}}) is None
 
     def test_accent_source_labels(self) -> None:
+        palette = list((builder_mod.BUILD_CONFIG.get("accent_palette") or ["#1A1A2E"]))
+        accent = palette[0].upper()
+        structure = candidate_mod.default_resume_structure()
+        structure["accent_color"] = accent
         structure_cd = {
             "artifacts": {
-                "resume_structure": {
-                    "accent_color": "#111111",
-                    "sections": {
-                        "professional_summary": {
-                            "id": "professional_summary",
-                            "title": "S",
-                            "enabled": True,
-                            "order": 0,
-                            "job_agent_editable": True,
-                        }
-                    },
-                },
-                "base_resume": _resume_blob(),
-            }
+                "resume_structure": structure,
+            },
         }
         assert (
             builder_mod._accent_source_label(structure_cd)
             == "resume_structure.accent_color"
         )
         legacy_cd = {
-            "artifacts": {
-                "base_resume": {**_resume_blob(), "accent_color": "#445566"},
-            }
+            "_astral_candidate_id": "cand-1",
+            "artifacts": {},
         }
+        register_operative_base(
+            "cand-1", {**_resume_blob(), "accent_color": "#445566"}
+        )
         assert (
             builder_mod._accent_source_label(legacy_cd)
-            == "artifacts.base_resume.accent_color"
+            == "get_candidate_current.accent_color"
         )
-        assert builder_mod._accent_source_label({"artifacts": {"base_resume": _resume_blob()}}) == (
+        register_operative_base("cand-no-accent", _resume_blob())
+        assert builder_mod._accent_source_label(
+            {"_astral_candidate_id": "cand-no-accent", "artifacts": {}}
+        ) == (
             "BUILD_CONFIG.default_style"
         )
         whitespace_legacy = {
@@ -1035,8 +1059,7 @@ class TestAst998ExperienceJobRender:
                 },
             },
         }
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
-        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        _install_candidate_for_base_resume(monkeypatch, cd)
         html = builder_mod.build_base_resume("cand-1")
         assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
         assert "Acme Corp" in html
@@ -1136,7 +1159,10 @@ class TestAst1350UnsupportedExperienceShape:
         )
         assert "Summary only" in html
 
-    def test_base_resume_string_experience_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_base_resume_string_experience_omitted_on_emit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Ingest skips non-array experience before reject; emit proceeds without legacy prose."""
         structure = self._structure()
         cd = {
             "first": "Ada",
@@ -1153,10 +1179,10 @@ class TestAst1350UnsupportedExperienceShape:
                 },
             },
         }
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
-        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
-        with pytest.raises(ValueError, match=self._MSG):
-            builder_mod.build_base_resume("cand-1")
+        _install_candidate_for_base_resume(monkeypatch, cd)
+        html = builder_mod.build_base_resume("cand-1")
+        assert "Base summary" in html
+        assert "legacy string" not in html
 
     def test_emit_body_refuses_non_array_experience_detail(self) -> None:
         # Defense in depth: experience_detail extras that are not job arrays also refuse.
@@ -1383,8 +1409,7 @@ class TestAst1007NestedTypographyMarkers:
                 },
             },
         }
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
-        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        _install_candidate_for_base_resume(monkeypatch, cd)
         html = builder_mod.build_base_resume("cand-1")
         self._assert_markers_applied(html)
 
@@ -1556,8 +1581,7 @@ class TestAst1008ExperienceGoldenLayout:
                 },
             },
         }
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
-        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        _install_candidate_for_base_resume(monkeypatch, cd)
         html = builder_mod.build_base_resume("cand-1")
         self._assert_golden_experience(html)
 
@@ -1719,8 +1743,7 @@ class TestAst1009EducationSkillsPrior:
                 },
             },
         }
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
-        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        _install_candidate_for_base_resume(monkeypatch, cd)
         html = builder_mod.build_base_resume("cand-1")
         self._assert_section_markup(html)
 
@@ -1861,8 +1884,7 @@ class TestAst1010HeaderContactMetaStyles:
                 },
             },
         }
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
-        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        _install_candidate_for_base_resume(monkeypatch, cd)
         html = builder_mod.build_base_resume("cand-1")
         self._assert_header_meta_css(html, expect_meta=True)
 
@@ -1994,8 +2016,7 @@ class TestAst1020GoldenStylesheet:
                 },
             },
         }
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
-        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        _install_candidate_for_base_resume(monkeypatch, cd)
         html = builder_mod.build_base_resume("cand-1")
         self._assert_golden_style(html)
 
@@ -2140,8 +2161,7 @@ class TestAst1021DocumentTitleChrome:
                 },
             },
         }
-        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
-        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        _install_candidate_for_base_resume(monkeypatch, cd)
         html = builder_mod.build_base_resume("cand-1")
         self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
 
@@ -2715,7 +2735,7 @@ class TestAst1039SummaryNewlineParagraphs:
             self._structure(),
             {
                 "professional_summary": "First para\nSecond para",
-                "experience": "One bullet",
+                "experience": [],
             },
         )
         intros = re.findall(
@@ -2733,7 +2753,7 @@ class TestAst1039SummaryNewlineParagraphs:
             self._structure(),
             {
                 "professional_summary": "Para one\n\nPara two",
-                "experience": "One bullet",
+                "experience": [],
             },
         )
         intros = re.findall(
@@ -3815,11 +3835,13 @@ class TestAst1304BuilderEmitByFormat:
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
         structure = _ast1304_catalog()
         prose = builder_mod.build_session_base_resume(
-            structure, {"professional_summary": "Keep", "experience": "Leftover prose"}
+            structure, {"professional_summary": "Keep", "experience": []}
         )
-        assert "Leftover prose" not in prose
-        assert 'id="experience"' not in prose
         assert "Keep" in prose
+        with pytest.raises(ValueError, match="unsupported resume structure"):
+            builder_mod.build_session_base_resume(
+                structure, {"professional_summary": "Keep", "experience": "Leftover prose"}
+            )
         jobs = builder_mod.build_session_base_resume(
             structure, {"experience": [dict(_AST1304_JOB)]}
         )

@@ -11,6 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.core import candidate as candidate_mod
+from tests.component.core.operative_fixture import register_operative_base
 from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
@@ -983,13 +984,24 @@ class TestAst517ResumeStructure:
         assert out["sections"]["candidate_name"]["title"] == "Candidate Name"
 
     def test_resolve_shims_legacy_base_resume_accent(self) -> None:
+        cid = "c-resolve-accent"
+        register_operative_base(
+            cid, {"accent_color": _VALID_ACCENT.lower(), "professional_summary": "x"}
+        )
         out = candidate_mod.resolve_resume_structure(
-            {"artifacts": {"base_resume": {"accent_color": _VALID_ACCENT.lower(), "professional_summary": "x"}}}
+            {
+                "_astral_candidate_id": cid,
+                "artifacts": {},
+            }
         )
         assert out["accent_color"] == _VALID_ACCENT
 
     def test_resolve_ignores_invalid_legacy_accent(self) -> None:
-        out = candidate_mod.resolve_resume_structure({"artifacts": {"base_resume": {"accent_color": "not-hex"}}})
+        cid = "c-resolve-bad-accent"
+        register_operative_base(cid, {"accent_color": "not-hex"})
+        out = candidate_mod.resolve_resume_structure(
+            {"_astral_candidate_id": cid, "artifacts": {}}
+        )
         assert "accent_color" not in out
 
     def test_split_uses_default_when_structure_missing(self) -> None:
@@ -1264,14 +1276,17 @@ class TestAst607BaseResumeToken:
 
     def test_format_dict_keys_as_json_not_markdown(self) -> None:
         structure = candidate_mod.default_resume_structure()
+        cid = "c-ast607"
+        register_operative_base(
+            cid,
+            {
+                "professional_summary": "Summary body",
+                "accent_color": "#112233",
+            },
+        )
         cd = {
-            "artifacts": {
-                "resume_structure": structure,
-                "base_resume": {
-                    "professional_summary": "Summary body",
-                    "accent_color": "#112233",
-                },
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": structure},
         }
         out = candidate_mod.format_base_resume_for_token(cd)
         assert "###" not in out
@@ -1282,11 +1297,13 @@ class TestAst607BaseResumeToken:
     def test_format_legacy_label_list_maps_to_section_ids(self) -> None:
         structure = candidate_mod.default_resume_structure()
         summary_title = structure["sections"]["professional_summary"]["title"]
+        cid = "c-ast607b"
+        register_operative_base(
+            cid, [{"label": summary_title, "content": "Legacy summary"}]
+        )
         cd = {
-            "artifacts": {
-                "resume_structure": structure,
-                "base_resume": [{"label": summary_title, "content": "Legacy summary"}],
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": structure},
         }
         out = candidate_mod.format_base_resume_for_token(cd)
         assert "###" not in out
@@ -1297,14 +1314,16 @@ class TestAst594DraftJobResumePayload:
     """AST-594: normalize + section validation for draft_job_resume (whitelist = base_resume; AST-1270)."""
 
     def _base_cd(self, **sections: Any) -> dict[str, Any]:
-        # AST-1270: draft whitelist reads artifacts.base_resume keys (not resume_structure catalog).
+        # AST-1587: whitelist reads operative current-read, not library blob.
         base = {
             "professional_summary": "Summary",
             "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
             "candidate_contact_detail": "ada@example.com",
         }
         base.update(sections)
-        return {"artifacts": {"base_resume": base}}
+        cid = "c-ast594"
+        register_operative_base(cid, base)
+        return {"_astral_candidate_id": cid, "artifacts": {}}
 
     def test_validate_accepts_structure_keyed_subset(self) -> None:
         payload = {
@@ -2288,11 +2307,13 @@ class TestAst996ExperienceJobArray:
     def test_format_base_resume_token_includes_job_array_json(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
         structure = candidate_mod.default_resume_structure()
+        cid = "c-ast996-token"
+        register_operative_base(
+            cid, {"experience": jobs, "professional_summary": "Summary"}
+        )
         cd = {
-            "artifacts": {
-                "resume_structure": structure,
-                "base_resume": {"experience": jobs, "professional_summary": "Summary"},
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": structure},
         }
         out = candidate_mod.format_base_resume_for_token(cd)
         parsed = json.loads(out)
@@ -2555,10 +2576,14 @@ class TestAst997JobTailoredExperience:
     """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
 
     def _base_cd(self, jobs: list[dict[str, str]], **extra_sections: Any) -> dict[str, Any]:
-        # AST-1270: whitelist = base_resume keys; include every section the payload may send.
         base: dict[str, Any] = {"experience": jobs, "professional_summary": "S"}
         base.update(extra_sections)
-        return {"artifacts": {"base_resume": base, "resume_structure": _three_section_structure()}}
+        cid = "c-ast997"
+        register_operative_base(cid, base)
+        return {
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": _three_section_structure()},
+        }
 
     def test_normalize_preserves_experience_job_array(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
@@ -4496,25 +4521,28 @@ class TestAst1270NestedDraftJobResumeContract:
         return out
 
     def _cd(self, *, with_structure: bool = False) -> dict[str, Any]:
-        arts: dict[str, Any] = {"base_resume": self._base_sections()}
+        cid = "c-ast1270"
+        register_operative_base(cid, self._base_sections())
+        arts: dict[str, Any] = {}
         if with_structure:
             arts["resume_structure"] = candidate_mod.default_resume_structure()
-        return {"artifacts": arts}
+        return {"_astral_candidate_id": cid, "artifacts": arts}
 
     def test_allowed_section_keys_intersect_known_ids(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
-        cd = {
-            "artifacts": {
-                "base_resume": {
-                    "professional_summary": "S",
-                    "experience": jobs,
-                    "highlights": "Won awards",
-                    "accent_color": "#fff",
-                    "sections": "reserved",
-                    "123bad": "x",
-                }
-            }
-        }
+        cid = "c-ast1270b"
+        register_operative_base(
+            cid,
+            {
+                "professional_summary": "S",
+                "experience": jobs,
+                "highlights": "Won awards",
+                "accent_color": "#fff",
+                "sections": "reserved",
+                "123bad": "x",
+            },
+        )
+        cd = {"_astral_candidate_id": cid, "artifacts": {}}
         assert candidate_mod.draft_job_resume_allowed_section_keys(cd) == [
             "experience",
             "highlights",
@@ -4683,14 +4711,15 @@ class TestAst1272DraftHopDebugWhitelistTrail:
     """AST-1272: Style D unwrap + whitelist/accept/reject trails when debug=True."""
 
     def _cd(self) -> dict[str, Any]:
-        return {
-            "artifacts": {
-                "base_resume": {
-                    "professional_summary": "base summary",
-                    "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
-                }
-            }
-        }
+        cid = "c-ast1272"
+        register_operative_base(
+            cid,
+            {
+                "professional_summary": "base summary",
+                "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
+            },
+        )
+        return {"_astral_candidate_id": cid, "artifacts": {}}
 
     def _patch_debug(self, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
         idx = MagicMock()
@@ -4767,7 +4796,12 @@ class TestAst1272DraftHopDebugWhitelistTrail:
         assert idx.call_args.kwargs["func"] == "candidate.validate_draft_job_resume_payload"
         assert idx.call_args.kwargs["outcome"] == "ok"
         msgs = self._detail_msgs(detail)
-        assert any("whitelist_source=base_resume" in m and "experience" in m for m in msgs)
+        assert any(
+            "whitelist_source=get_candidate_current" in m
+            and "candidate.artifacts.base_resume" in m
+            and "experience" in m
+            for m in msgs
+        )
         assert any("recorded accepted_keys=" in m and "experience" in m for m in msgs)
         assert any("recorded rejected_keys=[]" in m for m in msgs)
         assert any("recorded error=none" in m for m in msgs)
@@ -5160,11 +5194,11 @@ class TestAst1305HopsContentBlobsAndLegacyLabels:
         assert "highlights_2" in collided["sections"]
 
     def test_token_keeps_unmatched_labels_and_omits_prose_experience(self) -> None:
+        cid = "c-ast1305-token"
+        register_operative_base(cid, self._abrams_list())
         cd = {
-            "artifacts": {
-                "resume_structure": self._seven(),
-                "base_resume": self._abrams_list(),
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": self._seven()},
         }
         parsed = json.loads(candidate_mod.format_base_resume_for_token(cd))
         assert parsed["highlights"] == "Won awards"
@@ -5194,15 +5228,16 @@ class TestAst1305HopsContentBlobsAndLegacyLabels:
 
     def test_draft_whitelist_includes_extras_rejects_invented(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
-        cd = {
-            "artifacts": {
-                "base_resume": {
-                    "professional_summary": "S",
-                    "highlights": "H",
-                    "experience": jobs,
-                }
-            }
-        }
+        cid = "c-ast1305-draft"
+        register_operative_base(
+            cid,
+            {
+                "professional_summary": "S",
+                "highlights": "H",
+                "experience": jobs,
+            },
+        )
+        cd = {"_astral_candidate_id": cid, "artifacts": {}}
         assert candidate_mod.draft_job_resume_allowed_section_keys(cd) == [
             "experience",
             "highlights",
@@ -5668,4 +5703,86 @@ class TestAst1586GetCandidateCurrent:
         row = candidate_mod.get_candidate("cand-1")
         arts = row["candidate_data"].get("artifacts") or {}
         assert "base_resume" not in arts
+
+
+# Branches: operative current-read consumers; no blob fallback; builder Style D current_read.
+class TestAst1587BaseResumeConsumerRewires:
+    """AST-1587: builder/token/live helpers use get_candidate_current only."""
+
+    def test_format_base_resume_token_ignores_stale_blob_without_operative(
+        self,
+    ) -> None:
+        structure = candidate_mod.default_resume_structure()
+        cd = {
+            "_astral_candidate_id": "c1587",
+            "artifacts": {
+                "resume_structure": structure,
+                "base_resume": {"professional_summary": "stale blob"},
+            },
+        }
+        assert candidate_mod.format_base_resume_for_token(cd) == ""
+
+    def test_format_base_resume_token_reads_operative_current(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="operative-token")
+        candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        structure = candidate_mod.default_resume_structure()
+        cd = {
+            "_astral_candidate_id": "cand-1",
+            "artifacts": {"resume_structure": structure},
+        }
+        out = candidate_mod.format_base_resume_for_token(cd)
+        assert json.loads(out)["professional_summary"] == "operative-token"
+
+    def test_load_pilot_delegates_to_get_candidate_current(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="load-pilot")
+        candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        body = candidate_mod.load_pilot_base_resume_for_candidate("cand-1")
+        assert body["professional_summary"] == "load-pilot"
+
+    def test_build_base_resume_debug_emits_current_read_trail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import builder as builder_mod
+
+        register_operative_base(
+            "c1587d", _resume_content_blob(professional_summary="debug trail")
+        )
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "first": "Ada",
+                "last": "Lovelace",
+                "full": "Ada Lovelace",
+                "candidate_data": {
+                    "contact": {"contact_email": "ada@example.com"},
+                    "artifacts": {"resume_structure": candidate_mod.default_resume_structure()},
+                },
+            },
+        )
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(builder_mod._log, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(builder_mod._log, "debug_index", idx)
+        monkeypatch.setattr(builder_mod._log, "debug_detail", detail)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", MagicMock())
+        monkeypatch.setattr(builder_mod.candidate_mod, "debug_experience_jobs", MagicMock())
+        html = builder_mod.build_base_resume("c1587d", debug=True)
+        assert "debug trail" in html
+        base_calls = [
+            c
+            for c in idx.call_args_list
+            if c.kwargs.get("func") == "builder.build_base_resume"
+            and c.kwargs.get("total") == 2
+        ]
+        assert len(base_calls) == 2
+        assert base_calls[0].kwargs["index"] == 1
+        assert base_calls[0].kwargs["total"] == 2
+        msgs = [c.args[0] for c in detail.call_args_list]
+        assert any("current_read=hit" in m for m in msgs)
+        assert any(
+            "resume_source=get_candidate_current(candidate.artifacts.base_resume)" in m
+            for m in msgs
+        )
 

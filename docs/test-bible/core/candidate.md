@@ -1830,5 +1830,53 @@ Public `get_operative_base_resume(artifact_uuid)` pin→body for pilot `candidat
 
 **Pass criterion:** pytest green on manifest lines + docs-acceptance item 3 — not zero-arg harness / branch-lock gate.
 
-**Bible shasum (post-publish):** record after `merge-tests`.
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — `b3455e7dc171c1f118fb6e085f46afddb29103f464f48bf6d2ef90b607250406`
+- `docs/test-bible/ui/api/api_candidate.md` — `2f7beabeffcbe194e1342fb85d4ffd7d3a13b7c1556b0d6a4a30b1fe0d7519ce`
+
+---
+
+### AST-1587 · AST-1570
+
+**Parent:** [AST-1570 — Implement patt.artifact.read-current](https://linear.app/astralcareermatch/issue/AST-1570/implement-pattartifactread-current). **Publish:** `origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires`.
+
+`candidate_id_for_current_read` + `load_pilot_base_resume_for_candidate` delegate to `get_candidate_current(candidate.artifacts.base_resume)`; no `artifacts.base_resume` blob fallback on miss. Rewired: `format_base_resume_for_token`, `resolve_resume_structure` (accent shim), `draft_job_resume_allowed_section_keys`, `pin_experience_job_facts_from_base`. Builder consumers + source labels in **`docs/test-bible/core/builder.md`** § AST-1587. `config.py` / `api_resume_html.py` audit-only (no product change).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Current-read consumers + token | `src/core/candidate.py` | **`TestAst1587BaseResumeConsumerRewires`** |
+| Token + draft whitelist + experience pin (revised) | same | **`TestAst607BaseResumeToken`**, **`TestAst594DraftJobResumePayload`**, **`TestAst997JobTailoredExperience`**, **`TestAst1270NestedDraftJobResumeContract`**, **`TestAst1272DraftHopDebugWhitelistTrail`**, **`TestAst1305HopsContentBlobsAndLegacyLabels`**, **`TestAst996ExperienceJobArray`** (token path) |
+| `{$BASE_RESUME}` resolve (revised) | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown`** |
+| Operative body registry (harness) | `tests/component/core/operative_fixture.py`, `conftest.py` | autouse patch on `load_pilot_base_resume_for_candidate` |
+
+**Broken / obsolete this pass:** tests that seeded `artifacts.base_resume` blobs without operative current-read — revised to `register_operative_base` / `save_candidate_data` operative pin. `build_base_resume` string `experience` ingest skips non-array before reject ( **`test_base_resume_string_experience_omitted_on_emit`** replaces raise assert).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Consumer rewires: `tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires`
+2. Revised candidate helpers: `TestAst607BaseResumeToken`, `TestAst594DraftJobResumePayload`, `TestAst997JobTailoredExperience`, `TestAst1270NestedDraftJobResumeContract`, `TestAst1272DraftHopDebugWhitelistTrail`, `TestAst1305HopsContentBlobsAndLegacyLabels`, `TestAst996ExperienceJobArray::test_format_base_resume_token_includes_job_array_json`
+3. Builder consumer rewires (full `test_builder.py` — operative install + source labels): see **`docs/test-bible/core/builder.md`** § AST-1587 manifest
+4. Config token: `tests/component/utils/test_config.py::TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown`
+5. Docs-acceptance: `config.py` `{$BASE_RESUME}` path unchanged (audit); `api_resume_html.py` thin builder caller (audit)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires \
+  tests/component/core/test_candidate.py::TestAst607BaseResumeToken \
+  tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract \
+  tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail \
+  tests/component/core/test_candidate.py::TestAst1305HopsContentBlobsAndLegacyLabels \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_format_base_resume_token_includes_job_array_json \
+  tests/component/core/test_builder.py \
+  tests/component/utils/test_config.py::TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines + docs-acceptance items 5 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** record via `git show origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires:docs/test-bible/core/candidate.md | shasum`.
 

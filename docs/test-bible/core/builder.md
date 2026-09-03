@@ -837,3 +837,38 @@ After AST-1540 blanket space→NBSP, restore `\u00a0•\u00a0` → `\u00a0• ` 
 ```
 
 **Pass criterion:** item 1 red on pre-fix tree; all manifest lines green after `make-fix` + `test-fix` (red→green on **[bug-repro]**).
+
+---
+
+### AST-1587 · AST-1570
+
+**Parent:** [AST-1570 — Implement patt.artifact.read-current](https://linear.app/astralcareermatch/issue/AST-1570/implement-pattartifactread-current). **Publish:** `origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires`.
+
+Builder live paths load pilot base_resume via `load_pilot_base_resume_for_candidate` / `get_candidate_current` only — `_resolve_resume_sections`, `build_base_resume`, `_accent_source_label`, `_resume_content_source_label` updated; `_coerce_candidate_blob` attaches `_astral_candidate_id`. Style D `current_read=hit|miss` on `build_base_resume` `debug=True`. Candidate helper rewires: **`docs/test-bible/core/candidate.md`** § AST-1587.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `build_base_resume` current-read + Style D | `src/core/builder.py` | **`TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail`** (in `test_candidate.py`) |
+| Job resume fallback + source labels (revised) | same | **`TestBuilderIdentifierHelpers`**, **`TestAst518BuilderResumeStructure`**, **`TestBuildBaseResume`**, **`TestBuildBaseResumeDebugPaths`**, **`TestBuildResumeFromJobDebugPaths`**, **`TestAst1350UnsupportedExperienceShape`** |
+| Operative test harness | `tests/component/core/operative_fixture.py`, `conftest.py` | `_install_candidate_for_base_resume` + autouse `load_pilot` stub |
+
+**Broken / obsolete this pass:** tests seeding `artifacts.base_resume` without operative current-read; minimal `resume_structure` fixtures that fail `normalize_resume_structure` (use `default_resume_structure()` + title override).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Style D current-read trail: `tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail`
+2. Full builder regression (operative rewires): `tests/component/core/test_builder.py`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail \
+  tests/component/core/test_builder.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** record via `git show origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires:docs/test-bible/core/builder.md | shasum`.
+

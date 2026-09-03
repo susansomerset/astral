@@ -247,16 +247,25 @@ class TestResolveTokens:
         candidate = {"profile": {"cover_letter_signature": "— Ada"}}
         assert cfg.resolve_tokens("{$COVER_LETTER_SIGNATURE}", candidate, "draft_cover_letter") == "— Ada"
 
-    def test_base_resume_token_emits_section_json_not_markdown(self) -> None:
+    def test_base_resume_token_emits_section_json_not_markdown(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import candidate as candidate_mod
         from src.core.candidate import default_resume_structure
 
         structure = default_resume_structure()
         summary_title = structure["sections"]["professional_summary"]["title"]
+        cid = "c-cfg607"
+        monkeypatch.setattr(
+            candidate_mod,
+            "load_pilot_base_resume_for_candidate",
+            lambda c: [{"label": summary_title, "content": "Token body"}]
+            if c == cid
+            else None,
+        )
         candidate = {
-            "artifacts": {
-                "resume_structure": structure,
-                "base_resume": [{"label": summary_title, "content": "Token body"}],
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": structure},
         }
         out = cfg.resolve_tokens("base={$BASE_RESUME}", candidate, "draft_job_resume")
         assert "###" not in out
