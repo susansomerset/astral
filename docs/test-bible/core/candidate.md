@@ -1798,3 +1798,37 @@ Public `get_operative_base_resume(artifact_uuid)` pin→body for pilot `candidat
 
 **Pass criterion:** pytest green on both classes + docs-acceptance for `patt.artifacts.traceability` draft (see artifacts bible § AST-1584) — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-1586 · AST-1570
+
+**Parent:** [AST-1570 — Implement patt.artifact.read-current](https://linear.app/astralcareermatch/issue/AST-1570/implement-pattartifactread-current). **Publish:** `origin/sub/AST-1570/AST-1586-current-read-helper-get-hydrate-pattern-revise`.
+
+`get_candidate_current(candidate_id, artifact_key)` current-read by catalog key via `database.get_current_artifact`; miss → `None` (no `candidate_data` blob fallback). `hydrate_operative_base_resume_for_response` strips stale `artifacts.base_resume` on miss. GET edit/live API surfaces table-only. Pattern draft tracker example-only: docs-acceptance on `canon/directives/draft/patt.artifact.read-current.md`. Read-operative pin path stays **AST-1584** / **AST-1585**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Current-read helper + hydrate strip on miss | `src/core/candidate.py` | **`TestAst1586GetCandidateCurrent`** |
+| GET detail / resume_structure table-only | `src/ui/api/api_candidate.py` | **`TestAst1586ReadCurrentGetApi`** |
+
+**Broken / obsolete this pass:** none — `TestAst1576SaveCandidateDataOperative` hydrate-on-hit paths unchanged; miss now strips stale blob (new coverage).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Current-read helper + hydrate: `tests/component/core/test_candidate.py::TestAst1586GetCandidateCurrent`
+2. GET edit/live API: `tests/component/ui/api/test_api_candidate.py::TestAst1586ReadCurrentGetApi`
+3. Pattern draft docs-acceptance (grep/read on publish tip): `canon/directives/draft/patt.artifact.read-current.md` — `scope` lists only `database.py` / `candidate.py` / `api_candidate.py`; Applications §4 cites `tracker.py` as example only; Implementation §1 names `get_candidate_current`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1586GetCandidateCurrent \
+  tests/component/ui/api/test_api_candidate.py::TestAst1586ReadCurrentGetApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines + docs-acceptance item 3 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (post-publish):** record after `merge-tests`.
+
