@@ -198,3 +198,23 @@ def format_base_resume_for_token(candidate_data: dict) -> str:
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+```
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1587
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1570/AST-1587-base-resume-consumer-rewires` @ `7a1606e504caa9e88395a158278fba3a4dd2c6cf`
+
+## Traceability
+AC4→Stages1–2 (+Stages3–4 audit/no-op); AC5→Stage1:6, Stage2:3–7; parent AC1–3,5,6→N/A (AST-1586); parent AC7→AC5
+
+## Findings
+
+**fix-now** | Stage 1 step 5 (`pin_experience_job_facts_from_base`) | Plan calls `_candidate_id_for_current_read(candidate_data)` but Stage 1 defines `candidate_id_for_current_read` — implementer would hit `NameError`. | Replace with `candidate_id_for_current_read(candidate_data)` (or rename consistently everywhere).
+
+context_tokens≈52000
+```
