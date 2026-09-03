@@ -257,3 +257,76 @@ context_tokens≈56000
 - Stage 4: `api_resume_html` audit — no change (thin `build_base_resume` caller only).
 
 **Betty:** at **Code Complete** — builder/candidate current-read consumer coverage; whitelist debug label; `build_base_resume` Style D 2/2 headers.
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1587
+**Publish ref:** `sub/AST-1570/AST-1587-base-resume-consumer-rewires` @ `f217d33cc373d0408ce1a5934647264c304ffda8`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.config.config-source-of-truth` | scoped | conforms | consumers resolve via `ARTIFACT_CONFIG` / `get_candidate_current`; no config scrape |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single `ast-1587-*.md` issue doc |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | engineer commits: `candidate.py` + `builder.py` only |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | core→data/utils only |
+| `astral.layers.import-direction` | scoped | conforms | allowed import directions |
+| `astral.idioms.coat-check-never-store-empty` | scoped | conforms | miss→empty; no blob recovery on consumer paths |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | no new data-layer logging |
+| `astral.standards.debug-contract-gated` | scoped | conforms | `build_base_resume` Style D: `index 1/2` found+`current_read=` before ingest; `index 2/2` recorded |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | `candidate_id_for_current_read` + `load_pilot_base_resume_for_candidate` centralize pilot reads |
+| `astral.standards.in-scope-only` | scoped | conforms | 1587 product footprint = builder + candidate live helpers |
+| `astral.standards.logging-via-utils` | scoped | conforms | debug via `_log.debug_*` helpers |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | semantic runtime names |
+| `astral.standards.no-cross-contamination` | scoped | conforms | read-operative pin path untouched |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | pilot key constant; catalog-backed resolution |
+| `astral.standards.public-then-helpers` | scoped | conforms | new public helpers before rewired consumers |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | merge-tests on publish tip |
+| `orch.git.commit-vocabulary` | universal | conforms | commit messages on-pattern |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub under AST-1570 parent |
+| `orch.git.ftr-sub-topology` | universal | conforms | child publish ref topology |
+| `orch.git.merge-on-checkout` | universal | conforms | reviewed vs `origin/dev` |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | no forbidden git ops |
+| `orch.git.no-dev-agent-branches` | universal | conforms | engineer sub branch |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1570 worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | baseline `origin/dev` |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | miss→empty contracts per plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–4 + prerequisite delivered |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test-bible + component tests match manifest |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Hedy assignee; tight product scope |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no hook-ban violations |
+
+**Sweep count:** 65 active statutes scored (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `patt.artifact.read-current` | conforms | In-scope builder/token/structure consumers delegate to `get_candidate_current` via `load_pilot_base_resume_for_candidate`; miss→empty; no blob fallback; Style D on `build_base_resume` current-resolve |
+
+## Plan adherence
+
+- **Prerequisite:** `merge-resume(AST-1587): attach AST-1586` (`1176722f`) — `get_candidate_current` + hydrate present before consumer rewires.
+- **Stage 1:** `candidate_id_for_current_read`, `load_pilot_base_resume_for_candidate`, rewired `format_base_resume_for_token`, `resolve_resume_structure`, `draft_job_resume_allowed_section_keys`, `pin_experience_job_facts_from_base`, whitelist debug label — all match plan.
+- **Stage 2:** `_coerce_candidate_blob` stamps `_astral_candidate_id`; builder paths use current-read; Style D 2/2 headers.
+- **Stage 3:** `config.py` audit — **no change**; `{$BASE_RESUME}` serialize branch routes through `format_base_resume_for_token`.
+- **Stage 4:** `api_resume_html.py` audit — **no change**; thin `build_base_resume` caller only.
+
+**Joan:** APPROVED (round 2).
+
+## Findings
+
+None (no fix-now, discuss, or advisory items requiring engineer action).
+
+## What's solid
+
+- Grep confirms **zero** `artifacts.get("base_resume")` reads remain in `builder.py` or the four Stage-1 candidate functions.
+- `format_base_resume_for_token` ignores stale blobs when operative row absent; reads table current on hit.
+- Betty harness: `operative_fixture` + autouse `load_pilot` stub preserves existing builder tests while proving current-read semantics.
+
+context_tokens≈52000
