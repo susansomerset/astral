@@ -232,3 +232,149 @@ context_tokens≈32000
 **Built @ `fca9711a`** — `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`
 
 Stages 1–3 landed: Contact `resolve_pinned_base_resume` + Estelle raft strip + dispatch UUID/`pin_required` short-circuit; `GET /api/candidates/<id>/operative/base_resume?artifact_id=`; JAR Source base resume panel via `fetchOperativeBaseResume` (no blob fallback; pin read-only from `job_data.base_resume_artifact_id`).
+
+## Radia review
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1585
+**Publish ref:** origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve @ dc723224
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+Full active set (64 per `canon/statutes/README.md` § Harvested corpus). Diff layers: `core`, `data`, `ui`, `docs`; paths include `src/core/contact.py`, `src/ui/api/api_candidate.py`, `src/ui/frontend/**`, sibling `src/core/candidate.py` + `src/data/database.py`, `docs/**`, `tests/**`, `canon/directives/draft/**`.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | No agent-confidence / config paths in AST-1585 product commits |
+| astral.agent.do-task-delegation | scoped | conforms | Estelle `do_task` path unchanged; raft mutation is pre-task only |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade-vector logic touched |
+| astral.batch.batch-id-first | scoped | conforms | No batch-id write paths changed |
+| astral.batch.batch-id-format | scoped | conforms | No batch-id formatting changed |
+| astral.batch.claim-process-release | scoped | conforms | No claim/process/release paths changed |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | No entity-agent-responses paths changed |
+| astral.config.config-source-of-truth | scoped | conforms | Pilot identity delegated to `get_operative_base_resume` / `ARTIFACT_CONFIG` (sibling) |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets/env wiring in diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No repo-root `artifacts/` dir changes |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No `debug/` spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No dispatcher paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No run-next / chain paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `docs/features/foundation/ast-1585-…md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits touch test-tree only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Test-tree via Betty `test()` + `merge-tests()` — not engineer build commits |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Contact changes stay core; no external mixing |
+| astral.layers.import-direction | scoped | conforms | `ui/api` → `core.contact`; `core.contact` → `core.candidate` + `data.database` (allowed) |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | JAR gap/fetch copy is panel-local per plan; no new state enums |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | Operative paths refuse blob dual-read; gap on miss |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | No consult/render orchestration changed |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `GET …/operative/base_resume` behind `@require_auth` |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON / bootstrap paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No dispatcher/catalog seed paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | No boot/migration hot-path changes |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed approval paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator-row seed paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage-join paths |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Data layer unchanged by 1585; Contact debug via `get_logger` when `debug=True` |
+| astral.standards.database-header-inventory | scoped | conforms | Sibling `get_artifact` only; no schema/header drift in 1585 commits |
+| astral.standards.debug-contract-gated | scoped | conforms | `resolve_pinned_base_resume` uses `debug_index`/`debug_detail`; dispatch short-circuits use `_dispatch_recorded_debug` + `truncate_debug_content` |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Shared `resolve_pinned_base_resume`; thin API + JAR helpers |
+| astral.standards.in-scope-only | scoped | conforms | 1585 engineer commits: `contact.py`, `api_candidate.py`, JAR + `recommendedJobReport.tsx` only |
+| astral.standards.logging-via-utils | scoped | conforms | No `print` / raw `logging`; uses `get_logger` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Domain names (`resolve_pinned_base_resume`, `fetchOperativeBaseResume`, …) |
+| astral.standards.no-cross-contamination | scoped | conforms | Ownership gate in Contact; wrong-owner → `None` |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No ad-hoc entity/type literals; pilot gate in sibling helper |
+| astral.standards.public-then-helpers | scoped | conforms | `resolve_pinned_base_resume` public before dispatch/Estelle |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No `src/utils/**` changes in 1585 commits |
+| astral.state.core-decides-transitions | scoped | conforms | No ad-hoc state writes |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job-state config paths |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No in-run chain changes |
+| astral.ui.frontend-file-placement | scoped | conforms | Helpers in `lib/recommendedJobReport.tsx`; modal in `components/` |
+| astral.ui.naming-conventions | scoped | conforms | Route/handler naming matches blueprint style |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No gunicorn/config UI paths |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1585): origin/tests a35223c5` present |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` on branch |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1571/AST-1585-…` topology |
+| orch.git.ftr-sub-topology | universal | conforms | Child on `sub/<parent>/<child>` |
+| orch.git.merge-on-checkout | universal | conforms | No rebase/cherry-pick signals |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | Clean stacked history |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1571 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | Diff vs `origin/dev` only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No product-policy decisions smuggled in code |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | Foundation child within AST-1571 |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No `canon/statutes/**` edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | `tests/` + `docs/test-bible/` from Betty lane |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Katherine (engineer) |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook-evasion patterns |
+
+**Straggler (C4):** Joan `[plan-rubric] APPROVED` attached; no Excluded statute list — no straggler rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `patt.artifact.read-operative` (parent draft directive) | conforms | Contact + API + JAR wire pin→body; blob dual-read stripped; `pin_required` on dotted path; no coat-check / blob fallback |
+| `patt.artifacts.traceability` (sibling draft) | conforms | Read-only `job_data.base_resume_artifact_id`; no product persist of seed ids |
+| none cited in plan `Patterns to reuse` | — | Parent read-operative mandate satisfied across Contact/UI surfaces |
+
+## Plan adherence
+
+- **Stage 1 (Contact):** `resolve_pinned_base_resume` matches contract — ownership via `database.get_artifact` + `get_operative_base_resume`; `debug_index`/`debug_detail` when `debug=True`; UUID dispatch short-circuit + `pin_required` on `artifacts.base_resume`; `_dispatch_recorded_debug` refactors handler epilog for short-circuits too (addresses Joan discuss item); Estelle raft deep-copies, strips blob `base_resume`, injects pin body; `base_resume_artifact_id` kwarg added; `handle_slack_event` unchanged (no invented pin).
+- **Stage 2 (API):** `GET /api/candidates/<id>/operative/base_resume?artifact_id=` with 400/404 semantics; calls `resolve_pinned_base_resume` with `ui_llm_debug()`; no `api_jobs.py` edits; no `artifact_id` on save responses.
+- **Stage 3 (JAR):** `jobBaseResumeArtifactId` + `fetchOperativeBaseResume` in `recommendedJobReport.tsx`; modal Source base resume panel with gap/loading/error/JSON hit; no blob fallback; no pin write.
+- **Estimate 5:** Footprint fits — three surfaces + Betty test-tree.
+- **Cross-ticket:** AST-1584 helper on branch tip; 1585 does not edit `candidate.py` / `database.py` in engineer commits. No traceability persist, grade writers, or read-current hydrate substitution.
+- **C6 lenses:** Layer imports clean; auth on protected endpoint; debug contract on touched `debug=` paths; no silent failure / inappropriate fallbacks on operative path.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Joan discuss resolved in build** — dispatch UUID / `pin_required` short-circuits now route through `_dispatch_recorded_debug` (same recorded epilog shape as handler path).
+- **Branch stacking** — `origin/dev...publish-ref` includes full AST-1584 stack; normal for `blockedBy` sibling before ftr merge. 1585 engineer commits remain scope-clean.
+- **Issue doc vs test-bible** — test-bible carries AST-1585 manifest (`contact.md`, `api_candidate.md`, `frontend/*`); issue doc stops at build stub — Chuckles may append qa pointer when writing back.
+- **Double PK fetch** — `resolve_pinned_base_resume` calls `database.get_artifact` then `get_operative_base_resume` (which fetches again); matches plan literal contract, not a defect.
+- **JAR `useEffect` deps** — `api` omitted from dependency array (stable import pattern elsewhere); optional eslint-hygiene if team cares.
+
+## What's solid
+
+- Single shared path: UI API and Estelle both use `contact.resolve_pinned_base_resume` — parent “same read-operative path” satisfied.
+- Blob dual-read removal is explicit and tested: dispatch refuses `artifacts.base_resume`; Estelle raft strips blob before pin inject; JAR never hydrates candidate blob for Source panel.
+- Betty coverage hits all three surfaces: `TestAst1585ContactPinnedBaseResume`, `TestAst1585OperativeBaseResumeApi`, JAR + `recommendedJobReport` helper tests.
+
+## Frame diff
+
+| Planned (AST-1585) | Landed |
+|--------------------|--------|
+| `src/core/contact.py` | ✓ (`bdd91ca8`) |
+| `src/ui/api/api_candidate.py` | ✓ (`a75f0d48`) |
+| `src/ui/frontend/src/lib/recommendedJobReport.tsx` | ✓ (`fca9711a`) |
+| `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` | ✓ (`fca9711a`) |
+| `src/ui/api/api_jobs.py` untouched | ✓ |
+| `candidate.py` / `database.py` untouched by 1585 engineer | ✓ (sibling on branch only) |
+| Betty test-tree | ✓ (`a35223c5` + `dc723224 merge-tests`) |
+| Issue doc qa manifest | (none) — test-bible holds manifest |
+
+## Notes
+
+- Joan plan-rubric verdict attached; no Excluded statutes.
+- AST-1584 dependency on branch tip; prior Radia verdict PROCEED @ `cd309487`.
+- Review diff: `git diff origin/dev...origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve` (21 files, +1648/−66).
+
+context_tokens≈55000
+```
