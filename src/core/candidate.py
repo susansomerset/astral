@@ -2465,11 +2465,30 @@ def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
     return out
 
 
+_PILOT_BASE_RESUME_ARTIFACT_KEY = "candidate.artifacts.base_resume"
+
+
+def candidate_id_for_current_read(cd: dict) -> Optional[str]:
+    """Extract candidate id from token view or inner candidate_data for current-read."""
+    if not isinstance(cd, dict):
+        return None
+    cid = (cd.get("_astral_candidate_id") or cd.get("astral_candidate_id") or "").strip()
+    return cid or None
+
+
+def load_pilot_base_resume_for_candidate(candidate_id: str) -> Optional[Any]:
+    """Current-read pilot base_resume body for live/builder consumers (AST-1587)."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return None
+    return get_candidate_current(cid, _PILOT_BASE_RESUME_ARTIFACT_KEY)
+
+
 def format_base_resume_for_token(candidate_data: dict) -> str:
     """{$BASE_RESUME}: section-id-keyed JSON for agent prompts (AST-607), never markdown."""
     cd = candidate_data if isinstance(candidate_data, dict) else {}
-    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
-    raw = artifacts.get("base_resume")
+    cid = candidate_id_for_current_read(cd)
+    raw = load_pilot_base_resume_for_candidate(cid) if cid else None
     structure = resolve_resume_structure(cd)
     content, _struct = ingest_legacy_label_content_base_resume(raw, structure)
     section_ids = {
@@ -2492,7 +2511,8 @@ def resolve_resume_structure(candidate_data: dict) -> dict:
             # Corrupt or legacy blob: bounded fallback to default (see test_resolve_falls_back_to_default_when_invalid).
             pass
     resolved = default_resume_structure()
-    br = artifacts.get("base_resume")
+    cid = candidate_id_for_current_read(cd)
+    br = load_pilot_base_resume_for_candidate(cid) if cid else None
     if isinstance(br, dict):
         ac = br.get("accent_color")
         if isinstance(ac, str) and ac.strip():
@@ -2716,8 +2736,8 @@ _DRAFT_JOB_RESUME_SECTION_ALIASES = {
 def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
     """Section keys from artifacts.base_resume (including extras); not ∩ KNOWN."""
     cd = candidate_data if isinstance(candidate_data, dict) else {}
-    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
-    base = artifacts.get("base_resume")
+    cid = candidate_id_for_current_read(cd)
+    base = load_pilot_base_resume_for_candidate(cid) if cid else None
     if not isinstance(base, (dict, list)):
         return []
     structure = resolve_resume_structure(cd)
@@ -2799,8 +2819,8 @@ def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> N
     """Restore company/title/dates/location from base jobs matched by (company, title)."""
     if not isinstance(payload, dict) or not isinstance(candidate_data, dict):
         return
-    artifacts = candidate_data.get("artifacts")
-    base = artifacts.get("base_resume") if isinstance(artifacts, dict) else None
+    cid = candidate_id_for_current_read(candidate_data)
+    base = load_pilot_base_resume_for_candidate(cid) if cid else None
     if not isinstance(base, dict):
         return
     base_exp = base.get("experience")
@@ -2940,7 +2960,8 @@ def validate_draft_job_resume_payload(
             outcome=outcome,
         )
         logger.debug_detail(
-            f"found whitelist_source=base_resume keys={sorted(allowed)}"
+            f"found whitelist_source=get_candidate_current "
+            f"artifact_key={_PILOT_BASE_RESUME_ARTIFACT_KEY!r} keys={sorted(allowed)}"
         )
         logger.debug_detail(f"recorded accepted_keys={sorted(accepted)}")
         logger.debug_detail(f"recorded rejected_keys={sorted(rejected)}")
