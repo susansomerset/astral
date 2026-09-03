@@ -162,3 +162,20 @@ PUT `/data` pops `artifacts.base_resume` then `save_candidate_data(candidate_id,
 **Broken / obsolete:** `TestAst1353SaveBaseResumeSnapshotApi`; snapshot stub on mocked PUT.
 
 **Integration:** none.
+
+---
+
+### AST-1585 · AST-1571
+
+**Publish:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`.
+
+`GET /api/candidates/<id>/operative/base_resume?artifact_id=` → `resolve_pinned_base_resume` → `{"base_resume": body}` (400 missing id; 404 unknown candidate / miss / wrong owner). No blob / `get_current_artifact` on this path. Primary Contact helper: **`docs/test-bible/core/contact.md`** § AST-1585.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Operative GET pin→body | `src/ui/api/api_candidate.py` | **`TestAst1585OperativeBaseResumeApi`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+

@@ -324,3 +324,27 @@ Child #1: `CONTACT_TASK_CONFIG` block (six keys pre-registered), markup parse/st
 **Integration:** none revised.
 
 Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+---
+
+### AST-1585 · AST-1571
+
+**Parent:** [AST-1571 — Implement patt.artifact.read-operative](https://linear.app/astralcareermatch/issue/AST-1571/implement-pattartifactread-operative). **Publish:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`.
+
+Contact `resolve_pinned_base_resume` (ownership + `get_operative_base_resume`); `run_contact_task_dispatch` UUID short-circuit / `pin_required` for `artifacts.base_resume`; Estelle raft strips blob `base_resume` and injects pin body when `base_resume_artifact_id` supplied. API + JAR: **`docs/test-bible/ui/api/api_candidate.md`**, **`docs/test-bible/frontend/lib.md`**, **`docs/test-bible/frontend/components.md`** § AST-1585. Helper SoT: **`docs/test-bible/core/candidate.md`** § AST-1584.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Resolve / dispatch / Estelle raft | `src/core/contact.py` | **`TestAst1585ContactPinnedBaseResume`** |
+
+**Broken / obsolete this pass:** none — additive short-circuits; other `get_candidate_data` params still hit tracker.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume \
+  tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi \
+  -q
+```
+

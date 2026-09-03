@@ -1356,3 +1356,42 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Integration:** none.
 
+---
+
+### AST-1585 · AST-1571
+
+**Publish:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`.
+
+JAR Artifacts pane **Source base resume** block: gap when no `job_data.base_resume_artifact_id`; fetch via operative API when pin present; error class on fail; never candidate detail blob for this panel. Helpers: **`docs/test-bible/frontend/lib.md`** § AST-1585. §6c routed-page N/A (component only).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Source base resume panel | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1585 Source base resume`** |
+
+**Broken / obsolete this pass:** none — existing empty Artifacts asserts still hold (do not require absence of Source block).
+
+**Integration:** none.
+
+## QA test manifest (AST-1585)
+
+1. Contact resolve/dispatch/raft: `tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume`
+2. Operative GET API: `tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi`
+3. Lib helpers: `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — `--testNamePattern="AST-1585"`
+4. JAR Source panel: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1585"`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume \
+  tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1585"
+```
+
+**Pass criterion:** pytest + Vitest green on lines 1–4 — not zero-arg harness / branch-lock gate.
+

@@ -1244,3 +1244,107 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
   })
 })
 
+
+describe("JobAnalysisReportModal — AST-1585 Source base resume", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("shows gap copy when job has no pin and does not call operative API", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j1585-gap"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1585-gap" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    expect(screen.getByText("Source base resume")).toBeInTheDocument()
+    expect(screen.getByText("No pinned base resume for this build.")).toBeInTheDocument()
+    const operativeCalls = mockedApi.mock.calls.filter(([url]) =>
+      String(url).includes("/operative/base_resume"),
+    )
+    expect(operativeCalls).toHaveLength(0)
+  })
+
+  it("fetches operative pin body and renders JSON (no candidate blob fallback)", async () => {
+    const pin = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    const cid = baseCandidate.astral_candidate_id
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j1585-pin" && !init) {
+        return jsonResponse({
+          astral_job_id: "j1585-pin",
+          job_title: "Role",
+          company: "Co",
+          state: "RECOMMENDED",
+          state_changed_at: null,
+          job_link: "https://jobs.example/apply",
+          job_data: {
+            job_description: "JD",
+            analysis_upshot: fullUpshot(),
+            base_resume_artifact_id: pin,
+            artifacts: {
+              job_resume: { professional_summary: "job draft" },
+            },
+          },
+        })
+      }
+      if (
+        url ===
+        `/api/candidates/${cid}/operative/base_resume?artifact_id=${encodeURIComponent(pin)}`
+      ) {
+        return jsonResponse({
+          base_resume: { professional_summary: "source-pin-body" },
+        })
+      }
+      if (url === `/api/candidates/${cid}/resume_structure`) {
+        return jsonResponse({
+          sections: [{ id: "professional_summary", label: "Summary" }],
+          accent_color: null,
+        })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j1585-pin" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    expect(screen.getByText("Source base resume")).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByText(/source-pin-body/)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText("No pinned base resume for this build.")).not.toBeInTheDocument()
+    // Must not use candidate detail hydrate for this panel
+    const detailGets = mockedApi.mock.calls.filter(
+      ([url, init]) => url === `/api/candidates/${cid}` && !init,
+    )
+    expect(detailGets).toHaveLength(0)
+  })
+
+  it("shows entity-error when operative fetch fails", async () => {
+    const pin = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+    const cid = baseCandidate.astral_candidate_id
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j1585-err" && !init) {
+        return jsonResponse({
+          astral_job_id: "j1585-err",
+          job_title: "Role",
+          company: "Co",
+          state: "RECOMMENDED",
+          state_changed_at: null,
+          job_link: null,
+          job_data: {
+            job_description: "JD",
+            analysis_upshot: fullUpshot(),
+            base_resume_artifact_id: pin,
+          },
+        })
+      }
+      if (String(url).includes("/operative/base_resume")) {
+        return jsonResponse({ error: "base_resume not found for pin" }, { ok: false, status: 404 })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j1585-err" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    await waitFor(() =>
+      expect(screen.getByText("base_resume not found for pin")).toBeInTheDocument(),
+    )
+    expect(screen.getByText("base_resume not found for pin").className).toContain("entity-error")
+  })
+})
+

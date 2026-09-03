@@ -1799,3 +1799,151 @@ class TestAst1561ContactPasteRouting:
         land.assert_not_called()
         assert db.get_meteorite(row_id)["state"] == "READY"
 
+
+# Branches: resolve hit/miss/owner; dispatch UUID / pin_required; Estelle raft strip+inject.
+class TestAst1585ContactPinnedBaseResume:
+    """AST-1585: Contact pin→body + refuse blob dual-read for pilot base_resume."""
+
+    def test_resolve_hit_and_owner_gate(self, seeded_db) -> None:
+        db = seeded_db
+        blob = {"professional_summary": "pinned-v1", "candidate_name": "Ada"}
+        uid = db.save_artifact("candidate", "cand-1", "base_resume", blob)
+        assert contact_mod.resolve_pinned_base_resume("cand-1", uid) == blob
+        assert contact_mod.resolve_pinned_base_resume("other", uid) is None
+        assert contact_mod.resolve_pinned_base_resume("cand-1", "missing-uuid") is None
+        assert contact_mod.resolve_pinned_base_resume("", uid) is None
+        assert contact_mod.resolve_pinned_base_resume("cand-1", "") is None
+
+    def test_dispatch_uuid_short_circuit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pin = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        body = {"professional_summary": "from-pin"}
+        spy = MagicMock(return_value=body)
+        monkeypatch.setattr(contact_mod, "resolve_pinned_base_resume", spy)
+        handler = MagicMock(return_value={"ok": True, "result": "blob"})
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: handler
+        )
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="cand-1",
+            markup_spans=[("get_candidate_data", pin)],
+        )
+        assert results == [
+            {"ok": True, "task_key": "get_candidate_data", "result": body}
+        ]
+        spy.assert_called_once_with("cand-1", pin, debug=False)
+        handler.assert_not_called()
+
+        spy.return_value = None
+        miss = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="cand-1",
+            markup_spans=[("get_candidate_data", pin)],
+        )
+        assert miss[0]["ok"] is False
+        assert miss[0]["error"] == "not_found"
+        handler.assert_not_called()
+
+    def test_dispatch_refuses_blob_dotted_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        handler = MagicMock(return_value={"ok": True, "result": "blob"})
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: handler
+        )
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="cand-1",
+            markup_spans=[("get_candidate_data", "artifacts.base_resume")],
+        )
+        assert results == [
+            {
+                "ok": False,
+                "error": "pin_required",
+                "task_key": "get_candidate_data",
+            }
+        ]
+        handler.assert_not_called()
+
+    def test_estelle_turn_strips_blob_and_injects_pin(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pin = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        pinned = {"professional_summary": "operative"}
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "load_slack_conversation_context",
+            MagicMock(
+                return_value={
+                    "channel": "C1",
+                    "thread_ts": "",
+                    "messages": [],
+                    "source": "cache",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            contact_mod,
+            "get_candidate",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "cand-1",
+                    "candidate_data": {
+                        "artifacts": {
+                            "base_resume": {"professional_summary": "blob-stale"},
+                            "resume_structure": {"sections": {}},
+                        }
+                    },
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            contact_mod, "resolve_pinned_base_resume", MagicMock(return_value=pinned)
+        )
+        monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
+        monkeypatch.setattr(
+            contact_mod, "contact_post_message", MagicMock(return_value={"ok": True})
+        )
+        monkeypatch.setattr(contact_mod, "format_contact_reply_text", lambda text: text)
+        captured: dict = {}
+
+        async def _do_task(*_a, **kwargs):
+            captured["candidate_data"] = kwargs.get("candidate_data")
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {"reply": "Hi"},
+            }
+
+        import src.core.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1",
+            text="hi",
+            astral_candidate_id="cand-1",
+            base_resume_artifact_id=pin,
+            debug=False,
+        )
+        assert out["ok"] is True
+        raft = captured["candidate_data"]
+        assert raft["artifacts"]["base_resume"] == pinned
+        assert raft["artifacts"]["base_resume"]["professional_summary"] != "blob-stale"
+        contact_mod.resolve_pinned_base_resume.assert_called_once_with(
+            "cand-1", pin, debug=False
+        )
+
+        # No pin: blob stripped, no inject
+        captured.clear()
+        monkeypatch.setattr(
+            contact_mod, "resolve_pinned_base_resume", MagicMock(return_value=pinned)
+        )
+        contact_mod.run_contact_estelle_turn(
+            channel="C1",
+            text="hi",
+            astral_candidate_id="cand-1",
+            debug=False,
+        )
+        raft2 = captured["candidate_data"]
+        assert "base_resume" not in (raft2.get("artifacts") or {})
+        contact_mod.resolve_pinned_base_resume.assert_not_called()
+

@@ -1,5 +1,5 @@
 import { render } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   artifactHasContent,
   buildPhaseSectionGradeConfidenceRow,
@@ -213,3 +213,50 @@ describe("recommendedJobReport — AST-1348 phase score header helpers", () => {
     ).toBe("DO Analysis - score: 0 out of 0 possible (300 max total)")
   })
 })
+
+
+describe("recommendedJobReport — AST-1585 operative base_resume helpers", () => {
+  it("jobBaseResumeArtifactId reads trimmed string pin only", async () => {
+    const { jobBaseResumeArtifactId } = await import(
+      "../../../../src/ui/frontend/src/lib/recommendedJobReport"
+    )
+    expect(jobBaseResumeArtifactId(null)).toBeNull()
+    expect(jobBaseResumeArtifactId([])).toBeNull()
+    expect(jobBaseResumeArtifactId({})).toBeNull()
+    expect(jobBaseResumeArtifactId({ base_resume_artifact_id: 12 })).toBeNull()
+    expect(jobBaseResumeArtifactId({ base_resume_artifact_id: "  " })).toBeNull()
+    expect(
+      jobBaseResumeArtifactId({
+        base_resume_artifact_id: "  aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee  ",
+      }),
+    ).toBe("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee")
+  })
+
+  it("fetchOperativeBaseResume hits candidate operative URL", async () => {
+    const { fetchOperativeBaseResume } = await import(
+      "../../../../src/ui/frontend/src/lib/recommendedJobReport"
+    )
+    const apiFn = vi.fn(async (path: string) => {
+      expect(path).toBe(
+        "/api/candidates/cand-1/operative/base_resume?artifact_id=pin-1",
+      )
+      return {
+        ok: true,
+        json: async () => ({ base_resume: { professional_summary: "op" } }),
+      } as Response
+    })
+    const hit = await fetchOperativeBaseResume("cand-1", "pin-1", apiFn)
+    expect(hit).toEqual({ ok: true, base_resume: { professional_summary: "op" } })
+
+    const failFn = vi.fn(async () =>
+      ({
+        ok: false,
+        status: 404,
+        json: async () => ({ error: "base_resume not found for pin" }),
+      }) as Response,
+    )
+    const miss = await fetchOperativeBaseResume("cand-1", "pin-1", failFn)
+    expect(miss).toEqual({ ok: false, error: "base_resume not found for pin" })
+  })
+})
+

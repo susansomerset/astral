@@ -1419,3 +1419,73 @@ class TestAst1474PageBreakPolicyCatalogApi:
         )
         assert bad.status_code == 400
         assert "page_break_policy" in bad.get_json()["error"]
+
+
+# Branches: GET pin→body 200; missing artifact_id 400; miss/wrong owner/unknown cand 404.
+class TestAst1585OperativeBaseResumeApi:
+    """AST-1585: GET /operative/base_resume?artifact_id= via resolve_pinned_base_resume."""
+
+    def test_get_returns_body_for_owned_pin(
+        self,
+        candidate_client,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1585", state="NEW_CANDIDATE", candidate_data={})
+        blob = _resume_content_blob(professional_summary="api-pin")
+        uid = db.save_artifact("candidate", "c1585", "base_resume", blob)
+        resp = candidate_client.get(
+            f"/api/candidates/c1585/operative/base_resume?artifact_id={uid}",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.get_json()
+        assert resp.get_json()["base_resume"]["professional_summary"] == "api-pin"
+
+    def test_get_requires_artifact_id(
+        self,
+        candidate_client,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1585b", state="NEW_CANDIDATE", candidate_data={})
+        resp = candidate_client.get(
+            "/api/candidates/c1585b/operative/base_resume",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "artifact_id" in resp.get_json()["error"]
+
+    def test_get_404_unknown_candidate_or_miss(
+        self,
+        candidate_client,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        missing = candidate_client.get(
+            "/api/candidates/nope/operative/base_resume?artifact_id=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            headers=auth_headers,
+        )
+        assert missing.status_code == 404
+        db.save_candidate("c1585c", state="NEW_CANDIDATE", candidate_data={})
+        miss = candidate_client.get(
+            f"/api/candidates/c1585c/operative/base_resume?artifact_id=aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+            headers=auth_headers,
+        )
+        assert miss.status_code == 404
+        assert "base_resume not found" in miss.get_json()["error"]
+        # wrong owner
+        uid = db.save_artifact(
+            "candidate",
+            "other-cand",
+            "base_resume",
+            _resume_content_blob(professional_summary="foreign"),
+        )
+        wrong = candidate_client.get(
+            f"/api/candidates/c1585c/operative/base_resume?artifact_id={uid}",
+            headers=auth_headers,
+        )
+        assert wrong.status_code == 404
+
