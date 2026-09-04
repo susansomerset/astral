@@ -102,10 +102,8 @@ export function artifactHasContent(artifacts: unknown, key: string): boolean {
 }
 
 export function printResumeVisible(artifacts: unknown): boolean {
-  return (
-    artifactHasContent(artifacts, "job_resume")
-    || artifactHasContent(artifacts, "resume_content")
-  )
+  // AST-1593: hydrated job_resume current only — resume_content is not catalog SoT.
+  return artifactHasContent(artifacts, "job_resume")
 }
 
 export function printCoverVisible(artifacts: unknown): boolean {

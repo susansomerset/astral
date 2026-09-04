@@ -527,15 +527,8 @@ export default function ArtifactEditor({
   function applyJobArtifactResponse(job: { job_data?: { artifacts?: Record<string, unknown> } }) {
     const persistKey = jobPersistence!.artifactKey
     const artifacts = (job.job_data?.artifacts ?? {}) as Record<string, unknown>
-    let raw = artifacts[persistKey]
-    // AST-1428: JAR tab key is job_resume; section bodies live on resume_content (GET hydrate overlays).
-    if (
-      persistKey === "job_resume"
-      && (raw == null || typeof raw === "string" || (typeof raw === "object" && !Array.isArray(raw) && Object.keys(raw as object).length === 0))
-    ) {
-      const sibling = artifacts.resume_content
-      if (sibling && typeof sibling === "object" && !Array.isArray(sibling)) raw = sibling
-    }
+    // AST-1593: trust GET hydrate current under leaf key — do not promote resume_content as SoT.
+    const raw = artifacts[persistKey]
     if (fixedFields) mapFixedFieldsFromRaw(raw)
     else mapJobDictArtifactFromRaw(raw)
   }
