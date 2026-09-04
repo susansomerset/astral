@@ -167,3 +167,145 @@ context_tokens≈42000
 **Publish ref:** `sub/AST-1588/AST-1591-artifacts-table-source-references` @ `c4684fafc364363466f772687fca726b6a4459aa`
 
 Stages 1–3 delivered: `artifacts.source_artifact_ids` DDL/ensure + header inventory; `save_artifact` optional persist; get-current / get-by-uuid (via shared mapper) return list; draft traceability one-line note.
+
+## Radia review
+
+# Radia review — AST-1591
+
+`[code-rubric] revision=2`
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1591
+**Publish ref:** `sub/AST-1588/AST-1591-artifacts-table-source-references` @ `8701bb5406da155e38a49a24b1e3181426b3812e`
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1591)` on publish ref. |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary respected. |
+| orch.git.flow-direction-inviolable | universal | conforms | Child `sub/AST-1588/…` only; no dev-agent writes. |
+| orch.git.ftr-sub-topology | universal | conforms | Correct `sub/<parent>/<child>` topology. |
+| orch.git.merge-on-checkout | universal | conforms | No merge-on-checkout violations in diff. |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | Linear history; no rebase/force in diff. |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named publish branches. |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree pattern; no violation in diff. |
+| orch.git.three-permanent-branches | universal | conforms | Publish ref is `sub/*`, not a fourth permanent branch. |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No unresolved product forks in implementation. |
+| orch.pipeline.plan-is-bible | universal | conforms | `database.py` + draft note match Stages 1–3. |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A to code diff. |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed as expected. |
+| orch.roles.archie-approves-statutes | universal | conforms | N/A to this diff. |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible edits via Betty `qa-child` + `merge-tests`. |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to diff. |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee through Tests Passed. |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook-ban path violations observed. |
+| astral.agent.confidence-bounds | scoped | not-applicable | No `src/core/**` diff paths. |
+| astral.agent.do-task-delegation | scoped | not-applicable | No agent layer changes. |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade-vector paths touched. |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch/dispatcher changes. |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch id paths. |
+| astral.batch.claim-process-release | scoped | not-applicable | No claim/clear helpers changed. |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No agent_response paths. |
+| astral.config.config-source-of-truth | scoped | not-applicable | No `src/utils/config.py` in diff. |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No env/secret surface changes. |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug artifact paths. |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spike paths. |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No dispatch changes. |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No run_next changes. |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | `ast-1591-*.md` is one file for this ticket. |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty paths are tests/bible only. |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Test-tree edits attributed to Betty pipeline (`merge-tests`). |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | No core/external diff. |
+| astral.layers.import-direction | scoped | conforms | `Sequence` added at module top in `database.py`; no layer bends. |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No scripts diff. |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | No UI diff. |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | No coat-check paths. |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No consult/render paths. |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | No API auth paths. |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON changes. |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No catalog seed paths. |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | No boot/seed hot-path changes. |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed ticket paths. |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator-row paths. |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage-join paths. |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `ValueError` on bad type; no new data-layer logging. |
+| astral.standards.database-header-inventory | scoped | conforms | Header inventory updated with `source_artifact_ids`. |
+| astral.standards.debug-contract-gated | scoped | not-applicable | No debug emission added. |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `_ensure_source_artifact_ids_column()` consolidates ALTER logic. |
+| astral.standards.in-scope-only | scoped | conforms | `database.py` + draft traceability only in product; see discuss on branch diff footprint. |
+| astral.standards.logging-via-utils | scoped | not-applicable | No logging added. |
+| astral.standards.names-not-ticket-ids | scoped | conforms | AST-1591 cites are traceability comments, not runtime identifiers. |
+| astral.standards.no-cross-contamination | scoped | conforms | Data-layer change stays in `src/data`; no out-of-layer imports. |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | No new inline enum sets outside config. |
+| astral.standards.public-then-helpers | scoped | conforms | Public `save_artifact` extended; helper `_artifact_row_dict` updated in place. |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils layer changes. |
+| astral.state.core-decides-transitions | scoped | not-applicable | No state machine changes. |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job-state paths. |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | No run-chain paths. |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No frontend diff. |
+| astral.ui.naming-conventions | scoped | not-applicable | No UI diff. |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server config diff. |
+
+**Active set:** 65 statutes scored (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan has no "Patterns to reuse" block; draft `patt.artifacts.traceability` alignment is in-scope prose only (not approved catalog). |
+
+## Plan adherence
+
+**AST-1591 product slice matches plan Stages 1–3.**
+
+- **Stage 1:** `source_artifact_ids` in fresh `CREATE TABLE`, header inventory updated, `_ensure_source_artifact_ids_column()` called on both existing-table early-return paths (`artifacts` and post-`astral_artifacts` rename).
+- **Stage 2:** `_ARTIFACT_SELECT` extended; `_artifact_row_dict` shifts indices and returns `list[str]`; `save_artifact(..., source_artifact_ids=None)` normalizes/strips/persists; INSERT column/`?` bind tuple is consistent (6 binds + literal `current=1` + 2 timestamps); no logging; no caller rewires; no UUID-existence validation (per plan decision).
+- **Stage 3:** Draft `patt.artifacts.traceability.md` gains AST-1588 alignment bullet; file stays under `draft/`.
+
+**Estimate 3** fits the actual footprint (single data module + draft note + Betty tests).
+
+**Betty manifest** (`test_artifacts.py` full file) aligns with bible `docs/test-bible/data/database/artifacts.md` § AST-1591.
+
+## Findings
+
+### discuss
+
+**Cross-ticket diff footprint — sibling AST-1590 tests without AST-1590 product on this ref**
+
+- **Location:** `origin/sub/AST-1588/AST-1591-artifacts-table-source-references` three-dot diff vs `origin/dev`; commits `bb427f0c` onward.
+- **What:** Diff includes AST-1590 test-tree + bible deltas (`tests/component/utils/test_config.py`, `tests/component/core/test_agent.py`, `docs/test-bible/utils/config.md` § AST-1590) merged from shared `origin/tests`, but **`src/utils/config.py` on this tip is still dev** (leaf body-replica values, pilot-only `ARTIFACT_CONFIG`).
+- **Why it matters:** `TestAst1590JobArtifactCatalogKeys` and revised body-replica/agent asserts **will fail** on this ref if the config component suite runs. AST-1591 manifest (`test_artifacts.py` only) can be green while sibling tests are red.
+- **Recommendation:** Not a product defect in `database.py`. Resolve at **merge-child** / `blockedBy` order: land AST-1590 product on `ftr` before (or together with) this test footprint, or keep sibling test commits off the AST-1591 publish ref until AST-1590 product is an ancestor. Chuckles should confirm rollup order before UT.
+
+### advisory
+
+- **AST-1587 bible shasum lines** in `docs/test-bible/core/builder.md` and `candidate.md` are unrelated sibling churn on the branch — harmless, not AST-1591 scope.
+- **Draft traceability edit** renumbered Implementation bullets (not literally "one line") — acceptable for draft canon; content matches Stage 3 intent.
+
+## What's solid
+
+- Clean data-layer slice: schema ensure on both migration paths, backward-compatible optional kwarg, shared mapper surfaces field through `get_current_artifact` / `get_artifact` / `list_artifacts`.
+- Retire-and-insert write-operative shape preserved; no existence validation matches parent incremental-add intent.
+- Component tests cover ALTER-on-legacy-table, omit→`[]`, persist/strip, per-version independence, and bad-type `ValueError`.
+
+## Frame diff
+
+**In-scope (AST-1591):** `src/data/database.py` `source_artifact_ids` column + persist/read; `canon/directives/draft/patt.artifacts.traceability.md` alignment; `docs/test-bible/data/database/artifacts.md` + `tests/component/data/database/test_artifacts.py`.
+
+**Cross-frame (sibling, not AST-1591 product):** AST-1590 test/bible deltas on same publish ref without AST-1590 `config.py` product — discuss above.
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute straggler list.
+- No `src/core/**`, `src/utils/**`, UI, or tracker rewires — boundaries hold for this ticket's product work.
+- `8701bb54` is tip under review.
+
+context_tokens≈58000
+
+---
+
+```
+[code-rubric] REVIEW (Commit: 8701bb54) Sibling tests need merge order
+```
+
