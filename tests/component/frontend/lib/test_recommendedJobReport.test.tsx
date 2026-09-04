@@ -25,24 +25,26 @@ describe("recommendedJobReport — AST-581 materialsPreviewVisible", () => {
     expect(materialsPreviewVisible("RECOMMENDED", {})).toBe(false)
   })
 
-  it("returns true on BUILD_ARTIFACTS when job_resume or resume_content has text", () => {
+  it("returns true on BUILD_ARTIFACTS when hydrated job_resume has text", () => {
     expect(
       materialsPreviewVisible("BUILD_ARTIFACTS", {
         job_resume: { professional_summary: "draft" },
       }),
     ).toBe(true)
+    // AST-1593: resume_content alone is not job-resume SoT
     expect(
       materialsPreviewVisible("BUILD_ARTIFACTS", {
         resume_content: { professional_summary: "legacy" },
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 })
 
 describe("recommendedJobReport — AST-948 print helpers", () => {
-  it("printResumeVisible follows resume_content via artifactHasContent", () => {
-    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(true)
-    expect(printResumeVisible({ resume_content: { professional_summary: "   " } })).toBe(false)
+  it("printResumeVisible follows hydrated job_resume via artifactHasContent", () => {
+    expect(printResumeVisible({ job_resume: { professional_summary: "x" } })).toBe(true)
+    expect(printResumeVisible({ job_resume: { professional_summary: "   " } })).toBe(false)
+    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(false)
     expect(printResumeVisible({})).toBe(false)
   })
 
@@ -60,9 +62,9 @@ describe("recommendedJobReport — AST-1100 pin-slot visibility", () => {
     expect(artifactHasContent({ job_resume: { professional_summary: "x" } }, "job_resume")).toBe(true)
   })
 
-  it("printResumeVisible accepts job_resume pin or legacy resume_content", () => {
+  it("printResumeVisible accepts job_resume pin; resume_content is not SoT", () => {
     expect(printResumeVisible({ job_resume: "pin-id" })).toBe(true)
-    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(true)
+    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(false)
     expect(printResumeVisible({})).toBe(false)
   })
 

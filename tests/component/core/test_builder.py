@@ -78,6 +78,42 @@ def _install_candidate_for_base_resume(
     )
 
 
+
+
+def _seed_job_catalog_currents(monkeypatch: pytest.MonkeyPatch, job: dict) -> dict:
+    """AST-1593: map legacy job_data resume_content/cover_letter seeds onto get_job_current."""
+    jid = str(job.get("astral_job_id") or "").strip() or "job-under-test"
+    job["astral_job_id"] = jid
+    arts = ((job.get("job_data") or {}).get("artifacts") or {})
+    jr = arts.get("job_resume")
+    if not (isinstance(jr, dict) and jr):
+        rc = arts.get("resume_content")
+        jr = rc if isinstance(rc, dict) else None
+    cl = arts.get("cover_letter") if isinstance(arts.get("cover_letter"), dict) else None
+
+    def _get(astral_job_id: str, artifact_key: str, *, debug: bool = False):
+        if str(astral_job_id or "").strip() != jid:
+            return None
+        if artifact_key == "job.artifacts.job_resume":
+            return jr
+        if artifact_key == "job.artifacts.cover_letter":
+            return cl
+        return None
+
+    monkeypatch.setattr(builder_mod.tracker_mod, "get_job_current", _get)
+    return job
+
+
+def _build_resume_from_job(monkeypatch: pytest.MonkeyPatch, job: dict, cd: dict, **kwargs):
+    _seed_job_catalog_currents(monkeypatch, job)
+    return builder_mod.build_resume_from_job(job, cd, **kwargs)
+
+
+def _build_cover_letter_from_job(monkeypatch: pytest.MonkeyPatch, job: dict, cd: dict, **kwargs):
+    _seed_job_catalog_currents(monkeypatch, job)
+    return builder_mod.build_cover_letter_from_job(job, cd, **kwargs)
+
+
 class TestCoerceCandidateBlob:
     def test_unwraps_nested_candidate_rows(self) -> None:
         inner = {"contact": {"contact_email": "ada@example.com"}}
@@ -130,7 +166,7 @@ class TestBuildResume:
 
 
 class TestBuildResumeFromJob:
-    def test_renders_job_resume_with_keywords_resume_only_by_default(self) -> None:
+    def test_renders_job_resume_with_keywords_resume_only_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {
             "job_data": {
                 "artifacts": {
@@ -145,20 +181,20 @@ class TestBuildResumeFromJob:
                 "critical_keywords": "python, sql",
             }
         }
-        html = builder_mod.build_resume_from_job(job, _candidate_row(base_resume=_resume_blob()))
+        html = _build_resume_from_job(monkeypatch, job, _candidate_row(base_resume=_resume_blob()))
         assert "Professional Summary" in html
         assert 'aria-label="Cover body"' not in html
         assert "ats-keywords" in html
 
-    def test_falls_back_to_base_resume_and_non_dict_job_data(self) -> None:
+    def test_falls_back_to_base_resume_and_non_dict_job_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {"job_data": None}
-        html = builder_mod.build_resume_from_job(
+        html = _build_resume_from_job(monkeypatch, 
             job,
             _candidate_row(base_resume=_resume_blob(professional_summary="From base")),
         )
         assert "From base" in html
 
-    def test_job_cover_letter_not_in_resume_unless_include_cover(self) -> None:
+    def test_job_cover_letter_not_in_resume_unless_include_cover(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {
             "job_data": {
                 "artifacts": {
@@ -168,22 +204,22 @@ class TestBuildResumeFromJob:
             }
         }
         cd = _candidate_row(base_resume=_resume_blob())
-        resume_only = builder_mod.build_resume_from_job(job, cd)
+        resume_only = _build_resume_from_job(monkeypatch, job, cd)
         assert 'aria-label="Cover body"' not in resume_only
-        combined = builder_mod.build_resume_from_job(job, cd, include_cover=True)
+        combined = _build_resume_from_job(monkeypatch, job, cd, include_cover=True)
         assert 'aria-label="Cover body"' in combined
         assert "Re" in combined
         assert "Body" in combined
 
-    def test_raises_when_no_resume_source_exists(self) -> None:
+    def test_raises_when_no_resume_source_exists(self, monkeypatch: pytest.MonkeyPatch) -> None:
         with pytest.raises(ValueError, match="No resume_content"):
-            builder_mod.build_resume_from_job({"job_data": {}}, {"artifacts": {}})
+            _build_resume_from_job(monkeypatch, {"job_data": {}}, {"artifacts": {}})
 
 
 class TestAst581ResumeCoverSplit:
     """AST-581 — job resume HTML resume-only; separate cover-letter render."""
 
-    def test_build_resume_from_job_omits_cover_when_include_cover_false(self) -> None:
+    def test_build_resume_from_job_omits_cover_when_include_cover_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {
             "job_data": {
                 "artifacts": {
@@ -192,11 +228,11 @@ class TestAst581ResumeCoverSplit:
                 }
             }
         }
-        html = builder_mod.build_resume_from_job(job, _candidate_row(base_resume=_resume_blob()), include_cover=False)
+        html = _build_resume_from_job(monkeypatch, job, _candidate_row(base_resume=_resume_blob()), include_cover=False)
         assert "Summary text" in html
         assert 'aria-label="Cover body"' not in html
 
-    def test_build_resume_from_job_includes_cover_when_include_cover_true(self) -> None:
+    def test_build_resume_from_job_includes_cover_when_include_cover_true(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {
             "job_data": {
                 "artifacts": {
@@ -205,11 +241,11 @@ class TestAst581ResumeCoverSplit:
                 }
             }
         }
-        html = builder_mod.build_resume_from_job(job, _candidate_row(base_resume=_resume_blob()), include_cover=True)
+        html = _build_resume_from_job(monkeypatch, job, _candidate_row(base_resume=_resume_blob()), include_cover=True)
         assert 'aria-label="Cover body"' in html
         assert "Cover body" in html
 
-    def test_build_cover_letter_from_job_emits_cover_only(self) -> None:
+    def test_build_cover_letter_from_job_emits_cover_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1138: cover-only is SomersetCover (fromBlock), not resume cover-block aria.
         job = {
             "job_data": {
@@ -218,18 +254,18 @@ class TestAst581ResumeCoverSplit:
                 }
             }
         }
-        html = builder_mod.build_cover_letter_from_job(job, _candidate_row(base_resume=_resume_blob()))
+        html = _build_cover_letter_from_job(monkeypatch, job, _candidate_row(base_resume=_resume_blob()))
         assert 'class="fromBlock"' in html
         assert 'class="lettercontent"' in html
         assert "Dear team" in html
         assert 'aria-label="Cover body"' not in html
         assert 'id="summary"' not in html
 
-    def test_build_cover_letter_raises_without_content(self) -> None:
+    def test_build_cover_letter_raises_without_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {"job_data": {"artifacts": {}}}
         cd = {"artifacts": {}, "context": {}}
         with pytest.raises(ValueError, match="No cover letter content"):
-            builder_mod.build_cover_letter_from_job(job, cd)
+            _build_cover_letter_from_job(monkeypatch, job, cd)
 
 
 class TestBuildBaseResume:
@@ -455,17 +491,17 @@ class TestAst518BuilderResumeStructure:
             },
         }
 
-    def test_renders_catalog_section_titles_not_hardcoded_headings(self) -> None:
+    def test_renders_catalog_section_titles_not_hardcoded_headings(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = candidate_mod.default_resume_structure()
         structure["sections"]["professional_summary"]["title"] = "Executive Pitch"
         job = {"job_data": {"artifacts": {}}}
-        html = builder_mod.build_resume_from_job(
+        html = _build_resume_from_job(monkeypatch, 
             job, self._candidate_with_structure(structure, professional_summary="Body text")
         )
         assert "Executive Pitch" in html
         assert "Professional Summary" not in html
 
-    def test_omits_orphan_keys_not_in_candidate_catalog(self) -> None:
+    def test_omits_orphan_keys_not_in_candidate_catalog(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = {
             "sections": {
                 "professional_summary": {
@@ -508,7 +544,7 @@ class TestAst518BuilderResumeStructure:
                 }
             }
         }
-        html = builder_mod.build_resume_from_job(job, self._candidate_with_structure(structure))
+        html = _build_resume_from_job(monkeypatch, job, self._candidate_with_structure(structure))
         assert "Keep me" in html
         assert "Secret orphan" not in html
 
@@ -528,7 +564,7 @@ class TestAst518BuilderResumeStructure:
         style = builder_mod._merge_effective_style(cd)
         assert style["colors"]["default_accent"] == accent
 
-    def test_cover_letter_subject_letter_aliases_render_on_cover_route(self) -> None:
+    def test_cover_letter_subject_letter_aliases_render_on_cover_route(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1138: Subject/Letter map into lettersubject / lettercontent (SomersetCover).
         job = {
             "job_data": {
@@ -537,7 +573,7 @@ class TestAst518BuilderResumeStructure:
                 }
             }
         }
-        html = builder_mod.build_cover_letter_from_job(job, _candidate_row(base_resume=_resume_blob()))
+        html = _build_cover_letter_from_job(monkeypatch, job, _candidate_row(base_resume=_resume_blob()))
         assert 'class="lettersubject"' in html
         assert "Re: Role" in html
         assert "Hello there" in html
@@ -558,28 +594,48 @@ class TestBuilderIdentifierHelpers:
         assert builder_mod._builder_job_identifier({"job_title": "Role"}) == "Role"
         assert builder_mod._builder_job_identifier({}) == "?"
 
-    def test_resume_content_source_labels(self) -> None:
-        job_rc = {"artifacts": {"resume_content": _resume_blob(professional_summary="x")}}
+    def test_resume_content_source_labels(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job_current",
+            lambda jid, key, *, debug=False: (
+                _resume_blob(professional_summary="x")
+                if key == "job.artifacts.job_resume"
+                else None
+            ),
+        )
         assert (
-            builder_mod._resume_content_source_label(job_rc, {})
-            == "job_data.artifacts.resume_content"
+            builder_mod._resume_content_source_label({}, {}, astral_job_id="job-1")
+            == "get_job_current(job.artifacts.job_resume)"
         )
         cd = _candidate_row(base_resume=_resume_blob(professional_summary="base"))
+        monkeypatch.setattr(
+            builder_mod.tracker_mod, "get_job_current", lambda *a, **k: None
+        )
         assert (
             builder_mod._resume_content_source_label({"artifacts": {}}, cd["candidate_data"])
             == "get_candidate_current(candidate.artifacts.base_resume)"
         )
         assert builder_mod._resume_content_source_label({}, {}) == "missing"
 
-    def test_cover_letter_source_labels(self) -> None:
-        job_cl = {
-            "artifacts": {"cover_letter": {"re_line": "Re", "body": "Hi", "signature": ""}}
-        }
+    def test_cover_letter_source_labels(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job_current",
+            lambda jid, key, *, debug=False: (
+                {"re_line": "Re", "body": "Hi", "signature": ""}
+                if key == "job.artifacts.cover_letter"
+                else None
+            ),
+        )
         assert (
-            builder_mod._cover_letter_source_label(job_cl, {})
-            == "job_data.artifacts.cover_letter"
+            builder_mod._cover_letter_source_label({}, {}, astral_job_id="job-1")
+            == "get_job_current(job.artifacts.cover_letter)"
         )
         cd = _candidate_row()
+        monkeypatch.setattr(
+            builder_mod.tracker_mod, "get_job_current", lambda *a, **k: None
+        )
         assert (
             builder_mod._cover_letter_source_label(
                 {"artifacts": {}}, cd["candidate_data"]
@@ -635,7 +691,7 @@ class TestBuilderIdentifierHelpers:
 class TestBuildResumeFromJobDebugPaths:
     """AST-623 — contract debug branches on resume render (no golden log lines)."""
 
-    def test_success_resume_job_source_with_debug(self) -> None:
+    def test_success_resume_job_source_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {
             "astral_job_id": "job-1",
             "job_data": {
@@ -646,24 +702,24 @@ class TestBuildResumeFromJobDebugPaths:
                 "critical_keywords": "python, sql",
             },
         }
-        html = builder_mod.build_resume_from_job(
+        html = _build_resume_from_job(monkeypatch, 
             job, _candidate_row(base_resume=_resume_blob()), include_cover=True, debug=True
         )
         assert "Summary" in html
         assert 'aria-label="Cover body"' in html
 
-    def test_success_resume_list_keywords_and_base_source_with_debug(self) -> None:
+    def test_success_resume_list_keywords_and_base_source_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {"job_data": {"critical_keywords": ["go", "rust"]}}
-        html = builder_mod.build_resume_from_job(
+        html = _build_resume_from_job(monkeypatch, 
             job,
             _candidate_row(base_resume=_resume_blob(professional_summary="From base")),
             debug=True,
         )
         assert "From base" in html
 
-    def test_failure_no_resume_source_with_debug(self) -> None:
+    def test_failure_no_resume_source_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         with pytest.raises(ValueError, match="No resume_content"):
-            builder_mod.build_resume_from_job({"job_data": {}}, {"artifacts": {}}, debug=True)
+            _build_resume_from_job(monkeypatch, {"job_data": {}}, {"artifacts": {}}, debug=True)
 
 
 class TestBuildResumeDebugPaths:
@@ -706,23 +762,21 @@ class TestBuildCoverLetterDebugPaths:
             builder_mod.build_cover_letter("job-missing", debug=True)
 
     def test_success_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            builder_mod.tracker_mod,
-            "get_job",
-            lambda job_id: {
-                "astral_job_id": job_id,
-                "company": "co",
-                "job_data": {
-                    "artifacts": {"cover_letter": {"re_line": "Re", "body": "Hi", "signature": ""}}
-                },
+        job = {
+            "astral_job_id": "job-1",
+            "company": "co",
+            "job_data": {
+                "artifacts": {"cover_letter": {"re_line": "Re", "body": "Hi", "signature": ""}}
             },
-        )
+        }
+        monkeypatch.setattr(builder_mod.tracker_mod, "get_job", lambda job_id: job)
         monkeypatch.setattr(builder_mod.database, "get_company", lambda short_name: {"candidate_id": "cand-1"})
         monkeypatch.setattr(
             builder_mod.candidate_mod,
             "get_candidate",
             lambda candidate_id: _candidate_row(base_resume=_resume_blob()),
         )
+        _seed_job_catalog_currents(monkeypatch, job)
         html = builder_mod.build_cover_letter("job-1", debug=True)
         assert "Hi" in html
 
@@ -763,7 +817,7 @@ class TestBuildCoverLetterDebugPaths:
 
 
 class TestBuildCoverLetterFromJobDebugPaths:
-    def test_success_with_debug_and_signature_image(self) -> None:
+    def test_success_with_debug_and_signature_image(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {
             "astral_job_id": "job-cl",
             "job_data": {
@@ -774,22 +828,22 @@ class TestBuildCoverLetterFromJobDebugPaths:
         }
         cd = _candidate_row(base_resume=_resume_blob())
         cd["candidate_data"]["contact"]["cover_letter_signature_image"] = "https://example.com/sig.png"
-        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        html = _build_cover_letter_from_job(monkeypatch, job, cd, debug=True)
         assert "Hello" in html
 
-    def test_failure_no_cover_with_debug(self) -> None:
+    def test_failure_no_cover_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         with pytest.raises(ValueError, match="No cover letter content"):
-            builder_mod.build_cover_letter_from_job(
+            _build_cover_letter_from_job(monkeypatch, 
                 {"job_data": {"artifacts": {}}}, {"artifacts": {}, "context": {}}, debug=True
             )
 
-    def test_non_dict_job_data_with_debug(self) -> None:
+    def test_non_dict_job_data_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {"job_data": None}
         cd = _candidate_row()
-        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        html = _build_cover_letter_from_job(monkeypatch, job, cd, debug=True)
         assert "Dear team" in html
 
-    def test_rejected_signature_image_with_debug(self) -> None:
+    def test_rejected_signature_image_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {
             "job_data": {
                 "artifacts": {
@@ -799,7 +853,7 @@ class TestBuildCoverLetterFromJobDebugPaths:
         }
         cd = _candidate_row(base_resume=_resume_blob())
         cd["candidate_data"]["contact"]["cover_letter_signature_image"] = "javascript:alert(1)"
-        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        html = _build_cover_letter_from_job(monkeypatch, job, cd, debug=True)
         assert "Body" in html
 
 
@@ -1065,7 +1119,7 @@ class TestAst998ExperienceJobRender:
         assert "Acme Corp" in html
         assert "<li>Shipped widgets</li>" in html
 
-    def test_job_resume_renders_job_array(self) -> None:
+    def test_job_resume_renders_job_array(self, monkeypatch: pytest.MonkeyPatch) -> None:
         jobs = self._JOBS
         job = {
             "astral_job_id": "job-1",
@@ -1083,7 +1137,7 @@ class TestAst998ExperienceJobRender:
             resume_structure=structure,
             base_resume={"professional_summary": "Base", "experience": "legacy"},
         )
-        html = builder_mod.build_resume_from_job(job, cd)
+        html = _build_resume_from_job(monkeypatch, job, cd)
         assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
         assert "<li>Shipped widgets</li>" in html
         assert "Job summary" in html
@@ -1413,7 +1467,7 @@ class TestAst1007NestedTypographyMarkers:
         html = builder_mod.build_base_resume("cand-1")
         self._assert_markers_applied(html)
 
-    def test_job_resume_html_nested_markers_not_literal(self) -> None:
+    def test_job_resume_html_nested_markers_not_literal(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         job = {
             "astral_job_id": "job-1",
@@ -1436,7 +1490,7 @@ class TestAst1007NestedTypographyMarkers:
                 },
             },
         }
-        html = builder_mod.build_resume_from_job(job, cd)
+        html = _build_resume_from_job(monkeypatch, job, cd)
         self._assert_markers_applied(html)
 
 
@@ -1585,7 +1639,7 @@ class TestAst1008ExperienceGoldenLayout:
         html = builder_mod.build_base_resume("cand-1")
         self._assert_golden_experience(html)
 
-    def test_job_resume_html_golden_layout(self) -> None:
+    def test_job_resume_html_golden_layout(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         job = {
             "astral_job_id": "job-1",
@@ -1610,7 +1664,7 @@ class TestAst1008ExperienceGoldenLayout:
                 },
             },
         }
-        html = builder_mod.build_resume_from_job(job, cd)
+        html = _build_resume_from_job(monkeypatch, job, cd)
         self._assert_golden_experience(html)
         assert "Job summary" in html
 
@@ -1747,7 +1801,7 @@ class TestAst1009EducationSkillsPrior:
         html = builder_mod.build_base_resume("cand-1")
         self._assert_section_markup(html)
 
-    def test_job_resume_html_education_skills_prior(self) -> None:
+    def test_job_resume_html_education_skills_prior(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         job = {
             "astral_job_id": "job-1",
@@ -1765,7 +1819,7 @@ class TestAst1009EducationSkillsPrior:
                 },
             },
         }
-        html = builder_mod.build_resume_from_job(job, cd)
+        html = _build_resume_from_job(monkeypatch, job, cd)
         self._assert_section_markup(html)
 
 
@@ -1888,7 +1942,7 @@ class TestAst1010HeaderContactMetaStyles:
         html = builder_mod.build_base_resume("cand-1")
         self._assert_header_meta_css(html, expect_meta=True)
 
-    def test_job_resume_header_meta_and_css(self) -> None:
+    def test_job_resume_header_meta_and_css(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         job = {
             "astral_job_id": "job-1",
@@ -1906,7 +1960,7 @@ class TestAst1010HeaderContactMetaStyles:
                 },
             },
         }
-        html = builder_mod.build_resume_from_job(job, cd)
+        html = _build_resume_from_job(monkeypatch, job, cd)
         self._assert_header_meta_css(html, expect_meta=True)
 
 
@@ -2020,7 +2074,7 @@ class TestAst1020GoldenStylesheet:
         html = builder_mod.build_base_resume("cand-1")
         self._assert_golden_style(html)
 
-    def test_job_resume_golden_stylesheet(self) -> None:
+    def test_job_resume_golden_stylesheet(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         job = {
             "astral_job_id": "job-1",
@@ -2038,7 +2092,7 @@ class TestAst1020GoldenStylesheet:
                 },
             },
         }
-        html = builder_mod.build_resume_from_job(job, cd)
+        html = _build_resume_from_job(monkeypatch, job, cd)
         self._assert_golden_style(html)
 
 
@@ -2165,7 +2219,7 @@ class TestAst1021DocumentTitleChrome:
         html = builder_mod.build_base_resume("cand-1")
         self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
 
-    def test_job_resume_title_and_field_meta(self) -> None:
+    def test_job_resume_title_and_field_meta(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
         job = {
             "astral_job_id": "job-1",
@@ -2183,7 +2237,7 @@ class TestAst1021DocumentTitleChrome:
                 },
             },
         }
-        html = builder_mod.build_resume_from_job(job, cd)
+        html = _build_resume_from_job(monkeypatch, job, cd)
         self._assert_title_meta(html, expect_title="Susan Somerset Resume", expect_meta=True)
 
 
@@ -3042,22 +3096,32 @@ class TestAst1024BuildSessionCoverLetter:
 
 
 class TestAst1100BuilderPinResolve:
-    """AST-1100: builder prefers resolved pins when legacy body dicts missing."""
+    """AST-1100 historical pin resolve — AST-1593 SoT is get_job_current (pins retired)."""
 
-    def test_resolve_resume_sections_from_pin(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resolve_resume_sections_from_catalog_current(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(
-            "src.core.tracker.resolve_job_artifact_agent_data_body",
-            lambda pin, debug=False: {"professional_summary": "From pin", "experience": "x"},
+            builder_mod.tracker_mod,
+            "get_job_current",
+            lambda jid, key, *, debug=False: (
+                {"professional_summary": "From catalog", "experience": "x"}
+                if key == "job.artifacts.job_resume"
+                else None
+            ),
         )
         out = builder_mod._resolve_resume_sections(
-            {"artifacts": {"job_resume": "pin-resume"}},
-            {"artifacts": {}},
+            {"artifacts": {}}, {}, astral_job_id="job-1"
         )
-        assert out["professional_summary"] == "From pin"
+        assert out["professional_summary"] == "From catalog"
 
-    def test_resolve_resume_prefers_legacy_resume_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        resolve = MagicMock(return_value={"professional_summary": "pin"})
-        monkeypatch.setattr("src.core.tracker.resolve_job_artifact_agent_data_body", resolve)
+    def test_resolve_resume_ignores_legacy_resume_content_blob(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.tracker_mod, "get_job_current", lambda *a, **k: None
+        )
+        cd = _candidate_row(base_resume=_resume_blob(professional_summary="base-only"))
         out = builder_mod._resolve_resume_sections(
             {
                 "artifacts": {
@@ -3065,21 +3129,27 @@ class TestAst1100BuilderPinResolve:
                     "job_resume": "pin-resume",
                 }
             },
-            {"artifacts": {}},
+            cd["candidate_data"],
+            astral_job_id="job-1",
         )
-        assert out["professional_summary"] == "legacy"
-        resolve.assert_not_called()
+        assert out["professional_summary"] == "base-only"
 
-    def test_resolve_cover_letter_from_pin_string(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resolve_cover_letter_from_catalog_current(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(
-            "src.core.tracker.resolve_job_artifact_agent_data_body",
-            lambda pin, debug=False: {"re_line": "Re", "body": "Hello", "signature": ""},
+            builder_mod.tracker_mod,
+            "get_job_current",
+            lambda jid, key, *, debug=False: (
+                {"re_line": "Re", "body": "Hi", "signature": ""}
+                if key == "job.artifacts.cover_letter"
+                else None
+            ),
         )
         out = builder_mod._resolve_cover_letter(
-            {"artifacts": {"cover_letter": "pin-cover"}},
-            {"context": {}},
+            {"artifacts": {}}, {}, astral_job_id="job-1"
         )
-        assert out == {"re_line": "Re", "body": "Hello", "signature": ""}
+        assert out == {"re_line": "Re", "body": "Hi", "signature": ""}
 
 
 class TestAst1126CoverSignatureImageToken:
@@ -3153,7 +3223,7 @@ class TestAst1126CoverSignatureImageToken:
         }
         cd = _candidate_row(base_resume=_resume_blob())
         cd["candidate_data"]["contact"]["cover_letter_signature_image"] = self._SAFE
-        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        html = _build_cover_letter_from_job(monkeypatch, job, cd, debug=True)
         assert "<img" in html
         assert "signature_image_token=present" in details
         assert "signature_image=accepted" in details
@@ -3360,13 +3430,13 @@ class TestAst1148SessionTypedFromBlockExpand:
         assert "Hello" in from_html and "World" in from_html
         assert "{$FULL_NAME}" not in from_html
 
-    def test_job_custom_tokens_expand(self) -> None:
+    def test_job_custom_tokens_expand(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cd = _candidate_row(base_resume=_resume_blob())
         cd["candidate_data"]["contact"]["location"] = "London, UK"
         cd["candidate_data"]["contact"]["cover_letter_from_block"] = (
             "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL}"
         )
-        html = builder_mod.build_cover_letter_from_job(
+        html = _build_cover_letter_from_job(monkeypatch, 
             {
                 "astral_job_id": "job-1148",
                 "job_data": {
@@ -3406,10 +3476,10 @@ class TestAst1138JobCoverSomersetFromBlock:
             "job_data": {"artifacts": {"cover_letter": cover}},
         }
 
-    def test_default_from_block_and_somerset_shell(self) -> None:
+    def test_default_from_block_and_somerset_shell(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cd = _candidate_row(base_resume=_resume_blob())
         cd["candidate_data"]["contact"]["location"] = "London, UK"
-        html = builder_mod.build_cover_letter_from_job(
+        html = _build_cover_letter_from_job(monkeypatch, 
             self._job({"Subject": "Re: Role", "Letter": "Dear team,\n\nThanks.", "signature": "Ada"}),
             cd,
         )
@@ -3432,12 +3502,12 @@ class TestAst1138JobCoverSomersetFromBlock:
         for sel in self._GOLDEN_SELECTORS:
             assert sel in style
 
-    def test_candidate_from_block_text(self) -> None:
+    def test_candidate_from_block_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cd = _candidate_row(base_resume=_resume_blob())
         cd["candidate_data"]["contact"]["cover_letter_from_block"] = (
             "Custom Name • Place\ncustom@example.com"
         )
-        html = builder_mod.build_cover_letter_from_job(
+        html = _build_cover_letter_from_job(monkeypatch, 
             self._job({"Letter": "Body only", "signature": ""}),
             cd,
         )
@@ -3446,7 +3516,7 @@ class TestAst1138JobCoverSomersetFromBlock:
         assert "custom@example.com" in from_html
         assert "Ada Lovelace" not in from_html
 
-    def test_resume_print_unchanged_no_from_block(self) -> None:
+    def test_resume_print_unchanged_no_from_block(self, monkeypatch: pytest.MonkeyPatch) -> None:
         job = {
             "job_data": {
                 "artifacts": {
@@ -3455,7 +3525,7 @@ class TestAst1138JobCoverSomersetFromBlock:
                 }
             }
         }
-        html = builder_mod.build_resume_from_job(
+        html = _build_resume_from_job(monkeypatch, 
             job, _candidate_row(base_resume=_resume_blob()), include_cover=False
         )
         assert "Summary text" in html
@@ -3476,7 +3546,7 @@ class TestAst1138JobCoverSomersetFromBlock:
         monkeypatch.setattr(builder_mod._log, "debug_index", _index)
         cd = _candidate_row(base_resume=_resume_blob())
         cd["candidate_data"]["contact"]["cover_letter_from_block"] = "Line A\nLine B"
-        html = builder_mod.build_cover_letter_from_job(
+        html = _build_cover_letter_from_job(monkeypatch, 
             self._job({"Letter": "Hello", "signature": "Ada"}),
             cd,
             debug=True,
@@ -3496,7 +3566,7 @@ class TestAst1138JobCoverSomersetFromBlock:
         monkeypatch.setattr(builder_mod._log, "debug_index", _index)
         monkeypatch.setattr(builder_mod._log, "debug_detail", lambda *_a, **_k: None)
         monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
-        builder_mod.build_cover_letter_from_job(
+        _build_cover_letter_from_job(monkeypatch, 
             self._job({"Letter": "Quiet", "signature": ""}),
             _candidate_row(base_resume=_resume_blob()),
             debug=False,
@@ -3589,9 +3659,9 @@ class TestAst1162SignatureImgVerticalSpacing:
             "Susan Somerset"
         )
 
-    def test_job_somerset_signature_img_margin_non_negative(self) -> None:
+    def test_job_somerset_signature_img_margin_non_negative(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cd = _candidate_row(base_resume=_resume_blob())
-        html = builder_mod.build_cover_letter_from_job(
+        html = _build_cover_letter_from_job(monkeypatch, 
             {
                 "astral_job_id": "job-1162",
                 "job_data": {
@@ -3674,9 +3744,9 @@ class TestAst1165SignoffNewlineToBr:
         assert "margin: 8px 0 8px 0" in style
         assert "-25px" not in style
 
-    def test_job_somerset_name_and_title_br_after_image(self) -> None:
+    def test_job_somerset_name_and_title_br_after_image(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cd = _candidate_row(base_resume=_resume_blob())
-        html = builder_mod.build_cover_letter_from_job(
+        html = _build_cover_letter_from_job(monkeypatch, 
             {
                 "astral_job_id": "job-1165",
                 "job_data": {
@@ -4161,7 +4231,7 @@ class TestAst1475PageBreakPrintCss:
         assert "#summary { page-break-inside: avoid; }" in style
         assert ".role { page-break-inside: avoid; }" in style
 
-    def test_missing_policy_soft_defaults_and_job_resume_path(self) -> None:
+    def test_missing_policy_soft_defaults_and_job_resume_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = candidate_mod.default_resume_structure()
         for spec in structure["sections"].values():
             spec.pop("page_break_policy", None)
@@ -4182,9 +4252,71 @@ class TestAst1475PageBreakPrintCss:
                 },
             },
         }
-        html = builder_mod.build_resume_from_job(job, cd)
+        html = _build_resume_from_job(monkeypatch, job, cd)
         style = self._style(html)
         assert "#prior-experience { page-break-before: always; }" in style
         # Missing policy on other body sections → avoid_split default
         assert "#summary { page-break-inside: avoid; }" in style
         assert ".role { page-break-inside: avoid; }" in style
+
+
+class TestAst1593BuilderCatalogCurrentRead:
+    """AST-1593: builder live resolve via get_job_current; debug labels name catalog path."""
+
+    def test_resolve_resume_and_cover_prefer_catalog_current(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job_current",
+            lambda jid, key, *, debug=False: (
+                _resume_blob(professional_summary="catalog-jr")
+                if key == "job.artifacts.job_resume"
+                else {"re_line": "Re", "body": "Cover", "signature": ""}
+                if key == "job.artifacts.cover_letter"
+                else None
+            ),
+        )
+        resume = builder_mod._resolve_resume_sections(
+            {"artifacts": {"resume_content": _resume_blob(professional_summary="blob")}},
+            {},
+            astral_job_id="job-1593",
+        )
+        assert resume["professional_summary"] == "catalog-jr"
+        cover = builder_mod._resolve_cover_letter(
+            {"artifacts": {"cover_letter": {"re_line": "old", "body": "old", "signature": ""}}},
+            {},
+            astral_job_id="job-1593",
+        )
+        assert cover == {"re_line": "Re", "body": "Cover", "signature": ""}
+
+    def test_build_resume_from_job_debug_labels_catalog_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = {
+            "astral_job_id": "job-1593",
+            "job_data": {
+                "artifacts": {
+                    "resume_content": _resume_blob(professional_summary="ignored-blob"),
+                }
+            },
+        }
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job_current",
+            lambda jid, key, *, debug=False: (
+                _resume_blob(professional_summary="From current")
+                if key == "job.artifacts.job_resume"
+                else None
+            ),
+        )
+        html = builder_mod.build_resume_from_job(
+            job, _candidate_row(base_resume=_resume_blob()), debug=True
+        )
+        assert "From current" in html
+        assert (
+            builder_mod._resume_content_source_label(
+                job["job_data"], {}, astral_job_id="job-1593"
+            )
+            == "get_job_current(job.artifacts.job_resume)"
+        )

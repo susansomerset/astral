@@ -1395,3 +1395,17 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** pytest + Vitest green on lines 1–4 — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-1593 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`.
+
+ArtifactEditor job-mode load trusts hydrated leaf `job_resume` / `cover_letter`; does not promote `resume_content` sibling as SoT. Save still PUTs leaf URL. Builder: **`docs/test-bible/core/builder.md`** § AST-1593.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No resume_content fallback | `ArtifactEditor.tsx` | **`AST-1593: empty job_resume leaf does not fall back…`** |
+| Hydrated leaf load + save | same | **`AST-1593: job_resume load uses hydrated current leaf body`** |
+
+**Broken / obsolete this pass:** `AST-1480: job_resume pin overlays resume_content sibling bodies`.

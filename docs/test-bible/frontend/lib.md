@@ -376,3 +376,16 @@ npm run test:component -- \
 
 **Integration:** none.
 
+---
+
+### AST-1593 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`.
+
+`printResumeVisible` / `materialsPreviewVisible` treat hydrated `job_resume` as SoT — `resume_content` is not required for job-resume visibility.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| print/materials SoT | `recommendedJobReport.tsx` | **`recommendedJobReport — AST-1593 catalog SoT`** + revised AST-581/948/1100 print helpers |
+
+**Broken / obsolete this pass:** asserts that `resume_content` alone makes print/materials visible.
