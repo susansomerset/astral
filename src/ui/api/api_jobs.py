@@ -21,9 +21,7 @@ from src.core.tracker import (
     list_jobs,
     list_jobs_below_dispatch_score_floor,
     persist_skipped_job_edits,
-    save_job_artifact_cover_letter,
-    save_job_artifact_job_resume_body,
-    save_job_artifact_resume_content,
+    save_job_artifact,
     save_job_data,
     score_floor_by_trigger_for_candidate,
     set_candidate_result,
@@ -203,9 +201,12 @@ def detail(astral_job_id):
         return jsonify({"error": "Not found"}), 404
     job = _flatten_grades(job)
     _attach_skipped_edit_meta(job)
-    # AST-1100: pin-resolve proposed_answers; job_resume/cover already table-overlaid via get_job.
+    # AST-1100/1592: pin-resolve proposed_answers; re-hydrate with job id for catalog current-read.
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
-    art = hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))
+    art = hydrate_job_artifacts_for_display(
+        get_job_artifacts(job) or jd.get("artifacts"),
+        astral_job_id=astral_job_id,
+    )
     job["job_data"] = {**jd, "artifacts": art}
     # AST-1274/AST-1354: secondary soft-fail — no stacktrace for expected missing pieces.
     try:
@@ -273,7 +274,7 @@ def copy_snapshot(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/artifacts/resume_content", methods=["PUT"])
 @require_auth
 def put_job_resume_content(astral_job_id):
-    """AST-1556: legacy URL redirects to job_resume artifacts-table SoT."""
+    """AST-1556/1592: legacy URL → catalog job_resume write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -281,14 +282,14 @@ def put_job_resume_content(astral_job_id):
     body = data.get("resume_content")
     if not isinstance(body, dict):
         return jsonify({"error": "resume_content must be a dict"}), 400
-    save_job_artifact_job_resume_body(astral_job_id, body)
+    save_job_artifact(astral_job_id, "job.artifacts.job_resume", body)
     return jsonify({"ok": True})
 
 
 @jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
 @require_auth
 def put_job_resume_pin_key(astral_job_id):
-    """AST-1556: ArtifactEditor PUTs job_resume → artifacts-table current row."""
+    """AST-1556/1592: ArtifactEditor PUTs job_resume via catalog write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -296,14 +297,14 @@ def put_job_resume_pin_key(astral_job_id):
     body = data.get("job_resume")
     if not isinstance(body, dict):
         return jsonify({"error": "job_resume must be a dict"}), 400
-    save_job_artifact_job_resume_body(astral_job_id, body)
+    save_job_artifact(astral_job_id, "job.artifacts.job_resume", body)
     return jsonify({"ok": True})
 
 
 @jobs_bp.route("/<astral_job_id>/artifacts/cover_letter", methods=["PUT"])
 @require_auth
 def put_job_cover_letter(astral_job_id):
-    """AST-1556: persist cover letter as artifacts-table current row."""
+    """AST-1556/1592: persist cover letter via catalog write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -311,7 +312,7 @@ def put_job_cover_letter(astral_job_id):
     body = data.get("cover_letter")
     if not isinstance(body, dict):
         return jsonify({"error": "cover_letter must be a dict"}), 400
-    save_job_artifact_cover_letter(astral_job_id, body)
+    save_job_artifact(astral_job_id, "job.artifacts.cover_letter", body)
     return jsonify({"ok": True})
 
 
