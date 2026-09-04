@@ -486,3 +486,49 @@ Freeform **`notes`** extract/save/cancel clear (AST-1271 shape, renamed); epic *
   tests/component/core/test_tracker.py::TestAst1523EpicHelpersRemoved \
   -q
 ```
+
+
+---
+
+### AST-1592 · AST-1588
+
+**Parent:** [AST-1588 — Support job.artifacts.job_resume and job.artifacts.cover_letter as artifacts](https://linear.app/astralcareermatch/issue/AST-1588/support-jobartifactsjob-resume-and-jobartifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`.
+
+Tracker generic `save_job_artifact` / `get_job_current` (entity id + catalog key); `job.artifacts.job_resume` writes always auto-cite the owning candidate’s current `base_resume` `artifact_uuid` (or `[]`); cover/other keys pass `source_artifact_ids` through. Hydrate / has-body / from-parsed / agent finalize land via those generics. Type-specific public `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` / `persist_finalize_*` removed. API + agent: **`docs/test-bible/ui/api/api_jobs.md`**, **`docs/test-bible/core/agent.md`**. Builder/UI inventory → **AST-1593**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Public API + type-specific names gone | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_type_specific_public_saves_removed`** |
+| get_job_current hit/miss/key validation | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_get_job_current_hit_miss_and_key_validation`** |
+| job_resume cites base_resume (ignores caller sources) | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_cites_current_base_resume_uuid`** |
+| job_resume empty sources when no base | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_empty_sources_when_no_base_resume`** |
+| cover_letter passes caller sources | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_cover_letter_passes_caller_sources`** |
+| Catalog write still table SoT (1554/1556 revised) | `src/core/tracker.py` | **`TestAst1554BodyReplicaPersistHelpers`**, **`TestAst1556JobArtifactsTableSoT`** |
+
+**Broken / obsolete this pass:** calls to deleted `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` / `persist_finalize_*` in AST-1554/1556 + cover normalize + from-parsed suites — revised to `save_job_artifact` / `prepare_job_replica_body`. Hydrate overlay still asserts `get_current_artifact` via `get_job_current`.
+
+**Integration:** none — no existing scenario asserts job catalog write/citation.
+
+## QA test manifest (AST-1592)
+
+1. Tracker catalog + citation: `tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation`
+2. Revised table-SoT helpers: `tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers`
+3. Revised bug-repro SoT: `tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT`
+4. API PUT catalog keys: `tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper` + cover PUT in same module
+5. Agent finalize → save_job_artifact: `tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin` + `TestAst1554DoTaskBodyReplica`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_put_cover_letter_persists_via_tracker \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–5 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasum:** `docs/test-bible/core/tracker.md` (fill after publish)

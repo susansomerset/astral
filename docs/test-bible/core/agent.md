@@ -1220,3 +1220,17 @@ Backend scoped import list: `UI_CONFIG` cap (10) + picker visible rows (5); `lis
 
 **Integration:** none.
 
+
+---
+
+### AST-1592 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`.
+
+`do_task` finalize hops call `prepare_job_replica_body` + `save_job_artifact` with `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` catalog keys (no `persist_finalize_*`). Tracker generics: **`docs/test-bible/core/tracker.md`** § AST-1592.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finalize resume/cover → catalog write | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`**, **`TestAst1554DoTaskBodyReplica`** (revised) |
+
+**Broken / obsolete this pass:** spies on `persist_finalize_job_resume_content` / `persist_finalize_cover_letter_content` — retargeted to `save_job_artifact` (+ prepare mock for resume match).
