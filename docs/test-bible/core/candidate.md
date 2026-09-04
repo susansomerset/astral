@@ -1878,5 +1878,7 @@ Public `get_operative_base_resume(artifact_uuid)` pin→body for pilot `candidat
 
 **Pass criterion:** pytest green on manifest lines + docs-acceptance items 5 — not zero-arg harness / branch-lock gate.
 
-**Bible shasum (after publish):** record via `git show origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires:docs/test-bible/core/candidate.md | shasum`.
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — `898792225f7786c7dc9456ae0a5ee8d06d7465277c95d867f22a9e2abd73cf79`
+- `docs/test-bible/core/builder.md` — `e4123fd99fd3dc048b72c905534dc48c3bbc23bfaf15359a3ea14815e3136540`
 

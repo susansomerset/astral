@@ -4296,9 +4296,10 @@ class TestAst1099JobArtifactAgentDataPinConfig:
         }
 
     def test_body_replica_by_task_map(self) -> None:
+        # AST-1590: values are catalog keys (leaf types derived via JOB_EDITABLE_ARTIFACT_TYPES).
         assert cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK == {
-            "finalize_job_resume": "job_resume",
-            "finalize_cover_letter": "cover_letter",
+            "finalize_job_resume": "job.artifacts.job_resume",
+            "finalize_cover_letter": "job.artifacts.cover_letter",
         }
         assert not (
             set(cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK)
@@ -5454,7 +5455,8 @@ class TestAst1576CraftResumeBaseArtifactKey:
 
     def test_craft_artifact_key_is_hierarchical_pilot(self) -> None:
         assert not hasattr(cfg, "ARTIFACT_CATALOG")
-        assert set(cfg.ARTIFACT_CONFIG.keys()) == {"candidate.artifacts.base_resume"}
+        # AST-1590 expands ARTIFACT_CONFIG with job keys — pilot membership stays required.
+        assert "candidate.artifacts.base_resume" in cfg.ARTIFACT_CONFIG
         assert (
             cfg.TASK_CONFIG["craft_resume_base"]["artifact_key"]
             == "candidate.artifacts.base_resume"
@@ -5467,3 +5469,77 @@ class TestAst1576CraftResumeBaseArtifactKey:
 
         with pytest.raises(ModuleNotFoundError):
             importlib.import_module("src.utils.artifact_catalog")
+
+
+class TestAst1590JobArtifactCatalogKeys:
+    """AST-1590: job.artifacts.job_resume / cover_letter in ARTIFACT_CONFIG; bindings."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    _SIBLINGS = (
+        "notes",
+        "resume_content",
+        "proposed_answers",
+        "application_responses",
+        "job.artifacts.notes",
+        "job.artifacts.resume_content",
+        "job.artifacts.proposed_answers",
+        "job.artifacts.application_responses",
+    )
+
+    def test_artifact_config_has_pilot_and_job_keys(self) -> None:
+        assert set(cfg.ARTIFACT_CONFIG.keys()) == {
+            "candidate.artifacts.base_resume",
+            "job.artifacts.job_resume",
+            "job.artifacts.cover_letter",
+        }
+        for sibling in self._SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_job_resume_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["job.artifacts.job_resume"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "job"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "resume_content"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "tracker"
+
+    def test_cover_letter_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["job.artifacts.cover_letter"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "job"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "cover_letter"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "tracker"
+
+    def test_body_replica_and_editable_derived_from_catalog(self) -> None:
+        assert set(cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()) == {
+            "job.artifacts.job_resume",
+            "job.artifacts.cover_letter",
+        }
+        assert set(cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()) <= set(cfg.ARTIFACT_CONFIG)
+        assert cfg.JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
+        assert all(
+            cfg.ARTIFACT_CONFIG[k]["entity_type"] == cfg.JOB_ARTIFACT_ENTITY_TYPE
+            for k in cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()
+        )
+
+    def test_jar_tabs_one_to_one_leaf_map(self) -> None:
+        by_id = {t["tab_id"]: t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id["artifact_resume"]["artifact_key"] == "job_resume"
+        assert by_id["artifact_resume"]["artifact_key"] == (
+            "job.artifacts.job_resume".rsplit(".", 1)[-1]
+        )
+        assert cfg.ARTIFACT_CONFIG["job.artifacts.job_resume"]["body_shape"] == "resume_content"
+        assert by_id["artifact_cover"]["artifact_key"] == "cover_letter"
+        assert by_id["artifact_cover"]["artifact_key"] == (
+            "job.artifacts.cover_letter".rsplit(".", 1)[-1]
+        )
+        assert by_id["artifact_cover"]["shapes_key"] == (
+            cfg.ARTIFACT_CONFIG["job.artifacts.cover_letter"]["body_shape"]
+        )
+        assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
+        assert "job.artifacts.proposed_answers" not in cfg.ARTIFACT_CONFIG
