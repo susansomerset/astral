@@ -309,3 +309,13 @@ context_tokens≈58000
 [code-rubric] REVIEW (Commit: 8701bb54) Sibling tests need merge order
 ```
 
+## Resolution
+
+**Date:** 2026-09-04  
+**Publish ref:** `sub/AST-1588/AST-1591-artifacts-table-source-references`
+
+Radia `[code-rubric]` REVIEW @ `8701bb54` / docs tip `bc6aac7c`:
+
+- **fix-now:** none.
+- **discuss (sibling AST-1590 tests without AST-1590 product on this ref):** Not a product defect in `database.py`. No code change this resolve. Rollup / `blockedBy` order is Chuckles **merge-child** / prep-uat: land AST-1590 product on `ftr` before (or together with) the shared `origin/tests` AST-1590 footprint so config suite asserts are not red on a lone AST-1591 tip. AST-1591 Betty manifest (`test_artifacts.py`) remains the green gate for this child.
+- **advisory:** AST-1587 bible shasum churn and draft Implementation renumber — accepted as-is; out of scope / already matching Stage 3 intent.
