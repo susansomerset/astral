@@ -145,3 +145,38 @@ Confirm Chuckles estimate: 5 — agree
 - Do not add files, endpoints, coat-check keys, or body-validation gates not listed above.
 - Do not edit `tests/` or `docs/test-bible/**`.
 - On ambiguity or codebase drift, stop and comment the **parent** Linear issue with the Stage N blocked template — do not improvise.
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1592
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation` @ `2bb7b0a1077b71dc7835bf98f4c533702586b680`
+
+## Traceability
+AC2 → Stage 1 (`save_job_artifact` + `get_job_current`, catalog-key shape); AC3 → Stage 1 source auto-cite on `job.artifacts.job_resume` (caller cannot override); AC4 → Stages 2–4 (tracker rewire + `api_jobs` PUT + agent finalize land via generic write); AC5 → Stage 2 hydrate / `job_has_persisted_resume_body` + Stage 3 jobs GET/detail overlay (builder live build + full UI load contract → N/A, AST-1593 per ## Boundaries); AC6 → Stage 2 delete/retire type-specific public saves; AC7 → explicit non-goals retained (no coat-check / new validation gates).
+
+## Findings
+
+### acceptable
+- **Location:** Child AC5 vs ## Boundaries
+- **Finding:** Ticket AC5 quotes parent AC6 (includes builder live build); plan correctly defers builder/frontend consumer rewire to AST-1593 while covering jobs GET + tracker hydrate in-scope.
+- **Recommendation:** No plan change; traceability above documents the split.
+
+### acceptable
+- **Location:** Stage 2 (`job_has_persisted_resume_body`, hydrate no-id branch)
+- **Finding:** Legacy `job_data` blob fallback retained when table current-read is empty (pre-migration / transitional).
+- **Recommendation:** Consistent with epic inventory/decommission sibling; not a new SoT write path.
+
+### acceptable
+- **Location:** Stage 4 (`prepare_job_replica_body`)
+- **Finding:** New tracker helper exported for agent finalize land; could be private `_prepare_job_replica_body`.
+- **Recommendation:** Either visibility is fine; prefer private if agent is the sole caller.
+
+**Considered (in-session, slim R7):** Universal orch.* — conform. Scoped core/ui statutes (`import-direction`, `dry-and-focused-functions`, `debug-contract-gated`, `data-raises-caller-logs`, `in-scope-only`, `names-not-ticket-ids`, `public-then-helpers`) — conform. Draft patterns cited (`write-operative`, `read-current`, `traceability`, `manage-catalog`) — conform; `save_job_artifact`/`get_job_current` mirror candidate str-path/current-read shape without overloading `save_job_data`. Depends on AST-1590 `ARTIFACT_CONFIG` + AST-1591 `source_artifact_ids` (stated in plan header).
+
+context_tokens≈52000
+```
+
