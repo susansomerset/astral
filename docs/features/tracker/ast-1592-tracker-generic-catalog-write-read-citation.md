@@ -186,3 +186,133 @@ context_tokens≈52000
 
 Stages 1–4 landed: `save_job_artifact` / `get_job_current` with job_resume→base_resume citation; tracker hydrate/has-body/from-parsed via generics; api_jobs PUT + detail hydrate by catalog key; agent finalize via `prepare_job_replica_body` + `save_job_artifact`; type-specific public save/persist helpers removed. Test path remains Betty `qa-child`.
 
+## Radia review
+
+# Radia review — AST-1592
+
+`[code-rubric] revision=2`
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1592
+**Publish ref:** `sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation` @ `e5c94866e67576d3df4fdefc0587e5dcb6659f00`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1592)` on publish ref. |
+| orch.git.commit-vocabulary | universal | conforms | Staged `code` / `test` / `docs` / `merge-tests` commits. |
+| orch.git.flow-direction-inviolable | universal | conforms | Child `sub/AST-1588/…` only. |
+| orch.git.ftr-sub-topology | universal | conforms | Correct sub topology; `merge-resume` from `ftr` includes blockedBy siblings. |
+| orch.git.merge-on-checkout | universal | conforms | No violation in diff. |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | Linear history. |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named branches. |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree pattern OK. |
+| orch.git.three-permanent-branches | universal | conforms | Publish ref is `sub/*`. |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No unresolved product forks. |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–4 match implementation. |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A to code. |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed. |
+| orch.roles.archie-approves-statutes | universal | conforms | N/A. |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible via Betty + `merge-tests`. |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A. |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy assignee through Tests Passed. |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook-ban violations observed. |
+| astral.agent.confidence-bounds | scoped | not-applicable | Agent diff is finalize land only; no confidence surface. |
+| astral.agent.do-task-delegation | scoped | conforms | Finalize land delegates to tracker `save_job_artifact`; lazy import preserves cycle break. |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade-vector paths. |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch paths changed. |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch id paths. |
+| astral.batch.claim-process-release | scoped | not-applicable | No claim/clear helpers. |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No agent_response paths. |
+| astral.config.config-source-of-truth | scoped | conforms | Reads `ARTIFACT_CONFIG` / `BUILD_CONFIG` from config; no scattered constants. |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No env/secret changes. |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug artifact paths. |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spike paths. |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No dispatch seed paths. |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | Agent finalize land unchanged relative to `run_next` ordering. |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One plan file per ticket. |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty paths are tests/bible only. |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Test-tree edits via Betty pipeline. |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Core/UI changes stay in-layer. |
+| astral.layers.import-direction | scoped | conforms | `api_jobs` → `tracker` only; `agent` lazy-imports `tracker`; `tracker` → `data` + `utils`. |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No scripts diff. |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | API handlers delegate to tracker by catalog key; no hardcoded state lists added. |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | Empty-body skip retained via existing prepare/normalize; no new coat-check registration. |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No consult/render paths. |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | Existing `@require_auth` on PUT routes unchanged. |
+| astral.seed.* (5 statutes) | scoped | not-applicable | No seed paths in diff. |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Data layer unchanged in this ticket; tracker raises `ValueError`; agent logs persist errors. |
+| astral.standards.database-header-inventory | scoped | conforms | Sibling AST-1591 header inventory present on branch. |
+| astral.standards.debug-contract-gated | scoped | conforms | `debug=` kwargs added but no new emission (`_ = debug`); no gated lines without `debug=True`. |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `_candidate_id_for_job` extract; `prepare_job_replica_body` centralizes finalize unwrap. |
+| astral.standards.in-scope-only | scoped | conforms | `candidate.py` untouched; scope limited to tracker/api_jobs/agent per plan. |
+| astral.standards.logging-via-utils | scoped | conforms | No new `print` / raw loggers. |
+| astral.standards.names-not-ticket-ids | scoped | conforms | AST cites in comments/docstrings only. |
+| astral.standards.no-cross-contamination | scoped | conforms | No out-of-layer imports. |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Catalog keys from `ARTIFACT_CONFIG`; no new inline enums. |
+| astral.standards.public-then-helpers | scoped | conforms | `save_job_artifact` / `get_job_current` public before private helpers. |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils layer changes in AST-1592 product commits. |
+| astral.state.core-decides-transitions | scoped | conforms | Artifact writes via tracker entry points; no ad hoc state/data updates. |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job-state machine edits. |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | No run-chain edits. |
+| astral.ui.* (3 statutes) | scoped | not-applicable / conforms | UI diff is thin API delegation only. |
+
+**Active set:** 65 statutes scored (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan has no approved-catalog "Patterns to reuse" block; draft pattern prose in Joan attachment only. |
+
+## Plan adherence
+
+**Stages 1–4 delivered as specified.**
+
+- **Stage 1:** `save_job_artifact` / `get_job_current` with catalog-key validation, leaf-type resolution, body prepare by key, and **job_resume always auto-cites** current `base_resume` uuid (caller sources ignored); cover passes `source_artifact_ids` through.
+- **Stage 2:** Hydrate overlay, `job_has_persisted_resume_body`, `persist_job_artifact_from_parsed`, and finalize prep route through generics; type-specific public saves removed (`git grep` clean in `src/**`).
+- **Stage 3:** `api_jobs` PUT handlers and `detail` re-hydrate with `astral_job_id` call `save_job_artifact` with catalog keys.
+- **Stage 4:** Agent finalize uses `prepare_job_replica_body` + `save_job_artifact(replica_slot, …)` with lazy import; error handling preserved.
+- **`candidate.py` untouched** per plan decision.
+- **Dependencies:** Branch includes merged AST-1590 (`ARTIFACT_CONFIG` + catalog body-replica keys) and AST-1591 (`source_artifact_ids` on `save_artifact`) via `merge-resume` — appropriate for `blockedBy` siblings.
+
+**Estimate 5** matches footprint (tracker refactor + API + agent + Betty test revisions).
+
+## Findings
+
+### advisory
+
+- **`prepare_job_replica_body` is public** — Joan noted private `_prepare_job_replica_body` is acceptable; agent is sole caller today. Optional hygiene for resolve-child, not blocking.
+- **`debug=False` kwargs stubbed** (`_ = debug`) on new public functions — fine for AST-1592 (no new debug-contract emission); wire instrumentation later if needed.
+- **`docs/test-bible/core/tracker.md` shasum** still says "fill after publish" — Betty/Chuckles doc hygiene; manifest content otherwise matches tests.
+
+## What's solid
+
+- Clean generic API mirrors candidate catalog str-path shape without overloading `save_job_data`.
+- `job_resume` → `base_resume` citation is enforced and tested (caller override ignored).
+- Hydrate/detail overlay now passes job id so catalog current-read runs in production GET path.
+- Zero `src/**` references to deleted type-specific helpers.
+- Component tests cover citation, source pass-through, key validation, API PUT wiring, and agent finalize land.
+
+## Frame diff
+
+**AST-1592 product:** `src/core/tracker.py` generics + rewire; `src/ui/api/api_jobs.py` PUT/detail; `src/core/agent.py` finalize land.
+
+**Epic stack on branch (expected):** AST-1590 `config.py`, AST-1591 `database.py`, sibling tests/bible — required foundation for this ticket.
+
+**Out of scope (deferred AST-1593):** builder/UI consumer inventory — correctly untouched.
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute straggler list.
+- Three-dot diff vs `origin/dev` is wide because `merge-resume` landed sibling children; AST-1592 product slice itself is focused.
+- Downstream: AST-1593 should consume `get_job_current` / catalog keys on frontend paths.
+
+context_tokens≈62000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: e5c94866) Catalog write/read citation clean
+```
