@@ -158,3 +158,9 @@ AC6 → Stage 1 (builder `get_job_current` by catalog key) + Stage 2 (ArtifactEd
 
 context_tokens≈61000
 ```
+
+## Review (build)
+
+**Built @ `4f0edd01`** — `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`
+
+Product stages 1–2 landed (builder `get_job_current`; ArtifactEditor + recommendedJobReport drop resume_content SoT). Stage 3: JobAnalysisReportModal unchanged — JAR tabs still leaf `job_resume` / `cover_letter` (AST-1590 1:1 map). Test path remains Betty `qa-child`.
