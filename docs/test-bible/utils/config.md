@@ -1947,13 +1947,13 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
 
-`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps **only** `propose_application_responses` → `proposed_answers` (**AST-1548** removed finalize hops). `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` maps `finalize_job_resume` / `finalize_cover_letter` → operator slots. `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those body slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
+`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps **only** `propose_application_responses` → `proposed_answers` (**AST-1548** removed finalize hops). `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` maps `finalize_job_resume` / `finalize_cover_letter` → **catalog keys** (`job.artifacts.job_resume` / `job.artifacts.cover_letter` — **AST-1590**; leaf types via `JOB_EDITABLE_ARTIFACT_TYPES`). `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those body slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Pin map + body-replica map + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
 
-**Broken / obsolete:** three-key pin map including finalize hops — AST-1554.
+**Broken / obsolete:** three-key pin map including finalize hops — AST-1554. Body-replica **leaf** values — revised under **AST-1590**.
 
 **Integration:** none.
 
@@ -3505,7 +3505,49 @@ Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
 | --- | --- | --- |
 | artifact_key + ARTIFACT_CONFIG SoT; module gone | `src/utils/config.py` | **`TestAst1576CraftResumeBaseArtifactKey`** |
 
-**Broken / obsolete:** `tests/component/utils/test_artifact_catalog.py`.
+**Broken / obsolete:** `tests/component/utils/test_artifact_catalog.py`. Singleton `ARTIFACT_CONFIG` key-set assert — revised under **AST-1590** (pilot membership remains).
 
 **Integration:** none.
+
+### AST-1590 · AST-1588
+
+**Parent:** [AST-1588 — Support job.artifacts.job_resume and job.artifacts.cover_letter as artifacts](https://linear.app/astralcareermatch/issue/AST-1588/support-job-artifactsjob-resume-and-job-artifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys`.
+
+Registers `job.artifacts.job_resume` + `job.artifacts.cover_letter` in `ARTIFACT_CONFIG` beside the candidate pilot; body-replica values cite those catalog keys; `JOB_EDITABLE_ARTIFACT_TYPES` derived as leaf strings; JAR resume/cover tabs stay leaf keys with 1:1 leaf asserts. Sibling blob keys stay out of the catalog. Config-only — no tracker/schema/UI this child.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog keys + metadata + sibling exclusion | `src/utils/config.py` | **`TestAst1590JobArtifactCatalogKeys`** |
+| Body-replica catalog values (revised) | same | **`TestAst1099JobArtifactAgentDataPinConfig::test_body_replica_by_task_map`** |
+| Pilot membership (revised; not singleton) | same | **`TestAst1576CraftResumeBaseArtifactKey::test_craft_artifact_key_is_hierarchical_pilot`** |
+| JAR leaf tabs unchanged | same | existing **`TestAst1100ArtifactTabPinKeys`**, **`TestAst1116CoverLetterDataShapes`** |
+| Agent debug label cites catalog key (revised) | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails`** |
+
+**Broken / obsolete this pass:** body-replica leaf-string asserts; `ARTIFACT_CONFIG` singleton key-set; agent `key=cover_letter` debug skip string.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` key set or body-replica catalog values; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Job catalog keys + bindings: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys`
+2. Revised body-replica map: `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig`
+3. Revised pilot membership: `tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey`
+4. JAR leaf tabs (regression): `tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys` + `TestAst1116CoverLetterDataShapes`
+5. Agent store-failed debug label: `tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys \
+  tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey \
+  tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
+  tests/component/utils/test_config.py::TestAst1116CoverLetterDataShapes \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — `500a0dbdc3e235ab96a324e762762aca8ff103a10fd411192bcb2c3a7776c6b2`
 

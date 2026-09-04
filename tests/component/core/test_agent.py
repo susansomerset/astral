@@ -7368,7 +7368,11 @@ class TestAst1099DoTaskArtifactPin:
         pin.assert_not_called()
         persist_cover.assert_not_called()
         combined = "\n".join(r.message for r in caplog.records)
-        assert "artifact_body_replica key=cover_letter skipped reason=store_failed" in combined
+        # AST-1590: body-replica map values are catalog keys (debug label cites them).
+        assert (
+            "artifact_body_replica key=job.artifacts.cover_letter skipped reason=store_failed"
+            in combined
+        )
 
 
 class TestAst1554DoTaskBodyReplica:
