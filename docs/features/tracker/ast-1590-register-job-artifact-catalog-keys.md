@@ -190,3 +190,27 @@ assert "job.artifacts.proposed_answers" not in ARTIFACT_CONFIG
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1590
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1588/AST-1590-register-job-artifact-catalog-keys` @ `05bcd654020c7bf1a234e429b04592c63c81e1db`
+
+### Traceability
+- **AC1** → Stage 1 (`ARTIFACT_CONFIG` adds `job.artifacts.job_resume` + `job.artifacts.cover_letter` with full metadata; pilot unchanged; startup asserts).
+- **AC2** → Stage 1 step 3 (sibling blob keys excluded from catalog via negative asserts); Stage 2 steps 1–4 bind body-replica / editable-leaf / JAR 1:1 map to those catalog keys without registering siblings.
+- **Stages → definition:** Stage 1 → parent Functional scope §1 + child Scope (catalog registration only); Stage 2 → parent Technical scope (derive editable authority, JAR/body-replica cite catalog keys, no parallel SoT).
+
+### Findings
+
+#### acceptable
+- **Location:** Plan structure — no `## Self-assessment` block.
+- **Finding:** plan-child convention often includes conf/self-assessment; this plan omits it.
+- **Recommendation:** Optional for a 2-point config-only ticket with explicit scope gate and staged asserts; not blocking.
+
+No `fix-now` or `discuss` findings. In-session statute pass: universal set + scoped `astral.config.config-source-of-truth` and `astral.standards.no-hardcoded-sets` conform; utils-only footprint excludes data/UI/batch statutes by path/layer predicates.
+
+context_tokens≈42000
