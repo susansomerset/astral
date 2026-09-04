@@ -3052,12 +3052,13 @@ async def do_task(
         if index and resp_id:
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             try:
-                if task_key == "finalize_job_resume":
-                    from src.core.tracker import persist_finalize_job_resume_content
-                    persist_finalize_job_resume_content(index, parsed)
-                elif task_key == "finalize_cover_letter":
-                    from src.core.tracker import persist_finalize_cover_letter_content
-                    persist_finalize_cover_letter_content(index, parsed)
+                from src.core.tracker import prepare_job_replica_body, save_job_artifact
+
+                body = prepare_job_replica_body(
+                    replica_slot, parsed, astral_job_id=index
+                )
+                if body is not None:
+                    save_job_artifact(index, replica_slot, body)
             except Exception as persist_err:
                 logger.error(
                     "persist_job_artifact_body_replica failed task=%s index=%s err=%s",

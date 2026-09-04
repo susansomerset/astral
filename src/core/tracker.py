@@ -559,17 +559,6 @@ def cover_letter_artifact_for_display(
     return normalized
 
 
-def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, Any]) -> None:
-    """Thin forward to catalog write (AST-1592); removed once callers rewire."""
-    save_job_artifact(astral_job_id, "job.artifacts.cover_letter", cover_letter)
-
-
-def save_job_artifact_job_resume_body(astral_job_id: str, resume_body: Dict[str, Any]) -> None:
-    """Thin forward to catalog write (AST-1592); removed once callers rewire."""
-    save_job_artifact(astral_job_id, "job.artifacts.job_resume", resume_body)
-
-
-
 def extract_draft_job_resume_notes(parsed: Any) -> Optional[List[str]]:
     """Normalize notes from nested or flat draft payload; None if key absent."""
     if not isinstance(parsed, dict):
@@ -610,31 +599,35 @@ def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
     return True
 
 
-def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1556/1592: copy unwrapped finalize resume via catalog write."""
-    if not parsed_matches_job_resume_content(astral_job_id, parsed):
-        return False
-    return bool(
-        save_job_artifact(
-            astral_job_id, "job.artifacts.job_resume", _resume_payload_body(parsed)
+def prepare_job_replica_body(
+    catalog_key: str,
+    parsed: Any,
+    *,
+    astral_job_id: str,
+) -> Optional[Any]:
+    """Unwrap finalize hop payload for a job catalog key; None if no landable body (AST-1592)."""
+    key = (catalog_key or "").strip()
+    if key == "job.artifacts.job_resume":
+        if not parsed_matches_job_resume_content(astral_job_id, parsed):
+            return None
+        return _resume_payload_body(parsed)
+    if key == "job.artifacts.cover_letter":
+        if not isinstance(parsed, dict):
+            return None
+        body: Any = (
+            parsed.get("agent_payload")
+            if isinstance(parsed.get("agent_payload"), dict)
+            else parsed
         )
-    )
-
-
-def persist_finalize_cover_letter_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1556/1592: copy normalized cover via catalog write; skip empty."""
-    if not isinstance(parsed, dict):
-        return False
-    body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
-    if not isinstance(body, dict):
-        return False
-    source = _cover_letter_dict_for_normalize(body)
-    normalized = normalize_cover_letter_artifact(source)
-    if not _cover_letter_display_nonempty(normalized):
-        return False
-    return bool(
-        save_job_artifact(astral_job_id, "job.artifacts.cover_letter", normalized)
-    )
+        if not isinstance(body, dict):
+            return None
+        normalized = normalize_cover_letter_artifact(
+            _cover_letter_dict_for_normalize(body)
+        )
+        if not _cover_letter_display_nonempty(normalized):
+            return None
+        return normalized
+    return None
 
 
 def pin_job_artifact_agent_data_id(
