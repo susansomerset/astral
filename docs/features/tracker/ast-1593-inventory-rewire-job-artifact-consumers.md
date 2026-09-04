@@ -119,3 +119,42 @@ Non-goals left out of inventory rows: session cover letter admin, candidate `bas
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1593
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers` @ `cbe5479b5098a9cf9933e0a99e4b06f5946e2bdd`
+
+## Traceability
+AC6 → Stage 1 (builder `get_job_current` by catalog key) + Stage 2 (ArtifactEditor load + `recommendedJobReport` visibility); jobs GET overlay → inventory row marked rewired AST-1592 (N/A to implement here); AC7 → plan **Inventory** table (pre-change surfaces + disposition); AC8 → inventory rows for type-specific tracker/API saves marked **retired** AST-1592 (verify-only on this ticket).
+
+## Findings
+
+### acceptable
+- **Location:** Stage 2 (`printResumeVisible`) / Stage 1 (builder resolve)
+- **Finding:** Dropping `resume_content` as job-resume SoT hides print/build for rows that still have only legacy `job_data.artifacts.resume_content` and no artifacts-table current.
+- **Recommendation:** Intended under catalog SoT; matches parent decommission intent.
+
+### acceptable
+- **Location:** Stage 1 (`_resolve_resume_sections` when `astral_job_id` absent)
+- **Finding:** Direct `build_resume_from_job` callers without `astral_job_id` skip job current-read and fall back to candidate `base_resume` only (no job_data blob reads).
+- **Recommendation:** Production `build_resume` / `get_job` paths supply id; test-only callers are Betty’s problem.
+
+### acceptable
+- **Location:** Child AC8 vs ## Boundaries
+- **Finding:** Type-specific tracker/API removal is owned by AST-1592; this plan documents disposition rather than re-grepping those symbols.
+- **Recommendation:** Acceptable given `after #3` boundary; build should still confirm no regressions in scoped files.
+
+### acceptable
+- **Location:** `recommendedJobReport.artifactHasContent`
+- **Finding:** Pin-string “has content” heuristic unchanged; plan only adjusts `printResumeVisible` OR on `resume_content`.
+- **Recommendation:** Fine once hydrate supplies dict bodies from current-read overlay.
+
+**Considered (in-session, slim R7):** Universal orch.* — conform. Scoped core/ui statutes (`import-direction`, `debug-contract-gated`, `in-scope-only`, `dry-and-focused-functions`) — conform. Draft patterns `patt.artifact.read-current`, `patt.artifacts.ui-consistency` — conform (leaf JAR keys + backend catalog mapping preserved). Publish ref includes AST-1592 `get_job_current` — dependency satisfied.
+
+context_tokens≈61000
+```
