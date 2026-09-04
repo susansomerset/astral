@@ -130,3 +130,35 @@ Bind `sources_payload` in the matching position. Keep blind retire-by-key + inse
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1591
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1588/AST-1591-artifacts-table-source-references` @ `364201c79981d6cc7d28a4918480168e5cb762f4`
+
+## Traceability
+AC3 → Stage 1 (DDL/ensure `source_artifact_ids` + header inventory) + Stage 2 (`save_artifact` persist, `get_current_artifact` / `get_artifact` / `list_artifacts` return); Stage 3 → draft traceability alignment note (in-scope canon only).
+
+## Findings
+
+### acceptable
+- **Location:** Plan structure
+- **Finding:** No Conf/Risk self-assessment block (Estimate only).
+- **Recommendation:** Optional; ticket is a tight data-layer slice — not blocking.
+
+### acceptable
+- **Location:** Stage 1 / `_ensure_artifacts_table`
+- **Finding:** Column ensure is specified in both early-return branches rather than a single post-rename block (vector_feedback-style consolidation).
+- **Recommendation:** Either shape is fine; engineer should not skip either existing-table path.
+
+**Considered (in-session, slim R7):** Universal orch.* statutes — conform (plan review gate). Scoped data-layer statutes (`database-header-inventory`, `data-raises-caller-logs`, `in-scope-only`, `no-cross-contamination`, `import-direction`, `names-not-ticket-ids`, `dry-and-focused-functions`, `public-then-helpers`) — conform. Draft patterns `patt.artifact.write-operative` / `patt.artifacts.traceability` — conform to parent’s draft citations; optional kwarg on `save_artifact` matches write-operative retire+insert; no existence validation matches parent incremental-add intent.
+
+context_tokens≈42000
+```
+
+**Summary:** Plan Ready, first pass (no Plan Discuss rounds). Scope gate, files-changed table, and stages align with AST-1591’s slice and parent AC3. Schema migration correctly targets both existing-table paths in `_ensure_artifacts_table` (current code returns early without column ensure). Layer, header-inventory, data-raises/no-logging, and boundary discipline all hold. No fix-now findings — recommend **Plan Approved**.
+
