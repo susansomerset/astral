@@ -873,3 +873,44 @@ Builder live paths load pilot base_resume via `load_pilot_base_resume_for_candid
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/builder.md` — `e4123fd99fd3dc048b72c905534dc48c3bbc23bfaf15359a3ea14815e3136540`
 
+---
+
+### AST-1593 · AST-1588
+
+**Parent:** [AST-1588](https://linear.app/astralcareermatch/issue/AST-1588/support-jobartifactsjob-resume-and-jobartifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`.
+
+Builder live resume/cover resolve uses `tracker.get_job_current` by catalog key (`job.artifacts.job_resume` / `job.artifacts.cover_letter`); debug source labels name that path. Job-record `resume_content` / pin SoT retired. UI consumers: **`docs/test-bible/frontend/components.md`**, **`docs/test-bible/frontend/lib.md`**. Inventory table lives in the plan doc (AC7). JAR modal unchanged (leaf keys).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog current resolve + debug labels | `src/core/builder.py` | **`TestAst1593BuilderCatalogCurrentRead`** |
+| Revised blob→catalog seed for build_* suites | same | **`_seed_job_catalog_currents` / `_build_*_from_job` wrappers**; **`TestBuilderIdentifierHelpers`**, **`TestAst1100BuilderPinResolve`** (rewritten) |
+| Full builder regression | same | `tests/component/core/test_builder.py` |
+
+**Broken / obsolete this pass:** pin/`resume_content` blob SoT asserts in source labels + `TestAst1100BuilderPinResolve`; build_* tests that seeded only `job_data.artifacts.resume_content` without catalog current — revised via seed helper.
+
+**Integration:** none.
+
+## QA test manifest (AST-1593)
+
+1. Builder catalog resolve: `tests/component/core/test_builder.py::TestAst1593BuilderCatalogCurrentRead`
+2. Builder regression: `tests/component/core/test_builder.py`
+3. ArtifactEditor no sibling SoT: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1593"`
+4. recommendedJobReport SoT: `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — `--testNamePattern="AST-1593|printResumeVisible|materialsPreviewVisible"`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  --testNamePattern="AST-1593|printResumeVisible|materialsPreviewVisible"
+```
+
+**Pass criterion:** pytest + vitest green on lines 1–4 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasum:** `docs/test-bible/core/builder.md` (fill after publish)

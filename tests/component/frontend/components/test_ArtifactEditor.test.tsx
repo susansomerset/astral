@@ -1494,7 +1494,39 @@ describe("ArtifactEditor", () => {
     expect(screen.getByDisplayValue("Earlier roles")).toBeInTheDocument()
   })
 
-  it("AST-1480: job_resume pin overlays resume_content sibling bodies", async () => {
+  it("AST-1593: empty job_resume leaf does not fall back to resume_content sibling", async () => {
+    installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/jobs/j1" && !init?.method) {
+        return {
+          json: async () => ({
+            astral_job_id: "j1",
+            job_data: {
+              artifacts: {
+                job_resume: "",
+                resume_content: { professional_summary: "From sibling" },
+              },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(`${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Job Resume"
+        artifactKey="job_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "professional_summary", label: "Summary" }]}
+        jobPersistence={{ jobId: "j1", artifactKey: "job_resume" }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Job Resume")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    expect(screen.queryByDisplayValue("From sibling")).not.toBeInTheDocument()
+  })
+
+  it("AST-1593: job_resume load uses hydrated current leaf body", async () => {
     const putBodies: { job_resume?: Record<string, string> }[] = []
     installBaseApiMocks(mockedApi, async (url, init) => {
       if (url === "/api/jobs/j1" && !init?.method) {
@@ -1503,9 +1535,8 @@ describe("ArtifactEditor", () => {
             astral_job_id: "j1",
             job_data: {
               artifacts: {
-                // JAR tab key is job_resume; section dict lives on resume_content sibling
-                job_resume: "",
-                resume_content: { professional_summary: "From sibling" },
+                job_resume: { professional_summary: "From catalog current" },
+                resume_content: { professional_summary: "legacy sibling" },
               },
             },
           }),
@@ -1529,17 +1560,12 @@ describe("ArtifactEditor", () => {
     )
     await waitFor(() => expect(screen.getByText("Job Resume")).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
-    const field = await screen.findByDisplayValue("From sibling")
+    const field = await screen.findByDisplayValue("From catalog current")
     expect(field).not.toBeDisabled()
     await userEvent.clear(field)
     await userEvent.type(field, "Edited JAR")
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
-    expect(
-      mockedApi.mock.calls.some(
-        ([u, init]) => u === "/api/jobs/j1/artifacts/job_resume" && init?.method === "PUT",
-      ),
-    ).toBe(true)
     expect(putBodies.at(-1)?.job_resume?.professional_summary).toMatch(/Edited JAR/)
   })
 
