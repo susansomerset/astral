@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); pilot = candidate.artifacts.base_resume; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
@@ -3232,18 +3232,20 @@ JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
     "propose_application_responses": "proposed_answers",
 }
 
-# AST-1548: finalize hops write unwrapped body onto the operator artifact slot (base_resume pattern).
+# AST-1548 / AST-1590: finalize hops → catalog keys (leaf types derived for table I/O).
 JOB_ARTIFACT_BODY_REPLICA_BY_TASK = {
-    "finalize_job_resume": "job_resume",
-    "finalize_cover_letter": "cover_letter",
+    "finalize_job_resume": "job.artifacts.job_resume",
+    "finalize_cover_letter": "job.artifacts.cover_letter",
 }
 assert not (
     set(JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK) & set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK)
 )
 
-# AST-1556: editable job drafts SoT = artifacts table (entity_type "job" + these artifact_types).
-JOB_EDITABLE_ARTIFACT_TYPES = tuple(JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values())
-assert JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
+# AST-1556 / AST-1590: editable job drafts SoT leaf types, derived from catalog keys in body-replica.
+JOB_EDITABLE_ARTIFACT_TYPES = tuple(
+    catalog_key.rsplit(".", 1)[-1]
+    for catalog_key in JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()
+)
 JOB_ARTIFACT_ENTITY_TYPE = "job"
 
 
@@ -5735,8 +5737,8 @@ BUILD_CONFIG = {
 }
 
 
-# AST-1573 / AST-1575: authoritative artifact registry (patt.artifact.manage-catalog register half).
-# Key = entity._data path. Pilot only: candidate.artifacts.base_resume. Job keys = siblings.
+# AST-1573 / AST-1575 / AST-1590: authoritative artifact registry (patt.artifact.manage-catalog register half).
+# Key = entity._data path. Pilot + job editable keys.
 ARTIFACT_CONFIG = {
     "candidate.artifacts.base_resume": {
         "entity_type": "candidate",
@@ -5746,9 +5748,41 @@ ARTIFACT_CONFIG = {
         # Core component that owns first-row ingestion for this key (UI save / snapshot today).
         "ingestion_owner": "candidate",
     },
+    "job.artifacts.job_resume": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # Same resume section contract as candidate base_resume / JAR use_resume_structure.
+        "body_shape": "resume_content",
+        # Tracker owns first-row ingestion for job editable bodies today (AST-1556).
+        "ingestion_owner": "tracker",
+    },
+    "job.artifacts.cover_letter": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["cover_letter"] (JAR shapes_key).
+        "body_shape": "cover_letter",
+        "ingestion_owner": "tracker",
+    },
 }
 
-assert set(ARTIFACT_CONFIG.keys()) == {"candidate.artifacts.base_resume"}
+assert set(ARTIFACT_CONFIG.keys()) == {
+    "candidate.artifacts.base_resume",
+    "job.artifacts.job_resume",
+    "job.artifacts.cover_letter",
+}
+# Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2).
+for _sibling in (
+    "notes",
+    "resume_content",
+    "proposed_answers",
+    "application_responses",
+    "job.artifacts.notes",
+    "job.artifacts.resume_content",
+    "job.artifacts.proposed_answers",
+    "job.artifacts.application_responses",
+):
+    assert _sibling not in ARTIFACT_CONFIG
+
 _br = ARTIFACT_CONFIG["candidate.artifacts.base_resume"]
 assert _br["entity_type"] == "candidate"
 assert _br["entity_type"] in ENTITY_TYPES
@@ -5765,6 +5799,68 @@ assert set(_br.keys()) == {
 }
 assert TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"
 assert TASK_CONFIG["craft_resume_base"]["artifact_key"] in ARTIFACT_CONFIG
+
+_jr = ARTIFACT_CONFIG["job.artifacts.job_resume"]
+assert _jr["entity_type"] == "job"
+assert _jr["entity_type"] in ENTITY_TYPES
+assert _jr["candidate_scoped"] is True
+assert isinstance(_jr["candidate_scoped"], bool)
+assert _jr["body_shape"] == "resume_content"
+assert _jr["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _jr["ingestion_owner"] == "tracker"
+assert set(_jr.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_cl = ARTIFACT_CONFIG["job.artifacts.cover_letter"]
+assert _cl["entity_type"] == "job"
+assert _cl["entity_type"] in ENTITY_TYPES
+assert _cl["candidate_scoped"] is True
+assert isinstance(_cl["candidate_scoped"], bool)
+assert _cl["body_shape"] == "cover_letter"
+assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _cl["ingestion_owner"] == "tracker"
+assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+# Body-replica values are catalog keys (not bare type strings as authority).
+assert set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()) == {
+    "job.artifacts.job_resume",
+    "job.artifacts.cover_letter",
+}
+assert set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()) <= set(ARTIFACT_CONFIG)
+
+# Editable leaf types are exactly the catalog job-key leaves (order = body-replica values).
+assert JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
+assert all(
+    ARTIFACT_CONFIG[k]["entity_type"] == JOB_ARTIFACT_ENTITY_TYPE
+    for k in JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()
+)
+
+# JAR resume/cover tabs: 1:1 leaf map to catalog keys; shapes_key matches body_shape when set.
+_jar_by_id = {t["tab_id"]: t for t in JOBS_RECOMMENDED_ARTIFACT_TABS}
+assert _jar_by_id["artifact_resume"]["artifact_key"] == "job_resume"
+assert _jar_by_id["artifact_resume"]["artifact_key"] == (
+    "job.artifacts.job_resume".rsplit(".", 1)[-1]
+)
+assert ARTIFACT_CONFIG["job.artifacts.job_resume"]["body_shape"] == "resume_content"
+assert _jar_by_id["artifact_cover"]["artifact_key"] == "cover_letter"
+assert _jar_by_id["artifact_cover"]["artifact_key"] == (
+    "job.artifacts.cover_letter".rsplit(".", 1)[-1]
+)
+assert _jar_by_id["artifact_cover"]["shapes_key"] == (
+    ARTIFACT_CONFIG["job.artifacts.cover_letter"]["body_shape"]
+)
+# proposed_answers remains a non-catalog pin/blob slot.
+assert _jar_by_id["artifact_application"]["artifact_key"] == "proposed_answers"
+assert "job.artifacts.proposed_answers" not in ARTIFACT_CONFIG
 
 
 def get_cover_letter_render_token(name: str) -> dict:
