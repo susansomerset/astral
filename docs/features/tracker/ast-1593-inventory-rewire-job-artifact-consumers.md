@@ -164,3 +164,122 @@ context_tokens≈61000
 **Built @ `4f0edd01`** — `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`
 
 Product stages 1–2 landed (builder `get_job_current`; ArtifactEditor + recommendedJobReport drop resume_content SoT). Stage 3: JobAnalysisReportModal unchanged — JAR tabs still leaf `job_resume` / `cover_letter` (AST-1590 1:1 map). Test path remains Betty `qa-child`.
+
+
+## Radia review
+
+```text
+# Radia review — AST-1593
+
+`[code-rubric] revision=2`
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1593
+**Publish ref:** `sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers` @ `635a58e43f4929980ac4d7a07ba7440fbba36869`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1593)` on publish ref. |
+| orch.git.commit-vocabulary | universal | conforms | Staged `code` / `test` / `docs` / `merge-tests`. |
+| orch.git.flow-direction-inviolable | universal | conforms | Child `sub/AST-1588/…` only. |
+| orch.git.ftr-sub-topology | universal | conforms | Epic stack on branch includes siblings 1590–1592 as expected. |
+| orch.git.merge-on-checkout | universal | conforms | No violation in diff. |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | Linear history. |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named publish branches. |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree pattern OK. |
+| orch.git.three-permanent-branches | universal | conforms | Publish ref is `sub/*`. |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Legacy decommission tradeoffs documented in Joan attachment. |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 delivered; Stage 3 no-change documented. |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A to code. |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed. |
+| orch.roles.archie-approves-statutes | universal | conforms | N/A. |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible via Betty + `merge-tests`. |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A. |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee through Tests Passed. |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook-ban violations observed. |
+| astral.agent.* (3) | scoped | not-applicable | No agent changes in AST-1593 commits. |
+| astral.batch.* (4) | scoped | not-applicable | No batch paths. |
+| astral.config.* (2) | scoped | not-applicable | No config changes in AST-1593 product commits. |
+| astral.debug.* (2) | scoped | not-applicable | No debug spike paths. |
+| astral.dispatch.* (2) | scoped | not-applicable | No dispatch changes. |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One plan file for AST-1593. |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty paths are tests/bible only. |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Test-tree via Betty pipeline. |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Builder stays core; UI stays ui. |
+| astral.layers.import-direction | scoped | conforms | Builder → tracker/candidate/data (pre-existing data import); UI components import lib only. |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No scripts diff. |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Leaf JAR keys preserved; no new hardcoded state lists. |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | Empty-body skip unchanged in tracker path; no new coat-check. |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No consult paths. |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | No API auth changes in 1593 commits. |
+| astral.seed.* (5) | scoped | not-applicable | No seed paths. |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No new data-layer logging. |
+| astral.standards.database-header-inventory | scoped | not-applicable | No data-layer changes in 1593 commits. |
+| astral.standards.debug-contract-gated | scoped | conforms | Source-label `debug_detail` lines remain inside existing `if debug:` blocks. |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `astral_job_id` threaded through resolve + label helpers. |
+| astral.standards.in-scope-only | scoped | conforms | AST-1593 commits touch only builder + two frontend modules; tracker/api/agent untouched. |
+| astral.standards.logging-via-utils | scoped | conforms | No new raw loggers. |
+| astral.standards.names-not-ticket-ids | scoped | conforms | AST cites in comments only. |
+| astral.standards.no-cross-contamination | scoped | conforms | No out-of-layer imports added. |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Catalog keys as string literals match plan inventory. |
+| astral.standards.public-then-helpers | scoped | conforms | Public `build_*` entrypoints unchanged; private `_resolve_*` updated. |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils changes in 1593 commits. |
+| astral.state.* (3) | scoped | not-applicable | No state-machine edits. |
+| astral.ui.frontend-file-placement | scoped | conforms | Changes under `src/ui/frontend/src/components/` and `lib/`. |
+| astral.ui.naming-conventions | scoped | conforms | No naming violations observed. |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server config. |
+
+**Active set:** 65 statutes scored (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | No approved-catalog "Patterns to reuse" block; Joan references draft `read-current` / `ui-consistency` in attachment only. |
+
+## Plan adherence
+
+**Stages 1–2 delivered; Stage 3 correctly skipped.**
+
+- **Stage 1:** `_resolve_resume_sections` / `_resolve_cover_letter` call `tracker.get_job_current` with catalog keys when `astral_job_id` is set; job-record `resume_content`, pin-string, and blob SoT branches removed; source labels report `get_job_current(job.artifacts.*)`; `build_resume` / `build_resume_from_job` / `build_cover_letter_from_job` thread `jid`.
+- **Stage 2:** `ArtifactEditor` drops `resume_content` sibling fallback for empty `job_resume`; `printResumeVisible` uses hydrated `job_resume` only; save path unchanged (leaf PUT).
+- **Stage 3:** `JobAnalysisReportModal.tsx` has **no diff** — consistent with AST-1590 leaf JAR keys + build stub note.
+- **Scope gate:** AST-1593 product commits (`26f1ad5c`, `4f0edd01`) are limited to `builder.py`, `ArtifactEditor.tsx`, `recommendedJobReport.tsx` only.
+- **Estimate 3** fits footprint.
+
+**Inventory (AC7):** Plan table documents pre-change surfaces and dispositions; implementation matches rewired rows.
+
+## Findings
+
+### advisory
+
+- **Legacy `resume_content`-only rows** — builder print and `printResumeVisible` will not treat legacy blob-only resume as SoT until a catalog current exists. Joan flagged as intended decommission; downstream UAT should spot-check migrated jobs.
+- **`JobAnalysisReportModal.tsx` in plan Files Changed but zero diff** — acceptable per Stage 3 decision; build stub records verification.
+- **`docs/test-bible/core/builder.md` shasum** still "fill after publish" — Betty/Chuckles doc hygiene only.
+- **`_resume_content_source_label` name** retained though label text is now catalog-path — cosmetic; no behavior impact.
+
+## What's solid
+
+- Builder no longer treats `job_data.artifacts` as operative SoT for live resume/cover — aligns with AST-1592 `get_job_current`.
+- UI load path trusts hydrate overlay under leaf keys; removes AST-1428 sibling promotion that fought catalog SoT.
+- Tests cover catalog-over-blob precedence, debug source labels, ArtifactEditor no-fallback, and `printResumeVisible` SoT shift.
+- Full epic foundation (1590 config, 1591 sources, 1592 tracker/API/agent) present on branch for integration.
+
+## Frame diff
+
+**AST-1593 product:** `src/core/builder.py` catalog current-read resolve; `ArtifactEditor.tsx` load contract; `recommendedJobReport.tsx` print visibility.
+
+**Epic stack on branch (expected):** AST-1590–1592 sibling product + tests — required dependency, not scope creep in 1593 commits.
+
+**Deferred / N/A:** JAR modal wiring unchanged; coat-check / source-id UI / hierarchical client keys correctly out of scope.
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute straggler list.
+- Downstream after parent lands: UAT on JAR tab load/save, builder live build, and recommended-report print for jobs with artifacts-table currents vs legacy blob-only rows.
+- Tip under review: `635a58e4`.
+
+context_tokens≈65000
+```
