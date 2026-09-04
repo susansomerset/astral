@@ -220,3 +220,144 @@ context_tokens≈42000
 **Built @ `c097d2be`** — `origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys`
 
 Product stages 1–2 landed (`ARTIFACT_CONFIG` job keys + body-replica/editable/JAR catalog binding). Test path remains Betty `qa-child`.
+
+## Radia review
+
+# Radia review — AST-1590
+
+**Publish ref:** `origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys` @ `0f8b7a7a5b5364575501991b99c1c1dd6ee8ca52`
+
+---
+
+```
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1590
+**Publish ref:** `origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys` @ `0f8b7a7a5b5364575501991b99c1c1dd6ee8ca52`
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/core/**` diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no `src/core/**` diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no `src/core/**` diff |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch/dispatcher paths in diff |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths in diff |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch paths in diff |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths in diff |
+| astral.config.config-source-of-truth | scoped | conforms | catalog keys + bindings live in `config.py` blocks |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env surface in diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no `debug/` paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no dispatch paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | `ast-1590-*.md` is single file for this ticket |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Betty paths are tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | test/bible edits via Betty pipeline + one `merge-tests` SHA; engineer commits are `code()` only |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no core/external diff |
+| astral.layers.import-direction | scoped | conforms | `config.py` adds no layer violations |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` diff |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no `src/ui/**` diff |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth paths |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed runtime paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no seed define paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed operator paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed coverage paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no `src/data/**` diff |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` diff |
+| astral.standards.debug-contract-gated | scoped | conforms | no new debug emission; agent skip label inherits catalog key from config |
+| astral.standards.dry-and-focused-functions | scoped | conforms | focused config registration + derivation |
+| astral.standards.in-scope-only | scoped | conforms | product footprint is `src/utils/config.py` only |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging in diff |
+| astral.standards.names-not-ticket-ids | scoped | conforms | keys use domain names not ticket ids |
+| astral.standards.no-cross-contamination | scoped | conforms | no unrelated module edits |
+| astral.standards.no-hardcoded-sets | scoped | conforms | `JOB_EDITABLE_ARTIFACT_TYPES` derived from catalog keys; parallel SoT retired |
+| astral.standards.public-then-helpers | scoped | conforms | public config constants before asserts |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no new utils→data import |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state machine paths |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job-state paths |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run-chain paths |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend diff |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI diff |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | exactly one `merge-tests(AST-1590)` on sub |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub publish ref topology |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1588/AST-1590-…` |
+| orch.git.merge-on-checkout | universal | conforms | no merge violation in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear child history |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1588 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | sub off ftr/dev pattern |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | plan decisions documented inline |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–2 match plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to diff content |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed gate satisfied |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | manifest + `TestAst1590*` + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee through review |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path violation evident |
+
+**Active-set count:** 65 rows (per `canon/statutes/README.md` harvested + universal registry).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan has no "Patterns to reuse" block; code comments reference draft `patt.artifact.manage-catalog` (register half) — informational only |
+
+## Plan adherence
+
+- **AC1 (catalog registration):** `ARTIFACT_CONFIG` adds `job.artifacts.job_resume` and `job.artifacts.cover_letter` with full metadata; pilot unchanged; key-set and per-entry asserts pass.
+- **AC2 (sibling exclusion):** negative sibling loop + `proposed_answers` JAR assert keep blob keys out of catalog.
+- **Stage 2 (authority binding):** `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` values are catalog keys; `JOB_EDITABLE_ARTIFACT_TYPES` derived as leaf strings via `rsplit` (tracker table I/O unchanged); JAR tabs remain leaf keys with 1:1 binding asserts.
+- **Scope gate:** no `src/core/**`, `src/data/**`, `src/ui/**` product edits. Agent debug label change is config-propagated (`replica_slot` in `agent.py` already logs the map value) — no agent product commit required.
+- **Estimate (2):** footprint matches — single-module config registration + asserts.
+- **Joan:** APPROVED @ `05bcd654`; no Excluded statute list → no straggler callout.
+- **Tests:** Betty manifest (`TestAst1590JobArtifactCatalogKeys`, revised AST-1099/1576 asserts, agent debug string) aligns with plan; one `merge-tests` SHA.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+1. **Branch hygiene — unrelated docs on publish ref:** diff also adds `docs/features/tracker/ast-1591-artifacts-table-source-references.md` and AST-1587 bible shasum lines in `docs/test-bible/core/builder.md` / `candidate.md`. No product scope smuggle for AST-1590, but ftr rollup will carry sibling-doc noise — Chuckles may want those on their own sub tips before merge-child.
+2. **Draft pattern comment:** `ARTIFACT_CONFIG` header cites `patt.artifact.manage-catalog` under `canon/directives/draft/` — fine as narrative; not an approved `canon/patterns/**` citation and correctly not listed as a pattern conformance row.
+
+## What's solid
+
+- Catalog registration matches parent technical scope: hierarchical keys, `candidate_scoped: True`, `ingestion_owner: "tracker"`, correct `body_shape` bindings.
+- Deriving `JOB_EDITABLE_ARTIFACT_TYPES` from catalog-key leaves prevents the footgun of body-replica values becoming table `artifact_type` strings after the map retarget.
+- Startup assert suite gives strong anti-drift guarantees between catalog, body-replica, editable leaves, and JAR tabs without touching runtime consumers (deferred to AST-1592/1593 per plan).
+- Component tests mirror the assert surface area; revised agent debug assertion correctly expects `key=job.artifacts.cover_letter`.
+
+## Frame diff
+
+- `ARTIFACT_CONFIG`: `candidate.artifacts.base_resume` (unchanged) + **`job.artifacts.job_resume`** + **`job.artifacts.cover_letter`**
+- `JOB_ARTIFACT_BODY_REPLICA_BY_TASK`: `job_resume` / `cover_letter` leaf values → **`job.artifacts.job_resume`** / **`job.artifacts.cover_letter`**
+- `JOB_EDITABLE_ARTIFACT_TYPES`: was `tuple(map.values())` (would break after retarget) → **`tuple(catalog_key.rsplit(".", 1)[-1] for …)`** preserving `("job_resume", "cover_letter")` for tracker I/O
+- New startup asserts: sibling exclusion, job metadata, body-replica ⊆ catalog, JAR 1:1 leaf map
+- Agent debug skip lines: `key=cover_letter` → **`key=job.artifacts.cover_letter`** (via config, no `agent.py` edit)
+
+## Notes
+
+- Joan plan-rubric verdict attached; no Excluded-statute table → straggler check N/A.
+- C7 complete — recommend **Review Posted** → **resolve-child** (PROCEED) or straight **User Testing** per datt routing.
+
+context_tokens≈58000
+
