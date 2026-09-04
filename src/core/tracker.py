@@ -2,7 +2,8 @@
 Core tracker: job lifecycle management (AST-75).
 
 In-scope: ingest_jobs, save_meteorite_job, save_job_data, get_job_data, initialize_job,
-transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot.
+transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot,
+save_job_artifact, get_job_current (AST-1592 catalog write/current-read for job keys).
 All writes go through database.save_job (upsert); state transition logic lives here, not in data layer.
 get_job_data: coat-check pattern — return value if present, self-heal if missing (e.g. fetch JD via playwright).
 AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no coat-check scrape).
@@ -13,11 +14,12 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.core import candidate as candidate_mod
 from src.data import database
 from src.utils.config import (
+    ARTIFACT_CONFIG,
     BLOCK_TYPES,
     BUILD_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
@@ -326,21 +328,30 @@ def get_job_artifacts(job: Dict[str, Any]) -> Dict[str, Any]:
     return art if isinstance(art, dict) else {}
 
 
-def _candidate_data_for_job(astral_job_id: str) -> dict:
-    """Inner candidate_data blob for the job's owning candidate, or {}."""
-    job = get_job(astral_job_id)
+def _candidate_id_for_job(astral_job_id: str) -> Optional[str]:
+    """Owning candidate_id via job → company, or None. Uses raw DB row (no hydrate)."""
+    job = database.get_job(astral_job_id)
     if not job:
-        return {}
+        return None
     company_key = job.get("company")
     if not isinstance(company_key, str) or not company_key.strip():
-        return {}
+        return None
     company = get_company(company_key.strip())
     if not company:
-        return {}
+        return None
     candidate_id = company.get("candidate_id")
     if not candidate_id:
+        return None
+    cid = str(candidate_id).strip()
+    return cid or None
+
+
+def _candidate_data_for_job(astral_job_id: str) -> dict:
+    """Inner candidate_data blob for the job's owning candidate, or {}."""
+    cid = _candidate_id_for_job(astral_job_id)
+    if not cid:
         return {}
-    row = candidate_mod.get_candidate(str(candidate_id))
+    row = candidate_mod.get_candidate(cid)
     if not row:
         return {}
     cd = row.get("candidate_data")
@@ -379,6 +390,112 @@ def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: 
     merged: Dict[str, Any] = dict(filtered)
     merged.update(snapshot)
     return merged
+
+
+def get_job_current(
+    astral_job_id: str,
+    artifact_key: str,
+    *,
+    debug: bool = False,
+) -> Optional[Any]:
+    """Current-read body for a job catalog artifact key (patt.artifact.read-current / AST-1592).
+
+    Resolves ARTIFACT_CONFIG, calls database.get_current_artifact for the job + leaf
+    artifact_type. Returns deserialized artifact_data, or None on miss. Never reads
+    job_data blobs. No coat-check.
+    """
+    _ = debug
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if entry.get("entity_type") != JOB_ARTIFACT_ENTITY_TYPE:
+        raise ValueError(f"catalog key not job-scoped: {key!r}")
+    jid = (astral_job_id or "").strip()
+    if not jid:
+        raise ValueError("astral_job_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], jid, artifact_type)
+    if row is None:
+        return None
+    return row.get("artifact_data")
+
+
+def save_job_artifact(
+    astral_job_id: str,
+    artifact_key: str,
+    blob: Any,
+    source_artifact_ids: Optional[Sequence[str]] = None,
+    *,
+    debug: bool = False,
+) -> Optional[str]:
+    """Operative catalog write for a job artifact key (patt.artifact.write-operative / AST-1592).
+
+    Same calling shape as candidate catalog str-path save, plus optional source ids.
+    For job.artifacts.job_resume, always cites the owning candidate's then-current
+    base_resume artifact_uuid (or [] if none) — patt.artifacts.traceability.
+    """
+    _ = debug
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if entry.get("entity_type") != JOB_ARTIFACT_ENTITY_TYPE:
+        raise ValueError(f"catalog key not job-scoped: {key!r}")
+    jid = (astral_job_id or "").strip()
+    if not jid:
+        raise ValueError("astral_job_id required")
+    if blob is None:
+        raise ValueError("artifact body required")
+
+    shape_name = entry["body_shape"]
+    shape = BUILD_CONFIG["artifact_shapes"][shape_name]
+    artifact_type = key.rsplit(".", 1)[-1]
+
+    # Prepare body by catalog key (retain existing prepare/normalize; no new gates).
+    if key == "job.artifacts.job_resume":
+        if not isinstance(blob, dict):
+            raise ValueError("job_resume body must be a dict")
+        prepared: Any = _prepare_job_resume_content(blob, _candidate_data_for_job(jid))
+        if not any(_resume_section_has_body(sid, val) for sid, val in prepared.items()):
+            return None
+    elif key == "job.artifacts.cover_letter":
+        prepared = normalize_cover_letter_artifact(blob)
+        if not _cover_letter_display_nonempty(prepared):
+            return None
+    elif shape_name == "resume_content":
+        if not isinstance(blob, dict) or not blob:
+            raise ValueError("resume_content body must be a non-empty dict")
+        for req_key, spec in shape.items():
+            if isinstance(spec, dict) and spec.get("required") and req_key not in blob:
+                raise ValueError(f"resume_content missing required key: {req_key!r}")
+        prepared = blob
+    else:
+        prepared = blob
+
+    # job_resume always auto-cites current base_resume; other keys pass sources through.
+    if key == "job.artifacts.job_resume":
+        sources: Optional[Sequence[str]] = []
+        cid = _candidate_id_for_job(jid)
+        if cid:
+            base_row = database.get_current_artifact("candidate", cid, "base_resume")
+            base_uuid = (base_row or {}).get("artifact_uuid") if base_row else None
+            if isinstance(base_uuid, str) and base_uuid.strip():
+                sources = [base_uuid.strip()]
+    else:
+        sources = source_artifact_ids
+
+    return database.save_artifact(
+        entry["entity_type"],
+        jid,
+        artifact_type,
+        prepared,
+        source_artifact_ids=sources,
+    )
 
 
 def save_job_artifact_resume_content(astral_job_id: str, resume_content: Dict[str, Any]) -> None:
@@ -443,29 +560,13 @@ def cover_letter_artifact_for_display(
 
 
 def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, Any]) -> None:
-    """AST-1556: persist cover letter as artifacts-table current row (not job_data SoT)."""
-    if not astral_job_id or not str(astral_job_id).strip():
-        return
-    normalized = normalize_cover_letter_artifact(cover_letter)
-    if not _cover_letter_display_nonempty(normalized):
-        return
-    database.save_artifact(
-        JOB_ARTIFACT_ENTITY_TYPE, astral_job_id, "cover_letter", normalized
-    )
+    """Thin forward to catalog write (AST-1592); removed once callers rewire."""
+    save_job_artifact(astral_job_id, "job.artifacts.cover_letter", cover_letter)
 
 
 def save_job_artifact_job_resume_body(astral_job_id: str, resume_body: Dict[str, Any]) -> None:
-    """AST-1556: persist job_resume as artifacts-table current row (not job_data SoT)."""
-    if not astral_job_id or not str(astral_job_id).strip():
-        return
-    cd = _candidate_data_for_job(astral_job_id)
-    prepared = _prepare_job_resume_content(resume_body, cd)
-    # Coat-check: never store empty section body.
-    if not any(_resume_section_has_body(sid, val) for sid, val in prepared.items()):
-        return
-    database.save_artifact(
-        JOB_ARTIFACT_ENTITY_TYPE, astral_job_id, "job_resume", prepared
-    )
+    """Thin forward to catalog write (AST-1592); removed once callers rewire."""
+    save_job_artifact(astral_job_id, "job.artifacts.job_resume", resume_body)
 
 
 
