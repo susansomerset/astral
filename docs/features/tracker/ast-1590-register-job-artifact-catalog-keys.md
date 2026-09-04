@@ -214,3 +214,9 @@ Confirm Chuckles estimate: 2 — agree
 No `fix-now` or `discuss` findings. In-session statute pass: universal set + scoped `astral.config.config-source-of-truth` and `astral.standards.no-hardcoded-sets` conform; utils-only footprint excludes data/UI/batch statutes by path/layer predicates.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built @ `c097d2be`** — `origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys`
+
+Product stages 1–2 landed (`ARTIFACT_CONFIG` job keys + body-replica/editable/JAR catalog binding). Test path remains Betty `qa-child`.
