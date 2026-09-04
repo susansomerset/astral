@@ -7186,8 +7186,13 @@ class TestAst1099DoTaskArtifactPin:
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist)
         monkeypatch.setattr(
-            "src.core.tracker.persist_finalize_job_resume_content",
+            "src.core.tracker.save_job_artifact",
             persist_copy,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.prepare_job_replica_body",
+            lambda key, parsed, astral_job_id="": parsed if isinstance(parsed, dict) else None,
             raising=False,
         )
         monkeypatch.setattr(
@@ -7223,7 +7228,8 @@ class TestAst1099DoTaskArtifactPin:
         persist.assert_not_called()
         persist_copy.assert_called_once()
         assert persist_copy.call_args.args[0] == "job-1099"
-        assert persist_copy.call_args.args[1].get("professional_summary") == "Summary"
+        assert persist_copy.call_args.args[1] == "job.artifacts.job_resume"
+        assert persist_copy.call_args.args[2].get("professional_summary") == "Summary"
 
     @pytest.mark.asyncio
     async def test_finalize_cover_letter_body_replica_then_propose_pin(
@@ -7239,7 +7245,7 @@ class TestAst1099DoTaskArtifactPin:
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist)
         monkeypatch.setattr(
-            "src.core.tracker.persist_finalize_cover_letter_content",
+            "src.core.tracker.save_job_artifact",
             persist_cover,
             raising=False,
         )
@@ -7270,6 +7276,7 @@ class TestAst1099DoTaskArtifactPin:
         assert "propose_application_responses" in calls
         persist_cover.assert_called_once()
         assert persist_cover.call_args.args[0] == "job-1099"
+        assert persist_cover.call_args.args[1] == "job.artifacts.cover_letter"
         pin.assert_called_once()
         assert pin.call_args.args[:2] == ("job-1099", "proposed_answers")
         persist.assert_not_called()
@@ -7306,7 +7313,7 @@ class TestAst1099DoTaskArtifactPin:
         persist_cover = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr(
-            "src.core.tracker.persist_finalize_cover_letter_content",
+            "src.core.tracker.save_job_artifact",
             persist_cover,
             raising=False,
         )
@@ -7345,7 +7352,7 @@ class TestAst1099DoTaskArtifactPin:
         persist_cover = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr(
-            "src.core.tracker.persist_finalize_cover_letter_content",
+            "src.core.tracker.save_job_artifact",
             persist_cover,
             raising=False,
         )
@@ -7413,8 +7420,13 @@ class TestAst1554DoTaskBodyReplica:
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist_parsed)
         monkeypatch.setattr(
-            "src.core.tracker.persist_finalize_job_resume_content",
+            "src.core.tracker.save_job_artifact",
             persist_copy,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.prepare_job_replica_body",
+            lambda key, parsed, astral_job_id="": parsed if isinstance(parsed, dict) else None,
             raising=False,
         )
         monkeypatch.setattr(
@@ -7438,9 +7450,10 @@ class TestAst1554DoTaskBodyReplica:
         pin.assert_not_called()
         persist_copy.assert_called_once()
         assert persist_copy.call_args.args[0] == "job-1554"
-        parsed_arg = persist_copy.call_args.args[1]
-        assert isinstance(parsed_arg, dict)
-        assert parsed_arg.get("professional_summary") == "Summary"
+        assert persist_copy.call_args.args[1] == "job.artifacts.job_resume"
+        body_arg = persist_copy.call_args.args[2]
+        assert isinstance(body_arg, dict)
+        assert body_arg.get("professional_summary") == "Summary"
 
     @pytest.mark.asyncio
     async def test_finalize_cover_writes_body_replica_no_pin(
@@ -7453,7 +7466,7 @@ class TestAst1554DoTaskBodyReplica:
         persist_cover = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr(
-            "src.core.tracker.persist_finalize_cover_letter_content",
+            "src.core.tracker.save_job_artifact",
             persist_cover,
             raising=False,
         )
@@ -7473,7 +7486,8 @@ class TestAst1554DoTaskBodyReplica:
         pin.assert_not_called()
         persist_cover.assert_called_once()
         assert persist_cover.call_args.args[0] == "job-1554"
-        assert isinstance(persist_cover.call_args.args[1], dict)
+        assert persist_cover.call_args.args[1] == "job.artifacts.cover_letter"
+        assert isinstance(persist_cover.call_args.args[2], dict)
 
 # Branches: same RESPONSE debug result= bind on intake initiate path (AST-1083 UAT).
 class TestAst1083StoreResponseDebugResult:

@@ -236,3 +236,19 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** repro lines flip red→green after `make-fix`; regression line stays green — not zero-arg harness / branch-lock gate.
+
+
+---
+
+### AST-1592 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`.
+
+PUT job_resume / cover_letter / legacy resume_content call `save_job_artifact` with catalog keys (not type-specific helpers). Primary tracker coverage: **`docs/test-bible/core/tracker.md`** § AST-1592.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT job_resume → catalog write | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper`** (revised) |
+| PUT cover_letter → catalog write | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_put_cover_letter_persists_via_tracker`** (revised) |
+
+**Broken / obsolete this pass:** spies on `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` — retargeted to `save_job_artifact`.

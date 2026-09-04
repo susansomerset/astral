@@ -407,7 +407,8 @@ class TestJobsRoutes:
     def test_put_cover_letter_persists_via_tracker(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        captured: list[tuple[str, dict[str, str]]] = []
+        # AST-1592: PUT → save_job_artifact with catalog key.
+        captured: list[tuple] = []
         monkeypatch.setattr(
             jobs_mod,
             "get_job",
@@ -415,8 +416,8 @@ class TestJobsRoutes:
         )
         monkeypatch.setattr(
             jobs_mod,
-            "save_job_artifact_cover_letter",
-            lambda job_id, content: captured.append((job_id, content)),
+            "save_job_artifact",
+            lambda job_id, key, content, *a, **k: captured.append((job_id, key, content)),
         )
         resp = jobs_client.put(
             "/api/jobs/job-565/artifacts/cover_letter",
@@ -424,7 +425,9 @@ class TestJobsRoutes:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        assert captured == [("job-565", {"Subject": "Hi", "Letter": "Body"})]
+        assert captured == [
+            ("job-565", "job.artifacts.cover_letter", {"Subject": "Hi", "Letter": "Body"})
+        ]
 
     def test_put_application_responses_persists_via_save_job_data(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -585,9 +588,8 @@ class TestAst1100JobArtifactPinResolveApi:
     def test_put_job_resume_persists_via_tracker_body_helper(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1554/1556: PUT stays thin → save_job_artifact_job_resume_body (table SoT in tracker).
-        body_writes: list[tuple[str, dict]] = []
-        sibling_only: list[tuple[str, dict]] = []
+        # AST-1592: PUT stays thin → save_job_artifact(catalog key) (table SoT in tracker).
+        body_writes: list[tuple] = []
         raw_saves: list[tuple[str, dict]] = []
         monkeypatch.setattr(
             jobs_mod,
@@ -599,18 +601,14 @@ class TestAst1100JobArtifactPinResolveApi:
         )
         monkeypatch.setattr(
             jobs_mod,
-            "save_job_artifact_job_resume_body",
-            lambda job_id, content: body_writes.append((job_id, content)),
-        )
-        monkeypatch.setattr(
-            jobs_mod,
-            "save_job_artifact_resume_content",
-            lambda job_id, content: sibling_only.append((job_id, content)),
+            "save_job_artifact",
+            lambda job_id, key, content, *a, **k: body_writes.append((job_id, key, content)),
         )
         monkeypatch.setattr(
             jobs_mod,
             "save_job_data",
             lambda job_id, payload: raw_saves.append((job_id, payload)),
+            raising=False,
         )
         resp = jobs_client.put(
             "/api/jobs/job-1100/artifacts/job_resume",
@@ -618,8 +616,9 @@ class TestAst1100JobArtifactPinResolveApi:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        assert body_writes == [("job-1100", {"professional_summary": "Edited"})]
-        assert sibling_only == []
+        assert body_writes == [
+            ("job-1100", "job.artifacts.job_resume", {"professional_summary": "Edited"})
+        ]
         assert raw_saves == []
 
     def test_put_proposed_answers_writes_body_dict(
