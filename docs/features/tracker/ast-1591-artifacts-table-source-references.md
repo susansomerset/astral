@@ -317,5 +317,5 @@ context_tokens≈58000
 Radia `[code-rubric]` REVIEW @ `8701bb54` / docs tip `bc6aac7c`:
 
 - **fix-now:** none.
-- **discuss (sibling AST-1590 tests without AST-1590 product on this ref):** Not a product defect in `database.py`. No code change this resolve. Rollup / `blockedBy` order is Chuckles **merge-child** / prep-uat: land AST-1590 product on `ftr` before (or together with) the shared `origin/tests` AST-1590 footprint so config suite asserts are not red on a lone AST-1591 tip. AST-1591 Betty manifest (`test_artifacts.py`) remains the green gate for this child.
+- **discuss (sibling AST-1590 tests without AST-1590 product on this ref):** Not a product defect in `database.py`. §9a dry-run vs `origin/ftr/AST-1588-job-artifacts-job-resume-cover-letter` was blocked before AST-1590 product was an ancestor; merged that `ftr` tip into this sub (brings AST-1590 `config.py` + plan onto the publish ref). Re-ran §9a: clean vs `origin/dev` and vs parent `ftr`. AST-1591 Betty manifest (`test_artifacts.py`) remains the green gate for this child.
 - **advisory:** AST-1587 bible shasum churn and draft Implementation renumber — accepted as-is; out of scope / already matching Stage 3 intent.
