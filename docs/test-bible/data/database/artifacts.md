@@ -101,3 +101,46 @@ rg -n 'id: patt.artifacts.traceability|versioned `agent_id`|versioned `agent_tas
 
 **Pass criterion:** pytest green on lines 1–2 + docs-acceptance line 3 — not zero-arg harness / branch-lock gate.
 
+
+---
+
+### AST-1591 · AST-1588
+
+**Parent:** [AST-1588 — Support job.artifacts.job_resume and job.artifacts.cover_letter as artifacts](https://linear.app/astralcareermatch/issue/AST-1588/support-jobartifactsjob-resume-and-jobartifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1591-artifacts-table-source-references`.
+
+Data-layer `artifacts.source_artifact_ids` (TEXT JSON array of artifact_uuid strings, default `[]`): DDL/ensure + ALTER migrate; `save_artifact(..., source_artifact_ids=None)` persists; `get_current_artifact` / `get_artifact` / `list_artifacts` return `list[str]`. No UUID-existence or catalog validation. Catalog keys / tracker citation are siblings **AST-1590** / **AST-1592**. Draft alignment note on `canon/directives/draft/patt.artifacts.traceability.md` is docs-acceptance.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fresh CREATE + inventory lists column | `src/data/database.py` | **`TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it`** (revised) |
+| ALTER-add on pre-AST-1591 table | `src/data/database.py` | **`TestAst1591SourceArtifactIds::test_ensure_adds_column_on_preexisting_table`** |
+| Omit sources → `[]` on get-current / get-by-uuid | `src/data/database.py` | **`TestAst1591SourceArtifactIds::test_save_omitted_sources_default_empty_list`** |
+| Persist + strip empties; readers + list | `src/data/database.py` | **`TestAst1591SourceArtifactIds::test_save_persist_and_readers_return_sources`** |
+| Per-version sources across retire+insert | `src/data/database.py` | **`TestAst1591SourceArtifactIds::test_second_save_can_change_sources_independently`** |
+| Bad type → ValueError | `src/data/database.py` | **`TestAst1591SourceArtifactIds::test_source_artifact_ids_bad_type_raises`** |
+
+**Broken / obsolete this pass:** `TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it` — exact column set + inventory must include `source_artifact_ids` (revised in place). Existing writer / rename / get-by-uuid suites stay.
+
+**Integration:** none — no existing `tests/integration/` scenario asserts `source_artifact_ids` or artifacts provenance columns.
+
+## QA test manifest (AST-1591)
+
+1. Revised ensure/inventory: `tests/component/data/database/test_artifacts.py::TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it`
+2. Source refs suite: `tests/component/data/database/test_artifacts.py::TestAst1591SourceArtifactIds`
+3. Regression writers: `tests/component/data/database/test_artifacts.py::TestAst1352Artifacts`
+4. Regression rename: `tests/component/data/database/test_artifacts.py::TestAst1364RenameArtifacts`
+5. Regression get-by-uuid: `tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact`
+6. **docs-acceptance** — draft `canon/directives/draft/patt.artifacts.traceability.md` on publish tip names AST-1588 `source_artifact_ids` alignment
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/data/database/test_artifacts.py   -q
+```
+
+```bash
+# docs-acceptance (publish tip)
+rg -n 'AST-1588|source_artifact_ids'   canon/directives/draft/patt.artifacts.traceability.md
+```
+
+**Pass criterion:** pytest green on lines 1–5 + docs-acceptance line 6 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasum (record after publish):** `docs/test-bible/data/database/artifacts.md`

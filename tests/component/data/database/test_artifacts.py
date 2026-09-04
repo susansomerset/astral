@@ -30,10 +30,12 @@ class TestAst1352Artifacts:
                 "entity_id",
                 "artifact_type",
                 "artifact_data",
+                "source_artifact_ids",
                 "current",
                 "created_at",
                 "updated_at",
             }
+            assert "source_artifact_ids" in (db.__doc__ or "")
             idx = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='index' "
                 "AND name='idx_artifacts_entity_type_current'"
@@ -205,3 +207,108 @@ class TestAst1584GetArtifact:
             db.get_artifact("")
         with pytest.raises(ValueError, match="artifact_uuid required"):
             db.get_artifact("   ")
+
+
+# Branches: source_artifact_ids column/ensure; save persist; get-current/get-by-uuid/list return;
+# omit→[]; strip empties; bad type raises; no UUID existence validation.
+class TestAst1591SourceArtifactIds:
+    """AST-1591: artifacts.source_artifact_ids persist + read (no existence validation)."""
+
+    def test_ensure_adds_column_on_preexisting_table(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            # Pre-AST-1591 shape (no source_artifact_ids) — ensure must ALTER-add.
+            conn.execute(
+                """CREATE TABLE artifacts (
+                    artifact_uuid TEXT PRIMARY KEY,
+                    entity_type TEXT NOT NULL,
+                    entity_id TEXT NOT NULL,
+                    artifact_type TEXT NOT NULL,
+                    artifact_data TEXT NOT NULL,
+                    current INTEGER NOT NULL DEFAULT 1,
+                    created_at TIMESTAMP NOT NULL,
+                    updated_at TIMESTAMP NOT NULL
+                )"""
+            )
+            conn.commit()
+            db._artifacts_schema_ensured = False
+            db._ensure_artifacts_table(conn)
+            cols = {
+                r[1]
+                for r in conn.execute("PRAGMA table_info(artifacts)").fetchall()
+            }
+            assert "source_artifact_ids" in cols
+        finally:
+            conn.close()
+
+    def test_save_omitted_sources_default_empty_list(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        uid = db.save_artifact("candidate", "cand-1", "base_resume", {"v": 1})
+        row = db.get_current_artifact("candidate", "cand-1", "base_resume")
+        assert row is not None
+        assert row["artifact_uuid"] == uid
+        assert row["source_artifact_ids"] == []
+        by_uuid = db.get_artifact(uid)
+        assert by_uuid is not None
+        assert by_uuid["source_artifact_ids"] == []
+
+    def test_save_persist_and_readers_return_sources(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        seed_a = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+        seed_b = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        uid = db.save_artifact(
+            "job",
+            "job-1",
+            "job_resume",
+            {"body": "derived"},
+            source_artifact_ids=[seed_a, "  ", seed_b, ""],
+        )
+        current = db.get_current_artifact("job", "job-1", "job_resume")
+        assert current is not None
+        assert current["artifact_uuid"] == uid
+        # empties stripped; order preserved; unknown uuids accepted (no existence check)
+        assert current["source_artifact_ids"] == [seed_a, seed_b]
+        by_uuid = db.get_artifact(uid)
+        assert by_uuid is not None
+        assert by_uuid["source_artifact_ids"] == [seed_a, seed_b]
+        listed = db.list_artifacts("job", "job-1", "job_resume", current_only=True)
+        assert len(listed) == 1
+        assert listed[0]["source_artifact_ids"] == [seed_a, seed_b]
+
+    def test_second_save_can_change_sources_independently(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        uid1 = db.save_artifact(
+            "job",
+            "job-1",
+            "job_resume",
+            {"v": 1},
+            source_artifact_ids=["src-1"],
+        )
+        uid2 = db.save_artifact(
+            "job",
+            "job-1",
+            "job_resume",
+            {"v": 2},
+            source_artifact_ids=[],
+        )
+        assert uid1 != uid2
+        retired = db.get_artifact(uid1)
+        assert retired is not None
+        assert retired["current"] == 0
+        assert retired["source_artifact_ids"] == ["src-1"]
+        current = db.get_current_artifact("job", "job-1", "job_resume")
+        assert current is not None
+        assert current["artifact_uuid"] == uid2
+        assert current["source_artifact_ids"] == []
+
+    def test_source_artifact_ids_bad_type_raises(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="source_artifact_ids"):
+            db.save_artifact(
+                "candidate",
+                "cand-1",
+                "base_resume",
+                {"x": 1},
+                source_artifact_ids="not-a-list",  # type: ignore[arg-type]
+            )
