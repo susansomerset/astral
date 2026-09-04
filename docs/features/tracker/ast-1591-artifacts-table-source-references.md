@@ -162,3 +162,8 @@ context_tokens≈42000
 
 **Summary:** Plan Ready, first pass (no Plan Discuss rounds). Scope gate, files-changed table, and stages align with AST-1591’s slice and parent AC3. Schema migration correctly targets both existing-table paths in `_ensure_artifacts_table` (current code returns early without column ensure). Layer, header-inventory, data-raises/no-logging, and boundary discipline all hold. No fix-now findings — recommend **Plan Approved**.
 
+## Build complete
+
+**Publish ref:** `sub/AST-1588/AST-1591-artifacts-table-source-references` @ `c4684fafc364363466f772687fca726b6a4459aa`
+
+Stages 1–3 delivered: `artifacts.source_artifact_ids` DDL/ensure + header inventory; `save_artifact` optional persist; get-current / get-by-uuid (via shared mapper) return list; draft traceability one-line note.
