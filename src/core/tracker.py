@@ -611,15 +611,18 @@ def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
 
 
 def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1556: copy unwrapped finalize resume onto artifacts-table job_resume."""
+    """AST-1556/1592: copy unwrapped finalize resume via catalog write."""
     if not parsed_matches_job_resume_content(astral_job_id, parsed):
         return False
-    save_job_artifact_job_resume_body(astral_job_id, _resume_payload_body(parsed))
-    return True
+    return bool(
+        save_job_artifact(
+            astral_job_id, "job.artifacts.job_resume", _resume_payload_body(parsed)
+        )
+    )
 
 
 def persist_finalize_cover_letter_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1556: copy normalized cover onto artifacts-table cover_letter; coat-check empty."""
+    """AST-1556/1592: copy normalized cover via catalog write; skip empty."""
     if not isinstance(parsed, dict):
         return False
     body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
@@ -629,8 +632,9 @@ def persist_finalize_cover_letter_content(astral_job_id: str, parsed: Any) -> bo
     normalized = normalize_cover_letter_artifact(source)
     if not _cover_letter_display_nonempty(normalized):
         return False
-    save_job_artifact_cover_letter(astral_job_id, normalized)
-    return True
+    return bool(
+        save_job_artifact(astral_job_id, "job.artifacts.cover_letter", normalized)
+    )
 
 
 def pin_job_artifact_agent_data_id(
@@ -703,25 +707,22 @@ def hydrate_job_artifacts_for_display(
     astral_job_id: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """AST-1100/1548/1556: shallow-copy; overlay artifacts-table currents for job_resume/cover."""
+    """AST-1100/1548/1556/1592: shallow-copy; overlay catalog current-reads for job_resume/cover."""
     if not isinstance(artifacts, dict):
         out: Dict[str, Any] = {}
     else:
         out = dict(artifacts)
-    # AST-1556: operator SoT is artifacts table when job id is known.
+    # AST-1592: operator SoT is get_job_current when job id is known.
     if astral_job_id and str(astral_job_id).strip():
         jid = str(astral_job_id).strip()
-        for atype in JOB_EDITABLE_ARTIFACT_TYPES:
-            row = database.get_current_artifact(JOB_ARTIFACT_ENTITY_TYPE, jid, atype)
-            if not row:
-                continue
-            data = row.get("artifact_data")
-            if atype == "job_resume" and isinstance(data, dict) and data:
-                out["job_resume"] = dict(data)
-            elif atype == "cover_letter" and isinstance(data, dict):
-                display_cover = cover_letter_artifact_for_display(data, debug=debug)
-                if display_cover is not None:
-                    out["cover_letter"] = display_cover
+        jr = get_job_current(jid, "job.artifacts.job_resume", debug=debug)
+        if isinstance(jr, dict) and jr:
+            out["job_resume"] = dict(jr)
+        cover_raw = get_job_current(jid, "job.artifacts.cover_letter", debug=debug)
+        if isinstance(cover_raw, dict):
+            display_cover = cover_letter_artifact_for_display(cover_raw, debug=debug)
+            if display_cover is not None:
+                out["cover_letter"] = display_cover
     else:
         rc = out.get("resume_content")
         sibling_resume = rc if isinstance(rc, dict) and rc else None
@@ -814,11 +815,8 @@ def parsed_matches_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
 
 
 def job_has_persisted_resume_body(astral_job_id: str, job: Optional[Dict[str, Any]] = None) -> bool:
-    """Non-empty job_resume body for an enabled non-contact section (AST-1556 table SoT)."""
-    row = database.get_current_artifact(
-        JOB_ARTIFACT_ENTITY_TYPE, astral_job_id, "job_resume"
-    )
-    rc = row.get("artifact_data") if row else None
+    """Non-empty job_resume body for an enabled non-contact section (AST-1556/1592 table SoT)."""
+    rc = get_job_current(astral_job_id, "job.artifacts.job_resume")
     if not isinstance(rc, dict) or not rc:
         # Legacy blob fallback for pre-migration rows.
         job_row = job if job is not None else database.get_job(astral_job_id)
@@ -883,13 +881,17 @@ def persist_job_artifact_from_parsed(
     allow_resume: bool = True,
     allow_cover_letter: bool = True,
 ) -> bool:
-    """AST-369/371: merge parsed task JSON into job_data.artifacts when shape matches."""
+    """AST-369/371/1592: land matching shapes via catalog write (not job_data SoT)."""
     if not astral_job_id or not isinstance(parsed, dict):
         return False
     wrote = False
     if allow_cover_letter and parsed_matches_artifact_shape(parsed, "cover_letter"):
-        save_job_artifact_cover_letter(astral_job_id, slice_parsed_for_artifact_shape(parsed, "cover_letter"))
-        wrote = True
+        if save_job_artifact(
+            astral_job_id,
+            "job.artifacts.cover_letter",
+            slice_parsed_for_artifact_shape(parsed, "cover_letter"),
+        ):
+            wrote = True
     if allow_resume:
         cd = _candidate_data_for_job(astral_job_id)
         if parsed_matches_job_resume_content(astral_job_id, parsed):
@@ -898,8 +900,8 @@ def persist_job_artifact_from_parsed(
             filtered = candidate_mod.filter_content_to_resume_structure(
                 body, structure, allow_contact=True,
             )
-            save_job_artifact_resume_content(astral_job_id, filtered)
-            wrote = True
+            if save_job_artifact(astral_job_id, "job.artifacts.job_resume", filtered):
+                wrote = True
     # AST-1523: sibling notes metadata (manual/API defense-in-depth; live path is do_task).
     if persist_draft_job_resume_notes(astral_job_id, parsed):
         wrote = True
