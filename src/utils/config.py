@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); pilot = candidate.artifacts.base_resume; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
@@ -5735,8 +5735,8 @@ BUILD_CONFIG = {
 }
 
 
-# AST-1573 / AST-1575: authoritative artifact registry (patt.artifact.manage-catalog register half).
-# Key = entity._data path. Pilot only: candidate.artifacts.base_resume. Job keys = siblings.
+# AST-1573 / AST-1575 / AST-1590: authoritative artifact registry (patt.artifact.manage-catalog register half).
+# Key = entity._data path. Pilot + job editable keys.
 ARTIFACT_CONFIG = {
     "candidate.artifacts.base_resume": {
         "entity_type": "candidate",
@@ -5746,9 +5746,41 @@ ARTIFACT_CONFIG = {
         # Core component that owns first-row ingestion for this key (UI save / snapshot today).
         "ingestion_owner": "candidate",
     },
+    "job.artifacts.job_resume": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # Same resume section contract as candidate base_resume / JAR use_resume_structure.
+        "body_shape": "resume_content",
+        # Tracker owns first-row ingestion for job editable bodies today (AST-1556).
+        "ingestion_owner": "tracker",
+    },
+    "job.artifacts.cover_letter": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["cover_letter"] (JAR shapes_key).
+        "body_shape": "cover_letter",
+        "ingestion_owner": "tracker",
+    },
 }
 
-assert set(ARTIFACT_CONFIG.keys()) == {"candidate.artifacts.base_resume"}
+assert set(ARTIFACT_CONFIG.keys()) == {
+    "candidate.artifacts.base_resume",
+    "job.artifacts.job_resume",
+    "job.artifacts.cover_letter",
+}
+# Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2).
+for _sibling in (
+    "notes",
+    "resume_content",
+    "proposed_answers",
+    "application_responses",
+    "job.artifacts.notes",
+    "job.artifacts.resume_content",
+    "job.artifacts.proposed_answers",
+    "job.artifacts.application_responses",
+):
+    assert _sibling not in ARTIFACT_CONFIG
+
 _br = ARTIFACT_CONFIG["candidate.artifacts.base_resume"]
 assert _br["entity_type"] == "candidate"
 assert _br["entity_type"] in ENTITY_TYPES
@@ -5765,6 +5797,36 @@ assert set(_br.keys()) == {
 }
 assert TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"
 assert TASK_CONFIG["craft_resume_base"]["artifact_key"] in ARTIFACT_CONFIG
+
+_jr = ARTIFACT_CONFIG["job.artifacts.job_resume"]
+assert _jr["entity_type"] == "job"
+assert _jr["entity_type"] in ENTITY_TYPES
+assert _jr["candidate_scoped"] is True
+assert isinstance(_jr["candidate_scoped"], bool)
+assert _jr["body_shape"] == "resume_content"
+assert _jr["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _jr["ingestion_owner"] == "tracker"
+assert set(_jr.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_cl = ARTIFACT_CONFIG["job.artifacts.cover_letter"]
+assert _cl["entity_type"] == "job"
+assert _cl["entity_type"] in ENTITY_TYPES
+assert _cl["candidate_scoped"] is True
+assert isinstance(_cl["candidate_scoped"], bool)
+assert _cl["body_shape"] == "cover_letter"
+assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _cl["ingestion_owner"] == "tracker"
+assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
 
 
 def get_cover_letter_render_token(name: str) -> dict:
