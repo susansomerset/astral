@@ -28,10 +28,11 @@ Tables used (inventory):
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
 - artifacts — Versioned entity-scoped artifact blobs (artifact_uuid TEXT PK,
-  entity_type TEXT, entity_id TEXT, artifact_type TEXT, artifact_data TEXT, current INTEGER 0|1,
-  created_at, updated_at). Active row: current=1 for (entity_type, entity_id, artifact_type).
-  Versioning follows agent_task / rubric_vector current=1 retire-and-insert (AST-1340 / AST-1352;
-  table rename AST-1364).
+  entity_type TEXT, entity_id TEXT, artifact_type TEXT, artifact_data TEXT,
+  source_artifact_ids TEXT JSON array of artifact_uuid strings default '[]' (AST-1591),
+  current INTEGER 0|1, created_at, updated_at). Active row: current=1 for
+  (entity_type, entity_id, artifact_type). Versioning follows agent_task / rubric_vector
+  current=1 retire-and-insert (AST-1340 / AST-1352; table rename AST-1364).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
   candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
   batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
@@ -62,7 +63,7 @@ import uuid
 import zlib
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -4220,12 +4221,22 @@ def _ensure_artifacts_table(conn: sqlite3.Connection) -> None:
             "ON artifacts (entity_type, entity_id, artifact_type, current)"
         )
 
+    def _ensure_source_artifact_ids_column() -> None:
+        # AST-1591: provenance list on each version (JSON array of artifact_uuid strings)
+        cols = _column_names("artifacts")
+        if "source_artifact_ids" not in cols:
+            conn.execute(
+                "ALTER TABLE artifacts ADD COLUMN source_artifact_ids "
+                "TEXT NOT NULL DEFAULT '[]'"
+            )
+
     if _table_exists("artifacts"):
         cols = _column_names("artifacts")
         if "astral_artifact_uuid" in cols and "artifact_uuid" not in cols:
             conn.execute(
                 "ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
             )
+        _ensure_source_artifact_ids_column()
         _ensure_index()
         conn.commit()
         _artifacts_schema_ensured = True
@@ -4240,6 +4251,7 @@ def _ensure_artifacts_table(conn: sqlite3.Connection) -> None:
                 "ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
             )
         conn.execute("DROP INDEX IF EXISTS idx_astral_artifacts_entity_type_current")
+        _ensure_source_artifact_ids_column()
         _ensure_index()
         conn.commit()
         _artifacts_schema_ensured = True
@@ -4252,6 +4264,7 @@ def _ensure_artifacts_table(conn: sqlite3.Connection) -> None:
             entity_id TEXT NOT NULL,
             artifact_type TEXT NOT NULL,
             artifact_data TEXT NOT NULL,
+            source_artifact_ids TEXT NOT NULL DEFAULT '[]',
             current INTEGER NOT NULL DEFAULT 1,
             created_at TIMESTAMP NOT NULL,
             updated_at TIMESTAMP NOT NULL
@@ -4287,21 +4300,36 @@ def _artifact_row_dict(row: tuple) -> Dict[str, Any]:
         artifact_data = json.loads(raw)
     except (TypeError, json.JSONDecodeError):
         artifact_data = raw
+    # AST-1591: source_artifact_ids TEXT JSON array → list[str]
+    raw_sources = row[5]
+    sources: List[str] = []
+    if raw_sources is None or raw_sources == "":
+        sources = []
+    elif isinstance(raw_sources, list):
+        sources = [str(x) for x in raw_sources]
+    elif isinstance(raw_sources, str):
+        try:
+            parsed = json.loads(raw_sources)
+            if isinstance(parsed, list):
+                sources = [str(x) for x in parsed]
+        except (TypeError, json.JSONDecodeError):
+            sources = []
     return {
         "artifact_uuid": row[0],
         "entity_type": row[1],
         "entity_id": row[2],
         "artifact_type": row[3],
         "artifact_data": artifact_data,
-        "current": row[5],
-        "created_at": row[6],
-        "updated_at": row[7],
+        "source_artifact_ids": sources,
+        "current": row[6],
+        "created_at": row[7],
+        "updated_at": row[8],
     }
 
 
 _ARTIFACT_SELECT = (
     "artifact_uuid, entity_type, entity_id, artifact_type, "
-    "artifact_data, current, created_at, updated_at"
+    "artifact_data, source_artifact_ids, current, created_at, updated_at"
 )
 
 
@@ -4310,17 +4338,29 @@ def save_artifact(
     entity_id: str,
     artifact_type: str,
     artifact_data: Any,
+    source_artifact_ids: Optional[Sequence[str]] = None,
 ) -> str:
     """Blind retire-by-key + insert (patt.artifact.write-operative).
 
     Sets prior current=1 row(s) for (entity_type, entity_id, artifact_type) to
     current=0, then inserts a new UUID row with current=1. Never SELECT the prior
     uuid first; never UPDATE artifact_data in place. Returns the new uuid.
+
+    Optional source_artifact_ids: JSON array of source artifact_uuid strings on the
+    new row (default empty). No existence validation (AST-1591 /
+    patt.artifacts.traceability table support).
     """
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
     if artifact_data is None:
         raise ValueError("artifact_data required")
     payload = artifact_data if isinstance(artifact_data, str) else json.dumps(artifact_data)
+    if source_artifact_ids is None:
+        sources: list[str] = []
+    elif isinstance(source_artifact_ids, (list, tuple)):
+        sources = [str(x).strip() for x in source_artifact_ids if str(x).strip()]
+    else:
+        raise ValueError("source_artifact_ids must be a list of strings or None")
+    sources_payload = json.dumps(sources)
     now = _utc_now()
     new_uuid = str(uuid.uuid4())
 
@@ -4339,9 +4379,9 @@ def save_artifact(
             conn.execute(
                 """INSERT INTO artifacts (
                        artifact_uuid, entity_type, entity_id, artifact_type,
-                       artifact_data, current, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
-                (new_uuid, et, eid, at, payload, now, now),
+                       artifact_data, source_artifact_ids, current, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+                (new_uuid, et, eid, at, payload, sources_payload, now, now),
             )
             conn.commit()
             return new_uuid

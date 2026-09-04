@@ -49,15 +49,18 @@ themselves.
 
 1. **Draft** — Land this file under `canon/directives/draft/`; cite from define /
    plan tickets; do not treat as approved runtime law until Archie promotes.
-2. **Capture at generative write** — When an agent-produced operative write lands,
+2. **AST-1588** — Lands `source_artifact_ids` persistence on the `artifacts` table
+   (data layer) so job_resume versions can cite base_resume; agent/task lineage and
+   full token-catalog harvest remain out of that epic.
+3. **Capture at generative write** — When an agent-produced operative write lands,
    record versioned `agent_id`, versioned `agent_task_id`, and the seed
    `artifact_id[]` that fed tokens (implement ticket).
-3. **Manual edit inheritance** — UI / Estelle write-operative paths that create a
+4. **Manual edit inheritance** — UI / Estelle write-operative paths that create a
    new version after a human edit mark the version manual and copy inherited
    originating task sources forward (implement ticket).
-4. **Consumers** — Prefer provenance records over reconstructing seeds from live
+5. **Consumers** — Prefer provenance records over reconstructing seeds from live
    current rows.
-5. **Non-goal here** — No schema, no API field, no Contact/UI wire in AST-1584 /
+6. **Non-goal here** — No schema, no API field, no Contact/UI wire in AST-1584 /
    AST-1585.
 
 # OPEN QUESTIONS / DECISIONS
