@@ -180,3 +180,9 @@ AC2 → Stage 1 (`save_job_artifact` + `get_job_current`, catalog-key shape); AC
 context_tokens≈52000
 ```
 
+## Review (build)
+
+**Built @ `6e588366`** — `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`
+
+Stages 1–4 landed: `save_job_artifact` / `get_job_current` with job_resume→base_resume citation; tracker hydrate/has-body/from-parsed via generics; api_jobs PUT + detail hydrate by catalog key; agent finalize via `prepare_job_replica_body` + `save_job_artifact`; type-specific public save/persist helpers removed. Test path remains Betty `qa-child`.
+
