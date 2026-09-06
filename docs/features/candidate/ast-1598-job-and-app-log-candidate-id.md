@@ -189,3 +189,163 @@ context_tokens≈52000
 
 Stages 1–3 delivered: job inventory + `candidate_id` ensure/backfill; scoped helpers on `job.candidate_id` with fail-loud claim/list/count and `save_job` resolve; nullable `app_log.candidate_id` + `log_candidate_id` ContextVar stamp on flush.
 
+
+## Radia review
+
+# Radia review — AST-1598
+
+**Publish ref:** `origin/sub/AST-1594/AST-1598-job-and-app-log-candidate-id` @ `8caa180d80a99b42b7fd8d0de107b58221e6c7a2`  
+**Baseline:** `origin/dev`  
+**AST-1598 engineer commits:** `2b275c7d` → `aff5678f` (`database.py` + `logging.py` only)  
+**Tests tip (Betty merge):** `8caa180d` merges `93c59c33`  
+**Note:** Three-dot diff vs `origin/dev` also includes resolved sibling **AST-1597** (artifact rename + Radia DISCUSS carry-forward). AST-1598 plan adherence scored on AST-1598 commits + cumulative integration shape.
+
+---
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1598
+**Publish ref:** origin/sub/AST-1594/AST-1598-job-and-app-log-candidate-id @ 8caa180d80a99b42b7fd8d0de107b58221e6c7a2
+**Overall:** DISCUSS
+```
+
+## Statutes checked
+
+Diff change set: layers `data`, `utils`, `docs`; paths `src/data/database.py`, `src/utils/logging.py`, plan/bible/tests (Betty); change_types `add`/`modify`.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | no dispatch/agent paths |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch-id format changes |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch format changes |
+| astral.batch.claim-process-release | scoped | not-applicable | claim helper signature unchanged; still release elsewhere |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity-agent-responses paths |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config.py |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env paths |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug dir paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | `docs/features/candidate/ast-1598-…md` present |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | AST-1598 code commits limited to `database.py` + `logging.py` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | data/utils only in engineer commits |
+| astral.layers.import-direction | scoped | conforms | utils→data late import unchanged; no new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no ui src changes |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render/consult |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API route changes |
+| astral.seed.* (6 statutes) | scoped | not-applicable | no seed paths |
+| astral.standards.data-raises-caller-logs | scoped | conforms | job paths raise `ValueError`; `add_log_entry` swallows → False |
+| astral.standards.database-header-inventory | scoped | conforms | `job` + `app_log` inventory bullets updated |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug= contract surfaces |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `_resolve_job_candidate_id` shared; subquery→column filter deduped |
+| astral.standards.in-scope-only | scoped | conforms | AST-1598 engineer footprint matches plan Files Changed; 1597 artifact in branch is sibling resolve, not 1598 smuggle |
+| astral.standards.logging-via-utils | scoped | conforms | ContextVar + handler emit in `logging.py`; no stray `getLogger` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain column names only |
+| astral.standards.no-cross-contamination | scoped | conforms | job/app_log changes isolated from artifact CRUD logic |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | no new config vocab |
+| astral.standards.public-then-helpers | scoped | conforms | `_resolve_job_candidate_id` private; public job/log APIs extended |
+| astral.standards.utils-data-late-import-only | scoped | conforms | `add_log_entry` import stays inside `_flush_buffer` |
+| astral.state.* (3 statutes) | scoped | not-applicable | no state-machine logic |
+| astral.ui.* (3 statutes) | scoped | not-applicable | no ui src |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | single `merge-tests(AST-1598)` @ `8caa180d` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`test`/`docs`/`merge-tests`/`resolve` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub publish topology |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1594/AST-1598-…` |
+| orch.git.merge-on-checkout | universal | conforms | sync/merge commits present |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1594 epic pattern |
+| orch.git.three-permanent-branches | universal | conforms | review vs origin/dev |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | admin/UI breakage is plan-flagged partition — Susan gate |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 implemented per plan literal |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns test/bible revisions |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Hedy per spawn |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer stayed out of test tree |
+
+**Straggler (C4):** Joan verdict attached. No excluded statute rescored as `violates`. `astral.git.engineer-test-tree-ban` in-scope on combined ref (test paths) but **conforms** (Betty lane).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan has no **Patterns to reuse** block |
+
+## Plan adherence
+
+- **Stage 1:** `job` inventory + `_ensure_job_schema` adds/backfills `candidate_id`; `app_log` inventory bullet added. Backfill guarded when `company` table absent (`aff5678f`) — sensible test-harness fix beyond bare plan text.
+- **Stage 2:** All listed company-subquery sites switched to `job.candidate_id = ?`; redundant `_ensure_company_*` removed from four find/link helpers; `claim_job_batch` / `list_jobs` / `count_jobs` fail loud on blank `candidate_id`; `save_job` INSERT resolves via `_resolve_job_candidate_id`; UPDATE re-resolves on `company` or explicit `candidate_id` change. SQL bind ordering on `claim_job_batch` verified.
+- **Stage 3:** Nullable `app_log.candidate_id` on fresh CREATE, legacy rebuild, and ALTER path; `add_log_entry` / `list_log_entries` extended; `log_candidate_id` ContextVar + emit buffer + `add_log_entry(**e)` flush — no raise into logging caller.
+- **Scope gate:** Engineer commits touch only `database.py` + `logging.py`. No dispatcher/core/UI `log_candidate_id.set(...)` (plan-excluded). No selected-candidate surface filter.
+- **Sibling integration:** Branch includes resolved AST-1597 artifact work (expected `blockedBy` chain on shared epic ref).
+- **Estimate (5):** Still fits.
+
+## Frame diff
+
+```
+src/data/database.py     | +332 net   job/app_log candidate_id + 1597 artifact (sibling)
+src/utils/logging.py     | +10        log_candidate_id ContextVar + emit stamp
+docs/features/…          | plan + Joan + build + 1597 Radia doc carry-forward
+docs/test-bible/…        | AST-1598 manifests (Betty)
+tests/component/…        | job/app_log/logging + confest/surfer fixes (Betty)
+```
+
+## Findings
+
+### discuss
+
+1. **Fail-loud `list_jobs` / `count_jobs` breaks out-of-scope UI callers (plan-known)**  
+   **Location:** `database.list_jobs` / `database.count_jobs`; callers unchanged in `src/ui/`  
+   **Issue:** Plan implements AC literally — blank `candidate_id` → `ValueError`. After deploy, these paths will raise unless callers pass scope:
+   - `api_jobs.py:109` — applied meteorite repair loop: `list_jobs(..., candidate_id=None)`
+   - `api_jobs.py:list_view` — passes query `candidate_id` through; absent param → `None` on **all** views (`in_review`, `skipped`, `recommended`, not only `applied`)
+   - `api_admin.py:1360` — `list_jobs(..., candidate_id=candidate_id or None)` when admin adhoc query omits candidate  
+   Plan + Joan flag this as deliberate partition (admin/applied repair deferred). **Susan must confirm accepting UT/runtime breakage until a UI follow-up** — not a code-vs-plan defect.
+
+2. **`log_candidate_id.set(...)` not wired anywhere (plan-known)**  
+   **Location:** `src/utils/logging.py` only defines/reads ContextVar  
+   **Issue:** Infra satisfies AC (stamp when set, NULL otherwise), but operational stamping waits for dispatcher/core/UI wiring — out of Scope. Joan carry-forward: accept partition or expand Scope before expecting stamped rows in production logs.
+
+3. **Explicit `candidate_id` on job INSERT not validated against `company.candidate_id`**  
+   **Location:** `_resolve_job_candidate_id` — non-empty explicit `cid` returned without lookup  
+   **Issue:** Same resolver pattern as AST-1597 artifact discuss; keeps core call sites green within database.py-only scope. Wrong explicit ownership could persist until a later ticket tightens validation.
+
+4. **Application-level NOT NULL vs migration nullable column (plan-known)**  
+   **Location:** `_ensure_job_schema` — fresh CREATE `candidate_id TEXT NOT NULL`; existing DBs get nullable `ALTER` + backfill  
+   **Issue:** Matches plan Stage 1 decision (no job-table rebuild). Rows with unresolvable company ownership can remain blank until a writer resolves or fails.
+
+### advisory
+
+- **Combined publish ref:** Reviewers testing UT on this branch get AST-1597 artifact behavior too; AST-1597 Radia DISCUSS items (orphan rebuild asymmetry) remain on branch — not re-scored here but relevant for operator cutover.
+- **Betty harness fixes:** `test_surfer.py` now passes `candidate_id` to `claim_job_batch` and seeds company — required by fail-loud claim; good regression signal for dispatch-shaped callers.
+
+### fix-now
+
+*(none)*
+
+## What's solid
+
+- Header inventory documents `job.candidate_id` and nullable `app_log.candidate_id`.
+- Subquery elimination is complete on all plan-listed sites; company ensures removed where only subquery-motivated.
+- `save_job` INSERT column/bind counts match; UPDATE re-resolve logic matches Stage 2 step 2.
+- `app_log` migration paths handle legacy TEXT PK rebuild and incremental ALTER without backfilling history.
+- `log_candidate_id` wired through emit → flush → `add_log_entry(**e)` with existing stderr fallback on handler failure.
+- Company-absent backfill guard prevents ensure crash on fresh/in-memory DBs before company DDL.
+- Betty component coverage for job scope, app_log stamp/filter, and ContextVar flush is aligned with plan AC.
+
+## Recommended actions (downstream — not Radia)
+
+1. Chuckles: append artifact; post slim upshot; → **Review Posted**.
+2. **Susan:** Confirm discuss #1 acceptable for UT (applied repair + admin list/adhoc breakage) or amend Scope/UI ticket before UT.
+3. If Susan wants stamped logs in staging before dispatcher wiring, spawn follow-up for `log_candidate_id.set(...)` at dispatch entry (out of AST-1598 Scope).
+
+context_tokens≈62000
