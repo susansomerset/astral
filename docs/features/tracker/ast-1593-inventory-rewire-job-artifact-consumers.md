@@ -331,3 +331,128 @@ Concrete make-fix steps (no judgment calls):
 - Parent Technical scope: no requirement to display source ids in UI this epic; ArtifactEditor still CURRENT (not operative-by-id) for job keys.
 - AST-1593 Stage 2: no `resume_content` sibling SoT fallback in ArtifactEditor; `printResumeVisible` stays `job_resume`-only.
 - Artifact generation / Generate / Cancel / populated editor strip behavior otherwise unchanged.
+
+## Radia review (AST-1599)
+
+# Radia review-fix — AST-1599 (F7)
+
+`[code-rubric] revision=2`
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1599
+**Publish ref:** `sub/AST-1588/AST-1599-job-modal-hides-resume-cover` @ `292029f5c2fd136fe951a22082c2973abef597a7`
+**Diff base:** `origin/ftr/AST-1588-job-artifacts-job-resume-cover-letter...origin/sub/AST-1588/AST-1599-job-modal-hides-resume-cover` (fix slice: AST-1599 product + tests only)
+**Parent:** AST-1588 (normal — not orphaned; merge via epic `ftr`, not straight-to-dev)
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1599)` on publish ref. |
+| orch.git.commit-vocabulary | universal | conforms | `docs` / `test` / `code` / `merge-tests` vocabulary. |
+| orch.git.flow-direction-inviolable | universal | conforms | Bug `sub/AST-1588/…` on in-flight epic. |
+| orch.git.ftr-sub-topology | universal | conforms | Diff base `ftr/AST-1588-…` per fix-lane. |
+| orch.git.merge-on-checkout | universal | conforms | N/A to code. |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | Linear history. |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent branches. |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree OK. |
+| orch.git.three-permanent-branches | universal | conforms | `sub/*` publish ref. |
+| orch.pipeline.* (4) | universal | conforms | Fix-lane F7 at Tests Passed. |
+| orch.roles.* (5) | universal | conforms | Betty qa-fix + board; engineer product fix. |
+| astral.agent.* | scoped | not-applicable | No agent paths. |
+| astral.batch.* | scoped | not-applicable | No batch paths. |
+| astral.config.* | scoped | not-applicable | No config changes in 1599 product commits. |
+| astral.debug.* | scoped | not-applicable | No debug paths. |
+| astral.dispatch.* | scoped | not-applicable | No dispatch changes. |
+| astral.docs.features-single-file-per-ticket | scoped | discuss | Plan-fix patch appended to `ast-1593-*.md` (process quirk); content is AST-1599-specific. |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty owns tests/bible. |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Test-tree via Betty pipeline. |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | UI-only fix. |
+| astral.layers.import-direction | scoped | conforms | Modal imports lib/utils only; no data/core imports added. |
+| astral.layers.scripts-exempt | scoped | not-applicable | No scripts. |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | No new hardcoded state lists; leaf `artifact_key` contract preserved. |
+| astral.idioms.* | scoped | not-applicable / conforms | No coat-check/auth/consult changes. |
+| astral.seed.* | scoped | not-applicable | No seed paths. |
+| astral.standards.* (11 applicable) | scoped | conforms | UI-only deletion; no logging/data/utils bends; scope matches plan-fix. |
+| astral.state.* | scoped | not-applicable | No state-machine edits. |
+| astral.ui.* (3) | scoped | conforms | Files under `src/ui/frontend/`; naming/placement OK. |
+
+**Active set:** 65 statutes scored (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | No catalog pattern ids in plan-fix patch. |
+
+## Plan-fix adherence
+
+**Proposed change steps 1–3 delivered.**
+
+1. **`JobAnalysisReportModal.tsx`:** `renderSourceBaseResumeBlock`, related state, `useEffect` fetch, and imports removed; `renderArtifactsPane` branches retain Generating/Cancel, Generate-only, and populated `ReportSectionList` without provenance wrapper.
+2. **`recommendedJobReport.tsx`:** `jobBaseResumeArtifactId` and `fetchOperativeBaseResume` deleted; `printResumeVisible` / `printCoverVisible` / `artifactHasContent` untouched in code commit.
+3. **No replacement provenance UI**; no `source_artifact_ids` / `base_resume_artifact_id` surfacing; no `resume_content` sibling fallback reintroduced.
+
+**Board context:** `[board-joan] CANON: OK`; `[board-betty] TESTS: REVISE` — addressed by qa-fix `[bug-repro]` + revised Vitest.
+
+## Fix-specific checks
+
+### `[bug-repro]` — **OK**
+
+Two tagged tests in `test_JobAnalysisReportModal.test.tsx` (`AST-1599` describe):
+
+| Test | Pins to-be | Pre-fix fail? |
+|------|------------|---------------|
+| Populated Artifacts (`CANDIDATE_REVIEW`, job_resume + cover_letter) | `queryByText("Source base resume")` absent; gap copy absent; section headers include Job Resume + Cover Letter; zero `/operative/base_resume` calls | Yes — AST-1585 panel always rendered |
+| Empty Artifacts (Generate) | No source panel/gap; Generate button present | Yes — empty branch returned source block |
+
+Assertions are concrete (not tautologies). Lib helper unit tests for deleted exports correctly removed.
+
+### `## What must still hold` — **OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1593 hydrate/current-read for job_resume/cover_letter (not blob SoT) | **holds** — ArtifactEditor / hydrate paths not modified |
+| No source-id UI on job modal | **holds** — panel + fetch removed |
+| No `resume_content` sibling SoT in ArtifactEditor | **holds** — not touched |
+| `printResumeVisible` job_resume-only | **holds** — only JAR helpers deleted from lib |
+| Generate / Cancel / populated editor strip | **holds** — in-progress / empty / populated branches preserved minus provenance wrapper |
+
+**Blast radius:** Contact `GET .../operative/base_resume` coverage remains in `tests/component/ui/api/test_api_candidate.py` (AST-1585); backend citation unchanged.
+
+## Findings
+
+### advisory
+
+- **`if (!generate) return null`** when manifest lacks a Generate action — replaces the old “source block only” empty state. Correct per fix decision (provenance UI was never valid); if a state truly has neither generate nor artifact content, pane is blank — acceptable edge.
+- **Full `ftr...sub` three-dot diff is wide** (stacked AST-1596–1598 siblings on branch); **AST-1599 fix slice** is two product files + Vitest/bible — review scoped to that slice.
+- **Plan-fix doc location** — patch lives at bottom of `ast-1593-inventory-rewire-job-artifact-consumers.md` per `plan-fix` convention; process-only note.
+
+## What's solid
+
+- Surgical removal of AST-1585 JAR provenance UI that contradicted epic “no source display on job modal.”
+- Dead lib exports removed with zero remaining importers.
+- `[bug-repro]` directly encodes Susan’s UAT symptom (resume/cover hidden behind source-base-resume message).
+- AST-1593 SoT rules and Contact operative API left intact.
+
+## Frame diff
+
+**AST-1599 fix (product):** `JobAnalysisReportModal.tsx` (−provenance panel/state/fetch); `recommendedJobReport.tsx` (−`jobBaseResumeArtifactId`, −`fetchOperativeBaseResume`).
+
+**Tests/bible:** `test_JobAnalysisReportModal.test.tsx` `[bug-repro]` suite; retired AST-1585 JAR + lib helper tests; `docs/test-bible/frontend/components.md` § AST-1599 manifest.
+
+**Not in fix slice:** tracker, api_jobs, database, builder, ArtifactEditor `resume_content` logic.
+
+## Notes for Chuckles
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal AST-1588 UAT-batch | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+context_tokens≈72000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 292029f5) JAR provenance panel removed
+```
