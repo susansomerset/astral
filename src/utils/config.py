@@ -33,6 +33,7 @@ Config sections:
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
   ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590)
+  TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
@@ -6288,82 +6289,123 @@ PRONOUN_FORMS: dict[str, dict[str, str]] = {
     "e/eir": {"THEY": "e", "THEIR": "eir", "THEIRS": "eirs", "THEM": "em", "THEMSELF": "emself"},
 }
 
+# AST-1596: closed set of TOKEN_SOURCES["source_type"] values (not redefined in callers).
+TOKEN_SOURCE_TYPES = frozenset({"data_field", "artifact", "special_case"})
+
 # ---------------------------------------------------------------------------
 # TOKEN_SOURCES: authoritative registry of tokens available in prompt content.
 # Prompt authors use {$TOKEN_NAME} syntax; resolve_tokens() replaces them at runtime.
 # Adding a new token = adding one entry here, no code change needed.
+# AST-1596 / AST-1578: every entry requires source_type in TOKEN_SOURCE_TYPES.
+#   data_field  — live blob / overlay field (no versioning / pin)
+#   artifact    — ARTIFACT_CONFIG key via artifact_key (pinnable later; resolve path unchanged here)
+#   special_case — non-data (chain / pronoun / rubric / config / output_type / job)
+# TOKEN_SOURCES and ARTIFACT_CONFIG stay separate registries; artifact tokens reference keys.
 # ---------------------------------------------------------------------------
 TOKEN_SOURCES = {
     # name columns + contact blob (AST-1014)
-    "FIRST_NAME":           {"source": "candidate", "path": "first"},
-    "LAST_NAME":            {"source": "candidate", "path": "last"},
-    "FULL_NAME":            {"source": "candidate", "path": "full"},
-    "CONTACT_EMAIL":        {"source": "candidate", "path": "contact.contact_email"},
-    "REPLY_EMAIL":          {"source": "candidate", "path": "contact.reply_email"},
-    "PHONE":                {"source": "candidate", "path": "contact.phone"},
-    "LOCATION":             {"source": "candidate", "path": "contact.location"},
-    "GITHUB":               {"source": "candidate", "path": "contact.github"},
-    "LINKEDIN_URL":         {"source": "candidate", "path": "contact.linkedin_url"},
+    "FIRST_NAME":           {"source": "candidate", "path": "first", "source_type": "data_field"},
+    "LAST_NAME":            {"source": "candidate", "path": "last", "source_type": "data_field"},
+    "FULL_NAME":            {"source": "candidate", "path": "full", "source_type": "data_field"},
+    "CONTACT_EMAIL":        {"source": "candidate", "path": "contact.contact_email", "source_type": "data_field"},
+    "REPLY_EMAIL":          {"source": "candidate", "path": "contact.reply_email", "source_type": "data_field"},
+    "PHONE":                {"source": "candidate", "path": "contact.phone", "source_type": "data_field"},
+    "LOCATION":             {"source": "candidate", "path": "contact.location", "source_type": "data_field"},
+    "GITHUB":               {"source": "candidate", "path": "contact.github", "source_type": "data_field"},
+    "LINKEDIN_URL":         {"source": "candidate", "path": "contact.linkedin_url", "source_type": "data_field"},
 
     # context (candidate-provided, unaltered)
-    "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.raw_resume"},
-    "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.raw_profile"},
-    "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.raw_sample"},
-    "STRENGTHS":            {"source": "candidate", "path": "context.strengths"},
-    "PRIORITIES":           {"source": "candidate", "path": "context.priorities"},
-    "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers"},
-    "BACKSTORY":            {"source": "candidate", "path": "context.backstory"},
-    "IDEAL_DAY":            {"source": "candidate", "path": "context.ideal_day"},
-    "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences"},
-    "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns"},
-    "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes"},
-    "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "contact.cover_letter_signature"},
-    "THEY":     {"source": "pronoun"},
-    "THEIR":    {"source": "pronoun"},
-    "THEIRS":   {"source": "pronoun"},
-    "THEM":     {"source": "pronoun"},
-    "THEMSELF": {"source": "pronoun"},
+    "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.raw_resume", "source_type": "data_field"},
+    "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.raw_profile", "source_type": "data_field"},
+    "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.raw_sample", "source_type": "data_field"},
+    "STRENGTHS":            {"source": "candidate", "path": "context.strengths", "source_type": "data_field"},
+    "PRIORITIES":           {"source": "candidate", "path": "context.priorities", "source_type": "data_field"},
+    "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers", "source_type": "data_field"},
+    "BACKSTORY":            {"source": "candidate", "path": "context.backstory", "source_type": "data_field"},
+    "IDEAL_DAY":            {"source": "candidate", "path": "context.ideal_day", "source_type": "data_field"},
+    "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences", "source_type": "data_field"},
+    "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns", "source_type": "data_field"},
+    "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes", "source_type": "data_field"},
+    "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "contact.cover_letter_signature", "source_type": "data_field"},
+    "THEY":     {"source": "pronoun", "source_type": "special_case"},
+    "THEIR":    {"source": "pronoun", "source_type": "special_case"},
+    "THEIRS":   {"source": "pronoun", "source_type": "special_case"},
+    "THEM":     {"source": "pronoun", "source_type": "special_case"},
+    "THEMSELF": {"source": "pronoun", "source_type": "special_case"},
 
     # artifacts (AI-produced / human-revised)
-    "BASE_RESUME":          {"source": "candidate", "path": "artifacts.base_resume", "serialize": "resume_sections_json"},
-    "BIO_SUMMARY":          {"source": "candidate", "path": "context.bio_summary"},
+    "BASE_RESUME": {
+        "source": "candidate",
+        "path": "artifacts.base_resume",
+        "serialize": "resume_sections_json",
+        "source_type": "artifact",
+        "artifact_key": "candidate.artifacts.base_resume",
+    },
+    "BIO_SUMMARY":          {"source": "candidate", "path": "context.bio_summary", "source_type": "data_field"},
     # Resolved from company_search_terms table via agent overlay (AST-525); path kept for registry.
-    "COMPANY_SEARCH_TERMS": {"source": "candidate", "path": "artifacts.company_search_terms"},
+    "COMPANY_SEARCH_TERMS": {"source": "candidate", "path": "artifacts.company_search_terms", "source_type": "data_field"},
     # Resolved from rubric_vector rows for active task owner (AST-723).
-    "RUBRIC_VECTORS":       {"source": "rubric"},
+    "RUBRIC_VECTORS":       {"source": "rubric", "source_type": "special_case"},
     # AST-1405: named pins — same serialize path as RUBRIC_VECTORS; owner is the pin, not the running task.
-    "GET_RUBRIC":           {"source": "rubric", "owner_task_key": "grade_get"},
-    "DO_RUBRIC":            {"source": "rubric", "owner_task_key": "grade_do"},
-    "LIKE_RUBRIC":          {"source": "rubric", "owner_task_key": "grade_like"},
-    "JD_RUBRIC":            {"source": "rubric", "owner_task_key": "evaluate_jd"},
-    "PREFILTER_RUBRIC":     {"source": "rubric", "owner_task_key": "prefilter_company"},
+    "GET_RUBRIC":           {"source": "rubric", "owner_task_key": "grade_get", "source_type": "special_case"},
+    "DO_RUBRIC":            {"source": "rubric", "owner_task_key": "grade_do", "source_type": "special_case"},
+    "LIKE_RUBRIC":          {"source": "rubric", "owner_task_key": "grade_like", "source_type": "special_case"},
+    "JD_RUBRIC":            {"source": "rubric", "owner_task_key": "evaluate_jd", "source_type": "special_case"},
+    "PREFILTER_RUBRIC":     {"source": "rubric", "owner_task_key": "prefilter_company", "source_type": "special_case"},
 
     # config-driven (resolved via named function, not dot-path)
-    "RESPONSE_SCHEMA":      {"source": "config", "resolver": "stringify_response_schema"},
+    "RESPONSE_SCHEMA":      {"source": "config", "resolver": "stringify_response_schema", "source_type": "special_case"},
 
     # output-type-driven (resolved from ASTRAL_CONFIG["output_types"][task output_type])
-    "OUTPUT_INSTRUCTIONS":  {"source": "output_type", "field": "payload_instructions"},
+    "OUTPUT_INSTRUCTIONS":  {"source": "output_type", "field": "payload_instructions", "source_type": "special_case"},
 
     # chain/runtime — values from resolve_tokens(..., chain_context=); AST-303 / AST-455
     # Caller-prefixed keys pass resolved segment text hop-to-hop (replaces CACHE_BLOCK_* / AST-304).
-    "CALLER_RESPONSE":    {"source": "chain"},
-    "CALLER_SYSTEM":      {"source": "chain"},
-    "CALLER_CACHE_A":    {"source": "chain"},
-    "CALLER_CACHE_B":    {"source": "chain"},
-    "CALLER_CACHE_C":    {"source": "chain"},
-    "CALLER_CACHE_D":    {"source": "chain"},
-    "SELECTED_AGENT":     {"source": "chain"},
+    "CALLER_RESPONSE":    {"source": "chain", "source_type": "special_case"},
+    "CALLER_SYSTEM":      {"source": "chain", "source_type": "special_case"},
+    "CALLER_CACHE_A":    {"source": "chain", "source_type": "special_case"},
+    "CALLER_CACHE_B":    {"source": "chain", "source_type": "special_case"},
+    "CALLER_CACHE_C":    {"source": "chain", "source_type": "special_case"},
+    "CALLER_CACHE_D":    {"source": "chain", "source_type": "special_case"},
+    "SELECTED_AGENT":     {"source": "chain", "source_type": "special_case"},
     # AST-469: visible listing text from locate hop → parse_job_list (chain_context).
-    "JOB_LIST_VISIBLE": {"source": "chain"},
+    "JOB_LIST_VISIBLE": {"source": "chain", "source_type": "special_case"},
 
     # AST-513: job-scoped artifact prompt tokens (values from job_context dict).
-    "VISIBLE_JD":    {"source": "job"},
-    "ANALYSIS_JD":   {"source": "job"},
-    "ANALYSIS_DO":   {"source": "job"},
-    "ANALYSIS_GET":  {"source": "job"},
-    "ANALYSIS_LIKE": {"source": "job"},
-    "RESUME_SECTION_CATALOG": {"source": "job"},
+    "VISIBLE_JD":    {"source": "job", "source_type": "special_case"},
+    "ANALYSIS_JD":   {"source": "job", "source_type": "special_case"},
+    "ANALYSIS_DO":   {"source": "job", "source_type": "special_case"},
+    "ANALYSIS_GET":  {"source": "job", "source_type": "special_case"},
+    "ANALYSIS_LIKE": {"source": "job", "source_type": "special_case"},
+    "RESUME_SECTION_CATALOG": {"source": "job", "source_type": "special_case"},
 }
+
+# AST-1596: reject half-typed / invalid TOKEN_SOURCES catalogs at import.
+for _token_name, _spec in TOKEN_SOURCES.items():
+    assert isinstance(_spec, dict), _token_name
+    assert "source_type" in _spec, f"TOKEN_SOURCES[{_token_name!r}] missing source_type"
+    assert _spec["source_type"] in TOKEN_SOURCE_TYPES, (
+        f"TOKEN_SOURCES[{_token_name!r}] invalid source_type={_spec['source_type']!r}"
+    )
+    if _spec["source_type"] == "artifact":
+        assert "artifact_key" in _spec, (
+            f"TOKEN_SOURCES[{_token_name!r}] artifact missing artifact_key"
+        )
+        assert _spec["artifact_key"] in ARTIFACT_CONFIG, (
+            f"TOKEN_SOURCES[{_token_name!r}] artifact_key "
+            f"{_spec['artifact_key']!r} not in ARTIFACT_CONFIG"
+        )
+    else:
+        assert "artifact_key" not in _spec, (
+            f"TOKEN_SOURCES[{_token_name!r}] non-artifact must not carry artifact_key"
+        )
+
+assert TOKEN_SOURCES["BASE_RESUME"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["BASE_RESUME"]["artifact_key"] == "candidate.artifacts.base_resume"
+_artifact_tokens = {
+    name for name, spec in TOKEN_SOURCES.items() if spec["source_type"] == "artifact"
+}
+assert _artifact_tokens == {"BASE_RESUME"}
 
 # AST-513: phase token → persisted job_data grades_key + rubric artifact key.
 JOB_TOKEN_CONFIG = {
@@ -6398,6 +6440,36 @@ def get_manage_agents_tokens() -> list:
     """Sorted Manage Agents picker tokens — registry minus chain/hop tokens (AST-632)."""
     chain = set(get_manage_tasks_chain_tokens())
     return sorted(k for k in get_tokens() if k not in chain)
+
+
+def get_tokens_by_source_type(source_type: str) -> list:
+    """Sorted TOKEN_SOURCES names whose source_type matches ``source_type``.
+
+    ``source_type`` must be a member of TOKEN_SOURCE_TYPES; raises ValueError otherwise.
+    """
+    if source_type not in TOKEN_SOURCE_TYPES:
+        raise ValueError(f"invalid source_type: {source_type!r}")
+    return sorted(
+        name
+        for name, spec in TOKEN_SOURCES.items()
+        if spec.get("source_type") == source_type
+    )
+
+
+def get_artifact_key_for_token(token_name: str) -> str:
+    """Return ARTIFACT_CONFIG key for an artifact-typed TOKEN_SOURCES name.
+
+    Raises ValueError if the name is missing, not artifact-typed, or lacks artifact_key.
+    """
+    spec = TOKEN_SOURCES.get(token_name)
+    if spec is None:
+        raise ValueError(f"unknown token: {token_name!r}")
+    if spec.get("source_type") != "artifact":
+        raise ValueError(f"token is not artifact-typed: {token_name!r}")
+    key = spec.get("artifact_key")
+    if not isinstance(key, str) or not key:
+        raise ValueError(f"artifact token missing artifact_key: {token_name!r}")
+    return key
 
 
 CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(
