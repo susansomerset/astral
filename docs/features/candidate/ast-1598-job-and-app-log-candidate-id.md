@@ -182,3 +182,10 @@ AC1→Stages 1–2 (ensure/backfill `job.candidate_id`, subquery→`job.candidat
 **Considered (in-session):** Universal orch.* — conform. Scoped: `astral.standards.database-header-inventory`, `astral.standards.logging-via-utils`, `astral.standards.utils-data-late-import-only`, `astral.standards.data-raises-caller-logs`, `astral.standards.in-scope-only`, `astral.layers.import-direction`, `astral.standards.public-then-helpers`, `astral.standards.no-cross-contamination` — conform. Remaining scoped astral.* excluded (no layer/path intersection with `database.py` + `logging.py` modify set).
 
 context_tokens≈52000
+
+## Build complete
+
+**Publish ref:**  @ 
+
+Stages 1–3 delivered: job inventory +  ensure/backfill; scoped helpers on  with fail-loud claim/list/count and  resolve; nullable  +  ContextVar stamp on flush.
+
