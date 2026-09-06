@@ -233,3 +233,134 @@ context_tokens≈34000
 - Stage 2: `get_tokens_by_source_type` + `get_artifact_key_for_token` — `edceb490`.
 
 **Betty:** at **Code Complete** — cover import asserts (half-typed / bad artifact_key), `BASE_RESUME` sole artifact linkage, by-type filter + artifact-key getter fail-fast; confirm `get_tokens()` names unchanged and `resolve_tokens` untouched.
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1596
+**Publish ref:** `origin/sub/AST-1578/AST-1596-token-catalog-source-type-typing` @ `84fd76352c9b92e55b8d0b99436bd573d8224ff7`
+**Overall:** CLEAN
+
+## Statutes checked
+
+Diff change set: `src/utils/config.py` (modify, utils); `tests/component/utils/test_config.py` (modify, docs); `docs/test-bible/utils/config.md` (modify, docs); `docs/features/foundation/ast-1596-token-catalog-source-type-typing.md` (add, docs).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent-layer diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent-layer diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no agent-layer diff |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch/dispatch diff |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch diff |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch claim paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch diff |
+| astral.config.config-source-of-truth | scoped | conforms | `TOKEN_SOURCE_TYPES` + typed `TOKEN_SOURCES` live in config block |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env handling |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug spike paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed diff |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no chain-authority diff |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single issue doc under `docs/features/foundation/` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty lane touches tests + bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits are `src/utils/config.py` only; tests via Betty + merge-tests |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | utils-only product slice |
+| astral.layers.import-direction | scoped | conforms | no new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts diff |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI diff |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render/consult diff |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth diff |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON diff |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog conflict |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | import asserts are registry validation, not hot-path boot SQL |
+| astral.seed.define-approved | scoped | not-applicable | no define-parent work |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage join |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database/migrations |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug logging |
+| astral.standards.dry-and-focused-functions | scoped | conforms | two small read-only getters; assert loop not duplicated in callers |
+| astral.standards.in-scope-only | scoped | conforms | product diff confined to `config.py` typing + getters; tests Betty-owned |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging changes |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names (`source_type`, `artifact_key`) not ticket ids |
+| astral.standards.no-cross-contamination | scoped | conforms | no sibling-ticket consumer rewires |
+| astral.standards.no-hardcoded-sets | scoped | conforms | closed set in `TOKEN_SOURCE_TYPES`; callers use getters/constant |
+| astral.standards.public-then-helpers | scoped | conforms | getters placed after `get_manage_agents_tokens` |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no new data imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state machine |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/dispatch chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend diff |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI diff |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip is merge-tests over Betty test SHA |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / merge-tests commits on publish ref |
+| orch.git.flow-direction-inviolable | universal | conforms | sub branch off ftr parent topology |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/AST-1578/…` |
+| orch.git.merge-on-checkout | universal | conforms | no rebase/force-push signals |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | three-dot diff is linear feature commits + merge-tests |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1578` worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | classification follows parent-approved plan tables |
+| orch.pipeline.plan-is-bible | universal | conforms | both plan stages land as specified |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to code shape |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review gate honored |
+| orch.roles.archie-approves-statutes | universal | conforms | Joan APPROVED plan on publish ref |
+| orch.roles.betty-owns-test-tree | universal | conforms | component tests + bible from Betty lane |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | engineer still assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Straggler:** Joan verdict attached (APPROVED @ `bd45f1d6`); no explicit Excluded statute ids that this sweep rescopes — no straggler finding.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | `TOKEN_SOURCE_TYPES` frozenset + extended registry block + import asserts match Solution shape |
+| patt.artifact.manage-catalog | advisory | Parent cites draft directive id (not approved `canon/patterns/**` entry); diff only links `BASE_RESUME` → existing `ARTIFACT_CONFIG` key — Joan noted parent-level |
+| patt.artifact.read-current | advisory | Same draft epic citation; no read-current behavior added in this child |
+
+## Plan adherence
+
+Both stages delivered on publish ref: Stage 1 (`c0ee4de6`) adds `TOKEN_SOURCE_TYPES`, `source_type` on all **51** `TOKEN_SOURCES` rows (**23** `data_field` / **1** `artifact` / **27** `special_case`), `artifact_key` on `BASE_RESUME` only, module docstring line, and import-time assert block immediately after the registry. Stage 2 (`edceb490`) adds `get_tokens_by_source_type` and `get_artifact_key_for_token` after `get_manage_agents_tokens`. Verified unchanged: `resolve_tokens`, `get_tokens`, `get_manage_tasks_chain_tokens`, `get_manage_agents_tokens`, `JOB_TOKEN_CONFIG`. `COMPANY_SEARCH_TERMS` correctly stays `data_field` despite `artifacts.` path string. Estimate **3** matches footprint (single-file product + expected Betty test/bible revisions). Betty manifest (`TestAst1596TokenCatalogSourceTypeTyping` + revised dict-equality tests) mirrors assert contract including negative cases via `_assert_token_sources_typing`; merge-tests tip `84fd7635` is appropriate at Tests Passed.
+
+## Frame diff
+
+Product frame change is registry metadata only: every `TOKEN_SOURCES` row gains `"source_type"`; `BASE_RESUME` additionally gains `"artifact_key": "candidate.artifacts.base_resume"`; new `TOKEN_SOURCE_TYPES` frozenset; import assert loop enforcing typing + sole-artifact invariant; two read-only query helpers. No `resolve_tokens` substitution logic, no new tokens, no `ARTIFACT_CONFIG` membership edits, no core/data/ui consumer rewires.
+
+## Findings
+
+*(none — fix-now / discuss)*
+
+### advisory
+
+- **Location:** Parent Architectural definition — `patt.artifact.manage-catalog`, `patt.artifact.read-current`
+- **Finding:** Epic cites draft directive pattern ids not resolved as approved catalog entries under `canon/patterns/**`.
+- **Recommendation:** Track at parent AST-1578 promotion time; not blocking this typing-only child (Joan plan verdict already notes draft status).
+
+- **Location:** `src/utils/config.py` — `_artifact_tokens == {"BASE_RESUME"}` assert
+- **Finding:** Sibling tickets that register job-scoped artifact tokens in `TOKEN_SOURCES` will need this sole-artifact assert updated.
+- **Recommendation:** Expected downstream work under AST-1578; no action on this ticket.
+
+- **Location:** `get_tokens_by_source_type` — `spec.get("source_type")`
+- **Finding:** Import asserts already guarantee `source_type` on every row; `.get` is redundant vs direct indexing.
+- **Recommendation:** Optional micro-clarity in resolve-child if touching the helper anyway; not worth a round-trip alone.
+
+## What's solid
+
+- Fail-fast import contract rejects half-typed catalogs before any caller reads the registry — matches plan AC4 and sibling `ARTIFACT_CONFIG` assert placement.
+- Classification counts and `COMPANY_SEARCH_TERMS` decision are exercised in component tests, not just happy-path import.
+- Thin getters raise `ValueError` without I/O; safe for siblings that need filters without scraping dict shape.
+
+## Notes
+
+- §5f (debug contract) and §5g (external cleanliness) not triggered — no `debug=` or `src/external/` diff.
+- Registry lists **64** harvested ids + README notes **65** active; sweep scored full README harvested table.
+- C7 complete — Chuckles may append to issue doc, commit docs on sub ref, post slim upshot, advance to Review Posted.
+
+context_tokens≈52000
+
+---
