@@ -442,3 +442,20 @@ tests/component/{core,data,ui}/conftest.py     | +3 -3      _artifact_schema_ens
 
 context_tokens≈58000
 
+
+## Resolution
+
+**Date:** 2026-09-06  
+**Publish tip before resolve:** `1165ebe8` (Radia `docs()` intake via sync-child)  
+**Radia overall:** DISCUSS — **fix-now:** none
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss #1 — orphan rows dropped on `candidate_id` rebuild (`DROP TABLE artifact`) | **Accept as legacy-only.** Plural copy-adopt (production cutover path) still preserves orphans in `artifacts` for Susan. Rebuild path only hits already-singular / `astral_artifacts` DBs without `candidate_id`; not the operator SQL path. No product change. |
+| discuss #2 — both `artifact` and `artifacts` exist → ensure skips plural backfill | **Operator-only recovery.** Stage 3 / parent Description migration SQL + `NOT EXISTS` idempotence cover partial cutover; product ensure does not invent a second backfill. No product change. |
+| discuss #3 — explicit job/company `candidate_id` not ownership-validated | **Carry-forward.** Matches plan + Joan accept for database.py-only scope; tighten only if AST-1598 / a follow-up asks. No product change this ticket. |
+| discuss #4 — child AC #2 vs parent SQL | **Already cleaned** on Description at Code Complete (AC #2 points at parent AST-1594). No further change. |
+| advisory — verify parent migration SQL | Confirmed earlier this session: Stage 3 appended to AST-1594 Description. |
+| advisory — no astral_artifacts / rebuild tests | Accepted rarity gap; no `[qa-handoff]`. |
+
+**Product / test-tree:** unchanged this resolve pass.
