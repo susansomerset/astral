@@ -281,7 +281,10 @@ class TestAst513JobTokens:
         tokens = cfg.get_tokens()
         for name in self._NAMES:
             assert name in tokens
-            assert cfg.TOKEN_SOURCES[name] == {"source": "job"}
+            assert cfg.TOKEN_SOURCES[name] == {
+                "source": "job",
+                "source_type": "special_case",
+            }
 
     def test_job_token_config_maps_analysis_phases(self) -> None:
         phases = cfg.JOB_TOKEN_CONFIG["analysis_phases"]
@@ -305,7 +308,10 @@ class TestAst513JobTokens:
         assert any("VISIBLE_JD" in rec.message and "job_context" in rec.message for rec in caplog.records)
 
     def test_resume_section_catalog_token_source(self) -> None:
-        assert cfg.TOKEN_SOURCES["RESUME_SECTION_CATALOG"] == {"source": "job"}
+        assert cfg.TOKEN_SOURCES["RESUME_SECTION_CATALOG"] == {
+            "source": "job",
+            "source_type": "special_case",
+        }
         assert "RESUME_SECTION_CATALOG" in cfg.get_tokens()
 
 
@@ -1500,9 +1506,11 @@ class TestAst504CompanySearchTermsConfig:
         assert entry["entity_type"] is None
 
     def test_company_search_terms_token_source(self) -> None:
+        # AST-1596: path contains artifacts. but stays data_field (not in ARTIFACT_CONFIG).
         assert cfg.TOKEN_SOURCES["COMPANY_SEARCH_TERMS"] == {
             "source": "candidate",
             "path": "artifacts.company_search_terms",
+            "source_type": "data_field",
         }
 
 
@@ -1659,7 +1667,10 @@ class TestAst575PronounTokens:
         tokens = cfg.get_tokens()
         for name in self._NAMES:
             assert name in tokens
-            assert cfg.TOKEN_SOURCES[name] == {"source": "pronoun"}
+            assert cfg.TOKEN_SOURCES[name] == {
+                "source": "pronoun",
+                "source_type": "special_case",
+            }
 
     def test_resolve_all_five_tokens_she_her(self) -> None:
         candidate = {"pronouns": "she/her"}
@@ -1716,7 +1727,11 @@ class TestAst510MiddleNameConfig:
         assert "MIDDLE_NAME" not in cfg.TOKEN_SOURCES
 
     def test_full_name_token_source(self) -> None:
-        assert cfg.TOKEN_SOURCES["FULL_NAME"] == {"source": "candidate", "path": "full"}
+        assert cfg.TOKEN_SOURCES["FULL_NAME"] == {
+            "source": "candidate",
+            "path": "full",
+            "source_type": "data_field",
+        }
 
 
 class TestAst1014CandidateLibraryConfig:
@@ -1885,7 +1900,10 @@ class TestAst723RubricVectorsToken:
     )
 
     def test_rubric_vectors_token_registered(self) -> None:
-        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {"source": "rubric"}
+        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {
+            "source": "rubric",
+            "source_type": "special_case",
+        }
 
     def test_legacy_per_artifact_rubric_tokens_removed(self) -> None:
         for name in self._LEGACY_RUBRIC_TOKENS:
@@ -1918,10 +1936,17 @@ class TestAst1405NamedRubricPromptTokens:
 
     def test_named_pins_registered_and_listed_in_pickers(self) -> None:
         for name, owner in self._NAMED_PINS.items():
-            assert cfg.TOKEN_SOURCES[name] == {"source": "rubric", "owner_task_key": owner}
+            assert cfg.TOKEN_SOURCES[name] == {
+                "source": "rubric",
+                "owner_task_key": owner,
+                "source_type": "special_case",
+            }
             assert name in cfg.get_tokens()
             assert name in cfg.get_manage_agents_tokens()
-        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {"source": "rubric"}
+        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {
+            "source": "rubric",
+            "source_type": "special_case",
+        }
         for name in self._FORBIDDEN:
             assert name not in cfg.TOKEN_SOURCES
             assert name not in cfg.get_tokens()
@@ -5080,6 +5105,7 @@ class TestAst1365IdealDayLibraryToken:
         assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
             "source": "candidate",
             "path": "context.ideal_day",
+            "source_type": "data_field",
         }
 
     def test_resolve_ideal_day_empty_and_set(self) -> None:
@@ -5543,3 +5569,151 @@ class TestAst1590JobArtifactCatalogKeys:
         )
         assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
         assert "job.artifacts.proposed_answers" not in cfg.ARTIFACT_CONFIG
+
+
+# Branches: TOKEN_SOURCE_TYPES; every row typed; BASE_RESUME sole artifact + key;
+# COMPANY_SEARCH_TERMS data_field; get_tokens names; by-type + artifact-key getters;
+# assert-loop contract (missing/invalid/bad key / stray artifact_key).
+def _assert_token_sources_typing(
+    token_sources: dict,
+    artifact_config: dict,
+    token_source_types: frozenset,
+) -> None:
+    """Mirror of src.utils.config AST-1596 import-time TOKEN_SOURCES asserts."""
+    for _token_name, _spec in token_sources.items():
+        assert isinstance(_spec, dict), _token_name
+        assert "source_type" in _spec, f"TOKEN_SOURCES[{_token_name!r}] missing source_type"
+        assert _spec["source_type"] in token_source_types, (
+            f"TOKEN_SOURCES[{_token_name!r}] invalid source_type={_spec['source_type']!r}"
+        )
+        if _spec["source_type"] == "artifact":
+            assert "artifact_key" in _spec, (
+                f"TOKEN_SOURCES[{_token_name!r}] artifact missing artifact_key"
+            )
+            assert _spec["artifact_key"] in artifact_config, (
+                f"TOKEN_SOURCES[{_token_name!r}] artifact_key "
+                f"{_spec['artifact_key']!r} not in ARTIFACT_CONFIG"
+            )
+        else:
+            assert "artifact_key" not in _spec, (
+                f"TOKEN_SOURCES[{_token_name!r}] non-artifact must not carry artifact_key"
+            )
+
+    assert token_sources["BASE_RESUME"]["source_type"] == "artifact"
+    assert token_sources["BASE_RESUME"]["artifact_key"] == "candidate.artifacts.base_resume"
+    _artifact_tokens = {
+        name for name, spec in token_sources.items() if spec["source_type"] == "artifact"
+    }
+    assert _artifact_tokens == {"BASE_RESUME"}
+
+
+class TestAst1596TokenCatalogSourceTypeTyping:
+    """AST-1596: TOKEN_SOURCES source_type + artifact_key; thin getters; import asserts."""
+
+    def test_token_source_types_constant(self) -> None:
+        assert cfg.TOKEN_SOURCE_TYPES == frozenset(
+            {"data_field", "artifact", "special_case"}
+        )
+
+    def test_live_catalog_passes_typing_asserts(self) -> None:
+        _assert_token_sources_typing(
+            cfg.TOKEN_SOURCES, cfg.ARTIFACT_CONFIG, cfg.TOKEN_SOURCE_TYPES
+        )
+        # Classification counts from plan (23 data_field / 1 artifact / 27 special_case).
+        by_type = {
+            st: cfg.get_tokens_by_source_type(st) for st in sorted(cfg.TOKEN_SOURCE_TYPES)
+        }
+        assert by_type["artifact"] == ["BASE_RESUME"]
+        assert len(by_type["data_field"]) == 23
+        assert len(by_type["special_case"]) == 27
+        assert sum(len(v) for v in by_type.values()) == len(cfg.TOKEN_SOURCES)
+
+    def test_base_resume_sole_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["BASE_RESUME"] == {
+            "source": "candidate",
+            "path": "artifacts.base_resume",
+            "serialize": "resume_sections_json",
+            "source_type": "artifact",
+            "artifact_key": "candidate.artifacts.base_resume",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("BASE_RESUME")
+            == "candidate.artifacts.base_resume"
+        )
+        assert "candidate.artifacts.base_resume" in cfg.ARTIFACT_CONFIG
+        # Path contains artifacts. but not an ARTIFACT_CONFIG row → data_field.
+        assert cfg.TOKEN_SOURCES["COMPANY_SEARCH_TERMS"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["COMPANY_SEARCH_TERMS"]
+
+    def test_get_tokens_names_unchanged(self) -> None:
+        assert cfg.get_tokens() == sorted(cfg.TOKEN_SOURCES.keys())
+        assert "BASE_RESUME" in cfg.get_tokens()
+
+    def test_get_tokens_by_source_type_filters_and_rejects(self) -> None:
+        assert cfg.get_tokens_by_source_type("artifact") == ["BASE_RESUME"]
+        data = cfg.get_tokens_by_source_type("data_field")
+        assert data == sorted(data)
+        assert "FIRST_NAME" in data
+        assert "COMPANY_SEARCH_TERMS" in data
+        assert "BASE_RESUME" not in data
+        special = cfg.get_tokens_by_source_type("special_case")
+        assert "THEY" in special and "VISIBLE_JD" in special and "RUBRIC_VECTORS" in special
+        with pytest.raises(ValueError, match="invalid source_type"):
+            cfg.get_tokens_by_source_type("blob")
+
+    def test_get_artifact_key_for_token_fail_fast(self) -> None:
+        with pytest.raises(ValueError, match="unknown token"):
+            cfg.get_artifact_key_for_token("NOT_A_TOKEN")
+        with pytest.raises(ValueError, match="not artifact-typed"):
+            cfg.get_artifact_key_for_token("FIRST_NAME")
+        with pytest.raises(ValueError, match="not artifact-typed"):
+            cfg.get_artifact_key_for_token("COMPANY_SEARCH_TERMS")
+
+    def test_typing_assert_rejects_half_typed_and_bad_artifact(self) -> None:
+        types = cfg.TOKEN_SOURCE_TYPES
+        arts = cfg.ARTIFACT_CONFIG
+        live = dict(cfg.TOKEN_SOURCES)
+
+        missing = dict(live)
+        missing["HALF"] = {"source": "candidate", "path": "x"}
+        with pytest.raises(AssertionError, match="missing source_type"):
+            _assert_token_sources_typing(missing, arts, types)
+
+        bad_type = dict(live)
+        bad_type["WEIRD"] = {"source": "candidate", "path": "x", "source_type": "blob"}
+        with pytest.raises(AssertionError, match="invalid source_type"):
+            _assert_token_sources_typing(bad_type, arts, types)
+
+        no_key = dict(live)
+        no_key["EXTRA_ART"] = {"source": "candidate", "path": "x", "source_type": "artifact"}
+        with pytest.raises(AssertionError, match="artifact missing artifact_key"):
+            _assert_token_sources_typing(no_key, arts, types)
+
+        bad_key = dict(live)
+        bad_key["EXTRA_ART"] = {
+            "source": "candidate",
+            "path": "x",
+            "source_type": "artifact",
+            "artifact_key": "not.a.real.key",
+        }
+        with pytest.raises(AssertionError, match="not in ARTIFACT_CONFIG"):
+            _assert_token_sources_typing(bad_key, arts, types)
+
+        stray_key = dict(live)
+        stray_key["FIRST_NAME"] = {
+            **live["FIRST_NAME"],
+            "artifact_key": "candidate.artifacts.base_resume",
+        }
+        with pytest.raises(AssertionError, match="non-artifact must not carry artifact_key"):
+            _assert_token_sources_typing(stray_key, arts, types)
+
+        # Sole-artifact set breaks when a second artifact is validly keyed.
+        second = dict(live)
+        second["EXTRA_ART"] = {
+            "source": "candidate",
+            "path": "x",
+            "source_type": "artifact",
+            "artifact_key": "candidate.artifacts.base_resume",
+        }
+        with pytest.raises(AssertionError):
+            _assert_token_sources_typing(second, arts, types)
