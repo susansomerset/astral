@@ -185,7 +185,7 @@ context_tokens≈52000
 
 ## Build complete
 
-**Publish ref:**  @ 
+**Publish ref:** `sub/AST-1594/AST-1598-job-and-app-log-candidate-id` @ `12aa4d288ba1f5c4e4b76c73771b33bef62c6249`
 
-Stages 1–3 delivered: job inventory +  ensure/backfill; scoped helpers on  with fail-loud claim/list/count and  resolve; nullable  +  ContextVar stamp on flush.
+Stages 1–3 delivered: job inventory + `candidate_id` ensure/backfill; scoped helpers on `job.candidate_id` with fail-loud claim/list/count and `save_job` resolve; nullable `app_log.candidate_id` + `log_candidate_id` ContextVar stamp on flush.
 
