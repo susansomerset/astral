@@ -23,11 +23,9 @@ import {
   artifactsTabPrimaryActions,
   buildPhaseSectionGradeConfidenceRow,
   emailWithJobPlusTag,
-  fetchOperativeBaseResume,
   formatPhaseSectionScoreTitle,
   gradesForHeader,
   isArtifactsBuildInProgress,
-  jobBaseResumeArtifactId,
   jobGradesForField,
   jobRubricForField,
   jobScoreBreakdownForGradesField,
@@ -91,9 +89,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [structureSaveError, setStructureSaveError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
-  const [sourceBaseResume, setSourceBaseResume] = useState<unknown | null>(null)
-  const [sourceBaseResumeError, setSourceBaseResumeError] = useState<string | null>(null)
-  const [sourceBaseResumeLoading, setSourceBaseResumeLoading] = useState(false)
 
   const candidate = useMemo(
     () => candidates.find(c => c.astral_candidate_id === selectedId),
@@ -142,41 +137,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   }, [jobId])
 
   useEffect(() => { load() }, [load])
-
-  // AST-1585: pinned source base_resume via operative API (no candidate blob fallback).
-  useEffect(() => {
-    if (activeTopTab !== "artifacts" || !job || !selectedId) {
-      setSourceBaseResume(null)
-      setSourceBaseResumeError(null)
-      setSourceBaseResumeLoading(false)
-      return
-    }
-    const pin = jobBaseResumeArtifactId(job.job_data)
-    if (!pin) {
-      setSourceBaseResume(null)
-      setSourceBaseResumeError(null)
-      setSourceBaseResumeLoading(false)
-      return
-    }
-    let cancelled = false
-    setSourceBaseResumeLoading(true)
-    setSourceBaseResumeError(null)
-    setSourceBaseResume(null)
-    fetchOperativeBaseResume(selectedId, pin, api).then(result => {
-      if (cancelled) return
-      setSourceBaseResumeLoading(false)
-      if (result.ok) {
-        setSourceBaseResume(result.base_resume)
-        setSourceBaseResumeError(null)
-      } else {
-        setSourceBaseResume(null)
-        setSourceBaseResumeError(result.error)
-      }
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [activeTopTab, job, selectedId])
 
   // Resume section labels + structure authoring (candidate resume_structure as shared defaults).
   useEffect(() => {
@@ -574,26 +534,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     )
   }
 
-  function renderSourceBaseResumeBlock(): ReactNode {
-    const pin = jobBaseResumeArtifactId(job?.job_data)
-    return (
-      <div className="recommended-report-source-base-resume">
-        <h3 className="recommended-report-section-title">Source base resume</h3>
-        {!pin ? (
-          <p className="recommended-report-empty">No pinned base resume for this build.</p>
-        ) : sourceBaseResumeLoading ? (
-          <p className="recommended-report-empty">Loading source base resume…</p>
-        ) : sourceBaseResumeError ? (
-          <p className="entity-error">{sourceBaseResumeError}</p>
-        ) : (
-          <pre className="recommended-report-empty">
-            {JSON.stringify(sourceBaseResume, null, 2)}
-          </pre>
-        )}
-      </div>
-    )
-  }
-
   function renderArtifactsPane(): ReactNode {
     if (!job) return null
 
@@ -601,60 +541,49 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (buildInProgress) {
       const cancelActions = artifactActions.filter(a => a.action_key === "cancel_build")
       return (
-        <>
-          {renderSourceBaseResumeBlock()}
-          <div className="recommended-report-artifacts-actions">
-            <button type="button" className="btn primary in-flight" disabled>
-              Generating…
+        <div className="recommended-report-artifacts-actions">
+          <button type="button" className="btn primary in-flight" disabled>
+            Generating…
+          </button>
+          {cancelActions.map(action => (
+            <button
+              key={action.action_key}
+              type="button"
+              className="btn secondary"
+              disabled={primaryBusy}
+              onClick={() => runPrimaryAction(action)}
+            >
+              {action.label}
             </button>
-            {cancelActions.map(action => (
-              <button
-                key={action.action_key}
-                type="button"
-                className="btn secondary"
-                disabled={primaryBusy}
-                onClick={() => runPrimaryAction(action)}
-              >
-                {action.label}
-              </button>
-            ))}
-          </div>
-        </>
+          ))}
+        </div>
       )
     }
 
     // B — empty: Generate only
     if (!hasArtifactContent) {
       const generate = artifactActions.find(a => a.action_key === "generate_artifacts")
-      if (!generate) {
-        return renderSourceBaseResumeBlock()
-      }
+      if (!generate) return null
       return (
-        <>
-          {renderSourceBaseResumeBlock()}
-          <div className="recommended-report-artifacts-actions">
-            <button
-              type="button"
-              className={`btn primary${primaryBusy ? " in-flight" : ""}`}
-              disabled={primaryBusy}
-              onClick={() => runPrimaryAction(generate)}
-            >
-              {generate.label}
-            </button>
-          </div>
-        </>
+        <div className="recommended-report-artifacts-actions">
+          <button
+            type="button"
+            className={`btn primary${primaryBusy ? " in-flight" : ""}`}
+            disabled={primaryBusy}
+            onClick={() => runPrimaryAction(generate)}
+          >
+            {generate.label}
+          </button>
+        </div>
       )
     }
 
     // C — populated: collapsible editors; no Generate/Cancel strip
     return (
-      <>
-        {renderSourceBaseResumeBlock()}
-        <ReportSectionList
-          sections={populatedArtifactSections}
-          renderSection={renderArtifactSection}
-        />
-      </>
+      <ReportSectionList
+        sections={populatedArtifactSections}
+        renderSection={renderArtifactSection}
+      />
     )
   }
 
