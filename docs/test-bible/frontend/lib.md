@@ -216,7 +216,7 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- |
 | Breakdown lookup + title format | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-1348 phase score header helpers`** |
 
-**Broken / obsolete:** none.
+**Broken / obsolete:** none — new helper.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
@@ -370,9 +370,9 @@ npm run test:component -- \
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Pin parse + fetch helper | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`AST-1585`** |
+| Pin parse + fetch helper | `recommendedJobReport.tsx` | **obsolete AST-1599** — JAR helpers deleted with panel |
 
-**Broken / obsolete:** none.
+**Broken / obsolete under AST-1599:** `recommendedJobReport — AST-1585 operative base_resume helpers` describe removed.
 
 **Integration:** none.
 
