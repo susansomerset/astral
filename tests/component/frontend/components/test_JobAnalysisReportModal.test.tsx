@@ -1245,53 +1245,32 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
 })
 
 
-describe("JobAnalysisReportModal — AST-1585 Source base resume", () => {
+describe("JobAnalysisReportModal — AST-1599 no Source base resume on Artifacts", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  it("shows gap copy when job has no pin and does not call operative API", async () => {
-    installBaseApiMocks(mockedApi, jobHandler("j1585-gap"))
-    renderWithProviders(<JobAnalysisReportModal jobId="j1585-gap" onClose={() => {}} />)
-    await waitForShell()
-    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    expect(screen.getByText("Source base resume")).toBeInTheDocument()
-    expect(screen.getByText("No pinned base resume for this build.")).toBeInTheDocument()
-    const operativeCalls = mockedApi.mock.calls.filter(([url]) =>
-      String(url).includes("/operative/base_resume"),
-    )
-    expect(operativeCalls).toHaveLength(0)
-  })
-
-  it("fetches operative pin body and renders JSON (no candidate blob fallback)", async () => {
-    const pin = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    const cid = baseCandidate.astral_candidate_id
+  it("[bug-repro] populated Artifacts after finished build must not show Source base resume", async () => {
+    // Pre-fix (AST-1585 panel): Artifacts always renders provenance; epic forbids it.
     installBaseApiMocks(mockedApi, (url, init) => {
-      if (url === "/api/jobs/j1585-pin" && !init) {
+      if (url === "/api/jobs/j1599-pop" && !init) {
         return jsonResponse({
-          astral_job_id: "j1585-pin",
+          astral_job_id: "j1599-pop",
           job_title: "Role",
           company: "Co",
-          state: "RECOMMENDED",
+          state: "CANDIDATE_REVIEW",
           state_changed_at: null,
           job_link: "https://jobs.example/apply",
           job_data: {
             job_description: "JD",
             analysis_upshot: fullUpshot(),
-            base_resume_artifact_id: pin,
+            // no base_resume_artifact_id — provenance gap must not appear
             artifacts: {
-              job_resume: { professional_summary: "job draft" },
+              job_resume: { professional_summary: "Draft text" },
+              cover_letter: { Letter: "Cover body" },
             },
           },
         })
       }
-      if (
-        url ===
-        `/api/candidates/${cid}/operative/base_resume?artifact_id=${encodeURIComponent(pin)}`
-      ) {
-        return jsonResponse({
-          base_resume: { professional_summary: "source-pin-body" },
-        })
-      }
-      if (url === `/api/candidates/${cid}/resume_structure`) {
+      if (url === `/api/candidates/${baseCandidate.astral_candidate_id}/resume_structure`) {
         return jsonResponse({
           sections: [{ id: "professional_summary", label: "Summary" }],
           accent_color: null,
@@ -1299,52 +1278,36 @@ describe("JobAnalysisReportModal — AST-1585 Source base resume", () => {
       }
       return undefined
     })
-    renderWithProviders(<JobAnalysisReportModal jobId="j1585-pin" onClose={() => {}} />)
+    renderWithProviders(<JobAnalysisReportModal jobId="j1599-pop" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    expect(screen.getByText("Source base resume")).toBeInTheDocument()
-    await waitFor(() =>
-      expect(screen.getByText(/source-pin-body/)).toBeInTheDocument(),
+    expect(screen.queryByText("Source base resume")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("No pinned base resume for this build."),
+    ).not.toBeInTheDocument()
+    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
+    expect(sectionList).toBeTruthy()
+    const headerLabels = [...sectionList.querySelectorAll(".collapsible-panel-label-wrap")].map(
+      el => el.textContent?.trim(),
     )
-    expect(screen.queryByText("No pinned base resume for this build.")).not.toBeInTheDocument()
-    // Must not use candidate detail hydrate for this panel
-    const detailGets = mockedApi.mock.calls.filter(
-      ([url, init]) => url === `/api/candidates/${cid}` && !init,
+    expect(headerLabels).toContain("Job Resume")
+    expect(headerLabels).toContain("Cover Letter")
+    const operativeCalls = mockedApi.mock.calls.filter(([url]) =>
+      String(url).includes("/operative/base_resume"),
     )
-    expect(detailGets).toHaveLength(0)
+    expect(operativeCalls).toHaveLength(0)
   })
 
-  it("shows entity-error when operative fetch fails", async () => {
-    const pin = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-    const cid = baseCandidate.astral_candidate_id
-    installBaseApiMocks(mockedApi, (url, init) => {
-      if (url === "/api/jobs/j1585-err" && !init) {
-        return jsonResponse({
-          astral_job_id: "j1585-err",
-          job_title: "Role",
-          company: "Co",
-          state: "RECOMMENDED",
-          state_changed_at: null,
-          job_link: null,
-          job_data: {
-            job_description: "JD",
-            analysis_upshot: fullUpshot(),
-            base_resume_artifact_id: pin,
-          },
-        })
-      }
-      if (String(url).includes("/operative/base_resume")) {
-        return jsonResponse({ error: "base_resume not found for pin" }, { ok: false, status: 404 })
-      }
-      return undefined
-    })
-    renderWithProviders(<JobAnalysisReportModal jobId="j1585-err" onClose={() => {}} />)
+  it("[bug-repro] empty Artifacts (Generate) must not show Source base resume", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j1599-empty"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1599-empty" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
-    await waitFor(() =>
-      expect(screen.getByText("base_resume not found for pin")).toBeInTheDocument(),
-    )
-    expect(screen.getByText("base_resume not found for pin").className).toContain("entity-error")
+    expect(screen.queryByText("Source base resume")).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("No pinned base resume for this build."),
+    ).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Generate Artifacts" })).toBeInTheDocument()
   })
 })
 

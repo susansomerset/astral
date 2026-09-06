@@ -1366,9 +1366,9 @@ JAR Artifacts pane **Source base resume** block: gap when no `job_data.base_resu
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Source base resume panel | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1585 Source base resume`** |
+| Source base resume panel | `JobAnalysisReportModal.tsx` | **obsolete AST-1599** — panel removed; see § AST-1599 |
 
-**Broken / obsolete this pass:** none — existing empty Artifacts asserts still hold (do not require absence of Source block).
+**Broken / obsolete under AST-1599:** JAR Source base resume Vitest describe removed; Contact + operative API coverage below stays.
 
 **Integration:** none.
 
@@ -1376,8 +1376,7 @@ JAR Artifacts pane **Source base resume** block: gap when no `job_data.base_resu
 
 1. Contact resolve/dispatch/raft: `tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume`
 2. Operative GET API: `tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi`
-3. Lib helpers: `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — `--testNamePattern="AST-1585"`
-4. JAR Source panel: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1585"`
+3. Contact + operative API only (JAR panel / lib helpers retired under **AST-1599**)
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -1386,14 +1385,7 @@ JAR Artifacts pane **Source base resume** block: gap when no `job_data.base_resu
   -q
 ```
 
-```bash
-cd src/ui/frontend && npm run test:component -- \
-  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
-  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
-  --testNamePattern="AST-1585"
-```
-
-**Pass criterion:** pytest + Vitest green on lines 1–4 — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on lines 1–2 — not zero-arg harness / branch-lock gate.
 
 ---
 
@@ -1409,3 +1401,32 @@ ArtifactEditor job-mode load trusts hydrated leaf `job_resume` / `cover_letter`;
 | Hydrated leaf load + save | same | **`AST-1593: job_resume load uses hydrated current leaf body`** |
 
 **Broken / obsolete this pass:** `AST-1480: job_resume pin overlays resume_content sibling bodies`.
+
+---
+
+### AST-1599 · AST-1588 (bug)
+
+**Publish:** `origin/sub/AST-1588/AST-1599-job-modal-hides-resume-cover`.
+
+Remove JAR Artifacts **Source base resume** provenance panel (and related fetch/state). Artifacts tab after finished build shows job_resume / cover_letter editors (or Generate when empty) — never pin-gap / operative JSON. [bug-repro] must flip red→green under `test-fix`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No Source base resume on populated Artifacts | `JobAnalysisReportModal.tsx` | **`[bug-repro]`** `JobAnalysisReportModal — AST-1599` · populated |
+| No Source base resume on empty Generate | same | **`[bug-repro]`** · empty Generate |
+
+**Broken / obsolete this pass:** `JobAnalysisReportModal — AST-1585 Source base resume` (deleted); lib `AST-1585 operative base_resume helpers` (deleted — exports removed with panel). Contact/API AST-1585 stays.
+
+**Integration:** none.
+
+## QA test manifest (AST-1599)
+
+1. **[bug-repro]** `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1599"`
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1599"
+```
+
+**Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix removes the panel — not zero-arg harness / branch-lock gate.
