@@ -283,3 +283,51 @@ Product stages 1–2 landed (builder `get_job_current`; ArtifactEditor + recomme
 
 context_tokens≈65000
 ```
+
+
+## Bug: AST-1599 — Job modal hides resume/cover behind source-base-resume message
+
+### As-is
+After successful artifact generation for a recommended job, the Recommended Job modal Artifacts tab no longer presents the job resume / cover letter editors; it shows a **Source base resume** heading and the empty copy **No pinned base resume for this build** (and related loading/error/JSON when a pin exists).
+
+### To-be
+The Artifacts tab shows resume and cover letter the same way as before the catalog rewire: hydrated **current** `job_resume` / `cover_letter` via ArtifactEditor (artifact-table SoT). The modal must **not** reference, fetch, or display source / base-resume provenance (no Source base resume panel, no pin gap message, no operative base_resume JSON).
+
+### Repro
+1. On a candidate with a recommended job, run Generate Artifacts through completion (tasks succeed; job leaves build-in-progress).
+2. Open that job’s Recommended Job Report modal → **Artifacts** top tab.
+3. Observe: **Source base resume** / **No pinned base resume for this build** instead of (or crowding out) Job Resume / Cover Letter editors.
+4. Confirm `job_data.base_resume_artifact_id` is absent on the job (or unused) — the empty message is provenance UI, not a missing job_resume body signal.
+
+### Root cause
+AST-1585 added a JAR **Source base resume** panel (`renderSourceBaseResumeBlock` + `jobBaseResumeArtifactId` / `fetchOperativeBaseResume`) that always renders on the Artifacts pane (in-progress, empty, and populated branches). Parent AST-1588 / AST-1593 explicitly do **not** require source-id or base-resume provenance on the job modal (`no requirement to display source ids in UI this epic`; Susan: do not reference sources on the job modal). When `hasArtifactContent` is false after a finished build (no Generate action for that state), the empty branch returns **only** that panel — so the user sees the wrong provenance gap instead of resume/cover. Even when editors would render, the provenance block remains contrary to epic UI intent.
+
+### Proposed change
+Concrete make-fix steps (no judgment calls):
+
+1. In `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`:
+   - Delete `renderSourceBaseResumeBlock` and every call site in `renderArtifactsPane` (in-progress / empty / populated).
+   - Delete state `sourceBaseResume`, `sourceBaseResumeError`, `sourceBaseResumeLoading` and the `useEffect` that calls `fetchOperativeBaseResume` when `activeTopTab === "artifacts"`.
+   - Remove imports of `fetchOperativeBaseResume` and `jobBaseResumeArtifactId` from this file.
+   - Keep Artifacts pane behavior otherwise: in-progress → Generating… + Cancel; empty → Generate only; populated → `ReportSectionList` + `renderArtifactSection` (ArtifactEditor) for tabs with `artifactHasContent` — same leaf `artifact_key` contract as AST-1593 Stage 3 (no hierarchical key rewrite).
+
+2. In `src/ui/frontend/src/lib/recommendedJobReport.tsx`:
+   - If `jobBaseResumeArtifactId` and `fetchOperativeBaseResume` are unused after step 1, delete those two exports (and any imports only they needed). Do **not** change `printResumeVisible` / `printCoverVisible` / `artifactHasContent` / `anyReportArtifactContent` (AST-1593 SoT rules stay).
+   - Do **not** remove Contact / candidate operative `base_resume` API surfaces (AST-1585 Contact path stays; this bug is job-modal only).
+
+3. Do **not** add a replacement provenance UI, do **not** surface `source_artifact_ids` or `base_resume_artifact_id` on the job modal, and do **not** reintroduce `resume_content` sibling SoT fallbacks.
+
+⚠️ **Decision:** Remove the AST-1585 JAR provenance panel entirely rather than “fix the empty message.” Epic + Susan forbid source/base-resume references on this modal; the empty pin copy is not a valid substitute for missing job artifact bodies.
+
+### Blast radius
+- **JAR Artifacts tab UI** — AST-1585 Stage 3 panel gone; Vitest/bible nodes that assert Source base resume / pin gap / operative JSON on JAR will need Betty revise (`qa-fix` if board says TESTS: REVISE).
+- **`recommendedJobReport.tsx` helpers** — shared lib; confirm no other importers of `jobBaseResumeArtifactId` / `fetchOperativeBaseResume` before delete (today: JAR modal only).
+- **AST-1593** hydrate leaf load/save, builder `get_job_current`, print visibility — must not regress.
+- **AST-1591/1592** table `source_artifact_ids` and tracker citation — backend stays; UI must not re-display that provenance here.
+- Contact Estelle / `GET .../operative/base_resume` (AST-1585 Stages 1–2) — untouched.
+
+### What must still hold
+- Parent AC6 / AST-1593: UI load and jobs GET for `job_resume` / `cover_letter` use generic current-read / hydrate overlay; not `job_data.artifacts.*` blob SoT.
+- Parent Technical scope: no requirement to display source ids in UI this epic; ArtifactEditor still CURRENT (not operative-by-id) for job keys.
+- AST-1593 Stage 2: no `resume_content` sibling SoT fallback in ArtifactEditor; `printResumeVisible` stays `job_resume`-only.
+- Artifact generation / Generate / Cancel / populated editor strip behavior otherwise unchanged.
