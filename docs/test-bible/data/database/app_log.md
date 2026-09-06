@@ -46,3 +46,18 @@ rg -n "_flush_buffer|add_log_entry" src/utils/logging.py
 Expect late `from src.data.database import add_log_entry` **inside** `_flush_buffer` only (no module-top data import; buffer dict keys `level` / `logger_name` / `message` / `batch_id` only).
 
 **Pass criterion:** pytest + Vitest green on manifest lines + AC5 grep — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1598 · AST-1594
+
+Nullable `app_log.candidate_id`; `add_log_entry` / `list_log_entries` accept optional stamp/filter. ContextVar flush wiring: **`docs/test-bible/utils/logging_batch.md`** § AST-1598.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inventory + nullable column | `src/data/database.py` | **`TestAst1598AppLogCandidateId::test_inventory_and_fresh_column_nullable`** |
+| Stamp / NULL omit + list filter | `src/data/database.py` | **`…::test_add_stamps_and_null_when_omitted`**, **`…::test_list_filters_by_candidate_id`** |
+
+**Broken / obsolete this pass:** none additive for prior AST-1266 suite.
+
+**Integration:** none.

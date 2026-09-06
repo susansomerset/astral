@@ -122,3 +122,45 @@ Global dedupe helpers for meteorite email ingest: `text_matches_known_company_jo
   -q
 ```
 
+---
+
+### AST-1598 · AST-1594
+
+**Parent:** [AST-1594 — Add candidate_id to artifact, app_log, and job](https://linear.app/astralcareermatch/issue/AST-1594). **Publish:** `origin/sub/AST-1594/AST-1598-job-and-app-log-candidate-id`.
+
+Required `job.candidate_id` (ensure + company backfill; guard when company table absent — `aff5678f`); `save_job` resolves ownership; `list_jobs` / `claim_job_batch` / `count_jobs` fail loud on omit and filter via `job.candidate_id` (no company subquery). Sibling artifact rename is **AST-1597**. Logging stamp: `docs/test-bible/utils/logging_batch.md` + `data/database/app_log.md`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inventory + ensure column + no-company guard | `src/data/database.py` | **`TestAst1598JobCandidateId::test_inventory_lists_job_candidate_id`**, **`…::test_ensure_adds_candidate_id_and_guards_without_company`** |
+| Backfill from company | `src/data/database.py` | **`…::test_ensure_backfills_from_company_when_present`** |
+| save_job resolve / explicit / unresolved | `src/data/database.py` | **`…::test_save_job_resolves_cid_from_company_and_returns_on_read`**, **`…::test_save_job_explicit_cid_and_unresolved_raises`** |
+| Fail-loud list/claim/count + scope | `src/data/database.py` | **`…::test_list_claim_count_fail_loud_on_omit`**, **`…::test_list_and_claim_scope_via_job_candidate_id`** |
+
+**Broken / obsolete this pass:** `test_jobs.py` company seeds without `candidate_id` (revised); `test_surfer.py` claim/save without cid (revised when file present).
+
+**Integration:** none — no existing integration scenario asserts `job.candidate_id` scope.
+
+## QA test manifest (AST-1598)
+
+1. Job suite: `tests/component/data/database/test_jobs.py::TestAst1598JobCandidateId`
+2. Job regression: `tests/component/data/database/test_jobs.py`
+3. App log cid: `tests/component/data/database/test_app_log.py::TestAst1598AppLogCandidateId`
+4. App log regression: `tests/component/data/database/test_app_log.py`
+5. Logging stamp: `tests/component/utils/test_logging_batch.py::TestAst1598LogCandidateId`
+6. Logging regression: `tests/component/utils/test_logging_batch.py`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py \
+  tests/component/data/database/test_app_log.py \
+  tests/component/utils/test_logging_batch.py \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–6 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/data/database/jobs.md`
+- `docs/test-bible/data/database/app_log.md`
+- `docs/test-bible/utils/logging_batch.md`
