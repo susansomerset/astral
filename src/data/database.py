@@ -1625,6 +1625,24 @@ def _is_job_identity_unique_violation(exc: sqlite3.IntegrityError) -> bool:
         and "job.company_job_id" in msg
     )
 
+def _resolve_job_candidate_id(
+    conn: sqlite3.Connection, company: str, candidate_id: Optional[str]
+) -> str:
+    """Resolve owning candidate for a job row (AST-1598). Explicit cid wins; else company.candidate_id."""
+    cid = (candidate_id or "").strip()
+    if cid:
+        return cid
+    row = conn.execute(
+        "SELECT candidate_id FROM company WHERE short_name = ?",
+        (company,),
+    ).fetchone()
+    looked = (row[0] if row else None) or ""
+    looked = looked.strip()
+    if not looked:
+        raise ValueError("candidate_id required")
+    return looked
+
+
 def save_job(
     astral_job_id: str,
     *,
@@ -1639,14 +1657,16 @@ def save_job(
     state_changed_at: Optional[str] = None,
     latest_score: Optional[float] = None,
     source: Optional[str] = None,
+    candidate_id: Optional[str] = None,
     ) -> bool:
     """Upsert a job row. Insert if new (company and state required); update provided fields if exists.
     job_data: merge=True deep-merges with existing; merge=False overwrites.
     state_history: always overwrites (caller manages append via get_job + append + save_job).
     latest_score: most recent numeric grade score (0-10); written through for batch priority sorting (AST-350).
     source: gazed|meteorite (AST-1469); INSERT defaults to JOB_SOURCE_DEFAULT when omitted.
+    candidate_id: owning candidate (AST-1598); INSERT resolves from company when omitted.
     Returns True on insert/update; False when new-row insert bounces on identity duplicate (complete triple).
-    Raises ValueError if inserting without company/state."""
+    Raises ValueError if inserting without company/state or unresolved candidate_id."""
     now = _utc_now()
 
     def _with_conn() -> bool:
@@ -1654,29 +1674,28 @@ def save_job(
         try:
             _ensure_job_schema(conn)
             existing = conn.execute(
-                "SELECT astral_job_id, job_data FROM job WHERE astral_job_id = ?",
+                "SELECT astral_job_id, job_data, company FROM job WHERE astral_job_id = ?",
                 (astral_job_id,),
             ).fetchone()
 
             if existing is None:
-                # INSERT: company and state required (NOT NULL in schema)
                 if not company:
                     raise ValueError("company required for new job")
                 if not state:
                     raise ValueError("state required for new job")
-                # AST-1469: omit source → gazed default; validate when caller supplies
                 insert_source = JOB_SOURCE_DEFAULT if source is None else source
                 validate_job_source(insert_source)
+                cid = _resolve_job_candidate_id(conn, company, candidate_id)
                 jdata_str = json.dumps(job_data) if job_data else "{}"
                 hist_str = json.dumps(state_history) if state_history else "[]"
                 try:
                     conn.execute(
                         """INSERT INTO job (
-                            astral_job_id, company, company_job_id, job_title, job_link, job_data,
+                            astral_job_id, company, candidate_id, company_job_id, job_title, job_link, job_data,
                             state, state_history, batch_id, batch_created_at,
                             created_at, updated_at, state_changed_at, source
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
-                        (astral_job_id, company, company_job_id, job_title, job_link, jdata_str,
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
+                        (astral_job_id, company, cid, company_job_id, job_title, job_link, jdata_str,
                          state, hist_str, now, now, state_changed_at or now, insert_source),
                     )
                 except sqlite3.IntegrityError as e:
@@ -1685,7 +1704,6 @@ def save_job(
                         return False
                     raise
             else:
-                # UPDATE: only set provided (non-None) fields
                 sets: List[str] = []
                 params: List[Any] = []
                 if source is not None:
@@ -1700,7 +1718,11 @@ def save_job(
                     if val is not None:
                         sets.append(f"{col} = ?")
                         params.append(val)
-                # job_data: merge or overwrite
+                if candidate_id is not None or company is not None:
+                    company_for_cid = company if company is not None else existing["company"]
+                    cid_arg = candidate_id if candidate_id is not None else None
+                    sets.append("candidate_id = ?")
+                    params.append(_resolve_job_candidate_id(conn, company_for_cid, cid_arg))
                 if job_data is not None:
                     if merge:
                         existing_data = json.loads(existing["job_data"]) if existing["job_data"] else {}
@@ -1710,7 +1732,6 @@ def save_job(
                     else:
                         sets.append("job_data = ?")
                         params.append(json.dumps(job_data))
-                # state_history: always overwrite (caller manages append)
                 if state_history is not None:
                     sets.append("state_history = ?")
                     params.append(json.dumps(state_history))
@@ -1729,6 +1750,7 @@ def save_job(
             conn.close()
 
     return _run_with_retry(_with_conn)
+
 
 def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
     """Select single job by astral_job_id. Returns dict with parsed job_data/state_history, or None."""
@@ -1837,14 +1859,11 @@ def job_link_exists_for_candidate(candidate_id: str, job_link: str) -> bool:
 
     def _do(c: sqlite3.Connection) -> bool:
         _ensure_job_schema(c)
-        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
-        _ensure_company_schema(c)
-        _ensure_company_candidate_fk(c)
         cursor = c.execute(
             """SELECT 1 FROM job
                WHERE job_link = ?
                  AND job_link IS NOT NULL AND TRIM(job_link) != ''
-                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND candidate_id = ?
                LIMIT 1""",
             (link, cid),
         )
@@ -1873,15 +1892,12 @@ def text_matches_known_company_job_id_for_candidate(
 
     def _do(c: sqlite3.Connection) -> Optional[str]:
         _ensure_job_schema(c)
-        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
-        _ensure_company_schema(c)
-        _ensure_company_candidate_fk(c)
         min_chars = int(METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"])
         cursor = c.execute(
             """SELECT company_job_id FROM job
                WHERE company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
                  AND LENGTH(TRIM(company_job_id)) >= ?
-                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND candidate_id = ?
                  AND ? LIKE '%' || company_job_id || '%'
                LIMIT 1""",
             (min_chars, cid, text),
@@ -1910,12 +1926,10 @@ def find_candidate_job_by_company_job_id(
 
     def _do(c: sqlite3.Connection) -> Optional[Dict[str, Any]]:
         _ensure_job_schema(c)
-        _ensure_company_schema(c)
-        _ensure_company_candidate_fk(c)
         row = c.execute(
             """SELECT * FROM job
                WHERE company_job_id = ?
-                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND candidate_id = ?
                LIMIT 1""",
             (cid_job, cid),
         ).fetchone()
@@ -1939,13 +1953,11 @@ def find_candidate_job_by_job_link(
 
     def _do(c: sqlite3.Connection) -> Optional[Dict[str, Any]]:
         _ensure_job_schema(c)
-        _ensure_company_schema(c)
-        _ensure_company_candidate_fk(c)
         row = c.execute(
             """SELECT * FROM job
                WHERE job_link = ?
                  AND job_link IS NOT NULL AND TRIM(job_link) != ''
-                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND candidate_id = ?
                LIMIT 1""",
             (link, cid),
         ).fetchone()
@@ -1990,10 +2002,13 @@ def claim_job_batch(
     ) -> int:
     """Claim up to limit unclaimed jobs in state. Sets batch_id, batch_created_at.
     Parameter order: batch_id first (caller owns it).
-    candidate_id: when provided, scopes claim to jobs whose company belongs to this candidate.
+    candidate_id: required; scopes claim via job.candidate_id (AST-1598).
     claim_cap: when set (dispatcher AST-502 exhaustion), SQLITE LIMIT uses this count instead of
     ``limit`` — claim exactly up to concurrent eligible rows; ``limit`` stays the API chunk width from dispatch_task.batch_size elsewhere.
     Returns count claimed."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
     now = _utc_now()
     claim_states = states if states is not None else [state]
     state_sql, state_params = _state_in_sql(claim_states)
@@ -2003,10 +2018,7 @@ def claim_job_batch(
         else f"ORDER BY {sort_by} ASC NULLS FIRST" if sort_by and sort_by in _JOB_BATCH_SORT_COLUMNS
         else "ORDER BY rowid"
     )
-    candidate_filter = (
-        " AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)"
-        if candidate_id else ""
-    )
+    candidate_filter = " AND candidate_id = ?"
     score_filter = " AND latest_score IS NOT NULL AND latest_score >= ?" if score_floor is not None else ""
 
     def _with_conn() -> int:
@@ -2014,9 +2026,7 @@ def claim_job_batch(
         try:
             _ensure_job_schema(conn)
             eff_limit = int(claim_cap) if claim_cap is not None else int(limit)
-            params = [batch_id, now, *state_params]
-            if candidate_id:
-                params.append(candidate_id)
+            params = [batch_id, now, *state_params, cid]
             if score_floor is not None:
                 params.append(float(score_floor))
             params.append(eff_limit)
@@ -2097,24 +2107,24 @@ def list_jobs(
     candidate_id: Optional[str] = None,
     order_by: str = "state_changed_at",
 ) -> List[Dict[str, Any]]:
-    """List jobs with optional state IN filter and candidate_id scope.
-    candidate_id scopes via subquery on the company table (same pattern as claim_job_batch).
+    """List jobs with optional state IN filter and required candidate_id scope (AST-1598).
+    Scopes via job.candidate_id (no company subquery). Raises if candidate_id omitted/blank.
     order_by: column name; falls back to rowid if not a known sortable column."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
     _SORTABLE = {"state_changed_at", "created_at", "updated_at", "job_title", "company", "state"}
 
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
             _ensure_job_schema(conn)
-            clauses: List[str] = []
-            params: List[Any] = []
+            clauses: List[str] = ["candidate_id = ?"]
+            params: List[Any] = [cid]
             if states:
                 clauses.append(f"state IN ({','.join('?' for _ in states)})")
                 params.extend(states)
-            if candidate_id:
-                clauses.append("company IN (SELECT short_name FROM company WHERE candidate_id = ?)")
-                params.append(candidate_id)
-            where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+            where = f" WHERE {' AND '.join(clauses)}"
             col = order_by if order_by in _SORTABLE else "rowid"
             rows = conn.execute(
                 f"SELECT * FROM job{where} ORDER BY {col} DESC NULLS LAST", params
@@ -2130,20 +2140,22 @@ def count_jobs(
     states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
 ) -> int:
-    """COUNT(*) version of list_jobs — avoids fetching full rows just for length."""
+    """COUNT(*) version of list_jobs — avoids fetching full rows just for length.
+    candidate_id required (AST-1598); scopes via job.candidate_id."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+
     def _with_conn() -> int:
         conn = _get_connection()
         try:
             _ensure_job_schema(conn)
-            clauses: List[str] = []
-            params: List[Any] = []
+            clauses: List[str] = ["candidate_id = ?"]
+            params: List[Any] = [cid]
             if states:
                 clauses.append(f"state IN ({','.join('?' for _ in states)})")
                 params.extend(states)
-            if candidate_id:
-                clauses.append("company IN (SELECT short_name FROM company WHERE candidate_id = ?)")
-                params.append(candidate_id)
-            where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+            where = f" WHERE {' AND '.join(clauses)}"
             row = conn.execute(f"SELECT COUNT(*) FROM job{where}", params).fetchone()
             return row[0] if row else 0
         finally:
@@ -2197,7 +2209,7 @@ def count_jobs_below_dispatch_score_floor(candidate_id: str) -> int:
                 row = conn.execute(
                     """SELECT COUNT(*) FROM job WHERE state = ?
                        AND (latest_score IS NULL OR latest_score < ?)
-                       AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)""",
+                       AND candidate_id = ?""",
                     (st, float(fl), candidate_id),
                 ).fetchone()
                 total += int(row[0] or 0)
@@ -8333,7 +8345,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
                     f"""SELECT COUNT(*) FROM job
                        WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
                          AND latest_score IS NOT NULL AND latest_score >= ?
-                         AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)""",
+                         AND candidate_id = ?""",
                     (*state_params, float(floor), candidate_id),
                 ).fetchone()
                 return int(row[0])
@@ -8408,7 +8420,7 @@ def count_entities_in_state(
     entity_type: str, state: str, candidate_id: str, *, states: Optional[List[str]] = None,
 ) -> int:
     """Count available (unclaimed) jobs or companies in a given state for a candidate.
-    Unclaimed = batch_id IS NULL OR batch_id = '' (same as claim_*_batch). Jobs are scoped via company.candidate_id."""
+    Unclaimed = batch_id IS NULL OR batch_id = '' (same as claim_*_batch). Jobs scoped via job.candidate_id (AST-1598)."""
     claim_states = states if states is not None else [state]
     state_sql, state_params = _state_in_sql(claim_states)
 
@@ -8425,8 +8437,8 @@ def count_entities_in_state(
                 _ensure_job_schema(conn)
                 row = conn.execute(
                     f"""SELECT COUNT(*) FROM job
-                       WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '') AND company IN
-                       (SELECT short_name FROM company WHERE candidate_id = ?)""",
+                       WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                         AND candidate_id = ?""",
                     (*state_params, candidate_id),
                 ).fetchone()
             else:
