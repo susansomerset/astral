@@ -470,7 +470,7 @@ class TestAst309CoverLetterArtifact:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: table.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
                 (et, eid, at, data, source_artifact_ids)
             )
             or "uuid-cl",
@@ -498,7 +498,7 @@ class TestPersistJobArtifactFromParsed:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: table.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
                 (et, eid, at, data)
             )
             or f"uuid-{at}",
@@ -1189,7 +1189,7 @@ class TestAst1554BodyReplicaPersistHelpers:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: table.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
                 (et, eid, at, data, source_artifact_ids)
             )
             or "uuid-jr",
@@ -1237,7 +1237,7 @@ class TestAst1554BodyReplicaPersistHelpers:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: table.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
                 (et, eid, at, data, source_artifact_ids)
             )
             or "uuid-cl",
@@ -1295,7 +1295,7 @@ class TestAst1556JobArtifactsTableSoT:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: table.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
                 (et, eid, at, data)
             )
             or "uuid-1556",
@@ -1331,7 +1331,7 @@ class TestAst1556JobArtifactsTableSoT:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: table.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
                 (et, eid, at, data)
             )
             or "uuid-cl",
@@ -2190,7 +2190,7 @@ class TestAst1592TrackerCatalogWriteReadCitation:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: saves.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: saves.append(
                 {
                     "et": et,
                     "eid": eid,
@@ -2225,7 +2225,7 @@ class TestAst1592TrackerCatalogWriteReadCitation:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: saves.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: saves.append(
                 source_artifact_ids
             )
             or "new-jr",
@@ -2246,7 +2246,7 @@ class TestAst1592TrackerCatalogWriteReadCitation:
         monkeypatch.setattr(
             tracker_mod.database,
             "save_artifact",
-            lambda et, eid, at, data, source_artifact_ids=None: saves.append(
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: saves.append(
                 source_artifact_ids
             )
             or "cl",
@@ -2258,3 +2258,49 @@ class TestAst1592TrackerCatalogWriteReadCitation:
             source_artifact_ids=["seed-1"],
         )
         assert saves[0] == ["seed-1"]
+
+
+class TestAst1600TrackerCandidateIdLand:
+    """AST-1600: denormalized job.candidate_id + pass-through into save_artifact."""
+
+    def test_bug_repro_candidate_id_for_job_prefers_job_column(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] pre-fix ignores job.candidate_id → None when company cid blank.
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_job",
+            lambda jid: {
+                "astral_job_id": jid,
+                "company": "acme",
+                "candidate_id": "cand-from-job",
+            },
+        )
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_company",
+            lambda sn: {"short_name": sn, "candidate_id": None},
+        )
+        assert tracker_mod._candidate_id_for_job("job-1600") == "cand-from-job"
+
+    def test_bug_repro_save_job_artifact_passes_candidate_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] pre-fix omits candidate_id= on database.save_artifact.
+        saves: list = []
+
+        def _save(et, eid, at, data, source_artifact_ids=None, candidate_id=None):
+            saves.append({"candidate_id": candidate_id, "at": at})
+            return "uid-1600"
+
+        monkeypatch.setattr(tracker_mod.database, "save_artifact", _save)
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-1600")
+        uid = tracker_mod.save_job_artifact(
+            "job-1600",
+            "job.artifacts.cover_letter",
+            {"Subject": "S", "Letter": "L", "signature": ""},
+        )
+        assert uid == "uid-1600"
+        assert saves[0]["at"] == "cover_letter"
+        assert saves[0]["candidate_id"] == "cand-1600"
+

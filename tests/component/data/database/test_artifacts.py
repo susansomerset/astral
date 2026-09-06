@@ -492,3 +492,31 @@ class TestAst1597ArtifactSingularAndCandidateId:
         assert current["candidate_id"] == "cand-co"
         listed = db.list_artifacts("company", "acme", "watch_criteria", current_only=True)
         assert listed[0]["candidate_id"] == "cand-co"
+
+
+class TestAst1600JobArtifactCandidateIdResolve:
+    """AST-1600: job artifact write prefers denormalized job.candidate_id when company cid blank."""
+
+    def test_bug_repro_job_write_resolves_cid_via_job_column_when_company_blank(
+        self, sqlite_in_memory
+    ) -> None:
+        # [bug-repro] pre-fix only JOINs company.candidate_id → ValueError when that is NULL.
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-seed")
+        db.save_job("job-1600", company="acme", state="NEW", candidate_id="cand-denorm")
+        conn = db._get_connection()
+        try:
+            conn.execute("UPDATE company SET candidate_id = NULL WHERE short_name = ?", ("acme",))
+            conn.commit()
+            row = conn.execute(
+                "SELECT candidate_id FROM job WHERE astral_job_id = ?", ("job-1600",)
+            ).fetchone()
+            assert row and (row[0] or "").strip() == "cand-denorm"
+        finally:
+            conn.close()
+        uid = db.save_artifact("job", "job-1600", "cover_letter", {"t": "hi"})
+        current = db.get_current_artifact("job", "job-1600", "cover_letter")
+        assert current is not None
+        assert current["artifact_uuid"] == uid
+        assert current["candidate_id"] == "cand-denorm"
+

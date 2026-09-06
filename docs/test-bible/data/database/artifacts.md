@@ -159,7 +159,7 @@ Singular SQLite table `artifact` (was `artifacts`) with required `candidate_id` 
 | Inventory + fresh ensure singular + index | `src/data/database.py` | **`TestAst1597ArtifactSingularAndCandidateId::test_inventory_and_fresh_ensure_singular_with_candidate_id`**; revised **`TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it`** |
 | Copy-adopt from plural; leave `artifacts`; backfill cid | `src/data/database.py` | **`TestAst1597ArtifactSingularAndCandidateId::test_copy_adopt_from_plural_leaves_artifacts_and_backfills_cid`** |
 | Candidate omit/mismatch `candidate_id` | `src/data/database.py` | **`TestAst1597ArtifactSingularAndCandidateId::test_candidate_write_omitted_cid_equals_entity_id`**, **`…::test_candidate_write_mismatched_cid_raises`** |
-| Job explicit / unresolved / ownership resolve | `src/data/database.py` | **`…::test_job_write_explicit_cid_and_unresolved_raises`**, **`…::test_job_write_resolves_cid_via_company_ownership`** |
+| Job explicit / unresolved / ownership resolve | `src/data/database.py` | **`…::test_job_write_explicit_cid_and_unresolved_raises`**, **`…::test_job_write_resolves_cid_via_company_ownership`**; denormalized job column → **AST-1600** |
 | Company resolve + readers return cid | `src/data/database.py` | **`…::test_company_write_resolves_and_readers_return_cid`** |
 
 **Broken / obsolete this pass:** `test_artifacts.py` + data/core/ui confests — plural table name, `_ensure_artifacts_table` / `_artifacts_schema_ensured`, inventory `artifacts`, job saves without `candidate_id`, AST-1591 preexisting-table fixture. Revised in place; no silent deletion.
@@ -181,3 +181,21 @@ Singular SQLite table `artifact` (was `artifacts`) with required `candidate_id` 
 **Pass criterion:** pytest green on lines 1–5 — not zero-arg harness / branch-lock gate.
 
 **Bible path shasum (record after publish):** `docs/test-bible/data/database/artifacts.md`
+
+---
+
+### AST-1600 · AST-1588 (bug)
+
+**Publish:** `origin/sub/AST-1588/AST-1600-job-resume-cover-not-persisting`.
+
+`_resolve_artifact_candidate_id` job branch: when caller omits cid, prefer non-empty `job.candidate_id` before company JOIN.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job column when company cid blank | `src/data/database.py` | **`[bug-repro]`** `TestAst1600JobArtifactCandidateIdResolve::test_bug_repro_job_write_resolves_cid_via_job_column_when_company_blank` |
+
+**Broken / obsolete this pass:** none in AST-1597 company-JOIN cases (still valid fallback).
+
+**Integration:** none.
+
+
