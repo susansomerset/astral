@@ -234,3 +234,37 @@ Confirm Chuckles estimate: 5 — agree
 - Execute stages in order; one commit per stage on the epic worktree during **build-child**, then `git push origin HEAD:sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id`.
 - No silent extra files. If `database.py` has drifted (signatures, ensure shape), stop and comment the **parent** AST-1594 with the Stage blocked template from plan-child.
 - Engineers do not edit `tests/**` or `docs/test-bible/**`.
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1597
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id` @ `2e0709ed4cbb5508e022eca255be1739fb428ae4`
+
+## Traceability
+AC1→Stages 1–2 (ensure `artifact` + CRUD on `artifact`, no product writes to `artifacts`); AC2→Stage 3 (migration SQL on parent AST-1594 Description per child Scope); AC3→Stage 2 (`_resolve_artifact_candidate_id`, `save_artifact` INSERT); AC4→Stage 1 (header inventory bullet)
+
+## Findings
+
+### acceptable
+- **Location:** Linear AST-1597 assignee  
+  **Finding:** Assignee is Ada, not Joan at spawn time.  
+  **Recommendation:** Chuckles restores implementer after posting upshot per validate-plan §8.
+
+### discuss
+- **Location:** Child AC #2 vs Scope  
+  **Finding:** AC text says “this ticket’s Description includes migration SQL,” but Scope and Stage 3 correctly place SQL on **parent** AST-1594 Description (matches epic partition).  
+  **Recommendation:** Optional AC wording cleanup on the child ticket; plan is faithful to Scope and parent functional scope.
+
+- **Location:** Stage 2 — `_resolve_artifact_candidate_id`  
+  **Finding:** Omitted `candidate_id` for `candidate`/`job`/`company` entity types is resolved via lookup rather than immediate `ValueError`; column is still always populated on INSERT, and unresolved ownership still fails loudly.  
+  **Recommendation:** Accept for database.py-only scope (no core call-site rewires); explicit wrong `candidate_id` on `entity_type=candidate` still raises.
+
+**Considered (in-session):** Universal orch.* statutes — all conform (plan doc + data-layer change only). Scoped: `astral.standards.database-header-inventory`, `astral.standards.in-scope-only`, `astral.standards.data-raises-caller-logs`, `astral.standards.public-then-helpers`, `astral.standards.dry-and-focused-functions`, `astral.standards.no-cross-contamination`, `astral.layers.import-direction` — conform. Pattern `pattern.layers.import-discipline` — conforms (data-only; no layer violations). Remaining scoped astral.* statutes excluded (no matching layer/path/change_type intersection).
+
+context_tokens≈42000
+```
+
