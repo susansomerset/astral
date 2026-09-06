@@ -151,3 +151,34 @@ Confirm Chuckles estimate: 5 — agree
 - Execute stages in order; one commit per stage on the epic worktree during **build-child**, then `git push origin HEAD:sub/AST-1594/AST-1598-job-and-app-log-candidate-id`.
 - Do not add files, modules, or call-site rewires outside Files Changed.
 - On ambiguity, drift, or a step that cannot be executed literally: stop and comment on the **parent** Linear issue with the Stage blocked format from plan-child — do not improvise.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1598
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1594/AST-1598-job-and-app-log-candidate-id` @ `d12ef119c0c9e92aeaa8d137698c775223152b7f`
+
+## Traceability
+AC1→Stages 1–2 (ensure/backfill `job.candidate_id`, subquery→`job.candidate_id`, fail loud on claim/list/count omit, `save_job` INSERT ownership); AC2→Stage 3 (nullable `app_log.candidate_id`, `add_log_entry`/`list_log_entries`, `log_candidate_id` ContextVar + flush stamp, no raise into caller); AC3→Stage 1 (header inventory `job`/`app_log` bullets)
+
+## Findings
+
+### discuss
+- **Location:** Stage 2 step 4 — `list_jobs` / `count_jobs` fail loud on omit  
+  **Finding:** Plan implements child AC literally (raise when `candidate_id` blank). On publish ref, `api_jobs.py` calls `list_jobs(..., candidate_id=None)` for applied meteorite repair (line 109) and `list_view` can pass absent query `candidate_id` for admin list endpoints — those paths will raise after build unless a follow-up UI ticket passes explicit scope. Parent epic also says admin multi-candidate views are “unchanged” (no auto-clamp); this is a deliberate partition tradeoff the plan surfaces.  
+  **Recommendation:** Susan confirms accepting admin repair/list breakage until out-of-scope UI wiring lands; if unscoped admin list must survive in this child, amend Scope + Stage 2 before build (plan already flags this gate).
+
+- **Location:** Stage 3 — `log_candidate_id.set(...)` omitted  
+  **Finding:** ContextVar + flush wiring satisfies infra AC (“stamp when context has one; NULL otherwise”), but no dispatcher/core/UI set sites are in Scope — operational stamping deferred until a caller sets the var (parallel to `log_batch_id`, which dispatcher sets today).  
+  **Recommendation:** Accept as child partition unless Susan wants dispatcher set wired in this ticket (would expand Scope beyond Files Changed).
+
+### acceptable
+- **Location:** Stage 2 — `_resolve_job_candidate_id` on `save_job` INSERT  
+  **Finding:** Omitted `candidate_id` resolves from `company.candidate_id` rather than raising; child AC “fail loud on omit” targets scoped list/claim/count helpers, not INSERT resolution — keeps core call sites green within database.py-only scope.  
+  **Recommendation:** None — matches AST-1597 artifact resolver pattern and child Boundaries.
+
+**Considered (in-session):** Universal orch.* — conform. Scoped: `astral.standards.database-header-inventory`, `astral.standards.logging-via-utils`, `astral.standards.utils-data-late-import-only`, `astral.standards.data-raises-caller-logs`, `astral.standards.in-scope-only`, `astral.layers.import-direction`, `astral.standards.public-then-helpers`, `astral.standards.no-cross-contamination` — conform. Remaining scoped astral.* excluded (no layer/path intersection with `database.py` + `logging.py` modify set).
+
+context_tokens≈52000
