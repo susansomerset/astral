@@ -392,3 +392,149 @@ Modal read/write contracts from AST-1592/1593 are already the right shape (GET h
 - Cover letter may store empty `source_artifact_ids` (no seed citation this epic).
 - Sibling blob keys (`notes`, `resume_content`, `proposed_answers`, `application_responses`) stay out of the catalog.
 - Modal read = current-read overlay; modal save = same generic write as finalize.
+
+## Radia review (AST-1600)
+
+# Radia review-fix — AST-1600 (F7)
+
+`[code-rubric] revision=2`
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1600
+**Publish ref:** `sub/AST-1588/AST-1600-job-resume-cover-not-persisting` @ `5e40874c4f2ba66016c47f216a8e01459513b3f0`
+**Diff base:** `origin/ftr/AST-1588-job-artifacts-job-resume-cover-letter...origin/sub/AST-1588/AST-1600-job-resume-cover-not-persisting` (fix slice: `agent.py`, `tracker.py`, `database.py` + tests)
+**Parent:** AST-1588 (normal UAT-batch — not orphaned)
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1600)` on publish ref. |
+| orch.git.commit-vocabulary | universal | conforms | `docs` / `test` / `code` / `merge-tests`. |
+| orch.git.flow-direction-inviolable | universal | conforms | Bug `sub/AST-1588/…` on in-flight epic. |
+| orch.git.ftr-sub-topology | universal | conforms | Diff base `ftr/AST-1588-…` per fix-lane. |
+| orch.git.merge-on-checkout | universal | conforms | N/A to code. |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | Linear history. |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent branches. |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree OK. |
+| orch.git.three-permanent-branches | universal | conforms | `sub/*` publish ref. |
+| orch.pipeline.* (4) | universal | conforms | Fix-lane F7 at Tests Passed. |
+| orch.roles.* (5) | universal | conforms | Betty qa-fix + board; engineer product fix. |
+| astral.agent.do-task-delegation | scoped | conforms | Finalize land delegates to tracker `save_job_artifact`; lazy import preserved. |
+| astral.batch.* | scoped | not-applicable | No batch claim/clear changes. |
+| astral.config.* | scoped | not-applicable | No config changes in 1600 commits. |
+| astral.debug.* | scoped | not-applicable | No debug spike paths. |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | Land occurs before `run_next`; hop success semantics unchanged. |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Plan-fix patch in `ast-1592-*.md` per `plan-fix` convention. |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty owns tests/bible. |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Test-tree via Betty pipeline. |
+| astral.layers.import-direction | scoped | conforms | `agent` → `tracker` (lazy); `tracker` → `data`; no UI/external bends. |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Core/data only. |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | No UI changes (verify-only per plan). |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | Empty-body `return None` in `save_job_artifact` retained; new WARNING when land skipped. |
+| astral.idioms.* (other 2) | scoped | not-applicable | No auth/consult changes. |
+| astral.seed.* | scoped | not-applicable | No seed paths. |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Data raises `ValueError`; agent logs WARNING/ERROR at core layer. |
+| astral.standards.database-header-inventory | scoped | conforms | No DDL; resolve logic only in existing helper. |
+| astral.standards.debug-contract-gated | scoped | conforms | Debug skip path only when `missing_index`; no new debug emission without `debug=True`. |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `_candidate_id_for_job` prefer-column-then-chain; single cid resolve in `save_job_artifact`. |
+| astral.standards.in-scope-only | scoped | conforms | Agent + tracker + data resolve only; no UI/api_jobs edits. |
+| astral.standards.logging-via-utils | scoped | conforms | Uses module `logger` (existing agent pattern). |
+| astral.standards.names-not-ticket-ids | scoped | conforms | AST cites in comments only. |
+| astral.standards.no-cross-contamination | scoped | conforms | No out-of-layer imports. |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | No new enum sets. |
+| astral.standards.public-then-helpers | scoped | conforms | Public `save_job_artifact` updated; private resolve helper in data layer. |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils changes. |
+| astral.state.core-decides-transitions | scoped | conforms | Writes via tracker `save_job_artifact`; no ad hoc data updates. |
+| astral.state.* (other 2) | scoped | not-applicable | No state-machine edits. |
+| astral.ui.* | scoped | not-applicable | No frontend diff. |
+
+**Active set:** 65 statutes scored (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | No catalog pattern ids in plan-fix patch. |
+
+## Plan-fix adherence
+
+**Proposed change steps 1–5 delivered.**
+
+| Step | Status |
+|------|--------|
+| 1. `_candidate_id_for_job` prefers `job.candidate_id`, then company chain | **done** |
+| 2. `save_job_artifact` resolves `cid`, raises if missing, passes `candidate_id=` to `save_artifact` | **done** |
+| 3. `_resolve_artifact_candidate_id` job branch: job column first, then company JOIN | **done** |
+| 4. Agent body-replica land without `resp_id`; pin still gated; WARNING on prepare/save skip | **done** |
+| 5. `api_jobs` verify-only — no diff; PUT handlers already call `save_job_artifact` | **verified** |
+
+**Root cause (compound):** Both failure modes addressed — `resp_id` gate removed for body replica; `candidate_id` now flows to INSERT.
+
+**Board:** `[board-joan] CANON: OK`; `[board-betty] TESTS: REVISE` — addressed by qa-fix `[bug-repro]` suite.
+
+## Fix-specific checks
+
+### `[bug-repro]` — **OK**
+
+Three tagged tests, each pins concrete to-be behavior and would fail pre-fix:
+
+| Test | Asserts |
+|------|---------|
+| `TestAst1600DoTaskBodyReplicaLand::test_bug_repro_body_replica_lands_when_response_store_fails` | `_store_response_block` raises → `save_job_artifact` still called once with `job.artifacts.cover_letter`; no `skipped reason=store_failed` in logs |
+| `TestAst1600TrackerCandidateIdLand::test_bug_repro_candidate_id_for_job_prefers_job_column` | Denormalized `job.candidate_id` wins when `company.candidate_id` is null |
+| `TestAst1600TrackerCandidateIdLand::test_bug_repro_save_job_artifact_passes_candidate_id` | `database.save_artifact` receives `candidate_id="cand-1600"` |
+| `TestAst1600JobArtifactCandidateIdResolve::test_bug_repro_job_write_resolves_cid_via_job_column_when_company_blank` | End-to-end INSERT succeeds with `current["candidate_id"] == "cand-denorm"` when company FK column is NULL |
+
+Obsolete `TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails` correctly deleted (blast radius documented in bible).
+
+### `## What must still hold` — **OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-1592 generic `save_job_artifact` / `get_job_current`; job_resume cites `base_resume` | **holds** — citation path uses resolved `cid` before `get_current_artifact` |
+| No job-record SoT; no type-specific public saves | **holds** — unchanged |
+| No new coat-check / body-validation gates | **holds** — empty-skip + WARNING only |
+| Cover letter may store empty `source_artifact_ids` | **holds** — non-job_resume branch unchanged |
+| Sibling blob keys out of catalog | **holds** — not touched |
+| Modal read = current-read; modal save = same write as finalize | **holds** — api_jobs unchanged; fix unblocks currents for hydrate |
+
+## Findings
+
+### advisory
+
+- **Susan follow-up (Linear comment):** read current + modal save same path — product contracts were already correct (AST-1592/1593); this fix addresses missing rows after generate. UAT should confirm end-to-end: generate → table current → modal shows body → Save round-trip.
+- **Debug path:** when `index` is missing, debug detail is only `missing_index` (no `store_failed` branch for replica) — acceptable; land requires `index` anyway.
+- **WARNING on `prepare_empty` / `save_skipped_empty`** — intentional per plan; operators can trace silent skips without failing the hop.
+
+## What's solid
+
+- Fixes both root causes in minimal diff (agent gate + candidate_id ownership).
+- Pin path still correctly requires `resp_id`.
+- Data-layer resolve matches tracker pass-through (belt-and-suspenders).
+- Three-layer `[bug-repro]` coverage (agent, tracker, data) maps to compound root cause.
+
+## Frame diff
+
+**AST-1600 fix (product):**
+- `src/core/agent.py` — body replica land gated on `index` only; WARNING on skip paths
+- `src/core/tracker.py` — `_candidate_id_for_job` prefers denormalized column; `save_job_artifact` passes `candidate_id=`
+- `src/data/database.py` — `_resolve_artifact_candidate_id` job branch prefers `job.candidate_id`
+
+**Tests/bible:** `TestAst1600*` suites in agent/tracker/artifacts; bible § AST-1600 manifests.
+
+**Out of scope (unchanged):** `api_jobs.py`, frontend, builder.
+
+## Notes for Chuckles
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal AST-1588 UAT-batch | → **Review Posted** → §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+context_tokens≈78000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 5e40874c) Finalize land + candidate_id fix
+```
