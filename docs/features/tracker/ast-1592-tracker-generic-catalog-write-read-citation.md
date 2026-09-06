@@ -316,3 +316,79 @@ context_tokens≈62000
 ```
 [code-rubric] PROCEED (Commit: e5c94866) Catalog write/read citation clean
 ```
+
+## Bug: AST-1600 — Job resume/cover letter not persisting in artifacts table after task success
+
+### As-is
+
+After recommended-job artifact generation hops complete successfully, `job.artifacts.job_resume` and `job.artifacts.cover_letter` are not present as `current=1` rows in the `artifact` table. The job modal therefore has nothing to show from current-read, and Susan’s follow-up requires that modal load use current-read and modal save use the same catalog write path.
+
+### To-be
+
+When `finalize_job_resume` / `finalize_cover_letter` succeed, each hop lands its body through `save_job_artifact` into the artifacts table (with job_resume still citing current `base_resume` when present). Job modal load continues to show bodies from `get_job_current` (via job GET hydrate). Job modal Save continues to PUT through `save_job_artifact` with the catalog key — same write path as finalize land.
+
+### Repro
+
+1. On a RECOMMENDED job for a candidate with an enabled resume structure, run Generate Artifacts through the resume + cover chains until hops report success (including `finalize_job_resume` and `finalize_cover_letter`).
+2. Query current artifact rows for that `astral_job_id` with `artifact_type` in (`job_resume`, `cover_letter`) — expect zero / missing currents despite hop success.
+3. Open the job modal Artifacts tabs — resume/cover empty (no current body to hydrate).
+4. Optional: Edit and Save in ArtifactEditor — PUT `/api/jobs/<id>/artifacts/job_resume` (or `cover_letter`) should still be the write path; after the fix, a successful generate must already have currents before Save.
+
+### Root cause
+
+Two silent no-ops on the AST-1592 finalize land path (compound):
+
+1. **`do_task` body-replica gate requires `resp_id`.** Catalog write only runs when `index and resp_id` after RESPONSE `agent_data` store. Body replica uses in-memory `parsed`, not the pin id — if `_should_store` is false or `_store_response_block` fails, replica is skipped while the hop still returns `success=True`. Pin paths correctly need `resp_id`; body replica must not share that gate.
+
+2. **`save_job_artifact` never passes `candidate_id=` into `database.save_artifact`.** After AST-1597, every artifact INSERT requires a non-empty owning `candidate_id`. Data-layer resolve for `entity_type=job` only JOINs `job → company.candidate_id` and raises `ValueError("candidate_id required")` when that join is blank — it does **not** use denormalized `job.candidate_id` (AST-1598). Tracker’s `_candidate_id_for_job` also ignores `job.candidate_id` and only walks the company chain. Agent wraps the land in `try/except` and logs — hop still succeeds, table stays empty.
+
+Secondary silent path (same symptom): `prepare_job_replica_body` returning `None` or `save_job_artifact` empty-skip (`return None`) with no warning when not `debug` — treat as must-log at WARNING when a mapped replica hop produces no land.
+
+Modal read/write contracts from AST-1592/1593 are already the right shape (GET hydrate → `get_job_current`; PUT → `save_job_artifact`); they fail in UAT primarily because finalize never left a current row.
+
+### Proposed change
+
+⚠️ **Decision:** Fix the land path in `tracker` + `agent` (and tighten data-layer job ownership resolve). Do not add new endpoints or coat-check. Do not change UI components this bug (read/save already on catalog path; empty UI is a missing current row).
+
+1. **`src/core/tracker.py` — `_candidate_id_for_job`:** Prefer non-empty `job["candidate_id"]` from `database.get_job` (AST-1598 denormalized owner). Only if blank, fall back to the existing company → `candidate_id` chain. Still return `None` when neither resolves.
+
+2. **`src/core/tracker.py` — `save_job_artifact`:** After validating the catalog key / preparing the body, resolve `cid = _candidate_id_for_job(jid)`. Call:
+
+   ```python
+   database.save_artifact(
+       entry["entity_type"],
+       jid,
+       artifact_type,
+       prepared,
+       source_artifact_ids=sources,
+       candidate_id=cid,
+   )
+   ```
+
+   If `cid` is `None`, raise `ValueError("candidate_id required")` before the data call (clearer than a late join miss). Keep job_resume auto-citation and empty-body `return None` behavior; do not add new body-validation gates.
+
+3. **`src/data/database.py` — `_resolve_artifact_candidate_id` (job branch):** When caller omits `candidate_id`, resolve in order: (a) `SELECT candidate_id FROM job WHERE astral_job_id = ?` and use if non-empty; (b) else existing `job ⋈ company.candidate_id` lookup; (c) else `ValueError("candidate_id required")`. Explicit non-empty caller `candidate_id` still wins unchanged. No DDL change.
+
+4. **`src/core/agent.py` — body-replica land block:** For `replica_slot` when `result.get("success")` and `index`:
+
+   - Call `prepare_job_replica_body` + `save_job_artifact` **without** requiring `resp_id`.
+   - Keep RESPONSE store as today (best-effort ledger).
+   - Keep `pin_slot` gated on `index and resp_id` (pins need the agent_data id).
+   - On `prepare_job_replica_body` → `None`, or `save_job_artifact` → `None`, `logger.warning` with task_key, index, catalog key, and reason (`prepare_empty` / `save_skipped_empty`) — do not fail the hop.
+   - Preserve existing `try/except` + `logger.error` around the land for unexpected raises.
+
+5. **`src/ui/api/api_jobs.py`:** No behavior change required if PUT handlers and `detail(..., astral_job_id=…)` already call `save_job_artifact` / hydrate current-read (AST-1592). Verify only — if a PUT still bypasses `save_job_artifact`, rewire that one handler to the catalog key. Do not add GET `/artifacts/*` routes.
+
+### Blast radius
+
+- **Agent:** Finalize hops land even when RESPONSE store fails; pin tasks unchanged. Betty’s tests that assert `artifact_body_replica … skipped reason=store_failed` will need qa-fix revision (product contract change).
+- **Tracker / data:** All `save_job_artifact` callers (API PUT, finalize, `persist_job_artifact_from_parsed`) gain explicit/denormalized `candidate_id` — required for AST-1597 INSERT. Candidate-entity `save_artifact` paths untouched.
+- **UI:** No frontend edit; modal Save/load keep current contracts. Builder (`get_job_current`) benefits once currents exist.
+- **Sibling AST-1599:** JAR “Source base resume” UI removal stays; this bug does not reintroduce provenance panels.
+
+### What must still hold
+
+- Parent AC2–AC7 / AST-1592: generic `save_job_artifact` / `get_job_current` (entity id + catalog key); job_resume auto-cites current `base_resume` uuid or `[]`; no job-record SoT for these bodies; no type-specific public save helpers; no new coat-check or body-validation gates.
+- Cover letter may store empty `source_artifact_ids` (no seed citation this epic).
+- Sibling blob keys (`notes`, `resume_content`, `proposed_answers`, `application_responses`) stay out of the catalog.
+- Modal read = current-read overlay; modal save = same generic write as finalize.
