@@ -27,12 +27,14 @@ Tables used (inventory):
   task_key TEXT, task_key_uuid TEXT, code, label, content, importance INTEGER, content_fingerprint TEXT,
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
-- artifacts — Versioned entity-scoped artifact blobs (artifact_uuid TEXT PK,
-  entity_type TEXT, entity_id TEXT, artifact_type TEXT, artifact_data TEXT,
-  source_artifact_ids TEXT JSON array of artifact_uuid strings default '[]' (AST-1591),
-  current INTEGER 0|1, created_at, updated_at). Active row: current=1 for
-  (entity_type, entity_id, artifact_type). Versioning follows agent_task / rubric_vector
-  current=1 retire-and-insert (AST-1340 / AST-1352; table rename AST-1364).
+- artifact — Versioned entity-scoped artifact blobs (artifact_uuid TEXT PK,
+  candidate_id TEXT NOT NULL — owning candidate; when entity_type='candidate' equals
+  entity_id, otherwise separate from entity_id; entity_type TEXT, entity_id TEXT,
+  artifact_type TEXT, artifact_data TEXT, source_artifact_ids TEXT JSON array of
+  artifact_uuid strings default '[]' (AST-1591), current INTEGER 0|1, created_at,
+  updated_at). Active row: current=1 for (entity_type, entity_id, artifact_type).
+  Versioning follows agent_task / rubric_vector current=1 retire-and-insert
+  (AST-1340 / AST-1352; plural→singular rename + candidate_id AST-1597 / AST-1594).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
   candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
   batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
@@ -189,7 +191,7 @@ _company_search_terms_schema_ensured = False
 _company_search_terms_migration_swept = False
 _rubric_vector_schema_ensured = False
 _vector_feedback_schema_ensured = False
-_artifacts_schema_ensured = False
+_artifact_schema_ensured = False
 _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
@@ -4197,10 +4199,10 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
 
 
 
-def _ensure_artifacts_table(conn: sqlite3.Connection) -> None:
-    """Create or rename-to artifacts table (AST-1352; rename AST-1364)."""
-    global _artifacts_schema_ensured
-    if _artifacts_schema_ensured:
+def _ensure_artifact_table(conn: sqlite3.Connection) -> None:
+    """Create or copy-adopt singular artifact table (AST-1597; was artifacts)."""
+    global _artifact_schema_ensured
+    if _artifact_schema_ensured:
         return
 
     def _table_exists(name: str) -> bool:
@@ -4215,64 +4217,155 @@ def _ensure_artifacts_table(conn: sqlite3.Connection) -> None:
     def _column_names(table: str) -> set[str]:
         return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
+    def _drop_legacy_indexes() -> None:
+        conn.execute("DROP INDEX IF EXISTS idx_artifacts_entity_type_current")
+        conn.execute("DROP INDEX IF EXISTS idx_astral_artifacts_entity_type_current")
+        conn.execute("DROP INDEX IF EXISTS idx_artifact_entity_type_current")
+
     def _ensure_index() -> None:
+        _drop_legacy_indexes()
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_artifacts_entity_type_current "
-            "ON artifacts (entity_type, entity_id, artifact_type, current)"
+            "CREATE INDEX IF NOT EXISTS idx_artifact_entity_type_current "
+            "ON artifact (entity_type, entity_id, artifact_type, current)"
+        )
+
+    def _create_artifact_ddl(table: str) -> None:
+        conn.execute(
+            f"""
+            CREATE TABLE {table} (
+                artifact_uuid TEXT PRIMARY KEY,
+                candidate_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                artifact_type TEXT NOT NULL,
+                artifact_data TEXT NOT NULL,
+                source_artifact_ids TEXT NOT NULL DEFAULT '[]',
+                current INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL
+            )
+            """
+        )
+
+    # Shared backfill CASE (plan Stage 1 step 4 / Stage 3) — src alias is the source table.
+    _CID_CASE = """
+            CASE
+              WHEN src.entity_type = 'candidate' THEN src.entity_id
+              WHEN src.entity_type = 'job' THEN (
+                SELECT company.candidate_id FROM job
+                JOIN company ON company.short_name = job.company
+                WHERE job.astral_job_id = src.entity_id
+              )
+              WHEN src.entity_type = 'company' THEN (
+                SELECT company.candidate_id FROM company
+                WHERE company.short_name = src.entity_id
+              )
+              ELSE NULL
+            END
+    """
+
+    def _copy_rows_with_candidate_id(source_table: str, dest_table: str) -> None:
+        # Skip orphans that cannot resolve a non-empty candidate_id (plan: no invented rows).
+        conn.execute(
+            f"""
+            INSERT INTO {dest_table} (
+                artifact_uuid, candidate_id, entity_type, entity_id, artifact_type,
+                artifact_data, source_artifact_ids, current, created_at, updated_at
+            )
+            SELECT
+                a.artifact_uuid,
+                b.candidate_id,
+                a.entity_type,
+                a.entity_id,
+                a.artifact_type,
+                a.artifact_data,
+                COALESCE(a.source_artifact_ids, '[]'),
+                a.current,
+                a.created_at,
+                a.updated_at
+            FROM {source_table} AS a
+            JOIN (
+                SELECT
+                    src.artifact_uuid AS artifact_uuid,
+                    {_CID_CASE} AS candidate_id
+                FROM {source_table} AS src
+            ) AS b ON b.artifact_uuid = a.artifact_uuid
+            WHERE b.candidate_id IS NOT NULL
+              AND TRIM(b.candidate_id) != ''
+              AND NOT EXISTS (
+                SELECT 1 FROM {dest_table} AS existing
+                WHERE existing.artifact_uuid = a.artifact_uuid
+              )
+            """
         )
 
     def _ensure_source_artifact_ids_column() -> None:
-        # AST-1591: provenance list on each version (JSON array of artifact_uuid strings)
-        cols = _column_names("artifacts")
+        cols = _column_names("artifact")
         if "source_artifact_ids" not in cols:
             conn.execute(
-                "ALTER TABLE artifacts ADD COLUMN source_artifact_ids "
+                "ALTER TABLE artifact ADD COLUMN source_artifact_ids "
                 "TEXT NOT NULL DEFAULT '[]'"
             )
 
-    if _table_exists("artifacts"):
-        cols = _column_names("artifacts")
+    def _rebuild_artifact_adding_candidate_id() -> None:
+        # SQLite cannot ADD NOT NULL cleanly — copy into mig table then swap.
+        _create_artifact_ddl("artifact__cid_mig")
+        _copy_rows_with_candidate_id("artifact", "artifact__cid_mig")
+        conn.execute("DROP TABLE artifact")
+        conn.execute("ALTER TABLE artifact__cid_mig RENAME TO artifact")
+
+    if _table_exists("artifact"):
+        cols = _column_names("artifact")
         if "astral_artifact_uuid" in cols and "artifact_uuid" not in cols:
+            conn.execute(
+                "ALTER TABLE artifact RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
+            )
+            cols = _column_names("artifact")
+        # AST-1591 column before candidate_id rebuild so SELECT list is complete
+        _ensure_source_artifact_ids_column()
+        cols = _column_names("artifact")
+        if "candidate_id" not in cols:
+            _rebuild_artifact_adding_candidate_id()
+        _ensure_index()
+        conn.commit()
+        _artifact_schema_ensured = True
+        return
+
+    if _table_exists("artifacts"):
+        # Copy-adopt; leave plural table for Susan to DROP after verification (AST-1597).
+        _create_artifact_ddl("artifact")
+        # Prefer artifact_uuid; legacy astral_artifact_uuid on plural is rare post-AST-1364.
+        arts_cols = _column_names("artifacts")
+        if "astral_artifact_uuid" in arts_cols and "artifact_uuid" not in arts_cols:
             conn.execute(
                 "ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
             )
-        _ensure_source_artifact_ids_column()
+        _copy_rows_with_candidate_id("artifacts", "artifact")
         _ensure_index()
         conn.commit()
-        _artifacts_schema_ensured = True
+        _artifact_schema_ensured = True
         return
 
     if _table_exists("astral_artifacts"):
-        # Pre-rename DBs from AST-1352 UAT — keep history rows
-        conn.execute("ALTER TABLE astral_artifacts RENAME TO artifacts")
-        cols = _column_names("artifacts")
+        conn.execute("ALTER TABLE astral_artifacts RENAME TO artifact")
+        cols = _column_names("artifact")
         if "astral_artifact_uuid" in cols and "artifact_uuid" not in cols:
             conn.execute(
-                "ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
+                "ALTER TABLE artifact RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
             )
-        conn.execute("DROP INDEX IF EXISTS idx_astral_artifacts_entity_type_current")
         _ensure_source_artifact_ids_column()
+        cols = _column_names("artifact")
+        if "candidate_id" not in cols:
+            _rebuild_artifact_adding_candidate_id()
         _ensure_index()
         conn.commit()
-        _artifacts_schema_ensured = True
+        _artifact_schema_ensured = True
         return
 
-    conn.execute("""
-        CREATE TABLE artifacts (
-            artifact_uuid TEXT PRIMARY KEY,
-            entity_type TEXT NOT NULL,
-            entity_id TEXT NOT NULL,
-            artifact_type TEXT NOT NULL,
-            artifact_data TEXT NOT NULL,
-            source_artifact_ids TEXT NOT NULL DEFAULT '[]',
-            current INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMP NOT NULL,
-            updated_at TIMESTAMP NOT NULL
-        )
-    """)
+    _create_artifact_ddl("artifact")
     _ensure_index()
     conn.commit()
-    _artifacts_schema_ensured = True
+    _artifact_schema_ensured = True
 
 
 def _normalize_artifact_identity(
@@ -4293,15 +4386,60 @@ def _normalize_artifact_identity(
     return et, eid, at
 
 
+def _resolve_artifact_candidate_id(
+    conn: sqlite3.Connection,
+    entity_type: str,
+    entity_id: str,
+    candidate_id: Optional[str],
+) -> str:
+    """Return non-empty owning candidate_id for an artifact write (AST-1597).
+
+    entity_type=candidate: omitted → entity_id; explicit must equal entity_id.
+    job/company: omitted → ownership lookup; unresolved → ValueError.
+    """
+    cid = (candidate_id or "").strip()
+    if entity_type == "candidate":
+        if cid and cid != entity_id:
+            raise ValueError(
+                "candidate_id must equal entity_id when entity_type='candidate'"
+            )
+        return entity_id
+    if cid:
+        return cid
+    if entity_type == "job":
+        row = conn.execute(
+            """SELECT company.candidate_id FROM job
+                 JOIN company ON company.short_name = job.company
+                WHERE job.astral_job_id = ?""",
+            (entity_id,),
+        ).fetchone()
+        resolved = (row[0] or "").strip() if row and row[0] is not None else ""
+        if not resolved:
+            raise ValueError("candidate_id required")
+        return resolved
+    if entity_type == "company":
+        row = conn.execute(
+            "SELECT candidate_id FROM company WHERE short_name = ?",
+            (entity_id,),
+        ).fetchone()
+        resolved = (row[0] or "").strip() if row and row[0] is not None else ""
+        if not resolved:
+            raise ValueError("candidate_id required")
+        return resolved
+    raise ValueError("candidate_id required")
+
+
 def _artifact_row_dict(row: tuple) -> Dict[str, Any]:
     """Map SELECT tuple → public dict; JSON-parse artifact_data when possible."""
-    raw = row[4]
+    # SELECT order: uuid, candidate_id, entity_type, entity_id, artifact_type,
+    # artifact_data, source_artifact_ids, current, created_at, updated_at
+    raw = row[5]
     try:
         artifact_data = json.loads(raw)
     except (TypeError, json.JSONDecodeError):
         artifact_data = raw
     # AST-1591: source_artifact_ids TEXT JSON array → list[str]
-    raw_sources = row[5]
+    raw_sources = row[6]
     sources: List[str] = []
     if raw_sources is None or raw_sources == "":
         sources = []
@@ -4316,19 +4454,20 @@ def _artifact_row_dict(row: tuple) -> Dict[str, Any]:
             sources = []
     return {
         "artifact_uuid": row[0],
-        "entity_type": row[1],
-        "entity_id": row[2],
-        "artifact_type": row[3],
+        "candidate_id": row[1],
+        "entity_type": row[2],
+        "entity_id": row[3],
+        "artifact_type": row[4],
         "artifact_data": artifact_data,
         "source_artifact_ids": sources,
-        "current": row[6],
-        "created_at": row[7],
-        "updated_at": row[8],
+        "current": row[7],
+        "created_at": row[8],
+        "updated_at": row[9],
     }
 
 
 _ARTIFACT_SELECT = (
-    "artifact_uuid, entity_type, entity_id, artifact_type, "
+    "artifact_uuid, candidate_id, entity_type, entity_id, artifact_type, "
     "artifact_data, source_artifact_ids, current, created_at, updated_at"
 )
 
@@ -4339,12 +4478,15 @@ def save_artifact(
     artifact_type: str,
     artifact_data: Any,
     source_artifact_ids: Optional[Sequence[str]] = None,
+    *,
+    candidate_id: Optional[str] = None,
 ) -> str:
-    """Blind retire-by-key + insert (patt.artifact.write-operative).
+    """Blind retire-by-key + insert into artifact (patt.artifact.write-operative).
 
     Sets prior current=1 row(s) for (entity_type, entity_id, artifact_type) to
-    current=0, then inserts a new UUID row with current=1. Never SELECT the prior
-    uuid first; never UPDATE artifact_data in place. Returns the new uuid.
+    current=0, then inserts a new UUID row with current=1 and required
+    candidate_id. Never SELECT the prior uuid first; never UPDATE artifact_data
+    in place. Returns the new uuid.
 
     Optional source_artifact_ids: JSON array of source artifact_uuid strings on the
     new row (default empty). No existence validation (AST-1591 /
@@ -4367,21 +4509,22 @@ def save_artifact(
     def _with_conn() -> str:
         conn = _get_connection()
         try:
-            _ensure_artifacts_table(conn)
+            _ensure_artifact_table(conn)
+            resolved_cid = _resolve_artifact_candidate_id(conn, et, eid, candidate_id)
             # Retire any current row(s) for this entity + artifact type
             conn.execute(
-                """UPDATE artifacts
+                """UPDATE artifact
                       SET current = 0, updated_at = ?
                     WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
                       AND current = 1""",
                 (now, et, eid, at),
             )
             conn.execute(
-                """INSERT INTO artifacts (
-                       artifact_uuid, entity_type, entity_id, artifact_type,
+                """INSERT INTO artifact (
+                       artifact_uuid, candidate_id, entity_type, entity_id, artifact_type,
                        artifact_data, source_artifact_ids, current, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)""",
-                (new_uuid, et, eid, at, payload, sources_payload, now, now),
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+                (new_uuid, resolved_cid, et, eid, at, payload, sources_payload, now, now),
             )
             conn.commit()
             return new_uuid
@@ -4391,20 +4534,19 @@ def save_artifact(
     return _run_with_retry(_with_conn)
 
 
-
 def retire_current_artifact(
     entity_type: str, entity_id: str, artifact_type: str
 ) -> bool:
-    """AST-1556: set current=0 for the natural key; no new row. True if a row was retired."""
+    """AST-1556: set current=0 for the natural key on artifact; no new row. True if retired."""
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
     now = _utc_now()
 
     def _with_conn() -> bool:
         conn = _get_connection()
         try:
-            _ensure_artifacts_table(conn)
+            _ensure_artifact_table(conn)
             cur = conn.execute(
-                """UPDATE artifacts
+                """UPDATE artifact
                       SET current = 0, updated_at = ?
                     WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
                       AND current = 1""",
@@ -4421,7 +4563,7 @@ def retire_current_artifact(
 def get_current_artifact(
     entity_type: str, entity_id: str, artifact_type: str
 ) -> Optional[Dict[str, Any]]:
-    """Return the current=1 artifacts row for the natural key, or None (patt.artifact.read-current).
+    """Return the current=1 artifact row for the natural key, or None (patt.artifact.read-current).
 
     Deserializes artifact_data via _artifact_row_dict. Empty on miss. Never reads
     candidate_data / job_data blobs. No coat-check. No logging (callers log).
@@ -4431,10 +4573,10 @@ def get_current_artifact(
     def _with_conn() -> Optional[Dict[str, Any]]:
         conn = _get_connection()
         try:
-            _ensure_artifacts_table(conn)
+            _ensure_artifact_table(conn)
             row = conn.execute(
                 f"""SELECT {_ARTIFACT_SELECT}
-                      FROM artifacts
+                      FROM artifact
                      WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
                        AND current = 1
                      LIMIT 1""",
@@ -4448,7 +4590,7 @@ def get_current_artifact(
 
 
 def get_artifact(artifact_uuid: str) -> Optional[Dict[str, Any]]:
-    """Return one artifacts row by primary key, or None (patt.artifact.read-operative).
+    """Return one artifact row by primary key, or None (patt.artifact.read-operative).
 
     Deserializes artifact_data via _artifact_row_dict. No coat-check; no blob fallback.
     """
@@ -4459,10 +4601,10 @@ def get_artifact(artifact_uuid: str) -> Optional[Dict[str, Any]]:
     def _with_conn() -> Optional[Dict[str, Any]]:
         conn = _get_connection()
         try:
-            _ensure_artifacts_table(conn)
+            _ensure_artifact_table(conn)
             row = conn.execute(
                 f"""SELECT {_ARTIFACT_SELECT}
-                      FROM artifacts
+                      FROM artifact
                      WHERE artifact_uuid = ?
                      LIMIT 1""",
                 (uid,),
@@ -4481,16 +4623,16 @@ def list_artifacts(
     *,
     current_only: bool = False,
 ) -> List[Dict[str, Any]]:
-    """List version rows for the natural key; oldest created_at first."""
+    """List version rows for the natural key on artifact; oldest created_at first."""
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
 
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
-            _ensure_artifacts_table(conn)
+            _ensure_artifact_table(conn)
             sql = (
                 f"""SELECT {_ARTIFACT_SELECT}
-                      FROM artifacts
+                      FROM artifact
                      WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?"""
             )
             if current_only:
