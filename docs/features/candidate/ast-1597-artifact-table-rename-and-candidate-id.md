@@ -274,3 +274,171 @@ context_tokens≈42000
 **Publish ref:** `sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id` @ `5daf0ea2e0803f3587bb73434de7efd523aabdf0`
 
 Stages 1–3 delivered: header inventory + `_ensure_artifact_table` copy-adopt; CRUD on `artifact` with required `candidate_id` resolve/insert; migration SQL appended to parent AST-1594 Description.
+
+## Radia review
+
+# Radia review — AST-1597
+
+**Publish ref:** `origin/sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id` @ `e969369c98c551cb91424709bdb35775a9695c39`  
+**Baseline:** `origin/dev`  
+**Product tip (engineer):** `5daf0ea2` — `src/data/database.py` only  
+**Tests tip (Betty merge):** `a956916b` merges `e374a235`  
+**Status gate:** Tests Passed (spawn prompt; not re-fetched)
+
+---
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1597
+**Publish ref:** origin/sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id @ e969369c98c551cb91424709bdb35775a9695c39
+**Overall:** DISCUSS
+```
+
+## Statutes checked
+
+Diff change set: layers `data`, `docs`; paths `src/data/database.py`, `docs/features/candidate/ast-1597-artifact-table-rename-and-candidate-id.md`, `docs/test-bible/data/database/artifacts.md`, `tests/component/**/conftest.py`, `tests/component/data/database/test_artifacts.py`; change_types `add`/`modify`.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent/grade paths in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no dispatch/agent paths |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch/response paths |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config.py changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env paths |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no repo-root artifacts dir |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug/ spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | plan doc at `docs/features/candidate/ast-1597-…md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty touched test-bible/tests only, not `src/` or features |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commit `5daf0ea2` is `database.py` only; tests via Betty merge |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | data-layer-only product diff |
+| astral.layers.import-direction | scoped | conforms | no cross-layer imports introduced |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no ui layer |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render/consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API routes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed/json agent tables |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no seed define |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed operator rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed coverage join |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `ValueError` on bad/missing ownership; no logging in data |
+| astral.standards.database-header-inventory | scoped | conforms | inventory bullet `artifact` + `candidate_id`; ensure/CRUD aligned |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug= surfaces |
+| astral.standards.dry-and-focused-functions | scoped | conforms | shared `_CID_CASE` / `_copy_rows_with_candidate_id` reused across paths |
+| astral.standards.in-scope-only | scoped | conforms | product scope `database.py`; sibling AST-1598 boundaries respected |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | table/API names are domain terms, not ticket ids |
+| astral.standards.no-cross-contamination | scoped | conforms | artifact ensure/CRUD isolated; JSON key `artifacts` untouched |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | no new config/state vocab sets |
+| astral.standards.public-then-helpers | scoped | conforms | public CRUD unchanged; `_resolve_*` private helper |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils changes |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state logic |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/dispatch chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend files |
+| astral.ui.naming-conventions | scoped | not-applicable | no ui files |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no ui/server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | single `merge-tests(AST-1597)` at `a956916b` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`test`/`docs`/`merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub publish ref; no dev agent branches |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1594/AST-1597-…` topology |
+| orch.git.merge-on-checkout | universal | conforms | sync merge commit present |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent branch refs |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1594 epic worktree pattern |
+| orch.git.three-permanent-branches | universal | conforms | review vs origin/dev only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | orphan DROP + migration SQL operator path documented for Susan |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 match plan; Stage 3 claimed in build stub |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to code shape |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns test/bible revisions |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Ada per spawn |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer commit stayed out of test tree |
+
+**Straggler (C4):** Joan verdict attached. No excluded statute rescored as in-scope with `violates`. `astral.git.engineer-test-tree-ban` is in-scope on the combined publish ref (test paths present) but **conforms** — Betty lane, not engineer smuggle.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan has no **Patterns to reuse** block; Joan’s `pattern.layers.import-discipline` note is advisory context only |
+
+## Plan adherence
+
+- **Stages 1–2:** Delivered in `database.py` — inventory `artifact` + `candidate_id`; `_ensure_artifact_table` copy-adopt from plural without DROP; shared CASE backfill; CRUD on `artifact`; `save_artifact(..., *, candidate_id=)` with resolve-on-write; readers return `candidate_id`. No writes to plural `artifacts` after ensure. Public names (`save_artifact`, `list_artifacts`, …) preserved; `candidate_data` JSON key `artifacts` untouched.
+- **Stage 3:** Build stub claims migration SQL appended to parent AST-1594 Description via Ada — **not verified in-session** (Linear read skipped per ASK brief). Downstream: Chuckles/Susan confirm parent Description block matches plan Stage 3 SQL before operator cutover.
+- **Scope gate:** Engineer footprint is one product file; test/bible changes are Betty merge (`e374a235`) — consistent with execution contract (“engineers do not edit tests”).
+- **Cross-ticket (AST-1598):** No `job`/`app_log` schema, logging contextvar, or core/UI rewires in `src/` diff.
+- **Estimate (5):** Footprint still fits (single data module + expected Betty component tests).
+- **SQL hygiene:** `save_artifact` INSERT lists 10 columns; 9 bind params + literal `current=1` — counts match. `_ARTIFACT_SELECT` / `_artifact_row_dict` index alignment verified.
+
+## Frame diff
+
+```
+src/data/database.py                          | +213 -71   ensure artifact+candidate_id; CRUD retarget
+docs/features/candidate/ast-1597-….md          | +276       plan + Joan + build stub
+docs/test-bible/data/database/artifacts.md     | +39        AST-1597 manifest (Betty)
+tests/component/data/database/test_artifacts.py| +214       AST-1597 + revised legacy tests
+tests/component/{core,data,ui}/conftest.py     | +3 -3      _artifact_schema_ensured flag rename
+```
+
+## Findings
+
+### discuss
+
+1. **Orphan rows on `candidate_id` rebuild path (not plural copy-adopt)**  
+   **Location:** `_rebuild_artifact_adding_candidate_id()` in `database.py`  
+   **Issue:** Plural→singular copy-adopt correctly skips unresolvable rows and **leaves them in `artifacts`** for Susan. When `artifact` already exists without `candidate_id` (or after `astral_artifacts` rename), rebuild copies resolvable rows then **`DROP TABLE artifact`** — skipped orphans are **gone**, not preserved in any sibling table.  
+   **Question:** Accept for legacy-only paths (`astral_artifacts`, pre-migration `artifact`), or add operator warning / staging table parity with the plural path?
+
+2. **`artifact` wins when both `artifact` and `artifacts` exist**  
+   **Location:** `_ensure_artifact_table` branch order (`if _table_exists("artifact")` before plural)  
+   **Issue:** If both tables exist (partial cutover / manual CREATE), ensure returns early and **never** copies remaining plural rows. Plan Stage 3 idempotence notes cover operator SQL; product ensure alone will not backfill from plural in that state.  
+   **Question:** Document as operator-only recovery (Linear migration / manual INSERT), or worth a detect-and-warn branch?
+
+3. **Explicit `candidate_id` on job/company writes not ownership-validated**  
+   **Location:** `_resolve_artifact_candidate_id` — non-empty `cid` returned without company/job lookup  
+   **Issue:** Callers can persist a `candidate_id` that does not match `company.candidate_id` for that entity. Plan + Joan explicitly accepted this for database.py-only scope (no core rewires).  
+   **Question:** Confirm carry-forward into AST-1598 logging/filter work, or tighten in a follow-up?
+
+4. **Child AC #2 vs parent Description SQL** (carried from Joan)  
+   **Location:** Linear AC wording vs plan Stage 3  
+   **Issue:** AC text implies SQL on child Description; plan correctly places it on parent AST-1594.  
+   **Question:** Optional AC cleanup only — no code change required.
+
+### advisory
+
+- **Parent migration SQL:** Build claims Stage 3 landed on AST-1594 Description; verify operator block matches plan Stage 3 verbatim before Susan runs cutover (Radia did not fetch Linear).
+- **Test coverage gap:** Component tests cover fresh ensure, plural copy-adopt, and write-resolve paths; no test for `astral_artifacts` rename or `artifact` rebuild-without-`candidate_id` — acceptable given rarity; note if Susan wants operator confidence on legacy DBs.
+
+### fix-now
+
+*(none)*
+
+## What's solid
+
+- Header inventory, ensure paths, and CRUD SQL consistently target singular `artifact` with required `candidate_id`.
+- Shared CASE backfill matches plan Stage 1 step 4 / Stage 3 migration shape (including orphan skip + `NOT EXISTS` idempotence).
+- Copy-adopt from plural leaves `artifacts` in place; product code no longer writes plural table name.
+- `save_artifact` kw-only `candidate_id` preserves positional callers; candidate omit/mismatch and job/company resolve behavior tested.
+- AST-1598 boundary clean in `src/` diff; Betty merge is a single SHA.
+
+## Recommended actions (downstream — not Radia)
+
+1. Chuckles: append this artifact to issue doc; post slim upshot; move to **Review Posted**.
+2. If discuss #1/#2 matter for production DB shapes Susan expects, Ada adds a one-line operator comment in parent migration notes or a guarded warn — else acknowledge as legacy-only and proceed to UT.
+3. Susan: confirm parent AST-1594 Description migration SQL block exists and matches plan before operator DROP of `artifacts`.
+
+context_tokens≈58000
+
