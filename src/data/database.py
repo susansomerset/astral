@@ -1478,16 +1478,21 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     raise
-    # AST-1598: denormalize ownership from company; blank rows stay blank until writers resolve
-    conn.execute(
-        """UPDATE job
-           SET candidate_id = (
-             SELECT company.candidate_id FROM company
-             WHERE company.short_name = job.company
-           )
-           WHERE candidate_id IS NULL OR TRIM(candidate_id) = ''"""
-    )
-    conn.commit()
+    # AST-1598: denormalize ownership from company; blank rows stay blank until writers resolve.
+    # Skip when company table is absent (fresh DB / job ensure before company DDL) — Betty.
+    company_present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='company'"
+    ).fetchone()
+    if company_present:
+        conn.execute(
+            """UPDATE job
+               SET candidate_id = (
+                 SELECT company.candidate_id FROM company
+                 WHERE company.short_name = job.company
+               )
+               WHERE candidate_id IS NULL OR TRIM(candidate_id) = ''"""
+        )
+        conn.commit()
     # AST-1497: DDL-only — no source content backfill on ensure
     # AST-479: LIKE passes stay PASSED_LIKE for analysis_upshot queue; do not auto-promote to BUILD_ARTIFACTS.
     # AST-732: partial unique index on complete identity triples; NULL/empty company_job_id or job_title excluded.
