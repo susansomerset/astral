@@ -329,10 +329,13 @@ def get_job_artifacts(job: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _candidate_id_for_job(astral_job_id: str) -> Optional[str]:
-    """Owning candidate_id via job → company, or None. Uses raw DB row (no hydrate)."""
+    """Owning candidate_id for a job. Prefer denormalized job.candidate_id (AST-1598/1600)."""
     job = database.get_job(astral_job_id)
     if not job:
         return None
+    direct = job.get("candidate_id")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
     company_key = job.get("company")
     if not isinstance(company_key, str) or not company_key.strip():
         return None
@@ -478,14 +481,15 @@ def save_job_artifact(
         prepared = blob
 
     # job_resume always auto-cites current base_resume; other keys pass sources through.
+    cid = _candidate_id_for_job(jid)
+    if not cid:
+        raise ValueError("candidate_id required")
     if key == "job.artifacts.job_resume":
         sources: Optional[Sequence[str]] = []
-        cid = _candidate_id_for_job(jid)
-        if cid:
-            base_row = database.get_current_artifact("candidate", cid, "base_resume")
-            base_uuid = (base_row or {}).get("artifact_uuid") if base_row else None
-            if isinstance(base_uuid, str) and base_uuid.strip():
-                sources = [base_uuid.strip()]
+        base_row = database.get_current_artifact("candidate", cid, "base_resume")
+        base_uuid = (base_row or {}).get("artifact_uuid") if base_row else None
+        if isinstance(base_uuid, str) and base_uuid.strip():
+            sources = [base_uuid.strip()]
     else:
         sources = source_artifact_ids
 
@@ -495,6 +499,7 @@ def save_job_artifact(
         artifact_type,
         prepared,
         source_artifact_ids=sources,
+        candidate_id=cid,
     )
 
 

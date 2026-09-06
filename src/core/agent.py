@@ -3049,7 +3049,8 @@ async def do_task(
     replica_slot = JOB_ARTIFACT_BODY_REPLICA_BY_TASK.get(task_key)
     pin_slot = JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK.get(task_key)
     if result.get("success") and replica_slot:
-        if index and resp_id:
+        if index:
+            # Body replica uses in-memory parsed — do not gate on resp_id (AST-1600).
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             try:
                 from src.core.tracker import prepare_job_replica_body, save_job_artifact
@@ -3057,8 +3058,24 @@ async def do_task(
                 body = prepare_job_replica_body(
                     replica_slot, parsed, astral_job_id=index
                 )
-                if body is not None:
-                    save_job_artifact(index, replica_slot, body)
+                if body is None:
+                    logger.warning(
+                        "persist_job_artifact_body_replica skipped task=%s index=%s "
+                        "key=%s reason=prepare_empty",
+                        task_key,
+                        index,
+                        replica_slot,
+                    )
+                else:
+                    landed = save_job_artifact(index, replica_slot, body)
+                    if landed is None:
+                        logger.warning(
+                            "persist_job_artifact_body_replica skipped task=%s index=%s "
+                            "key=%s reason=save_skipped_empty",
+                            task_key,
+                            index,
+                            replica_slot,
+                        )
             except Exception as persist_err:
                 logger.error(
                     "persist_job_artifact_body_replica failed task=%s index=%s err=%s",
@@ -3067,12 +3084,8 @@ async def do_task(
                     persist_err,
                 )
         elif debug:
-            reason = (
-                "store_failed" if store_failed
-                else ("missing_index" if not index else "missing_resp_id")
-            )
             _do_task_debug_logger(debug).debug_detail(
-                f"artifact_body_replica key={replica_slot} skipped reason={reason}"
+                f"artifact_body_replica key={replica_slot} skipped reason=missing_index"
             )
     elif pin_slot and result.get("success"):
         if index and resp_id:

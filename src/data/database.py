@@ -4436,13 +4436,20 @@ def _resolve_artifact_candidate_id(
     if cid:
         return cid
     if entity_type == "job":
+        # Prefer denormalized job.candidate_id (AST-1598/1600); fall back to company join.
         row = conn.execute(
-            """SELECT company.candidate_id FROM job
-                 JOIN company ON company.short_name = job.company
-                WHERE job.astral_job_id = ?""",
+            "SELECT candidate_id FROM job WHERE astral_job_id = ?",
             (entity_id,),
         ).fetchone()
         resolved = (row[0] or "").strip() if row and row[0] is not None else ""
+        if not resolved:
+            row = conn.execute(
+                """SELECT company.candidate_id FROM job
+                     JOIN company ON company.short_name = job.company
+                    WHERE job.astral_job_id = ?""",
+                (entity_id,),
+            ).fetchone()
+            resolved = (row[0] or "").strip() if row and row[0] is not None else ""
         if not resolved:
             raise ValueError("candidate_id required")
         return resolved
