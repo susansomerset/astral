@@ -6442,6 +6442,36 @@ def get_manage_agents_tokens() -> list:
     return sorted(k for k in get_tokens() if k not in chain)
 
 
+def get_tokens_by_source_type(source_type: str) -> list:
+    """Sorted TOKEN_SOURCES names whose source_type matches ``source_type``.
+
+    ``source_type`` must be a member of TOKEN_SOURCE_TYPES; raises ValueError otherwise.
+    """
+    if source_type not in TOKEN_SOURCE_TYPES:
+        raise ValueError(f"invalid source_type: {source_type!r}")
+    return sorted(
+        name
+        for name, spec in TOKEN_SOURCES.items()
+        if spec.get("source_type") == source_type
+    )
+
+
+def get_artifact_key_for_token(token_name: str) -> str:
+    """Return ARTIFACT_CONFIG key for an artifact-typed TOKEN_SOURCES name.
+
+    Raises ValueError if the name is missing, not artifact-typed, or lacks artifact_key.
+    """
+    spec = TOKEN_SOURCES.get(token_name)
+    if spec is None:
+        raise ValueError(f"unknown token: {token_name!r}")
+    if spec.get("source_type") != "artifact":
+        raise ValueError(f"token is not artifact-typed: {token_name!r}")
+    key = spec.get("artifact_key")
+    if not isinstance(key, str) or not key:
+        raise ValueError(f"artifact token missing artifact_key: {token_name!r}")
+    return key
+
+
 CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(
     k for k in get_manage_tasks_chain_tokens() if k.startswith("CALLER_")
 )
