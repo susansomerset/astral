@@ -349,3 +349,21 @@ tests/component/…        | job/app_log/logging + confest/surfer fixes (Betty)
 3. If Susan wants stamped logs in staging before dispatcher wiring, spawn follow-up for `log_candidate_id.set(...)` at dispatch entry (out of AST-1598 Scope).
 
 context_tokens≈62000
+
+## Resolution
+
+**Date:** 2026-09-06  
+**Publish tip before resolve:** `a89dcbf5ecb5` (Radia `docs()` intake via sync-child)  
+**Radia overall:** DISCUSS — **fix-now:** none
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss #1 — fail-loud `list_jobs` / `count_jobs` breaks UI callers (`api_jobs` applied repair / absent query cid; `api_admin` adhoc) | **Accept as plan partition.** Stage 2 Decision + Joan APPROVED implement AC literally inside `database.py` only; UI call-site rewires out of Scope. Parent UAT / follow-up UI ticket owns unscoped admin/applied paths. No product change. |
+| discuss #2 — `log_candidate_id.set(...)` not wired | **Accept as plan partition.** Stage 3 Decision: define + read only; dispatcher/core/UI set sites out of Scope. Stamp works when a later caller sets the ContextVar. No product change. |
+| discuss #3 — explicit job `candidate_id` not ownership-validated | **Carry-forward.** Same resolver pattern as AST-1597 artifact discuss; database.py-only scope. Tighten only if a follow-up asks. No product change. |
+| discuss #4 — fresh CREATE NOT NULL vs ALTER nullable | **Accept.** Matches plan Stage 1 Decision (no job-table rebuild). Writers enforce required ownership. No product change. |
+| advisory — combined AST-1597 on publish ref | Noted for operator cutover; not this child's resolve work. |
+| advisory — Betty surfer harness cid | Already on tip via merge-tests; no engineer action. |
+
+**Product / test-tree:** unchanged this resolve pass.
+
