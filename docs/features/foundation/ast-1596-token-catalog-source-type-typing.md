@@ -190,3 +190,36 @@ def get_artifact_key_for_token(token_name: str) -> str:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1596
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1578/AST-1596-token-catalog-source-type-typing` @ `bd45f1d631c86198621de8e117964d6ae1f72f3b`
+
+## Traceability
+AC1–AC5 → Stage 1 (typed catalog, `TOKEN_SOURCE_TYPES`, import-time asserts, `BASE_RESUME` artifact linkage); AC6–AC7 → Stage 1 constraints (no `resolve_tokens` / `get_tokens` edits; admin name lists unchanged via existing `get_tokens()`).
+
+## Findings
+
+### acceptable
+- **Location:** Parent Architectural definition — `patt.artifact.manage-catalog`, `patt.artifact.read-current`
+- **Finding:** Parent cites draft artifact patterns under `canon/directives/draft/`; plan mirrors parent citations without inventing new pattern shapes.
+- **Recommendation:** No plan change; draft status is parent-level, not a child-scope defect.
+
+### acceptable
+- **Location:** Plan structure — no `## Self-Assessment`
+- **Finding:** `## Estimate` confirm line is present; classification tables and explicit out-of-scope boundaries make complexity obvious without a separate self-assessment block.
+- **Recommendation:** Optional polish only; not blocking.
+
+## R6 checklist (summary)
+- Definition fidelity: conforms — single-file `src/utils/config.py` slice matches child Scope and parent Technical scope; all 51 live `TOKEN_SOURCES` rows classified (23 `data_field`, 1 `artifact`, 27 `special_case`); `COMPANY_SEARCH_TERMS` decision documented.
+- Layer / config / placement: conforms — utils-only; `TOKEN_SOURCE_TYPES` constant; no magic inline enums in callers; helpers placed after existing public getters per `public-then-helpers`.
+- Pattern compliance: conforms — `pattern.config.config-block` shape (extend registry block + constant + asserts); artifact token references registered `ARTIFACT_CONFIG` key only (`candidate.artifacts.base_resume`).
+- Scope / DRY: conforms — explicit exclusions for resolve, claim/pin siblings, `ARTIFACT_CONFIG` membership, tests; no sibling creep.
+
+**Considered:** (statute verdicts in-session per slim R7 — universal set + scoped `astral.config.*` / `astral.standards.*` / `astral.layers.*` touching `utils` + `src/**`; all `conforms`; orchestration/UI/batch/agent statutes excluded by layer/path predicates)
+
+context_tokens≈34000
