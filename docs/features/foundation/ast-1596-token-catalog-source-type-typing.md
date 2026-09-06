@@ -223,3 +223,13 @@ AC1–AC5 → Stage 1 (typed catalog, `TOKEN_SOURCE_TYPES`, import-time asserts,
 **Considered:** (statute verdicts in-session per slim R7 — universal set + scoped `astral.config.*` / `astral.standards.*` / `astral.layers.*` touching `utils` + `src/**`; all `conforms`; orchestration/UI/batch/agent statutes excluded by layer/path predicates)
 
 context_tokens≈34000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1578/AST-1596-token-catalog-source-type-typing` @ `edceb490d8f4a1a8436259241b1d99fe9df668d6`.
+
+**Stages delivered:**
+- Stage 1: `TOKEN_SOURCE_TYPES` + typed `TOKEN_SOURCES` + import asserts — `c0ee4de6`.
+- Stage 2: `get_tokens_by_source_type` + `get_artifact_key_for_token` — `edceb490`.
+
+**Betty:** at **Code Complete** — cover import asserts (half-typed / bad artifact_key), `BASE_RESUME` sole artifact linkage, by-type filter + artifact-key getter fail-fast; confirm `get_tokens()` names unchanged and `resolve_tokens` untouched.
