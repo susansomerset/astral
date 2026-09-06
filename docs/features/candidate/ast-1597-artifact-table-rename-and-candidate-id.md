@@ -268,3 +268,9 @@ AC1→Stages 1–2 (ensure `artifact` + CRUD on `artifact`, no product writes to
 context_tokens≈42000
 ```
 
+
+## Build complete
+
+**Publish ref:** `sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id` @ `5daf0ea2e0803f3587bb73434de7efd523aabdf0`
+
+Stages 1–3 delivered: header inventory + `_ensure_artifact_table` copy-adopt; CRUD on `artifact` with required `candidate_id` resolve/insert; migration SQL appended to parent AST-1594 Description.
