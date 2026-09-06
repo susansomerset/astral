@@ -3551,3 +3551,52 @@ Registers `job.artifacts.job_resume` + `job.artifacts.cover_letter` in `ARTIFACT
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — `500a0dbdc3e235ab96a324e762762aca8ff103a10fd411192bcb2c3a7776c6b2`
 
+### AST-1596 · AST-1578
+
+**Parent:** [AST-1578 — Split token config: add source-type field](https://linear.app/astralcareermatch/issue/AST-1578/split-token-config-add-source-type-field-data-field-artifact-special). **Publish:** `origin/sub/AST-1578/AST-1596-token-catalog-source-type-typing`.
+
+`TOKEN_SOURCE_TYPES` + required `source_type` on every `TOKEN_SOURCES` row; `BASE_RESUME` sole `artifact` with `artifact_key` → `ARTIFACT_CONFIG`; import-time asserts; thin `get_tokens_by_source_type` / `get_artifact_key_for_token`. Resolve path / admin name lists unchanged. Config-only — no consumer rewire this child.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Typed catalog + asserts + getters | `src/utils/config.py` | **`TestAst1596TokenCatalogSourceTypeTyping`** |
+| Job token dict equality (revised) | same | **`TestAst513JobTokens`** |
+| COMPANY_SEARCH_TERMS stays data_field (revised) | same | **`TestAst504CompanySearchTermsConfig`** |
+| Pronoun dict equality (revised) | same | **`TestAst575PronounTokens`** |
+| FULL_NAME dict equality (revised) | same | **`TestAst510MiddleNameConfig`** |
+| Rubric / named-pin dict equality (revised) | same | **`TestAst723RubricVectorsToken`**, **`TestAst1405NamedRubricPromptTokens`** |
+| IDEAL_DAY dict equality (revised) | same | **`TestAst1365IdealDayLibraryToken`** (ideal_day token_source method) |
+
+**Broken / obsolete this pass:** full-dict `TOKEN_SOURCES[…] == {…}` asserts that omitted `source_type` (job / pronoun / rubric / candidate path rows listed above).
+
+**Integration:** none — no existing scenario asserts `TOKEN_SOURCES` `source_type` / `artifact_key` or the new getters; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Typed catalog + getters + assert contract: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+2. Revised job token equality: `tests/component/utils/test_config.py::TestAst513JobTokens`
+3. Revised COMPANY_SEARCH_TERMS: `tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig::test_company_search_terms_token_source`
+4. Revised pronouns: `tests/component/utils/test_config.py::TestAst575PronounTokens::test_get_tokens_includes_five_pronoun_names`
+5. Revised FULL_NAME: `tests/component/utils/test_config.py::TestAst510MiddleNameConfig::test_full_name_token_source`
+6. Revised rubric registry: `tests/component/utils/test_config.py::TestAst723RubricVectorsToken::test_rubric_vectors_token_registered`
+7. Revised named rubric pins: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_named_pins_registered_and_listed_in_pickers`
+8. Revised IDEAL_DAY: `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst513JobTokens \
+  tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig::test_company_search_terms_token_source \
+  tests/component/utils/test_config.py::TestAst575PronounTokens::test_get_tokens_includes_five_pronoun_names \
+  tests/component/utils/test_config.py::TestAst510MiddleNameConfig::test_full_name_token_source \
+  tests/component/utils/test_config.py::TestAst723RubricVectorsToken::test_rubric_vectors_token_registered \
+  tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_named_pins_registered_and_listed_in_pickers \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — `91d04205bc2b5579c3a5da6c6696b20a874ba24a9dc5b94db3116da38fd2c510`
+

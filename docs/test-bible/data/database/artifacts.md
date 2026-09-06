@@ -6,7 +6,7 @@
 
 | Source | Test file | Branch lock |
 | --- | --- | --- |
-| `src/data/database.py` (`artifacts` ensure + save/get/list) | `tests/component/data/database/test_artifacts.py` | no (module-level lock on `database.py` unchanged) |
+| `src/data/database.py` (`artifact` ensure + save/get/list + `candidate_id`) | `tests/component/data/database/test_artifacts.py` | no (module-level lock on `database.py` unchanged) |
 
 ---
 
@@ -142,5 +142,42 @@ rg -n 'AST-1588|source_artifact_ids'   canon/directives/draft/patt.artifacts.tra
 ```
 
 **Pass criterion:** pytest green on lines 1–5 + docs-acceptance line 6 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasum (record after publish):** `docs/test-bible/data/database/artifacts.md`
+
+
+---
+
+### AST-1597 · AST-1594
+
+**Parent:** [AST-1594 — Add candidate_id to artifact, app_log, and job](https://linear.app/astralcareermatch/issue/AST-1594). **Publish:** `origin/sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id`.
+
+Singular SQLite table `artifact` (was `artifacts`) with required `candidate_id` on every row; ensure copy-adopts plural without DROP; CRUD SQL + inventory retargeted; `_resolve_artifact_candidate_id` on write. Does **not** own job/app_log columns or logging contextvar (**AST-1598**). Migration SQL lives on parent Linear Description (docs-acceptance via parent, not this child’s pytest).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inventory + fresh ensure singular + index | `src/data/database.py` | **`TestAst1597ArtifactSingularAndCandidateId::test_inventory_and_fresh_ensure_singular_with_candidate_id`**; revised **`TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it`** |
+| Copy-adopt from plural; leave `artifacts`; backfill cid | `src/data/database.py` | **`TestAst1597ArtifactSingularAndCandidateId::test_copy_adopt_from_plural_leaves_artifacts_and_backfills_cid`** |
+| Candidate omit/mismatch `candidate_id` | `src/data/database.py` | **`TestAst1597ArtifactSingularAndCandidateId::test_candidate_write_omitted_cid_equals_entity_id`**, **`…::test_candidate_write_mismatched_cid_raises`** |
+| Job explicit / unresolved / ownership resolve | `src/data/database.py` | **`…::test_job_write_explicit_cid_and_unresolved_raises`**, **`…::test_job_write_resolves_cid_via_company_ownership`** |
+| Company resolve + readers return cid | `src/data/database.py` | **`…::test_company_write_resolves_and_readers_return_cid`** |
+
+**Broken / obsolete this pass:** `test_artifacts.py` + data/core/ui confests — plural table name, `_ensure_artifacts_table` / `_artifacts_schema_ensured`, inventory `artifacts`, job saves without `candidate_id`, AST-1591 preexisting-table fixture. Revised in place; no silent deletion.
+
+**Integration:** none — no existing `tests/integration/` scenario asserts the `artifacts`/`artifact` table name or artifact `candidate_id` column (gap note in integration README unchanged; do not invent new scenarios).
+
+## QA test manifest (AST-1597)
+
+1. Singular + `candidate_id` suite: `tests/component/data/database/test_artifacts.py::TestAst1597ArtifactSingularAndCandidateId`
+2. Revised ensure/writers: `tests/component/data/database/test_artifacts.py::TestAst1352Artifacts`
+3. Revised rename surface: `tests/component/data/database/test_artifacts.py::TestAst1364RenameArtifacts`
+4. Regression get-by-uuid: `tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact`
+5. Revised source refs: `tests/component/data/database/test_artifacts.py::TestAst1591SourceArtifactIds`
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/data/database/test_artifacts.py   -q
+```
+
+**Pass criterion:** pytest green on lines 1–5 — not zero-arg harness / branch-lock gate.
 
 **Bible path shasum (record after publish):** `docs/test-bible/data/database/artifacts.md`
