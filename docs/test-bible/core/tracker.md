@@ -532,3 +532,22 @@ Tracker generic `save_job_artifact` / `get_job_current` (entity id + catalog key
 **Pass criterion:** pytest green on lines 1–5 — not zero-arg harness / branch-lock gate.
 
 **Bible path shasum:** `docs/test-bible/core/tracker.md` (fill after publish)
+
+---
+
+### AST-1600 · AST-1588 (bug)
+
+**Publish:** `origin/sub/AST-1588/AST-1600-job-resume-cover-not-persisting`.
+
+`_candidate_id_for_job` prefers denormalized `job.candidate_id`; `save_job_artifact` passes `candidate_id=` into `database.save_artifact`. Agent land: **`docs/test-bible/core/agent.md`** § AST-1600.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prefer job.candidate_id | `src/core/tracker.py` | **`[bug-repro]`** `TestAst1600TrackerCandidateIdLand::test_bug_repro_candidate_id_for_job_prefers_job_column` |
+| Pass candidate_id into save_artifact | `src/core/tracker.py` | **`[bug-repro]`** `…::test_bug_repro_save_job_artifact_passes_candidate_id` |
+
+**Broken / obsolete this pass:** AST-1592 `save_artifact` mocks revised to accept `candidate_id=` (would TypeError once make-fix lands).
+
+**Integration:** none.
+
+

@@ -7340,20 +7340,43 @@ class TestAst1099DoTaskArtifactPin:
         pin.assert_not_called()
         persist_cover.assert_not_called()
 
+    # AST-1600: store_failed must not skip body replica — see TestAst1600DoTaskBodyReplicaLand.
+
+
+class TestAst1600DoTaskBodyReplicaLand:
+    """AST-1600: finalize body replica lands even when RESPONSE store fails (no resp_id gate)."""
+
+    def _pin_ctx(self) -> Dict[str, Any]:
+        return {"candidate_data": {"artifacts": {}}}
+
+    def _ok_cover(self) -> Dict[str, Any]:
+        return {
+            "success": True,
+            "parsed_response": {"re_line": "Re: Role", "body": "Hello", "signature": "Ada"},
+            "api_response": _api_response('{"re_line":"Re: Role","body":"Hello","signature":"Ada"}'),
+            "timesheet": {},
+        }
+
     @pytest.mark.asyncio
-    async def test_debug_skip_replica_when_store_fails(
+    async def test_bug_repro_body_replica_lands_when_response_store_fails(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
         caplog: pytest.LogCaptureFixture,
     ) -> None:
+        # [bug-repro] pre-fix: index+resp_id gate skips land → assert_called fails.
         pin = MagicMock(return_value=True)
-        persist_cover = MagicMock(return_value=True)
+        persist_cover = MagicMock(return_value="uuid-cover")
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr(
             "src.core.tracker.save_job_artifact",
             persist_cover,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.prepare_job_replica_body",
+            lambda key, parsed, astral_job_id="": parsed if isinstance(parsed, dict) else None,
             raising=False,
         )
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
@@ -7367,19 +7390,17 @@ class TestAst1099DoTaskArtifactPin:
         caplog.set_level("DEBUG")
         out = await agent_mod.do_task(
             "finalize_cover_letter",
-            index="job-1099",
+            index="job-1600",
             ctx=self._pin_ctx(),
             debug=True,
         )
         assert out["success"] is True
         pin.assert_not_called()
-        persist_cover.assert_not_called()
+        persist_cover.assert_called_once()
+        assert persist_cover.call_args.args[0] == "job-1600"
+        assert persist_cover.call_args.args[1] == "job.artifacts.cover_letter"
         combined = "\n".join(r.message for r in caplog.records)
-        # AST-1590: body-replica map values are catalog keys (debug label cites them).
-        assert (
-            "artifact_body_replica key=job.artifacts.cover_letter skipped reason=store_failed"
-            in combined
-        )
+        assert "skipped reason=store_failed" not in combined
 
 
 class TestAst1554DoTaskBodyReplica:

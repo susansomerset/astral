@@ -1234,3 +1234,35 @@ Backend scoped import list: `UI_CONFIG` cap (10) + picker visible rows (5); `lis
 | Finalize resume/cover → catalog write | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`**, **`TestAst1554DoTaskBodyReplica`** (revised) |
 
 **Broken / obsolete this pass:** spies on `persist_finalize_job_resume_content` / `persist_finalize_cover_letter_content` — retargeted to `save_job_artifact` (+ prepare mock for resume match).
+
+
+### AST-1600 · AST-1588 (bug)
+
+**Publish:** `origin/sub/AST-1588/AST-1600-job-resume-cover-not-persisting`.
+
+Finalize body replica must land without `resp_id` (RESPONSE store failure must not skip catalog write). Tracker/data `candidate_id` land covered in **`docs/test-bible/core/tracker.md`** / **`docs/test-bible/data/database/artifacts.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Body replica lands when RESPONSE store fails | `src/core/agent.py` | **`[bug-repro]`** `TestAst1600DoTaskBodyReplicaLand::test_bug_repro_body_replica_lands_when_response_store_fails` |
+
+**Broken / obsolete this pass:** `TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails` (deleted — assumed store_failed skips replica).
+
+**Integration:** none.
+
+## QA test manifest (AST-1600)
+
+1. **[bug-repro]** agent land without resp_id: `tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand`
+2. **[bug-repro]** tracker cid prefer + pass-through: `tests/component/core/test_tracker.py::TestAst1600TrackerCandidateIdLand`
+3. **[bug-repro]** data job-column resolve: `tests/component/data/database/test_artifacts.py::TestAst1600JobArtifactCandidateIdResolve`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand \
+  tests/component/core/test_tracker.py::TestAst1600TrackerCandidateIdLand \
+  tests/component/data/database/test_artifacts.py::TestAst1600JobArtifactCandidateIdResolve \
+  -q
+```
+
+**Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix — not zero-arg harness / branch-lock gate.
+
