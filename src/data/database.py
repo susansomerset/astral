@@ -7340,6 +7340,7 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
                 logger_name TEXT,
                 message TEXT,
                 batch_id TEXT,
+                candidate_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -7349,6 +7350,7 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
         cols = list(conn.execute("PRAGMA table_info(app_log)").fetchall())
         id_col = next((r for r in cols if r[1] == "id"), None)
         id_type = (id_col[2] if id_col else "") or ""
+        col_names = {r[1] for r in cols}
         if id_type.upper() != "INTEGER":
             conn.execute("DROP TABLE IF EXISTS app_log_new")
             conn.execute("""
@@ -7358,16 +7360,33 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
                     logger_name TEXT,
                     message TEXT,
                     batch_id TEXT,
+                    candidate_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            conn.execute("""
-                INSERT INTO app_log_new (level, logger_name, message, batch_id, created_at)
-                SELECT level, logger_name, message, batch_id, created_at FROM app_log
-            """)
+            if "candidate_id" in col_names:
+                conn.execute("""
+                    INSERT INTO app_log_new (level, logger_name, message, batch_id, candidate_id, created_at)
+                    SELECT level, logger_name, message, batch_id, candidate_id, created_at FROM app_log
+                """)
+            else:
+                conn.execute("""
+                    INSERT INTO app_log_new (level, logger_name, message, batch_id, created_at)
+                    SELECT level, logger_name, message, batch_id, created_at FROM app_log
+                """)
             conn.execute("DROP TABLE app_log")
             conn.execute("ALTER TABLE app_log_new RENAME TO app_log")
             conn.commit()
+            cols = list(conn.execute("PRAGMA table_info(app_log)").fetchall())
+            col_names = {r[1] for r in cols}
+        # AST-1598: nullable candidate_id on existing INTEGER-PK tables
+        if "candidate_id" not in col_names:
+            try:
+                conn.execute("ALTER TABLE app_log ADD COLUMN candidate_id TEXT")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
     _app_log_schema_ensured = True
 
 
@@ -7376,16 +7395,18 @@ def add_log_entry(
     logger_name: str,
     message: str,
     batch_id: Optional[str] = None,
+    candidate_id: Optional[str] = None,
 ) -> bool:
-    """Append a log entry. Fast write path; caller ensures valid data."""
+    """Append a log entry. Fast write path; caller ensures valid data.
+    candidate_id optional/nullable (AST-1598) — NULL when unset."""
     conn = _get_connection()
     try:
         _ensure_app_log_schema(conn)
         # DB assigns integer id — do not mint client UUID
         conn.execute("""
-            INSERT INTO app_log (level, logger_name, message, batch_id)
-            VALUES (?, ?, ?, ?)
-        """, (level, logger_name, message, batch_id))
+            INSERT INTO app_log (level, logger_name, message, batch_id, candidate_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, (level, logger_name, message, batch_id, candidate_id))
         conn.commit()
         return True
     except Exception:
@@ -7400,8 +7421,10 @@ def list_log_entries(
     level: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    candidate_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Query app_log with optional filters. Returns newest first."""
+    """Query app_log with optional filters. Returns newest first.
+    candidate_id filter when provided (AST-1598); omitted = no candidate filter."""
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -7420,6 +7443,10 @@ def list_log_entries(
             if date_to:
                 clauses.append("created_at <= ?")
                 params.append(f"{date_to}T23:59:59")
+            cid = (candidate_id or "").strip()
+            if cid:
+                clauses.append("candidate_id = ?")
+                params.append(cid)
             where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
             rows = conn.execute(
                 f"SELECT * FROM app_log{where} ORDER BY created_at DESC", params

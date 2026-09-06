@@ -14,6 +14,12 @@ The `log_batch_id` context var is set by the Dispatcher (ast-282) at the
 start of each batch run. All log entries emitted during that run are
 automatically tagged with the batch_id. Callers never set it directly.
 
+The `log_candidate_id` context var is optional (AST-1598), parallel to
+`log_batch_id`: when set, DB log rows are stamped with that candidate_id;
+when unset, candidate_id is NULL. Callers that want a stamp set the
+contextvar (dispatcher/UI wiring is out of AST-1598 scope — this module
+only defines and reads it).
+
 Usage:
     from src.utils.logging import get_logger
 
@@ -45,6 +51,9 @@ from typing import Any, Optional
 # Dispatcher sets this at batch run start; logging handler reads it on each emit
 log_batch_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "log_batch_id", default=None
+)
+log_candidate_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "log_candidate_id", default=None
 )
 
 _FLUSH_THRESHOLD = 50
@@ -113,6 +122,7 @@ class _DatabaseLogHandler(logging.Handler):
                 "logger_name": record.name,
                 "message": self.format(record),
                 "batch_id": log_batch_id.get(),
+                "candidate_id": log_candidate_id.get(),
             }
             with self._lock:
                 self._buffer.append(entry)
