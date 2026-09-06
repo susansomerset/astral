@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from types import SimpleNamespace
 
+from unittest.mock import patch
+
 import pytest
 
 from src.utils import logging as logging_mod
@@ -99,3 +101,47 @@ class TestLogLlmBatchSummary:
             for r in caplog.records
             if r.levelname == "INFO"
         )
+
+
+class TestAst1598LogCandidateId:
+    """AST-1598: log_candidate_id ContextVar stamps app_log on flush; NULL when unset."""
+
+    def test_contextvar_stamps_emit_buffer_and_unset_is_null(self) -> None:
+        # Emit buffers candidate_id from contextvar; flush late-imports add_log_entry(**e).
+        handler = logging_mod._DatabaseLogHandler()
+        logger = logging.getLogger("test.ast1598.cid")
+        logger.handlers.clear()
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        logger.propagate = False
+
+        captured: list[dict] = []
+
+        def _capture(**kwargs):
+            captured.append(kwargs)
+            return True
+
+        token_b = logging_mod.log_batch_id.set("batch-cid")
+        token_c = logging_mod.log_candidate_id.set("cand-stamp")
+        try:
+            logger.info("stamped-row")
+            with patch("src.data.database.add_log_entry", side_effect=_capture):
+                handler.flush()
+        finally:
+            logging_mod.log_candidate_id.reset(token_c)
+            logging_mod.log_batch_id.reset(token_b)
+
+        token_b2 = logging_mod.log_batch_id.set("batch-cid")
+        try:
+            logger.info("unstamped-row")
+            with patch("src.data.database.add_log_entry", side_effect=_capture):
+                handler.flush()
+        finally:
+            logging_mod.log_batch_id.reset(token_b2)
+
+        assert len(captured) == 2
+        stamped = next(e for e in captured if "stamped-row" in e["message"])
+        unstamped = next(e for e in captured if "unstamped-row" in e["message"])
+        assert stamped["candidate_id"] == "cand-stamp"
+        assert stamped["batch_id"] == "batch-cid"
+        assert unstamped["candidate_id"] is None

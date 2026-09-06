@@ -165,3 +165,44 @@ class TestAst1266IntegerPk:
         id_type, pk = _app_log_id_pragma(db)
         assert id_type.upper() == "INTEGER"
         assert pk == 1
+
+
+# Branches: nullable app_log.candidate_id column; stamp on write; list filter; NULL when omitted.
+class TestAst1598AppLogCandidateId:
+    """AST-1598: nullable app_log.candidate_id + list filter."""
+
+    def test_inventory_and_fresh_column_nullable(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        doc = db.__doc__ or ""
+        assert "nullable candidate_id" in doc or (
+            "app_log" in doc and "candidate_id" in doc and "AST-1598" in doc
+        )
+        assert db.add_log_entry("INFO", "tests", "cid-col", batch_id="b1") is True
+        conn = db._get_connection()
+        try:
+            cols = {r[1]: r for r in conn.execute("PRAGMA table_info(app_log)").fetchall()}
+            assert "candidate_id" in cols
+            # notnull flag is index 3 — 0 means nullable
+            assert cols["candidate_id"][3] == 0
+        finally:
+            conn.close()
+
+    def test_add_stamps_and_null_when_omitted(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.add_log_entry(
+            "INFO", "tests", "with-cid", batch_id="b1", candidate_id="cand-1"
+        ) is True
+        assert db.add_log_entry("INFO", "tests", "no-cid", batch_id="b1") is True
+        rows = db.list_log_entries(batch_id="b1")
+        by_msg = {r["message"]: r for r in rows}
+        assert by_msg["with-cid"]["candidate_id"] == "cand-1"
+        assert by_msg["no-cid"]["candidate_id"] is None
+
+    def test_list_filters_by_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.add_log_entry("INFO", "tests", "a", batch_id="b1", candidate_id="cand-a")
+        db.add_log_entry("INFO", "tests", "b", batch_id="b1", candidate_id="cand-b")
+        db.add_log_entry("INFO", "tests", "c", batch_id="b1")
+        rows = db.list_log_entries(batch_id="b1", candidate_id="cand-a")
+        assert len(rows) == 1
+        assert rows[0]["message"] == "a"
