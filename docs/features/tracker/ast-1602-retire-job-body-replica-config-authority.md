@@ -93,3 +93,42 @@ Ticket **## Scope** names only `src/utils/config.py`. Every Files Changed row an
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1602
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1601/AST-1602-retire-job-body-replica-config-authority` @ `0951955c93a4b308bff7ca6f22a42eb2c8a72ecd`
+
+## Traceability
+- **AC1** → Stage 1 (`artifact_key` on `finalize_job_resume` / `finalize_cover_letter`, each ∈ `ARTIFACT_CONFIG`).
+- **AC2** → Stage 2 (delete `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` + body-replica asserts from `config.py`; import/caller clause deferred to AST-1603 per Boundaries + Stage 2 decision note).
+- **AC3** → Stage 2 step 1 (`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` untouched).
+- **AC4** → Explicit scope gate + Execution contract (no new `ARTIFACT_CONFIG` entries for non-catalog blobs).
+- **Parent AC3–5** → N/A — agent land, pin-key vocabulary, and `get_job_current` hydrate are AST-1603 scope.
+
+## Findings
+
+### acceptable
+- **Location:** Stage 2 step 5 — transient `agent.py` import break until AST-1603  
+  **Finding:** Deleting the config symbol while production still imports it yields a deliberate intermediate broken tree.  
+  **Recommendation:** Keep as documented; rollup order should land AST-1603 (or test-tree updates) before expecting green epic-wide import.
+
+- **Location:** Child AC #2 wording vs Boundaries  
+  **Finding:** Ticket AC couples “symbol gone” with “no production caller imports it”; plan correctly splits delivery across children.  
+  **Recommendation:** No plan change required — decision block is explicit.
+
+- **Location:** Plan structure — no `## Self-Assessment`  
+  **Finding:** Section absent (estimate-2 config-only slice; peer plans AST-1590/1592 also omit).  
+  **Recommendation:** Optional `minor` self-assessment if engineer wants parity with larger tracker plans; not blocking.
+
+### discuss
+- **Location:** `tests/component/utils/test_config.py` (not in Files Changed)  
+  **Finding:** Manifest rows still assert `JOB_ARTIFACT_BODY_REPLICA_BY_TASK`; will flip red after Stage 2 until Betty revises bible/manifest on Tests Ready.  
+  **Recommendation:** Engineer need not expand scope; flag for qa-child manifest sweep — not a plan defect.
+
+**Considered (in-session):** Universal `orch.*` statutes — all `conforms`. Scoped: `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only` — `conforms`. Cited `pattern.config.config-block` — matches solution shape. Cited `patt.artifact.manage-catalog` (draft directive) — plan retires parallel map in favor of `TASK_CONFIG.artifact_key`, consistent with catalog authority. Codebase anchors verified: `craft_resume_base` already carries `artifact_key`; finalize rows lack it today; body-replica block ~L3237–3249; post-`ARTIFACT_CONFIG` asserts ~L5835–5846 match Stage 2 targets.
+
+context_tokens≈52000
