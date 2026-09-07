@@ -604,13 +604,13 @@ def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
     return True
 
 
-def prepare_job_replica_body(
+def _prepare_job_replica_body(
     catalog_key: str,
     parsed: Any,
     *,
     astral_job_id: str,
 ) -> Optional[Any]:
-    """Unwrap finalize hop payload for a job catalog key; None if no landable body (AST-1592)."""
+    """Private helper: unwrap finalize hop payload for a job catalog key; None if no landable body (AST-1592 / AST-1603)."""
     key = (catalog_key or "").strip()
     if key == "job.artifacts.job_resume":
         if not parsed_matches_job_resume_content(astral_job_id, parsed):
@@ -663,7 +663,7 @@ def pin_job_artifact_agent_data_id(
     return True
 
 
-_JOB_ARTIFACT_PIN_KEYS = ("job_resume", "cover_letter", "proposed_answers")
+_JOB_ARTIFACT_PIN_KEYS = ("proposed_answers",)
 
 
 def resolve_job_artifact_agent_data_body(
@@ -734,8 +734,6 @@ def hydrate_job_artifacts_for_display(
         if display_cover is not None:
             out["cover_letter"] = display_cover
     for key in _JOB_ARTIFACT_PIN_KEYS:
-        if key in ("job_resume", "cover_letter"):
-            continue
         raw = out.get(key)
         if not isinstance(raw, str) or not raw.strip():
             continue
