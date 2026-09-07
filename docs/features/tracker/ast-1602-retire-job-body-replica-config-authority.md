@@ -292,3 +292,12 @@ Component manifest from bible runs green on config-only paths (config module imp
 3. **Betty:** fill AST-1602 bible shasum placeholder at publish tip.
 
 context_tokens≈85000
+
+## Resolution
+
+**2026-09-07** — `resolve(AST-1602): — clean` on `origin/sub/AST-1601/AST-1602-retire-job-body-replica-config-authority`
+
+- **fix-now:** none (Radia list empty).
+- **discuss:** agent `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` import break left for AST-1603 per Radia recommendation + plan Stage 2 §5 / Joan acceptable finding — not actionable on this config-only child.
+- **advisory:** bible shasum placeholder + stale `agent.md` body-replica docs → Betty / AST-1603; no product or plan-doc change this pass.
+- Product tip unchanged from build/test (`config.py` Stages 1–2 + Betty merge-tests). Epic rollup still requires AST-1603 before expecting green `agent` import.
