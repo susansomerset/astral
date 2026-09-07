@@ -966,6 +966,7 @@ TASK_CONFIG = {
         "trigger_state": None,
         "task_type": "CHAIN",
         "error_state": ERROR_BUILD_ARTIFACTS_STATE,
+        "artifact_key": "job.artifacts.job_resume",
     },
     "draft_cover_letter": {
         "nocache_prompt": (
@@ -1004,6 +1005,7 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "artifact_key": "job.artifacts.cover_letter",
     },
     "propose_application_responses": {
         "response_schema": {
