@@ -132,3 +132,9 @@ Confirm Chuckles estimate: 2 — agree
 **Considered (in-session):** Universal `orch.*` statutes — all `conforms`. Scoped: `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only` — `conforms`. Cited `pattern.config.config-block` — matches solution shape. Cited `patt.artifact.manage-catalog` (draft directive) — plan retires parallel map in favor of `TASK_CONFIG.artifact_key`, consistent with catalog authority. Codebase anchors verified: `craft_resume_base` already carries `artifact_key`; finalize rows lack it today; body-replica block ~L3237–3249; post-`ARTIFACT_CONFIG` asserts ~L5835–5846 match Stage 2 targets.
 
 context_tokens≈52000
+
+## Review (build)
+
+**Built @ `4ac6d1ef`** — `origin/sub/AST-1601/AST-1602-retire-job-body-replica-config-authority`
+
+Stages 1–2 landed: finalize TASK_CONFIG `artifact_key` rows; `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` deleted; `JOB_EDITABLE_ARTIFACT_TYPES` derived from those keys; pin map untouched. Agent/tracker call sites remain until AST-1603. Test path remains Betty `qa-child`.
