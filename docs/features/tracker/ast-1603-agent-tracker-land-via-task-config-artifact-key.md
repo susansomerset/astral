@@ -107,3 +107,48 @@ Ticket **## Scope** names only `src/core/agent.py` and `src/core/tracker.py`. Ev
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1603
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key` @ `bef3359881751500ee482c3e22a901439f3500a8`
+
+## Traceability
+- **AC3** → Stage 2 (`TASK_CONFIG` `artifact_key` → `_prepare_job_replica_body` → `save_job_artifact(index, catalog_key, body)` on successful finalize hops).
+- **AC4** → Stage 1 steps 3–4 (`_JOB_ARTIFACT_PIN_KEYS` = `("proposed_answers",)` only; hydrate loop no longer pin-resolves catalog keys) + Stage 2 (body-replica map branch removed; no agent pin writes for those keys).
+- **AC5** → Stage 1 step 4 (`get_job_current` overlay for `job.artifacts.job_resume` / `job.artifacts.cover_letter` unchanged).
+- **AC6** → Stage 2 (`elif pin_slot` branch kept verbatim for `propose_application_responses`).
+- **Parent AC1–2** → N/A — config registration is AST-1602 scope (plan prerequisite gate covers this).
+
+## Findings
+
+### discuss
+- **Location:** Linear assignee vs validate-plan gate  
+  **Finding:** Ticket assignee is Hedy; validate-plan §1 expects Joan at spawn.  
+  **Recommendation:** Chuckles procedural only — substantive review completed per spawn; restore implementer after upshot.
+
+- **Location:** Stage 1 step 2 — rename-before-agent-update window  
+  **Finding:** Privatizing `prepare_job_replica_body` before Stage 2 breaks `agent.py` import until Stage 2 lands; plan says “same build session” / “one commit only” but lacks AST-1602-style `## Execution contract`.  
+  **Recommendation:** Engineer should publish stages 1+2 atomically (single commit or back-to-back before push); optional plan addendum for clarity — not blocking.
+
+- **Location:** Tests / test-bible (out of Files Changed)  
+  **Finding:** `tests/component/core/test_tracker.py` and `test_agent.py` still mock/import public `prepare_job_replica_body` and body-replica map semantics.  
+  **Recommendation:** Plan correctly defers to Betty `qa-child`; engineer stays in `agent.py` / `tracker.py` only.
+
+### acceptable
+- **Location:** Stage 2 — `entity_type == "job"` gate  
+  **Finding:** `propose_application_responses` is `entity_type: "job"` but has no `artifact_key`; gate correctly falls through to pin branch. `craft_resume_base` has `artifact_key` but `entity_type: None`, so candidate craft persist block remains isolated.  
+  **Recommendation:** Keep as documented — sound boundary.
+
+- **Location:** Plan structure — no `## Self-Assessment`  
+  **Finding:** Absent; consistent with sibling AST-1602 / peer tracker plans.  
+  **Recommendation:** Optional `minor` self-assessment; not blocking.
+
+**Considered (in-session):** Universal `orch.*` — `conforms`. Scoped: `astral.standards.dry-and-focused-functions`, `astral.standards.public-then-helpers`, `astral.standards.debug-contract-gated`, `astral.layers.import-direction`, `astral.standards.in-scope-only` — `conforms`. Cited `patt.artifact.write-operative` / `patt.artifact.read-current` (draft directives) — plan preserves generic write + current-read hydrate; retires parallel map branch. Codebase anchors verified: `agent.py` ~L3049–3102 body-replica block matches replacement target; `tracker.py` `prepare_job_replica_body` ~L607–635 and `_JOB_ARTIFACT_PIN_KEYS` ~L666 match Stage 1; epic worktree config already carries AST-1602 `artifact_key` asserts (prerequisite satisfiable).
+
+context_tokens≈78000
+
+[plan-rubric] PROCEED (Commit: bef33598) agent land plan clean
