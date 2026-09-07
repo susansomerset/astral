@@ -505,7 +505,7 @@ Tracker generic `save_job_artifact` / `get_job_current` (entity id + catalog key
 | cover_letter passes caller sources | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_cover_letter_passes_caller_sources`** |
 | Catalog write still table SoT (1554/1556 revised) | `src/core/tracker.py` | **`TestAst1554BodyReplicaPersistHelpers`**, **`TestAst1556JobArtifactsTableSoT`** |
 
-**Broken / obsolete this pass:** calls to deleted `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` / `persist_finalize_*` in AST-1554/1556 + cover normalize + from-parsed suites — revised to `save_job_artifact` / `prepare_job_replica_body`. Hydrate overlay still asserts `get_current_artifact` via `get_job_current`.
+**Broken / obsolete this pass:** calls to deleted `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` / `persist_finalize_*` in AST-1554/1556 + cover normalize + from-parsed suites — revised to `save_job_artifact` / `_prepare_job_replica_body` (**AST-1603** privatized prepare). Hydrate overlay still asserts `get_current_artifact` via `get_job_current`.
 
 **Integration:** none — no existing scenario asserts job catalog write/citation.
 
@@ -550,4 +550,25 @@ Tracker generic `save_job_artifact` / `get_job_current` (entity id + catalog key
 
 **Integration:** none.
 
+### AST-1603 · AST-1601
+
+**Parent:** [AST-1601](https://linear.app/astralcareermatch/issue/AST-1601). **Publish:** `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key`.
+
+`prepare_job_replica_body` → private `_prepare_job_replica_body`. `_JOB_ARTIFACT_PIN_KEYS` = `("proposed_answers",)` only. Hydrate still overlays `job_resume` / `cover_letter` via `get_job_current`. Agent land: **`docs/test-bible/core/agent.md`** § AST-1603.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pin keys + private prepare + hydrate overlay | `src/core/tracker.py` | **`TestAst1603TrackerPinKeysAndPrivatePrepare`** |
+| Revised prepare coat-check calls | same | **`TestAst1554BodyReplicaPersistHelpers`** |
+| Revised public-API assert (prepare private) | same | **`TestAst1592TrackerCatalogWriteReadCitation::test_type_specific_public_saves_removed`** |
+
+**Broken / obsolete this pass:** public `prepare_job_replica_body` hasattr / call sites; pin-key lists including `job_resume` / `cover_letter`.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/agent.md`** § AST-1603 (shared agent+tracker manifest).
+
+**Bible shasum (publish tip):** filled with agent.md after publish.
 

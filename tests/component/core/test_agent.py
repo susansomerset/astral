@@ -7191,7 +7191,7 @@ class TestAst1099DoTaskArtifactPin:
             raising=False,
         )
         monkeypatch.setattr(
-            "src.core.tracker.prepare_job_replica_body",
+            "src.core.tracker._prepare_job_replica_body",
             lambda key, parsed, astral_job_id="": parsed if isinstance(parsed, dict) else None,
             raising=False,
         )
@@ -7375,7 +7375,7 @@ class TestAst1600DoTaskBodyReplicaLand:
             raising=False,
         )
         monkeypatch.setattr(
-            "src.core.tracker.prepare_job_replica_body",
+            "src.core.tracker._prepare_job_replica_body",
             lambda key, parsed, astral_job_id="": parsed if isinstance(parsed, dict) else None,
             raising=False,
         )
@@ -7446,7 +7446,7 @@ class TestAst1554DoTaskBodyReplica:
             raising=False,
         )
         monkeypatch.setattr(
-            "src.core.tracker.prepare_job_replica_body",
+            "src.core.tracker._prepare_job_replica_body",
             lambda key, parsed, astral_job_id="": parsed if isinstance(parsed, dict) else None,
             raising=False,
         )
@@ -7509,6 +7509,74 @@ class TestAst1554DoTaskBodyReplica:
         assert persist_cover.call_args.args[0] == "job-1554"
         assert persist_cover.call_args.args[1] == "job.artifacts.cover_letter"
         assert isinstance(persist_cover.call_args.args[2], dict)
+
+
+class TestAst1603DoTaskCatalogLandViaArtifactKey:
+    """AST-1603: finalize land via TASK_CONFIG.artifact_key; no body-replica map."""
+
+    def test_do_task_source_has_no_body_replica_map(self) -> None:
+        import re
+
+        src = inspect.getsource(agent_mod.do_task)
+        mod_src = inspect.getsource(agent_mod)
+        assert "JOB_ARTIFACT_BODY_REPLICA_BY_TASK" not in mod_src
+        assert 'task_cfg.get("artifact_key")' in src
+        assert "_prepare_job_replica_body" in src
+        # Public prepare name must not appear without the private underscore prefix.
+        assert re.search(r"(?<!_)prepare_job_replica_body", src) is None
+
+    def test_config_finalize_keys_drive_catalog_land(self) -> None:
+        assert TASK_CONFIG["finalize_job_resume"]["artifact_key"] == "job.artifacts.job_resume"
+        assert TASK_CONFIG["finalize_cover_letter"]["artifact_key"] == "job.artifacts.cover_letter"
+        assert TASK_CONFIG["finalize_job_resume"]["entity_type"] == "job"
+        assert "artifact_key" not in (TASK_CONFIG.get("propose_application_responses") or {})
+
+    @pytest.mark.asyncio
+    async def test_finalize_lands_via_artifact_key_not_pin(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, Any],
+    ) -> None:
+        pin = MagicMock(return_value=True)
+        save = MagicMock(return_value="uuid-jr")
+        monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
+        monkeypatch.setattr("src.core.tracker.save_job_artifact", save, raising=False)
+        monkeypatch.setattr(
+            "src.core.tracker._prepare_job_replica_body",
+            lambda key, parsed, astral_job_id="": parsed if isinstance(parsed, dict) else None,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.pin_experience_job_facts_from_base",
+            lambda parsed, cd: None,
+        )
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="")
+        )
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"professional_summary": "S", "experience": []},
+                    "api_response": _api_response("{}"),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "finalize_job_resume",
+            index="job-1603",
+            ctx={"candidate_data": {"artifacts": {}}},
+        )
+        assert out["success"] is True
+        pin.assert_not_called()
+        save.assert_called_once()
+        assert save.call_args.args[:2] == ("job-1603", "job.artifacts.job_resume")
+
 
 # Branches: same RESPONSE debug result= bind on intake initiate path (AST-1083 UAT).
 class TestAst1083StoreResponseDebugResult:
