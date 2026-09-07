@@ -4321,15 +4321,19 @@ class TestAst1099JobArtifactAgentDataPinConfig:
         }
 
     def test_body_replica_by_task_map(self) -> None:
-        # AST-1590: values are catalog keys (leaf types derived via JOB_EDITABLE_ARTIFACT_TYPES).
-        assert cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK == {
-            "finalize_job_resume": "job.artifacts.job_resume",
-            "finalize_cover_letter": "job.artifacts.cover_letter",
-        }
-        assert not (
-            set(cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK)
-            & set(cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK)
+        # AST-1602: body-replica map retired; finalize hops bind via TASK_CONFIG.artifact_key.
+        assert not hasattr(cfg, "JOB_ARTIFACT_BODY_REPLICA_BY_TASK")
+        assert (
+            cfg.TASK_CONFIG["finalize_job_resume"]["artifact_key"]
+            == "job.artifacts.job_resume"
         )
+        assert (
+            cfg.TASK_CONFIG["finalize_cover_letter"]["artifact_key"]
+            == "job.artifacts.cover_letter"
+        )
+        # Pin map stays proposed_answers-only — finalize tasks must not re-enter it.
+        assert "finalize_job_resume" not in cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK
+        assert "finalize_cover_letter" not in cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK
 
     def test_clear_keys_include_pin_slots(self) -> None:
         keys = cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
@@ -5542,15 +5546,19 @@ class TestAst1590JobArtifactCatalogKeys:
         assert entry["ingestion_owner"] == "tracker"
 
     def test_body_replica_and_editable_derived_from_catalog(self) -> None:
-        assert set(cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()) == {
-            "job.artifacts.job_resume",
-            "job.artifacts.cover_letter",
-        }
-        assert set(cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()) <= set(cfg.ARTIFACT_CONFIG)
+        # AST-1602: editable leaves from TASK_CONFIG.artifact_key (body-replica gone).
+        assert not hasattr(cfg, "JOB_ARTIFACT_BODY_REPLICA_BY_TASK")
+        for task_key, catalog_key in (
+            ("finalize_job_resume", "job.artifacts.job_resume"),
+            ("finalize_cover_letter", "job.artifacts.cover_letter"),
+        ):
+            assert cfg.TASK_CONFIG[task_key]["artifact_key"] == catalog_key
+            assert catalog_key in cfg.ARTIFACT_CONFIG
         assert cfg.JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
         assert all(
-            cfg.ARTIFACT_CONFIG[k]["entity_type"] == cfg.JOB_ARTIFACT_ENTITY_TYPE
-            for k in cfg.JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()
+            cfg.ARTIFACT_CONFIG[cfg.TASK_CONFIG[task_key]["artifact_key"]]["entity_type"]
+            == cfg.JOB_ARTIFACT_ENTITY_TYPE
+            for task_key in ("finalize_job_resume", "finalize_cover_letter")
         )
 
     def test_jar_tabs_one_to_one_leaf_map(self) -> None:
@@ -5717,3 +5725,48 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         }
         with pytest.raises(AssertionError):
             _assert_token_sources_typing(second, arts, types)
+
+
+class TestAst1602RetireJobBodyReplicaConfigAuthority:
+    """AST-1602: finalize TASK_CONFIG.artifact_key SoT; body-replica map gone."""
+
+    def test_finalize_tasks_expose_catalog_artifact_keys(self) -> None:
+        assert (
+            cfg.TASK_CONFIG["finalize_job_resume"]["artifact_key"]
+            == "job.artifacts.job_resume"
+        )
+        assert (
+            cfg.TASK_CONFIG["finalize_cover_letter"]["artifact_key"]
+            == "job.artifacts.cover_letter"
+        )
+        assert cfg.TASK_CONFIG["finalize_job_resume"]["artifact_key"] in cfg.ARTIFACT_CONFIG
+        assert cfg.TASK_CONFIG["finalize_cover_letter"]["artifact_key"] in cfg.ARTIFACT_CONFIG
+
+    def test_body_replica_map_removed(self) -> None:
+        assert not hasattr(cfg, "JOB_ARTIFACT_BODY_REPLICA_BY_TASK")
+
+    def test_editable_leaves_from_finalize_artifact_keys(self) -> None:
+        assert cfg.JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
+        assert all(
+            cfg.ARTIFACT_CONFIG[cfg.TASK_CONFIG[task_key]["artifact_key"]]["entity_type"]
+            == cfg.JOB_ARTIFACT_ENTITY_TYPE
+            for task_key in ("finalize_job_resume", "finalize_cover_letter")
+        )
+
+    def test_proposed_answers_pin_map_unchanged(self) -> None:
+        assert cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK == {
+            "propose_application_responses": "proposed_answers",
+        }
+
+    def test_sibling_blobs_stay_out_of_artifact_config(self) -> None:
+        for sibling in (
+            "notes",
+            "resume_content",
+            "proposed_answers",
+            "application_responses",
+            "job.artifacts.notes",
+            "job.artifacts.resume_content",
+            "job.artifacts.proposed_answers",
+            "job.artifacts.application_responses",
+        ):
+            assert sibling not in cfg.ARTIFACT_CONFIG
