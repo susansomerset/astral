@@ -1947,13 +1947,13 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
 
-`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps **only** `propose_application_responses` → `proposed_answers` (**AST-1548** removed finalize hops). `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` maps `finalize_job_resume` / `finalize_cover_letter` → **catalog keys** (`job.artifacts.job_resume` / `job.artifacts.cover_letter` — **AST-1590**; leaf types via `JOB_EDITABLE_ARTIFACT_TYPES`). `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those body slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
+`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps **only** `propose_application_responses` → `proposed_answers` (**AST-1548** removed finalize hops). Finalize hops bind catalog keys via **`TASK_CONFIG.artifact_key`** (**AST-1602** retired `JOB_ARTIFACT_BODY_REPLICA_BY_TASK`; leaf types via `JOB_EDITABLE_ARTIFACT_TYPES` from those keys). `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those body slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Pin map + body-replica map + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
+| Pin map + finalize artifact_key (no body-replica) + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
 
-**Broken / obsolete:** three-key pin map including finalize hops — AST-1554. Body-replica **leaf** values — revised under **AST-1590**.
+**Broken / obsolete:** three-key pin map including finalize hops — AST-1554. Body-replica **leaf** values — revised under **AST-1590**. Body-replica **map** asserts — revised under **AST-1602**.
 
 **Integration:** none.
 
@@ -3513,17 +3513,17 @@ Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
 
 **Parent:** [AST-1588 — Support job.artifacts.job_resume and job.artifacts.cover_letter as artifacts](https://linear.app/astralcareermatch/issue/AST-1588/support-job-artifactsjob-resume-and-job-artifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys`.
 
-Registers `job.artifacts.job_resume` + `job.artifacts.cover_letter` in `ARTIFACT_CONFIG` beside the candidate pilot; body-replica values cite those catalog keys; `JOB_EDITABLE_ARTIFACT_TYPES` derived as leaf strings; JAR resume/cover tabs stay leaf keys with 1:1 leaf asserts. Sibling blob keys stay out of the catalog. Config-only — no tracker/schema/UI this child.
+Registers `job.artifacts.job_resume` + `job.artifacts.cover_letter` in `ARTIFACT_CONFIG` beside the candidate pilot; **AST-1602** moved finalize→catalog binding to `TASK_CONFIG.artifact_key` (body-replica map retired); `JOB_EDITABLE_ARTIFACT_TYPES` derived as leaf strings from those keys; JAR resume/cover tabs stay leaf keys with 1:1 leaf asserts. Sibling blob keys stay out of the catalog. Config-only — no tracker/schema/UI this child.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Catalog keys + metadata + sibling exclusion | `src/utils/config.py` | **`TestAst1590JobArtifactCatalogKeys`** |
-| Body-replica catalog values (revised) | same | **`TestAst1099JobArtifactAgentDataPinConfig::test_body_replica_by_task_map`** |
+| Finalize artifact_key + editable leaves (revised AST-1602) | same | **`TestAst1099JobArtifactAgentDataPinConfig::test_body_replica_by_task_map`**, **`TestAst1590JobArtifactCatalogKeys::test_body_replica_and_editable_derived_from_catalog`** |
 | Pilot membership (revised; not singleton) | same | **`TestAst1576CraftResumeBaseArtifactKey::test_craft_artifact_key_is_hierarchical_pilot`** |
 | JAR leaf tabs unchanged | same | existing **`TestAst1100ArtifactTabPinKeys`**, **`TestAst1116CoverLetterDataShapes`** |
 | Agent debug label cites catalog key (revised) | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails`** |
 
-**Broken / obsolete this pass:** body-replica leaf-string asserts; `ARTIFACT_CONFIG` singleton key-set; agent `key=cover_letter` debug skip string.
+**Broken / obsolete this pass:** body-replica leaf-string asserts; `ARTIFACT_CONFIG` singleton key-set; agent `key=cover_letter` debug skip string. Body-replica map membership asserts — revised under **AST-1602** (do not re-assert deleted symbol).
 
 **Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` key set or body-replica catalog values; do not invent new integration coverage.
 
@@ -3599,4 +3599,44 @@ Registers `job.artifacts.job_resume` + `job.artifacts.cover_letter` in `ARTIFACT
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — `91d04205bc2b5579c3a5da6c6696b20a874ba24a9dc5b94db3116da38fd2c510`
+
+### AST-1602 · AST-1601
+
+**Parent:** [AST-1601 — Rip out job-specific artifact pin helpers; match candidate catalog pattern](https://linear.app/astralcareermatch/issue/AST-1601/rip-out-job-specific-artifact-pin-helpers-match-candidate). **Publish:** `origin/sub/AST-1601/AST-1602-retire-job-body-replica-config-authority`.
+
+Config-only: `TASK_CONFIG["finalize_job_resume"]` / `finalize_cover_letter` expose `artifact_key` → catalog keys; `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` deleted; `JOB_EDITABLE_ARTIFACT_TYPES` derived from those task keys; `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` / sibling non-catalog blobs unchanged. Agent/tracker call-site rewire is sibling **AST-1603** (transient import of deleted symbol until that child lands — do not include agent body-replica tests on this manifest).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finalize artifact_key + map gone + editable + pin + siblings | `src/utils/config.py` | **`TestAst1602RetireJobBodyReplicaConfigAuthority`** |
+| Revised body-replica asserts (1099 / 1590) | same | **`TestAst1099JobArtifactAgentDataPinConfig`**, **`TestAst1590JobArtifactCatalogKeys`** |
+| Catalog + JAR regression | same | **`TestAst1576CraftResumeBaseArtifactKey`**, **`TestAst1100ArtifactTabPinKeys`**, **`TestAst1116CoverLetterDataShapes`** |
+
+**Broken / obsolete this pass:** `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` membership / intersection asserts in **`TestAst1099…::test_body_replica_by_task_map`** and **`TestAst1590…::test_body_replica_and_editable_derived_from_catalog`**.
+
+**Integration:** none — no existing scenario asserts the body-replica map; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary finalize artifact_key authority: `tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority`
+2. Revised pin/body-replica class: `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig`
+3. Revised catalog + editable derivation: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys`
+4. Pilot membership regression: `tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey`
+5. JAR leaf tabs regression: `tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys` + `TestAst1116CoverLetterDataShapes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority \
+  tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys \
+  tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey \
+  tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
+  tests/component/utils/test_config.py::TestAst1116CoverLetterDataShapes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
 
