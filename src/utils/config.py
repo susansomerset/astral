@@ -3235,19 +3235,10 @@ JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
     "propose_application_responses": "proposed_answers",
 }
 
-# AST-1548 / AST-1590: finalize hops → catalog keys (leaf types derived for table I/O).
-JOB_ARTIFACT_BODY_REPLICA_BY_TASK = {
-    "finalize_job_resume": "job.artifacts.job_resume",
-    "finalize_cover_letter": "job.artifacts.cover_letter",
-}
-assert not (
-    set(JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK) & set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK)
-)
-
-# AST-1556 / AST-1590: editable job drafts SoT leaf types, derived from catalog keys in body-replica.
+# AST-1556 / AST-1602: editable job catalog leaf types from TASK_CONFIG.artifact_key (not body-replica).
 JOB_EDITABLE_ARTIFACT_TYPES = tuple(
-    catalog_key.rsplit(".", 1)[-1]
-    for catalog_key in JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()
+    TASK_CONFIG[task_key]["artifact_key"].rsplit(".", 1)[-1]
+    for task_key in ("finalize_job_resume", "finalize_cover_letter")
 )
 JOB_ARTIFACT_ENTITY_TYPE = "job"
 
@@ -5833,18 +5824,18 @@ assert set(_cl.keys()) == {
     "ingestion_owner",
 }
 
-# Body-replica values are catalog keys (not bare type strings as authority).
-assert set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()) == {
-    "job.artifacts.job_resume",
-    "job.artifacts.cover_letter",
-}
-assert set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()) <= set(ARTIFACT_CONFIG)
+# Finalize hops bind to catalog keys via TASK_CONFIG.artifact_key (AST-1602).
+assert TASK_CONFIG["finalize_job_resume"]["artifact_key"] == "job.artifacts.job_resume"
+assert TASK_CONFIG["finalize_job_resume"]["artifact_key"] in ARTIFACT_CONFIG
+assert TASK_CONFIG["finalize_cover_letter"]["artifact_key"] == "job.artifacts.cover_letter"
+assert TASK_CONFIG["finalize_cover_letter"]["artifact_key"] in ARTIFACT_CONFIG
 
-# Editable leaf types are exactly the catalog job-key leaves (order = body-replica values).
+# Editable leaf types are exactly the catalog job-key leaves (order = finalize task keys above).
 assert JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
 assert all(
-    ARTIFACT_CONFIG[k]["entity_type"] == JOB_ARTIFACT_ENTITY_TYPE
-    for k in JOB_ARTIFACT_BODY_REPLICA_BY_TASK.values()
+    ARTIFACT_CONFIG[TASK_CONFIG[task_key]["artifact_key"]]["entity_type"]
+    == JOB_ARTIFACT_ENTITY_TYPE
+    for task_key in ("finalize_job_resume", "finalize_cover_letter")
 )
 
 # JAR resume/cover tabs: 1:1 leaf map to catalog keys; shapes_key matches body_shape when set.
