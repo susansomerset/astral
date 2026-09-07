@@ -152,3 +152,9 @@ Confirm Chuckles estimate: 3 — agree
 context_tokens≈78000
 
 [plan-rubric] PROCEED (Commit: bef33598) agent land plan clean
+
+## Review (build)
+
+**Built @ `95eb7b7e`** — `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key`
+
+Stages 1–2 landed: `_prepare_job_replica_body` private; `_JOB_ARTIFACT_PIN_KEYS` = `proposed_answers` only; hydrate catalog overlay unchanged; `do_task` lands via `TASK_CONFIG.artifact_key` → `save_job_artifact`. Test path remains Betty `qa-child`.
