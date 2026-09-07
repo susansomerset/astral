@@ -75,7 +75,6 @@ from src.utils.config import (
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
     JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
-    JOB_ARTIFACT_BODY_REPLICA_BY_TASK,
     resolve_task_key_for_content,
     is_task_alias,
     METEORITE_EMAIL_PARSE_CONFIG,
@@ -3034,7 +3033,7 @@ async def do_task(
                     completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
                 )
 
-    # AST-1099/1548: pin proposed_answers; body replica for finalize resume/cover (before run_next).
+    # AST-1099/1603: pin proposed_answers; job catalog land via TASK_CONFIG.artifact_key (before run_next).
     resp_id = None
     store_failed = False
     if _should_store and raw_text:
@@ -3046,46 +3045,57 @@ async def do_task(
             store_failed = True
             logger.debug("_store_response_block failed", exc_info=True)
 
-    replica_slot = JOB_ARTIFACT_BODY_REPLICA_BY_TASK.get(task_key)
     pin_slot = JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK.get(task_key)
-    if result.get("success") and replica_slot:
+    task_cfg = TASK_CONFIG.get(task_key) or {}
+    catalog_key = task_cfg.get("artifact_key")
+    # Job catalog land via TASK_CONFIG.artifact_key (AST-1603). Candidate craft
+    # uses a separate persist_candidate_craft_hops gate below — do not share this branch.
+    if (
+        result.get("success")
+        and task_cfg.get("entity_type") == "job"
+        and isinstance(catalog_key, str)
+        and catalog_key.strip()
+    ):
         if index:
-            # Body replica uses in-memory parsed — do not gate on resp_id (AST-1600).
+            # Body land uses in-memory parsed — do not gate on resp_id (AST-1600).
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             try:
-                from src.core.tracker import prepare_job_replica_body, save_job_artifact
+                from src.core.tracker import (
+                    _prepare_job_replica_body,
+                    save_job_artifact,
+                )
 
-                body = prepare_job_replica_body(
-                    replica_slot, parsed, astral_job_id=index
+                body = _prepare_job_replica_body(
+                    catalog_key, parsed, astral_job_id=index
                 )
                 if body is None:
                     logger.warning(
-                        "persist_job_artifact_body_replica skipped task=%s index=%s "
+                        "persist_job_artifact_catalog skipped task=%s index=%s "
                         "key=%s reason=prepare_empty",
                         task_key,
                         index,
-                        replica_slot,
+                        catalog_key,
                     )
                 else:
-                    landed = save_job_artifact(index, replica_slot, body)
+                    landed = save_job_artifact(index, catalog_key, body)
                     if landed is None:
                         logger.warning(
-                            "persist_job_artifact_body_replica skipped task=%s index=%s "
+                            "persist_job_artifact_catalog skipped task=%s index=%s "
                             "key=%s reason=save_skipped_empty",
                             task_key,
                             index,
-                            replica_slot,
+                            catalog_key,
                         )
             except Exception as persist_err:
                 logger.error(
-                    "persist_job_artifact_body_replica failed task=%s index=%s err=%s",
+                    "persist_job_artifact_catalog failed task=%s index=%s err=%s",
                     task_key,
                     index,
                     persist_err,
                 )
         elif debug:
             _do_task_debug_logger(debug).debug_detail(
-                f"artifact_body_replica key={replica_slot} skipped reason=missing_index"
+                f"artifact_catalog key={catalog_key} skipped reason=missing_index"
             )
     elif pin_slot and result.get("success"):
         if index and resp_id:
