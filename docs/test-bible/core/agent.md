@@ -1227,7 +1227,7 @@ Backend scoped import list: `UI_CONFIG` cap (10) + picker visible rows (5); `lis
 
 **Publish:** `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`.
 
-`do_task` finalize hops call `prepare_job_replica_body` + `save_job_artifact` with `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` catalog keys (no `persist_finalize_*`). Tracker generics: **`docs/test-bible/core/tracker.md`** § AST-1592.
+`do_task` finalize hops call `_prepare_job_replica_body` + `save_job_artifact` driven by `TASK_CONFIG.artifact_key` (**AST-1603**; body-replica map retired under **AST-1602**). Tracker generics: **`docs/test-bible/core/tracker.md`** § AST-1592 / AST-1603.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1265,4 +1265,50 @@ Finalize body replica must land without `resp_id` (RESPONSE store failure must n
 ```
 
 **Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix — not zero-arg harness / branch-lock gate.
+
+### AST-1603 · AST-1601
+
+**Parent:** [AST-1601 — Rip out job-specific artifact pin helpers; match candidate catalog pattern](https://linear.app/astralcareermatch/issue/AST-1601). **Publish:** `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key`.
+
+`do_task` job catalog land reads `TASK_CONFIG[task].artifact_key` (entity_type job) → `_prepare_job_replica_body` + `save_job_artifact`. `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` import/branch gone. Proposed_answers pin path unchanged. Tracker pin/prepare: **`docs/test-bible/core/tracker.md`** § AST-1603. Config authority: **`docs/test-bible/utils/config.md`** § AST-1602.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog land via artifact_key; no body-replica map | `src/core/agent.py` | **`TestAst1603DoTaskCatalogLandViaArtifactKey`** |
+| Revised prepare mock path (private) | same | **`TestAst1099DoTaskArtifactPin`**, **`TestAst1554DoTaskBodyReplica`**, **`TestAst1600DoTaskBodyReplicaLand`** |
+
+**Broken / obsolete this pass:** monkeypatch / import of public `prepare_job_replica_body`; any assert that `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` still drives land; `save_job_artifact` stubs with `_candidate_id_for_job → None` (AST-1600 requires cid — revised stubs in 1554/1556/1592).
+
+**Integration:** none — no existing scenario asserts body-replica map vs TASK_CONFIG.artifact_key land; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary catalog land: `tests/component/core/test_agent.py::TestAst1603DoTaskCatalogLandViaArtifactKey`
+2. Revised finalize mid-chain / propose pin: `tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin`
+3. Revised body replica nodes: `tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica`
+4. Revised store-fail land: `tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand`
+5. Tracker pin keys + private prepare: `tests/component/core/test_tracker.py::TestAst1603TrackerPinKeysAndPrivatePrepare`
+6. Revised prepare coat-check helpers: `tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers`
+7. Revised catalog write/read citation: `tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation`
+8. Revised table-SoT saves (candidate_id stub): `tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_job_resume_body_writes_artifacts_table_not_job_data` + `test_save_cover_letter_writes_artifacts_table_not_job_data`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1603DoTaskCatalogLandViaArtifactKey \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica \
+  tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand \
+  tests/component/core/test_tracker.py::TestAst1603TrackerPinKeysAndPrivatePrepare \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_job_resume_body_writes_artifacts_table_not_job_data \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_cover_letter_writes_artifacts_table_not_job_data \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/agent.md` — *(filled after publish)*
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
 
