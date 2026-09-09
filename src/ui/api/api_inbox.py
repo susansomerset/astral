@@ -162,6 +162,7 @@ def inbox_land_meteorite():
 
     already = METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
     skip_outcomes = set(STAGE_METEORITE_CONFIG["skip_outcomes"])
+    landable = set(STAGE_METEORITE_CONFIG["landable_outcomes"])
 
     async def _land_all() -> dict:
         from src.core.meteorite import ingest_candidate_email_message
@@ -174,17 +175,30 @@ def inbox_land_meteorite():
                 cid, mid, debug=debug, index=i, total=n,
             )
             outcome = str(row.get("outcome") or "")
+            job_count = int(row.get("job_count") or 0)
             public = {
                 "message_id": row.get("message_id") or mid,
                 "outcome": outcome,
                 "astral_candidate_id": row.get("astral_candidate_id") or cid,
-                "job_count": int(row.get("job_count") or 0),
+                "job_count": job_count,
             }
             if row.get("error"):
                 public["error"] = str(row["error"])
             results.append(public)
             total_processed += 1
-            if row.get("counter") == "passed":
+            # Prefer ingest counter; else public shape (skip / already / landable+jobs).
+            counter = row.get("counter")
+            if counter == "error":
+                is_passed = False
+            elif counter == "passed":
+                is_passed = True
+            else:
+                is_passed = (
+                    outcome in skip_outcomes
+                    or outcome == already
+                    or (outcome in landable and job_count > 0)
+                )
+            if is_passed:
                 total_passed += 1
                 if outcome in skip_outcomes or outcome == already:
                     total_skipped += 1
