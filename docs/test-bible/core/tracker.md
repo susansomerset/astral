@@ -574,9 +574,25 @@ Product coerce (`_coerce_job_replica_parsed` + prepare/land string→dict) lands
 
 **Integration:** none.
 
+### AST-1614 · AST-1610 (gap)
+
+**Publish:** `origin/sub/AST-1610/AST-1614-gap-string-json-prepare-land-repro`.
+
+String-JSON prepare/land repro for AST-1613 coerce. Agent land: **`docs/test-bible/core/agent.md`** § AST-1614.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finalize-shaped string → prepare body | `src/core/tracker.py` | **`[bug-repro]`** `TestAst1614StringJsonPrepare::test_bug_repro_prepare_lands_finalize_shaped_string_json` |
+| Non-JSON string still prepare_empty | same | **`TestAst1614StringJsonPrepare::test_bug_repro_prepare_empty_on_non_json_string`** |
+| Cover-letter string JSON path | same | **`TestAst1614StringJsonPrepare::test_bug_repro_prepare_lands_cover_letter_string_json`** |
+
+**Broken / obsolete this pass:** none — additive coverage; AST-1603 dict/mock suites unchanged.
+
+**Integration:** none.
+
 ## QA test manifest
 
-See **`docs/test-bible/core/agent.md`** § AST-1603 (shared agent+tracker manifest).
+See **`docs/test-bible/core/agent.md`** § AST-1614 (shared agent+tracker manifest).
 
 **Bible shasum (publish tip):** filled with agent.md after publish.
 

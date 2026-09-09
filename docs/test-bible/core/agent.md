@@ -1289,6 +1289,35 @@ Catalog-land coerce for text-format finalize `parsed` (string JSON → dict befo
 
 **Integration:** none.
 
+### AST-1614 · AST-1610 (gap)
+
+**Publish:** `origin/sub/AST-1610/AST-1614-gap-string-json-prepare-land-repro`.
+
+`do_task` finalize with string `parsed_response` (text-format) must coerce and call `save_job_artifact` via real `_prepare_job_replica_body` (no prepare mock). Tracker prepare: **`docs/test-bible/core/tracker.md`** § AST-1614.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| String parsed → save_job_artifact | `src/core/agent.py` | **`[bug-repro]`** `TestAst1614DoTaskStringParsedCatalogLand::test_bug_repro_finalize_string_parsed_lands_save_job_artifact` |
+| Tracker string prepare | `src/core/tracker.py` | **`TestAst1614StringJsonPrepare`** (see tracker.md) |
+
+**Broken / obsolete this pass:** none — additive; AST-1603 prepare-mock suites stay as dict-path coverage.
+
+**Integration:** none.
+
+## QA test manifest (AST-1614)
+
+1. **[bug-repro]** tracker string prepare: `tests/component/core/test_tracker.py::TestAst1614StringJsonPrepare`
+2. **[bug-repro]** agent string land: `tests/component/core/test_agent.py::TestAst1614DoTaskStringParsedCatalogLand`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1614StringJsonPrepare \
+  tests/component/core/test_agent.py::TestAst1614DoTaskStringParsedCatalogLand \
+  -q
+```
+
+**Pass criterion (test-fix):** [bug-repro] green with AST-1613 coerce on tip — not zero-arg harness / branch-lock gate.
+
 ## QA test manifest
 
 1. Primary catalog land: `tests/component/core/test_agent.py::TestAst1603DoTaskCatalogLandViaArtifactKey`
