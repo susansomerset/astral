@@ -123,15 +123,15 @@ Create-job JSON includes `created`/`skipped`/`mode`; **201** when any created, *
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
 
-`GET /messages` All vs `candidate_id` → aliases → `fetch_candidate_email`; get uses `get_message_with_assembled_html`; `POST /land-meteorite` requires `candidate_id` and calls `stage_meteorite`; create-job route retired (404). Core verbs: **`docs/test-bible/core/inbox.md`** § AST-1558. React: **`docs/test-bible/frontend/pages.md`** § AST-1558.
+`GET /messages` All vs `candidate_id` → aliases → `fetch_candidate_email`; get uses `get_message_with_assembled_html`; `POST /land-meteorite` requires `candidate_id` (Land ingress revised by **AST-1611** / product **AST-1608** — was classify-only `stage_meteorite`). create-job route retired (404). Core verbs: **`docs/test-bible/core/inbox.md`** § AST-1558 / AST-1611. React: **`docs/test-bible/frontend/pages.md`** § AST-1558.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | All list + candidate_id filter + assembled get | `src/ui/api/api_inbox.py` | revised **`TestAst1033InboxApi`** (+ **`test_list_with_candidate_id`**) |
 | create-job retired | same | **`TestAst1049InboxCreateJobApiRetired`** |
-| Land requires candidate_id → stage_meteorite | same | **`TestAst1558InboxLandMeteoriteApi`** |
+| Land requires candidate_id → ingest | same | revised **`TestAst1558InboxLandMeteoriteApi`** — see **AST-1611** |
 
-**Broken / obsolete:** **`TestAst1049InboxCreateJobApi`** (route gone); **`TestAst1141InboxLandMeteoriteApi`** (`run_meteorite_email_selected_ids` / no `candidate_id`) — replaced by AST-1558 classes.
+**Broken / obsolete:** **`TestAst1049InboxCreateJobApi`** (route gone); **`TestAst1141InboxLandMeteoriteApi`** (`run_meteorite_email_selected_ids` / no `candidate_id`) — replaced by AST-1558 classes. Land happy-path mocks of classify-only `stage_meteorite` — revised by **AST-1611**.
 
 **Integration:** none — do not invent.
 
@@ -140,3 +140,34 @@ Create-job JSON includes `created`/`skipped`/`mode`; **201** when any created, *
   tests/component/ui/api/test_api_inbox.py \
   -q
 ```
+
+### AST-1611 · AST-1606 (gap — ingest Land for AST-1608)
+
+**Parent:** [AST-1606](https://linear.app/astralcareermatch/issue/AST-1606/meteorite-email-is-not-recognizing-bound-messages). **Sibling product:** AST-1608. **Publish:** `origin/sub/AST-1606/AST-1611-gap-tests-avail-land`.
+
+Board REVISE: `TestAst1558InboxLandMeteoriteApi` asserted Land→`stage_meteorite`; Proposed B routes Land through `ingest_candidate_email_message` (same ingress as `check_inbox`). Live Avail bar: **`docs/test-bible/core/inbox.md`** § AST-1611.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Land → ingest; landable insert passes | `src/ui/api/api_inbox.py` | **`[bug-repro]`** `TestAst1558InboxLandMeteoriteApi::test_land_meteorite_happy_path` |
+| Land debug → ingest(`debug=True`) | same | revised **`…::test_land_meteorite_passes_debug`** |
+| Land upstream 502 | same | revised **`…::test_land_meteorite_upstream_502`** (ingest + legacy stage dual-mock) |
+
+**Broken / obsolete this pass:** Land assertions that `stage_meteorite` is the Land entrypoint / that legacy `created` land outcomes are the only pass path.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. **[bug-repro]** Land ingest / landable passed: `tests/component/ui/api/test_api_inbox.py::TestAst1558InboxLandMeteoriteApi::test_land_meteorite_happy_path`
+2. Land API class: `tests/component/ui/api/test_api_inbox.py::TestAst1558InboxLandMeteoriteApi`
+3. **[bug-repro]** live Avail: `tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs::test_count_inbox_messages_bound_live_alias_match` — **`docs/test-bible/core/inbox.md`** § AST-1611
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py::TestAst1558InboxLandMeteoriteApi \
+  tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs::test_count_inbox_messages_bound_live_alias_match \
+  -q
+```
+
+**Pass criterion (test-fix):** [bug-repro] flips red→green after AST-1608 `make-fix` — not zero-arg harness / branch-lock gate.

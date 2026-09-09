@@ -180,10 +180,58 @@ class TestAst1558CandidateInboxVerbs:
         with pytest.raises(ValueError, match="message_id is required"):
             inbox_mod.archive_candidate_email("   ")
 
-    def test_count_stubs_return_empty_and_zero(self) -> None:
-        assert inbox_mod.count_inbox_bound_by_candidate() == {}
-        assert inbox_mod.count_inbox_messages_bound_to_candidate("cand-1") == 0
+    def test_count_inbox_messages_bound_live_alias_match(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1611 [bug-repro]: Avail uses live alias-filtered count (not stub 0)."""
+        self._rows(
+            monkeypatch,
+            {"id": "from-hit", "from_address": "Ada <ada@ex.com>", "to_address": ""},
+            {"id": "miss", "from_address": "nobody@z.com", "to_address": "other@z.com"},
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate",
+            lambda _cid: ["ada@ex.com"],
+        )
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("cand-1") == 1
         assert inbox_mod.count_inbox_messages_bound_to_candidate("") == 0
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("   ") == 0
+
+    def test_count_inbox_bound_by_candidate_mailbox_map(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1611: one inbox list → per meteorite_email cid alias-filtered counts."""
+        msgs = [
+            {"id": "m1", "from_address": "ada@ex.com", "to_address": ""},
+            {"id": "m2", "from_address": "bob@ex.com", "to_address": ""},
+            {"id": "m3", "from_address": "other@z.com", "to_address": ""},
+        ]
+        monkeypatch.setattr(
+            inbox_mod, "list_inbox_messages", MagicMock(return_value=msgs)
+        )
+        monkeypatch.setattr(
+            "src.data.database.list_dispatch_tasks",
+            MagicMock(
+                return_value=[
+                    {"candidate_id": "cand-ada", "task_key": "meteorite_email"},
+                    {"candidate_id": "cand-bob", "task_key": "meteorite_email"},
+                    {"candidate_id": "cand-other", "task_key": "stage_meteorite"},
+                    {"candidate_id": "", "task_key": "meteorite_email"},
+                ]
+            ),
+        )
+
+        def _aliases(cid: str) -> list[str]:
+            return {
+                "cand-ada": ["ada@ex.com"],
+                "cand-bob": ["bob@ex.com"],
+            }.get(cid, [])
+
+        monkeypatch.setattr("src.core.candidate.email_aliases_for_candidate", _aliases)
+        counts = inbox_mod.count_inbox_bound_by_candidate()
+        assert counts.get("cand-ada") == 1
+        assert counts.get("cand-bob") == 1
+        assert "cand-other" not in counts
 
     def test_retired_symbols_absent(self) -> None:
         for name in (
