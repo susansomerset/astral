@@ -520,3 +520,25 @@ Concrete enough for make-fix; stay inside AST-1608 `## Scope`.
 ## Radia review — AST-1608
 
 Overall DISCUSS/REVIEW (no fix-now). Plan-faithful Avail live counts + Land→ingest. Discuss-only: per-candidate Avail may re-list Gmail; Land pre-check outcome strings changed for check_inbox parity. Sibling AST-1611 holds [bug-repro]. Clean §3h shortcut → User Testing.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/102db35cfbacd48ca6bb11168ee40802/7689fd5b-cd1c-4173-bbfb-8d38985cf98b/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/f97d26ad-6da1-476e-9c88-5851e0be0a4a/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/102db35cfbacd48ca6bb11168ee40802/b191fc33-5e47-48dc-9b4c-4901b9c6e065/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1606 (parent) | ftr/AST-1606-meteorite-email-bound-messages |
+| AST-1608 | sub/AST-1606/AST-1608-fix-meteorite-email-bound-messages |
+| AST-1611 | sub/AST-1606/AST-1611-gap-tests-avail-land |
+
+**Epic worktree:** `astral-AST-1606/` — one active sub checked out at a time.
