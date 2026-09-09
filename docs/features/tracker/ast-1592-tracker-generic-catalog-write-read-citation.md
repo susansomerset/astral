@@ -594,3 +594,57 @@ Not the AST-1600 defects (gate / candidate_id); those can already be fixed on th
 - AST-1600: body land ungated on `resp_id`; WARNING on true prepare/save skip; pin still gated on `resp_id`.
 - Cover letter may store empty `source_artifact_ids`; sibling blob keys (`notes`, `resume_content`, `proposed_answers`, `application_responses`) stay out of the catalog.
 - Modal read = current-read overlay; modal save = same generic write as finalize (unchanged this bug).
+
+## Bug: AST-1614 — Gap: string-JSON prepare/land repro coverage
+
+### As-is
+
+After AST-1613’s product coerce, there is still **no** component test that feeds finalize-shaped **string** JSON (`agent_payload.resume` with section bodies) through `_prepare_job_replica_body` / `do_task` catalog land. Existing suites mock `_prepare_job_replica_body` and inject dict `parsed_response`, so the `prepare_empty` failure mode Betty flagged on AST-1613 never reproduces in CI.
+
+### To-be
+
+At least one tracker test and one agent test (plus bible nodes) assert that finalize-shaped string JSON coerces and lands: prepare returns a landable body, and `do_task` catalog land calls `save_job_artifact` with the catalog key — without mocking prepare to a dict identity.
+
+### Repro (coverage hole)
+
+1. Run the AST-1603 / AST-1554 / AST-1600 agent catalog-land suites — they pass with dict `parsed_response` and/or a prepare mock that returns the dict unchanged when `isinstance(parsed, dict)`, else `None`.
+2. Observe: none construct `parsed_response` / prepare input as `json.dumps({agent_performance, agent_payload: {resume: {professional_summary, …}}})` (the text-format finalize shape from AST-1613).
+3. Without AST-1613 coerce, that string input yields `prepare_empty`; with coerce, prepare returns a body. No test pins either side today.
+
+### Root cause
+
+Betty’s `[board-betty] TESTS: REVISE` on AST-1613: bible/tests gap — coverage never exercises the string path that caused production `prepare_empty`. Product fix (AST-1613) is already User Testing; this gap child owns only the missing repro coverage.
+
+### Proposed change
+
+⚠️ **Decision:** Tests + bible only — Scope files below. Do **not** change `src/core/tracker.py` / `src/core/agent.py` / `config.py` on this ticket (AST-1613 already landed coerce). Do not invent integration coverage.
+
+1. **`tests/component/core/test_tracker.py` — new class e.g. `TestAst1614StringJsonPrepare`:**
+   - Stub `_candidate_data_for_job` → `{}` (default resume structure) so match uses default enabled non-contact sections.
+   - Build a finalize-shaped envelope dict: `agent_performance` + `agent_payload.resume` with at least one non-contact section body (e.g. `professional_summary` string; optional non-empty experience job-array).
+   - **`test_bug_repro_prepare_lands_finalize_shaped_string_json`:** pass `json.dumps(envelope)` (and optionally a fenced ```json variant) into `_prepare_job_replica_body("job.artifacts.job_resume", …, astral_job_id=…)`. Assert return is a `dict` with the section body present (e.g. `professional_summary == "…"`). Against pre-AST-1613 prepare (no coerce), this assertion fails (`None`).
+   - Keep a true-empty control: garbage / non-JSON string → still `None` (coat-check / prepare_empty preserved).
+   - Optional one-liner: cover-letter catalog key with string JSON envelope `{agent_payload: {re_line, body, signature}}` → prepare returns nonempty normalized cover — same string path.
+
+2. **`tests/component/core/test_agent.py` — new class e.g. `TestAst1614DoTaskStringParsedCatalogLand`:**
+   - Mirror AST-1603 land fixtures (`_agent_rows`, `_patch_strict_batch_anthropic`, stub storage), but:
+     - **Do not** monkeypatch `_prepare_job_replica_body` to a dict identity (that hides the bug).
+     - Stub `_candidate_data_for_job` / candidate pin as needed so real prepare can match.
+     - Stub `save_job_artifact` to capture calls; stub pin so it must not run for finalize.
+   - **`test_bug_repro_finalize_string_parsed_lands_save_job_artifact`:** `send_to_anthropic` returns `success=True` with `parsed_response` set to the **string** `json.dumps(envelope)` (finalize nest shape above), not a dict. Assert hop success, `save_job_artifact` called once with `("job-…", "job.artifacts.job_resume", body_dict)` where body has the section, and pin not called. Pre-coerce product: prepare_empty WARNING and save not called.
+
+3. **`docs/test-bible/core/tracker.md`:** Add `### AST-1614 · AST-1610 (gap)` noting string-JSON prepare repro under `TestAst1614StringJsonPrepare`; point agent land to agent.md.
+
+4. **`docs/test-bible/core/agent.md`:** Add matching `### AST-1614` + QA manifest lines naming both new classes (and the `[bug-repro]` node ids above) for `test-fix` / `qa-fix`.
+
+### Blast radius
+
+- **Tests only:** New nodes alongside AST-1554/1600/1603 suites; existing mocks unchanged.
+- **Product:** Untouched — relies on AST-1613 `_coerce_job_replica_parsed` already on the epic tree / publish tip when these tests run green.
+- **Sibling AST-1613:** Product contract stays; this gap closes Betty’s REVISE diversion without reopening product Scope.
+
+### What must still hold
+
+- AST-1613 coerce behavior: dict inputs unchanged; true empty / non-JSON still `None` + WARNING on land skip; no `resp_id` gate on body land; pin still gated on `resp_id`.
+- AST-1592 / AST-1600 invariants: generic catalog write/read; empty → no store; no new coat-check gates; sibling blob keys out of catalog.
+- No product edits on this gap ticket; no `response_format: "json"` config change.
