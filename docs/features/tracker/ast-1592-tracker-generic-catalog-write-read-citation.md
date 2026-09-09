@@ -648,3 +648,25 @@ Betty’s `[board-betty] TESTS: REVISE` on AST-1613: bible/tests gap — coverag
 - AST-1613 coerce behavior: dict inputs unchanged; true empty / non-JSON still `None` + WARNING on land skip; no `resp_id` gate on body land; pin still gated on `resp_id`.
 - AST-1592 / AST-1600 invariants: generic catalog write/read; empty → no store; no new coat-check gates; sibling blob keys out of catalog.
 - No product edits on this gap ticket; no `response_format: "json"` config change.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/4edf37277aab28306dbd8ce62f29c217/81a409bc-facf-4cc8-bbbe-2d860cca747c/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/f2bb525a-6501-4793-a447-8f2c443fc787/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/4edf37277aab28306dbd8ce62f29c217/40171938-0b54-4c1c-8c02-33da9a5de77d/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1610 (parent) | ftr/AST-1610-job-artifacts-not-persisting |
+| AST-1613 | sub/AST-1610/AST-1613-fix-job-artifacts-prepare-empty |
+| AST-1614 | sub/AST-1610/AST-1614-gap-string-json-prepare-land-repro |
+
+**Epic worktree:** `astral-AST-1610/` — one active sub checked out at a time.
