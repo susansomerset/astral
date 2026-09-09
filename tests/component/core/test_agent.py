@@ -7578,6 +7578,70 @@ class TestAst1603DoTaskCatalogLandViaArtifactKey:
         assert save.call_args.args[:2] == ("job-1603", "job.artifacts.job_resume")
 
 
+class TestAst1614DoTaskStringParsedCatalogLand:
+    """AST-1614 [bug-repro]: text-format string parsed must land via real prepare."""
+
+    def _envelope(self) -> dict:
+        return {
+            "agent_performance": "success",
+            "agent_payload": {
+                "resume": {
+                    "professional_summary": "String-parsed land for AST-1614",
+                    "experience": [],
+                }
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_bug_repro_finalize_string_parsed_lands_save_job_artifact(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, Any],
+    ) -> None:
+        pin = MagicMock(return_value=True)
+        save = MagicMock(return_value="uuid-1614")
+        monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
+        monkeypatch.setattr("src.core.tracker.save_job_artifact", save, raising=False)
+        # Do NOT mock _prepare_job_replica_body — string path is the repro.
+        monkeypatch.setattr(
+            "src.core.tracker._candidate_data_for_job", lambda jid: {}
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.pin_experience_job_facts_from_base",
+            lambda parsed, cd: None,
+        )
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="")
+        )
+        _patch_strict_batch_anthropic(monkeypatch)
+        raw = json.dumps(self._envelope())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": raw,
+                    "api_response": _api_response("{}"),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "finalize_job_resume",
+            index="job-1614",
+            ctx={"candidate_data": {"artifacts": {}}},
+        )
+        assert out["success"] is True
+        pin.assert_not_called()
+        save.assert_called_once()
+        assert save.call_args.args[:2] == ("job-1614", "job.artifacts.job_resume")
+        body = save.call_args.args[2]
+        assert isinstance(body, dict)
+        assert body.get("professional_summary") == "String-parsed land for AST-1614"
+
+
 # Branches: same RESPONSE debug result= bind on intake initiate path (AST-1083 UAT).
 class TestAst1083StoreResponseDebugResult:
     def test_intake_initiate_debug_binds_save_agent_data_result(
