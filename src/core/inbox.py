@@ -51,15 +51,8 @@ def list_inbox_messages(debug: bool = False) -> list[dict]:
     return rows
 
 
-def fetch_candidate_email(
-    aliases: Sequence[str],
-    *,
-    debug: bool = False,
-) -> list[dict]:
-    """List inbox messages whose From or To address matches any alias (casefold)."""
-    if debug:
-        logger.set_debug_flag(True)
-
+def _alias_set_from_raw(aliases: Sequence[str]) -> set[str]:
+    """Normalize caller aliases to a casefold address set (drop empties / non-emails)."""
     alias_set: set[str] = set()
     for raw in aliases or ():
         _display, parsed = parseaddr(raw or "")
@@ -67,11 +60,18 @@ def fetch_candidate_email(
         if not token or "@" not in token:
             continue
         alias_set.add(token.casefold())
+    return alias_set
+
+
+def _filter_messages_by_aliases(
+    messages: Sequence[dict],
+    alias_set: set[str],
+) -> list[dict]:
+    """Keep messages whose From or To has any address in alias_set (casefold)."""
     if not alias_set:
         return []
-
     kept: list[dict] = []
-    for msg in list_inbox_messages(debug=debug):
+    for msg in messages:
         headers = (msg.get("from_address") or "", msg.get("to_address") or "")
         hit = False
         for header in headers:
@@ -84,6 +84,23 @@ def fetch_candidate_email(
                 break
         if hit:
             kept.append(msg)
+    return kept
+
+
+def fetch_candidate_email(
+    aliases: Sequence[str],
+    *,
+    debug: bool = False,
+) -> list[dict]:
+    """List inbox messages whose From or To address matches any alias (casefold)."""
+    if debug:
+        logger.set_debug_flag(True)
+
+    alias_set = _alias_set_from_raw(aliases)
+    if not alias_set:
+        return []
+
+    kept = _filter_messages_by_aliases(list_inbox_messages(debug=debug), alias_set)
     if debug:
         n = len(kept)
         for i, msg in enumerate(kept, start=1):
@@ -112,18 +129,37 @@ def archive_candidate_email(message_id: str) -> None:
 
 
 def count_inbox_bound_by_candidate(*, debug: bool = False) -> Dict[str, int]:
-    """Retired with From-then-To bind (AST-1558); empty until AST-1559 eligibility."""
-    _ = debug
-    return {}
+    """Live {candidate_id: n} for meteorite_email mailbox rows (alias From/To match)."""
+    # Late: candidate aliases + dispatch task list (avoid module-top cycles).
+    from src.core.candidate import email_aliases_for_candidate
+    from src.data import database
+    from src.utils.config import is_meteorite_email_mailbox_task_key
+
+    messages = list_inbox_messages(debug=debug)
+    seen: set[str] = set()
+    counts: Dict[str, int] = {}
+    for task in database.list_dispatch_tasks():
+        if not is_meteorite_email_mailbox_task_key(task.get("task_key") or ""):
+            continue
+        cid = str(task.get("candidate_id") or "").strip()
+        if not cid or cid in seen:
+            continue
+        seen.add(cid)
+        alias_set = _alias_set_from_raw(email_aliases_for_candidate(cid))
+        counts[cid] = len(_filter_messages_by_aliases(messages, alias_set))
+    return counts
 
 
 def count_inbox_messages_bound_to_candidate(
     candidate_id: str, *, debug: bool = False
 ) -> int:
-    """Retired with From-then-To bind (AST-1558); 0 until AST-1559 eligibility."""
-    _ = candidate_id
-    _ = debug
-    return 0
+    """Live count of INBOX messages matching this candidate's email aliases."""
+    from src.core.candidate import email_aliases_for_candidate
+
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        return 0
+    return len(fetch_candidate_email(email_aliases_for_candidate(cid), debug=debug))
 
 
 def get_message_html(message_id: str) -> GmailMessageHtml:
