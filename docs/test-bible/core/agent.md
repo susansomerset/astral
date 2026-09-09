@@ -1281,6 +1281,14 @@ Finalize body replica must land without `resp_id` (RESPONSE store failure must n
 
 **Integration:** none — no existing scenario asserts body-replica map vs TASK_CONFIG.artifact_key land; do not invent new integration coverage.
 
+### AST-1613 · AST-1610 (bug) — docs-acceptance
+
+**Publish:** `origin/sub/AST-1610/AST-1613-fix-job-artifacts-prepare-empty`.
+
+Catalog-land coerce for text-format finalize `parsed` (string JSON → dict before prepare) is product on this ticket. **No new tests on AST-1613** — `[bug-repro]` string-JSON prepare/land coverage is sibling gap **AST-1614**. Tracker note: **`docs/test-bible/core/tracker.md`** § AST-1613.
+
+**Integration:** none.
+
 ## QA test manifest
 
 1. Primary catalog land: `tests/component/core/test_agent.py::TestAst1603DoTaskCatalogLandViaArtifactKey`
