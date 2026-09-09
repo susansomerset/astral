@@ -377,3 +377,66 @@ context_tokens≈58000
 - **discuss — fixture hop keys:** test-tree only. Routed **`[qa-handoff]`** @Betty White. Betty landed align @ `9b60edd7` (`contemplate_job`→`propose_application_responses` matches AST-1550 `_NINE`). Manifest re-run green (25 passed | 24 skipped). Discuss closed.
 - **advisory:** AST-1550 backend rollup + `formatDiscussionContent` duplication — no action.
 - **Outcome:** User Testing; assignee remains Katherine.
+
+---
+
+## Bug: AST-1609 — fix artifacts discussion incomplete
+
+Orphaned bug-fix child of **AST-1607** (Related → AST-1541). This doc owns the per-job header filter; hop catalog / `anticipate_scan` membership is on **AST-1550** under the same bug heading.
+
+### As-is
+
+`JobDiscussionPane` passes the full `sections` array from `report_discussion_sections` into `ReportSectionList`. `ReportSectionList` renders a `CollapsiblePanel` header for **every** section. `renderSection` returns `null` when there is no non-empty RESPONSE, so the body is empty but the **header still shows**. That matches the original AST-1551 Stage 1 Done when (“empty body — still a collapsed panel”) and produces always-on empty hop slots for hops the job has not run.
+
+### To-be
+
+Discussion shows a section header only for hops that have actually run for **this** job — i.e. a matching `agent_story` entry with a non-empty RESPONSE (same `responseBodyForTask` rules already used for the body). Unrun hops do not appear as headers. Order and labels still come from the filtered subset of `report_discussion_sections` (preserve manifest order; do not re-sort by `created_at`). No hardcoded hop-key allowlist in TSX.
+
+### Repro
+
+1. Open Recommended Job Report → Discussion on a job mid-chain (e.g. story has RESPONSE for `contemplate_job` + maybe `anticipate_scan`, but not yet for later hops such as `propose_application_responses`).
+2. Observe: collapsed headers for hops with no usable RESPONSE (empty always-on slots).
+
+### Root cause
+
+AST-1551 deliberately rendered the full nine-slot catalog and treated missing RESPONSE as an empty panel body, not as “omit the section.” Visibility was catalog-driven, not story-driven. The bug asks for story-driven appearance without hardcoding which hops are visible.
+
+### Proposed change
+
+**`src/ui/frontend/src/components/JobDiscussionPane.tsx`**
+
+1. Keep props `{ sections, agentStory }` and helpers `formatDiscussionContent` / `responseBodyForTask` (including empty-RESPONSE skip / `RESPONSE*` prefix parity).
+2. Before `ReportSectionList`, derive the visible list (preserve order):
+
+   ```tsx
+   const visibleSections = sections.filter(
+     (s) => responseBodyForTask(agentStory, s.section_id) !== "",
+   )
+   ```
+
+3. Pass `sections={visibleSections}` to `ReportSectionList` (not the raw prop).
+4. `renderSection` may keep calling `responseBodyForTask` (bodies are non-empty for visible ids) or simplify — either is fine; do **not** change RESPONSE selection rules.
+5. When `visibleSections` is empty, `ReportSectionList` renders an empty stack (no fake placeholder section, no hardcoded “no discussion yet” copy unless existing chrome already does — do not invent copy).
+
+**`src/ui/frontend/src/components/JobAnalysisReportModal.tsx` — no change**
+
+Keep wiring: pass full `discussionSections` from the manifest + `job?.agent_story ?? []` into `JobDiscussionPane`. Filtering lives in the pane (ticket Scope prefers the pane; modal “only if” the filter is at wire-up — it is not).
+
+**Out of this doc’s patch:** `src/utils/config.py` / `api_system.py` hop start (see AST-1550 bug section). No `App.css`, no `AgentStoryTab.tsx`, no `StateUiContext.tsx`.
+
+⚠️ **Decision:** Filter in the pane via existing `responseBodyForTask` (non-empty RESPONSE) rather than “any `agent_story` entry for that `task_key` regardless of blocks.” A hop that ran but left only empty RESPONSE stays hidden — same signal the body already uses. Do not hardcode task keys. Do not filter in `api_system` (manifest is global, not per-job).
+
+### Blast radius
+
+- Modal integration / pane tests that assert nine collapsed slots with empty story will fail until Betty revises them (expected headers → 0 when `agentStory` is `[]`).
+- Jobs with a full story still show every hop that has RESPONSE, including `anticipate_scan` once AST-1550’s walk emits it and the story has that body.
+- Expand-All / `default_expanded` behavior unchanged for the filtered set.
+- Job Detail / Company Detail Agent Story tabs untouched.
+
+### What must still hold
+
+- Section order and labels still originate from `report_discussion_sections` (filtered subset; no TSX hop-key list; no `created_at` re-sort).
+- Bodies remain RESPONSE-only, read-only `entity-story-content`, JSON pretty-print / raw text via `formatDiscussionContent`.
+- Match story → section by `task_key === section_id`.
+- Discussion top tab still from `report_top_tabs` (no hardcode).
+- No edits to Summary / Analysis / Artifacts pane bodies or Generate chrome.
