@@ -402,6 +402,66 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 ---
 
+## Bug: AST-1609 — fix artifacts discussion incomplete
+
+Orphaned bug-fix child of **AST-1607** (Related → AST-1541). This doc owns the hop-walk / manifest half; pane header filtering is on **AST-1551** under the same bug heading.
+
+### As-is
+
+`build_artifacts_discussion_hop_task_keys()` starts at `BUILD_CONFIG["resume_artifact_chain"]["first_task_key"]` (`contemplate_job`) and walks `run_next` forward. That deliberately omits `anticipate_scan` (its live `run_next` points *at* `first_task_key`, so it never appears on a forward walk from `first`). `GET /api/state_ui_manifest` therefore never emits an `anticipate_scan` row in `jobs.recommended.report_discussion_sections`.
+
+### To-be
+
+The Discussion hop catalog includes `anticipate_scan` when it is the live `run_next` parent of `first_task_key` (membership from DB `agent_task.run_next`, not a hardcoded key list or a static “always nine” length). Manifest soft-fail to `[]` on walk failure is unchanged.
+
+### Repro
+
+1. Open Recommended Job Report → Discussion for a job whose `agent_story` includes a non-empty RESPONSE for `anticipate_scan` (and fewer than the full forward chain for later hops).
+2. Observe: no `anticipate_scan` section in the catalog/headers sourced from `report_discussion_sections` (AST-1550 half). Empty always-on later hop headers are the AST-1551 half of the same bug.
+
+### Root cause
+
+AST-1550 Stage 1 **Decision** fixed the walk start at `resume_artifact_chain.first_task_key` and documented “Does not include anticipate_scan (not on this chain).” That start is the dispatch *mid-chain* resume entry, not the optional pre-`first` hop whose `run_next` feeds into it. The helper never consults `_agent_task_parents_with_run_next` (already used for BUILD_ARTIFACTS claim-state expansion in the same module).
+
+### Proposed change
+
+**`src/utils/config.py` — `build_artifacts_discussion_hop_task_keys` only**
+
+1. Keep late-import `get_agent_task` and the forward `run_next` walk + cycle `RuntimeError` as today.
+2. After resolving `first = (BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key")` stripped (empty → `[]`), resolve the walk **start** as follows — do **not** hardcode `"anticipate_scan"`:
+   - `parents = _agent_task_parents_with_run_next(first)` (existing helper; live TASK_CONFIG scan of `agent_task.run_next == first`).
+   - If `len(parents) == 1`: `start = parents[0]` (today: `anticipate_scan` when its row’s `run_next` is `contemplate_job`).
+   - If `len(parents) == 0` or `len(parents) > 1`: `start = first` (same as today’s walk; ambiguous multi-parent matches `_parent_hop_task_key_for_child` caution — do not invent which parent to prepend).
+3. Walk forward from `start` exactly as today (append key → next `run_next` → stop on empty; cycle → `RuntimeError`).
+4. Update the docstring: remove “Does not include anticipate_scan”; state that when exactly one live `run_next` parent of `first_task_key` exists, the walk begins at that parent, then follows `run_next` to empty.
+5. Do **not** add a parallel hop-key array under `BUILD_CONFIG`. Do **not** rename the function unless make-fix finds a call-site reason (keep the name).
+
+**`src/ui/api/api_system.py` — no behavior change expected**
+
+The existing `state_ui_manifest` soft-fail attach loop already iterates `build_artifacts_discussion_hop_task_keys()` and builds `{section_id, nav_label, default_expanded: false}` from live `task_name`. Leave it alone unless the helper signature changes (it should not). Still soft-fail to `[]` with a warning on walk failure. Do **not** hardcode section count (was “nine” in AST-1550 docs/tests; product emits whatever the walk returns — Betty owns assertion updates).
+
+**Out of this doc’s patch:** `JobDiscussionPane.tsx` / `JobAnalysisReportModal.tsx` (see AST-1551 bug section). No `agent.py` change (task_name enrichment already shipped).
+
+⚠️ **Decision:** Prefer “start walk at the unique live parent of `first_task_key`” over prepending parents onto a walk that still starts at `first` — one ordered walk, same cycle discipline, no duplicate keys. Prefer unique-parent only (not “prepend all parents”) so ambiguous graphs do not invent an order among siblings.
+
+### Blast radius
+
+- Manifest `report_discussion_sections` length becomes 10 when `anticipate_scan.run_next == contemplate_job` (today’s healthy DB), else unchanged when no unique parent.
+- AST-1551 pane + Betty fixtures/tests that lock `NINE` / length-9 (`test_config.py` `TestAst1550DiscussionHopKeys`, `test_api_system.py` `TestAst1550ReportDiscussionSections`, frontend `NINE` / `stateUiManifestFixture`) will need Betty’s fix-board / qa-fix pass — engineer does not touch `tests/` or bible.
+- Dispatch / claim / BUILD_ARTIFACTS runtime paths that call `_agent_task_parents_with_run_next` for other reasons are unchanged; only the Discussion helper’s start selection changes.
+- Jobs with no `anticipate_scan` story still get the catalog row from the global manifest; per-job header hiding is the AST-1551 filter (do not filter in `api_system` — manifest is not per-job).
+
+### What must still hold
+
+- Discussion still appears on `JOBS_RECOMMENDED_REPORT_TOP_TABS` after Artifacts (untouched).
+- Section `section_id` = task_key; `nav_label` = non-empty `agent_task.task_name` else `task_key`; `default_expanded: false`.
+- No hardcoded task_key list in config for Discussion membership; membership remains live `run_next`.
+- Walk cycle still raises `RuntimeError`; manifest attach still soft-fails to `[]` without 500ing the whole state-UI manifest.
+- `get_entity_agent_story` `task_name` enrichment (AST-1550 Stage 3) unchanged.
+- Summary / Analysis / Artifacts tabs and artifact generation unchanged.
+
+---
+
 ## Bug: AST-1612 — gap revise discussion tests (anticipate_scan + empty headers)
 
 Sibling **gap** child of AST-1607 from `[board-betty] TESTS: REVISE` on **AST-1609**. Product hop-walk / pane filter lands on AST-1609; this ticket owns bible + component-test revision only (no `src/` product edits).

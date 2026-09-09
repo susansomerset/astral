@@ -6029,17 +6029,20 @@ is_resume_artifact_in_progress = is_build_artifacts_in_progress
 
 
 def build_artifacts_discussion_hop_task_keys() -> list[str]:
-    """Live run_next walk for Recommended Job Report Discussion sections (AST-1550).
+    """Live run_next walk for Recommended Job Report Discussion sections (AST-1550 / AST-1609).
 
-    Starts at BUILD_CONFIG['resume_artifact_chain']['first_task_key'] (contemplate_job).
-    Follows current agent_task.run_next until empty. Cycle → RuntimeError.
-    Does not include anticipate_scan (not on this chain).
+    first = resume_artifact_chain.first_task_key. When exactly one live agent_task
+    run_next parent of first exists, walk starts there (today: anticipate_scan →
+    contemplate_job); otherwise starts at first. Follows run_next until empty.
+    Cycle → RuntimeError. No hardcoded hop-key list.
     """
     from src.data.database import get_agent_task
 
-    start = ((BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key") or "").strip()
-    if not start:
+    first = ((BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key") or "").strip()
+    if not first:
         return []
+    parents = _agent_task_parents_with_run_next(first)
+    start = parents[0] if len(parents) == 1 else first
     out: list[str] = []
     seen: set[str] = set()
     key = start

@@ -6,11 +6,15 @@ type Props = {
   agentStory: readonly AgentStoryEntry[]
 }
 
-/** Recommended Job Report Discussion — RESPONSE-only hop stack (AST-1551). */
+/** Recommended Job Report Discussion — RESPONSE-only hop stack (AST-1551 / AST-1609). */
 export default function JobDiscussionPane({ sections, agentStory }: Props) {
+  // AST-1609: headers only for hops with a non-empty RESPONSE for this job.
+  const visibleSections = sections.filter(
+    s => responseBodyForTask(agentStory, s.section_id) !== "",
+  )
   return (
     <ReportSectionList
-      sections={sections}
+      sections={visibleSections}
       renderSection={(sectionId) => {
         const body = responseBodyForTask(agentStory, sectionId)
         if (!body) return null
