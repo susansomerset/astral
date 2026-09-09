@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
@@ -2341,4 +2342,69 @@ class TestAst1603TrackerPinKeysAndPrivatePrepare:
         assert out["cover_letter"]["Subject"] == "S"
         # proposed_answers pin string stays until resolve returns body
         assert out["proposed_answers"] == "pin-pa"
+
+
+class TestAst1614StringJsonPrepare:
+    """AST-1614 [bug-repro]: finalize-shaped string JSON must coerce through prepare."""
+
+    def _envelope(self) -> dict:
+        return {
+            "agent_performance": "success",
+            "agent_payload": {
+                "resume": {
+                    "professional_summary": "Tailored summary for AST-1614",
+                    "experience": [],
+                }
+            },
+        }
+
+    def test_bug_repro_prepare_lands_finalize_shaped_string_json(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Default structure (empty cd) still enables non-contact sections for match.
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: {})
+        raw = json.dumps(self._envelope())
+        body = tracker_mod._prepare_job_replica_body(
+            "job.artifacts.job_resume", raw, astral_job_id="job-1614"
+        )
+        assert isinstance(body, dict)
+        assert body.get("professional_summary") == "Tailored summary for AST-1614"
+
+        fenced = "```json\n" + raw + "\n```"
+        fenced_body = tracker_mod._prepare_job_replica_body(
+            "job.artifacts.job_resume", fenced, astral_job_id="job-1614"
+        )
+        assert isinstance(fenced_body, dict)
+        assert fenced_body.get("professional_summary") == "Tailored summary for AST-1614"
+
+    def test_bug_repro_prepare_empty_on_non_json_string(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: {})
+        assert (
+            tracker_mod._prepare_job_replica_body(
+                "job.artifacts.job_resume",
+                "not-json-at-all",
+                astral_job_id="job-1614",
+            )
+            is None
+        )
+
+    def test_bug_repro_prepare_lands_cover_letter_string_json(self) -> None:
+        raw = json.dumps(
+            {
+                "agent_performance": "success",
+                "agent_payload": {
+                    "re_line": "Re: Role",
+                    "body": "Cover body for AST-1614",
+                    "signature": "Ada",
+                },
+            }
+        )
+        body = tracker_mod._prepare_job_replica_body(
+            "job.artifacts.cover_letter", raw, astral_job_id="job-1614"
+        )
+        assert isinstance(body, dict)
+        assert body.get("Subject") == "Re: Role"
+        assert body.get("Letter") == "Cover body for AST-1614"
 
