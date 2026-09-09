@@ -3061,12 +3061,19 @@ async def do_task(
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             try:
                 from src.core.tracker import (
+                    _coerce_job_replica_parsed,
                     _prepare_job_replica_body,
                     save_job_artifact,
                 )
 
+                # Text-format finalize leaves parsed as raw JSON string (AST-1613).
+                land_parsed = (
+                    _coerce_job_replica_parsed(parsed)
+                    if isinstance(parsed, str)
+                    else parsed
+                )
                 body = _prepare_job_replica_body(
-                    catalog_key, parsed, astral_job_id=index
+                    catalog_key, land_parsed, astral_job_id=index
                 )
                 if body is None:
                     logger.warning(

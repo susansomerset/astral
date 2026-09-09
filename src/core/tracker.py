@@ -11,6 +11,7 @@ AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no 
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone
@@ -45,7 +46,7 @@ from src.utils.config import (
     validate_value,
 )
 from src.utils.logging import get_logger, truncate_debug_content
-from src.utils.formatting import parse_text
+from src.utils.formatting import _strip_json_markdown_fences, parse_text
 
 logger = get_logger(__name__)
 
@@ -604,6 +605,25 @@ def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
     return True
 
 
+def _coerce_job_replica_parsed(parsed: Any) -> Any:
+    """Decode text-format finalize JSON string to dict for catalog land (AST-1613)."""
+    if isinstance(parsed, dict):
+        return parsed
+    if not isinstance(parsed, str):
+        return parsed
+    stripped = parsed.strip()
+    if not stripped:
+        return parsed
+    cleaned = _strip_json_markdown_fences(stripped)
+    if not cleaned or cleaned[0] not in "{[":
+        return parsed
+    try:
+        obj = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return parsed
+    return obj if isinstance(obj, dict) else parsed
+
+
 def _prepare_job_replica_body(
     catalog_key: str,
     parsed: Any,
@@ -611,6 +631,7 @@ def _prepare_job_replica_body(
     astral_job_id: str,
 ) -> Optional[Any]:
     """Private helper: unwrap finalize hop payload for a job catalog key; None if no landable body (AST-1592 / AST-1603)."""
+    parsed = _coerce_job_replica_parsed(parsed)
     key = (catalog_key or "").strip()
     if key == "job.artifacts.job_resume":
         if not parsed_matches_job_resume_content(astral_job_id, parsed):
