@@ -538,3 +538,59 @@ context_tokens≈78000
 ```
 [code-rubric] PROCEED (Commit: 5e40874c) Finalize land + candidate_id fix
 ```
+
+## Bug: AST-1613 — Job artifacts prepare_empty skip after finalize success
+
+### As-is
+
+After a successful `finalize_job_resume` hop (LLM returns a full nested `agent_payload.resume` with section bodies), `do_task` logs `persist_job_artifact_catalog skipped … reason=prepare_empty` and never calls `save_job_artifact`. The artifacts table has zero `entity_type=job` rows for that job.
+
+### To-be
+
+A successful `finalize_job_resume` (and the same catalog land for `finalize_cover_letter` when the cover body is landable) writes an operative `entity_type=job` artifacts-table row for the catalog key (`job.artifacts.job_resume` / `job.artifacts.cover_letter`) so hydrate / `get_job_current` can show it.
+
+### Repro
+
+1. On a RECOMMENDED job with an enabled resume structure, run Generate Artifacts through `finalize_job_resume` until the hop reports success. Confirm the live log line `persist_job_artifact_catalog skipped task=finalize_job_resume … key=job.artifacts.job_resume reason=prepare_empty`.
+2. Confirm `do_task`’s in-memory `parsed` at the catalog-land site is still a **string** (raw model text containing the JSON envelope), not a dict — `TASK_CONFIG["finalize_job_resume"]` has no `response_format: "json"`, so the provider path defaults to `text` and leaves `parsed_response` as extracted text.
+3. Query the artifacts table for that `astral_job_id` with `entity_type=job` — expect zero rows.
+4. Optional same path: `finalize_cover_letter` with a landable `re_line`/`body` under `agent_payload` also hits prepare_empty when `parsed` is still a string.
+
+### Root cause
+
+AST-1600 fixed the `resp_id` gate and `candidate_id` INSERT path; land now runs and WARNINGs fire — but prepare still returns `None`.
+
+`finalize_job_resume` / `finalize_cover_letter` omit `response_format` in `TASK_CONFIG`, so `do_task` uses default `"text"`. Provider parse then sets `parsed_response` to the raw response **string** (`_parse_api_response`), not a JSON dict. The existing `agent_payload` unwrap only runs when `isinstance(parsed, dict)`, so catalog land hands that string to `_prepare_job_replica_body`.
+
+`parsed_matches_job_resume_content` / cover prepare both require a dict → immediate `None` → `reason=prepare_empty`. The hop still returns `success=True` because text-format skips the JSON schema validation block. The landable `agent_payload.resume` (or cover fields) sits inside the string and is never decoded for prepare.
+
+Not the AST-1600 defects (gate / candidate_id); those can already be fixed on this tree. Nested unwrap via `_resume_payload_body` is fine once `parsed` is a dict (envelope or post-unwrap nest both match).
+
+### Proposed change
+
+⚠️ **Decision:** Fix the **shape handed into prepare** inside this ticket’s Scope (`tracker.py` + `agent.py` catalog land). Do **not** edit `src/utils/config.py` to add `response_format: "json"` on finalize rows — that file is outside AST-1613 Component/Technical scope (durable config fix can be a follow-up Scope amend if Archie wants schema validation on finalize too). Do not add endpoints, coat-check, or UI changes. `database.py` untouched (prepare never reaches save today).
+
+1. **`src/core/tracker.py` — coerce helper + `_prepare_job_replica_body`:** Add a private helper (e.g. `_coerce_job_replica_parsed(parsed) -> Any`) used only by prepare:
+   - If `parsed` is already a `dict`, return it unchanged.
+   - If `parsed` is a non-empty `str`, strip; if it looks like JSON (`{` / `[` after strip, or fenced ```json), parse with `json.loads` (strip markdown fences the same way other core/agent JSON heals do — prefer an existing utils/agent helper already used for RESPONSE text if one is import-safe without a cycle; otherwise local fence strip + `json.loads`). On `JSONDecodeError` / non-dict result, return the original value (prepare will still yield `None`).
+   - Other types unchanged.
+   
+   At the top of `_prepare_job_replica_body`, set `parsed = _coerce_job_replica_parsed(parsed)` before the job_resume / cover_letter branches. Keep existing match + `_resume_payload_body` nest unwrap (`agent_payload` then `draft_job_resume.nested_resume_key`) and cover normalize / nonempty coat-check. Do not add new body-validation gates; true empty still returns `None`.
+
+2. **`src/core/agent.py` — catalog-land branch only:** Before `_prepare_job_replica_body(...)`, if `parsed` is a `str`, coerce via the same tracker helper (lazy import alongside prepare) and pass the coerced value into prepare. Do not reintroduce a `resp_id` gate. Keep WARNING on `prepare_empty` / `save_skipped_empty` and existing `try/except` + `logger.error` for unexpected raises. Do not change pin / draft-notes / candidate-craft branches in this bug.
+
+3. **`src/data/database.py`:** Untouched.
+
+### Blast radius
+
+- **Tracker prepare:** Any caller of `_prepare_job_replica_body` (agent land; tests) gains string→dict coerce. Dict inputs unchanged. Betty will need a `[bug-repro]` that feeds finalize-shaped **string** JSON (envelope with `agent_payload.resume` section bodies) and asserts prepare returns a body / `save_job_artifact` is called — current agent tests mock prepare and inject dict `parsed_response`, so they never catch this.
+- **Agent:** Catalog land only; pin path still requires `resp_id`. `pin_experience_job_facts_from_base` still no-ops when `parsed` remains a string earlier in `do_task` — out of this bug’s to-be (artifact row land); do not expand into early global text→JSON coercion for all tasks.
+- **Config:** Finalize rows still default `response_format` to `text` (no schema validation). Land works once prepare sees a dict; schema enforcement stays a separate follow-up if Scope is widened.
+- **AST-1600:** candidate_id / resp_id fixes remain; this patch is the remaining prepare_empty hole after AST-1603 land-via-artifact_key.
+
+### What must still hold
+
+- Parent AC2–AC7 / AST-1592: generic `save_job_artifact` / `get_job_current`; job_resume auto-cites current `base_resume` uuid or `[]`; no job-record SoT for these bodies; no type-specific public save helpers; no new coat-check or body-validation gates beyond today’s empty → `None`.
+- AST-1600: body land ungated on `resp_id`; WARNING on true prepare/save skip; pin still gated on `resp_id`.
+- Cover letter may store empty `source_artifact_ids`; sibling blob keys (`notes`, `resume_content`, `proposed_answers`, `application_responses`) stay out of the catalog.
+- Modal read = current-read overlay; modal save = same generic write as finalize (unchanged this bug).
