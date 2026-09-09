@@ -566,6 +566,14 @@ Tracker generic `save_job_artifact` / `get_job_current` (entity id + catalog key
 
 **Integration:** none.
 
+### AST-1613 · AST-1610 (bug) — docs-acceptance
+
+**Publish:** `origin/sub/AST-1610/AST-1613-fix-job-artifacts-prepare-empty`.
+
+Product coerce (`_coerce_job_replica_parsed` + prepare/land string→dict) lands on this ticket. **No new tests on AST-1613** — string-JSON prepare/land `[bug-repro]` lives on sibling gap **AST-1614**. Existing AST-1603 suites still inject dict `parsed` / mock prepare and do not exercise the text-format path.
+
+**Integration:** none.
+
 ## QA test manifest
 
 See **`docs/test-bible/core/agent.md`** § AST-1603 (shared agent+tracker manifest).
