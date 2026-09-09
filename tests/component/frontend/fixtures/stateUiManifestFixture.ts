@@ -177,7 +177,8 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         // AST-1550 / AST-1551: Discussion after Artifacts
         { tab_id: "discussion", nav_label: "Discussion" },
       ],
-      // AST-1550: nine hop slots — keys match TestAst1550ReportDiscussionSections._NINE
+      // AST-1550: catalog slots — keys match TestAst1550ReportDiscussionSections._NINE
+      // (AST-1612: pane/JAR filter by RESPONSE; header count ≠ raw length when story empty)
       report_discussion_sections: [
         { section_id: "contemplate_job", nav_label: "Contemplate Job", default_expanded: false },
         { section_id: "draft_job_resume", nav_label: "Draft Job Resume", default_expanded: false },

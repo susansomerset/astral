@@ -1307,19 +1307,17 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1551 · AST-1541
 
-**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report`.
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report`. **Gap revise:** **AST-1612** — product pane filter on **AST-1609**.
 
-`JobDiscussionPane` — RESPONSE-only nine-hop stack via `ReportSectionList` / `entity-story-content` (JSON pretty-print / raw text; empty hops stay panels). `JobAnalysisReportModal` wires Discussion from `report_discussion_sections` + `agent_story` (no hardcode). Fixture + pane `NINE` keys lockstep with **AST-1550** `TestAst1550ReportDiscussionSections._NINE` (`contemplate_job` → … → `propose_application_responses`). Config/manifest/`task_name`: sibling **AST-1550**. No page-file product diff — §6c routed-page rule N/A.
+`JobDiscussionPane` — RESPONSE-only stack via `ReportSectionList` / `entity-story-content` (JSON pretty-print / raw text). Pane filters to sections with non-empty RESPONSE; empty `agentStory` → **0** headers (no always-on empty hop panels). `JobAnalysisReportModal` wires Discussion from `report_discussion_sections` + `agent_story` (no hardcode); header count follows the filtered pane, not raw catalog length. Fixture catalog keys lockstep with **AST-1550** `TestAst1550ReportDiscussionSections._NINE` (+ optional `anticipate_scan` when covering unique-parent). Config/manifest/`task_name`: sibling **AST-1550**. No page-file product diff — §6c routed-page rule N/A.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Pane RESPONSE-only / formatting / empty hops | `JobDiscussionPane.tsx` | **`test_JobDiscussionPane.test.tsx`** — **`JobDiscussionPane — AST-1551`** |
-| Modal Discussion tab + nine slots + partial story | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1551 Discussion tab`**; revised AST-948 top-tab assert |
+| Pane RESPONSE-only / formatting / empty-story filter | `JobDiscussionPane.tsx` | **`test_JobDiscussionPane.test.tsx`** — **`JobDiscussionPane — AST-1551`** |
+| Modal Discussion tab + RESPONSE-only headers | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1551 Discussion tab`**; revised AST-948 top-tab assert |
 | Manifest fixture Discussion | `stateUiManifestFixture.ts` | consumed by JAR / pane tests |
 
-**Broken / obsolete:** AST-948 three-tab shell assert — Discussion added; tip Toast tests realigned to `origin/dev` (product already has AST-1549 dismiss).
-
-**Product gap (engineer — test-child):** `JobDiscussionPane.responseBodyForTask` selects the first `RESPONSE*` block even when `content === ""`, so a blank RESPONSE hides a later non-empty body. AgentStoryTab filters empty RESPONSE first. Fix: first `RESPONSE*` with non-empty content. Repro: **`skips empty RESPONSE and shows the next RESPONSE body (Agent Story parity)`** (red until fixed).
+**Broken / obsolete:** AST-948 three-tab shell assert — Discussion added; tip Toast tests realigned to `origin/dev` (product already has AST-1549 dismiss). Pre-AST-1609 “nine collapsed empty panels” / “empty hops stay panels” asserts — revised (AST-1612). Empty-RESPONSE product gap (first blank RESPONSE hid later body) — shipped; coverage kept.
 
 **Integration:** none — do not invent.
 
@@ -1338,6 +1336,30 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1612 · AST-1607
+
+**Parent:** [AST-1607](https://linear.app/astralcareermatch/issue/AST-1607/artifacts-discussion-is-incomplete). **Publish:** `origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`. Product: **AST-1609**.
+
+Test-gap: empty `agentStory` → 0 Discussion headers; `anticipate_scan` header when sections + story have RESPONSE; JAR partial story → header count = hops with RESPONSE (not catalog length). Hop-walk pytest: **`docs/test-bible/utils/config.md`** § AST-1612.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty story / anticipate_scan RESPONSE | `JobDiscussionPane.tsx` | **`test_JobDiscussionPane.test.tsx`** — hides all headers; shows anticipate_scan when RESPONSE |
+| JAR empty / partial story | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — AST-1551 Discussion tab (0 / 1 Expand) |
+
+**Broken / obsolete:** nine Expand buttons with empty/partial story.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDiscussionPane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1551|hides all headers|anticipate_scan"
+```
+
+**Pass criterion:** Vitest green against AST-1609 product; red on pre-filter pane (always-nine headers).
 
 ---
 

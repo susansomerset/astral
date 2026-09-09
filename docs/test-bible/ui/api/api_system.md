@@ -165,7 +165,7 @@ Open `GET /api/auth_session_policy` returns non-secret session duration + extend
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Nine sections + labels + soft-fail | `src/ui/api/api_system.py` | **`TestAst1550ReportDiscussionSections`** |
+| Sections + labels + soft-fail (length = hop walk) | `src/ui/api/api_system.py` | **`TestAst1550ReportDiscussionSections`** |
 
 **Broken / obsolete:** none for this endpoint (AST-1253 chain fields unchanged).
 
