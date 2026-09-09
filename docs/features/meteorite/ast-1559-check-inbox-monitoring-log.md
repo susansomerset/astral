@@ -516,3 +516,7 @@ Concrete enough for make-fix; stay inside AST-1608 `## Scope`.
 - Monitoring lines stay always-on info via `log_meteorite_inbox_classify`.
 - AST-1558 AC: Manage Email default filter All; Land disabled without candidate filter; Land POST requires `candidate_id`.
 - Avail remains live message count only — not freq-gated (freq stays AUTO due predicate).
+
+## Radia review — AST-1608
+
+Overall DISCUSS/REVIEW (no fix-now). Plan-faithful Avail live counts + Land→ingest. Discuss-only: per-candidate Avail may re-list Gmail; Land pre-check outcome strings changed for check_inbox parity. Sibling AST-1611 holds [bug-repro]. Clean §3h shortcut → User Testing.
