@@ -1195,7 +1195,8 @@ describe("JobAnalysisReportModal — AST-1421 snapshot Copy", () => {
 describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
   beforeEach(() => mockedApi.mockReset())
 
-  it("Discussion tab shows nine collapsed hop labels from manifest", async () => {
+  it("Discussion tab with empty story shows zero hop headers", async () => {
+    // AST-1612 / AST-1609: default job agent_story empty → 0 Expand buttons.
     installBaseApiMocks(mockedApi, jobHandler("j1551"))
     renderWithProviders(<JobAnalysisReportModal jobId="j1551" onClose={() => {}} />)
     await waitForShell()
@@ -1210,13 +1211,12 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
       "Discussion",
     ])
     await userEvent.click(discussion)
-    expect(screen.getByText("Contemplate Job")).toBeInTheDocument()
-    expect(screen.getByText("Propose Application Responses")).toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: "Expand section" })).toHaveLength(9)
-    expect(screen.queryByRole("button", { name: "Collapse section" })).not.toBeInTheDocument()
+    expect(screen.queryByText("Contemplate Job")).not.toBeInTheDocument()
+    expect(screen.queryByText("Propose Application Responses")).not.toBeInTheDocument()
+    expect(screen.queryAllByRole("button", { name: "Expand section" })).toHaveLength(0)
   })
 
-  it("partial agent_story still nine slots; expand shows RESPONSE body", async () => {
+  it("partial agent_story shows only hops with RESPONSE", async () => {
     installBaseApiMocks(
       mockedApi,
       jobHandler("j1551-partial", {
@@ -1234,8 +1234,9 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j1551-partial" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Discussion" }))
-    expect(screen.getAllByRole("button", { name: "Expand section" })).toHaveLength(9)
-    await userEvent.click(screen.getAllByRole("button", { name: "Expand section" })[0])
+    expect(screen.getAllByRole("button", { name: "Expand section" })).toHaveLength(1)
+    expect(screen.getByText("Contemplate Job")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
     const area = document.querySelector("textarea.entity-story-content") as HTMLTextAreaElement
     expect(area).toBeTruthy()
     expect(area.readOnly).toBe(true)

@@ -3382,16 +3382,16 @@ Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_a
 
 ### AST-1550 · AST-1541
 
-**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`.
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`. **Gap revise:** **AST-1612** (`origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`) — product hop start on **AST-1609**.
 
-Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + public `build_artifacts_discussion_hop_task_keys()` live `run_next` walk from `resume_artifact_chain.first_task_key` (excludes `anticipate_scan`; cycle → `RuntimeError`). Manifest sections + story `task_name`: **`docs/test-bible/ui/api/api_system.md`**, **`docs/test-bible/core/agent.md`**. React pane: sibling AST-1551.
+Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + public `build_artifacts_discussion_hop_task_keys()` live `run_next` walk: starts at the unique live `run_next` parent of `resume_artifact_chain.first_task_key` when exactly one parent exists (today `anticipate_scan`), else at `first_task_key`; cycle → `RuntimeError`. Healthy-chain length is live (~10 when unique parent present), not a hard-coded nine. Manifest sections + story `task_name`: **`docs/test-bible/ui/api/api_system.md`**, **`docs/test-bible/core/agent.md`**. React pane: sibling AST-1551.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Top tabs include Discussion | `src/utils/config.py` | **`TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`**; revised **`TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** |
-| Hop walk / empty start / cycle | same | **`TestAst1550DiscussionHopKeys`** |
+| Hop walk / empty start / cycle / unique parent | same | **`TestAst1550DiscussionHopKeys`** (incl. **`test_hop_walk_unique_parent_includes_anticipate_scan`**) |
 
-**Broken / obsolete:** AST-948 three-tab `report_top_tabs` assert — revised in place for Discussion.
+**Broken / obsolete:** AST-948 three-tab `report_top_tabs` assert — revised in place for Discussion. Pre-AST-1609 “excludes `anticipate_scan`” assert — removed (AST-1612).
 
 **Integration:** none — do not invent.
 
@@ -3412,6 +3412,29 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1612 · AST-1607
+
+**Parent:** [AST-1607](https://linear.app/astralcareermatch/issue/AST-1607/artifacts-discussion-is-incomplete). **Publish:** `origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`. Product: **AST-1609** (`origin/sub/AST-1607/AST-1609-fix-artifacts-discussion-incomplete`).
+
+Test-gap sibling: revise AST-1550 hop-walk coverage for unique-parent start; frontend Discussion filter coverage lives under **`docs/test-bible/frontend/components.md`** § AST-1612.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unique-parent walk includes `anticipate_scan` | `src/utils/config.py` | **`TestAst1550DiscussionHopKeys::test_hop_walk_unique_parent_includes_anticipate_scan`** |
+
+**Broken / obsolete:** `"anticipate_scan" not in keys` on short-chain walk — removed.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys::test_hop_walk_unique_parent_includes_anticipate_scan \
+  -q
+```
+
+**Pass criterion:** pytest green — red on pre-AST-1609 product (walk starts at `first` only).
 
 
 ### AST-1557 · AST-1555

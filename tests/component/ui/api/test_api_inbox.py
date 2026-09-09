@@ -158,9 +158,22 @@ class TestAst1558InboxLandMeteoriteApi:
     def test_land_meteorite_happy_path(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.utils.config import METEORITE_CONFIG
-
-        created = METEORITE_CONFIG["land_outcome_created"]
+        """AST-1611 [bug-repro]: Land → ingest; landable classify+insert counts passed (not failed)."""
+        landable = "single_jd_no_link"
+        ingest = AsyncMock(
+            return_value={
+                "message_id": "m1",
+                "outcome": landable,
+                "astral_candidate_id": "cand-1",
+                "job_count": 1,
+                "error": None,
+            }
+        )
+        # raising=False: attribute absent until AST-1608 make-fix lands ingest helper
+        monkeypatch.setattr(
+            "src.core.meteorite.ingest_candidate_email_message", ingest, raising=False
+        )
+        # Pre-fix path still classifies via stage_meteorite; landable must not stay total_failed
         monkeypatch.setattr(
             inbox_mod,
             "get_message_html",
@@ -178,8 +191,9 @@ class TestAst1558InboxLandMeteoriteApi:
         stage = AsyncMock(
             return_value={
                 "skipped": False,
-                "outcome": created,
-                "land": {"outcome": created, "error": None},
+                "outcome": landable,
+                "jobs": [{"jd_text": "enough text for a scrap"}],
+                "error": None,
             }
         )
         monkeypatch.setattr("src.core.meteorite.stage_meteorite", stage)
@@ -194,26 +208,42 @@ class TestAst1558InboxLandMeteoriteApi:
         assert body["total_processed"] == 1
         assert body["total_passed"] == 1
         assert body["total_failed"] == 0
-        assert body["total_skipped"] == 0
         assert body["results"][0]["message_id"] == "m1"
-        assert body["results"][0]["outcome"] == created
+        assert body["results"][0]["outcome"] == landable
         assert body["results"][0]["astral_candidate_id"] == "cand-1"
-        stage.assert_awaited_once()
+        assert body["results"][0].get("error") in (None, "")
+        ingest.assert_awaited_once()
+        assert ingest.await_args.args[:2] == ("cand-1", "m1")
+        stage.assert_not_awaited()
 
     def test_land_meteorite_passes_debug(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.utils.config import METEORITE_CONFIG
-
-        created = METEORITE_CONFIG["land_outcome_created"]
+        ingest = AsyncMock(
+            return_value={
+                "message_id": "m1",
+                "outcome": "already_ingested",
+                "astral_candidate_id": "cand-1",
+                "job_count": 0,
+                "error": None,
+            }
+        )
+        monkeypatch.setattr(
+            "src.core.meteorite.ingest_candidate_email_message", ingest, raising=False
+        )
         monkeypatch.setattr(
             inbox_mod,
             "get_message_html",
             MagicMock(return_value={"subject": "S", "html_body": "<p>x</p>", "from_address": "a"}),
         )
         monkeypatch.setattr(inbox_mod, "strip_extract_email_html", MagicMock(return_value="<p>x</p>"))
-        stage = AsyncMock(return_value={"skipped": False, "outcome": created, "land": {}})
-        monkeypatch.setattr("src.core.meteorite.stage_meteorite", stage)
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        skip = STAGE_METEORITE_CONFIG["skip_outcomes"][0]
+        monkeypatch.setattr(
+            "src.core.meteorite.stage_meteorite",
+            AsyncMock(return_value={"skipped": True, "outcome": skip, "jobs": [], "error": None}),
+        )
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=True))
         resp = inbox_client.post(
             "/api/admin/inbox/land-meteorite?debug=1",
@@ -221,7 +251,10 @@ class TestAst1558InboxLandMeteoriteApi:
             json={"message_ids": ["m1"], "candidate_id": "cand-1", "debug": True},
         )
         assert resp.status_code == 200
-        assert stage.await_args.kwargs["debug"] is True
+        body = resp.get_json()
+        assert body["total_passed"] == 1
+        ingest.assert_awaited_once()
+        assert ingest.await_args.kwargs.get("debug") is True
 
     def test_land_meteorite_rejects_non_list_400(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str]
@@ -259,6 +292,13 @@ class TestAst1558InboxLandMeteoriteApi:
     def test_land_meteorite_upstream_502(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        boom = RuntimeError("core boom")
+        monkeypatch.setattr(
+            "src.core.meteorite.ingest_candidate_email_message",
+            AsyncMock(side_effect=boom),
+            raising=False,
+        )
+        # Pre-fix still goes through get_html + stage_meteorite
         monkeypatch.setattr(
             inbox_mod,
             "get_message_html",
@@ -267,7 +307,7 @@ class TestAst1558InboxLandMeteoriteApi:
         monkeypatch.setattr(inbox_mod, "strip_extract_email_html", MagicMock(return_value="<p>x</p>"))
         monkeypatch.setattr(
             "src.core.meteorite.stage_meteorite",
-            AsyncMock(side_effect=RuntimeError("core boom")),
+            AsyncMock(side_effect=boom),
         )
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
         warn = MagicMock()

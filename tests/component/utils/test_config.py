@@ -5316,7 +5316,7 @@ class TestAst1550DiscussionHopKeys:
     def test_hop_walk_follows_run_next(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        # Short chain starting at resume_artifact_chain.first_task_key.
+        # Short chain: zero parents of first → start remains first_task_key (AST-1609).
         first = (cfg.BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key")
         assert first == "contemplate_job"
         nxt = {
@@ -5334,7 +5334,28 @@ class TestAst1550DiscussionHopKeys:
             "draft_job_resume",
             "propose_application_responses",
         ]
-        assert "anticipate_scan" not in keys
+
+    def test_hop_walk_unique_parent_includes_anticipate_scan(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-1612 / AST-1609: unique live run_next parent of first → walk starts there.
+        first = (cfg.BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key")
+        assert first == "contemplate_job"
+        assert "anticipate_scan" in cfg.TASK_CONFIG
+        nxt = {
+            "anticipate_scan": "contemplate_job",
+            "contemplate_job": "draft_job_resume",
+            "draft_job_resume": "",
+        }
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": nxt.get(tk, "")},
+        )
+        keys = cfg.build_artifacts_discussion_hop_task_keys()
+        assert keys[0] == "anticipate_scan"
+        assert keys[1] == "contemplate_job"
+        assert "draft_job_resume" in keys
+        assert len(keys) >= 2
 
     def test_hop_walk_empty_first_returns_empty(
         self, monkeypatch: pytest.MonkeyPatch,
