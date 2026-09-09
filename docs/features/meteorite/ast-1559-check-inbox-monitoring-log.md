@@ -444,3 +444,75 @@ Radia **DISCUSS** @ `c8e5506a` — no fix-now product findings on AST-1559 footp
 
 **Manifest:** Betty §QA test manifest re-run green before User Testing.
 
+
+## Bug: AST-1608 — meteorite_email bound messages / Manage Email Land error
+
+Orphaned fix child of mini-parent [AST-1606](https://linear.app/astralcareermatch/issue/AST-1606/meteorite-email-is-not-recognizing-bound-messages). Related ancestor epic AST-1555 (not Linear `parentId`). Publish ref: `sub/AST-1606/AST-1608-fix-meteorite-email-bound-messages`.
+
+**Doc note:** Mailbox Avail / `check_inbox` eligibility is this file’s deferred gap (Radia discuss → resolve deferred). Manage Email Land lives on AST-1558 (`api_inbox` + `AdminManageEmail`); both halves are in AST-1608 `## Scope`, so this bug block owns the full delta. Chuckles: if you want a pointer section on `ast-1558-*.md`, add it — do not split into a new plan doc.
+
+### As-is
+
+Scheduled Actions shows no available work for `meteorite_email` (Avail `—` / zero) even when the candidate has inbox mail that Manage Email can list under that candidate filter. Manage Email **Land Meteorite** surfaces a failure-looking result, and Execution History has no row to inspect.
+
+### To-be
+
+`meteorite_email` Avail (and AUTO due) equals the live alias-filtered inbox count for that candidate; Click/`check_inbox` still processes those messages. Manage Email Land, with a candidate filter selected, either inserts staging `meteorite` rows (same fan-out/archive contract as `check_inbox`) or returns a per-message result that includes a concrete `error` string in the page — without requiring a dispatcher Execution History row (Land is not a dispatch run).
+
+### Repro
+
+1. **Avail:** Candidate with at least one Gmail INBOX message whose From or To matches `email_aliases_for_candidate(cid)`. Open Admin → Scheduled Actions (default Avail > 0). Observe `meteorite_email` for that candidate: Avail is `—`/0 (row may be hidden under gt0). `count_inbox_messages_bound_to_candidate(cid)` returns `0` while `len(fetch_candidate_email(email_aliases_for_candidate(cid)))` is ≥ 1.
+2. **Land:** Manage Email → select that candidate filter → select a matching message → Land Meteorite. Response is HTTP 200 with `total_failed ≥ 1` for a landable classify outcome such as `single_jd_no_link` (or a real classify `error` with no `error` field on the result row). Toast reads like a failure; Admin → Execution History has no matching batch for the Land click.
+
+### Root cause
+
+1. **Avail (primary mailbox symptom):** `count_inbox_bound_by_candidate` / `count_inbox_messages_bound_to_candidate` are still AST-1558 stubs (`{}` / `0`) that AST-1559 explicitly deferred. `list_dtasks`, `run_task` enrichment, and `_meteorite_email_due_tasks` all stamp Avail from those stubs, so the shell never reports work even though `check_inbox` → `fetch_candidate_email` would see messages. `always_visible_under_avail_gt0_dispatch_task_keys` is empty, so zero-Avail rows also hide under the default Scheduled Actions filter.
+2. **Land:** AST-1560 made public `stage_meteorite` **classify-only** (returns stage outcomes + `jobs[]`, no scrap map / no `insert_meteorite_rows`). AST-1558 `inbox_land_meteorite` still calls that API and scores “passed” only for legacy land outcomes (`created` / `duplicate_skip` / `superseded`) or skip outcomes — so a successful landable classify (`single_jd_no_link`, etc.) increments `total_failed`. Result rows omit `stage["error"]`. Land never goes through the dispatcher, so Execution History is empty by design — the bug is the missing staging ingress + opaque failure surface, not a missing ledger write.
+
+### Proposed change
+
+Concrete enough for make-fix; stay inside AST-1608 `## Scope`.
+
+#### A. Wire live Avail counts (`src/core/inbox.py`; callers already correct)
+
+1. Add a private helper (or extend `fetch_candidate_email`) that filters an **already-fetched** `list[dict]` of inbox messages by alias set (same From-or-To `getaddresses` / casefold rules as today) so batch counting does not re-list Gmail once per candidate.
+2. Replace `count_inbox_messages_bound_to_candidate(candidate_id)`:
+   - blank `candidate_id` → `0`
+   - `aliases = email_aliases_for_candidate(cid)` (import from `src.core.candidate`)
+   - return `len(fetch_candidate_email(aliases, debug=debug))` (or the in-memory filter over one shared list when called from the map helper)
+3. Replace `count_inbox_bound_by_candidate()`:
+   - One `list_inbox_messages(debug=debug)`
+   - Collect distinct non-empty `candidate_id`s from `database.list_dispatch_tasks()` where `is_meteorite_email_mailbox_task_key(task_key)` (late-import `database` + config helper — core→data is allowed; do not invent a new admin API)
+   - For each cid: aliases → in-memory filter → `counts[cid] = n` (omit or store `0` only if a mailbox row exists — callers use `.get(cid, 0)`)
+   - Do **not** fold `freq_hrs` into Avail (AST-1135 invariant)
+4. Update stub docstrings to describe live alias eligibility (drop “until AST-1559”).
+5. **No** `dispatcher.py` / `api_admin.py` Avail branch rewrite unless a call site still assumes bind/`candidate_match` — today’s call sites already consume the map/`int` return shape.
+
+#### B. Manage Email Land → same ingress as `check_inbox` (`src/core/meteorite.py`, `src/ui/api/api_inbox.py`, `AdminManageEmail.tsx`)
+
+1. In `meteorite.py`, extract the per-message body of `check_inbox` (dedup → html/strip → `invoke_stage_meteorite` → skip / map+`insert_meteorite_rows` / classify-fail → archive rules + `log_meteorite_inbox_classify`) into a public async helper, e.g. `ingest_candidate_email_message(candidate_id, message_id, *, debug=False) -> dict` that returns a Land-shaped row: at minimum `message_id`, `outcome`, `astral_candidate_id`, optional `error`, optional `job_count` / inserted ids. Preserve exact archive / monitoring / zero-row-on-classify-fail behavior from Stage 3 of this plan.
+2. Refactor `check_inbox` to: resolve aliases → `fetch_candidate_email` → loop `await ingest_candidate_email_message(...)` → stamp `update_candidate_last_email_check` → return the same summary counters (map helper outcomes into processed/passed/errors the same way as today).
+3. Rewrite `inbox_land_meteorite` to require `candidate_id` + `message_ids` as today, then for each mid `await ingest_candidate_email_message(cid, mid, debug=debug)` (single `asyncio.run` wrapper). **Stop** calling public classify-only `stage_meteorite` for this path. Pass counting: treat skip outcomes + `already_ingested` + successful insert (`job_count > 0` or landable outcome after insert) as passed; classify/map/`error` outcomes as failed/errors; always include `error` on the result when present.
+4. In `AdminManageEmail.tsx`: show `row.error` next to the outcome when present; if `!r.ok` keep current `landError` + error toast; if `r.ok` but `total_failed + total_errors > 0`, use toast `variant: "error"` (not success). Do **not** invent a fake Execution History row — surface the API error on the page.
+
+#### C. Out of scope / non-goals
+
+- Do not reopen AST-1555 children or delete `meteorite_email.py`.
+- Do not change dispatch transition runners (`run_stage_meteorite` / scrape / land) or force Manage Email Land through the dispatcher ledger.
+- Do not touch `candidate.py` unless repro shows empty aliases while Manage Email candidate filter still lists mail (then fix `email_aliases_for_candidate` / path config — only if proven).
+
+### Blast radius
+
+- Scheduled Actions Avail + AUTO `_meteorite_email_due_tasks` start reflecting real Gmail load (Gmail list once per admin poll / tick) — watch rate limits; same list cost as Manage Email All.
+- `check_inbox` behavior must stay AC-identical after extract (Betty AST-1559 check_inbox tests).
+- Manage Email Land now creates `meteorite` NEW rows + may archive Gmail (parity with mailbox) — operators who used Land as “classify preview” will see real ingress.
+- AST-1558 Vitest / api_inbox tests that assert Land → `stage_meteorite` mocks need Betty revision (fix-board / qa-fix).
+- Public `stage_meteorite` remains classify-only for any other callers (`create_contact_meteorite` / paste paths per AST-1560).
+
+### What must still hold
+
+- AST-1559 AC1/AC3: classify success → N `meteorite` rows + archive; classify LLM failure → zero rows, mid stays in INBOX; skip → zero rows + monitoring + archive; dedup via `list_meteorites_by_source` skips re-classify.
+- No `src.external.gmail` import in `meteorite.py`; inbox owns Gmail I/O.
+- Monitoring lines stay always-on info via `log_meteorite_inbox_classify`.
+- AST-1558 AC: Manage Email default filter All; Land disabled without candidate filter; Land POST requires `candidate_id`.
+- Avail remains live message count only — not freq-gated (freq stays AUTO due predicate).
