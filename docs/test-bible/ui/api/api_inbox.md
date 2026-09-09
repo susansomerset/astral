@@ -151,7 +151,7 @@ Board REVISE: `TestAst1558InboxLandMeteoriteApi` asserted Land→`stage_meteorit
 | --- | --- | --- |
 | Land → ingest; landable insert passes | `src/ui/api/api_inbox.py` | **`[bug-repro]`** `TestAst1558InboxLandMeteoriteApi::test_land_meteorite_happy_path` |
 | Land debug → ingest(`debug=True`) | same | revised **`…::test_land_meteorite_passes_debug`** |
-| Land upstream 502 | same | revised **`…::test_land_meteorite_upstream_502`** (ingest + legacy stage dual-mock) |
+| Land upstream 502 | same | revised **`…::test_land_meteorite_upstream_502`** (ingest boom only; no get_html/strip) |
 
 **Broken / obsolete this pass:** Land assertions that `stage_meteorite` is the Land entrypoint / that legacy `created` land outcomes are the only pass path.
 

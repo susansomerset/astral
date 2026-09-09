@@ -869,6 +869,216 @@ def _monitor_message_fields(msg: dict, payload: dict | None = None) -> dict[str,
     }
 
 
+async def ingest_candidate_email_message(
+    candidate_id: str,
+    message_id: str,
+    *,
+    debug: bool = False,
+    msg: dict | None = None,
+    index: int = 1,
+    total: int = 1,
+) -> dict[str, Any]:
+    """One mid: dedup → classify → fan-out/skip → archive (shared by check_inbox + Land).
+
+    Returns Land-shaped row: message_id, outcome, astral_candidate_id, optional error /
+    job_count / inserted_ids, plus counter passed|error for mailbox rollup.
+    """
+    err_key = METEORITE_CONFIG["land_outcome_error"]
+    already = METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
+    cid = str(candidate_id or "").strip()
+    mid = str(message_id or "").strip()
+    base_msg = dict(msg) if isinstance(msg, dict) else {"id": mid}
+    if mid and not base_msg.get("id"):
+        base_msg["id"] = mid
+
+    def _row(
+        outcome: str,
+        *,
+        counter: str,
+        error: str | None = None,
+        job_count: int = 0,
+        inserted_ids: list | None = None,
+    ) -> dict[str, Any]:
+        out: dict[str, Any] = {
+            "message_id": mid,
+            "outcome": outcome,
+            "astral_candidate_id": cid,
+            "job_count": job_count,
+            "counter": counter,
+        }
+        if error:
+            out["error"] = error
+        if inserted_ids is not None:
+            out["inserted_ids"] = inserted_ids
+        return out
+
+    if not cid:
+        return _row(err_key, counter="error", error="candidate_id is required")
+    if not mid:
+        return _row(err_key, counter="error", error="message_id is required")
+
+    monitor_base = _monitor_message_fields(base_msg)
+    try:
+        _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="found")
+        _check_inbox_detail(debug, f"from_address={monitor_base['from_address'][:120]}")
+
+        existing = list_meteorites_by_source("email", mid)
+        if existing:
+            log_meteorite_inbox_classify(
+                **monitor_base,
+                candidate_id=cid,
+                classify_outcome=already,
+                job_count=len(existing),
+            )
+            try:
+                archive_candidate_email(mid)
+                _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="archived")
+                return _row(already, counter="passed", job_count=len(existing))
+            except Exception as exc:
+                _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="error")
+                _check_inbox_detail(debug, f"archive_error={type(exc).__name__}")
+                return _row(
+                    already,
+                    counter="error",
+                    error=str(exc),
+                    job_count=len(existing),
+                )
+
+        payload = get_message_html(mid)
+        monitor_base = _monitor_message_fields(base_msg, payload)
+        blob = strip_extract_email_html(
+            payload.get("subject") or "",
+            payload.get("html_body") or "",
+            from_address=payload.get("from_address") or "",
+            to_address=payload.get("to_address") or "",
+            date=payload.get("date") or "",
+        )
+
+        cand = get_candidate(cid)
+        ctx = dict(cand) if isinstance(cand, dict) else {}
+        ctx["astral_candidate_id"] = cid
+        # Late-import: consult loads is_meteorite_company at module top.
+        from src.core.consult import invoke_stage_meteorite
+
+        invoke = await invoke_stage_meteorite(
+            cid,
+            blob,
+            source_kind="email",
+            source_id=mid,
+            ctx=ctx,
+            debug=debug,
+        )
+
+        if not invoke.get("success"):
+            log_meteorite_inbox_classify(
+                **monitor_base,
+                candidate_id=cid,
+                classify_outcome="classify_failed",
+                job_count=0,
+            )
+            _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="error")
+            _check_inbox_detail(debug, f"classify_error={invoke.get('error')!r}")
+            return _row(
+                err_key,
+                counter="error",
+                error=str(invoke.get("error") or "classify_failed"),
+            )
+
+        stage_outcome = invoke["outcome"]
+        if stage_outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+            log_meteorite_inbox_classify(
+                **monitor_base,
+                candidate_id=cid,
+                classify_outcome=str(stage_outcome),
+                job_count=0,
+            )
+            try:
+                archive_candidate_email(mid)
+                _check_inbox_dbg(
+                    debug, index=index, total=total, mid=mid, outcome=str(stage_outcome)
+                )
+                return _row(str(stage_outcome), counter="passed")
+            except Exception as exc:
+                _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="error")
+                _check_inbox_detail(debug, f"archive_error={type(exc).__name__}")
+                return _row(str(stage_outcome), counter="error", error=str(exc))
+
+        row_dicts, map_err = _map_classify_jobs_to_meteorite_rows(
+            stage_outcome,
+            invoke.get("jobs") or [],
+            candidate_id=cid,
+            source_kind="email",
+            source_id=mid,
+        )
+        if map_err:
+            log_meteorite_inbox_classify(
+                **monitor_base,
+                candidate_id=cid,
+                classify_outcome="map_failed",
+                job_count=0,
+            )
+            _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="error")
+            _check_inbox_detail(debug, f"map_error={map_err!r}")
+            return _row(err_key, counter="error", error=str(map_err))
+
+        job_list = invoke.get("jobs") or []
+        ids = insert_meteorite_rows(row_dicts)
+        if len(ids) != len(row_dicts) or len(row_dicts) != len(job_list):
+            log_meteorite_inbox_classify(
+                **monitor_base,
+                candidate_id=cid,
+                classify_outcome="map_failed",
+                job_count=0,
+            )
+            _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="error")
+            _check_inbox_detail(
+                debug,
+                f"insert_count_mismatch ids={len(ids)} rows={len(row_dicts)} jobs={len(job_list)}",
+            )
+            return _row(
+                err_key,
+                counter="error",
+                error=(
+                    f"insert_count_mismatch ids={len(ids)} "
+                    f"rows={len(row_dicts)} jobs={len(job_list)}"
+                ),
+            )
+
+        log_meteorite_inbox_classify(
+            **monitor_base,
+            candidate_id=cid,
+            classify_outcome=str(stage_outcome),
+            job_count=len(ids),
+        )
+        try:
+            archive_candidate_email(mid)
+            _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="archived")
+            _check_inbox_detail(debug, f"inserted={len(ids)} outcome={stage_outcome!r}")
+            return _row(
+                str(stage_outcome),
+                counter="passed",
+                job_count=len(ids),
+                inserted_ids=ids,
+            )
+        except Exception as exc:
+            _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="error")
+            _check_inbox_detail(debug, f"archive_error={type(exc).__name__}")
+            return _row(
+                str(stage_outcome),
+                counter="error",
+                error=str(exc),
+                job_count=len(ids),
+                inserted_ids=ids,
+            )
+
+    except Exception as exc:
+        _check_inbox_dbg(debug, index=index, total=total, mid=mid, outcome="error")
+        _check_inbox_detail(debug, f"message_error={type(exc).__name__}: {exc}")
+        for line in truncate_debug_content(str(exc)):
+            _check_inbox_detail(debug, line)
+        return _row(err_key, counter="error", error=str(exc))
+
+
 async def check_inbox(task: dict, *, debug: bool = False) -> dict[str, int]:
     """Candidate-bound mailbox: aliases → fetch → classify → fan-out → archive."""
     cid = str((task or {}).get("candidate_id") or "").strip()
@@ -889,152 +1099,14 @@ async def check_inbox(task: dict, *, debug: bool = False) -> dict[str, int]:
 
     for i, msg in enumerate(messages, start=1):
         mid = msg.get("id") or ""
-        monitor_base = _monitor_message_fields(msg)
-        try:
-            _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="found")
-            _check_inbox_detail(debug, f"from_address={monitor_base['from_address'][:120]}")
-
-            existing = list_meteorites_by_source("email", mid)
-            if existing:
-                log_meteorite_inbox_classify(
-                    **monitor_base,
-                    candidate_id=cid,
-                    classify_outcome=METEORITE_MONITORING_CONFIG["outcome_already_ingested"],
-                    job_count=len(existing),
-                )
-                try:
-                    archive_candidate_email(mid)
-                    processed += 1
-                    passed += 1
-                    _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="archived")
-                except Exception as exc:
-                    errors += 1
-                    processed += 1
-                    _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="error")
-                    _check_inbox_detail(debug, f"archive_error={type(exc).__name__}")
-                continue
-
-            payload = get_message_html(mid)
-            monitor_base = _monitor_message_fields(msg, payload)
-            blob = strip_extract_email_html(
-                payload.get("subject") or "",
-                payload.get("html_body") or "",
-                from_address=payload.get("from_address") or "",
-                to_address=payload.get("to_address") or "",
-                date=payload.get("date") or "",
-            )
-
-            cand = get_candidate(cid)
-            ctx = dict(cand) if isinstance(cand, dict) else {}
-            ctx["astral_candidate_id"] = cid
-            # Late-import: consult loads is_meteorite_company at module top.
-            from src.core.consult import invoke_stage_meteorite
-
-            invoke = await invoke_stage_meteorite(
-                cid,
-                blob,
-                source_kind="email",
-                source_id=mid,
-                ctx=ctx,
-                debug=debug,
-            )
-
-            if not invoke.get("success"):
-                log_meteorite_inbox_classify(
-                    **monitor_base,
-                    candidate_id=cid,
-                    classify_outcome="classify_failed",
-                    job_count=0,
-                )
-                errors += 1
-                processed += 1
-                _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="error")
-                _check_inbox_detail(debug, f"classify_error={invoke.get('error')!r}")
-                continue
-
-            stage_outcome = invoke["outcome"]
-            if stage_outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-                log_meteorite_inbox_classify(
-                    **monitor_base,
-                    candidate_id=cid,
-                    classify_outcome=str(stage_outcome),
-                    job_count=0,
-                )
-                try:
-                    archive_candidate_email(mid)
-                    processed += 1
-                    passed += 1
-                    _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome=str(stage_outcome))
-                except Exception as exc:
-                    errors += 1
-                    processed += 1
-                    _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="error")
-                    _check_inbox_detail(debug, f"archive_error={type(exc).__name__}")
-                continue
-
-            row_dicts, map_err = _map_classify_jobs_to_meteorite_rows(
-                stage_outcome,
-                invoke.get("jobs") or [],
-                candidate_id=cid,
-                source_kind="email",
-                source_id=mid,
-            )
-            if map_err:
-                log_meteorite_inbox_classify(
-                    **monitor_base,
-                    candidate_id=cid,
-                    classify_outcome="map_failed",
-                    job_count=0,
-                )
-                errors += 1
-                processed += 1
-                _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="error")
-                _check_inbox_detail(debug, f"map_error={map_err!r}")
-                continue
-
-            job_list = invoke.get("jobs") or []
-            ids = insert_meteorite_rows(row_dicts)
-            if len(ids) != len(row_dicts) or len(row_dicts) != len(job_list):
-                log_meteorite_inbox_classify(
-                    **monitor_base,
-                    candidate_id=cid,
-                    classify_outcome="map_failed",
-                    job_count=0,
-                )
-                errors += 1
-                processed += 1
-                _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="error")
-                _check_inbox_detail(
-                    debug,
-                    f"insert_count_mismatch ids={len(ids)} rows={len(row_dicts)} jobs={len(job_list)}",
-                )
-                continue
-
-            log_meteorite_inbox_classify(
-                **monitor_base,
-                candidate_id=cid,
-                classify_outcome=str(stage_outcome),
-                job_count=len(ids),
-            )
-            try:
-                archive_candidate_email(mid)
-                processed += 1
-                passed += 1
-                _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="archived")
-                _check_inbox_detail(debug, f"inserted={len(ids)} outcome={stage_outcome!r}")
-            except Exception as exc:
-                errors += 1
-                processed += 1
-                _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="error")
-                _check_inbox_detail(debug, f"archive_error={type(exc).__name__}")
-
-        except Exception as exc:
+        row = await ingest_candidate_email_message(
+            cid, mid, debug=debug, msg=msg, index=i, total=n,
+        )
+        processed += 1
+        if row.get("counter") == "passed":
+            passed += 1
+        else:
             errors += 1
-            processed += 1
-            _check_inbox_dbg(debug, index=i, total=n, mid=mid, outcome="error")
-            _check_inbox_detail(debug, f"message_error={type(exc).__name__}: {exc}")
-            for line in truncate_debug_content(str(exc)):
-                _check_inbox_detail(debug, line)
 
     update_candidate_last_email_check(cid)
     if debug:

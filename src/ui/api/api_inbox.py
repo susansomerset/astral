@@ -1,8 +1,9 @@
-"""Manage Email admin API (AST-1558).
+"""Manage Email admin API (AST-1558 / AST-1608).
 
 List is All (`list_inbox_messages`) or candidate-scoped (aliases →
 `fetch_candidate_email`). Land requires `candidate_id` and calls
-`stage_meteorite` (meteorite ingress). No bind enrichment; no create-job.
+`ingest_candidate_email_message` (same fan-out/archive as check_inbox).
+No bind enrichment; no create-job.
 """
 
 from __future__ import annotations
@@ -16,14 +17,12 @@ from ui.auth import require_admin
 from src.core.candidate import get_candidate
 from src.core.inbox import (
     fetch_candidate_email,
-    get_message_html,
     get_message_with_assembled_html,
     list_inbox_messages,
-    strip_extract_email_html,
 )
 from src.utils.config import (
     CANDIDATE_LOOKUP_CONFIG,
-    METEORITE_CONFIG,
+    METEORITE_MONITORING_CONFIG,
     STAGE_METEORITE_CONFIG,
 )
 from src.utils.deploy_status import ui_llm_debug
@@ -161,84 +160,52 @@ def inbox_land_meteorite():
     )
     debug = ui_llm_debug(explicit_debug=explicit)
 
-    skip_missing = "skipped-not-in-inbox"
-    created_k = METEORITE_CONFIG["land_outcome_created"]
-    skip_k = METEORITE_CONFIG["land_outcome_duplicate_skip"]
-    super_k = METEORITE_CONFIG["land_outcome_superseded"]
-    err_k = METEORITE_CONFIG["land_outcome_error"]
-    skip_outcomes = STAGE_METEORITE_CONFIG["skip_outcomes"]
+    already = METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
+    skip_outcomes = set(STAGE_METEORITE_CONFIG["skip_outcomes"])
+    landable = set(STAGE_METEORITE_CONFIG["landable_outcomes"])
 
     async def _land_all() -> dict:
-        from src.core.meteorite import stage_meteorite
+        from src.core.meteorite import ingest_candidate_email_message
 
         results: list[dict] = []
         total_processed = total_passed = total_failed = total_errors = total_skipped = 0
-        for mid in message_ids:
-            try:
-                payload = get_message_html(mid)
-            except Exception as e:
-                results.append(
-                    {
-                        "message_id": mid,
-                        "outcome": skip_missing,
-                        "astral_candidate_id": cid,
-                        "error": str(e),
-                    }
-                )
-                total_skipped += 1
-                total_processed += 1
-                continue
-
-            html = strip_extract_email_html(
-                payload.get("subject") or "",
-                payload.get("html_body") or "",
-                from_address=payload.get("from_address") or "",
-                to_address=payload.get("to_address") or "",
-                date=payload.get("date") or "",
+        n = len(message_ids)
+        for i, mid in enumerate(message_ids, start=1):
+            row = await ingest_candidate_email_message(
+                cid, mid, debug=debug, index=i, total=n,
             )
-            if not html.strip():
-                results.append(
-                    {
-                        "message_id": mid,
-                        "outcome": err_k,
-                        "astral_candidate_id": cid,
-                        "error": "stripped email HTML is empty",
-                    }
-                )
-                total_failed += 1
-                total_errors += 1
-                total_processed += 1
-                continue
-
-            stage = await stage_meteorite(
-                cid,
-                html,
-                source_kind="email",
-                source_id=mid,
-                debug=debug,
-            )
-            land_outcome = stage.get("outcome") or err_k
-            results.append(
-                {
-                    "message_id": mid,
-                    "outcome": land_outcome,
-                    "astral_candidate_id": cid,
-                    "land": stage.get("land"),
-                }
-            )
+            outcome = str(row.get("outcome") or "")
+            job_count = int(row.get("job_count") or 0)
+            public = {
+                "message_id": row.get("message_id") or mid,
+                "outcome": outcome,
+                "astral_candidate_id": row.get("astral_candidate_id") or cid,
+                "job_count": job_count,
+            }
+            if row.get("error"):
+                public["error"] = str(row["error"])
+            results.append(public)
             total_processed += 1
-            if (
-                stage.get("skipped")
-                or land_outcome in skip_outcomes
-                or land_outcome in (created_k, skip_k, super_k)
-            ):
+            # Prefer ingest counter; else public shape (skip / already / landable+jobs).
+            counter = row.get("counter")
+            if counter == "error":
+                is_passed = False
+            elif counter == "passed":
+                is_passed = True
+            else:
+                is_passed = (
+                    outcome in skip_outcomes
+                    or outcome == already
+                    or (outcome in landable and job_count > 0)
+                )
+            if is_passed:
                 total_passed += 1
-            elif land_outcome == err_k:
-                total_failed += 1
-                if stage.get("error"):
-                    total_errors += 1
+                if outcome in skip_outcomes or outcome == already:
+                    total_skipped += 1
             else:
                 total_failed += 1
+                if row.get("error"):
+                    total_errors += 1
 
         return {
             "results": results,
