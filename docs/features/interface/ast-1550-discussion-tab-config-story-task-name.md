@@ -399,3 +399,88 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1551 | sub/AST-1541/AST-1551-discussion-pane-recommended-job-report |
 
 **Epic worktree:** `astral-AST-1541/` — one active sub checked out at a time.
+
+---
+
+## Bug: AST-1612 — gap revise discussion tests (anticipate_scan + empty headers)
+
+Sibling **gap** child of AST-1607 from `[board-betty] TESTS: REVISE` on **AST-1609**. Product hop-walk / pane filter lands on AST-1609; this ticket owns bible + component-test revision only (no `src/` product edits).
+
+### As-is
+
+`TestAst1550DiscussionHopKeys::test_hop_walk_follows_run_next` asserts `"anticipate_scan" not in keys`. Bible `docs/test-bible/utils/config.md` § AST-1550 documents the walk as excluding `anticipate_scan`. Frontend: `test_JobDiscussionPane` “renders nine collapsed sections…” and JAR “Discussion tab shows nine collapsed hop labels…” / “partial agent_story still nine slots…” assert nine headers when `agentStory` is empty or partial. Bible § AST-1551 says empty hops stay panels.
+
+### To-be
+
+Tests and bible match AST-1609: unique-parent walk can include `anticipate_scan` (~10 keys when that parent’s `run_next` points at `first_task_key`); Discussion headers only for hops with non-empty RESPONSE — `agentStory=[]` → **0** headers; coverage when story has `anticipate_scan` RESPONSE.
+
+### Repro
+
+Against AST-1609 product (unique-parent start + pane filter):
+
+1. `TestAst1550DiscussionHopKeys::test_hop_walk_follows_run_next` — the `"anticipate_scan" not in keys` line is obsolete as a product invariant (short-chain monkeypatch with no unique parent still omits it by accident; need an explicit unique-parent case that **includes** it).
+2. `JobDiscussionPane — AST-1551` / JAR Discussion tab — empty or partial story still expects length-9 Expand buttons → fail once headers are filtered.
+
+### Root cause
+
+AST-1550/1551 tests and bible locked the original “start at `first_task_key`, always nine empty-capable panels” contract. AST-1609 changed both behaviors; Betty’s board REVISE flags the obsolete asserts / missing coverage.
+
+### Proposed change
+
+**Scope gate (this ticket only):** bible + tests. No `src/utils/config.py`, no `JobDiscussionPane.tsx` product edits (those are AST-1609).
+
+**`docs/test-bible/utils/config.md` § AST-1550**
+
+1. Rewrite the hop-walk blurb: walk begins at the unique live `run_next` parent of `resume_artifact_chain.first_task_key` when exactly one parent exists (today `anticipate_scan`), else at `first_task_key`; cycle → `RuntimeError`. Drop “excludes `anticipate_scan`.”
+2. Note healthy-chain length is live (~10 when unique parent present), not a hard-coded nine.
+3. Keep existing QA manifest paths; add the new unique-parent test name once landed.
+
+**`docs/test-bible/frontend/components.md` § AST-1551**
+
+1. Replace “empty hops stay panels” / “nine-hop stack” visibility language with: pane filters to sections with non-empty RESPONSE; empty `agentStory` → **0** headers.
+2. Document coverage for `anticipate_scan` when story has RESPONSE (section present in passed `sections` + matching story entry).
+3. JAR: Discussion header count follows filtered pane, not raw `report_discussion_sections.length`.
+4. Clear the obsolete “Product gap (empty RESPONSE)” note if that fix already shipped; do not reintroduce it as open.
+
+**`tests/component/utils/test_config.py` — `TestAst1550DiscussionHopKeys`**
+
+1. In `test_hop_walk_follows_run_next`: **remove** `assert "anticipate_scan" not in keys` (or replace with a comment that this monkeypatch has zero parents of `first`, so start remains `contemplate_job` — do not treat exclusion as the AST-1609 contract).
+2. **Add** `test_hop_walk_unique_parent_includes_anticipate_scan` (name flexible): monkeypatch `get_agent_task` so exactly one parent has `run_next == first_task_key` (use live parent key from DB/TASK_CONFIG — typically `anticipate_scan` — without hardcoding a parallel hop list for the whole chain). Assert walk **starts** with that parent, then continues through `first` via `run_next`. Optionally assert length ≥ 2.
+3. Leave empty-first / cycle tests intact unless they break under the new start rule.
+
+**`tests/component/ui/api/test_api_system.py` — `TestAst1550ReportDiscussionSections`**
+
+- Keep soft-fail + attach-shape tests. If any assert hard-codes “product walk excludes anticipate_scan” or forces live length==9 without mocking the helper, revise to mock the helper (current `_NINE` mock pattern is fine) or accept live unique-parent length. Do not invent product changes.
+
+**`tests/component/frontend/components/test_JobDiscussionPane.test.tsx`**
+
+1. Revise “renders nine collapsed sections from manifest labels” → empty `agentStory={[]}` expects **0** Expand-section buttons and **no** hop `nav_label` text from the passed catalog (or rename to “hides all headers when agentStory is empty”).
+2. Revise “missing hop stays empty after expand” — with filter, a missing/empty hop is **not rendered**; assert the hop label is absent (no Expand click). Drop or rewrite the expand-empty-body case.
+3. **Add** coverage: `sections` includes an `anticipate_scan` def + `agentStory` with non-empty RESPONSE for `anticipate_scan` → exactly that header appears and expand shows the body.
+4. Keep RESPONSE-only / JSON / `RESPONSE (2)` / empty-RESPONSE-skip cases; adjust section counts to the filtered set (e.g. one section with story → length 1).
+
+**`tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — AST-1551 Discussion tab**
+
+1. “Discussion tab shows nine collapsed hop labels…” — with default job `agent_story` empty/absent: expect **0** Expand-section buttons after opening Discussion (top tabs Summary→…→Discussion still hold). Do not require Contemplate/Propose labels when story is empty.
+2. “partial agent_story still nine slots…” → expect **1** Expand button (only `contemplate_job`); expand still shows RESPONSE body; PROMPT hidden.
+3. Optionally add anticipate_scan RESPONSE coverage at modal level if fixture gains that section; pane-level add in (3) above is sufficient if JAR only consumes fixture sections.
+
+**`tests/component/frontend/fixtures/stateUiManifestFixture.ts`**
+
+- Update only if JAR/pane tests need `anticipate_scan` in `report_discussion_sections` for the new coverage. Prefer prepending `{ section_id: "anticipate_scan", nav_label: <live task_name or "Anticipate Scan">, default_expanded: false }` to stay aligned with unique-parent walk order; keep remaining hops lockstep with whatever `TestAst1550ReportDiscussionSections` mock list Betty uses. If pane test passes local `sections` for anticipate_scan, fixture change is optional.
+
+⚠️ **Decision:** No product `src/` on this gap branch. Engineer make-fix on AST-1609 owns code; this plan is for Betty’s test/bible land (or whoever runs the gap’s test-tree work). Do not hardcode a static ten-key list as the sole source of truth — assert unique-parent behavior via monkeypatch / filtered UI counts.
+
+### Blast radius
+
+- AST-1609 product must be on the tree under test (merge/ftr) or unique-parent + filter asserts stay red for the right reason until then.
+- Any other consumers of `NINE` / length-9 Discussion assumptions in astral-tests.
+- Canon unchanged (Joan OK axis).
+
+### What must still hold
+
+- Discussion still last on `report_top_tabs` (Summary → Analysis → Artifacts → Discussion).
+- Manifest attach soft-fail to `[]` still covered.
+- RESPONSE-only bodies; no PROMPT in Discussion.
+- No hardcoded always-visible hop set in product or as a test requirement for empty story.
+- AST-1609 What must still hold (labels from `task_name`/`task_key`, cycle RuntimeError) not contradicted by revised tests.

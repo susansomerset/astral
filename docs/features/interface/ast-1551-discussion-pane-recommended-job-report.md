@@ -377,3 +377,47 @@ context_tokens≈58000
 - **discuss — fixture hop keys:** test-tree only. Routed **`[qa-handoff]`** @Betty White. Betty landed align @ `9b60edd7` (`contemplate_job`→`propose_application_responses` matches AST-1550 `_NINE`). Manifest re-run green (25 passed | 24 skipped). Discuss closed.
 - **advisory:** AST-1550 backend rollup + `formatDiscussionContent` duplication — no action.
 - **Outcome:** User Testing; assignee remains Katherine.
+
+---
+
+## Bug: AST-1612 — gap revise discussion tests (anticipate_scan + empty headers)
+
+Sibling **gap** child of AST-1607 from `[board-betty] TESTS: REVISE` on **AST-1609**. Pane/JAR assertion revision lives here; hop-walk bible/tests primarily on the AST-1550 bug section for the same id. No product `src/` on this gap.
+
+### As-is
+
+`JobDiscussionPane` / JAR AST-1551 tests assert nine collapsed headers for empty or partial `agent_story`. Bible § AST-1551: “empty hops stay panels.” No case requiring an `anticipate_scan` header when story has that RESPONSE.
+
+### To-be
+
+Empty `agentStory` → **0** Discussion headers. Partial story → header count equals hops with non-empty RESPONSE (not manifest length). Coverage: `anticipate_scan` header + body when sections + story include that RESPONSE. Bible language matches.
+
+### Repro
+
+Render Discussion with `agentStory={[]}` (pane) or default job without story (JAR) against AST-1609 filter → 0 Expand buttons; current tests still expect 9.
+
+### Root cause
+
+AST-1551 Stage 1 Done when required empty hops to remain collapsed panels. AST-1609 filters those away; tests/bible were not updated (Betty REVISE).
+
+### Proposed change
+
+See **AST-1550** doc `## Bug: AST-1612` for the full file-level list (bible § AST-1551 + `test_JobDiscussionPane.test.tsx` + JAR AST-1551 describe + optional fixture). Execute the frontend/bible bullets there; do not duplicate product work from AST-1609’s AST-1551 bug section.
+
+Concrete UI-test bar (repeat for make/qa clarity):
+
+1. `agentStory=[]` + full catalog `sections` → `getAllByRole("button", { name: "Expand section" })` length **0**.
+2. One hop with non-empty RESPONSE → length **1**; expand shows body.
+3. `anticipate_scan` in `sections` + matching RESPONSE in story → that `nav_label` present and expandable.
+4. JAR partial-story case → length **1**, not 9.
+
+### Blast radius
+
+Vitest Discussion suite + `stateUiManifestFixture` consumers. Pair with AST-1550-side pytest hop-key revisions so lockstep comments (`_NINE`) do not re-teach “always nine empty panels.”
+
+### What must still hold
+
+- Top-tab Discussion chrome from `report_top_tabs` (not hardcoded).
+- RESPONSE-only; PROMPT never shown.
+- Section order/labels still from manifest defs for the **visible** subset; no `created_at` re-sort.
+- No product edits in this gap child.
