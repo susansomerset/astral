@@ -118,3 +118,22 @@ Confirm Chuckles estimate: 3 — agree
 ## Traceability
 
 AC4 (parent) / child AC → Stage 2 (count + due); Stage 1 → shared helper named in Scope. Boundaries → Out of scope list.
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1622
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1620/AST-1622-meteorite-count-eligible-auto-due` @ `06d21b2b362ff53e96ee89b6f8b46f8dd8e1efd2`
+
+## Traceability
+AC4→Stage 2 (relaxed candidate_id gate + meteorite branch in `count_eligible_for_dispatch_task` + `get_due_tasks`); Stage 1→shared `count_meteorites_unclaimed_in_states` helper named in Scope. Parent AC1–3,5–9 N/A (AST-1621 / AST-1623). Stages→parent Purpose (global meteorite pool count/AUTO-due without `candidate_id` gate).
+
+## Findings
+- **acceptable** — Linear assignee is Hedy, not Joan; Chuckles preflight only — does not affect plan merit.
+- **acceptable** — `get_due_tasks` does not add row-level `dispatch_task_freq_allows` for meteorite; matches existing claim-queue due shape (freq handled entity-level during claim / company WATCH staleness in count path, not a new gap introduced here).
+
+context_tokens≈52000
+```
