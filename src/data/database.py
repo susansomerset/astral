@@ -30,7 +30,7 @@ Tables used (inventory):
 - artifact — Versioned entity-scoped artifact blobs (artifact_uuid TEXT PK,
   candidate_id TEXT NOT NULL — owning candidate; when entity_type='candidate' equals
   entity_id, otherwise separate from entity_id; entity_type TEXT, entity_id TEXT,
-  artifact_type TEXT, artifact_data TEXT, source_artifact_ids TEXT JSON array of
+  artifact_type TEXT, artifact_data BLOB (zlib-compressed JSON text like agent_data.block_data; legacy plain TEXT still readable), source_artifact_ids TEXT JSON array of
   artifact_uuid strings default '[]' (AST-1591), current INTEGER 0|1, created_at,
   updated_at). Active row: current=1 for (entity_type, entity_id, artifact_type).
   Versioning follows agent_task / rubric_vector current=1 retire-and-insert
@@ -4267,7 +4267,7 @@ def _ensure_artifact_table(conn: sqlite3.Connection) -> None:
                 entity_type TEXT NOT NULL,
                 entity_id TEXT NOT NULL,
                 artifact_type TEXT NOT NULL,
-                artifact_data TEXT NOT NULL,
+                artifact_data BLOB NOT NULL,
                 source_artifact_ids TEXT NOT NULL DEFAULT '[]',
                 current INTEGER NOT NULL DEFAULT 1,
                 created_at TIMESTAMP NOT NULL,
@@ -4466,14 +4466,15 @@ def _resolve_artifact_candidate_id(
 
 
 def _artifact_row_dict(row: tuple) -> Dict[str, Any]:
-    """Map SELECT tuple → public dict; JSON-parse artifact_data when possible."""
+    """Map SELECT tuple → public dict; decompress + JSON-parse artifact_data when possible."""
     # SELECT order: uuid, candidate_id, entity_type, entity_id, artifact_type,
     # artifact_data, source_artifact_ids, current, created_at, updated_at
-    raw = row[5]
+    # AST-1605: zlib like agent_data; legacy plain TEXT still via _decompress_payload.
+    plain = _decompress_payload(row[5])
     try:
-        artifact_data = json.loads(raw)
+        artifact_data = json.loads(plain) if plain is not None else None
     except (TypeError, json.JSONDecodeError):
-        artifact_data = raw
+        artifact_data = plain
     # AST-1591: source_artifact_ids TEXT JSON array → list[str]
     raw_sources = row[6]
     sources: List[str] = []
@@ -4521,7 +4522,8 @@ def save_artifact(
 
     Sets prior current=1 row(s) for (entity_type, entity_id, artifact_type) to
     current=0, then inserts a new UUID row with current=1 and required
-    candidate_id. Never SELECT the prior uuid first; never UPDATE artifact_data
+    candidate_id. Stores artifact_data zlib-compressed (AST-1605; like agent_data).
+    Never SELECT the prior uuid first; never UPDATE artifact_data
     in place. Returns the new uuid.
 
     Optional source_artifact_ids: JSON array of source artifact_uuid strings on the
@@ -4531,7 +4533,9 @@ def save_artifact(
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
     if artifact_data is None:
         raise ValueError("artifact_data required")
-    payload = artifact_data if isinstance(artifact_data, str) else json.dumps(artifact_data)
+    # AST-1605: same zlib path as agent_data.block_data (transparent to callers).
+    plain = artifact_data if isinstance(artifact_data, str) else json.dumps(artifact_data)
+    payload = _compress_payload(plain)
     if source_artifact_ids is None:
         sources: list[str] = []
     elif isinstance(source_artifact_ids, (list, tuple)):
