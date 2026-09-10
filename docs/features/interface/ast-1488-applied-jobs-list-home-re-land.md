@@ -1,3 +1,73 @@
+<!-- linear-archive: AST-1488 archived 2026-09-09 -->
+
+## Linear archive (AST-1488)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1488/applied-jobs-list-home-re-land-enable-applied-job-list-in-nav  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1485 — Enable Applied job list in nav  
+**Blocked by / blocks / related:** parent: AST-1485
+
+### Description
+
+## What this implements
+
+Restore the AST-1479 vertical slice on `origin/dev`: applied-view state constant + nav enablement in config, `view=applied` API branch, and real `JobsApplied` page with shared candidate actions. Does not own mark-applied entry points (AST-1464 siblings) or Responded list.
+
+## Citations
+
+`pattern.ui.in-place-live-refresh`; `pattern.ui.icon-control`; `astral.standards.no-hardcoded-sets`; `astral.layers.ui-config-driven-business-logic`; `astral.state.core-decides-transitions`; `astral.state.job-prior-states-enforced`; `astral.idioms.require-auth-on-protected-endpoints`; `astral.ui.frontend-file-placement`
+
+## Scope
+
+`src/utils/config.py` (modified — applied-view state list + NAV_CONFIG Applied enabled); `src/ui/api/api_jobs.py` (modified — `view=applied` list implementation); `src/ui/frontend/src/pages/JobsApplied.tsx` (modified — real applied list + shared candidate actions)
+
+## Acceptance criteria
+
+- [X] 1. Jobs → Applied is enabled in nav (`/api/nav_config` serves Applied with `enabled: true`) and routes to a non-stub page.
+- [X] 2. For a candidate with jobs in post-applied states, `/jobs/applied` lists those jobs; empty state copy when none exist.
+- [X] 3. Post-applied row icon actions (Reapply / Interview / Rejected / Ghosted) work via shared notes + `candidate_action`, with list refresh after success.
+- [X] 4. Failed illegal transitions show a visible error toast (no silent no-op).
+- [X] 5. Responded nav item remains permanently disabled; no regression to Recommended / Skipped / In Review nav or list behavior.
+- [X] 6. Existing AST-1479 component tests on dev pass once product code is restored (`TestAst1479AppliedJobStatesAndNav`, `test_list_applied_uses_applied_job_states`, `JobsApplied — AST-1479 applied list home`).
+
+## Boundaries
+
+- [X] Does not own mark-applied from Recommended or report Applied/Skip (AST-1464).
+- [X] Does not build Responded list or enable Responded nav.
+- [X] Does not add Applied nav badge counts.
+- [X] Does not open Job Analysis Report or Job Detail from the Applied page.
+
+## Notes for planning
+
+Prior art: AST-1479 (re-land after AST-1476 conflict resolution wiped product while tests remained). Membership matches CandidateJobRowActions post-applied set.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-26T15:15:46.310Z
+[merge-child] blocked: missing test(AST-1488): on origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land — @Ada Lovelace please commit test(AST-1488): for the green Betty manifest run (pytest + Vitest already passed) and push the publish ref; do not invent docs-acceptance.
+
+#### radia — 2026-08-26T15:13:19.452Z
+[code-rubric] PROCEED (Commit: e883c0db843951c98605eb0fea5f3e11245eddf8) faithful AST-1479 re-land
+
+#### betty — 2026-08-26T15:07:06.445Z
+`origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land` @ `e883c0db` · AST-1479 coverage re-land
+
+#### joan — 2026-08-26T15:00:07.812Z
+[plan-rubric] PROCEED (Commit: f9d38262827744b317e0173e68bd8be96c3ad366) faithful AST-1479 re-land
+
+#### ada — 2026-08-26T14:47:27.421Z
+`origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land` @ `f9d38262827744b317e0173e68bd8be96c3ad366` · plan ready re-land
+
+---
+
 # AST-1488 — Applied jobs list home (re-land)
 
 **Linear:** [AST-1488](https://linear.app/astralcareermatch/issue/AST-1488)

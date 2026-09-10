@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-1507 archived 2026-09-09 -->
+
+## Linear archive (AST-1507)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1507/estelle-coded-resume-advice-list-advise-resume-needs-a-coded-list-for  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1460 — Advise resume needs a coded list for clear adherence  
+**Blocked by / blocks / related:** parent: AST-1460; blocks: AST-1508
+
+### Description
+
+## What this implements
+
+Owns turning `advise_job_resume` into a coded resume-advice emit: Manage Tasks prompt + config schema/artifact keys + validate/persist of the coded list as hop metadata. Does **not** own Judith's per-code answers (child #2). Does not change `run_next` order.
+
+## Citations
+
+`pattern.config.config-block`; `astral.config.config-source-of-truth`; `astral.seed.agent-tables-in-repo-json`; `astral.seed.archie-catalog-wins`; `astral.seed.define-approved`; `astral.agent.do-task-delegation`; `astral.standards.no-hardcoded-sets`; `astral.standards.in-scope-only`; `astral.dispatch.run-next-is-chain-authority`; `astral.git.engineer-test-tree-ban`; `astral.batch.entity-agent-responses-latest-only`.
+
+## Scope
+
+`data/admin/agent_task.json` (advise row/prompt only); `docs/uat-fixtures/AST-756/expected-agent_task.json` (advise row twin); `src/utils/config.py` (`TASK_CONFIG["advise_job_resume"]` structured/coded advice keys + any advise artifact/clear-key literals); `src/core/candidate.py` (advise coded-list normalize/validate); `src/core/tracker.py` (persist coded advice metadata); `src/core/agent.py` (wire advise validate/normalize/persist-on-success on existing `do_task` path).
+
+## Acceptance criteria
+
+- [X] 1. After a successful `advise_job_resume` hop, Estelle's output includes a coded list of resume-advice items; each item has a stable code and a concrete instruction Judith can act on.
+- [X] 2. Resume section bodies used for render/persist do not contain the coded-advice or adherence structures (metadata only).
+- [X] 3. COVER LETTER DIRECTION and ASK CANDIDATE behavior is unchanged from today's prompts (no coded adherence required for those sections).
+- [X] 4. A chain run with `debug=True` on touched backend normalize/persist paths logs what coded items were found and what adherence/metadata was recorded (Style D), without requiring UI debug work.
+- [X] 5. Existing job-array / nested `agent_payload.resume` contracts (AST-1270 family) remain valid; this epic does not regress experience shape or nest unwrap.
+
+## Boundaries
+
+Does not own Judith's per-code answers (sibling child #2). Does not change `run_next` order. Does not own Approve Artifacts UI (AST-1205), Resume upshot (AST-1461), or hop-order rewiring.
+
+## Notes for planning
+
+Text prompt-enforced codes (not validated structured JSON). Daisy-chain coded advice pattern flagged for Archie in parent Architectural definition.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1460-advise-resume-coded-list`, child `sub/AST-1460/<child-id>-estelle-coded-resume-advice-list`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-26T18:24:15.480Z
+[merge-child] blocked: git pull merge on sub — `aa00c3a9 Merge remote-tracking branch 'origin/ftr/AST-1423-…' into dev` in sub-not-ftr range; sub also carries AST-1498/AST-1505 test commits on tip. @Ada Lovelace republish from `origin/ftr/AST-1460-advise-resume-coded-list` via sync-child (fetch + merge ftr, no git pull on sub).
+
+#### radia — 2026-08-26T18:23:09.619Z
+[code-rubric] REVIEW (Commit: 23f3ab79) product clean; sibling tests bundled
+
+#### betty — 2026-08-26T18:18:19.508Z
+`origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list` @ `23f3ab79` · coded advice manifest
+
+#### joan — 2026-08-26T18:10:08.498Z
+[plan-rubric] PROCEED (Commit: aed09ec2) coded advise metadata plan
+
+#### ada — 2026-08-26T18:07:13.129Z
+origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list @ `aed09ec2ed439ed5474bf1a2571336874d66aa44` · coded brief plan ready
+
+---
+
 # Estelle coded resume-advice list (Advise resume needs a coded list for clear adherence)
 
 **Linear:** [AST-1507](https://linear.app/astralcareermatch/issue/AST-1507/estelle-coded-resume-advice-list-advise-resume-needs-a-coded-list-for)

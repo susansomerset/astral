@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-1469 archived 2026-09-09 -->
+
+## Linear archive (AST-1469)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1469/job-source-tracker-meteorite-save-meteorite-component  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1457 — Meteorite component  
+**Blocked by / blocks / related:** parent: AST-1457; blocks: AST-1470
+
+### Description
+
+## What this implements
+
+Config-owned job source, job column + backfill, Tracker save/dedupe: create, gazed-supersede (any prior state), never clobber existing meteorite. Shared by all later slices.
+
+## Citations
+
+pattern.config.config-block, pattern.state.entity-state-transitions; astral.config.config-source-of-truth, astral.standards.database-header-inventory, astral.standards.no-hardcoded-sets, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced.
+
+## Scope
+
+- [X] `src/utils/config.py` (source enum, METEORITE_CONFIG extensions, fetch_email seed literals, qualify_meteorite TASK_CONFIG adjustments for packet enrichment)
+- [X] `src/data/database.py` (job source column, save_job, dedupe helpers)
+- [X] `src/core/tracker.py` (meteorite save, gazed supersede, meteorite non-clobber)
+
+## Acceptance criteria
+
+- [X] 2. Tracker dedupe runs before insert; a matching **existing meteorite** is never overwritten (skip); a matching **gazed** job may be superseded to `meteorite` without checking the gazed job’s prior state.
+- [X] 3. Every job row touched by this epic exposes `gazed` or `meteorite`; existing rows backfilled to `gazed` where source was unset.
+- [X] 4. Attempting meteorite → gazed is rejected by core (config/test enforced). *(config + Tracker* `set_job_source` */* `_assert_job_source_write` *on this tip; component test half → Betty / AST-1470)*
+
+## Boundaries
+
+- [X] Does not implement land_meteorite orchestration, inbox fetch_email, Contact path, or intake API — those are sibling slices.
+
+## Notes for planning
+
+Estimate 5. Bang !!! — blocks later blockers.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent ftr/AST-1457-meteorite-component, child sub/AST-1457/AST-1469-job-source-tracker-meteorite-save. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-25T03:04:43.265Z
+[code-rubric] PROCEED (Commit: 7aedf36) Foundation clean; Betty tests landed
+
+#### betty — 2026-08-25T02:36:37.836Z
+`origin/sub/AST-1457/AST-1469-job-source-tracker-meteorite-save` @ `6dafaf144cf8e9492a507b2e9be52211048b85c6` · job source Tracker tests
+
+#### joan — 2026-08-25T01:30:27.808Z
+[plan-rubric] PROCEED (Commit: 41118d5) foundation schema save plan
+
+#### ada — 2026-08-24T22:27:02.194Z
+`origin/sub/AST-1457/AST-1469-job-source-tracker-meteorite-save` @ `41118d5fe82a87088ba9fb4d4b9dbd9bddfe41b5` · job source Tracker plan
+
+---
+
 # AST-1469 — Job source + Tracker meteorite save
 
 **Linear:** [AST-1469](https://linear.app/astralcareermatch/issue/AST-1469/job-source-tracker-meteorite-save-meteorite-component)  

@@ -1,3 +1,73 @@
+<!-- linear-archive: AST-1530 archived 2026-09-09 -->
+
+## Linear archive (AST-1530)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1530/core-stage-scrap-map-land-meteorite-generalize-meteorite-ingress-point  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1527 — Generalize Meteorite Ingress Point  
+**Blocked by / blocks / related:** parent: AST-1527; blocks: AST-1531
+
+### Description
+
+## What this implements
+
+Public stage entry in meteorite (plus consult/`do_task` helper if needed): blob + source handle → agent → map six outcomes to scraps → `land_meteorite` or skip/fail. Reuses land's URL scrape for types 2/4; no second Playwright stack; Style D when debug. Does not retarget mailbox/inbox/Contact. Depends on #1 catalog/schema.
+
+## Citations
+
+`pattern.agent.prompt-persist-before-provider`, `pattern.batch.entity-agent-responses`, `pattern.layers.import-discipline`, `astral.agent.do-task-delegation`, `astral.standards.debug-contract-gated`, `astral.layers.import-direction`, `astral.layers.core-vs-external-bright-line`, `astral.standards.dry-and-focused-functions`, `astral.standards.public-then-helpers`
+
+## Scope
+
+**Scope: **`src/core/meteorite.py` — **modified** — public stage entry: blob + source handle → `do_task(stage_meteorite)` → map closed outcomes to scrap array → call existing `land_meteorite`; ignore/fail outcomes create no jobs; Style D when `debug=True`.
+`src/core/consult.py` — **modified** — thin stage invoke helper only if needed so meteorite does not duplicate `do_task` batch-id / live_content assembly (same shape as land enrich helper).
+`src/core/agent.py` — **modified** — only if stage needs a minimal invoke-path note or validation hook; no new provider client.
+`src/core/meteorite.py` — **new** public async stage function (name per plan-child under `stage_meteorite` contract): accept candidate id, blob, source kind/id, debug; call agent; map outcomes 1/3 → text+source-ref scraps, 2/4 → URL scraps for existing `land_meteorite` scrape path, 5/6 → structured skip/fail with no land; **no** second Playwright stack.
+`src/core/consult.py` — **new** optional `stage_meteorite` invoke helper (assemble live_content, mint batch id, `do_task`) mirroring land enrich discipline.
+`src/core/agent.py` — **modified** only if schema validation or context_format for `stage_meteorite` needs a one-line wire; else untouched.
+
+## Acceptance criteria
+
+- [X] 1. Given a bound email whose body is an original JD with no posting URL, staging returns `single_jd_no_link` and `land_meteorite` creates a meteorite job whose `job_link`/`company_job_id` are source-refs — not a company homepage URL.
+- [X] 2. Given a blob with one JD plus a real posting URL, staging returns `single_jd_with_more` and land scrapes that URL (existing land scrape path) without treating a bare recruiter homepage as the posting URL.
+- [X] 3. Given one blob with several inline original JDs, staging returns `multi_jd_inline` and land creates one job per scrap (array), each with source-refs.
+- [X] 4. Given a link-list blob (Dice/inspector multi-href), staging returns `link_list` and land receives one scrap per job-page URL.
+- [X] 5. Given non-job content or a thread/reply about an in-play job, staging returns `not_job_content` or `not_original_posting` and no job row is created.
+- [X] 6. `land_meteorite` remains the write API; `qualify_meteorite` remains post-create enrich only (no METEORITE_NEW claim from stage).
+- [X] 7. With `debug=True`, stage logs Style D found-vs-recorded lines for outcome and scraps; with `debug=False`, no new debug contract noise.
+
+## Boundaries
+
+- [X] Does not own catalog (#1) or caller cutover (#3). After #1.
+
+## Notes for planning
+
+Citations above. Parent AST-1527.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1527-generalize-meteorite-ingress-point`, child `sub/AST-1527/AST-1530-core-stage-scrap-land`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-29T18:09:47.474Z
+[code-rubric] PROCEED (Commit: 88a865c7) stage scrap land clean
+
+#### betty — 2026-08-29T18:06:53.103Z
+`origin/sub/AST-1527/AST-1530-core-stage-scrap-land` @ `88a865c7c8c15c298d1176d8e3db3b6a6fdac037` · stage scrap tests ready
+
+#### joan — 2026-08-29T17:59:07.688Z
+[plan-rubric] PROCEED (Commit: c29d47d88413facb675cffa2d4d9e40cfb4ac951) stage map land ready
+
+#### hedy — 2026-08-29T17:57:16.357Z
+`origin/sub/AST-1527/AST-1530-core-stage-scrap-land` @ `c29d47d88413facb675cffa2d4d9e40cfb4ac951` · plan ready
+
+---
+
 # AST-1530 — Core stage → scrap map → land_meteorite
 
 **Linear:** [AST-1530](https://linear.app/astralcareermatch/issue/AST-1530/core-stage-scrap-map-land-meteorite-generalize-meteorite-ingress)  

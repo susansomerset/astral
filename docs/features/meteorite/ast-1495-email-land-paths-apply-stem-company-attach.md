@@ -1,3 +1,132 @@
+<!-- linear-archive: AST-1495 archived 2026-09-09 -->
+
+## Linear archive (AST-1495)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1495/email-land-paths-apply-stem-to-company-attach-create-meteorite  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1484 — Create meteorite companies per email address  
+**Blocked by / blocks / related:** parent: AST-1484
+
+### Description
+
+## What this implements
+
+Inbox + gaze_email (+ gazer if needed) supply CONTENT, take Ruth stem, call #1 ensure, attach job under that company in create/`land_meteorite`. Optional thin METEORITE company list/nav if needed for UAT. After #1 and #2.
+
+## Citations
+
+pattern.layers.import-discipline, pattern.ui.admin-endpoint; astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions.
+
+## Scope
+
+- [X] src/core/inbox.py — modified — CONTENT + stem → ensure/attach.
+- [X] src/core/gaze_email.py — modified — same. *(file absent; inbox covers path — plan resolution)*
+- [X] src/core/gazer.py — modified — only if still creating on this path. *(no production callers — no changes)*
+- [X] src/core/meteorite.py — modified — create/`land_meteorite` attach when stem present (shared file; units not owned by #1).
+- [X] src/ui/api/api_companies.py / src/ui/api/api_system.py / NAV+routes — modified — METEORITE company list/count shipped.
+
+## Acceptance criteria
+
+- [X] 5. Email-bound create/land attaches the job’s `company` to that ensured short_name.
+- [X] 6. Slack/Contact lands without email sender still use `meteorite-{candidate_id}` in METEORITE.
+- [X] 7. With `debug=True`, ensure/land emit Style D for stem and company; with `debug=False`, no new debug-contract noise.
+
+## Boundaries
+
+- [X] Does not own COMPANY_STATES / ensure / track predicate (#1). Does not own Ruth stem prompts/schema (#2).
+
+## Notes for planning
+
+Estimate 5. Unmarked — after #2.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent ftr/AST-1484-create-meteorite-companies-per-email-address, child sub/AST-1484/<this-id>-email-land-paths-apply-stem-company-attach. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish: **`origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach` @ `776866b5` (`merge-tests(AST-1495): origin/tests 1d33cb91`)
+
+**Bible shasums (publish ref):**
+
+* `docs/test-bible/core/meteorite.md`: `fd5abdc2446301dc6de4d5c67494bb46d8e9a35db7fdbc2ad40707f999612925`
+* `docs/test-bible/core/inbox.md`: `75d77c203e444eddacfe59da21d12f0ec85ca40bd6e4107723b38894d92ae6ab`
+* `docs/test-bible/ui/api/api_companies.md`: `90e86c5fddc04c1ff962c0bbce7798199ae9e734f15cdb8548b652c7fe493588`
+* `docs/test-bible/frontend/pages.md`: `b52ba79897af77e95721880c3bd84ced7160ad6f3c7f8dbec3029a755a9cb6f9`
+* `docs/test-bible/utils/config.md`: `18c07503d8c9f63b8589ad8e243f750ddb17e7fb1eeec729a8740e83b55aba30`
+
+### 1. Existing coverage (revised)
+
+| # | Path | Notes |
+| -- | -- | -- |
+| 1 | `tests/component/core/test_meteorite.py::TestAst1470LandMeteorite` | enrich-fail `company is None`; land debug `stem=`/`company=` |
+| 2 | `tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage` | land_meteorite path + post-land `company=` debug |
+| 3 | `tests/component/core/test_inbox.py::TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses` | same |
+| 4 | `tests/component/ui/api/test_api_companies.py::TestCompaniesRoutes` | `meteorite_list` view + counts key |
+| 5 | `tests/component/utils/test_config.py::TestAst1041MeteoriteConfig` | restore METEORITE company_state (AST-1493 regression from AST-1494) |
+| 6 | `tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig` | restore stem template asserts |
+
+### 2. Broken / obsolete (fixed this pass)
+
+* AST-1470 enrich-failure expected pre-enrich default company
+* AST-1049/1061 gazer ingest mocks and `mode=body` return shape
+* AST-1494 commit accidentally reverted AST-1493 config test class
+
+### 3. Gaps (new)
+
+| # | Path | Notes |
+| -- | -- | -- |
+| 1 | `tests/component/core/test_meteorite.py::TestAst1495LandStemAttach` | per-row stem attach + empty stem default |
+| 2 | `tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob::test_optional_stem_forwards_to_ensure` | create `stem=` |
+| 3 | `tests/component/utils/test_config.py::TestAst1495MeteoriteCompaniesNav` | NAV Meteorite item |
+| 4 | `tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx` | §6c routed page |
+
+### Narrowed run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1495LandStemAttach \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob::test_optional_stem_forwards_to_ensure \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/core/test_inbox.py::TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses \
+  tests/component/ui/api/test_api_companies.py::TestCompaniesRoutes \
+  tests/component/utils/test_config.py::TestAst1495MeteoriteCompaniesNav \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
+```
+
+**Integration:** no existing scenarios revised.
+
+### Comments
+
+#### katherine — 2026-08-26T17:56:25.531Z
+Sub republished on ftr — forbidden sibling merges dropped; validate-sub-log ok @ aa8db8fe.
+
+#### chuckles — 2026-08-26T17:09:59.667Z
+[merge-child] blocked: git pull merge on sub — Merge remote-tracking branch commits 2cd2d1df/614c7389; republish with merge-resume(AST-1495) per validate-sub-log.
+
+#### radia — 2026-08-26T17:09:22.220Z
+[code-rubric] PROCEED (Commit: 776866b5) Stem land attach clean
+
+#### betty — 2026-08-26T17:06:17.477Z
+origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach @ `776866b5` · stem attach manifest ready
+
+#### joan — 2026-08-26T16:56:51.968Z
+[plan-rubric] PROCEED (Commit: 4059b632ca56e81af574c7eb07ef4b61fb3de638) stem attach land wired
+
+#### katherine — 2026-08-26T16:54:24.682Z
+origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach @ 4059b632ca56e81af574c7eb07ef4b61fb3de638 · stem attach wired
+
+---
+
 # AST-1495 — Email land paths apply stem → company attach
 
 **Linear:** [AST-1495](https://linear.app/astralcareermatch/issue/AST-1495/email-land-paths-apply-stem-company-attach-create-meteorite-companies-per)  

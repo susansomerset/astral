@@ -1,3 +1,67 @@
+<!-- linear-archive: AST-1506 archived 2026-09-09 -->
+
+## Linear archive (AST-1506)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1506/show-differences-and-update-file-on-the-divergence-banner-add-show  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1455 — Add "Show Differences" and "Update file with table version"  
+**Blocked by / blocks / related:** parent: AST-1455
+
+### Description
+
+## What this implements
+
+After #1. Adds the two labeled actions to the shared warning used by Manage Agents and Manage Tasks. **Show Differences** presents Ada's comparison. **Update file with table version** confirms, then writes that page's table only and refreshes the warning. Rewrites banner copy so it no longer claims restart/deploy overwrite. Does not change **Revert to file** confirm behavior.
+
+## Citations
+
+`pattern.ui.shared-button-roles`, `pattern.ui.in-place-live-refresh`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`
+
+## Scope
+
+- [X] `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` — **modified** — **Show Differences** and **Update file with table version** on the shared warning; refresh after a successful file write; replace restart/deploy overwrite copy. `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` — add secondary **Show Differences** that presents the comparison payload; add primary **Update file with table version** with confirm; on success refetch status the same way save/revert already do; rewrite the warning sentence so it no longer says restart/deploy will overwrite from the file.
+
+## Acceptance criteria
+
+- [X] On Manage Agents, when personas diverge from the personas JSON, **Show Differences** lists the actual row and field differences (added rows, removed rows, changed fields with file vs table values). It does not include task-prompt drift.
+- [X] On Manage Tasks, when task prompts diverge from the task JSON, **Show Differences** lists the actual row and field differences. It does not include persona drift.
+- [X] After **Update file with table version** on Manage Agents, the agents warning clears, and the tasks warning is unchanged if tasks still diverge.
+- [X] After **Update file with table version** on Manage Tasks, the tasks warning clears, and the agents warning is unchanged if personas still diverge.
+- [X] Cancel on the Update confirm does not write the file; divergence stays.
+- [X] Divergence banner copy no longer tells the operator that the next restart or deploy will overwrite the live table from the file.
+
+## Boundaries
+
+- [X] Does not own core compare/write or startup-apply removal (sibling #1 Ada). Does not change **Revert to file** confirm behavior.
+
+## Notes for planning
+
+Parent AST-1455 definition is authoritative. After sibling #1 (Ada API must exist first).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1455-show-differences-update-file`, child `sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-26T18:42:17.558Z
+[code-rubric] PROCEED (Commit: 0bc099bf) banner Show Update wired
+
+#### betty — 2026-08-26T18:39:20.815Z
+`origin/sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner` @ `0bc099bf` · banner Show Update manifest
+
+#### joan — 2026-08-26T18:35:28.852Z
+[plan-rubric] PROCEED (Commit: 744bf4a) banner Show Update wired
+
+#### katherine — 2026-08-26T18:33:40.089Z
+origin/sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner @ `744bf4a51fae6cac5031de432a60dc446469fd82` · banner Show/Update wired
+
+---
+
 # AST-1506 — Show Differences and Update file on the divergence banner
 
 **Linear (this ticket):** [AST-1506](https://linear.app/astralcareermatch/issue/AST-1506/show-differences-and-update-file-on-the-divergence-banner)  
