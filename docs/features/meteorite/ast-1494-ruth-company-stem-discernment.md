@@ -1,3 +1,94 @@
+<!-- linear-archive: AST-1494 archived 2026-09-09 -->
+
+## Linear archive (AST-1494)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1494/ruth-company-stem-discernment-sender-self-slug-create-meteorite  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1484 — Create meteorite companies per email address  
+**Blocked by / blocks / related:** parent: AST-1484; blocks: AST-1495
+
+### Description
+
+## What this implements
+
+Land/`qualify_meteorite` enrichment: Ruth returns company stem from CONTENT (original sender email, `meteorite-self`, or job-link slug). After #1. Does **not** own ensure API or inbox path wiring (#1 / #3).
+
+## Citations
+
+pattern.agent.prompt-persist-before-provider, pattern.batch.entity-agent-responses; astral.agent.do-task-delegation, astral.standards.debug-contract-gated, astral.standards.no-hardcoded-sets.
+
+## Scope
+
+- [X] `src/core/consult.py` / `src/core/agent.py` — modified — enrichment invoke + RESPONSE mapping for company stem.
+- [X] `src/utils/config.py` — modified — TASK_CONFIG / schema / prompt literals for the stem field only (shared file; units not owned by #1).
+- [X] Catalog/`agent_task` row updates as plan chooses within this child.
+
+## Acceptance criteria
+
+- [X] 2. Ruth-discerned stem `alice@example.com` for candidate `somerset` ensures company `alice@example.com-somerset` (or the config-normalized form of that template) in METEORITE; idempotent on repeat. *(Ruth stem schema + prompts + enrich map — ensure/attach wiring AST-1495.)*
+- [X] 3. When Ruth returns `meteorite-self`, the company short_name is `meteorite-self-{candidate_id}` in METEORITE. *(Ruth prompt priority #1 + *`meteorite_self_stem` *literal via AST-1493 config.)*
+- [X] 4. When Ruth returns a job-link slug stem, the company short_name is `{slug}-{candidate_id}` in METEORITE. *(Ruth prompt priority #3 + enrich map.)*
+
+## Boundaries
+
+- [X] Does not own ensure API or track predicate (#1). Does not own inbox/gaze path wiring (#3).
+
+## Notes for planning
+
+Estimate 3. Bang ! — after #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent ftr/AST-1484-create-meteorite-companies-per-email-address, child sub/AST-1484/<this-id>-ruth-company-stem-discernment. Created at dispatch-parent.
+
+## QA test manifest
+
+`origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment` @ `60f0d40e` (`merge-tests(AST-1494): origin/tests e05aca66`)
+
+1. `tests/component/utils/test_config.py::TestAst1494QualifyMeteoriteCompanyStemSchema` — optional `company_stem` + `company_stem_response_key`; validate omit/value.
+2. `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog` — COMPANY STEM prompt contract; AST-756 fixture byte-identical to catalog.
+3. `tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem` — enrich maps/strips stem; empty when omitted; debug detail; dispatch debug logs stem on pass.
+
+**Broken / obsolete:** none — additive schema/map/prompts.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1494QualifyMeteoriteCompanyStemSchema \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog \
+  tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem \
+  -q
+```
+
+**Bible (on publish-ref):**
+
+* `docs/test-bible/utils/config.md` `9aeef49ecb9562c1a7d3c8f304d4f136d7b88363561a703cf4192e445098ba5a`
+* `docs/test-bible/core/consult.md` `9c5e17f2a1cb2d91f6fc895f3d69c559c2e2b327d19d0a30c67830dfb2a7dddd`
+* `docs/test-bible/core/repo_admin_json.md` `3ce35398507af8c25ef3d5fb34dc800f9255641eaaa607f6f54e2080b5f09def`
+
+— Betty
+
+### Comments
+
+#### radia — 2026-08-26T16:42:04.885Z
+[code-rubric] PROCEED (Commit: 60f0d40e) Ruth stem discernment clean
+
+#### betty — 2026-08-26T16:37:45.708Z
+`origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment` @ `60f0d40e` · company_stem coverage
+
+#### joan — 2026-08-26T16:31:29.452Z
+[plan-rubric] PROCEED (Commit: bf82f210ddde37aac5bb2111b9bc0bc80041a2ca) Ruth stem schema mapped
+
+#### hedy — 2026-08-26T16:16:36.589Z
+`origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment` @ `bf82f210` · plan ready
+
+---
+
 # AST-1494 — Ruth company-stem discernment (sender / self / slug)
 
 **Linear:** [AST-1494](https://linear.app/astralcareermatch/issue/AST-1494/ruth-company-stem-discernment-sender-self-slug-create-meteorite)  
