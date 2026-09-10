@@ -1364,8 +1364,14 @@ async def _dispatch_one(task: Dict) -> None:
         )
         log_batch_id.set(entity_batch_id)
         dispatch_ledger_id = entity_batch_id
-    logger.info("Dispatching %s — %d available, batch %s",
-                    task_key, task.get("available_count", 0), entity_batch_id)
+    logger.info(
+        "%s | dispatch %s starting %s — %d available (batch: %s)",
+        candidate_id or "-",
+        task_entity_type or "-",
+        task_key,
+        task.get("available_count", 0),
+        entity_batch_id,
+    )
 
     # Register this coroutine's asyncio task immediately so cancel_task() can reach it
     # without a race window. _tracked() used to do this but ran after loop.run_until_complete
@@ -1495,6 +1501,7 @@ async def _run_dispatch_loop(
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
     ui_initiated = bool(task.get("_ui_initiated"))
+    cid = task.get("candidate_id") or ctx.get("astral_candidate_id") or "-"
     run_count = 0
     while True:
         et = task.get("entity_type")
@@ -1529,11 +1536,23 @@ async def _run_dispatch_loop(
                         f"effective_min={effective_min} run_count={run_count}"
                     )
             if run_count == 0:
-                logger.info("Skipping %s: %d available (min_count=%s)",
-                                task_key, available, effective_min)
+                logger.info(
+                    "%s | dispatch %s skipped %s — %d available (min_count=%s)",
+                    cid,
+                    et or "-",
+                    task_key,
+                    available,
+                    effective_min,
+                )
             else:
-                logger.info("Loop mode %s: %d remaining — stopping after %d run(s)",
-                                task_key, available, run_count)
+                logger.info(
+                    "%s | dispatch %s stopping %s — %d remaining after %d run(s)",
+                    cid,
+                    et or "-",
+                    task_key,
+                    available,
+                    run_count,
+                )
             break
         # Honour graceful drain request — finish current batch then stop
         with _registry_lock:
@@ -1542,8 +1561,9 @@ async def _run_dispatch_loop(
             if debug:
                 logger.debug_detail(f"loop stop: drain flag set run_count={run_count}")
             logger.info(
-                "%s drain stopping %s after %d run(s)",
-                task.get("candidate_id") or "-",
+                "%s | dispatch %s drain stopping %s after %d run(s)",
+                cid,
+                et or "-",
                 task_key,
                 run_count,
             )
@@ -1577,7 +1597,12 @@ async def _run_dispatch_loop(
         if summary.get("total_processed", 0) == 0:
             if debug:
                 logger.debug_detail(f"loop stop: zero processed this iteration run_count={run_count}")
-            logger.info("Loop mode %s: 0 processed — stopping", task_key)
+            logger.info(
+                "%s | dispatch %s stopping %s — 0 processed",
+                cid,
+                et or "-",
+                task_key,
+            )
             break
         if max_runs != 0:
             if max_runs is None or run_count >= max_runs:
@@ -1601,7 +1626,7 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
         with _registry_lock:
             _task_registry.pop(task_id, None)
         logger.info(
-            "%s thread exited for %s",
+            "%s | dispatch thread exited for %s",
             task.get("candidate_id") or "-",
             task.get("task_key", task_id),
         )
@@ -1669,7 +1694,7 @@ def drain_task(task_id: int) -> Dict[str, Any]:
             return {"task_id": task_id, "draining": False, "reason": "not_running"}
         entry["drain"] = True
     logger.info(
-        "%s drain requested for %s",
+        "%s | dispatch drain requested for %s",
         entry["candidate_id"],
         entry["task_key"],
     )
@@ -1809,8 +1834,12 @@ def _tick_loop() -> None:
             # AST-1122: run due admin Scheduled Queries (interval_hours cadence)
             try:
                 database.run_due_scheduled_queries()
-            except Exception:
-                logger.exception("Scheduled query tick error")
+            except Exception as exc:
+                logger.exception(
+                    "Scheduled query tick\n  %s: %s\n  The tick is continuing; due AUTO tasks will still spawn",
+                    type(exc).__name__,
+                    exc,
+                )
             # Claim-queue AUTO rows from data; meteorite_email AUTO merged via live bind Avail (AST-1135).
             due = list(database.get_due_tasks()) + _meteorite_email_due_tasks()
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
@@ -1829,8 +1858,12 @@ def _tick_loop() -> None:
                         continue  # already running
                     if run_task(tid):
                         slots -= 1
-        except Exception:
-            logger.exception("Tick loop error")
+        except Exception as exc:
+            logger.exception(
+                "Tick loop\n  %s: %s\n  The scheduler is still running; the next tick will retry",
+                type(exc).__name__,
+                exc,
+            )
         # Sleep after work so the first server tick runs immediately (was: wait first = silent until
         # tick_rate_minutes elapsed after every process start).
         _tick_event.wait(timeout=tick_secs)
@@ -1854,25 +1887,34 @@ def start_scheduler() -> None:
     try:
         cstats = correct_meteorite_ingress_dispatch_entity_types()
         logger.info(
-            "meteorite ingress/notify entity_type correction scanned=%s updated=%s",
+            "Corrected meteorite ingress/notify entity_type — scanned %s, updated %s",
             cstats.get("scanned"),
             cstats.get("updated"),
         )
-    except Exception:
-        logger.exception("meteorite ingress/notify entity_type correction failed")
+    except Exception as exc:
+        logger.exception(
+            "meteorite ingress/notify entity_type correction\n  %s: %s\n  Scheduler is still starting",
+            type(exc).__name__,
+            exc,
+        )
     try:
         rstats = retire_candidate_requested_wrapper_dispatch_tasks()
         logger.info(
-            "retired candidate_requested_* wrapper tasks template=%s "
-            "candidates_scanned=%s retired=%s",
+            "Retired candidate_requested_* wrapper tasks — template %s, scanned %s, retired %s",
             rstats.get("template_candidate_id"),
             rstats.get("candidates_scanned"),
             rstats.get("retired"),
         )
-    except Exception:
-        logger.exception("candidate_requested_* wrapper retire failed")
+    except Exception as exc:
+        logger.exception(
+            "candidate_requested_* wrapper retire\n  %s: %s\n  Scheduler is still starting",
+            type(exc).__name__,
+            exc,
+        )
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
-    logger.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
-                    ASTRAL_CONFIG.get("tick_rate_minutes", 1),
-                    ASTRAL_CONFIG.get("max_auto_threads", 3))
+    logger.info(
+        "Scheduler started — tick every %d min, max AUTO threads %d",
+        ASTRAL_CONFIG.get("tick_rate_minutes", 1),
+        ASTRAL_CONFIG.get("max_auto_threads", 3),
+    )

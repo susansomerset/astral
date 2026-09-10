@@ -79,6 +79,8 @@ logger.info("[%s/%s] batch finished COMPLETED | processed=%s passed=%s failed=%s
 logger.info("run_next hop: %s -> %s batch_id=%s", from_task, to_task, batch_id)
 logger.info("%s | dispatch %s hop completed: %s → %s (batch: %s)",
             candidate_id, entity_type, from_task, to_task, batch_id)
+logger.info("Dispatching %s — %d available, batch %s", task_key, n, batch_id)
+logger.info("Loop mode %s: 0 processed — stopping", task_key)
 if debug:
     logger.info("%s | dispatch %s task completed: %s pass:%s fail:%s error:%s (batch: %s)",
                 candidate_id, entity_type, task_key, passed, failed, errored, batch_id)
@@ -107,3 +109,9 @@ Unsure whether this is info, warning, or error.
 or coerce types. Chained tasks are the next `task_key`; the finishing line
 may add `run_next: <run_next_task_key>`; the following info is that task
 running normally.
+
+Always-on dispatcher progress besides `task completed` uses the same
+`<candidate_id> | dispatch …` prefix: starting, min_count skip, loop stop,
+drain, thread exit. Scheduler boot has no candidate — English, no
+`max_auto_threads=` keys. Min_count skip is info (nothing failed), not
+`stat.logging.warning`.

@@ -84,6 +84,7 @@ except Exception as exc:
     logger.error("failed: %s", exc)
     raise                                        # logged, then logged again above
 logger.exception("[%s/%s] crashed", task_key, batch_id)  # stack without live facts
+logger.exception("Tick loop error")                      # throw without live facts / next step
 logger.error(
     "[%s/%s] batch finished FAILED | processed=%s passed=%s failed=%s errors=%s",
     task_key, batch_id, processed, passed, failed, errors,
@@ -112,6 +113,7 @@ UI APIs return JSON errors; they do not `print` the traceback to stdout.
 failure is not product `error` logging — see `stat.layers.import-rules`.
 The next-step line is the product consequence (`Truncating the batch`,
 `Continuing to the next entity`, `The run is over; this batch was not
-recorded as finished`). Not the next statement in the function.
+recorded as finished`, `The scheduler is still running; the next tick
+will retry`). Not the next statement in the function.
 Admin `CancelledError` on a running dispatch task is `stat.logging.warning`
 (killed by admin), not this statute.
