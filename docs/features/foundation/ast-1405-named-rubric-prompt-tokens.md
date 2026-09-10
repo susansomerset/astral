@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1405 archived 2026-09-09 -->
+
+## Linear archive (AST-1405)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1405/named-rubric-prompt-tokens-reintroduce-the-specific-rubric-tokens  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1404 — Reintroduce the specific rubric tokens  
+**Blocked by / blocks / related:** parent: AST-1404
+
+### Description
+
+## What this implements
+
+Register the five named tokens on the prompt-token registry, pin each to its rubric owner, and resolve them through the existing current-vector read path so picker + runtime substitution ship together. Does not rewrite seed prompt text, does not restore unlisted legacy names, and does not change `{$RUBRIC_VECTORS}`.
+
+## Citations
+
+`pattern.config.config-block`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only`
+
+## Acceptance criteria
+
+- [X] 1. The five names `GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_RUBRIC`, and `PREFILTER_RUBRIC` appear in the Manage Agents and Manage Tasks prompt-token pickers.
+- [X] 2. Preview or run of a prompt containing `{$GET_RUBRIC}` (and each of the other four) with a candidate that has that rubric substitutes that rubric’s current vectors — not another rubric’s, and not an empty stub when vectors exist.
+- [X] 3. `{$GET_RUBRIC}` on a non-GET task still substitutes GET vectors (named pin, not running-task owner). Same independence for the other four names.
+- [X] 4. `{$RUBRIC_VECTORS}` still substitutes the running task’s owner rubric, unchanged.
+- [X] 5. `JOBLIST_RUBRIC`, `COMPANY_PREFILTER`, and `JOBDESC_RUBRIC` are not in the picker and are not registered.
+- [X] 6. Ad Hoc / preview with no candidate in context does not emit empty-token warnings for these names (same contract as AST-1396).
+
+## Boundaries
+
+- [X] Does not rewrite seed prompt bodies. Does not restore `{$JOBLIST_RUBRIC}`, `{$COMPANY_PREFILTER}`, or `{$JOBDESC_RUBRIC}`. Does not add meteorite or job-list tokens. Does not retire `{$RUBRIC_VECTORS}`. Does not change rubric storage, craft, scoring, Artifacts, or vector-feedback injection.
+
+## Notes for planning
+
+Citations as above. Pin each named token to a fixed rubric owner; generic `{$RUBRIC_VECTORS}` stays task-derived.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1404-reintroduce-the-specific-rubric-tokens`, child `sub/AST-1404/<child-id>-named-rubric-prompt-tokens`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-17T02:41:11.514Z
+[code-rubric] PROCEED (Commit: 82ac3ca8) named rubric pins clean
+
+#### betty — 2026-08-17T02:36:00.338Z
+`origin/sub/AST-1404/AST-1405-named-rubric-prompt-tokens` @ `82ac3ca836d08126616ebc8a6910141ac2fb11b6` · named rubric coverage
+
+#### joan — 2026-08-17T02:22:20.537Z
+[plan-rubric] PROCEED (Commit: ba66a4c7) named rubric registry pins
+
+#### ada — 2026-08-17T02:18:16.397Z
+`origin/sub/AST-1404/AST-1405-named-rubric-prompt-tokens` @ `ba66a4c7d1cf73960035e77553483bfde6fc8834` · named rubric tokens planned
+
+---
+
 # AST-1405 — Named rubric prompt tokens
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-1405/named-rubric-prompt-tokens-reintroduce-the-specific-rubric-tokens
