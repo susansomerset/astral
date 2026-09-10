@@ -1,3 +1,93 @@
+<!-- linear-archive: AST-1479 archived 2026-09-09 -->
+
+## Linear archive (AST-1479)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1479/applied-jobs-list-home-add-means-to-mark-job-as-applied-for  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1464 — Add means to mark job as applied for  
+**Blocked by / blocks / related:** parent: AST-1464
+
+### Description
+
+## What this implements
+
+Config applied-view state set; implement API `view=applied`; enable Jobs → Applied nav; replace `JobsApplied` stub with a list that shows post-applied rows and existing R/I/X/G actions. Does not own mark-applied / report Skip.
+
+## Citations
+
+`pattern.ui.in-place-live-refresh`; `pattern.ui.icon-control`; `astral.standards.no-hardcoded-sets`; `astral.layers.ui-config-driven-business-logic`; `astral.idioms.require-auth-on-protected-endpoints`; `astral.ui.frontend-file-placement`
+
+## Scope
+
+`src/utils/config.py` (modified — applied-view state list + NAV_CONFIG Applied enabled); `src/ui/api/api_jobs.py` (modified — `view=applied` list implementation); `src/ui/frontend/src/pages/JobsApplied.tsx` (modified — real applied list + shared candidate actions)
+
+## Acceptance criteria
+
+- [X] 4. After mark-applied, the job no longer appears on Recommended and does appear on `/jobs/applied` for that candidate.
+- [X] 5. Jobs → Applied is enabled in nav and routes to a non-stub list.
+- [X] 6. On `/jobs/applied`, post-applied icon actions Reapply / Interview / Rejected / Ghosted work via the shared notes + `candidate_action` path.
+- [X] 7. Illegal transitions still fail with a visible error (no silent no-op).
+
+## Boundaries
+
+- [X] Does not own Recommended list Applied icon or report Applied/Skip controls.
+
+## Notes for planning
+
+Parallel to RECOMMENDED_JOB_STATES / SKIPPED_STATES; enable existing disabled Applied nav item.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Applied page (§6c): `tests/component/frontend/pages/test_JobsApplied.test.tsx` — `--testNamePattern="AST-1479"`
+2. API `view=applied`: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states` (+ revised `test_list_recommended_and_default`)
+3. Config: `tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1479"
+```
+
+**Bible shasums** (`origin/sub/AST-1464/AST-1479-applied-jobs-list-home`):
+
+* `docs/test-bible/frontend/pages.md` `b855a2a3b8b59dcd6fd01419af31681a17ead602`
+* `docs/test-bible/ui/api/api_jobs.md` `6eb2c228b2d34df1eacd4529e9d0fd79efa13fa5`
+* `docs/test-bible/utils/config.md` `411cc0e779f49385988ec9e52da9e7dc99da9ad3`
+
+**Delivery:** `origin/tests` `d4d152db` → `merge-tests(AST-1479)` tip `5b8728e4`
+
+### Comments
+
+#### radia — 2026-08-25T02:29:33.803Z
+[code-rubric] PROCEED (Commit: 5b8728e4) applied list home clean
+
+#### betty — 2026-08-25T02:22:49.581Z
+`origin/sub/AST-1464/AST-1479-applied-jobs-list-home` @ `5b8728e4` · applied list coverage
+
+#### joan — 2026-08-25T00:39:33.542Z
+[plan-rubric] PROCEED (Commit: beb7f3d) applied list home ready
+
+#### ada — 2026-08-24T22:46:20.123Z
+`origin/sub/AST-1464/AST-1479-applied-jobs-list-home` @ `beb7f3d410f9edd3add4c98c8affce9d1edef8da` · plan ready
+
+---
+
 # AST-1479 — Applied jobs list home
 
 **Linear:** [AST-1479](https://linear.app/astralcareermatch/issue/AST-1479)
