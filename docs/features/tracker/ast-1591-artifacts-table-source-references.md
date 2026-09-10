@@ -11,7 +11,7 @@ Data-layer support so each `artifacts` version can store an optional list of sou
 Ticket **## Scope** names exactly:
 
 - `src/data/database.py` — extend `artifacts` DDL/ensure for source-reference storage; `save_artifact` / get-current / get-by-uuid accept and return source artifact ids; header inventory updated; no unrelated schema churn
-- `canon/directives/draft/patt.artifacts.traceability.md` — one-line alignment note only; do not promote draft to approved canon
+- `canon/directives/draft/patt.artifact.traceability.md` — one-line alignment note only; do not promote draft to approved canon
 
 Every row in **Files Changed** is one of those paths (plus this plan doc). Every Stage step is the kind of change Scope describes for that file.
 
@@ -22,7 +22,7 @@ Every row in **Files Changed** is one of those paths (plus this plan doc). Every
 | File | Change | Layer |
 |------|--------|-------|
 | `src/data/database.py` | Add `source_artifact_ids` column (DDL + ensure migrate); extend `save_artifact` optional param; return field from get-current / get-by-uuid (and shared row mapper used by `list_artifacts`); update header inventory | data |
-| `canon/directives/draft/patt.artifacts.traceability.md` | One-line note that AST-1588 lands source-artifact-id storage on `artifacts` for the job_resume→base_resume case | canon draft |
+| `canon/directives/draft/patt.artifact.traceability.md` | One-line note that AST-1588 lands source-artifact-id storage on `artifacts` for the job_resume→base_resume case | canon draft |
 
 ## Stage 1: Schema + header inventory
 
@@ -113,15 +113,15 @@ INSERT INTO artifacts (
 VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
 ```
 
-Bind `sources_payload` in the matching position. Keep blind retire-by-key + insert (no prior-id SELECT; no in-place body UPDATE). Docstring: note optional `source_artifact_ids` (JSON array on the new row; default empty; no existence validation — AST-1591 / patt.artifacts.traceability table support).
+Bind `sources_payload` in the matching position. Keep blind retire-by-key + insert (no prior-id SELECT; no in-place body UPDATE). Docstring: note optional `source_artifact_ids` (JSON array on the new row; default empty; no existence validation — AST-1591 / patt.artifact.traceability table support).
 
 6. Do **not** change `retire_current_artifact`. Do **not** add logging in the data layer. Do **not** change core/UI callers this ticket — existing positional `save_artifact(et, eid, at, data)` calls remain valid and store `[]`.
 
 ## Stage 3: Draft pattern alignment note
 
-**Done when:** `canon/directives/draft/patt.artifacts.traceability.md` has a single new alignment sentence tying AST-1588 table storage to the job_resume→base_resume case; file stays under `draft/`; no other canon files edited.
+**Done when:** `canon/directives/draft/patt.artifact.traceability.md` has a single new alignment sentence tying AST-1588 table storage to the job_resume→base_resume case; file stays under `draft/`; no other canon files edited.
 
-1. In `canon/directives/draft/patt.artifacts.traceability.md`, under **Exceptions** or **Implementation** (prefer a new bullet under **Implementation** after the existing “Draft” bullet), add exactly one alignment line, e.g.:
+1. In `canon/directives/draft/patt.artifact.traceability.md`, under **Exceptions** or **Implementation** (prefer a new bullet under **Implementation** after the existing “Draft” bullet), add exactly one alignment line, e.g.:
 
    - **AST-1588** — Lands `source_artifact_ids` persistence on the `artifacts` table (data layer) so job_resume versions can cite base_resume; agent/task lineage and full token-catalog harvest remain out of that epic.
 
@@ -155,7 +155,7 @@ AC3 → Stage 1 (DDL/ensure `source_artifact_ids` + header inventory) + Stage 2 
 - **Finding:** Column ensure is specified in both early-return branches rather than a single post-rename block (vector_feedback-style consolidation).
 - **Recommendation:** Either shape is fine; engineer should not skip either existing-table path.
 
-**Considered (in-session, slim R7):** Universal orch.* statutes — conform (plan review gate). Scoped data-layer statutes (`database-header-inventory`, `data-raises-caller-logs`, `in-scope-only`, `no-cross-contamination`, `import-direction`, `names-not-ticket-ids`, `dry-and-focused-functions`, `public-then-helpers`) — conform. Draft patterns `patt.artifact.write-operative` / `patt.artifacts.traceability` — conform to parent’s draft citations; optional kwarg on `save_artifact` matches write-operative retire+insert; no existence validation matches parent incremental-add intent.
+**Considered (in-session, slim R7):** Universal orch.* statutes — conform (plan review gate). Scoped data-layer statutes (`database-header-inventory`, `data-raises-caller-logs`, `in-scope-only`, `no-cross-contamination`, `import-direction`, `names-not-ticket-ids`, `dry-and-focused-functions`, `public-then-helpers`) — conform. Draft patterns `patt.artifact.write-operative` / `patt.artifact.traceability` — conform to parent’s draft citations; optional kwarg on `save_artifact` matches write-operative retire+insert; no existence validation matches parent incremental-add intent.
 
 context_tokens≈42000
 ```
@@ -253,7 +253,7 @@ Stages 1–3 delivered: `artifacts.source_artifact_ids` DDL/ensure + header inve
 
 | id | verdict | one-line |
 |----|---------|----------|
-| none cited | — | Plan has no "Patterns to reuse" block; draft `patt.artifacts.traceability` alignment is in-scope prose only (not approved catalog). |
+| none cited | — | Plan has no "Patterns to reuse" block; draft `patt.artifact.traceability` alignment is in-scope prose only (not approved catalog). |
 
 ## Plan adherence
 
@@ -261,7 +261,7 @@ Stages 1–3 delivered: `artifacts.source_artifact_ids` DDL/ensure + header inve
 
 - **Stage 1:** `source_artifact_ids` in fresh `CREATE TABLE`, header inventory updated, `_ensure_source_artifact_ids_column()` called on both existing-table early-return paths (`artifacts` and post-`astral_artifacts` rename).
 - **Stage 2:** `_ARTIFACT_SELECT` extended; `_artifact_row_dict` shifts indices and returns `list[str]`; `save_artifact(..., source_artifact_ids=None)` normalizes/strips/persists; INSERT column/`?` bind tuple is consistent (6 binds + literal `current=1` + 2 timestamps); no logging; no caller rewires; no UUID-existence validation (per plan decision).
-- **Stage 3:** Draft `patt.artifacts.traceability.md` gains AST-1588 alignment bullet; file stays under `draft/`.
+- **Stage 3:** Draft `patt.artifact.traceability.md` gains AST-1588 alignment bullet; file stays under `draft/`.
 
 **Estimate 3** fits the actual footprint (single data module + draft note + Betty tests).
 
@@ -291,7 +291,7 @@ Stages 1–3 delivered: `artifacts.source_artifact_ids` DDL/ensure + header inve
 
 ## Frame diff
 
-**In-scope (AST-1591):** `src/data/database.py` `source_artifact_ids` column + persist/read; `canon/directives/draft/patt.artifacts.traceability.md` alignment; `docs/test-bible/data/database/artifacts.md` + `tests/component/data/database/test_artifacts.py`.
+**In-scope (AST-1591):** `src/data/database.py` `source_artifact_ids` column + persist/read; `canon/directives/draft/patt.artifact.traceability.md` alignment; `docs/test-bible/data/database/artifacts.md` + `tests/component/data/database/test_artifacts.py`.
 
 **Cross-frame (sibling, not AST-1591 product):** AST-1590 test/bible deltas on same publish ref without AST-1590 `config.py` product — discuss above.
 

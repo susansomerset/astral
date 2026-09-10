@@ -4,7 +4,7 @@
 **Parent:** [AST-1571](https://linear.app/astralcareermatch/issue/AST-1571/implement-pattartifactread-operative) — Implement patt.artifact.read-operative
 **Publish ref:** `sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability`
 
-Ship the data + candidate half of `patt.artifact.read-operative` for the pilot catalog key `candidate.artifacts.base_resume`: by-`artifact_uuid` fetch in `database.py`, a public pin→body helper on `candidate.py`, and a **docs-only** draft of `patt.artifacts.traceability`. Does **not** wire JAR UI, Contact Estelle call sites, grade/analysis pin writers, or any product persist of seed artifact ids (sibling AST-1585 + later implement tickets).
+Ship the data + candidate half of `patt.artifact.read-operative` for the pilot catalog key `candidate.artifacts.base_resume`: by-`artifact_uuid` fetch in `database.py`, a public pin→body helper on `candidate.py`, and a **docs-only** draft of `patt.artifact.traceability`. Does **not** wire JAR UI, Contact Estelle call sites, grade/analysis pin writers, or any product persist of seed artifact ids (sibling AST-1585 + later implement tickets).
 
 ## Explicit scope gate
 
@@ -12,7 +12,7 @@ Ticket **## Scope** names exactly:
 
 - `src/data/database.py` — by-`artifact_uuid` fetch; deserialize `artifact_data`; empty on miss
 - `src/core/candidate.py` — pilot pin→body helper for `candidate.artifacts.base_resume`
-- `canon/directives/draft/patt.artifacts.traceability.md` — **new** draft only
+- `canon/directives/draft/patt.artifact.traceability.md` — **new** draft only
 
 Every row in **Files Changed** is one of those three paths. Technical kinds match: new PK SELECT helper on the existing `artifacts` table; new public core helper that calls that fetch and returns body or empty; new draft directive file. No new catalog keys, no UI/API/Contact rewires, no schema migration.
 
@@ -22,7 +22,7 @@ Every row in **Files Changed** is one of those three paths. Technical kinds matc
 |------|--------|-------|
 | `src/data/database.py` | Add `get_artifact(artifact_uuid)` — SELECT by PK, deserialize via `_artifact_row_dict`, return row dict or `None`; no coat-check / blob | data |
 | `src/core/candidate.py` | Add public `get_operative_base_resume(artifact_uuid)` pin→body for pilot key; update module In-scope line | core |
-| `canon/directives/draft/patt.artifacts.traceability.md` | **New** draft pattern: versioned agent_id / agent_task_id, seed `artifact_id[]`, manual-edit inheritance; implement-later flagged | canon |
+| `canon/directives/draft/patt.artifact.traceability.md` | **New** draft pattern: versioned agent_id / agent_task_id, seed `artifact_id[]`, manual-edit inheritance; implement-later flagged | canon |
 
 **Out of this ticket (do not touch):** `src/core/contact.py`; `src/ui/api/**`; `JobAnalysisReportModal.tsx` (sibling AST-1585); `ARTIFACT_CONFIG` new keys; `get_current_artifact` / read-current editor hydrate; coat-check maps; grade/analysis pin writers; ordinary-save HTTP `artifact_id` field; product persist of seed artifact ids; `canon/directives/draft/patt.artifact.read-operative.md` (cite only — do not rewrite). Engineer must not create or edit `tests/` or `docs/test-bible/**`.
 
@@ -103,15 +103,15 @@ def get_operative_base_resume(artifact_uuid: str) -> Optional[Any]:
 
 ⚠️ **Decision:** Wrong-entity or wrong-`artifact_type` pins return `None` (same as miss), not the foreign body and not `ValueError`. Sibling consumers treat empty as “gap — no blob fallback.” Pilot identity is resolved from `ARTIFACT_CONFIG["candidate.artifacts.base_resume"]` + key suffix so config remains SoT (`astral.config.config-source-of-truth`); do not invent a second catalog.
 
-## Stage 3: Draft `patt.artifacts.traceability`
+## Stage 3: Draft `patt.artifact.traceability`
 
-**Done when:** `canon/directives/draft/patt.artifacts.traceability.md` exists in the same frontmatter/body shape as sibling drafts under `canon/directives/draft/patt.artifact.*.md`; it covers versioned `agent_id`, versioned `agent_task_id`, seed artifact id array, and manual-edit inheritance; it explicitly flags implement-later / no product wire in this epic.
+**Done when:** `canon/directives/draft/patt.artifact.traceability.md` exists in the same frontmatter/body shape as sibling drafts under `canon/directives/draft/patt.artifact.*.md`; it covers versioned `agent_id`, versioned `agent_task_id`, seed artifact id array, and manual-edit inheritance; it explicitly flags implement-later / no product wire in this epic.
 
-1. Create `canon/directives/draft/patt.artifacts.traceability.md` with this exact structure (match sibling draft style — `id` / `kind` / `scope` / `point` frontmatter + Abstract / Arc / Applications / Exceptions / Implementation / OPEN QUESTIONS — **not** the `canon/patterns/SCHEMA.md` package frontmatter; draft directives stay in `canon/directives/draft/` until Archie promotes):
+1. Create `canon/directives/draft/patt.artifact.traceability.md` with this exact structure (match sibling draft style — `id` / `kind` / `scope` / `point` frontmatter + Abstract / Arc / Applications / Exceptions / Implementation / OPEN QUESTIONS — **not** the `canon/patterns/SCHEMA.md` package frontmatter; draft directives stay in `canon/directives/draft/` until Archie promotes):
 
 ```markdown
 ---
-id: patt.artifacts.traceability
+id: patt.artifact.traceability
 kind: pattern
 scope: [src/data/database.py, src/core/candidate.py, src/core/contact.py]
 point: >
@@ -192,7 +192,7 @@ One data PK fetch + one core helper + one draft directive; known pattern paralle
 
 **Built @ `635931b3`** — `origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability`
 
-Stages 1–3 landed: `database.get_artifact` by PK; `candidate.get_operative_base_resume` pin→body for pilot `candidate.artifacts.base_resume`; draft `canon/directives/draft/patt.artifacts.traceability.md` (docs only). Sibling AST-1585 owns UI/Contact wire.
+Stages 1–3 landed: `database.get_artifact` by PK; `candidate.get_operative_base_resume` pin→body for pilot `candidate.artifacts.base_resume`; draft `canon/directives/draft/patt.artifact.traceability.md` (docs only). Sibling AST-1585 owns UI/Contact wire.
 
 ## Joan validate
 
@@ -241,7 +241,7 @@ context_tokens≈48000
 
 ## Statutes checked
 
-Full active set (64 per `canon/statutes/README.md` § Harvested corpus). Diff layers: `core`, `data`, `docs`; paths include `src/core/candidate.py`, `src/data/database.py`, `canon/directives/draft/patt.artifacts.traceability.md`, `docs/features/**`, `docs/test-bible/**`, `tests/component/**`.
+Full active set (64 per `canon/statutes/README.md` § Harvested corpus). Diff layers: `core`, `data`, `docs`; paths include `src/core/candidate.py`, `src/data/database.py`, `canon/directives/draft/patt.artifact.traceability.md`, `docs/features/**`, `docs/test-bible/**`, `tests/component/**`.
 
 | id | tier | verdict | one-line |
 |----|------|---------|----------|
@@ -317,14 +317,14 @@ Full active set (64 per `canon/statutes/README.md` § Harvested corpus). Diff la
 | id | verdict | one-line |
 |----|---------|----------|
 | `patt.artifact.read-operative` (parent draft directive) | conforms | By-pin `database.get_artifact`; core pilot gate; no coat-check / blob fallback; retired pins readable |
-| `patt.artifacts.traceability` (Stage 3 draft) | conforms | Docs-only draft under `canon/directives/draft/`; no product persist/wire |
+| `patt.artifact.traceability` (Stage 3 draft) | conforms | Docs-only draft under `canon/directives/draft/`; no product persist/wire |
 | none cited in plan `Patterns to reuse` | — | Parent mandates read-operative; implementation matches draft `# Implementation` steps 1–2 |
 
 ## Plan adherence
 
 - **Stage 1:** `get_artifact` matches plan snippet — PK SELECT via `_ARTIFACT_SELECT`, `_artifact_row_dict`, `_run_with_retry`, blank uuid → `ValueError`, no logging, no coat-check, placement after `get_current_artifact`.
 - **Stage 2:** `get_operative_base_resume` matches plan — `ARTIFACT_CONFIG` pilot gate, wrong entity/type → `None`, no `candidate_data` walk; module docstring In-scope updated; placed immediately before `hydrate_operative_base_resume_for_response`.
-- **Stage 3:** `patt.artifacts.traceability` draft matches plan structure and content; not promoted.
+- **Stage 3:** `patt.artifact.traceability` draft matches plan structure and content; not promoted.
 - **Estimate 3:** Footprint fits — one data PK fetch, one core helper, one draft directive (+ expected Betty test-tree).
 - **Cross-ticket (AST-1585):** No `contact.py`, `src/ui/api/**`, JAR UI, or pin writers in diff.
 - **C6 lenses (§5a–§5g):** Imports top-level; layer direction clean; no silent failure / fallback on operative path; no debug or external-layer touch.
@@ -356,7 +356,7 @@ Full active set (64 per `canon/statutes/README.md` § Harvested corpus). Diff la
 |---------|--------|
 | `src/data/database.py` — `get_artifact` | ✓ |
 | `src/core/candidate.py` — `get_operative_base_resume` | ✓ |
-| `canon/directives/draft/patt.artifacts.traceability.md` | ✓ |
+| `canon/directives/draft/patt.artifact.traceability.md` | ✓ |
 | Betty test-tree (`tests/`, `docs/test-bible/`) | ✓ via `63bbc4a9` + `cd309487 merge-tests` |
 | Issue doc qa manifest section | (none) — test-bible holds manifest |
 

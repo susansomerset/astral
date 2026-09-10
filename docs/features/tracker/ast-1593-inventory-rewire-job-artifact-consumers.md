@@ -154,7 +154,7 @@ AC6 → Stage 1 (builder `get_job_current` by catalog key) + Stage 2 (ArtifactEd
 - **Finding:** Pin-string “has content” heuristic unchanged; plan only adjusts `printResumeVisible` OR on `resume_content`.
 - **Recommendation:** Fine once hydrate supplies dict bodies from current-read overlay.
 
-**Considered (in-session, slim R7):** Universal orch.* — conform. Scoped core/ui statutes (`import-direction`, `debug-contract-gated`, `in-scope-only`, `dry-and-focused-functions`) — conform. Draft patterns `patt.artifact.read-current`, `patt.artifacts.ui-consistency` — conform (leaf JAR keys + backend catalog mapping preserved). Publish ref includes AST-1592 `get_job_current` — dependency satisfied.
+**Considered (in-session, slim R7):** Universal orch.* — conform. Scoped core/ui statutes (`import-direction`, `debug-contract-gated`, `in-scope-only`, `dry-and-focused-functions`) — conform. Draft patterns `patt.artifact.read-current`, `patt.artifact.ui-consistency` — conform (leaf JAR keys + backend catalog mapping preserved). Publish ref includes AST-1592 `get_job_current` — dependency satisfied.
 
 context_tokens≈61000
 ```

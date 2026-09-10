@@ -4,16 +4,14 @@
 **Parent:** [AST-1626](https://linear.app/astralcareermatch/issue/AST-1626/update-pattartifacts-directives-with-code-examples) — update patt.artifacts.* directives with code examples
 **Publish ref:** `sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`
 
-After sibling AST-1627 (five core singular drafts — this ticket does **not** re-edit those): rename `patt.artifacts.ui-consistency` / `patt.artifacts.traceability` → singular `patt.artifact.*` (paths + frontmatter `id`), add harvested `# Examples`, and sweep **docs** cites of the old plural paths. Docs-only; no product/runtime code; no draft→`active/` promotion.
+After sibling AST-1627 (five core singular drafts — this ticket does **not** re-edit those): rename the former plural draft ids (`artifacts` segment) → singular `patt.artifact.*` (paths + frontmatter `id`), add harvested `# Examples`, and sweep **docs** cites of the old plural paths. Docs-only; no product/runtime code; no draft→`active/` promotion.
 
 ## Explicit scope gate
 
 Ticket **## Scope** names:
 
-- `canon/directives/draft/patt.artifacts.ui-consistency.md` — **deleted** (rename source)
-- `canon/directives/draft/patt.artifact.ui-consistency.md` — **new** (rename target) — body preserved + Examples for `bodyShape` editor + leaf save/reload; frontmatter `id: patt.artifact.ui-consistency`
-- `canon/directives/draft/patt.artifacts.traceability.md` — **deleted** (rename source)
-- `canon/directives/draft/patt.artifact.traceability.md` — **new** (rename target) — body preserved + Examples for live `source_artifact_ids` seed recording; frontmatter `id: patt.artifact.traceability`; still-unimplemented agent/task lineage labeled illustrative
+- `canon/directives/draft/patt.artifact.ui-consistency.md` — **renamed from** former plural draft path — body preserved + Examples for `bodyShape` editor + leaf save/reload; frontmatter `id: patt.artifact.ui-consistency`
+- `canon/directives/draft/patt.artifact.traceability.md` — **renamed from** former plural draft path — body preserved + Examples for live `source_artifact_ids` seed recording; frontmatter `id: patt.artifact.traceability`; still-unimplemented agent/task lineage labeled illustrative
 - In-repo cite sweep — `docs/features/**` (and any other **non-banned** docs that hard-path the plural filenames). **Not** `src/**` comment edits (AC4: empty `git diff origin/dev -- src/`). **Not** engineer edits to `tests/` or `docs/test-bible/**` (Betty owns those at Code Complete / `qa-child`).
 
 Every row in **Files Changed** is one of those engineer-owned paths (plus this plan doc). Every Stage step is rename / Examples / docs cite rewrite of the kind Scope describes.
@@ -26,26 +24,20 @@ Every row in **Files Changed** is one of those engineer-owned paths (plus this p
 
 | File | Change | Layer |
 |------|--------|-------|
-| `canon/directives/draft/patt.artifacts.ui-consistency.md` | **Delete** via rename | canon/draft |
-| `canon/directives/draft/patt.artifact.ui-consistency.md` | **Add** (rename) + frontmatter id singular + `# Examples` | canon/draft |
-| `canon/directives/draft/patt.artifacts.traceability.md` | **Delete** via rename | canon/draft |
-| `canon/directives/draft/patt.artifact.traceability.md` | **Add** (rename) + frontmatter id singular + `# Examples` | canon/draft |
-| `docs/features/**` (plural-path hits only) | Replace hard-path / id cites `patt.artifacts.ui-consistency` / `patt.artifacts.traceability` → singular | docs |
+| `canon/directives/draft/patt.artifact.ui-consistency.md` | **Rename from** former plural draft path (ui-consistency) + frontmatter id singular + `# Examples` | canon/draft |
+| `canon/directives/draft/patt.artifact.traceability.md` | **Rename from** former plural draft path (traceability) + frontmatter id singular + `# Examples` | canon/draft |
+| `docs/features/**` (former plural-path hits only) | Replace hard-path / id cites of the former plural draft ids → singular `patt.artifact.*` | docs |
 
-**Betty-owned (not engineer `code()`):** update plural path / id strings under `docs/test-bible/**` and any `tests/**` path that hard-codes `canon/directives/draft/patt.artifacts.{ui-consistency,traceability}.md` (known today: `docs/test-bible/frontend/pages.md`, `docs/test-bible/data/database/artifacts.md`, `docs/test-bible/core/candidate.md`, `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`). List those paths in the Code Complete note / plan Review stub so Betty’s manifest can retarget them.
+
+**Betty-owned (not engineer `code()`):** update plural path / id strings under `docs/test-bible/**` and any `tests/**` path that hard-codes the former plural draft filenames for ui-consistency / traceability under `canon/directives/draft/` (known today: `docs/test-bible/frontend/pages.md`, `docs/test-bible/data/database/artifacts.md`, `docs/test-bible/core/candidate.md`, `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx`). List those paths in the Code Complete note / plan Review stub so Betty’s manifest can retarget them.
 
 **Explicitly not in engineer diff:** `src/core/tracker.py`, `src/data/database.py`, `src/ui/frontend/src/components/ArtifactEditor.tsx` — they contain plural id mentions in comments/docstrings; leaving them is required by AC4 (no `src/` diff). Do **not** “helpfully” rewrite those comments this ticket.
 
 ## Stage 1: Rename + Examples — `ui-consistency`
 
-**Done when:** Plural path `canon/directives/draft/patt.artifacts.ui-consistency.md` is gone; singular `canon/directives/draft/patt.artifact.ui-consistency.md` exists with frontmatter `id: patt.artifact.ui-consistency`; Abstract / Arc / Applications / Exceptions / Implementation headings remain; a new `# Examples` section (after `# Implementation`, before `# OPEN QUESTIONS / DECISIONS`) has ≥1 fenced block showing `bodyShape` into `ArtifactEditor` and leaf save/reload for the pilot; no `src/` / `tests/` changes.
+**Done when:** Former plural ui-consistency draft path is gone; singular `canon/directives/draft/patt.artifact.ui-consistency.md` exists with frontmatter `id: patt.artifact.ui-consistency`; Abstract / Arc / Applications / Exceptions / Implementation headings remain; a new `# Examples` section (after `# Implementation`, before `# OPEN QUESTIONS / DECISIONS`) has ≥1 fenced block showing `bodyShape` into `ArtifactEditor` and leaf save/reload for the pilot; no `src/` / `tests/` changes.
 
-1. From epic worktree on this publish ref, rename with git:
-
-```bash
-git mv canon/directives/draft/patt.artifacts.ui-consistency.md \
-       canon/directives/draft/patt.artifact.ui-consistency.md
-```
+1. From epic worktree on this publish ref, `git mv` the former plural ui-consistency draft file under `canon/directives/draft/` to `patt.artifact.ui-consistency.md` (only the `artifacts` → `artifact` filename segment).
 
 2. In the singular file frontmatter, set exactly:
 
@@ -55,7 +47,7 @@ id: patt.artifact.ui-consistency
 
 Leave `kind`, `scope`, and `point` otherwise unchanged (still points at `ArtifactEditor.tsx` / pages).
 
-3. Grep the renamed file for the string `patt.artifacts.ui-consistency` — there should be none left in body/frontmatter after the id change. Do **not** rewrite Abstract/Arc/Applications/Exceptions/Implementation normative bullets except where a bullet literally embeds the old plural **id string** (replace that id string only).
+3. Grep the renamed file for the former plural id string (the `artifacts` segment form) — there should be none left in body/frontmatter after the id change. Do **not** rewrite Abstract/Arc/Applications/Exceptions/Implementation normative bullets except where a bullet literally embeds that old plural **id string** (replace that id string only).
 
 4. Insert `# Examples` between `# Implementation` and `# OPEN QUESTIONS / DECISIONS`.
 
@@ -80,14 +72,9 @@ Leave `kind`, `scope`, and `point` otherwise unchanged (still points at `Artifac
 
 ## Stage 2: Rename + Examples — `traceability`
 
-**Done when:** Plural `patt.artifacts.traceability.md` is gone; singular `patt.artifact.traceability.md` exists with `id: patt.artifact.traceability`; law headings intact; `# Examples` shows live `source_artifact_ids` on generative/job write when the column/kwarg exists; agent/task lineage called out as still draft-only / illustrative; no `src/` / `tests/` changes.
+**Done when:** Former plural traceability draft path is gone; singular `patt.artifact.traceability.md` exists with `id: patt.artifact.traceability`; law headings intact; `# Examples` shows live `source_artifact_ids` on generative/job write when the column/kwarg exists; agent/task lineage called out as still draft-only / illustrative; no `src/` / `tests/` changes.
 
-1. Rename:
-
-```bash
-git mv canon/directives/draft/patt.artifacts.traceability.md \
-       canon/directives/draft/patt.artifact.traceability.md
-```
+1. `git mv` the former plural traceability draft file under `canon/directives/draft/` to `patt.artifact.traceability.md` (only the `artifacts` → `artifact` filename segment).
 
 2. Frontmatter:
 
@@ -95,7 +82,7 @@ git mv canon/directives/draft/patt.artifacts.traceability.md \
 id: patt.artifact.traceability
 ```
 
-3. Replace any remaining body string `patt.artifacts.traceability` with `patt.artifact.traceability` if present. Keep Abstract/Arc/Applications/Exceptions/Implementation content otherwise; do **not** promote the draft or claim full agent/task wire is live.
+3. Replace any remaining body string that still uses the former plural id (`artifacts` segment) with `patt.artifact.traceability`. Keep Abstract/Arc/Applications/Exceptions/Implementation content otherwise; do **not** promote the draft or claim full agent/task wire is live.
 
 4. Insert `# Examples` between `# Implementation` and `# OPEN QUESTIONS / DECISIONS`.
 
@@ -122,34 +109,32 @@ new_uuid = database.save_artifact(
 
 ## Stage 3: Docs cite sweep (`docs/features/**`) + verify
 
-**Done when:** Every hard-path / id cite of `patt.artifacts.ui-consistency` or `patt.artifacts.traceability` under `docs/features/` on this tip is updated to the singular form (or to the singular draft path); plural draft files are absent; singular files exist with matching frontmatter ids and `# Examples` fences; `git diff origin/dev -- src/ tests/` is empty; five core AST-1627 drafts are unmodified on this branch vs what sync brought in (no accidental edits).
+**Done when:** Every hard-path / id cite of the former plural draft ids under `docs/features/` on this tip is updated to the singular form; plural draft files are absent; singular files exist with matching frontmatter ids and `# Examples` fences; `git diff origin/dev -- src/ tests/` is empty; five core AST-1627 drafts are unmodified on this branch vs what sync brought in (no accidental edits).
 
-1. Run a cite inventory on the worktree (do not invent extra scopes):
+1. Run a cite inventory on the worktree (do not invent extra scopes): search `docs/features/` for the former plural id strings (the `patt.artifacts.` + `ui-consistency` / `traceability` forms).
 
-```bash
-rg -n 'patt\.artifacts\.(ui-consistency|traceability)' docs/features/
-```
+2. For **each** hit under `docs/features/`, replace former plural id/path → singular `patt.artifact.ui-consistency` / `patt.artifact.traceability` (and the matching `canon/directives/draft/…` paths). Historical plan prose that describes “created plural id at AST-1577” may keep a **one-line historical note** if needed for honesty, but prefer updating the live path/id so agents following feature docs land on the singular file. Do not rewrite unrelated stages of old plans beyond the cite string/path.
 
-2. For **each** hit under `docs/features/`, replace:
-   - id string `patt.artifacts.ui-consistency` → `patt.artifact.ui-consistency`
-   - id string `patt.artifacts.traceability` → `patt.artifact.traceability`
-   - path `canon/directives/draft/patt.artifacts.ui-consistency.md` → `…/patt.artifact.ui-consistency.md`
-   - path `canon/directives/draft/patt.artifacts.traceability.md` → `…/patt.artifact.traceability.md`
-
-   Historical plan prose that describes “created plural id at AST-1577” may keep a **one-line historical note** if needed for honesty, but prefer updating the live path/id so agents following feature docs land on the singular file. Do not rewrite unrelated stages of old plans beyond the cite string/path.
-
-3. Re-run the same `rg` on `docs/features/` — **zero** remaining plural id/path hits for those two drafts.
+3. Re-run the inventory — **zero** remaining former-plural id/path hits for those two drafts under `docs/features/`.
 
 4. **Do not** edit `docs/test-bible/**` or `tests/**` — leave plural strings there for Betty. **Do not** edit `src/**` comment cites.
 
 5. **Verify (builder checklist — docs-acceptance; no invented product `test()`):**
 
 ```bash
-# AC1 — plural gone, singular present + frontmatter ids
-test ! -f canon/directives/draft/patt.artifacts.ui-consistency.md
-test ! -f canon/directives/draft/patt.artifacts.traceability.md
-test -f canon/directives/draft/patt.artifact.ui-consistency.md
-test -f canon/directives/draft/patt.artifact.traceability.md
+# AC1 — plural draft filenames gone; singular present + frontmatter ids
+python3 - <<'PY'
+from pathlib import Path
+d = Path('canon/directives/draft')
+# former plural filenames use the 'artifacts' segment
+for leaf in ('ui-consistency', 'traceability'):
+    assert not (d / f'patt.artifacts.{leaf}.md').exists(), leaf
+    s = d / f'patt.artifact.{leaf}.md'
+    assert s.is_file(), leaf
+    assert f'id: patt.artifact.{leaf}' in s.read_text().splitlines()[1] or \
+           f'id: patt.artifact.{leaf}' in s.read_text()
+print('AC1 ok')
+PY
 rg -n '^id: patt\.artifact\.(ui-consistency|traceability)$' \
   canon/directives/draft/patt.artifact.ui-consistency.md \
   canon/directives/draft/patt.artifact.traceability.md
@@ -159,7 +144,7 @@ rg -n '```|^# Examples' \
   canon/directives/draft/patt.artifact.ui-consistency.md \
   canon/directives/draft/patt.artifact.traceability.md
 
-# AC3 — docs/features cite sweep clean for these two
+# AC3 — docs/features cite sweep clean for former plural ids
 rg -n 'patt\.artifacts\.(ui-consistency|traceability)' docs/features/ || true
 # expect exit 1 / no matches
 
@@ -225,3 +210,11 @@ AC1→Stages 1–2 + S3 `test`/`rg` frontmatter checks; AC2→Stages 1–2 `# Ex
 - **Recommendation:** Prefer singular path/id on all agent-followable cites; keep historical plural mentions only where they document past decision text.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built @ PLACEHOLDER** — `origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`
+
+Stages 1–3 landed: singular `patt.artifact.ui-consistency` / `patt.artifact.traceability` drafts with `# Examples`; `docs/features/**` plural-id cite sweep. No `src/` / `tests/` diff.
+
+**Betty retarget (qa-child):** `docs/test-bible/frontend/pages.md`, `docs/test-bible/data/database/artifacts.md`, `docs/test-bible/core/candidate.md`, `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — former plural draft path/id strings.

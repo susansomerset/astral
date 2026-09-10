@@ -321,7 +321,7 @@ Full active set (64 per `canon/statutes/README.md` § Harvested corpus). Diff la
 | id | verdict | one-line |
 |----|---------|----------|
 | `patt.artifact.read-operative` (parent draft directive) | conforms | Contact + API + JAR wire pin→body; blob dual-read stripped; `pin_required` on dotted path; no coat-check / blob fallback |
-| `patt.artifacts.traceability` (sibling draft) | conforms | Read-only `job_data.base_resume_artifact_id`; no product persist of seed ids |
+| `patt.artifact.traceability` (sibling draft) | conforms | Read-only `job_data.base_resume_artifact_id`; no product persist of seed ids |
 | none cited in plan `Patterns to reuse` | — | Parent read-operative mandate satisfied across Contact/UI surfaces |
 
 ## Plan adherence

@@ -66,7 +66,7 @@ Every row in **Files Changed** is one of those paths (plus this plan doc). Stage
      - If `key == "job.artifacts.job_resume"`: `cid = _candidate_id_for_job(astral_job_id)`; if `cid`, `base_row = database.get_current_artifact("candidate", cid, "base_resume")`; `sources = [base_row["artifact_uuid"]]` when `base_row` has a non-empty `artifact_uuid`, else `sources = []`. Do not invent ids. Do not call coat-check / candidate blob fallback.
      - Else: pass `source_artifact_ids` through to `database.save_artifact` (data layer normalizes `None` → `[]`).
    - Call `database.save_artifact(entry["entity_type"], astral_job_id, artifact_type, prepared_body, source_artifact_ids=sources)` and return the new uuid string.
-   - Docstring: cite AST-1592 / patt.artifact.write-operative / patt.artifacts.traceability for job_resume→base_resume citation.
+   - Docstring: cite AST-1592 / patt.artifact.write-operative / patt.artifact.traceability for job_resume→base_resume citation.
 
 5. Place both public functions in the job-artifact section **before** remaining helpers (public-then-helpers). Update the module docstring In-scope line to name `save_job_artifact` and `get_job_current`.
 

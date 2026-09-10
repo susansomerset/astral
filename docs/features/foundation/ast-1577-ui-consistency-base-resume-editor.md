@@ -1,16 +1,16 @@
-# patt.artifacts.ui-consistency + shape-standardized base_resume editor
+# patt.artifact.ui-consistency + shape-standardized base_resume editor
 
 **Linear:** [AST-1577](https://linear.app/astralcareermatch/issue/AST-1577)
 **Parent:** [AST-1569](https://linear.app/astralcareermatch/issue/AST-1569) — Implement patt.artifact.write-operative
 **Publish ref:** `sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`
 
-Author draft `patt.artifacts.ui-consistency` and refactor the base-resume editor path so `ArtifactEditor` / `ArtifactsBaseResumeContent` are parameterized by catalog `body_shape` `resume_content`, save via the existing candidate data API, and reload the operative current body (hydrate already shipped by sibling AST-1576). Does **not** own data-layer / agent craft-persist / `artifact_catalog` deletion.
+Author draft `patt.artifact.ui-consistency` and refactor the base-resume editor path so `ArtifactEditor` / `ArtifactsBaseResumeContent` are parameterized by catalog `body_shape` `resume_content`, save via the existing candidate data API, and reload the operative current body (hydrate already shipped by sibling AST-1576). Does **not** own data-layer / agent craft-persist / `artifact_catalog` deletion.
 
 ## Explicit scope gate
 
 Ticket **## Scope** names exactly:
 
-- `canon/directives/draft/patt.artifacts.ui-consistency.md` (**new**)
+- `canon/directives/draft/patt.artifact.ui-consistency.md` (**new**)
 - `src/ui/frontend/src/components/ArtifactEditor.tsx`
 - `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx`
 
@@ -24,19 +24,19 @@ Every row in **Files Changed** is one of those paths (plus this plan doc). Every
 
 | File | Change | Layer |
 |------|--------|-------|
-| `canon/directives/draft/patt.artifacts.ui-consistency.md` | **New** draft pattern: editors standardized on catalog `body_shape`; same shape shares editor path; pilot `resume_content` | canon |
+| `canon/directives/draft/patt.artifact.ui-consistency.md` | **New** draft pattern: editors standardized on catalog `body_shape`; same shape shares editor path; pilot `resume_content` | canon |
 | `src/ui/frontend/src/components/ArtifactEditor.tsx` | Add `bodyShape` prop; `resume_content` drives structure-dict editor mode; keep `useCandidateResumeStructure` for out-of-scope callers | ui |
 | `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` | Wire `bodyShape="resume_content"`; keep leaf `artifactKey="base_resume"` + candidate data save/load | ui |
 
-## Stage 1: Draft `patt.artifacts.ui-consistency`
+## Stage 1: Draft `patt.artifact.ui-consistency`
 
-**Done when:** `canon/directives/draft/patt.artifacts.ui-consistency.md` exists on the publish ref with frontmatter + Abstract / Arc / Applications / Exceptions / Implementation / OPEN QUESTIONS; it mandates body_shape-driven editors; it does **not** link to or cite `patt.artifact.write-operative` by id/path; Archie approval before active is stated.
+**Done when:** `canon/directives/draft/patt.artifact.ui-consistency.md` exists on the publish ref with frontmatter + Abstract / Arc / Applications / Exceptions / Implementation / OPEN QUESTIONS; it mandates body_shape-driven editors; it does **not** link to or cite `patt.artifact.write-operative` by id/path; Archie approval before active is stated.
 
-1. Create `canon/directives/draft/patt.artifacts.ui-consistency.md` using the same draft shape as sibling drafts under `canon/directives/draft/` (YAML frontmatter + numbered sections). Frontmatter:
+1. Create `canon/directives/draft/patt.artifact.ui-consistency.md` using the same draft shape as sibling drafts under `canon/directives/draft/` (YAML frontmatter + numbered sections). Frontmatter:
 
 ```yaml
 ---
-id: patt.artifacts.ui-consistency
+id: patt.artifact.ui-consistency
 kind: pattern
 scope: [src/ui/frontend/src/components/ArtifactEditor.tsx, src/ui/frontend/src/pages]
 point: >
@@ -77,7 +77,7 @@ point: >
    - Do **not** add cross-links into `patt.artifact.write-operative.md`.
    - Do **not** register new `ARTIFACT_CONFIG` keys or change config from this file.
 
-⚠️ **Decision:** Pattern id is `patt.artifacts.ui-consistency` (plural `artifacts`) per parent / child ticket naming — not `patt.artifact.ui-consistency`.
+⚠️ **Decision:** Pattern id is `patt.artifact.ui-consistency` (plural `artifacts`) per parent / child ticket naming — not `patt.artifact.ui-consistency`.
 
 ## Stage 2: Parameterize `ArtifactEditor` + wire Base Resume page
 
@@ -110,7 +110,7 @@ All existing `structureMode` call sites (tab chrome, shape fields from structure
 
 Keep `!jobPersistence` and the rest of `baseResumeUnsupportedEscape` / `canGenerate` logic intact. Do **not** change rubric Generate, chain handoff, or jobPersistence save paths.
 
-4. Destructure `bodyShape` in the component signature (default `undefined`). Add a one-line comment at the prop: AST-1577 / `patt.artifacts.ui-consistency` — structure-dict mode by shape.
+4. Destructure `bodyShape` in the component signature (default `undefined`). Add a one-line comment at the prop: AST-1577 / `patt.artifact.ui-consistency` — structure-dict mode by shape.
 
 5. In `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx`, on the `<ArtifactEditor …>` call:
 
@@ -155,7 +155,7 @@ context_tokens≈52000
 
 **Built @ `8f0b8a46`** — `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`
 
-Stages 1–2 landed: draft `patt.artifacts.ui-consistency.md` (no write-operative cross-link); `ArtifactEditor` `bodyShape` + Base Resume page `bodyShape="resume_content"` (leaf `base_resume` unchanged; `useCandidateResumeStructure` retained for JAR).
+Stages 1–2 landed: draft `patt.artifact.ui-consistency.md` (no write-operative cross-link); `ArtifactEditor` `bodyShape` + Base Resume page `bodyShape="resume_content"` (leaf `base_resume` unchanged; `useCandidateResumeStructure` retained for JAR).
 
 ## Radia review
 
@@ -241,12 +241,12 @@ Stages 1–2 landed: draft `patt.artifacts.ui-consistency.md` (no write-operativ
 
 | id | verdict | one-line |
 |----|---------|----------|
-| `patt.artifacts.ui-consistency` (new draft) | conforms | Draft landed with required sections; `bodyShape` prop + Base Resume wiring; no `write-operative` cross-link |
+| `patt.artifact.ui-consistency` (new draft) | conforms | Draft landed with required sections; `bodyShape` prop + Base Resume wiring; no `write-operative` cross-link |
 | none cited as approved `canon/patterns/**` | — | Draft-directive citation per parent/child naming; Joan closed at plan validate |
 
 ## Plan adherence
 
-**Stage 1** — `canon/directives/draft/patt.artifacts.ui-consistency.md` created with frontmatter (`id: patt.artifacts.ui-consistency`), Abstract/Arc/Applications/Exceptions/Implementation/OPEN QUESTIONS, Archie-approval note, and zero `write-operative` mentions (verified).
+**Stage 1** — `canon/directives/draft/patt.artifact.ui-consistency.md` created with frontmatter (`id: patt.artifact.ui-consistency`), Abstract/Arc/Applications/Exceptions/Implementation/OPEN QUESTIONS, Archie-approval note, and zero `write-operative` mentions (verified).
 
 **Stage 2** — `ArtifactEditor` gains optional `bodyShape`; `structureMode = useCandidateResumeStructure || bodyShape === "resume_content"`; `baseResumeUnsupportedEscape` widened per plan; `ArtifactsBaseResumeContent` passes `bodyShape="resume_content"` and drops `useCandidateResumeStructure` on this page only; `JobAnalysisReportModal.tsx` untouched (still `useCandidateResumeStructure`). Save still PUTs `artifacts.base_resume` leaf; no new API fields or `ARTIFACT_CONFIG` frontend fetch.
 
@@ -284,7 +284,7 @@ Stages 1–2 landed: draft `patt.artifacts.ui-consistency.md` (no write-operativ
 
 | Area | Paths | Verdict |
 |------|-------|---------|
-| AST-1577 product (in-scope) | `canon/directives/draft/patt.artifacts.ui-consistency.md`, `ArtifactEditor.tsx`, `ArtifactsBaseResumeContent.tsx` | In-scope; plan-faithful |
+| AST-1577 product (in-scope) | `canon/directives/draft/patt.artifact.ui-consistency.md`, `ArtifactEditor.tsx`, `ArtifactsBaseResumeContent.tsx` | In-scope; plan-faithful |
 | AST-1577 tests/bible | `tests/component/frontend/components/test_ArtifactEditor.test.tsx`, `pages/test_ArtifactsBaseResumeContent.test.tsx`, `docs/test-bible/frontend/components.md`, `pages.md` | In-scope via Betty merge-tests |
 | Plan doc | `docs/features/foundation/ast-1577-ui-consistency-base-resume-editor.md` | Present |
 | Sibling ancestry (not 1577 engineer) | `src/core/**`, `src/data/**`, `src/ui/api/**`, `src/utils/**`, AST-1576 tests/bible | Expected AST-1576 stack on epic tip — not 1577 scope creep |
