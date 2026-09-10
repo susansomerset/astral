@@ -1,0 +1,8 @@
+file	grade	loe
+src/core/dispatcher.py	A
+src/core/tracker.py	A
+src/core/roster.py	A
+src/core/candidate.py	A
+src/utils/config.py	A
+src/ui/api/api_admin.py	A
+src/data/database.py	D	3
