@@ -151,3 +151,13 @@ AC3→Stage 1 (`state_options`); AC4→Stage 1 (Available gate mirrors AST-1622 
 - **acceptable** — Stage 1 step 3 is verify-only for `ENTITY_TYPES` / `dispatch_entity_state_registry` validation (AST-1621 on ftr); no parallel allowlist if literals are already clean.
 
 context_tokens≈68000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1620/AST-1623-admin-available-state-options-ledger`
+**Tip:** `01de74f3`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `2ca13c89` | `state_options` meteorite + Available without candidate_id |
+| 2 | `01de74f3` | ledger `entity_type='meteorite'` + live-row NULL→meteorite correction |
