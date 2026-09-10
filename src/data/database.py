@@ -8182,6 +8182,8 @@ def get_due_tasks() -> List[Dict[str, Any]]:
     Each returned dict includes 'available_count' from count_eligible_for_dispatch_task
     (WATCH respects freq_hrs / last_scan_at). Candidate-bound meteorite_email AUTO due is
     merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
+    Meteorite AUTO rows may have NULL candidate_id and still due when eligible count meets
+    min_count (global unclaimed pool).
     """
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
@@ -8199,7 +8201,9 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         et = task.get("entity_type")
         ts = task.get("trigger_state")
         cid = task.get("candidate_id")
-        if not et or not ts or not cid:
+        if not et or not ts:
+            continue
+        if not cid and et != "meteorite":
             continue
         avail = count_eligible_for_dispatch_task(task)
         if avail >= (task.get("min_count") or 1):  # match runner threshold (or 1) to avoid noisy zero-work runs
@@ -8349,12 +8353,16 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
+    entity_type=meteorite counts the global unclaimed meteorite pool via
+    count_meteorites_unclaimed_in_states and does not require candidate_id.
     meteorite_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
     """
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
     candidate_id = task.get("candidate_id")
-    if not entity_type or not state or not candidate_id:
+    if not entity_type or not state:
+        return 0
+    if entity_type != "meteorite" and not candidate_id:
         return 0
     if entity_type not in ENTITY_TYPES:
         return 0
@@ -8366,6 +8374,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
         )
     if not claim_states:
         return 0
+    if entity_type == "meteorite":
+        return count_meteorites_unclaimed_in_states(claim_states)
     task_key = task.get("task_key", "")
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
