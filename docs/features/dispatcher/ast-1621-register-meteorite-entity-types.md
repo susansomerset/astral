@@ -92,3 +92,14 @@ AST-1621 plan approved.
 **Statute pass (in-session):** Universal orchestration statutes conform (plan review only). Scoped statutes considered for `src/utils/config.py` + `docs/ASTRAL_CODE_RULES.md` (`config-source-of-truth`, `no-hardcoded-sets`, `seed-auto-false`, `in-scope-only`, layer/import standards, etc.) — all conform; batch/UI/data statutes excluded by path/layer. No fix-now findings.
 
 **Intermediate epic note (acceptable):** After this child lands, `ENTITY_TYPES` and registries accept `meteorite` while `state_options`/Available/ledger/backfill remain sibling work — documented in plan boundaries and stage-2 seed-only decision; not a blocker for AST-1621.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1620/AST-1621-register-meteorite-entity-types`
+**Tip:** `2f34fe55`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `fb265adf` | ENTITY_TYPES + registry / claim_states / sort_by for meteorite |
+| 2 | `1172951c` | SEED_CONFIG ingress + bot-blocked `entity_type='meteorite'` |
+| 3 | `2f34fe55` | Code Rules ENTITY_TYPES + §2.4 claim-queue wording |
