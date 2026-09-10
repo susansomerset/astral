@@ -201,3 +201,9 @@ AC1→Stages 1–5 (+S5 `rg` fence check); AC2→Stages 1–4 symbol harvest + S
 - **Recommendation:** Keep as one-line pointers only (plan already bounds them); no expansion into job-editor examples on this child.
 
 context_tokens≈28000
+
+## Review (build)
+
+**Built @ `caec5f7e965a675b7455c007e87dedb28b9bec96`** — `origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment`
+
+Stages 1–5 landed: `# Examples` on the five singular drafts (`manage-catalog`, `write-operative`, `read-current`, `read-operative`, `no-coat-check`) with live `src/` symbols; no `src/`/`tests/` diff; plural ui-consistency / traceability drafts untouched.
