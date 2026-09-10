@@ -32,8 +32,10 @@ line are the surface statute — `stat.logging.info.dispatcher`,
 # Statement
 
 When a backend path makes expected progress, emit a succinct `logger.info`
-through `get_logger` from `src.utils.logging`. The line is never gated.
-Message shape is the statute for that surface, not function names or
+through `get_logger` from `src.utils.logging`. The logger **is** the
+component file that emitted the line: `get_logger(__name__)`. Do not pass a
+decorative name (`"dispatch.scheduler"`, `"monitor"`, …). The line is never
+gated. Message shape is the statute for that surface, not function names or
 parameter keys. Do not skip it because debug exists. Do not `print`, do not
 call stdlib `logging.getLogger`, and do not put payloads or failure detail
 on `info`.
@@ -66,6 +68,7 @@ if debug:
 print("starting batch")                          # never reaches app_log
 import logging
 logging.getLogger(__name__).info("hop done")     # bypasses utils facade
+get_logger("dispatch.scheduler")                 # not a file; use get_logger(__name__)
 logger.info("[DEBUG] cse hits=%s urls=%s", n, urls)  # payloads are debug
 logger.info("vet reject slug=%s reason=%s", slug, reason)  # item failure is warning
 ```
@@ -76,7 +79,7 @@ The line feels like progress but also carries found/recorded guts, or nothing
 was logged because debug will cover it.
 
 1. **Success path, one scannable fact?** `info`. Always. Pick the surface
-   statute for the words: `stat.logging.info.dispatcher` (task/hop),
+   statute for the words: `stat.logging.info.dispatcher` (task),
    `stat.logging.info.entity` (company/job/candidate),
    `stat.logging.info.contact` (Slack listen + Estelle notes/action),
    `stat.logging.info.api` (route confirmation). Debug does not replace this line.

@@ -830,7 +830,7 @@ class TestRegistryControls:
         assert dispatcher_mod.run_task(5) is True
         assert started
 
-    def test_drain_and_cancel_report_registry_state(self) -> None:
+    def test_drain_and_cancel_report_registry_state(self, caplog: pytest.LogCaptureFixture) -> None:
         assert dispatcher_mod.drain_task(1)["reason"] == "not_running"
         assert dispatcher_mod.cancel_task(1)["reason"] == "not_running"
         with dispatcher_mod._registry_lock:
@@ -839,7 +839,9 @@ class TestRegistryControls:
                 "candidate_id": "cand-1",
                 "drain": False,
             }
-        assert dispatcher_mod.drain_task(2)["draining"] is True
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            assert dispatcher_mod.drain_task(2)["draining"] is True
+        assert any("cand-1 drain requested for evaluate_jd" in r.message for r in caplog.records)
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[3] = {
                 "task_key": "evaluate_jd",
@@ -1164,6 +1166,7 @@ class TestAst841DispatchTerminalLogging:
             accumulated["total_processed"] = 5
 
         monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=_bump))
+        monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda task_key: "")
         task = {"id": 42, "task_key": "inflow_discovery", "candidate_id": "cand-1", "auto_mode": 0}
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[42] = {"asyncio_task": None}
@@ -1177,6 +1180,34 @@ class TestAst841DispatchTerminalLogging:
             for r in caplog.records
         )
         assert not any("batch finished COMPLETED with errors" in r.message for r in caplog.records)
+        assert not any("run_next:" in r.message for r in caplog.records)
+
+    def test_completed_pipe_appends_run_next_when_set(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda task_key: "evaluate_jd")
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            dispatcher_mod._log_dispatch_task_completed(
+                "cand-1", "job", "qualify_job_listings", 1, 0, 0, "batch-1"
+            )
+        assert any(
+            r.levelname == "INFO"
+            and r.name == "src.core.dispatcher"
+            and "task completed: qualify_job_listings" in r.message
+            and "run_next: evaluate_jd" in r.message
+            for r in caplog.records
+        )
+
+    def test_completed_pipe_omits_run_next_when_empty(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda task_key: "")
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            dispatcher_mod._log_dispatch_task_completed(
+                "cand-1", "job", "qualify_job_listings", 1, 0, 0, "batch-1"
+            )
+        assert any("task completed: qualify_job_listings" in r.message for r in caplog.records)
+        assert not any("run_next:" in r.message for r in caplog.records)
 
 
 class TestRunDispatchLoop:
@@ -1191,16 +1222,19 @@ class TestRunDispatchLoop:
         run.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_stops_after_drain_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_stops_after_drain_flag(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
         monkeypatch.setattr(dispatcher_mod, "_run_task", AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}))
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[9] = {"drain": True}
         accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
-        task = {"id": 9, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 1, "min_count": 1}
-        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        task = {"id": 9, "task_key": "evaluate_jd", "candidate_id": "cand-1", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 1, "min_count": 1}
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
         assert accumulated["total_processed"] == 0
+        assert any("cand-1 drain stopping evaluate_jd after 0 run(s)" in r.message for r in caplog.records)
+        assert not any("drain flag set" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_stops_when_batch_processes_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1334,17 +1368,20 @@ class TestAst814InflowDiscoveryDebug:
 
 
 class TestTaskThreadTarget:
-    def test_cleans_registry_after_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_cleans_registry_after_loop(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         loop = MagicMock()
         loop.run_until_complete = MagicMock()
         loop.close = MagicMock()
         monkeypatch.setattr(dispatcher_mod.asyncio, "new_event_loop", lambda: loop)
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[15] = {}
-        dispatcher_mod._task_thread_target(15, {"task_key": "evaluate_jd"})
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            dispatcher_mod._task_thread_target(15, {"task_key": "evaluate_jd", "candidate_id": "cand-1"})
         assert 15 not in dispatcher_mod._task_registry
         loop.close.assert_called_once()
         loop.run_until_complete.assert_called_once()
+        assert any("cand-1 thread exited for evaluate_jd" in r.message for r in caplog.records)
+        assert not any("thread exited and cleared from registry" in r.message for r in caplog.records)
 
     def test_skips_loop_assignment_without_registry_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         loop = MagicMock()

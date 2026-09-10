@@ -3,7 +3,7 @@ id: stat.logging.info.dispatcher
 kind: statute
 scope: logging
 point: >
-  Dispatcher info is candidate-pipe task and hop lines.
+  Dispatcher info is a candidate-pipe task-completed line.
 approved_by: null
 approved_at: null
 supersedes: null
@@ -15,31 +15,30 @@ applies_when:
   change_types: ["add", "modify"]
 canonical_refs:
   - path: src/core/dispatcher.py
-    symbol: batch finished
-  - path: src/core/agent.py
-    symbol: _log_run_next_hop_boundary
+    symbol: _log_dispatch_task_completed
 ---
 
 # Abstract
 
-A dispatch task or hop finishing is what a sysadmin greps for: which
-candidate, which entity, which task, the pass/fail/error counts, which
-batch. Today's `[%s/%s] batch finished` and `run_next hop:` lines are
-call-stack true and scan-useless. Channel and always-on duty are
-`stat.logging.info`. This statute is the pipe.
+A dispatch task finishing is what a sysadmin greps for: which candidate,
+which entity, which task, the pass/fail/error counts, which batch. Today's
+`[%s/%s] batch finished` and `run_next hop:` lines are call-stack true and
+scan-useless. Channel and always-on duty are `stat.logging.info`. This
+statute is the pipe. Chained `run_next` is the next `task_key`, not a
+second kind of log.
 
 # Statement
 
-When a dispatch task completes, emit one `logger.info` through `get_logger`:
+When a dispatch task completes, emit one `logger.info` through
+`get_logger(__name__)`:
 
 `<candidate_id> | dispatch <entity_type> task completed: <task_key> pass:<passed> fail:<failed> error:<errored> (batch: <batch_id>)`
 
-When a `run_next` hop completes, emit:
-
-`<candidate_id> | dispatch <entity_type> hop completed: <from_task> → <to_task> (batch: <batch_id>)`
-
-Do not gate these lines. Do not use `task_key/batch_id` square-bracket
-prefixes or `run_next hop:` as the message.
+If the finishing task has a `run_next` successor, append
+` run_next: <run_next_task_key>` on that same line. The following info is
+that `task_key` running normally — same Dispatching / `task completed`
+shape. Do not gate these lines. Do not use `task_key/batch_id`
+square-bracket prefixes or `run_next hop:` as the message.
 
 # Scenario
 
@@ -47,8 +46,9 @@ An AUTO consult task for a candidate finishes 92 passed, 3 failed, 0
 errors. With debug off, the scan line must still name the candidate, that
 it was a job task, the task key, and the counts. Logging only
 `[consult_grade/ledger-id] batch finished COMPLETED …` forces the operator
-into source. A hop from consult to search with no info line looks like the
-chain stalled.
+into source. A successor `run_next` with no suffix on the finishing line
+looks like the chain stalled; a separate “hop completed A → B” line is the
+wrong dialect.
 
 # Do
 
@@ -67,14 +67,8 @@ logger.info(
     errored,
     batch_id,
 )
-logger.info(
-    "%s | dispatch %s hop completed: %s → %s (batch: %s)",
-    candidate_id,
-    entity_type,
-    from_task,
-    to_task,
-    batch_id,
-)
+# when the task row has a successor:
+# "... (batch: %s) run_next: %s"  + run_next_task_key
 ```
 
 # Don't
@@ -82,7 +76,9 @@ logger.info(
 ```python
 logger.info("[%s/%s] batch finished COMPLETED | processed=%s passed=%s failed=%s errors=%s",
             task_key, batch_id, processed, passed, failed, errors)
-logger.info("run_next hop: %s -> %s batch_id=%s", from_hop, to_hop, batch_id)
+logger.info("run_next hop: %s -> %s batch_id=%s", from_task, to_task, batch_id)
+logger.info("%s | dispatch %s hop completed: %s → %s (batch: %s)",
+            candidate_id, entity_type, from_task, to_task, batch_id)
 if debug:
     logger.info("%s | dispatch %s task completed: %s pass:%s fail:%s error:%s (batch: %s)",
                 candidate_id, entity_type, task_key, passed, failed, errored, batch_id)
@@ -104,6 +100,8 @@ Unsure whether this is info, warning, or error.
 
 # Notes
 
-`entity_type` is `company`, `job`, or `candidate` as the dispatch task
-targets. Hop `from_task` / `to_task` are the task keys operators already
-see, not `run_next` internals.
+`entity_type` is whatever the dispatch task row carries (including
+`meteorite`). Empty → `-` in the pipe only, not a reject. Do not allowlist
+or coerce types. Chained tasks are the next `task_key`; the finishing line
+may add `run_next: <run_next_task_key>`; the following info is that task
+running normally.

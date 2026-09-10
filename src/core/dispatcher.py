@@ -507,7 +507,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 f"entity_type={task.get('entity_type', '')!r} "
                 f"trigger_state={task.get('trigger_state', '')!r}"
             )
-        _sched_log.warning(
+        logger.warning(
             "[%s/%s] dispatch skipped: network unreachable",
             task.get("task_key", "?"),
             log_batch_id.get() or "?",
@@ -792,8 +792,6 @@ async def _run_task(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
 # Per-task thread scheduler
 # ---------------------------------------------------------------------------
 
-_sched_log = get_logger("dispatch.scheduler")
-
 
 def _log_dispatch_task_completed(
     candidate_id: str,
@@ -805,8 +803,10 @@ def _log_dispatch_task_completed(
     batch_id: Optional[str],
 ) -> None:
     """Always-on COMPLETED rollup (stat.logging.info / .dispatcher pipe)."""
+    nxt = _current_agent_task_run_next(task_key)
+    suffix = f" run_next: {nxt}" if nxt else ""
     logger.info(
-        "%s | dispatch %s task completed: %s pass:%s fail:%s error:%s (batch: %s)",
+        "%s | dispatch %s task completed: %s pass:%s fail:%s error:%s (batch: %s)%s",
         candidate_id or "-",
         entity_type or "-",
         task_key,
@@ -814,6 +814,7 @@ def _log_dispatch_task_completed(
         failed,
         errored,
         batch_id or "-",
+        suffix,
     )
 
 # Registry: task_id -> {thread, loop, asyncio_task, task_key, candidate_id, is_auto}
@@ -890,12 +891,12 @@ async def _dispatch_one(task: Dict) -> None:
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             failure_reason = "dispatch cancelled by admin"
-            _sched_log.warning("[%s/%s] KILLED by admin — meteorite ingress", task_key, entity_batch_id)
+            logger.warning("[%s/%s] KILLED by admin — meteorite ingress", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception:
             final_status = "FAILED"
             failure_reason = "meteorite ingress runner crashed"
-            _sched_log.exception("[%s/%s] meteorite ingress crashed", task_key, entity_batch_id)
+            logger.exception("[%s/%s] meteorite ingress crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:
@@ -934,13 +935,13 @@ async def _dispatch_one(task: Dict) -> None:
                             accumulated.get("total_errors", 0),
                         )
                 except Exception as e:
-                    _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
+                    logger.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
             flush_log_buffer()
             log_batch_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                _sched_log.error("Failed to update dispatch task %s: %s", task_id, e)
+                logger.error("Failed to update dispatch task %s: %s", task_id, e)
         return
 
     # AST-1561: BOT_BLOCKED Estelle notify — custom branch before mailbox / check_inbox.
@@ -985,12 +986,12 @@ async def _dispatch_one(task: Dict) -> None:
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             failure_reason = "dispatch cancelled by admin"
-            _sched_log.warning("[%s/%s] KILLED by admin — bot_blocked notify", task_key, entity_batch_id)
+            logger.warning("[%s/%s] KILLED by admin — bot_blocked notify", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception:
             final_status = "FAILED"
             failure_reason = "bot_blocked notify runner crashed"
-            _sched_log.exception("[%s/%s] bot_blocked notify crashed", task_key, entity_batch_id)
+            logger.exception("[%s/%s] bot_blocked notify crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:
@@ -1029,13 +1030,13 @@ async def _dispatch_one(task: Dict) -> None:
                             accumulated.get("total_errors", 0),
                         )
                 except Exception as e:
-                    _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
+                    logger.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
             flush_log_buffer()
             log_batch_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                _sched_log.error("Failed to update dispatch task %s: %s", task_id, e)
+                logger.error("Failed to update dispatch task %s: %s", task_id, e)
         return
 
     # AST-1562: scheduled retention — purge old LANDED + info-list stale rows.
@@ -1080,12 +1081,12 @@ async def _dispatch_one(task: Dict) -> None:
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             failure_reason = "dispatch cancelled by admin"
-            _sched_log.warning("[%s/%s] KILLED by admin — meteorite retention", task_key, entity_batch_id)
+            logger.warning("[%s/%s] KILLED by admin — meteorite retention", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception:
             final_status = "FAILED"
             failure_reason = "meteorite retention runner crashed"
-            _sched_log.exception("[%s/%s] meteorite retention crashed", task_key, entity_batch_id)
+            logger.exception("[%s/%s] meteorite retention crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:
@@ -1124,13 +1125,13 @@ async def _dispatch_one(task: Dict) -> None:
                             accumulated.get("total_errors", 0),
                         )
                 except Exception as e:
-                    _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
+                    logger.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
             flush_log_buffer()
             log_batch_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                _sched_log.error("Failed to update dispatch task %s: %s", task_id, e)
+                logger.error("Failed to update dispatch task %s: %s", task_id, e)
         return
 
     # AST-1134 / AST-1282: candidate-bound inbox mailbox — ledger uses row candidate_id.
@@ -1141,7 +1142,7 @@ async def _dispatch_one(task: Dict) -> None:
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip()
         if not ledger_cid:
-            _sched_log.error(
+            logger.error(
                 "Skipping %s/%s — mailbox poller requires bound candidate_id",
                 task_key,
                 task_id,
@@ -1183,12 +1184,12 @@ async def _dispatch_one(task: Dict) -> None:
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             failure_reason = "dispatch cancelled by admin"
-            _sched_log.warning("[%s/%s] KILLED by admin — check_inbox", task_key, entity_batch_id)
+            logger.warning("[%s/%s] KILLED by admin — check_inbox", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception:
             final_status = "FAILED"
             failure_reason = "check_inbox runner crashed"
-            _sched_log.exception("[%s/%s] check_inbox crashed", task_key, entity_batch_id)
+            logger.exception("[%s/%s] check_inbox crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:
@@ -1227,13 +1228,13 @@ async def _dispatch_one(task: Dict) -> None:
                             accumulated.get("total_errors", 0),
                         )
                 except Exception as e:
-                    _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
+                    logger.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
             flush_log_buffer()
             log_batch_id.set(None)
             try:
                 _db_update_dispatch_task(task_id, last_run_at=_now_iso())
             except Exception as e:
-                _sched_log.error("Failed to update dispatch task %s: %s", task_id, e)
+                logger.error("Failed to update dispatch task %s: %s", task_id, e)
         return
 
     ctx = database.get_candidate(candidate_id)
@@ -1247,7 +1248,7 @@ async def _dispatch_one(task: Dict) -> None:
                 outcome="skipped — no candidate or API key",
             )
             logger.debug_detail(f"candidate_id={candidate_id!r}")
-        _sched_log.error("Skipping %s/%s — no candidate or API key", task_key, candidate_id)
+        logger.error("Skipping %s/%s — no candidate or API key", task_key, candidate_id)
         return
     ctx = dict(ctx)
     if task.get("skip_cache"):
@@ -1288,7 +1289,7 @@ async def _dispatch_one(task: Dict) -> None:
         )
         log_batch_id.set(entity_batch_id)
         dispatch_ledger_id = entity_batch_id
-    _sched_log.info("Dispatching %s — %d available, batch %s",
+    logger.info("Dispatching %s — %d available, batch %s",
                     task_key, task.get("available_count", 0), entity_batch_id)
 
     # Register this coroutine's asyncio task immediately so cancel_task() can reach it
@@ -1317,17 +1318,17 @@ async def _dispatch_one(task: Dict) -> None:
     except asyncio.TimeoutError:
         final_status = "INTERRUPTED"
         failure_reason = f"dispatch timeout after {timeout}s"
-        _sched_log.error("[%s/%s] killed after %ds timeout", task_key, entity_batch_id, timeout)
+        logger.error("[%s/%s] killed after %ds timeout", task_key, entity_batch_id, timeout)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except asyncio.CancelledError:
         final_status = "INTERRUPTED"
         failure_reason = "dispatch cancelled by admin"
-        _sched_log.warning("[%s/%s] KILLED by admin — thread cleared from memory", task_key, entity_batch_id)
+        logger.warning("[%s/%s] KILLED by admin — thread cleared from memory", task_key, entity_batch_id)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except Exception as exc:
         final_status = "FAILED"
         failure_reason = f"dispatch crashed: {type(exc).__name__}"
-        _sched_log.exception("[%s/%s] crashed", task_key, entity_batch_id)
+        logger.exception("[%s/%s] crashed", task_key, entity_batch_id)
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     finally:
         if dispatch_ledger_id:
@@ -1366,7 +1367,7 @@ async def _dispatch_one(task: Dict) -> None:
                         accumulated.get("total_errors", 0),
                     )
             except Exception as e:
-                _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
+                logger.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
         flush_log_buffer()
         # Alert while log_batch_id still set — monitor logs appear in the batch log view
         if dispatch_ledger_id and not is_click and accumulated.get("total_errors", 0) > 0:
@@ -1377,7 +1378,7 @@ async def _dispatch_one(task: Dict) -> None:
         try:
             _db_update_dispatch_task(task_id, last_run_at=_now_iso())
         except Exception as e:
-            _sched_log.error("Failed to update dispatch task %s: %s", task_id, e)
+            logger.error("Failed to update dispatch task %s: %s", task_id, e)
 
     if final_status == "COMPLETED":
         _check_circuit_breaker(task_key, candidate_id, task_id, bool(task.get("debug")))
@@ -1432,10 +1433,10 @@ async def _run_dispatch_loop(
                         f"effective_min={effective_min} run_count={run_count}"
                     )
             if run_count == 0:
-                _sched_log.info("Skipping %s: %d available (min_count=%s)",
+                logger.info("Skipping %s: %d available (min_count=%s)",
                                 task_key, available, effective_min)
             else:
-                _sched_log.info("Loop mode %s: %d remaining — stopping after %d run(s)",
+                logger.info("Loop mode %s: %d remaining — stopping after %d run(s)",
                                 task_key, available, run_count)
             break
         # Honour graceful drain request — finish current batch then stop
@@ -1444,7 +1445,12 @@ async def _run_dispatch_loop(
         if draining:
             if debug:
                 logger.debug_detail(f"loop stop: drain flag set run_count={run_count}")
-            _sched_log.info("[%s] drain flag set — stopping after %d run(s)", task_key, run_count)
+            logger.info(
+                "%s drain stopping %s after %d run(s)",
+                task.get("candidate_id") or "-",
+                task_key,
+                run_count,
+            )
             break
         loop_iter = run_count + 1
         if debug:
@@ -1475,7 +1481,7 @@ async def _run_dispatch_loop(
         if summary.get("total_processed", 0) == 0:
             if debug:
                 logger.debug_detail(f"loop stop: zero processed this iteration run_count={run_count}")
-            _sched_log.info("Loop mode %s: 0 processed — stopping", task_key)
+            logger.info("Loop mode %s: 0 processed — stopping", task_key)
             break
         if max_runs != 0:
             if max_runs is None or run_count >= max_runs:
@@ -1498,7 +1504,11 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
         loop.close()
         with _registry_lock:
             _task_registry.pop(task_id, None)
-        _sched_log.info("[%s] thread exited and cleared from registry", task.get("task_key", task_id))
+        logger.info(
+            "%s thread exited for %s",
+            task.get("candidate_id") or "-",
+            task.get("task_key", task_id),
+        )
 
 
 def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
@@ -1521,7 +1531,7 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
             from src.core.inbox import count_inbox_messages_bound_to_candidate
             task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
         except Exception:
-            _sched_log.warning(
+            logger.warning(
                 "run_task: mailbox available_count failed task_id=%s task_key=%r",
                 task_id,
                 task_key,
@@ -1559,7 +1569,7 @@ def drain_task(task_id: int) -> Dict[str, Any]:
         if not entry:
             return {"task_id": task_id, "draining": False, "reason": "not_running"}
         entry["drain"] = True
-    _sched_log.info(
+    logger.info(
         "%s drain requested for %s",
         entry["candidate_id"],
         entry["task_key"],
@@ -1584,7 +1594,7 @@ def cancel_task(task_id: int) -> Dict[str, Any]:
         return {"task_id": task_id, "task_key": entry.get("task_key"),
                 "candidate_id": entry.get("candidate_id"), "killed": False, "reason": "already_done"}
     loop.call_soon_threadsafe(asyncio_task.cancel)
-    _sched_log.warning("cancel_task(%s): cancellation sent to %s/%s",
+    logger.warning("cancel_task(%s): cancellation sent to %s/%s",
                        task_id, entry["task_key"], entry["candidate_id"])
     return {"task_id": task_id, "task_key": entry["task_key"],
             "candidate_id": entry["candidate_id"], "killed": True}
@@ -1665,7 +1675,7 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
     try:
         bound_counts = count_inbox_bound_by_candidate()
     except Exception:
-        _sched_log.warning("mailbox due: inbox bind counts failed", exc_info=True)
+        logger.warning("mailbox due: inbox bind counts failed", exc_info=True)
         return []
     due: List[Dict[str, Any]] = []
     for task in auto_gaze:
@@ -1694,7 +1704,7 @@ def _tick_loop() -> None:
             try:
                 database.run_due_scheduled_queries()
             except Exception:
-                _sched_log.exception("Scheduled query tick error")
+                logger.exception("Scheduled query tick error")
             # Claim-queue AUTO rows from data; meteorite_email AUTO merged via live bind Avail (AST-1135).
             due = list(database.get_due_tasks()) + _meteorite_email_due_tasks()
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
@@ -1714,7 +1724,7 @@ def _tick_loop() -> None:
                     if run_task(tid):
                         slots -= 1
         except Exception:
-            _sched_log.exception("Tick loop error")
+            logger.exception("Tick loop error")
         # Sleep after work so the first server tick runs immediately (was: wait first = silent until
         # tick_rate_minutes elapsed after every process start).
         _tick_event.wait(timeout=tick_secs)
@@ -1728,22 +1738,22 @@ def start_scheduler() -> None:
         return
     n = database.mark_stale_ledger_interrupted(_now_iso())
     if n:
-        _sched_log.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
+        logger.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
     # AST-1496: no scheduler-start save_dispatch_task provision (meteorite /
     # meteorite_email / fetch_email). Helpers remain in-module but unused from boot.
     # AST-1623: UPDATE-only correction for live NULL entity_type on ingress/notify keys.
     try:
         cstats = correct_meteorite_ingress_dispatch_entity_types()
-        _sched_log.info(
+        logger.info(
             "meteorite ingress/notify entity_type correction scanned=%s updated=%s",
             cstats.get("scanned"),
             cstats.get("updated"),
         )
     except Exception:
-        _sched_log.exception("meteorite ingress/notify entity_type correction failed")
+        logger.exception("meteorite ingress/notify entity_type correction failed")
     try:
         rstats = retire_candidate_requested_wrapper_dispatch_tasks()
-        _sched_log.info(
+        logger.info(
             "retired candidate_requested_* wrapper tasks template=%s "
             "candidates_scanned=%s retired=%s",
             rstats.get("template_candidate_id"),
@@ -1751,9 +1761,9 @@ def start_scheduler() -> None:
             rstats.get("retired"),
         )
     except Exception:
-        _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
+        logger.exception("AST-1252 candidate_requested_* wrapper retire failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
-    _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
+    logger.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
                     ASTRAL_CONFIG.get("tick_rate_minutes", 1),
                     ASTRAL_CONFIG.get("max_auto_threads", 3))

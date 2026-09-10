@@ -1756,7 +1756,7 @@ class TestDoTask:
             index="job-1",
             ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
-        assert any("run_next chain entry" in rec.message and "task=evaluate_jd" in rec.message for rec in caplog.records)
+        assert not any("run_next chain entry" in rec.message for rec in caplog.records)
 
     @pytest.mark.asyncio
     async def test_hop_boundary_log_on_run_next(
@@ -1774,29 +1774,21 @@ class TestDoTask:
 
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
         _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(
-            agent_mod,
-            "send_to_anthropic",
-            AsyncMock(
-                side_effect=[
-                    _strict_batch_llm_ok(api_label="first"),
-                    _strict_batch_llm_ok(api_label="second"),
-                ]
-            ),
+        send = AsyncMock(
+            side_effect=[
+                _strict_batch_llm_ok(api_label="first"),
+                _strict_batch_llm_ok(api_label="second"),
+            ]
         )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
         await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
             ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
-        assert any(
-            "run_next hop:" in rec.message
-            and "qualify_job_listings -> evaluate_jd" in rec.message
-            and "caller_keys=" in rec.message
-            and "CALLER_RESPONSE=populated(len=" in rec.message
-            for rec in caplog.records
-        )
+        assert send.await_count == 2
+        assert not any("run_next hop:" in rec.message for rec in caplog.records)
 
     @pytest.mark.asyncio
     async def test_mid_chain_empty_caller_skips_api(

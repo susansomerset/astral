@@ -190,7 +190,7 @@ the repo-owned tables and the prompt corpus.
 | `stat.component.comment-hygiene` | — | **new** |
 | `stat.errors.data-raises-caller-logs` | data raises and never logs; core raises domain; dispatcher catches and logs at batch; UI returns JSON | `standards.data-raises-caller-logs` |
 | `stat.logging.info` | always-on succinct operator-readable progress via `logger.info`; shape is the surface statute | new — splits `standards.logging-via-utils` |
-| `stat.logging.info.dispatcher` | candidate-pipe dispatch task/hop completion line | new |
+| `stat.logging.info.dispatcher` | candidate-pipe dispatch task-completed line | new |
 | `stat.logging.info.entity` | id-pipe company/job/candidate progress | new |
 | `stat.logging.info.contact` | Slack listen accepted + Estelle outcome, intended action, aside | new |
 | `stat.logging.info.api` | one pipe line at the completing `ui/api` route (confirms the action ran) | new |

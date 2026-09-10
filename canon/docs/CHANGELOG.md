@@ -131,7 +131,9 @@ the export — that shape has no hoisting justification and is a genuine miss).
 | 2026-09-10 | `stat.logging.info` | amended | `info` is the everyday always-on progress channel (succinct, clear, useful); skipping it for debug is a Don't, not a Notes aside | AST-1625 |
 | 2026-09-10 | `stat.logging.info` | amended | Do/Don't are operator-scan lines (company/job/batch in English); `run_next hop:` / `task_key` messages are Don't | AST-1625 |
 | 2026-09-10 | `stat.logging.info` | amended | parent is channel/duty only; pipe shapes live on `.dispatcher` / `.entity` / `.api` | AST-1625 |
+| 2026-09-10 | `stat.logging.info` | amended | logger is `get_logger(__name__)` of the emitting file; no decorative names | — |
 | 2026-09-10 | `stat.logging.info.dispatcher` | drafted | candidate-pipe task completed + hop completed | AST-1625 |
+| 2026-09-10 | `stat.logging.info.dispatcher` | amended | drop hop pipe; entity_type pass-through; `run_next:` suffix on finishing line | — |
 | 2026-09-10 | `stat.logging.info.entity` | drafted | id-pipe company/job/candidate progress | AST-1625 |
 | 2026-09-10 | `stat.logging.info.contact` | drafted | Slack listen + Estelle outcome/action/aside; skill completion is `.api` | AST-1625 |
 | 2026-09-10 | `stat.logging.info.api` | drafted | one line at the completing route; Contact does not duplicate | AST-1625 |

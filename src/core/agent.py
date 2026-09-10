@@ -1221,26 +1221,6 @@ def _apply_dispatch_chain_hop_failure(
     }
 
 
-def _log_chain_entry(task_key: str, batch_id: Optional[str]) -> None:
-    logger.info("run_next chain entry: task=%s batch_id=%s", task_key, batch_id or "")
-
-
-def _log_run_next_hop_boundary(
-    *,
-    parent_task_key: str,
-    child_task_key: str,
-    batch_id: Optional[str],
-    hop_ctx: Dict[str, str],
-) -> None:
-    logger.info(
-        "run_next hop: %s -> %s batch_id=%s caller_keys=%s",
-        parent_task_key,
-        child_task_key,
-        batch_id or "",
-        _caller_key_status(hop_ctx),
-    )
-
-
 def _build_context(task_key: str, task_config: Dict[str, Any], index: Optional[str]) -> str:
     """Build context string from task's context_format + index. Falls back to task_key."""
     if index is None:
@@ -2349,8 +2329,6 @@ async def do_task(
                 task_key,
             )
     batch_id = hop_ledger_batch_id or log_batch_id.get()
-    if chain_entry:
-        _log_chain_entry(task_key, batch_id)
 
     if debug:
         logger.set_debug_flag(True)
@@ -3376,12 +3354,6 @@ async def do_task(
             f"batch_id={batch_id or ''} caller_keys={_caller_key_status(hop_ctx)}"
         )
         dbg.debug_detail(f"caller_hydration=live_llm parent={task_key}")
-    _log_run_next_hop_boundary(
-        parent_task_key=task_key,
-        child_task_key=effective_next,
-        batch_id=batch_id,
-        hop_ctx=hop_ctx,
-    )
     inner = await do_task(
         effective_next,
         live_content=child_live,
