@@ -628,3 +628,46 @@ Ad-hoc `qualify_meteorite` assemble lockstep with consult: numbered `job_link:` 
 ```
 
 Ad Hoc import list route lives with parent **AST-1451** / scoped **AST-1534** in **`docs/test-bible/core/agent.md`** (`TestAst1451AdhocRuns`, `TestAst1534AdhocRunsScoped`).
+
+### AST-1618 · AST-1616
+
+**Parent:** [AST-1616](https://linear.app/astralcareermatch/issue/AST-1616). **Publish:** `origin/sub/AST-1616/AST-1618-persist-entity-type-admin`.
+
+Persist explicit `entity_type` on admin create/update; validate `trigger_state` against the submitted entity; recompute `sort_by` for the chosen entity + trigger. React Entity Type control = sibling **AST-1619**. Data insert sort path: **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1618.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| AC3 create entity | POST forwards `entity_type` into `save_dispatch_task` | `src/ui/api/api_admin.py` | **`TestAst1618PersistEntityTypeAdmin::test_create_forwards_entity_type`** |
+| AC4 update entity | PUT `entity_type` without `task_key` change; sort recomputed | same | **`test_update_entity_type_without_task_key`** |
+| AC5 validate pair | Helper + POST/PUT 400 on entity/trigger mismatch | same | **`test_trigger_error_honors_entity_override`**, **`test_create_rejects_entity_trigger_mismatch`**, **`test_update_rejects_mismatched_entity_trigger`** |
+| Empty/unknown/null | Empty/unknown 400; PUT `null` = omit | same | **`test_create_rejects_empty_and_unknown_entity`**, **`test_update_null_entity_type_treated_as_omit`** |
+
+**Broken / obsolete (Betty revised this pass):**
+
+- `TestAst773UpdateDispatchTaskTaskKey::test_update_dispatch_task_task_key_persists_derived_columns` — assert `sort_by` for effective trigger (`NEW`), not catalog default `PASSED_JD`.
+- `TestAst804CandidateDispatchAdminValidation::test_update_dispatch_task_trigger_state_only_candidate_row` — mock row must include `entity_type` (update sort recompute).
+- `TestDispatchTasks::test_update_dispatch_task_paths` — schedule-only PUT (no blank `trigger_state`); mock includes `entity_type`.
+
+**Integration:** no existing scenario covers admin entity_type persist — do not invent new integration coverage.
+
+## QA test manifest
+
+1. API entity_type create/update/validate: `tests/component/ui/api/test_api_admin.py::TestAst1618PersistEntityTypeAdmin`
+2. Revised update regressions: `TestAst773UpdateDispatchTaskTaskKey::test_update_dispatch_task_task_key_persists_derived_columns`, `TestAst804CandidateDispatchAdminValidation::test_update_dispatch_task_trigger_state_only_candidate_row`, `TestDispatchTasks::test_update_dispatch_task_paths`
+3. Data `save_dispatch_task` caller entity / sort: `tests/component/data/database/test_dispatch_tasks.py::TestAst1618SaveDispatchTaskCallerEntity` (primary map: **`docs/test-bible/data/database/dispatch_tasks.md`**)
+
+**AST-1618** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1618PersistEntityTypeAdmin \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_update_dispatch_task_task_key_persists_derived_columns \
+  tests/component/ui/api/test_api_admin.py::TestAst804CandidateDispatchAdminValidation::test_update_dispatch_task_trigger_state_only_candidate_row \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_update_dispatch_task_paths \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1618SaveDispatchTaskCallerEntity \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–3 — not zero-arg harness / branch-lock gate.
+
+**Product note for test-child:** `test_caller_entity_overrides_catalog_sort` encodes Stage 1 Done-when (`entity_type=company` + `trigger_state=WATCH` on `grade_do`). Today `save_dispatch_task` calls `dispatch_task_admin_defaults(tk, trigger_state=…)` before applying the caller entity, so a trigger valid only for the chosen entity raises `ValueError` (API 500). Fix the data path so defaults fill does not require the request trigger to be valid for the catalog entity when the caller supplied `entity_type`.

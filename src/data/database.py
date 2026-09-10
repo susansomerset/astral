@@ -7825,14 +7825,22 @@ def save_dispatch_task(
     if not cid_raw:
         raise ValueError("candidate_id is required")
     cid_val: Optional[str] = cid_raw
+    # Caller override vs catalog fill (AST-1618) — capture before defaults overwrite.
+    caller_entity = str(entity_type).strip() if (entity_type and str(entity_type).strip()) else None
     try:
-        defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
+        # When caller supplies entity_type, omit request trigger from catalog defaults —
+        # trigger may be valid only for the chosen entity (not the catalog entity).
+        defaults = dispatch_task_admin_defaults(
+            tk,
+            trigger_state=None if caller_entity is not None else trigger_state,
+        )
     except KeyError as e:
         raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
     # late: avoid widening module-top config imports
     from src.utils.config import (
         METEORITE_EMAIL_MAILBOX_CONFIG,
         is_meteorite_email_mailbox_task_key,
+        _dispatch_sort_by_for,
     )
     if is_meteorite_email_mailbox_task_key(tk):
         # Poller row seed (AST-1466): MAILBOX_CONFIG wins over admin form meta.
@@ -7840,12 +7848,19 @@ def save_dispatch_task(
             entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
         if not (trigger_state and str(trigger_state).strip()):
             trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
+        sort_by = defaults["sort_by"]  # mailbox: always None — no entity/trigger sort helper
     else:
         if not (entity_type and str(entity_type).strip()):
             entity_type = defaults["entity_type"]
         if not (trigger_state and str(trigger_state).strip()):
             trigger_state = defaults["trigger_state"]
-    sort_by = defaults["sort_by"]
+        if caller_entity is not None:
+            try:
+                sort_by = _dispatch_sort_by_for(entity_type, trigger_state)
+            except KeyError as e:
+                raise ValueError(str(e)) from e
+        else:
+            sort_by = defaults["sort_by"]
     batch_call_mode = defaults["batch_call_mode"]
     now = _utc_now()
     def _with_conn() -> int:

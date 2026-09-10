@@ -2569,3 +2569,34 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1619 · AST-1616
+
+**Parent:** [AST-1616](https://linear.app/astralcareermatch/issue/AST-1616). **Publish:** `origin/sub/AST-1616/AST-1619-editable-entity-type-modal`.
+
+Scheduled Actions Add/Edit modal: Entity Type is an editable `<select>` bound to `stateOptions` keys (not readOnly); changing entity refreshes Input State options and clears an invalid `trigger_state`; POST/PUT Save bodies include `entity_type`. Candidate on Add stays read-only / context-bound. API persist = sibling **AST-1618**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| AC1 editable Entity Type (§6c) | `<select>` not `readOnly` text | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx` — `AST-1619 editable Entity Type` → `Add Task Entity Type is a select (not readOnly text)`** |
+| AC2 Input State follows entity | Options swap; invalid trigger cleared | same | **`changing Entity Type swaps Input State options and clears invalid trigger`** |
+| AC3 Candidate bound on Add | Candidate row stays `readOnly` | same | asserted in AC1 case |
+| Save payload | POST/PUT include `entity_type` | same | **`Edit Save PUT body includes entity_type`**, **`Add Save POST body includes entity_type`** |
+
+**Broken / obsolete (Betty revised this pass):** modal `combobox` indices — Entity Type inserted at index 1; Input State is now `[2]` in **`add task modal: company task sets WATCH state options`**, **AST-780** add-POST toast, **AST-804** candidate Input State case.
+
+**Integration:** no existing scenario covers Scheduled Actions Entity Type modal — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Scheduled Actions page (§6c): `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — pattern **`AST-1619`**
+2. Revised combobox-index regressions: same file — **`company task sets WATCH`**, **`AST-780` add save POST fails**, **`AST-804 candidate Input State`**
+
+**AST-1619** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-1619|company task sets WATCH|add save POST fails|AST-804 candidate Input State"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.

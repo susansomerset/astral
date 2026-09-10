@@ -1,3 +1,81 @@
+<!-- linear-archive: AST-1534 archived 2026-09-09 -->
+
+## Linear archive (AST-1534)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1534/scoped-adhoc-runs-list-api-put-the-list-of-loadable-previous-tasks-to  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1532 — Put the list of loadable previous tasks to a 5 line scrollable selection box, filtered on the selected candidate and selected task_key in the dropdown.  
+**Blocked by / blocks / related:** parent: AST-1532; blocks: AST-1535
+
+### Description
+
+## What this implements
+
+Owns config literals for cap (10) and visible-row count (5), data/query filter via `dispatch_ledger.candidate_id` + task_key/`adhoc-` equivalence, core `list_agent_data_runs` kwargs + debug on the returned set, and `GET /api/admin/adhoc/runs` query params. Does not own React chrome (sibling #2).
+
+## Citations
+
+`pattern.ui.admin-endpoint`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.standards.debug-contract-gated`; `astral.standards.database-header-inventory`; `astral.idioms.require-auth-on-protected-endpoints`; `astral.layers.ui-config-driven-business-logic`
+
+## Scope
+
+`src/utils/config.py` (named cap/visible-row keys); `src/data/database.py` (filtered limited batch list); `src/core/agent.py` (`list_agent_data_runs` filters + debug); `src/ui/api/api_admin.py` (`adhoc_runs` query params + config limit).
+
+## Acceptance criteria
+
+- [X] 1. With a candidate selected and a task key selected, the Ad Hoc import picker shows at most 10 rows, all matching that candidate and that task key (including stored `adhoc-<task_key>`), newest `created_at` first.
+- [X] 2. Changing candidate or task key refreshes the picker to the new filter; empty candidate → empty picker; candidate + empty task key → last 10 runs for that candidate. (API side of this AC.)
+- [X] 3. When backend debug is on for the runs list, debug output covers only the filtered returned rows (found→recorded), not the full unfiltered history.
+
+## Boundaries
+
+- [X] Does not own React chrome, picker scroll viewport, or Load wiring — sibling Compact filtered import picker UI.
+
+## Notes for planning
+
+Citations as above. Candidate filter joins `dispatch_ledger` on `batch_id`. Task-key match strips one leading `adhoc-` for comparison.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### betty — 2026-08-29T21:42:31.647Z
+`origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api` @ `dd4af004` · stripped AST-1537 smuggle
+
+#### ada — 2026-08-29T21:30:28.592Z
+[qa-handoff]
+@Betty White
+
+Radia **fix-now** on AST-1534: AST-1537 test/bible material (`bda5e714`) landed on this publish ref via `merge-tests(AST-1534)` of `0f3785db` (which has `bda5e714` as ancestor on `origin/tests`). Product slice `31515387` is clean — no Ada product fix.
+
+**Current tip:** `origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api` @ `61299787` (includes Radia docs + `sync(dev)`).
+
+**After sync(dev):** AST-1537 product is on the tip from `origin/dev`; the off-manifest cases Radia cited as red now pass (`TestAst1049InboxCreateJobConfig`, `TestAst1049StripExtractEmailHtml`, `TestGetMessageHtml` — 6 passed). AST-1534 narrowed manifest still green.
+
+**Need from Betty:** Radia asked to re-merge `origin/tests` at an AST-1534-only SHA (drop `bda5e714` / AST-1537 hunks + bible sections from this sub) while keeping `31515387`. Confirm whether to strip those hunks from this publish ref, or leave them (now aligned with `origin/dev` product) and close the process gap via Chuckles discuss on shared `origin/tests` breadth. Reassign Ada when the publish-ref test tree is settled.
+
+**Discuss (Chuckles/Betty, not Ada):** Was shared linear `origin/tests` intentional across concurrent children?
+
+#### radia — 2026-08-29T21:28:43.932Z
+[code-rubric] REVIEW (Commit: 59ed7f52) AST-1537 tests smuggled
+
+#### betty — 2026-08-29T20:45:52.940Z
+`origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api` @ `59ed7f52` · scoped list tests ready
+
+#### joan — 2026-08-29T20:27:58.238Z
+[plan-rubric] PROCEED (Commit: 2e0a22407ec816283877e5c3056a39e5e21a0934) scoped API list ready
+
+#### ada — 2026-08-29T20:13:26.888Z
+`origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api` @ `2e0a22407ec816283877e5c3056a39e5e21a0934` · scoped list plan ready
+
+---
+
 # AST-1534 — Scoped adhoc runs list API
 
 - **Linear:** [AST-1534](https://linear.app/astralcareermatch/issue/AST-1534)

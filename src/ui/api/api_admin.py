@@ -76,6 +76,7 @@ from src.utils.config import (
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     _dispatch_entity_type_for_task_key,
+    _dispatch_sort_by_for,
     _dispatch_trigger_state_for_task_key,
     is_meteorite_email_mailbox_task_key,
     get_task_keys,
@@ -1094,6 +1095,15 @@ def create_dtask():
     retired = dispatch_task_key_retired_message(data.get("task_key", ""))
     if retired:
         return jsonify({"error": retired}), 400
+    # Absent / JSON null → catalog defaults in save; non-empty must be ENTITY_TYPES.
+    submitted_entity = None
+    if "entity_type" in data and data.get("entity_type") is not None:
+        raw_et = str(data.get("entity_type") or "").strip()
+        if raw_et == "":
+            return jsonify({"error": "entity_type must be non-empty when provided"}), 400
+        if raw_et not in ENTITY_TYPES:
+            return jsonify({"error": f"unsupported entity_type {raw_et!r}"}), 400
+        submitted_entity = raw_et
     is_scored = dispatch_claim_uses_score_floor(data.get("trigger_state"))
     raw_score_floor = data.get("score_floor", None)
     score_floor = float(raw_score_floor) if (is_scored and raw_score_floor is not None) else (1.0 if is_scored else None)
@@ -1101,7 +1111,11 @@ def create_dtask():
         err = _candidate_dispatch_api_key_error(data.get("candidate_id"))
         if err:
             return jsonify({"error": err}), 400
-    tk_err = _dispatch_task_key_trigger_error(data.get("task_key", ""), data.get("trigger_state"))
+    tk_err = _dispatch_task_key_trigger_error(
+        data.get("task_key", ""),
+        data.get("trigger_state"),
+        entity_type=submitted_entity,
+    )
     if tk_err:
         return jsonify({"error": tk_err}), 400
     try:
@@ -1110,6 +1124,7 @@ def create_dtask():
             task_key=data["task_key"],
             min_count=int(data["min_count"]),
             auto_mode=bool(data.get("auto_mode", False)),
+            entity_type=submitted_entity,
             trigger_state=data.get("trigger_state"),
             batch_size=int(data["batch_size"]) if data.get("batch_size") else None,
             freq_hrs=float(data.get("freq_hrs", 0)),
@@ -1129,7 +1144,11 @@ def create_dtask():
     return jsonify({"id": task_id}), 201
 
 
-def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -> str | None:
+def _dispatch_task_key_trigger_error(
+    task_key: str,
+    trigger_state: str | None,
+    entity_type: str | None = None,
+) -> str | None:
     tk = (task_key or "").strip()
     if not tk:
         return "task_key is required"
@@ -1145,12 +1164,18 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
                 f"(got {trigger_state!r})"
             )
         return None
-    try:
-        et = _dispatch_entity_type_for_task_key(tk)
-    except KeyError:
-        if tk in TASK_CONFIG:
-            return f"task_key {tk!r} has unsupported entity_type"
-        return f"Unknown task_key: {tk!r}"
+    # Optional override from admin form; else catalog entity for task_key.
+    if entity_type is not None and str(entity_type).strip():
+        et = str(entity_type).strip()
+        if et not in ENTITY_TYPES:
+            return f"unsupported entity_type {et!r}"
+    else:
+        try:
+            et = _dispatch_entity_type_for_task_key(tk)
+        except KeyError:
+            if tk in TASK_CONFIG:
+                return f"task_key {tk!r} has unsupported entity_type"
+            return f"Unknown task_key: {tk!r}"
     ts = (trigger_state or "").strip()
     if not ts:
         return "trigger_state is required"
@@ -1184,30 +1209,69 @@ def update_dtask(task_id):
         return jsonify({"error": "Turn AUTO mode off before editing this row"}), 400
     allowed = {
         "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "skip_daisy_chain", "freq_hrs",
-        "max_runs", "score_floor", "trigger_state", "task_key",
+        "max_runs", "score_floor", "trigger_state", "task_key", "entity_type",
     }
     updates: Dict[str, Any] = {}
-    if "task_key" in data:
-        effective_trigger_state = data.get("trigger_state", row.get("trigger_state"))
-        tk_err = _dispatch_task_key_trigger_error(data["task_key"], effective_trigger_state)
-        if tk_err:
-            return jsonify({"error": tk_err}), 400
-        defaults = dispatch_task_admin_defaults(
-            (data["task_key"] or "").strip(),
-            trigger_state=effective_trigger_state,
+    # JSON null on entity_type mirrors create — treat as omitted (Joan discuss).
+    entity_in_body = "entity_type" in data and data.get("entity_type") is not None
+    effective_task_key = (
+        (data["task_key"] if "task_key" in data else row.get("task_key") or "")
+    )
+    if isinstance(effective_task_key, str):
+        effective_task_key = effective_task_key.strip()
+    else:
+        effective_task_key = str(effective_task_key or "").strip()
+    effective_trigger_state = data.get("trigger_state", row.get("trigger_state"))
+    if entity_in_body:
+        submitted_et = str(data.get("entity_type") or "").strip()
+        if submitted_et == "":
+            return jsonify({"error": "entity_type must be non-empty when provided"}), 400
+        if submitted_et not in ENTITY_TYPES:
+            return jsonify({"error": f"unsupported entity_type {submitted_et!r}"}), 400
+        effective_entity_type = submitted_et
+    elif "task_key" in data:
+        try:
+            effective_entity_type = dispatch_task_admin_defaults(
+                effective_task_key, trigger_state=effective_trigger_state,
+            )["entity_type"]
+        except KeyError as exc:
+            return jsonify({"error": str(exc)}), 400
+    else:
+        effective_entity_type = row.get("entity_type")
+    if "task_key" in data or "trigger_state" in data or entity_in_body:
+        tk_err = _dispatch_task_key_trigger_error(
+            effective_task_key,
+            effective_trigger_state,
+            entity_type=effective_entity_type,
         )
-        updates["task_key"] = (data["task_key"] or "").strip()
-        updates["entity_type"] = defaults["entity_type"]
-        updates["sort_by"] = defaults["sort_by"]
-        updates["batch_call_mode"] = defaults["batch_call_mode"]
-    elif "trigger_state" in data:
-        tk_err = _dispatch_task_key_trigger_error(row.get("task_key", ""), data.get("trigger_state"))
         if tk_err:
             return jsonify({"error": tk_err}), 400
+    if "task_key" in data:
+        try:
+            defaults = dispatch_task_admin_defaults(
+                effective_task_key, trigger_state=effective_trigger_state,
+            )
+        except KeyError as exc:
+            return jsonify({"error": str(exc)}), 400
+        updates["task_key"] = effective_task_key
+        updates["entity_type"] = effective_entity_type
+        updates["batch_call_mode"] = defaults["batch_call_mode"]
+    if entity_in_body:
+        updates["entity_type"] = effective_entity_type
+    if (
+        ("task_key" in data or "trigger_state" in data or entity_in_body)
+        and not is_meteorite_email_mailbox_task_key(effective_task_key)
+    ):
+        try:
+            updates["sort_by"] = _dispatch_sort_by_for(
+                effective_entity_type, effective_trigger_state,
+            )
+        except KeyError as exc:
+            return jsonify({"error": str(exc)}), 400
     trigger_state = data.get("trigger_state", row.get("trigger_state"))
     is_scored = dispatch_claim_uses_score_floor(trigger_state)
     for k in allowed:
-        if k in data and k != "task_key":
+        if k in data and k not in ("task_key", "entity_type"):
             if k in ("min_count", "batch_size", "max_runs"):
                 updates[k] = int(data[k]) if data[k] is not None else None
             elif k in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain"):

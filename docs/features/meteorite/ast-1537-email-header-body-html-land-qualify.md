@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1537 archived 2026-09-09 -->
+
+## Linear archive (AST-1537)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1537/email-headerbody-html-for-landqualify-manage-email-gives-html-for-the  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.  
+**Blocked by / blocks / related:** parent: AST-1533; blocks: AST-1538
+
+### Description
+
+## What this implements
+
+Owns the shared header+body HTML assembly and wires every email land path that feeds `stage_meteorite` / qualify so Ruth sees From/To/Subject/(Date) with the body. Does not own Manage Email React chrome or the copy button.
+
+## Citations
+
+`pattern.config.config-block`, `pattern.layers.import-discipline`, `astral.config.config-source-of-truth`, `astral.layers.core-vs-external-bright-line`, `astral.layers.import-direction`, `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets`, `astral.standards.debug-contract-gated`
+
+## Scope
+
+`src/utils/config.py` (extend inbox email HTML wrapper literals for From/To/Subject/(Date)+body); `src/core/inbox.py` (shared assemble/strip path for land + message get); `src/core/meteorite_email.py` (bound blob uses shared assembly); `src/external/gmail.py` (Date on full-message HTML payload when available); `src/ui/api/api_inbox.py` (expose assembled header+body HTML on message get)
+
+## Acceptance criteria
+
+- [X] 4. After email land into meteorite qualify, the agent input for that job includes those header fields together with the body (observable in stored/qualify content — not body-only).
+- [X] 5. Non-email meteorite ingress (paste / scrap / non-inbox callers) is unchanged by this epic.
+
+## Boundaries
+
+- [X] Does not own Manage Email React chrome, copy button, or dark purple modal styling (sibling #2).
+
+## Notes for planning
+
+Bang ! — blocks sibling #2. Parent AST-1533.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1533-manage-email-header-html`, child `sub/AST-1533/AST-1537-email-header-body-html-land-qualify`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-29T20:30:15.750Z
+[code-rubric] PROCEED (Commit: 1b2c939d) shared header+body assembly
+
+#### betty — 2026-08-29T20:26:38.906Z
+`origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify` @ `1b2c939d` · header+body land coverage
+
+#### joan — 2026-08-29T20:18:23.019Z
+[plan-rubric] PROCEED (Commit: 6a3a4260d9a4a70a015c68b4a7bb6ec026629ce9) header+body land qualify
+
+#### ada — 2026-08-29T20:16:19.753Z
+`origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify` @ `6a3a4260d9a4a70a015c68b4a7bb6ec026629ce9` · header+body assemble plan
+
+---
+
 # AST-1537 — Email header+body HTML for land/qualify
 
 **Linear:** [AST-1537](https://linear.app/astralcareermatch/issue/AST-1537/email-headerbody-html-for-landqualify-manage-email-gives-html-for-the)  

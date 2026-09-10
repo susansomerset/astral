@@ -1581,3 +1581,98 @@ class TestAst1135DispatchTaskFreqAllows:
         old = (datetime.now(timezone.utc) - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
         assert db.dispatch_task_freq_allows({"freq_hrs": 24, "last_run_at": old}) is True
 
+
+class TestAst1618SaveDispatchTaskCallerEntity:
+    """AST-1618: save_dispatch_task honors caller entity_type for sort_by."""
+
+    def test_caller_entity_overrides_catalog_sort(self, sqlite_in_memory) -> None:
+        """Stage 1 Done-when: non-catalog entity + trigger valid for *that* entity.
+
+        save must not require the trigger to be valid for the task-key catalog entity
+        when deriving defaults before applying the caller override.
+        """
+        from src.utils.config import _dispatch_sort_by_for, dispatch_task_admin_defaults
+
+        db = sqlite_in_memory
+        catalog = dispatch_task_admin_defaults("grade_do")  # job / PASSED_JD / latest_score
+        assert catalog["entity_type"] == "job"
+        assert catalog["sort_by"] == "latest_score"
+        expected_sort = _dispatch_sort_by_for("company", "WATCH")
+        assert expected_sort != catalog["sort_by"]
+        tid = db.save_dispatch_task(
+            "c1618",
+            "grade_do",
+            min_count=1,
+            entity_type="company",
+            trigger_state="WATCH",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == "company"
+        assert row["trigger_state"] == "WATCH"
+        assert row["sort_by"] == expected_sort
+
+    def test_caller_entity_with_catalog_valid_trigger(self, sqlite_in_memory) -> None:
+        """Overlap path (NEW): entity sticks; sort matches chosen-entity helper."""
+        from src.utils.config import _dispatch_sort_by_for
+
+        db = sqlite_in_memory
+        expected_sort = _dispatch_sort_by_for("company", "NEW")
+        tid = db.save_dispatch_task(
+            "c1618n",
+            "grade_do",
+            min_count=1,
+            entity_type="company",
+            trigger_state="NEW",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == "company"
+        assert row["sort_by"] == expected_sort
+
+    def test_omit_entity_keeps_catalog_defaults(self, sqlite_in_memory) -> None:
+        from src.utils.config import dispatch_task_admin_defaults
+
+        db = sqlite_in_memory
+        catalog = dispatch_task_admin_defaults("grade_do", trigger_state="PASSED_JD")
+        tid = db.save_dispatch_task(
+            "c1618b",
+            "grade_do",
+            min_count=1,
+            trigger_state="PASSED_JD",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == catalog["entity_type"]
+        assert row["sort_by"] == catalog["sort_by"]
+
+    def test_mailbox_omit_entity_keeps_null_sort(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+
+        db = sqlite_in_memory
+        db.save_candidate("c1618m", state="ACTIVE_SEARCH", candidate_data={})
+        tid = db.save_dispatch_task(
+            "c1618m",
+            METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
+            min_count=1,
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] is None
+        assert row["sort_by"] is None
+
+    def test_mailbox_caller_entity_still_null_sort(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+
+        db = sqlite_in_memory
+        db.save_candidate("c1618m2", state="ACTIVE_SEARCH", candidate_data={})
+        tid = db.save_dispatch_task(
+            "c1618m2",
+            METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
+            min_count=1,
+            entity_type="company",  # sort helper skipped for mailbox
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["sort_by"] is None
+

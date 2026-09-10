@@ -408,4 +408,30 @@ Board REVISE on AST-1432: pool-2 on a bound row was wrong; two-candidate bound A
   -q
 ```
 
+### AST-1618 · AST-1616
 
+**Parent:** [AST-1616](https://linear.app/astralcareermatch/issue/AST-1616). **Publish:** `origin/sub/AST-1616/AST-1618-persist-entity-type-admin`.
+
+`save_dispatch_task` keeps caller `entity_type` and derives `sort_by` via `_dispatch_sort_by_for` for that entity + trigger; mailbox rows keep `sort_by=None`. Admin API surface: **`docs/test-bible/ui/api/api_admin.md`** § AST-1618.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Caller entity + non-catalog trigger (AC6 / Stage 1 Done-when) | `src/data/database.py` | **`TestAst1618SaveDispatchTaskCallerEntity::test_caller_entity_overrides_catalog_sort`** |
+| Overlap trigger NEW | same | **`test_caller_entity_with_catalog_valid_trigger`** |
+| Omit entity → catalog | same | **`test_omit_entity_keeps_catalog_defaults`** |
+| Mailbox null sort | same | **`test_mailbox_omit_entity_keeps_null_sort`**, **`test_mailbox_caller_entity_still_null_sort`** |
+
+## QA test manifest
+
+1. `tests/component/data/database/test_dispatch_tasks.py::TestAst1618SaveDispatchTaskCallerEntity`
+2. API siblings — see **`docs/test-bible/ui/api/api_admin.md`** § AST-1618
+
+**AST-1618** narrowed data run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1618SaveDispatchTaskCallerEntity \
+  -q
+```
+
+**Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.
