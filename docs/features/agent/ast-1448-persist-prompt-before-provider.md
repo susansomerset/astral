@@ -1,3 +1,84 @@
+<!-- linear-archive: AST-1448 archived 2026-09-09 -->
+
+## Linear archive (AST-1448)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1448/persist-prompt-before-provider-write-to-agent-data-before-calling-the  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1442 — write to agent_data BEFORE calling the prompt, save the response when it comes back.  
+**Blocked by / blocks / related:** parent: AST-1442
+
+### Description
+
+## What this implements
+
+Every stored LLM call (production task run and Ad Hoc workbench Test) commits assembled prompt segments to agent_data before the provider is called, and writes RESPONSE only after return. Kill or restart mid-call leaves those prompt rows queryable by batch. Does not own UI, timesheets, state transitions, storage-off Ad Hoc, or a new table.
+
+## Citations
+
+`pattern.agent.prompt-persist-before-provider` (proposed), `pattern.batch.entity-agent-responses`, `astral.agent.do-task-delegation`, `astral.batch.entity-agent-responses-latest-only`, `astral.standards.debug-contract-gated`, `astral.layers.core-vs-external-bright-line`.
+
+## Acceptance criteria
+
+- [X] On a stored production task run, agent_data contains the prompt segments for that batch before the provider call is issued — verifiable by reading the batch while a call is in flight, or by killing mid-call and reading afterward.
+- [X] On a stored Ad Hoc workbench Test, the same: prompt segments are present even if the call is interrupted and no RESPONSE exists.
+- [X] When the provider returns successfully, a RESPONSE row is written with the same success body rules as today.
+- [X] When the provider returns a failure, a RESPONSE failure-audit row is written as today.
+- [X] After kill or restart mid-call: prompt rows for that batch are present; RESPONSE may be absent; a later successful run writes its own prompt and RESPONSE without corrupting the interrupted batch's prompt rows.
+- [X] A storage-off call writes no agent_data rows.
+- [X] When debug is on, prompt persist emits per-block found/recorded (index N/M) before the provider call; RESPONSE persist still emits after return. When debug is off, no new debug-contract lines.
+- [X] Latest-per-task and agent story still require a RESPONSE — a prompt-only interrupted batch does not become the latest story entry.
+
+## Boundaries
+
+- [X] Does not own UI for prompt-only batches, timesheets, entity state on kill, storage-off Ad Hoc, import agent data (AST-1439), or Ad Hoc seven-segment editors (AST-1403). Does not change block types, compression, content-dedup refs, or entity_id stamping.
+
+## Notes for planning
+
+This child introduces `pattern.agent.prompt-persist-before-provider` once Archie approves the catalog id. One inseparable sequencing invariant across the two stored call sites.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1442-write-to-agent-data-before-calling-the-prompt`,
+child `sub/AST-1442/<this-id>-persist-prompt-before-provider`. Created at dispatch-parent.
+
+## QA test manifest
+
+Narrowed `test-child` run (pytest green — not zero-arg harness / branch-lock):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key \
+  -q
+```
+
+1. Existing coverage: `TestDoTask` API-failure store; `TestDoTaskStorageFailures` swallow; `TestAst515AdhocWorkbenchLedger` (prompt still stored once); `TestAst984EntityColumnRetired::test_list_latest_per_task_key` (latest-per-task is RESPONSE-gated).
+2. Broken/obsolete: none — `_store_prompt_blocks` still once; order moved before the provider await.
+3. New: `tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider` — `do_task` prompt-before-`send_to_anthropic` and RESPONSE after; provider raise leaves prompt only; `store_agent_data=False` writes nothing; persist exception still calls provider; later success uses a new `batch_id`; workbench Test same vs `run_adhoc`; bare `run_adhoc` stores nothing; debug found/recorded before await and silent when `debug=False`; prompt-only rows are not `list_entity_latest_agent_refs`.
+
+Bible: `docs/test-bible/core/agent.md` shasum `1d11d592de93c507caa2e29973fd39801472190c` (`git show origin/sub/AST-1442/AST-1448-persist-prompt-before-provider:docs/test-bible/core/agent.md | shasum`).
+
+### Comments
+
+#### radia — 2026-08-19T20:04:50.102Z
+[code-rubric] PROCEED (Commit: 3688da45fdc5a2abf4bc097e37e1e022ac51c597) persist-before-provider clean
+
+#### betty — 2026-08-19T16:52:22.042Z
+`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider` @ `3688da45` · persist-before-provider tests
+
+#### joan — 2026-08-19T16:37:27.861Z
+[plan-rubric] PROCEED (Commit: ecf7bbbe2640a391a61e49ab7a9834f131ea0952) Persist-before-provider plan
+
+#### ada — 2026-08-19T16:32:17.637Z
+`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider` @ `ecf7bbbe` · persist-before-provider plan
+
+---
+
 # AST-1448 — Persist prompt before provider
 
 - **Linear:** [AST-1448](https://linear.app/astralcareermatch/issue/AST-1448)
