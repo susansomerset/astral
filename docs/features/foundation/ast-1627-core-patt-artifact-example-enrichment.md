@@ -207,3 +207,60 @@ context_tokens≈28000
 **Built @ `caec5f7e965a675b7455c007e87dedb28b9bec96`** — `origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment`
 
 Stages 1–5 landed: `# Examples` on the five singular drafts (`manage-catalog`, `write-operative`, `read-current`, `read-operative`, `no-coat-check`) with live `src/` symbols; no `src/`/`tests/` diff; plural ui-consistency / traceability drafts untouched.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1627
+**Publish ref:** `90649699972a3c6661bd0829b03bf98fa6ff2f26` (`origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment`)
+**Corpus:** `7a40a9e0de4324d0d1c4d56abc52b13d3c297715` (canon tree on `origin/dev`; `canon_clerk.py` absent — clerk sha / `corpus_dirty` unavailable)
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.manage-catalog | A | |
+patt.artifact.write-operative | A | |
+patt.artifact.read-current | A | |
+patt.artifact.read-operative | A | |
+patt.artifact.no-coat-check | A | |
+astral.standards.in-scope-only | A | |
+astral.config.config-source-of-truth | A | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `docs/test-bible/README.md` AST-1627 manifest block
+- **Finding:** `**Bible shasum:** fill after merge-tests` is still a placeholder after `merge-tests(AST-1627)` @ `90649699`.
+- **Recommendation:** Betty or Chuckles can drop in the computed shasum (`593a23036651e03505e26e8545baf44970fbfe5e` on publish tip) — doc hygiene only; manifest content otherwise matches the five-draft docs-acceptance gate.
+
+## Notes
+
+- **Canon Scope:** Parent AST-1626 cites `astral.standards.names-not-ticket-ids`; child frozen list omits it. Joan flagged at plan stage; new `# Examples` fences use live symbols only (no ticket ids). Not scored — Archie may amend Canon Scope at Discussion if ticket-id hygiene in examples should be an explicit graded directive.
+- **Scope divergence (expected):** `docs/test-bible/README.md` manifest landing is Betty pipeline output, not listed in plan **Files Changed** — appropriate for docs-acceptance tickets.
+- **Corpus resolution:** `canon/canon_clerk.py` not on tree; directives resolved by reading `canon/directives/draft/patt.artifact.*.md` and scoped statutes under `canon/statutes/astral/`.
+
+## What's solid
+
+- All five in-scope singular drafts gained `# Examples` between `# Implementation` and `# OPEN QUESTIONS / DECISIONS`; Abstract / Arc / Applications / Exceptions headings untouched.
+- Harvested symbols verified on `origin/dev`: `ARTIFACT_CONFIG`, `database.save_artifact` / `get_current_artifact` / `get_artifact`, `save_candidate_data`, `get_candidate_current`, `get_operative_base_resume`, `hydrate_operative_base_resume_for_response`, `tracker.save_job_artifact` / `get_job_current`, `get_job_data` / `get_company_data` (FORBIDDEN-only).
+- `git diff origin/dev -- src/ tests/` empty; plural `patt.artifacts.ui-consistency` / `patt.artifacts.traceability` drafts unmodified.
+- AC5 negative guidance greppable on write-operative, read-current, read-operative, no-coat-check.
+- Plan Stages 1–5 and estimate **3** match the delivered docs-only footprint.
+
+## Plan adherence (§5.4)
+
+- **Plan fidelity:** Implementation matches staged harvest plan; `# Examples` placement decision honored.
+- **Estimate footprint:** Estimate 3 fits (five draft enrichments + plan + bible manifest).
+- **Cross-ticket scope:** Sibling AST-1628 rename/traceability files not touched.
+- **Database / SQL:** N/A — no `src/data/database.py` or migration diff.
+
+context_tokens≈38000
