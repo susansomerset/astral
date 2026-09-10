@@ -77,7 +77,7 @@ point: >
    - Do **not** add cross-links into `patt.artifact.write-operative.md`.
    - Do **not** register new `ARTIFACT_CONFIG` keys or change config from this file.
 
-⚠️ **Decision:** Pattern id is `patt.artifact.ui-consistency` (plural `artifacts`) per parent / child ticket naming — not `patt.artifact.ui-consistency`.
+⚠️ **Decision (historical):** At AST-1577 the draft id was plural (`patt.artifacts.ui-consistency`). AST-1628 renamed it to singular `patt.artifact.ui-consistency` to match the `artifacts` table / component naming.
 
 ## Stage 2: Parameterize `ArtifactEditor` + wire Base Resume page
 

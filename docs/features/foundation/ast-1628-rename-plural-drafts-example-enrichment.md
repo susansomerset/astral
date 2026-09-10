@@ -215,7 +215,7 @@ context_tokens≈42000
 
 **Built @ `f9cabdcd6bb418fa1c47208e7f0f33e3ade28bd1`** — `origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`
 
-Stages 1–3 landed: singular `patt.artifact.ui-consistency` / `patt.artifact.traceability` drafts with `# Examples`; `docs/features/**` plural-id cite sweep. No `src/` product diff (Betty may retarget `tests/**` cites).
+Stages 1–3 landed: singular `patt.artifact.ui-consistency` / `patt.artifact.traceability` drafts with `# Examples`; `docs/features/**` plural-id cite sweep. No `src/` product diff. Betty `merge-tests` retargeted `docs/test-bible/**` + Vitest draft-path assert (authorized; not an engineer `src/` change).
 
 **Betty retarget (qa-child):** `docs/test-bible/frontend/pages.md`, `docs/test-bible/data/database/artifacts.md`, `docs/test-bible/core/candidate.md`, `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — former plural draft path/id strings.
 
@@ -290,3 +290,16 @@ astral.standards.names-not-ticket-ids | A | |
 - **Database / SQL:** N/A.
 
 context_tokens≈42000
+
+## Resolution
+
+**Date:** 2026-09-10
+**Radia tip reviewed:** `c9496457` · Overall CLEAN (discuss + advisory only; no fix-now).
+
+| Item | Action |
+|------|--------|
+| Discuss — AST-1577 Stage 1 Decision callout self-contradictory after cite sweep | Rewrote Decision to historical prose (plural at AST-1577; singular rename at AST-1628) |
+| Discuss — Linear AC4 vs Betty test-tree retarget | Clarified AC4 on Linear description: no `src/` product diff; Betty may retarget test-tree cites |
+| Advisory — Review (build) stub “no tests/ diff” | Stub now states no `src/` product diff; Betty merge-tests retarget authorized |
+| Advisory — bible shasum placeholder | Left for Betty / doc hygiene (test-tree) |
+| Advisory — plural ids in `src/` comments | No action — intentional freeze per plan AC4 |
