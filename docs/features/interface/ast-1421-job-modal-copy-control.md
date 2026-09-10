@@ -1,3 +1,84 @@
+<!-- linear-archive: AST-1421 archived 2026-09-09 -->
+
+## Linear archive (AST-1421)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1421/job-modal-copy-control-create-a-copy-button-on-the-job-modal  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1419 — Create a Copy button on the Job Modal  
+**Blocked by / blocks / related:** parent: AST-1419
+
+### Description
+
+## What this implements
+
+Adds the labeled Copy button to the Job Detail modal (In Review and Skipped) and the Recommended Job Report. Fetches the snapshot from AST-1420, writes it to the clipboard, shows Copied feedback. Does not own snapshot assembly. After AST-1420.
+
+## Citations
+
+`pattern.ui.shared-button-roles`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.layers.ui-config-driven-business-logic`
+
+## Acceptance criteria
+
+1. Opening a job from In Review or Skipped shows a Copy control on the Job Detail modal. Opening a Recommended job shows the same Copy control on the Recommended Job Report.
+2. After a successful copy, the control reads Copied briefly, then Copy again.
+3. Skip This Job, existing tabs, Copy Application Email, Copy LinkedIn, and the current job-detail display payload are unchanged.
+
+## Boundaries
+
+Does not assemble or expand agent_data — that is AST-1420. Does not replace Copy Application Email or Copy LinkedIn. Does not add Copy to Company Modal, Data Management, Execution History, or error toasts.
+
+## Notes for planning
+
+Citations as above. Labeled Copy is a neutral modal action (`btn secondary`). After AST-1420.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1419-create-a-copy-button-on-the-job-modal`, child `sub/AST-1419/AST-1421-job-modal-copy-control`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Clipboard helper: `tests/component/frontend/lib/test_copyJobSnapshot.test.ts`
+2. Job Detail Copy ↔ Copied + Skip unchanged: `tests/component/frontend/components/test_JobDetailModal.test.tsx` — `AST-1421|loads job details`
+3. Header Copy without email/linkedin + coexistence: `tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx`
+4. JAR click wiring, no `copyFeedback` span: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `AST-1421`
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_copyJobSnapshot.test.ts \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1421|loads job details|sticky header"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+Bible shasums (`origin/sub/AST-1419/AST-1421-job-modal-copy-control`):
+
+* `docs/test-bible/frontend/components.md` `c9c0d4c0f30ecd8fa81654c087df14bf98989e73`
+* `docs/test-bible/frontend/lib.md` `a11d383f291732a582624d05a70f19681a4c35ee`
+
+### Comments
+
+#### radia — 2026-08-17T18:23:49.175Z
+[code-rubric] PROCEED (Commit: cbd2837f) copy control clean
+
+#### betty — 2026-08-17T18:20:10.848Z
+`origin/sub/AST-1419/AST-1421-job-modal-copy-control` @ `cbd2837f` · copy control tests ready
+
+#### joan — 2026-08-17T18:08:44.394Z
+[plan-rubric] PROCEED (Commit: d77b117) copy chrome ready
+
+#### katherine — 2026-08-17T18:04:59.422Z
+`origin/sub/AST-1419/AST-1421-job-modal-copy-control` @ `d77b117e0a1ead9a9cfe22e09260499a6204e44c` · plan for copy chrome
+
+---
+
 # AST-1421 — Job modal Copy control (Create a Copy button on the Job Modal)
 
 - **Linear:** [AST-1421](https://linear.app/astralcareermatch/issue/AST-1421/job-modal-copy-control-create-a-copy-button-on-the-job-modal)
