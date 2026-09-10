@@ -103,3 +103,184 @@ AST-1621 plan approved.
 | 1 | `fb265adf` | ENTITY_TYPES + registry / claim_states / sort_by for meteorite |
 | 2 | `1172951c` | SEED_CONFIG ingress + bot-blocked `entity_type='meteorite'` |
 | 3 | `2f34fe55` | Code Rules ENTITY_TYPES + §2.4 claim-queue wording |
+
+## Radia review
+
+# Radia review — AST-1621
+
+**Publish ref:** `origin/sub/AST-1620/AST-1621-register-meteorite-entity-types` @ `d6e5951a`  
+**Baseline:** `origin/dev`  
+**Diff:** 5 files, +202 / −8 (utils config + Code Rules + Betty tests/bible + issue doc)
+
+---
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1621
+**Publish ref:** d6e5951a
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/core/**` diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent/dispatcher diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no agent/dispatcher diff |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch/dispatcher paths changed |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch/dispatcher paths changed |
+| astral.batch.claim-process-release | scoped | not-applicable | no `dispatcher.py` / claim-loop diff |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch/agent_data diff |
+| astral.config.config-source-of-truth | scoped | conforms | `ENTITY_TYPES` + dispatch helpers + seeds stay in `config.py` |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets or env fallbacks introduced |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug/artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug paths |
+| astral.dispatch.seed-auto-false | scoped | conforms | ingress/notify/retention seeds keep `auto_mode` 0; retention boundary tested |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no core/dispatcher diff |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single issue doc under `docs/features/dispatcher/` |
+| astral.git.betty-no-src-or-features | scoped | conforms | test/bible changes via Betty merge-tests SHA |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits limited to `src/` + docs; tests on `origin/tests` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | utils/docs only |
+| astral.layers.import-direction | scoped | conforms | no new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts diff |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI diff |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API endpoint diff |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no agent-table seed diff |
+| astral.seed.archie-catalog-wins | scoped | conforms | `SEED_CONFIG` literals only; no boot reconcile |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | seed SQL unchanged except `entity_type` column literals |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed approval surface |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row reconcile |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no `src/data/**` diff |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database/migration diff |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | minimal registry wiring; matches sibling entity pattern |
+| astral.standards.in-scope-only | scoped | conforms | no AST-1622/1623 surfaces (`database.py`, `dispatcher.py`, `api_admin.py`) |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names only (`meteorite`, state keys) |
+| astral.standards.no-cross-contamination | scoped | conforms | meteorite registry isolated from `JOB_STATES` lifecycle keys |
+| astral.standards.no-hardcoded-sets | scoped | conforms | uses `METEORITE_STATES` / `ENTITY_TYPES`; no inline state sets |
+| astral.standards.public-then-helpers | scoped | conforms | public dispatch helpers extended; sort helper pre-existing private |
+| astral.standards.utils-data-late-import-only | scoped | conforms | no utils→data imports added |
+| astral.state.core-decides-transitions | scoped | not-applicable | no core/tracker diff |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job transition logic diff |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no runner/dispatcher diff |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend diff |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI diff |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no deploy/config worker diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1621)` at tip |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `docs` / `test` / `merge-tests` prefixes |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1620/AST-1621-*` vs `origin/dev` |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/<parent>/<child>` |
+| orch.git.merge-on-checkout | universal | conforms | `sync(dev)` merges present in history |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no evidence of forbidden git ops |
+| orch.git.no-dev-agent-branches | universal | conforms | publish ref is `sub/`, not agent branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1620 worktree path |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | product choices documented in plan decisions |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches staged plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | child scope respected |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | Joan APPROVED; no new statutes |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest + component tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Ada (engineer) |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | engineer still assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Active set:** 65 scored in-session (46 scoped + 19 universal).  
+**Straggler (C4):** Joan verdict attached; no explicit Excluded statute list — no straggler rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | `ENTITY_TYPES` append + dispatch registry maps in `config.py`; Code Rules §2.1 updated |
+| pattern.state.entity-state-transitions | conforms | `METEORITE_STATES` wired into dispatch registries; no transition logic in data/UI |
+
+## Plan adherence
+
+- **Stage 1:** `ENTITY_TYPES` includes `meteorite`; `dispatch_entity_state_registry`, `dispatch_claim_states`, `_dispatch_sort_by_for` wired to `METEORITE_STATES` with `updated_at` sort default.
+- **Stage 2:** Ingress (`stage_meteorite`, `scrape_meteorite`, `land_meteorite`) and `meteorite_bot_blocked_notify` seeds use `'meteorite'`; retention stays `NULL`/`NULL`; job-track `dispatch_task-meteorite` seeds unchanged (`entity_type='job'`).
+- **Stage 3:** Code Rules §2.1 ENTITY_TYPES bullet and §2.4 claim-queue parenthetical include `meteorite`.
+- **Boundaries:** No `database.py`, `dispatcher.py`, `api_admin.py`, or live-row backfill — correctly deferred to AST-1622/AST-1623.
+- **Estimate (2):** Footprint matches (single utils module + docs + focused component tests).
+
+## C6 judgment aids (§5a–§5g)
+
+| Lens | Result |
+|------|--------|
+| Imports (B1) | OK — no new imports |
+| Layer compliance (B2) | OK — utils-only product change |
+| Silent failure (D2) | N/A |
+| Fallbacks (D3) | N/A |
+| Logging (E1) | OK — no new emission |
+| Config/state in UI (G1) | N/A — no frontend diff |
+| Batch/transitions (H*) | N/A — no dispatcher/tracker diff |
+| Debug contract (§5f) | N/A |
+| External cleanliness (§5g) | N/A |
+
+## Test / bible alignment
+
+Betty manifest (`TestAst1621MeteoriteEntityTypeRegistry` + AST-1560/1561/1562 regression) matches plan ACs:
+
+- Registry equality with `METEORITE_STATES` (including `SCRAPE_LINK` vs `METEORITE_NEW` guard).
+- Claim states for `NEW`, `SCRAPE_LINK`, `BOT_BLOCKED`.
+- Seed substring asserts for ingress/notify + negative NULL-shape guards.
+- Retention NULL boundary.
+
+Docs-acceptance (Code Rules grep) is manifest line 2 — not pytest — consistent with plan Stage 3.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+
+1. **Intermediate epic gap (expected):** `dispatch_task_state_options` still returns only `job` / `company` / `candidate` keys — no `meteorite` list yet (`api_admin.py` ~1049–1053). Admin POST validation will accept `entity_type='meteorite'` via `ENTITY_TYPES` + `dispatch_entity_state_registry`, but the UI dropdown will not offer meteorite states until AST-1623. Plan and Joan intermediate-epic note cover this; flag for UAT awareness only.
+
+2. **`_dispatch_entity_type_for_task_key` unchanged:** Ingress keys (`stage_meteorite`, etc.) still won't auto-default `entity_type='meteorite'` through `dispatch_task_admin_defaults` — operators need explicit `entity_type` or sibling work. Out of AST-1621 scope per plan.
+
+3. **Duplicate registry resolution in `dispatch_claim_states`:** Meteorite follows the existing nested-if pattern rather than calling `dispatch_entity_state_registry` — plan-mandated; pre-existing DRY debt, not introduced here.
+
+## What's solid
+
+- Surgical config change: four dispatch touchpoints + four seed literals, no scope creep.
+- Tests explicitly guard JOB_STATES vs `METEORITE_STATES` key confusion (`METEORITE_NEW` not in meteorite registry).
+- `auto_mode` and retention NULL semantics preserved with a dedicated boundary test.
+- Code Rules kept in sync with runtime `ENTITY_TYPES`.
+
+## Frame diff
+
+Post-Joan (`1bcee4e9`) → tip (`d6e5951a`):
+
+| Area | Change |
+|------|--------|
+| `src/utils/config.py` | `ENTITY_TYPES` + `dispatch_entity_state_registry` / `dispatch_claim_states` / `_dispatch_sort_by_for` + ingress/notify seed `entity_type` literals |
+| `docs/ASTRAL_CODE_RULES.md` | §2.1 ENTITY_TYPES + §2.4 claim-queue wording |
+| `tests/component/utils/test_config.py` | `TestAst1621MeteoriteEntityTypeRegistry` |
+| `docs/test-bible/utils/config.md` | Betty manifest block |
+| `docs/features/dispatcher/ast-1621-*.md` | Plan + Joan validate + build stub |
+
+All deltas are expected post-plan execution; no unplanned product surface.
+
+## Notes
+
+- Joan plan-rubric verdict attached (APPROVED @ `1bcee4e9`); no excluded-statute stragglers.
+- Three-dot diff vs `origin/dev` is the correct review surface (5 files); branch history includes `sync(dev)` merges — immaterial to verdict.
+- C7 complete: full artifact + frame diff present; recommend **Review Posted**.
+
+context_tokens≈42000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: d6e5951a) meteorite registry clean
+```
