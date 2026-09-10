@@ -1134,7 +1134,7 @@ BLOCK_TYPES = [
 # (AST-975); entity-row JSON agent_responses columns retired (AST-984).
 # Single source of truth — add new types here.
 # ---------------------------------------------------------------------------
-ENTITY_TYPES = ["candidate", "company", "job"]
+ENTITY_TYPES = ["candidate", "company", "job", "meteorite"]
 
 
 # ---------------------------------------------------------------------------
@@ -3399,7 +3399,9 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
         return [ts]
     registry = JOB_STATES if entity_type == "job" else (
         COMPANY_STATES if entity_type == "company" else (
-            CANDIDATE_STATES if entity_type == "candidate" else None
+            CANDIDATE_STATES if entity_type == "candidate" else (
+                METEORITE_STATES if entity_type == "meteorite" else None
+            )
         )
     )
     if registry is not None:
@@ -3574,6 +3576,8 @@ def _dispatch_sort_by_for(entity_type: str, trigger_state: str) -> str:
         return str(sort_by)
     if entity_type == "candidate":
         return "updated_at"
+    if entity_type == "meteorite":
+        return "updated_at"
     raise KeyError(f"dispatch sort_by: unknown entity_type {entity_type!r}")
 
 
@@ -3623,6 +3627,7 @@ def dispatch_entity_state_registry(entity_type: str) -> Dict[str, Any]:
         "job": JOB_STATES,
         "company": COMPANY_STATES,
         "candidate": CANDIDATE_STATES,
+        "meteorite": METEORITE_STATES,
     }
     if entity_type not in registries:
         raise KeyError(f"unknown dispatch entity_type: {entity_type!r}")
