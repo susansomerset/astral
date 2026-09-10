@@ -145,3 +145,35 @@ No other files. No React. No scheduler/claim runtime changes beyond persisting `
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1618
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1616/AST-1618-persist-entity-type-admin` @ `c626a2a78a2c2e53fae0ab3f2ccfb1c0d216a80b`
+
+## Traceability
+
+Child AC3→Stage 2b (`create_dtask` forwards `entity_type`); AC4→Stage 2c (`update_dtask` allows `entity_type` without `task_key` change); AC5→Stage 2a+2b+2c (`_dispatch_task_key_trigger_error` entity override + unified validation); AC6→Stage 1 (`save_dispatch_task` sort derivation) + Stage 2c (update `sort_by` recompute). Parent AC1/2/7 N/A — React modal sibling AST-1619.
+
+## Findings
+
+### discuss — Plan structure — Missing Self-Assessment block
+
+**Location:** plan doc (no `## Self-Assessment` section)
+**Finding:** plan-child convention confidence/scope self-assessment is absent.
+**Recommendation:** Optional add before build; not blocking — stages and explicit scope gate are otherwise complete.
+
+### discuss — Stage 2c — `entity_type: null` on PUT
+
+**Location:** Stage 2c step 2 entity resolution
+**Finding:** Create path (2b) treats absent/`null` as catalog default; update path strips whatever is in `data["entity_type"]` without a `null` guard, so JSON `null` could surface as `unsupported entity_type 'None'` instead of omit-or-clear semantics.
+**Recommendation:** Mirror create: if key present and value is `null`, treat as omitted (catalog/row default) or return explicit 400 — document which.
+
+**Considered:** (in-session — corpus present; all cited scoped statutes + universal orch.* set conform; no `violates`)
+
+context_tokens≈28000
+```
