@@ -435,3 +435,36 @@ Board REVISE on AST-1432: pool-2 on a bound row was wrong; two-candidate bound A
 ```
 
 **Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.
+
+### AST-1622 · AST-1620
+
+**Parent:** [AST-1620 — Treat meteorite as a first-class dispatch entity_type](https://linear.app/astralcareermatch/issue/AST-1620/treat-meteorite-as-a-first-class-dispatch-entity-type). **Publish:** `origin/sub/AST-1620/AST-1622-meteorite-count-eligible-auto-due`.
+
+`count_meteorites_unclaimed_in_states`; `count_eligible_for_dispatch_task` meteorite branch (no `candidate_id` required; global pool); `get_due_tasks` includes AUTO meteorite rows with NULL `candidate_id` when eligible ≥ `min_count`. ENTITY_TYPES registration is **AST-1621**; admin Available / ledger / backfill is **AST-1623**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unclaimed helper + empty states | `src/data/database.py` | **`TestAst1622MeteoriteCountEligibleDue::test_count_meteorites_unclaimed_in_states`** |
+| count_eligible null candidate + global pool | same | **`::test_count_eligible_null_candidate_meteorite`** |
+| Job still requires candidate_id | same | **`::test_count_eligible_job_still_requires_candidate_id`** |
+| get_due AUTO null-candidate meteorite | same | **`::test_get_due_includes_null_candidate_meteorite`** |
+
+**Broken / obsolete:** none — additive meteorite path; mailbox null-entity skip (**AST-1135**) unchanged.
+
+**Integration:** none — no existing scenario asserts meteorite count/due without candidate_id; do not invent.
+
+## QA test manifest
+
+1. Meteorite count helper + count_eligible + get_due: `tests/component/data/database/test_dispatch_tasks.py::TestAst1622MeteoriteCountEligibleDue`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1622MeteoriteCountEligibleDue \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest line — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/data/database/dispatch_tasks.md` — *(filled after publish)*
+
