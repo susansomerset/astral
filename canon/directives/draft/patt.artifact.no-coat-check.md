@@ -56,7 +56,7 @@ body = get_candidate_current(candidate_id, "candidate.artifacts.base_resume")
 body = get_operative_base_resume(pinned_artifact_uuid)
 ```
 
-Missing content → fail visibly / ingestion state — never hide I/O inside an agent tool loop. Do not invent new ban APIs or expand `*_data_keys` maps as if they were approved for greenfield keys.
+Missing content → fail visibly / ingestion state — never hide I/O inside an agent tool loop. do not invent new ban APIs or expand `*_data_keys` maps as if they were approved for greenfield keys.
 
 # OPEN QUESTIONS / DECISIONS
 
