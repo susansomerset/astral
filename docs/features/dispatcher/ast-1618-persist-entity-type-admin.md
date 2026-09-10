@@ -177,3 +177,15 @@ Child AC3→Stage 2b (`create_dtask` forwards `entity_type`); AC4→Stage 2c (`u
 
 context_tokens≈28000
 ```
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1616/AST-1618-persist-entity-type-admin`
+**Tip:** `f4fad519`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `84e5f6b7` | `save_dispatch_task` derives `sort_by` via `_dispatch_sort_by_for` when caller supplies `entity_type` |
+| 2 | `f4fad519` | create/update accept `entity_type`; trigger override; update sort recompute; PUT null = omit |
+
+PUT `entity_type: null` treated as omitted (Joan discuss).
