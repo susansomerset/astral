@@ -36,6 +36,37 @@ An **operative write** stores (or replaces) the current version of an artifact b
 5. **Pin** — Persist returned `artifact_id` on grades, analysis upshots, or dispatch metadata when downstream explainability is required.
 6. **Replicate** — After agent_data RESPONSE land, call write-operative to create the first operative row; do not leave new keys as agent_data-only pins.
 
+# Examples
+
+Data-layer retire+insert (returns new `artifact_uuid` / pin):
+
+```python
+# data layer — blind retire-by-key + insert; returns new artifact_uuid
+# prior current=1 rows for the natural key → current=0; new row current=1
+new_uuid = database.save_artifact(
+    entity_type,   # e.g. "candidate"
+    entity_id,     # candidate_id when entity is candidate
+    artifact_type, # leaf, e.g. "base_resume"
+    body,          # validated artifact_data
+)
+# pin new_uuid on grades / analysis when explainability applies
+```
+
+Entity-owned operative path (`src/core/candidate.py`) — validates via `ARTIFACT_CONFIG` + `BUILD_CONFIG["artifact_shapes"]`, then delegates to `database.save_artifact`:
+
+```python
+# returns new artifact_uuid (pin), or raises on unknown key / invalid body
+new_uuid = save_candidate_data(
+    candidate_id,
+    "candidate.artifacts.base_resume",
+    body,
+)
+```
+
+Job-scoped operative writes use `tracker.save_job_artifact(astral_job_id, artifact_key, blob, …)` the same way (live on `origin/dev`) — not expanded here.
+
+Do not `UPDATE artifact SET artifact_data = …` (or any in-place body UPDATE) for operative writes; always retire+insert via `save_artifact`.
+
 # OPEN QUESTIONS / DECISIONS
 
 1. Whether every write also mirrors a denormalized cache entry — default no; cache pattern is separate.
