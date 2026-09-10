@@ -1,3 +1,73 @@
+<!-- linear-archive: AST-1454 archived 2026-09-09 -->
+
+## Linear archive (AST-1454)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1454/job-detail-skipped-field-editors-when-a-job-is-in-a-skipped-state-make  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1446 — When a job is in a Skipped state, make all fields editable  
+**Blocked by / blocks / related:** parent: AST-1446
+
+### Description
+
+## What this implements
+
+When Job Detail loads a skipped job, title, link, job description, and state are editable; agent story stays read-only. Save uses #1; empty JD still shows an editor. Non-skipped jobs stay display-only. Copy / Skip This Job unchanged. After #1.
+
+## Citations
+
+`pattern.ui.shared-button-roles`, `pattern.ui.admin-endpoint`, `astral.layers.ui-config-driven-business-logic`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.standards.dry-and-focused-functions`.
+
+## Acceptance criteria
+
+- [X] Open a job whose state is a skipped state: title, link, job description, and state are editable controls; agent story tabs are not.
+- [X] Save persists title, link, and job description; reload of Job Detail and the Skipped list shows the saved values.
+- [X] A skipped job with no job description still offers a job-description editor; saving a pasted description persists it.
+- [X] The state control lists only legal successor states; choosing one and saving moves the job through the existing transition path (history recorded). An illegal target is rejected and the job stays in its current state.
+- [X] After a save that leaves a skipped state, the job is gone from Skipped on refresh and is not still shown as skipped.
+- [X] Open a job that is not in a skipped state: title, link, job description, and state remain display-only as today.
+- [X] Copy, Skip This Job, and Skipped Retry behave as they do today.
+
+## Boundaries
+
+- [X] Does not own persist/API (#1).
+- [X] Does not edit Recommended Job Report.
+- [X] Does not make agent responses, grades, artifacts, company, or timestamps editable.
+
+## Notes for planning
+
+Estimate: 3. After #1.
+
+### Comments
+
+#### radia — 2026-08-25T03:20:57.437Z
+[code-rubric] PROCEED (Commit: f396d05c) skipped-field editors clean
+
+#### betty — 2026-08-25T02:42:26.790Z
+`origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors` @ `9785a29f43a8ed4958341b4f7824fa89a03c60b8` · skipped editors coverage
+
+#### betty — 2026-08-25T02:41:29.528Z
+`origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors` @ `9785a29f43a8ed4958341b4f7824fa89a03c60b8` · skipped editors coverage
+
+#### joan — 2026-08-25T00:36:18.963Z
+[plan-rubric] PROCEED (Commit: 3896ae6f) skipped-field editors plan
+
+#### chuckles — 2026-08-25T00:09:05.980Z
+[agent-busy-timeout] blocked: Cursor conversation still busy after 20m call-wait (spawn=`b8aff5bd`, attempts=14).
+- parent: `AST-1446`
+- agent: **Joan** role=validate `validate-plan` on `AST-1454`
+- AGENT_SESSION: `7219634c-bc1b-47c3-bc3f-b2cb04ac5901`
+
+Do **not** `agent create-chat` and do **not** treat this as `[thread-missing]` — the Thread UUID is fine; another run held it.
+
+#### katherine — 2026-08-24T23:46:28.209Z
+`origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors` @ `3896ae6f835baf45cb9bb1bd1e501fb52e6da445` · plan ready for Joan
+
+---
+
 # AST-1454 — Job Detail skipped-field editors
 
 **Linear:** [AST-1454](https://linear.app/astralcareermatch/issue/AST-1454/job-detail-skipped-field-editors-when-a-job-is-in-a-skipped-state-make)  

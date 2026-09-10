@@ -1,3 +1,95 @@
+<!-- linear-archive: AST-1449 archived 2026-09-09 -->
+
+## Linear archive (AST-1449)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1449/ungate-candidate-facing-nav-by-state-remove-navigation-filter-for  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1444 — Remove navigation filter for selected candidate  
+**Blocked by / blocks / related:** parent: AST-1444
+
+### Description
+
+## What this implements
+
+Stop hiding Jobs, Companies, and Artifacts by selected-candidate state so every candidate gets the same candidate-facing list. Keep admin-only omit and permanently disabled stubs. Update the NAV_CONFIG contract so Code Rules still describe what the product actually does. Does not own the chrome state line (#2).
+
+## Citations
+
+`pattern.config.config-block`, `astral.config.config-source-of-truth`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`
+
+## Acceptance criteria
+
+- [X] With a selected candidate whose state is before resume-ready, the Artifacts group is present in the left nav.
+- [X] With a selected candidate whose state is before active search, the Jobs and Companies groups are present in the left nav.
+- [X] The Candidate group remains present for every selected candidate.
+- [X] Applied and Responded remain listed and not activatable.
+- [X] A non-admin session still does not see Operations, Admin, or Tools.
+
+## Boundaries
+
+- [X] Does not own the read-only candidate-state line under the picker (sibling #2).
+- [X] Does not enable permanently disabled stub items.
+- [X] Does not change admin-only grouping.
+- [X] Does not redesign or empty-state-fix destination pages for early-state candidates.
+
+## Notes for planning
+
+Citations as above. NAV_CONFIG remains the membership source; resolve remaining enablement in the API, not in React.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. HTTP early-state groups: `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_early_state_keeps_candidate_facing_groups`
+2. Resolver groups + Applied/Responded stubs: `tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_resolve_nav_keeps_candidate_facing_groups_and_stubs`
+3. Item-level string `enabled` still gates: `tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_resolve_nav_uses_string_enabled_gate`
+4. Non-admin omit Operations/Admin/Tools: `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`
+5. NAV_CONFIG has no group `visible`: `tests/component/utils/test_config.py::TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`
+6. Existing integration scenario (revised): `tests/integration/scenarios/test_candidate_nav_api.py`
+7. Docs-acceptance: `docs/ASTRAL_CODE_RULES.md` §2.1 NAV_CONFIG bullet contains `Group-level candidate-state \`visible` is not used`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_early_state_keeps_candidate_facing_groups \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_resolve_nav_keeps_candidate_facing_groups_and_stubs \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_resolve_nav_uses_string_enabled_gate \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab \
+  -q
+./scripts/testing/run_integration_tests.sh \
+  tests/integration/scenarios/test_candidate_nav_api.py \
+  -q
+```
+
+Pass criterion: pytest green on the lines above + Code Rules grep — not zero-arg harness / branch-lock gate.
+
+Bible shasums on `origin/sub/AST-1444/AST-1449-ungate-candidate-facing-nav-by-state`:
+
+* `docs/test-bible/ui/api/api_system.md` `69b003ac02617fad9c15353ba20f7d3f281464b7`
+* `docs/test-bible/integration/README.md` `1817b6908d3cece6e5e332f33b033a280389d2d3`
+
+### Comments
+
+#### radia — 2026-08-19T20:06:53.897Z
+[code-rubric] PROCEED (Commit: 96253abf5430ebef404f3998a3c6ba38d7573791) nav ungate clean
+
+#### betty — 2026-08-19T16:56:00.973Z
+`origin/sub/AST-1444/AST-1449-ungate-candidate-facing-nav-by-state` @ `96253abf` · ungate nav groups
+
+#### joan — 2026-08-19T16:42:49.783Z
+[plan-rubric] PROCEED (Commit: 1e9e21b5b93bfb9d62cf144f4d6ef076cafc6470) ungate nav groups
+
+#### ada — 2026-08-19T16:38:58.663Z
+`origin/sub/AST-1444/AST-1449-ungate-candidate-facing-nav-by-state` @ `1e9e21b5b93bfb9d62cf144f4d6ef076cafc6470` · ungate nav membership
+
+---
+
 # AST-1449 — Ungate candidate-facing nav by state
 
 **Linear:** [AST-1449](https://linear.app/astralcareermatch/issue/AST-1449/ungate-candidate-facing-nav-by-state-remove-navigation-filter-for)  

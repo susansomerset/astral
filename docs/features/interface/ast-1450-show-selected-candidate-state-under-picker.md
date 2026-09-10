@@ -1,3 +1,80 @@
+<!-- linear-archive: AST-1450 archived 2026-09-09 -->
+
+## Linear archive (AST-1450)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1450/show-selected-candidate-state-under-picker-remove-navigation-filter  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1444 — Remove navigation filter for selected candidate  
+**Blocked by / blocks / related:** parent: AST-1444
+
+### Description
+
+## What this implements
+
+Add a read-only live state name under the candidate picker in pinned chrome (wide and narrow). Uses the selected candidate’s stored state; does not gate nav and does not own NAV_CONFIG membership (#1).
+
+## Citations
+
+`astral.ui.naming-conventions`, `astral.ui.frontend-file-placement`, `astral.layers.ui-config-driven-business-logic` (do not reintroduce state gates in React)
+
+## Acceptance criteria
+
+- [X] When a candidate is selected, the pinned chrome shows that candidate’s exact current state name directly below the picker, and the operator cannot edit it there.
+- [X] Selecting a different candidate updates the displayed state to that candidate’s current state.
+- [X] On the narrow shell, the same read-only state line appears below the candidate picker control in the pinned chrome.
+
+## Boundaries
+
+- [X] Does not gate nav membership (sibling #1).
+- [X] Does not add state editing in the nav, and does not invent display aliases for state names.
+- [X] Does not change who may switch the selected candidate.
+- [X] Does not reopen pinned-chrome layout beyond adding the read-only state line in existing chrome.
+
+## Notes for planning
+
+Citations as above. Show the live stored state name, including retry and error companion states.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Existing coverage (bible-backed): `tests/component/frontend/components/test_NavigationShell.test.tsx` — **AST-1369 pinned left-nav chrome** + **AST-1286 responsive shell**.
+2. Broken / obsolete: shared `candidatesFixture` `c2.state` is now `REQUESTED_RESUME_RETRY` (picker-change needs a different stored name). Existing cases do not assert state text.
+3. Gaps (this pass): **AST-1450 selected candidate state under picker** — wide line under select + update; omit blank state; narrow line under toggle (stays under it when menu open) + update; empty list omits the line.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` — no revision (API/nav membership; this child does not change `NAV_CONFIG`).
+
+**Bible shasum** (`origin/sub/AST-1444/AST-1450-show-selected-candidate-state-under-picker`):
+
+* `docs/test-bible/frontend/components.md` `5366ff72ba267d49bc091fc383b14d22c650bba5`
+
+### Comments
+
+#### radia — 2026-08-19T20:06:18.071Z
+[code-rubric] PROCEED (Commit: 714298cc) picker state line clean
+
+#### betty — 2026-08-19T16:50:17.222Z
+`origin/sub/AST-1444/AST-1450-show-selected-candidate-state-under-picker` @ `714298cc` · picker state tests
+
+#### joan — 2026-08-19T16:39:17.392Z
+[plan-rubric] PROCEED (Commit: c907a0daac32dae9d8a98d1866c0957eca0438c2) picker state line
+
+#### katherine — 2026-08-19T16:32:56.894Z
+`origin/sub/AST-1444/AST-1450-show-selected-candidate-state-under-picker` @ `c907a0daac32dae9d8a98d1866c0957eca0438c2` · plan on github
+
+---
+
 # AST-1450 — Show selected candidate state under picker
 
 **Linear:** [AST-1450](https://linear.app/astralcareermatch/issue/AST-1450/show-selected-candidate-state-under-picker)  
