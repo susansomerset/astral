@@ -5748,6 +5748,55 @@ class TestAst1596TokenCatalogSourceTypeTyping:
             _assert_token_sources_typing(second, arts, types)
 
 
+class TestAst1621MeteoriteEntityTypeRegistry:
+    """AST-1621: meteorite in ENTITY_TYPES + dispatch registries + ingress seed entity_type."""
+
+    def test_entity_types_includes_meteorite(self) -> None:
+        assert "meteorite" in cfg.ENTITY_TYPES
+        assert cfg.ENTITY_TYPES == ["candidate", "company", "job", "meteorite"]
+
+    def test_dispatch_entity_state_registry_meteorite(self) -> None:
+        reg = cfg.dispatch_entity_state_registry("meteorite")
+        assert set(reg) == set(cfg.METEORITE_STATES)
+        # Staging keys — not JOB_STATES METEORITE_* labels.
+        assert "SCRAPE_LINK" in reg
+        assert "METEORITE_NEW" not in reg
+        with pytest.raises(KeyError, match="unknown dispatch entity_type"):
+            cfg.dispatch_entity_state_registry("not_a_type")
+
+    def test_dispatch_claim_states_meteorite(self) -> None:
+        # No *_RETRY companions on METEORITE_STATES today — primary only.
+        assert cfg.dispatch_claim_states("NEW", "meteorite") == ["NEW"]
+        assert cfg.dispatch_claim_states("SCRAPE_LINK", "meteorite") == ["SCRAPE_LINK"]
+        assert cfg.dispatch_claim_states("BOT_BLOCKED", "meteorite") == ["BOT_BLOCKED"]
+
+    def test_dispatch_sort_by_meteorite(self) -> None:
+        assert cfg._dispatch_sort_by_for("meteorite", "NEW") == "updated_at"
+        assert cfg._dispatch_sort_by_for("meteorite", "READY") == "updated_at"
+
+    def test_ingress_and_bot_blocked_seeds_entity_type_meteorite(self) -> None:
+        ingress = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress"]
+        ingress_blob = ingress if isinstance(ingress, str) else "\n".join(ingress)
+        assert ", 'stage_meteorite', 'meteorite', 'NEW'" in ingress_blob
+        assert ", 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK'" in ingress_blob
+        assert ", 'land_meteorite', 'meteorite', 'READY'" in ingress_blob
+        # Fail shape from AC3 — NULL still in entity_type column for these keys.
+        assert ", 'stage_meteorite', NULL," not in ingress_blob
+        assert ", 'scrape_meteorite', NULL," not in ingress_blob
+        assert ", 'land_meteorite', NULL," not in ingress_blob
+
+        notify = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
+        notify_blob = notify if isinstance(notify, str) else "\n".join(notify)
+        assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED'" in notify_blob
+        assert ", 'meteorite_bot_blocked_notify', NULL," not in notify_blob
+
+    def test_retention_seed_stays_null_entity_type(self) -> None:
+        # Boundary: retention remains non-claim (NULL entity_type + NULL trigger).
+        retention = cfg.SEED_CONFIG["dispatch_task-meteorite-retention"]
+        blob = retention if isinstance(retention, str) else "\n".join(retention)
+        assert ", 'meteorite_retention', NULL, NULL," in blob
+
+
 class TestAst1602RetireJobBodyReplicaConfigAuthority:
     """AST-1602: finalize TASK_CONFIG.artifact_key SoT; body-replica map gone."""
 

@@ -3663,3 +3663,38 @@ Config-only: `TASK_CONFIG["finalize_job_resume"]` / `finalize_cover_letter` expo
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 
+### AST-1621 · AST-1620
+
+**Parent:** [AST-1620 — Treat meteorite as a first-class dispatch entity_type](https://linear.app/astralcareermatch/issue/AST-1620/treat-meteorite-as-a-first-class-dispatch-entity-type). **Publish:** `origin/sub/AST-1620/AST-1621-register-meteorite-entity-types`.
+
+Register `meteorite` in `ENTITY_TYPES`; wire `dispatch_entity_state_registry` / `dispatch_claim_states` / `_dispatch_sort_by_for` to `METEORITE_STATES`; flip ingress + bot-blocked `SEED_CONFIG` SQL `entity_type` to `'meteorite'`. Code Rules §2.1 / §2.4 wording is docs-acceptance. Count/due/Available/ledger/live-row backfill stay siblings **AST-1622** / **AST-1623**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| ENTITY_TYPES + registry + claim + sort + seeds | `src/utils/config.py` | **`TestAst1621MeteoriteEntityTypeRegistry`** |
+| Code Rules ENTITY_TYPES + §2.4 claim-queue | `docs/ASTRAL_CODE_RULES.md` | docs-acceptance (grep) |
+
+**Broken / obsolete:** none — AST-1560 / AST-1561 seed presence asserts still hold (they never pinned NULL `entity_type`).
+
+**Integration:** none — no existing scenario asserts ingress `entity_type` or `ENTITY_TYPES` membership; do not invent.
+
+## QA test manifest
+
+1. Meteorite entity-type registry + ingress/notify seeds: `tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry`
+2. Docs-acceptance (required): on publish tip, `docs/ASTRAL_CODE_RULES.md` §2.1 ENTITY_TYPES bullet lists `meteorite`; §2.4 claim-queue parenthetical includes `` `meteorite` ``
+3. Regression (seed presence still green): `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_seed_catalog_has_ingress_dispatch_rows` + `TestAst1561BotBlockedNotifyConfig::test_seed_catalog_has_notify_dispatch_row` + `TestAst1562RetentionConfig::test_seed_catalog_has_retention_dispatch_row`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_seed_catalog_has_ingress_dispatch_rows \
+  tests/component/utils/test_config.py::TestAst1561BotBlockedNotifyConfig::test_seed_catalog_has_notify_dispatch_row \
+  tests/component/utils/test_config.py::TestAst1562RetentionConfig::test_seed_catalog_has_retention_dispatch_row \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1 + 3; docs-acceptance line 2 via grep/read on publish tip — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
