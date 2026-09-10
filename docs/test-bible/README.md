@@ -342,6 +342,41 @@ git diff origin/dev -- src/ tests/
 
 **Bible shasum:** fill after `merge-tests` — `git show origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment:docs/test-bible/README.md | shasum`
 
+### AST-1628 · AST-1626 (rename plural drafts + example enrichment)
+
+**Docs-only product** (plural → singular rename + `# Examples` on ui-consistency / traceability). Live edits on **`origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`**: `canon/directives/draft/patt.artifact.{ui-consistency,traceability}.md` (former `patt.artifacts.*` paths gone); `docs/features/**` cite sweep. No `src/**`. Sibling **AST-1627** owns the five core drafts — do not re-edit them here.
+
+**Betty this pass:** retarget hard-coded plural draft paths/ids under `docs/test-bible/**` + `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` (AST-1577 draft existence assert).
+
+## QA test manifest
+
+1. **Rename (AC1):** plural draft paths absent; singular files exist with matching frontmatter ids.
+2. **Examples (AC2):** ≥1 fenced block under `# Examples` on both singular drafts.
+3. **Cite sweep (AC3):** zero remaining `patt.artifacts.ui-consistency` / `patt.artifacts.traceability` hard-paths under `docs/features/` and (after this Betty pass) under `docs/test-bible/**` + the AST-1577 Vitest draft path assert — except the historical AST-1627 sibling-gate line documenting pre-1628 state.
+4. **No product src (AC4):** `git diff origin/dev -- src/` empty on engineer tip; Betty may land test-tree retarget only.
+5. **Sibling gate:** do not amend the five core AST-1627 drafts on this tip.
+6. **Revised Vitest:** `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — **`AST-1577: page and draft follow ui-consistency`** (singular path + id).
+
+```bash
+# AC1 / AC2
+test ! -f canon/directives/draft/patt.artifacts.ui-consistency.md
+test ! -f canon/directives/draft/patt.artifacts.traceability.md
+test -f canon/directives/draft/patt.artifact.ui-consistency.md
+test -f canon/directives/draft/patt.artifact.traceability.md
+rg -n '^id: patt.artifact.(ui-consistency|traceability)$' canon/directives/draft/patt.artifact.{ui-consistency,traceability}.md
+rg -n '```' canon/directives/draft/patt.artifact.{ui-consistency,traceability}.md
+# AC3 (expect only AST-1627 historical sibling-gate prose if any)
+rg -n 'patt\.artifacts\.(ui-consistency|traceability)' docs/features/ docs/test-bible/ tests/
+# AC4
+git diff origin/dev -- src/
+# Vitest (narrow)
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern='AST-1577: page and draft follow ui-consistency'
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment:docs/test-bible/README.md | shasum`
+
 
 ## 2. Where tests live
 

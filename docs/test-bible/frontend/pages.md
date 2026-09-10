@@ -2549,12 +2549,12 @@ cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/tes
 
 **Parent:** [AST-1569 — Implement patt.artifact.write-operative](https://linear.app/astralcareermatch/issue/AST-1569/implement-pattartifactwrite-operative). **Publish:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`.
 
-Base Resume Content passes `bodyShape="resume_content"` (drops `useCandidateResumeStructure` on this page only); Save still PUTs leaf `artifacts.base_resume`. Draft `patt.artifacts.ui-consistency` with no write-operative cross-link. Editor prop: **`docs/test-bible/frontend/components.md`** § AST-1577.
+Base Resume Content passes `bodyShape="resume_content"` (drops `useCandidateResumeStructure` on this page only); Save still PUTs leaf `artifacts.base_resume`. Draft `patt.artifact.ui-consistency` with no write-operative cross-link. Editor prop: **`docs/test-bible/frontend/components.md`** § AST-1577. (**AST-1628** retargeted plural → singular draft path/id.)
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Routed page (**§6c**) bodyShape + leaf Save | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
-| Draft pattern (no write-operative link) | `canon/directives/draft/patt.artifacts.ui-consistency.md` | same **`AST-1577: page and draft follow ui-consistency`** |
+| Draft pattern (no write-operative link) | `canon/directives/draft/patt.artifact.ui-consistency.md` | same **`AST-1577: page and draft follow ui-consistency`** |
 
 **Broken / obsolete:** none — existing structure/print/accent cases still render via `bodyShape`.
 

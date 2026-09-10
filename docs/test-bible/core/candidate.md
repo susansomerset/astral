@@ -1796,7 +1796,7 @@ Public `get_operative_base_resume(artifact_uuid)` pin→body for pilot `candidat
   -q
 ```
 
-**Pass criterion:** pytest green on both classes + docs-acceptance for `patt.artifacts.traceability` draft (see artifacts bible § AST-1584) — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on both classes + docs-acceptance for `patt.artifact.traceability` draft (see artifacts bible § AST-1584; **AST-1628** singular id) — not zero-arg harness / branch-lock gate.
 
 ---
 
