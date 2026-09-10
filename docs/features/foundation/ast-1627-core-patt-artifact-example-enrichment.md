@@ -163,3 +163,41 @@ body = get_operative_base_resume(pinned_artifact_uuid)
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1627
+**Overall:** APPROVED
+**Corpus:** 7a40a9e0de4324d0d1c4d56abc52b13d3c297715 (canon tree on `origin/dev`; `canon_clerk.py` absent — clerk sha unavailable)
+**Publish ref:** `sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment` @ `ee95b46dcc55e7345a8e68a0e8d4b891c41dfbe7`
+
+## Canon scores
+
+patt.artifact.manage-catalog | A | |
+patt.artifact.write-operative | A | |
+patt.artifact.read-current | A | |
+patt.artifact.read-operative | A | |
+patt.artifact.no-coat-check | A | |
+astral.standards.in-scope-only | A | |
+astral.config.config-source-of-truth | A | |
+
+## Traceability
+
+AC1→Stages 1–5 (+S5 `rg` fence check); AC2→Stages 1–4 symbol harvest + S5 live-symbol `rg`; AC3→Explicit scope gate + S5 `git diff origin/dev -- src/ tests/`; AC4→per-stage “law headings intact” + S5 heading `rg`; AC5→Stages 2–4 + no-coat-check forbidden/required + S5 negative-guidance `rg`; parent AC6 (singular rename)→N/A — sibling #2, called out in UAT fitness / Boundaries.
+
+## Findings
+
+### discuss
+
+- **Location:** Parent AST-1626 Applicable statutes vs child Citations
+- **Finding:** Parent lists `astral.standards.names-not-ticket-ids`; child #1 Citations omit it. Plan’s example snippets already name live symbols (not ticket ids), but the frozen child list does not carry the statute Radia will not score later.
+- **Recommendation:** Archie may amend Canon Scope at Discussion if ticket-id hygiene in new fences should be an explicit graded directive for this child; do not widen the list in-flight.
+
+### acceptable
+
+- **Location:** Stage 2 optional `save_job_artifact` / Stage 3 optional `get_job_current` pointers
+- **Finding:** Brief cross-entity mentions beyond the candidate pilot.
+- **Recommendation:** Keep as one-line pointers only (plan already bounds them); no expansion into job-editor examples on this child.
+
+context_tokens≈28000
