@@ -186,3 +186,42 @@ git diff origin/dev -- \
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1628
+**Overall:** APPROVED
+**Corpus:** 7a40a9e0de4324d0d1c4d56abc52b13d3c297715 (canon tree on `origin/dev`; `canon_clerk.py` absent — clerk sha unavailable)
+**Publish ref:** `sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment` @ `a2431a0e660a271df1f4e7cc38b90c654ed3311c`
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | |
+patt.artifact.traceability | A | |
+astral.standards.in-scope-only | A | |
+astral.standards.names-not-ticket-ids | A | |
+
+## Traceability
+
+AC1→Stages 1–2 + S3 `test`/`rg` frontmatter checks; AC2→Stages 1–2 `# Examples` fences + S3 `rg` fence check; AC3→Stage 3 `docs/features/**` sweep (engineer) + Betty handoff list for `docs/test-bible/**` / `tests/**` (see discuss); AC4→Explicit scope gate + S3 `git diff origin/dev -- src/ tests/`; parent AC1/AC6 (examples + singular rename)→Stages 1–2; parent AC3 (no product diff)→AC4 + explicit `src/**` comment freeze; parent AC5 (write/read do-not)→N/A for these two drafts — plan supplies ui-consistency do-not + traceability live-vs-illustrative boundary anyway.
+
+## Findings
+
+### discuss
+
+- **Location:** Ticket AC3 vs Stage 3 / Files Changed
+- **Finding:** Child AC3 text requires cite updates in `docs/features` **and** `test-bible` **and** draft comments. Plan limits engineer work to `docs/features/**` and defers `docs/test-bible/**` + `tests/**` to Betty at Code Complete (with paths named). Parent definition’s cite sweep also names test-bible but qualifies code-comment work as docs-cites-only (no `src/` edits) — plan matches parent intent, not the child AC’s undifferentiated wording.
+- **Recommendation:** Accept for Plan Approved under standard test-tree ownership; ensure `qa-child` manifest retargets the listed test-bible + component test paths before User Testing closes AC3.
+
+- **Location:** Linear assignee at fetch
+- **Finding:** Status `Plan Ready` but assignee is Ada (not Joan). Procedural handoff for Chuckles only — does not affect plan fidelity.
+- **Recommendation:** Chuckles restores implementer after posting upshot per §8.
+
+### acceptable
+
+- **Location:** Stage 3 step 2 — historical plural-id prose in older feature plans (e.g. AST-1577)
+- **Finding:** Sweep may leave one-line historical notes where honesty requires, while retargeting live cites to singular paths.
+- **Recommendation:** Prefer singular path/id on all agent-followable cites; keep historical plural mentions only where they document past decision text.
+
+context_tokens≈42000
