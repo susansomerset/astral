@@ -1,0 +1,421 @@
+# AST-896 — In the event of insufficient balance, do not transition state
+
+**Component:** agent  
+**Children:** AST-897  
+**Linear archived:** AST-896 2026-08-02; AST-897 2026-08-02
+
+## Ledger
+
+| when (PT) | ticket | phase | sha | subject |
+|---|---|---|---|---|
+| 2026-07-14 21:37 | AST-897 | plan | `e474159f0` | hold entity state on provider balance refusal |
+| 2026-07-14 21:42 | AST-897 | code | `5178b7d38` | fix review stub tip SHA after amend |
+| 2026-07-14 21:42 | AST-897 | code | `073bea959` | hold entity state on provider balance refusal |
+| 2026-07-14 21:47 | AST-897 | merge-tests | `fe6d6e3d5` | origin/tests 34c87cb0dcda015928ad3159861fd5bffdb65743 |
+| 2026-07-14 21:47 | AST-897 | test | `34c87cb0d` | hold entity state on provider balance refusal |
+| 2026-07-14 21:55 | AST-897 | docs | `bd73e0d98` | Radia review — findings |
+| 2026-07-14 21:56 | AST-897 | resolve | `415388569` | — findings addressed |
+| 2026-07-14 21:59 | AST-897 | test | `698119d0b` | JOBS_FOUND wrapper holds on balance refusal |
+| 2026-07-14 21:59 | AST-897 | test | `fe2359d4e` | JOBS_FOUND wrapper holds on balance refusal |
+| 2026-07-14 22:01 | AST-897 | resolve | `9f1adfe3f` | — findings addressed |
+| 2026-07-14 22:04 | AST-896 | prep-uat | `892500314` | rebuild merge ticket log |
+| 2026-08-02 09:33 | AST-897 | docs | `ec8f60063` | archive Linear issue content |
+| 2026-08-02 09:36 | AST-896 | docs | `3feb0b1f9` | archive Linear issue content |
+
+## Epic — AST-896
+
+_Archived: 2026-08-02 · Linear URL: https://linear.app/astralcareermatch/issue/AST-896/in-the-event-of-insufficient-balance-do-not-transition-state · Status at archive: Archive · Project: Astral Agent · Assignee: chuckles · Priority / estimate: Urgent / —_
+
+### Purpose
+
+When an LLM provider refuses a call because the account is out of balance or credit (HTTP 402 / "Insufficient Balance" and the same class of billing refusal), the pipeline must not treat that as a content or task failure on the entity. Jobs and companies should stay in their current loop-eligible state so work resumes automatically once credit is restored — instead of being walked into error or retry states that look like the work itself failed.
+
+### Functional scope
+
+* Recognize provider **balance / credit refusal** responses from agent model calls (HTTP 402 and messages such as Insufficient Balance, plus clearly equivalent credit-exhausted refusals from any provider used by the agent path).
+* When such a refusal occurs on a call that would otherwise drive an entity state change, **do not** transition the job or company away from its current state. The entity remains in the same dispatch / loop pool it was already in.
+* Preserve normal failure recording for the attempt (ledger, timesheet/audit, error return to the caller) so the refusal is visible in history — only the **state transition** is withheld.
+* Leave all other agent failure classes on their existing routing: content/schema/entity hard failures and ordinary API/validation failures continue to use current error/retry behavior.
+* When `debug=True` on a touched backend path that applies this hold rule: emit an index-style outcome that the refusal was classified as balance/credit and that entity state was held, plus a working-detail line with the refusal signal (status and/or message class) — following the backend debug contract (AST-538).
+
+### Boundaries
+
+* Does **not** cover rate limits (e.g. 429), timeouts, malformed responses, schema/grade validation failures, missing entity data, or scrape/I/O failures — those keep today's transition rules.
+* Does **not** add payment top-up, wallet UI, or automatic provider billing repair.
+* Does **not** introduce a global dispatcher pause or drain; this is per-entity state hold only.
+* Does **not** change pass/fail scoring outcomes for successful model responses.
+* Does **not** redefine JOB_STATES / COMPANY_STATES inventories; it only refuses to leave the current state on balance refusal.
+* Config remains the source of truth for state names and retry/error destinations (Code Rules §2.1); this feature only gates when those transitions fire after a balance refusal.
+
+### Acceptance criteria
+
+1. Given an agent/model call that returns HTTP 402 (or an equivalent Insufficient Balance / credit-exhausted refusal), the affected job or company **state string is unchanged** after the call completes.
+2. The same entity remains eligible for the same dispatch/loop work it was eligible for before the refusal (it was not moved into an error or retry holding state solely because of the balance refusal).
+3. Given a non-balance agent failure that already transitions to error or retry today, behavior is unchanged (entity still leaves the loop as before).
+4. The refusal attempt is still observable in existing failure/history surfaces (not silently dropped).
+5. With `debug=True` on a covered backend run, logs show that balance/credit refusal was recognized and that state was held (index outcome + working detail per AST-538).
+
+### Dependencies and blockers
+
+none.
+
+### Open questions
+
+none.
+
+### Original brief
+
+If the agent response is 402 - {'error': {'message': 'Insufficient Balance', or similar, do not transition the entity state, just let it remain in the "loop"
+
+#### Comments
+
+_No comments._
+
+---
+
+_Implementation detail may live in git history on `origin/dev`._
+
+### Files changed (plan vs actual)
+
+| | file | planned | actual |
+|---|---|---|---|
+| + unplanned | `data/merge_ticket_log.json` | — | `892500314` |
+
+## Sub-issues
+
+### AST-897 — Hold entity state on provider balance refusal
+
+_Archived: 2026-08-02 · Linear URL: https://linear.app/astralcareermatch/issue/AST-897/hold-entity-state-on-provider-balance-refusal-in-the-event-of · Status at archive: Archive · Project: Astral Agent · Assignee: ada · Priority / estimate: None / — · Blocked by / blocks / related: parent: AST-896_
+
+#### What this implements
+
+Recognize LLM provider balance / credit refusals (HTTP 402, Insufficient Balance, and clearly equivalent credit-exhausted refusals) on agent model calls. When such a refusal would otherwise drive a job or company state change, keep the entity in its current loop-eligible state so it stays in the same dispatch pool until credit is restored. Preserve failure recording for the attempt; only withhold the state transition. Other failure classes keep existing error/retry routing. When debug=True on touched backend paths, show that the refusal was classified as balance/credit and that state was held (AST-538 contract).
+
+#### Acceptance criteria
+
+1. Given an agent/model call that returns HTTP 402 (or an equivalent Insufficient Balance / credit-exhausted refusal), the affected job or company **state string is unchanged** after the call completes.
+2. The same entity remains eligible for the same dispatch/loop work it was eligible for before the refusal (it was not moved into an error or retry holding state solely because of the balance refusal).
+3. Given a non-balance agent failure that already transitions to error or retry today, behavior is unchanged (entity still leaves the loop as before).
+4. The refusal attempt is still observable in existing failure/history surfaces (not silently dropped).
+5. With `debug=True` on a covered backend run, logs show that balance/credit refusal was recognized and that state was held (index outcome + working detail per AST-538).
+
+#### Boundaries
+
+* Does not cover rate limits (e.g. 429), timeouts, malformed responses, schema/grade validation failures, missing entity data, or scrape/I/O failures.
+* Does not add payment top-up, wallet UI, automatic billing repair, or a global dispatcher pause.
+* Does not change pass/fail scoring for successful responses or redefine JOB_STATES / COMPANY_STATES inventories.
+
+#### Notes for planning
+
+* Agent runtime / failure classification and any structured signal callers use to withhold transitions are in scope; follow do_task → caller state routing patterns in ASTRAL_CODE_RULES (§2.2, §2.7) and existing retryable-vs-hard hold patterns where present.
+* Config remains source of truth for state names and error/retry destinations (§2.1); this feature only gates when those transitions fire after a balance refusal.
+
+##### Comments
+
+
+###### betty — 2026-07-15T05:00:38.186Z
+
+[check-linear] Cleared `[qa-handoff]` (Radia fix-now return).
+
+- Added `TestAst897HoldStateOnBalanceRefusal::test_run_company_task_jobs_found_balance_hold_skips_error_state` (+ `failure_class` predicate variant) so outer `run_company_task("JOBS_FOUND")` does **not** call `transition_company_state` when inner result is balance-held.
+- Manifest / bible: `docs/test-bible/utils/llm_external.md` — narrowed run includes ordinary JOBS_FOUND error regression.
+- Publish tip: `origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal` @ `698119d` (`test(AST-897): JOBS_FOUND wrapper holds on balance refusal`; prior `merge-tests` kept singular).
+- Bible shasum: `3081610b68b38b4378391e059b25bca4a5f95b78`
+- Assignee → Ada; stay **Review Posted** for resolve finish → User Testing.
+
+###### ada — 2026-07-15T04:56:54.689Z
+
+[qa-handoff]
+@Betty White
+
+Radia fix-now (product landed on `origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal` @ `4153885`):
+
+1. `run_company_task` JOBS_FOUND now skips `error_state` when `state_held` / `is_provider_balance_refusal(result)` — hold no longer undone by the outer wrapper.
+2. `_run_analysis_upshot_batch` + `_find_job_page_from_assembled` call `logger.set_debug_flag(True)` when `debug=True`.
+
+**Need from Betty:** component coverage through the outer path — e.g. `run_company_task("JOBS_FOUND", …)` with `jobs_found_process_job_site` returning balance-hold shape (`error` + `state_held` / `failure_class=provider_balance_refusal`) asserting `transition_company_state` is **not** called, while ordinary `error` without hold still moves to locate `error_state` (existing `test_run_company_task_jobs_found_error_moves_locate_error_state`).
+
+Existing narrowed AST-897 suite still green (22 passed including ordinary JOBS_FOUND error cases). Reassign Ada after `merge-tests` so `test-child` can re-run / we can finish resolve → User Testing.
+
+Stay Review Posted.
+
+###### radia — 2026-07-15T04:55:13.962Z
+
+**fix-now:** `run_company_task` JOBS_FOUND (~1003–1007) re-transitions to `error_state` on any `result.get("error")`. `_find_job_page_from_assembled` balance hold returns `error` + `state_held=True` without `_save_company`, so the outer wrapper undoes the hold (AC1–2). Ordinary SELECT_FAILED omits `error` — only the new hold shape trips this. Skip transition when `state_held` / `is_provider_balance_refusal(result)`; cover via component test through the outer path.
+
+**fix-now:** `_run_analysis_upshot_batch` emits hold `debug_index` / `debug_detail` under `if debug:` but never `logger.set_debug_flag(True)` — contract lines no-op (AC5 / §1.5.1). Mirror `render_verdict` / `_run_batch_consult`.
+
+**Solid:** Config + `llm_external` classifier; Anthropic/DeepSeek tagging; consult verdict/batch holds; `_prefilter_fail` / batch prefilter holds; no cross-external imports.
+
+Review doc: https://github.com/susansomerset/astral/blob/bd73e0d9888a6e70f74b6cffcece5895c244f86a/docs/features/agent/ast-897-hold-entity-state-on-provider-balance-refusal.md
+
+#### QA test manifest (AST-897)
+
+`origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal` @ `fe6d6e3` (`merge-tests(AST-897): origin/tests 34c87cb0dcda015928ad3159861fd5bffdb65743`)
+
+**Bible:** `docs/test-bible/utils/llm_external.md` — `ea54f034a5d637eed4e47dc8256c84c73c9b1b5e`
+
+1. Config — `PROVIDER_BALANCE_REFUSAL` shape
+2. Classifiers — `classify_provider_balance_refusal` / `is_provider_balance_refusal`
+3. Anthropic tagging — 402 / substring / ordinary omit
+4. DeepSeek tagging — 402 / ordinary omit
+5. `do_task` debug — balance `debug_detail` when `debug=True`
+6. Consult hold — `render_verdict` / `_run_batch_consult` / `_run_analysis_upshot_batch` (ordinary fail still transitions)
+7. Roster hold — `_prefilter_fail` / batch prefilter / `_find_job_page_from_assembled` (ordinary still retries)
+
+**Broken / obsolete:** none
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/utils/test_config.py::TestAst897ProviderBalanceRefusalConfig   tests/component/utils/test_llm_external.py::TestAst897ProviderBalanceRefusal   tests/component/external/test_anthropic.py::TestAst897BalanceRefusalTagging   tests/component/external/test_deepseek.py::TestAst897BalanceRefusalTagging   tests/component/core/test_agent.py::TestAst897DoTaskBalanceDebug   tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal   tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal   -q
+```
+
+###### ada — 2026-07-15T04:37:50.376Z
+
+Plan published on `origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal` @ `e474159`.
+
+**Plan doc:** https://github.com/susansomerset/astral/blob/sub/AST-896/AST-897-hold-entity-state-balance-refusal/docs/features/agent/ast-897-hold-entity-state-on-provider-balance-refusal.md
+
+**Scope:** Single-Component — tag provider balance/credit refusals (`failure_class`) in anthropic/deepseek via shared `llm_external` + config, then gate consult/roster fail→error/retry transitions so job/company state stays loop-eligible; audit/ledger failure recording unchanged.
+
+**Conf:** high — reuses existing `success=False` envelopes and known fail-transition sites; matches AST-687 shared LLM utils + playwright `failure_class` patterns.
+
+**Risk:** Medium — a missed gate still drains entities into error/retry on real 402s; over-broad substring matching could hold unrelated errors (mitigated by config status codes + substrings).
+
+---
+
+#### Execution contract
+
+The plan is binding. Execute stages in order. Do not add files outside the table. On ambiguity or codebase drift, stop and comment on **AST-896** with the 🛑 Stage format from plan-child.
+
+---
+
+#### Stage 1: Config + shared classification helpers
+
+**Done when:** `PROVIDER_BALANCE_REFUSAL` is readable from config; `classify_provider_balance_refusal` and `is_provider_balance_refusal` exist in `llm_external.py` and unit-callable without hitting the network.
+
+1. In `src/utils/config.py`, near `LLM_PROVIDER_CONFIG` (after that block / before related helpers), add:
+```python
+# PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion (AST-897).
+# Used by utils.llm_external classifiers and core state-hold gates.
+PROVIDER_BALANCE_REFUSAL = {
+    "failure_class": "provider_balance_refusal",
+    "http_status_codes": (402,),
+    "message_substrings": (
+        "insufficient balance",
+        "insufficient credit",
+        "credit exhausted",
+        "out of credit",
+        "payment required",
+    ),
+}
+```
+
+Update the file header inventory comment to mention `PROVIDER_BALANCE_REFUSAL`.
+
+⚠️ **Decision:** Match on HTTP 402 **or** case-insensitive substring in the exception/error text (Susan’s original shape is `402` + `Insufficient Balance`). Do **not** treat 429 / timeouts / schema errors as balance refusals. Substrings live in config (§1.4 / §2.1) — no inline magic sets in classifiers.
+
+2. In `src/utils/llm_external.py`, import `PROVIDER_BALANCE_REFUSAL` from config and add:
+
+- `classify_provider_balance_refusal(exc: BaseException) -> Optional[str]`
+  - Read `status_code` from `getattr(exc, "status_code", None)` first; if missing, try `getattr(getattr(exc, "response", None), "status_code", None)`.
+  - If status is in `PROVIDER_BALANCE_REFUSAL["http_status_codes"]`, return `PROVIDER_BALANCE_REFUSAL["failure_class"]`.
+  - Else lower-case `str(exc)` and, if any substring from `message_substrings` is present, return the same `failure_class`.
+  - Else return `None`.
+
+- `is_provider_balance_refusal(result: Optional[Dict[str, Any]]) -> bool`
+  - `True` iff `result` is a dict and `result.get("failure_class") == PROVIDER_BALANCE_REFUSAL["failure_class"]`.
+
+⚠️ **Decision:** Put helpers in `llm_external.py` (existing shared Anthropic/DeepSeek utils from AST-687) rather than a new module — keeps §3.3 / DRY aligned with prior provider shared-helper work. Classification strings come only from config.
+
+---
+
+#### Stage 2: Tag balance refusals in external + debug detail in `do_task`
+
+**Done when:** `send_to_anthropic` / `send_to_deepseek` failure returns include `failure_class` for balance refusals; `do_task` still returns `success=False` with existing audit/ledger behavior and, when `debug=True`, logs that the refusal was classified as balance/credit.
+
+1. In `src/external/anthropic.py`, in **both** `except Exception as e` paths that return `{"success": False, ... "error": str(e)}` (inner API-call catch and outer catch), after building the error string:
+```python
+from src.utils.llm_external import classify_provider_balance_refusal  # top-level import preferred if no cycle
+
+out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
+fc = classify_provider_balance_refusal(e)
+if fc:
+    out["failure_class"] = fc
+return out
+```
+
+Do **not** change parse-failure returns (those already have `api_response` and are not balance refusals).
+
+2. In `src/external/deepseek.py`, apply the identical tagging on both `except Exception as e` failure returns.
+
+3. In `src/core/agent.py`, on the existing `if not result.get("success"):` provider-failure path (before `_close_hop_ledger` / `return result`), when `debug=True` and `is_provider_balance_refusal(result)`:
+
+- Emit a `debug_detail` line:
+  `provider_balance_refusal failure_class=<…> error=<…>`
+  (use `_do_task_debug_logger(debug)`).
+- Do **not** transition state inside `do_task` for balance refusals (callers own entity transitions).
+- Leave `_apply_dispatch_chain_hop_failure` as-is: it only hard-transitions on “Job not found” / “Missing candidate_data”; provider balance refusals already stay retryable there.
+
+⚠️ **Decision:** Tag at the external boundary (exception still available) and pass `failure_class` through the existing result dict. Do not invent a new exception type for core to catch — both providers already swallow exceptions into `success=False` dicts.
+
+---
+
+#### Stage 3: Consult — withhold job transitions on balance refusal
+
+**Done when:** Every consult path that today moves a job to `error_state` / retry after a failed `do_task` instead leaves the job state unchanged when `is_provider_balance_refusal(result)`; non-balance failures still transition as before; failure fields remain on the returned dict.
+
+1. In `src/core/consult.py`, import `is_provider_balance_refusal` from `src.utils.llm_external`.
+
+2. **`render_verdict`** — replace the bare `if not result.get("success"): return _fail(...)` after `do_task` with:
+
+- If `is_provider_balance_refusal(result)`:
+  - Do **not** call `_transition_job_state_for_task`.
+  - Read current job state from `job` / `tracker.get_job(astral_job_id)`.
+  - If `debug=True`: `debug_index` outcome `provider_balance_refusal — state held` and `debug_detail` with `failure_class`, `error`, and `current_state`.
+  - Return `{"success": False, "to_state": <current_state>, "error": result.get("error"), "failure_class": result.get("failure_class"), "state_held": True}`.
+- Else: existing `_fail(result.get("error", "do_task failed"))`.
+
+Prep failures (job not found, company missing, live_content) still use `_fail` unchanged — they are not balance refusals.
+
+3. **`_run_batch_consult`** — on envelope `if not result.get("success"):` before `_transition_batch_consult_failures`:
+
+- If `is_provider_balance_refusal(result)`: skip the batch error transition; if `debug=True`, index outcome `provider_balance_refusal — batch state held` + detail with error/failure_class; return the same failure counts shape as today (`success=False`, error, passed/failed/total) with `failure_class` / `state_held=True` on the return dict.
+- Else: existing transition.
+
+Do **not** change missing-id / bad-grade / hydration failure transitions — those are content/validation failures, not provider balance refusals.
+
+4. **`_run_analysis_upshot_batch`** — on `if not result.get("success"):` after `do_task`:
+
+- If `is_provider_balance_refusal(result)`: skip `_transition_job_state_for_task`; count as `errors`; if `debug=True`, emit hold index/detail for that `aid`.
+- Else: existing dest transition.
+
+---
+
+#### Stage 4: Roster — withhold company transitions on balance refusal
+
+**Done when:** Prefilter single/batch API failures and `select_job_page` SELECT_FAILED no longer move company state when the agent result is a balance refusal; paths that already return without transitioning on API failure stay unchanged; debug shows hold when `debug=True`.
+
+1. In `src/core/roster.py`, import `is_provider_balance_refusal`.
+
+2. **`_prefilter_fail`** — at the start, when `api_result` is provided and `is_provider_balance_refusal(api_result)`:
+
+- Do **not** call `transition_company_state`.
+- Set `result["error"] = error`, `result["state"] = current_state` (from `get_company` as today), `result["decision"] = "HOLD"`, `result["failure_class"] = api_result.get("failure_class")`, `result["state_held"] = True`.
+- Return `result`.
+- Retryable vs hard routing for non-balance failures remains unchanged.
+
+3. **`_run_batch_company_prefilter`** — on `if not result.get("success"):` before `_transition_prefilter_batch_failures`:
+
+- If `is_provider_balance_refusal(result)`: skip transitions; if `debug=True`, outcome `provider_balance_refusal — batch state held` + detail; return `{"passed": 0, "failed": 0, "total": len(companies), "failure_class": …, "state_held": True}`.
+- Else: existing `_transition_prefilter_batch_failures(...)`.
+
+Hydrate / missing-id failure transitions stay as today (not balance).
+
+4. **`_find_job_page_from_assembled`** — on `if not res.get("success"):` that currently calls `_save_company(..., state="NO_JOBLIST", ...)`:
+
+- If `is_provider_balance_refusal(res)`:
+  - Do **not** call `_save_company`.
+  - Resolve `current_state` from `get_company(short_name)`.
+  - If `debug=True`: index outcome `provider_balance_refusal — state held` + detail with error/failure_class/current_state.
+  - Return `{"short_name": short_name, "state": current_state, "job_site": company_website, "response_type": "SELECT_FAILED", "error": res.get("error"), "failure_class": res.get("failure_class"), "state_held": True}`.
+- Else: existing `_save_company` / `NO_JOBLIST` return.
+
+⚠️ **Decision:** Paths that already **do not** transition on `do_task` failure (`vet_inflow_discovery_company` / batch, `resolve_company_website` AI failure, coat-check `_fetch_prefilter_notes`) need **no** state-hold edits — only ensure they keep returning the error and do not newly introduce transitions. Candidate / intake / UI ad-hoc agent calls are out of scope (AC and boundaries are job/company loop state).
+
+5. Manually verify against AC before `code()`:
+
+| AC | Check |
+|----|--------|
+| 1–2 | Balance-tagged `do_task` failure leaves job/company `state` string unchanged and entity still claimable in the same trigger pool |
+| 3 | Ordinary API/schema failure still routes to error/retry as before |
+| 4 | Failure still visible via existing `do_task` failure storage / returned `error` (no silent drop) |
+| 5 | `debug=True` shows classify + state held (index + detail) on a covered path |
+
+---
+
+#### Self-Assessment
+
+**Scope:** `Single-Component` — agent runtime failure classification plus consult/roster state-routing gates; config + shared utils; no JOB_STATES / COMPANY_STATES inventory changes.
+
+**Conf:** `high` — clear AC, existing `success=False` result envelope, and known fail→transition call sites; mirrors playwright `failure_class` and AST-687 shared LLM utils patterns.
+
+**Risk:** `Medium` — a missed transition gate would still burn loop-eligible entities into error/retry on real 402s; over-broad message matching could hold state on unrelated errors (mitigated by config substring list + 402 status).
+
+#### Self-review vs ASTRAL_CODE_RULES
+
+- **§1.3 DRY:** One classifier in `llm_external.py`; both providers call it; callers use one `is_provider_balance_refusal` predicate.
+- **§2.1 config:** Status codes and message substrings live in `PROVIDER_BALANCE_REFUSAL`; no new JOB/COMPANY state strings.
+- **§2.4 / §2.6:** No new batch claim helpers; only gates when existing fail transitions fire.
+- **§2.2 / §2.7:** `do_task` remains the agent boundary; consult `render_verdict` / batch consult hold after that boundary.
+- **§3.3:** utils ← nothing; external ← utils; core ← utils (+ existing layers). No external↔external imports.
+- **§1.5.1:** Debug lines only when `debug=True`; index + detail for hold outcome.
+
+---
+
+#### Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal`
+**Product tip:** `073bea9` — Stages 1–4 (`PROVIDER_BALANCE_REFUSAL` + `llm_external` classifiers; anthropic/deepseek `failure_class` tagging; `do_task` debug detail; consult + roster state-hold gates)
+
+**Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
+
+---
+
+#### Radia review (AST-897)
+
+**Diff:** `origin/dev...origin/sub/AST-896/AST-897-hold-entity-state-balance-refusal` @ `fe6d6e3`
+
+##### What’s solid
+
+- Plan Stages 1–2 match the diff: `PROVIDER_BALANCE_REFUSAL` in config; shared `classify_provider_balance_refusal` / `is_provider_balance_refusal` in `llm_external.py`; both Anthropic/DeepSeek exception returns tag `failure_class` without cross-external imports (§3.3 / §5g).
+- Consult gates (`render_verdict`, `_run_batch_consult`, analysis_upshot do_task failure) and roster `_prefilter_fail` / batch prefilter skip fail→error/retry transitions and keep `error` / `failure_class` on the return (§2.1 / §2.6 / AC3–4).
+- `do_task` balance detail is nested under `if debug:` via `_do_task_debug_logger` (§1.5.1). Betty bible + component coverage map to the planned call sites.
+
+##### Issues
+
+| Sev | Location | Issue |
+|-----|----------|-------|
+| **fix-now** | `src/core/roster.py` `run_company_task` JOBS_FOUND branch (~1003–1007) vs `_find_job_page_from_assembled` hold return (~2353–2375) | Balance hold returns `error` + `state_held=True` without calling `_save_company`. Outer JOBS_FOUND path treats any `result.get("error")` as hard failure and calls `transition_company_state(..., error_state)`, undoing the hold (AC1–2). Ordinary SELECT_FAILED returns omit `error`, so this path only breaks the new hold shape. |
+| **fix-now** | `src/core/consult.py` `_run_analysis_upshot_batch` (~775–787) | Hold path emits `debug_index` / `debug_detail` under `if debug:` but never `logger.set_debug_flag(True)`. Module logger defaults `_debug_flag=False`, so contract lines no-op on `debug=True` (AC5 / §1.5.1). Contrast `render_verdict` / `_run_batch_consult`. |
+
+##### Recommended actions
+
+| Action | Owner |
+|--------|-------|
+| In `run_company_task` JOBS_FOUND (and any similar outer wrapper), skip `error_state` transition when `result.get("state_held")` or `is_provider_balance_refusal(result)`; keep logging/count as error without moving state. Add a component test through `run_company_task` or `jobs_found_process_job_site` → outer handler. | Ada (`resolve-child`) |
+| At start of `_run_analysis_upshot_batch` (and preferably `_find_job_page_from_assembled` when `debug=True`), `logger.set_debug_flag(True)` before hold index/detail — same pattern as `_run_batch_consult`. | Ada (`resolve-child`) |
+
+##### Rubric notes (not fix-now)
+
+- Scope matches Self-Assessment (`Single-Component`); no JOB_STATES / COMPANY_STATES inventory edits.
+- §5f debug contract otherwise followed on consult batch / roster batch prefilter / `run_select_job_page_dispatch` (flag set before inner call).
+- PJL_READY `select_job_page` dispatch path logs `error` but does not re-transition — hold is intact there.
+
+---
+
+#### Resolution (2026-07-15 — resolve-child)
+
+**Review ref:** Radia Linear comment + plan `## Radia review` @ `bd73e0d`.
+
+| Item | Action |
+|------|--------|
+| `run_company_task` JOBS_FOUND undoes hold | Skip `transition_company_state(..., error_state)` when `result.get("state_held")` or `is_provider_balance_refusal(result)`; still log and return `total_errors: 1`. |
+| `_run_analysis_upshot_batch` debug no-op | `logger.set_debug_flag(True)` at batch start when `debug=True`. |
+| `_find_job_page_from_assembled` debug | Same `set_debug_flag(True)` when `debug=True` (Radia preferably). |
+| Outer-path component test | Product only here — **`[qa-handoff]`** to Betty for `run_company_task` JOBS_FOUND balance-hold coverage (engineer test-tree ban). |
+
+**Betty return (2026-07-15):** cleared `[qa-handoff]` @ `698119d` — `TestAst897HoldStateOnBalanceRefusal` outer JOBS_FOUND hold cases + ordinary error regression. Manifest green (23 passed). §9a clean vs `origin/dev` and `origin/ftr/AST-896-insufficient-balance-hold-state`.
+
+#### Files changed (plan vs actual)
+
+| | file | planned | actual |
+|---|---|---|---|
+| ✓ | `src/utils/config.py` | Add `PROVIDER_BALANCE_REFUSAL` config block (failure_class s | `073bea959` |
+| ✓ | `src/utils/llm_external.py` | Add classify + `is_provider_balance_refusal` helpers (shared | `073bea959` |
+| ✓ | `src/external/anthropic.py` | On caught provider exception, set `failure_class` when balan | `073bea959` |
+| ✓ | `src/external/deepseek.py` | Same tagging on caught provider exception | `073bea959` |
+| ✓ | `src/core/agent.py` | On provider failure return path with `debug=True`, emit hold | `073bea959` |
+| ✓ | `src/core/consult.py` | Gate error/retry transitions after `do_task` failure when ta | `415388569` `073bea959` |
+| ✓ | `src/core/roster.py` | Gate prefilter fail routing + `select_job_page` SELECT_FAILE | `415388569` `073bea959` |
+| | _tests_ | — | 7 file(s) |
