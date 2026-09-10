@@ -1134,7 +1134,7 @@ BLOCK_TYPES = [
 # (AST-975); entity-row JSON agent_responses columns retired (AST-984).
 # Single source of truth — add new types here.
 # ---------------------------------------------------------------------------
-ENTITY_TYPES = ["candidate", "company", "job"]
+ENTITY_TYPES = ["candidate", "company", "job", "meteorite"]
 
 
 # ---------------------------------------------------------------------------
@@ -3141,7 +3141,7 @@ SEED_CONFIG = {
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'stage_meteorite', NULL, 'NEW', 'updated_at', "
+        ") SELECT NULL, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
@@ -3152,7 +3152,7 @@ SEED_CONFIG = {
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'scrape_meteorite', NULL, 'SCRAPE_LINK', 'updated_at', "
+        ") SELECT NULL, 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
@@ -3163,7 +3163,7 @@ SEED_CONFIG = {
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'land_meteorite', NULL, 'READY', 'updated_at', "
+        ") SELECT NULL, 'land_meteorite', 'meteorite', 'READY', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
@@ -3177,7 +3177,7 @@ SEED_CONFIG = {
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'meteorite_bot_blocked_notify', NULL, 'BOT_BLOCKED', 'updated_at', "
+        ") SELECT NULL, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
@@ -3399,7 +3399,9 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
         return [ts]
     registry = JOB_STATES if entity_type == "job" else (
         COMPANY_STATES if entity_type == "company" else (
-            CANDIDATE_STATES if entity_type == "candidate" else None
+            CANDIDATE_STATES if entity_type == "candidate" else (
+                METEORITE_STATES if entity_type == "meteorite" else None
+            )
         )
     )
     if registry is not None:
@@ -3574,6 +3576,8 @@ def _dispatch_sort_by_for(entity_type: str, trigger_state: str) -> str:
         return str(sort_by)
     if entity_type == "candidate":
         return "updated_at"
+    if entity_type == "meteorite":
+        return "updated_at"
     raise KeyError(f"dispatch sort_by: unknown entity_type {entity_type!r}")
 
 
@@ -3623,6 +3627,7 @@ def dispatch_entity_state_registry(entity_type: str) -> Dict[str, Any]:
         "job": JOB_STATES,
         "company": COMPANY_STATES,
         "candidate": CANDIDATE_STATES,
+        "meteorite": METEORITE_STATES,
     }
     if entity_type not in registries:
         raise KeyError(f"unknown dispatch entity_type: {entity_type!r}")

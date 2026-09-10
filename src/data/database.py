@@ -9,7 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company, candidate_id (required owning candidate; denormalized from company.candidate_id; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (gazed|meteorite; AST-1469), etc.
-- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
+- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
@@ -3668,6 +3668,30 @@ def clear_meteorite_batch(batch_id: str) -> int:
             n = cur.rowcount
             conn.commit()
             return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+
+def count_meteorites_unclaimed_in_states(states: List[str]) -> int:
+    """Count unclaimed meteorite rows in the given state set (global pool).
+
+    Unclaimed = batch_id IS NULL OR batch_id = '' — same predicate as claim_meteorite_batch.
+    """
+    state_sql, state_params = _state_in_sql(states)
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            row = conn.execute(
+                f"""SELECT COUNT(*) FROM meteorite
+                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')""",
+                tuple(state_params),
+            ).fetchone()
+            return int(row[0])
         finally:
             conn.close()
 
@@ -8162,6 +8186,8 @@ def get_due_tasks() -> List[Dict[str, Any]]:
     Each returned dict includes 'available_count' from count_eligible_for_dispatch_task
     (WATCH respects freq_hrs / last_scan_at). Candidate-bound meteorite_email AUTO due is
     merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
+    Meteorite AUTO rows may have NULL candidate_id and still due when eligible count meets
+    min_count (global unclaimed pool).
     """
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
@@ -8179,7 +8205,9 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         et = task.get("entity_type")
         ts = task.get("trigger_state")
         cid = task.get("candidate_id")
-        if not et or not ts or not cid:
+        if not et or not ts:
+            continue
+        if not cid and et != "meteorite":
             continue
         avail = count_eligible_for_dispatch_task(task)
         if avail >= (task.get("min_count") or 1):  # match runner threshold (or 1) to avoid noisy zero-work runs
@@ -8329,12 +8357,16 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
+    entity_type=meteorite counts the global unclaimed meteorite pool via
+    count_meteorites_unclaimed_in_states and does not require candidate_id.
     meteorite_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
     """
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
     candidate_id = task.get("candidate_id")
-    if not entity_type or not state or not candidate_id:
+    if not entity_type or not state:
+        return 0
+    if entity_type != "meteorite" and not candidate_id:
         return 0
     if entity_type not in ENTITY_TYPES:
         return 0
@@ -8346,6 +8378,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
         )
     if not claim_states:
         return 0
+    if entity_type == "meteorite":
+        return count_meteorites_unclaimed_in_states(claim_states)
     task_key = task.get("task_key", "")
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)

@@ -1676,3 +1676,84 @@ class TestAst1618SaveDispatchTaskCallerEntity:
         assert row is not None
         assert row["sort_by"] is None
 
+class TestAst1622MeteoriteCountEligibleDue:
+    """AST-1622: global meteorite pool count_eligible + AUTO-due without candidate_id."""
+
+    def test_count_meteorites_unclaimed_in_states(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        ids = db.insert_meteorite_rows(
+            [
+                {"candidate_id": "c1", "source_kind": "email", "source_id": "m1"},
+                {"candidate_id": "c1", "source_kind": "email", "source_id": "m2"},
+                {"candidate_id": "c2", "source_kind": "email", "source_id": "m3"},
+            ]
+        )
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 3
+        db.claim_meteorite_batch("batch-1622", "NEW", 1)
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 2
+        db.update_meteorite(ids[1], state="READY")
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 1
+        assert db.count_meteorites_unclaimed_in_states(["READY"]) == 1
+        with pytest.raises(ValueError):
+            db.count_meteorites_unclaimed_in_states([])
+
+    def test_count_eligible_null_candidate_meteorite(self, sqlite_in_memory) -> None:
+        # Staging rows still carry candidate_id; the dispatch_task shell is global (NULL cid).
+        db = sqlite_in_memory
+        db.insert_meteorite_rows(
+            [
+                {"candidate_id": "c-a", "source_kind": "email", "source_id": "g1"},
+                {"candidate_id": "c-b", "source_kind": "email", "source_id": "g2"},
+            ]
+        )
+        task = {
+            "entity_type": "meteorite",
+            "trigger_state": "NEW",
+            "candidate_id": None,
+            "task_key": "stage_meteorite",
+            "min_count": 1,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
+        # Non-null candidate_id on the task still counts the global pool.
+        task["candidate_id"] = "ignored"
+        assert db.count_eligible_for_dispatch_task(task) == 2
+
+    def test_count_eligible_job_still_requires_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        task = {
+            "entity_type": "job",
+            "trigger_state": "NEW",
+            "candidate_id": None,
+            "task_key": "evaluate_jd",
+            "min_count": 1,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
+    def test_get_due_includes_null_candidate_meteorite(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.insert_meteorite_rows(
+            [{"candidate_id": "c-due", "source_kind": "email", "source_id": "due1"}]
+        )
+        conn = db._get_connection()
+        try:
+            db._ensure_dispatch_task_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO dispatch_task (
+                    candidate_id, task_key, entity_type, trigger_state, sort_by,
+                    batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor
+                ) VALUES (
+                    NULL, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at',
+                    0, 0, 1, 10, 1, NULL
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        due = db.get_due_tasks()
+        keys = [t["task_key"] for t in due]
+        assert "stage_meteorite" in keys
+        row = next(t for t in due if t["task_key"] == "stage_meteorite")
+        assert row["candidate_id"] is None
+        assert row["available_count"] >= 1
