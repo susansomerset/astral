@@ -1108,7 +1108,7 @@ class TestDispatchOne:
 
 
 class TestAst841DispatchTerminalLogging:
-    """AST-841: terminal ERROR/WARNING app_log lines align ledger status with log severities."""
+    """AST-841: terminal ERROR/INFO app_log lines align ledger status with log severities."""
 
     @pytest.mark.asyncio
     async def test_interrupted_dispatch_emits_terminal_error_log(
@@ -1140,7 +1140,7 @@ class TestAst841DispatchTerminalLogging:
         )
 
     @pytest.mark.asyncio
-    async def test_completed_with_errors_emits_terminal_warning_log(
+    async def test_completed_with_errors_emits_terminal_info_log(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         monkeypatch.setattr(
@@ -1167,14 +1167,16 @@ class TestAst841DispatchTerminalLogging:
         task = {"id": 42, "task_key": "inflow_discovery", "candidate_id": "cand-1", "auto_mode": 0}
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[42] = {"asyncio_task": None}
-        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
             await dispatcher_mod._dispatch_one(task)
         assert any(
-            "batch finished COMPLETED with errors" in r.message
-            and "errors=2" in r.message
-            and "inflow_discovery" in r.message
+            r.levelname == "INFO"
+            and "task completed: inflow_discovery" in r.message
+            and "error:2" in r.message
+            and r.message.startswith("cand-1 | dispatch")
             for r in caplog.records
         )
+        assert not any("batch finished COMPLETED with errors" in r.message for r in caplog.records)
 
 
 class TestRunDispatchLoop:

@@ -794,6 +794,28 @@ async def _run_task(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
 
 _sched_log = get_logger("dispatch.scheduler")
 
+
+def _log_dispatch_task_completed(
+    candidate_id: str,
+    entity_type: Any,
+    task_key: str,
+    passed: int,
+    failed: int,
+    errored: int,
+    batch_id: Optional[str],
+) -> None:
+    """Always-on COMPLETED rollup (stat.logging.info / .dispatcher pipe)."""
+    logger.info(
+        "%s | dispatch %s task completed: %s pass:%s fail:%s error:%s (batch: %s)",
+        candidate_id or "-",
+        entity_type or "-",
+        task_key,
+        passed,
+        failed,
+        errored,
+        batch_id or "-",
+    )
+
 # Registry: task_id -> {thread, loop, asyncio_task, task_key, candidate_id, is_auto}
 _task_registry: Dict[int, Dict[str, Any]] = {}
 _registry_lock = threading.Lock()
@@ -889,7 +911,17 @@ async def _dispatch_one(task: Dict) -> None:
                         entity_cost=round(entity_cost, 7),
                         **accumulated,
                     )
-                    if final_status in ("FAILED", "INTERRUPTED"):
+                    if final_status == "COMPLETED":
+                        _log_dispatch_task_completed(
+                            candidate_id,
+                            task.get("entity_type"),
+                            task_key,
+                            accumulated.get("total_passed", 0),
+                            accumulated.get("total_failed", 0),
+                            accumulated.get("total_errors", 0),
+                            dispatch_ledger_id,
+                        )
+                    elif final_status in ("FAILED", "INTERRUPTED"):
                         logger.error(
                             "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
                             task_key,
@@ -974,7 +1006,17 @@ async def _dispatch_one(task: Dict) -> None:
                         entity_cost=round(entity_cost, 7),
                         **accumulated,
                     )
-                    if final_status in ("FAILED", "INTERRUPTED"):
+                    if final_status == "COMPLETED":
+                        _log_dispatch_task_completed(
+                            candidate_id,
+                            task.get("entity_type"),
+                            task_key,
+                            accumulated.get("total_passed", 0),
+                            accumulated.get("total_failed", 0),
+                            accumulated.get("total_errors", 0),
+                            dispatch_ledger_id,
+                        )
+                    elif final_status in ("FAILED", "INTERRUPTED"):
                         logger.error(
                             "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
                             task_key,
@@ -1059,7 +1101,17 @@ async def _dispatch_one(task: Dict) -> None:
                         entity_cost=round(entity_cost, 7),
                         **accumulated,
                     )
-                    if final_status in ("FAILED", "INTERRUPTED"):
+                    if final_status == "COMPLETED":
+                        _log_dispatch_task_completed(
+                            candidate_id,
+                            task.get("entity_type"),
+                            task_key,
+                            accumulated.get("total_passed", 0),
+                            accumulated.get("total_failed", 0),
+                            accumulated.get("total_errors", 0),
+                            dispatch_ledger_id,
+                        )
+                    elif final_status in ("FAILED", "INTERRUPTED"):
                         logger.error(
                             "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
                             task_key,
@@ -1152,7 +1204,17 @@ async def _dispatch_one(task: Dict) -> None:
                         entity_cost=round(entity_cost, 7),
                         **accumulated,
                     )
-                    if final_status in ("FAILED", "INTERRUPTED"):
+                    if final_status == "COMPLETED":
+                        _log_dispatch_task_completed(
+                            candidate_id,
+                            task.get("entity_type"),
+                            task_key,
+                            accumulated.get("total_passed", 0),
+                            accumulated.get("total_failed", 0),
+                            accumulated.get("total_errors", 0),
+                            dispatch_ledger_id,
+                        )
+                    elif final_status in ("FAILED", "INTERRUPTED"):
                         logger.error(
                             "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
                             task_key,
@@ -1281,23 +1343,23 @@ async def _dispatch_one(task: Dict) -> None:
                     entity_cost=round(entity_cost, 7),
                     **accumulated,
                 )
-                if final_status in ("FAILED", "INTERRUPTED"):
+                if final_status == "COMPLETED":
+                    _log_dispatch_task_completed(
+                        candidate_id,
+                        task.get("entity_type"),
+                        task_key,
+                        accumulated.get("total_passed", 0),
+                        accumulated.get("total_failed", 0),
+                        accumulated.get("total_errors", 0),
+                        dispatch_ledger_id,
+                    )
+                elif final_status in ("FAILED", "INTERRUPTED"):
                     logger.error(
                         "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
                         task_key,
                         dispatch_ledger_id,
                         final_status,
                         failure_reason or "see scheduler log",
-                        accumulated.get("total_processed", 0),
-                        accumulated.get("total_passed", 0),
-                        accumulated.get("total_failed", 0),
-                        accumulated.get("total_errors", 0),
-                    )
-                elif accumulated.get("total_errors", 0) > 0:
-                    logger.warning(
-                        "[%s/%s] batch finished COMPLETED with errors — processed=%s passed=%s failed=%s errors=%s",
-                        task_key,
-                        dispatch_ledger_id,
                         accumulated.get("total_processed", 0),
                         accumulated.get("total_passed", 0),
                         accumulated.get("total_failed", 0),
@@ -1497,8 +1559,11 @@ def drain_task(task_id: int) -> Dict[str, Any]:
         if not entry:
             return {"task_id": task_id, "draining": False, "reason": "not_running"}
         entry["drain"] = True
-    _sched_log.info("drain_task(%s): graceful stop requested for %s/%s",
-                    task_id, entry["task_key"], entry["candidate_id"])
+    _sched_log.info(
+        "%s drain requested for %s",
+        entry["candidate_id"],
+        entry["task_key"],
+    )
     return {"task_id": task_id, "task_key": entry["task_key"],
             "candidate_id": entry["candidate_id"], "draining": True}
 
@@ -1679,7 +1744,7 @@ def start_scheduler() -> None:
     try:
         rstats = retire_candidate_requested_wrapper_dispatch_tasks()
         _sched_log.info(
-            "AST-1252 candidate_requested_* wrapper retire template=%s "
+            "retired candidate_requested_* wrapper tasks template=%s "
             "candidates_scanned=%s retired=%s",
             rstats.get("template_candidate_id"),
             rstats.get("candidates_scanned"),
