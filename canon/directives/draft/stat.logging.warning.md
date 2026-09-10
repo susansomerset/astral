@@ -39,8 +39,8 @@ for debug payloads.
 # Scenario
 
 Ninety-five inflow terms run; three vet-reject. A single `failed=3` at the end
-does not tell Susan which slugs died or why. Logging `exception` for "title too
-short" trains her to ignore real crashes. A per-item `aid -> dest [reason]` plus
+does not tell which slugs died or why. Logging `exception` for "title too
+short" trains operators to ignore real crashes. A per-item `aid -> dest [reason]` plus
 the tally is the scannable production record, and it still fires when debug is
 on — debug adds guts, it does not replace the warning.
 

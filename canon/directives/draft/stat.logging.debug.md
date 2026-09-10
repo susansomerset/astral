@@ -22,8 +22,9 @@ canonical_refs:
 
 # Abstract
 
-When Susan turns debug on, she means the guts — what was found and what was
-recorded, inputs and outputs — so UAT can see data that tests cannot yet pin.
+When the debug mode is activated, the log should carry the guts — what was
+found and what was recorded, inputs and outputs — so UAT can see data that
+tests cannot yet pin.
 When debug is off, those lines must not appear. `logger.info("[DEBUG] …")` is
 always-on noise. `print` never reaches `app_log`. Debug is a gated dump through
 the Style D helpers on `get_logger`, not a second `info` dialect.
@@ -38,8 +39,8 @@ new `logger.info("[DEBUG] …")`, no debug noise in `src/data/`.
 
 # Scenario
 
-An inflow batch of 95 terms runs with debug on so Susan can see CSE hits and
-whether ingest wrote the slug. A terminal `summary={failed=3}` without per-index
+An inflow batch of 95 terms runs with debug mode activated so CSE hits and
+whether ingest wrote the slug are visible. A terminal `summary={failed=3}` without per-index
 bodies is useless. The same dump on a quiet AUTO tick fills `app_log` and hides
 real `warning`/`error`. Passing `debug=` through every callee is how the flag
 gets dropped; the run's debug setting should already be in scope (AST-1625
