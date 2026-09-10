@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-1540 archived 2026-09-09 -->
+
+## Linear archive (AST-1540)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1540/word-cloud-inner-non-breaking-at-render-word-cloud-items-with-inner  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1539 — Word cloud items with INNER characters must be non-breaking  
+**Blocked by / blocks / related:** parent: AST-1539
+
+### Description
+
+## What this implements
+
+Extend the `word_cloud` render-only glue so ordinary spaces and ASCII hyphens inside cloud items become non-breaking in Print / Open HTML, without putting that encoding on generation or non-cloud formats. Does **not** own cover from-block, new digraphs, or typography redesign.
+
+## Citations
+
+`pattern.config.config-block`, `pattern.layers.import-discipline`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.git.engineer-test-tree-ban`.
+
+## Scope
+
+`src/core/builder.py` — **modified** render helper used by the `word_cloud` arm of body-section emit (today `_glue_word_cloud_bullet_separators`): after existing bullet-separator glue, convert remaining ordinary spaces to NBSP and remaining ASCII hyphens to non-breaking hyphens in that emit-only string. Do not put this conversion on `_resume_site_markers` / generation. Shared marker path stays left-only for non-cloud formats.
+
+## Acceptance criteria
+
+- [X] 1. A `word_cloud` section whose items contain ordinary spaces and/or ASCII hyphens (e.g. multi-word or hyphenated phrases) prints/Open-HTMLs with those inner spaces as `\u00a0` and those hyphens as `\u2011` in the cloud text node—Print/Open HTML does not soft-wrap mid-item on those characters.
+- [X] 2. Existing bullet glue remains: `\u00a0` immediately before each `•` and `\u00a0` between items (no regression vs AST-1528/AST-1536).
+- [X] 3. Saved / generated section text is unchanged by this treatment; switching the same content to `free_prose` (or another non-cloud format) does not show cloud inner NBSP / non-breaking-hyphen encoding.
+- [X] 4. Base resume Print, session Open HTML, and job resume Print that emit `word_cloud` all show the inner non-breaking treatment (shared builder render path).
+- [X] 5. Non-`word_cloud` formats and cover-letter from-block are unchanged in intent.
+
+## Boundaries
+
+- [X] Does **not** own cover from-block, new digraphs, or typography redesign. Does not change non-`word_cloud` formats or put cloud encoding on generation / `_resume_site_markers`.
+
+## Notes for planning
+
+Citations as above. Prefer extending the existing render glue helper (DRY) over a parallel path. Adjacent: AST-1526 / AST-1528 / AST-1536.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1539-word-cloud-items-with-inner-characters-must-be-non-breaking`, child `sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Inner NBSP / non-breaking hyphen: `tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking`
+2. Separator glue regression (revised): `tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue`
+3. Format-switch control: `tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch`
+4. Default word_cloud competencies/prior (revised): `tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit`
+5. Pipe→bullet emit: `tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes \
+  -q
+```
+
+**Bible shasum: **`docs/test-bible/core/builder.md` @ `856d52e310544910e9079ebed5c7677ec131197d`
+
+### Comments
+
+#### radia — 2026-08-31T19:16:47.144Z
+[code-rubric] PROCEED (Commit: fe3c6279) Inner NBSP glue clean
+
+#### betty — 2026-08-31T19:12:18.287Z
+`origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render` @ `fe3c6279` · inner NBSP locked
+
+#### joan — 2026-08-31T19:05:28.968Z
+[plan-rubric] PROCEED (Commit: 3b662231) inner NBSP glue plan sound
+
+#### katherine — 2026-08-31T19:02:12.498Z
+`origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render` @ `3b6622318208540c86fac5a9d7342c8e9c843959` · plan ready
+
+---
+
 # AST-1540 — Word-cloud inner non-breaking at render
 
 **Linear:** [AST-1540](https://linear.app/astralcareermatch/issue/AST-1540/word-cloud-inner-non-breaking-at-render-word-cloud-items-with-inner)  
