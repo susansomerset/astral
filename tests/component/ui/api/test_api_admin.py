@@ -978,7 +978,10 @@ class TestAst773UpdateDispatchTaskTaskKey:
         kw = update.call_args.kwargs
         assert kw["task_key"] == "grade_do"
         assert kw["entity_type"] == "job"
-        assert kw["sort_by"] == cfg.dispatch_task_admin_defaults("grade_do")["sort_by"]
+        # AST-1618: sort_by follows effective trigger (NEW), not catalog default PASSED_JD
+        assert kw["sort_by"] == cfg.dispatch_task_admin_defaults(
+            "grade_do", trigger_state="NEW"
+        )["sort_by"]
         assert kw["batch_call_mode"] == cfg.dispatch_task_admin_defaults("grade_do")["batch_call_mode"]
 
     def test_update_dispatch_task_invalid_task_key_trigger_combo_400(
@@ -1108,6 +1111,7 @@ class TestAst804CandidateDispatchAdminValidation:
             lambda task_id: {
                 "task_key": "intake_initiate_candidate",
                 "trigger_state": "ACTIVE_SEARCH",
+                "entity_type": "candidate",  # AST-1618: sort recompute needs row entity
                 "candidate_id": "c1",
                 "auto_mode": 0,
             },
@@ -1296,7 +1300,13 @@ class TestDispatchTasks:
         monkeypatch.setattr(
             admin_mod.database,
             "get_dispatch_task",
-            lambda task_id: {"task_key": "qualify_job_listings", "trigger_state": "VALID_TITLE", "candidate_id": "c1"},
+            lambda task_id: {
+                "task_key": "qualify_job_listings",
+                "trigger_state": "VALID_TITLE",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
         )
         assert admin_client.put(f"/api/admin/dispatch_tasks/1", json={}, headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: "need key")
@@ -1308,7 +1318,8 @@ class TestDispatchTasks:
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
         update = MagicMock()
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
-        ok = admin_client.put(f"/api/admin/dispatch_tasks/1", json={"min_count": 2, "trigger_state": ""}, headers=auth_headers)
+        # Schedule-only update (no empty trigger — blank trigger_state is 400)
+        ok = admin_client.put(f"/api/admin/dispatch_tasks/1", json={"min_count": 2}, headers=auth_headers)
         assert ok.status_code == 200
         update.assert_called_once()
 
@@ -3377,3 +3388,175 @@ class TestAst1534AdhocRunsScoped:
         assert seen[0]["candidate_id"] is None
         assert seen[0]["task_key"] is None
         assert seen[0]["limit"] == 10
+
+
+# AST-1618: admin create/update persist explicit entity_type + sort for chosen entity.
+class TestAst1618PersistEntityTypeAdmin:
+    def test_trigger_error_honors_entity_override(self) -> None:
+        # grade_do catalog is job; company WEBSITE_FOUND is valid only with override
+        assert (
+            admin_mod._dispatch_task_key_trigger_error(
+                "grade_do", "WEBSITE_FOUND", entity_type="company"
+            )
+            is None
+        )
+        bad = admin_mod._dispatch_task_key_trigger_error(
+            "grade_do", "WEBSITE_FOUND", entity_type="job"
+        )
+        assert bad is not None and "grade_do" in bad
+        unsupported = admin_mod._dispatch_task_key_trigger_error(
+            "grade_do", "NEW", entity_type="not_an_entity"
+        )
+        assert unsupported is not None and "unsupported entity_type" in unsupported
+
+    def test_create_forwards_entity_type(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=1618)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "WATCH",
+                "entity_type": "company",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["entity_type"] == "company"
+        assert save.call_args.kwargs["trigger_state"] == "WATCH"
+
+    def test_create_rejects_entity_trigger_mismatch(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=1)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "WATCH",
+                "entity_type": "job",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "grade_do" in resp.get_json()["error"]
+        save.assert_not_called()
+
+    def test_create_rejects_empty_and_unknown_entity(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        empty = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "  ",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert empty.status_code == 400
+        assert "non-empty" in empty.get_json()["error"]
+        unknown = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "board_search",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert unknown.status_code == 400
+        assert "unsupported entity_type" in unknown.get_json()["error"]
+
+    def test_update_entity_type_without_task_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+                "sort_by": "latest_score",
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        # Keep trigger; switch entity to company with a company-valid trigger
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"entity_type": "company", "trigger_state": "WATCH"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        kw = update.call_args.kwargs
+        assert kw["entity_type"] == "company"
+        assert kw["sort_by"] == cfg._dispatch_sort_by_for("company", "WATCH")
+        assert "task_key" not in kw
+
+    def test_update_rejects_mismatched_entity_trigger(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"entity_type": "company"},  # PASSED_JD not in company registry
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        update.assert_not_called()
+
+    def test_update_null_entity_type_treated_as_omit(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"entity_type": None, "min_count": 3},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        kw = update.call_args.kwargs
+        assert kw["min_count"] == 3
+        assert "entity_type" not in kw
