@@ -127,6 +127,12 @@ the export — that shape has no hoisting justification and is a genuine miss).
 | 2026-08-14 | *all* | `# Scoring` removed | the 1-5 scale is universal and lives in the clerk `USAGE` preamble; per-directive bands break min-wins | — |
 | 2026-08-14 | *all* | `status:` removed | status is now the directory a file lives in, not a field | — |
 | 2026-08-14 | `stat.layers.import-rules` | amended | added: within `core`, entity data goes through `roster` / `tracker` / `candidate`, never `data.database` directly | — |
+| 2026-09-10 | `stat.logging.info` | drafted | expected-progress `info` via utils; replaces harvest `logging-via-utils` for the channel | AST-1625 |
+| 2026-09-10 | `stat.logging.warning` | drafted | per-item fail summary plus batch tally | AST-1625 |
+| 2026-09-10 | `stat.logging.error` | drafted | thrown exceptions once at the handler; cites `stat.errors.raise-once-log-once` | AST-1625 |
+| 2026-09-10 | `stat.logging.debug` | drafted | gated Style D inputs/outputs; replaces harvest `debug-contract-gated` | AST-1625 |
+| 2026-09-10 | `stat.utils.data-late-import-only` | dropped | not a separate statute — temporary `logging.py` `_flush_buffer` exception already on `stat.layers.import-rules` / EXCEPTIONLOG until production monitoring | AST-1625 |
+| 2026-09-10 | harvest `stat.standards.logging-via-utils` / `debug-contract-gated` | deleted from `directives/draft/` | superseded by `stat.logging.*` | AST-1625 |
 
 ## What counts as a change worth a row
 

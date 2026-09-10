@@ -189,8 +189,10 @@ the repo-owned tables and the prompt corpus.
 | `stat.component.file-organization` | public functions first, then helpers, grouped by responsibility | `standards.public-then-helpers` |
 | `stat.component.comment-hygiene` | — | **new** |
 | `stat.errors.data-raises-caller-logs` | data raises and never logs; core raises domain; dispatcher catches and logs at batch; UI returns JSON | `standards.data-raises-caller-logs` |
-| `s.logging.via-utils` | backend logging goes through `utils/logging.py` | `standards.logging-via-utils` |
-| `s.logging.debug-gated` | debug lines only under `debug_flag`; use the `_PrefixedLogger` helpers and `truncate_debug_content` | `standards.debug-contract-gated` |
+| `stat.logging.info` | expected progress via `get_logger` / `logger.info` | new — splits `standards.logging-via-utils` |
+| `stat.logging.warning` | per-item fail summary plus batch tally | new |
+| `stat.logging.error` | thrown exceptions once at the handler | new — level/channel; cites `stat.errors.raise-once-log-once` |
+| `stat.logging.debug` | gated Style D found/recorded inputs and outputs | replaces `standards.debug-contract-gated` |
 | `stat.layers.import-rules` | ui → core+utils; core → data+external+utils; external → utils; data → utils | `layers.import-direction` |
 | `stat.general.no-cross-contamination` | nothing outside the five `src/` layers | `standards.no-cross-contamination` |
 | `stat.general.registry-not-literals` | state lists, enums, allowed sets live in `config.py`; validate against it | `config.config-source-of-truth` + `standards.no-hardcoded-sets` |
@@ -202,7 +204,7 @@ the repo-owned tables and the prompt corpus.
 | `stat.data.no-mirror-columns` | no entity-row JSON mirror of `agent_data`; latest refs are read, not stored | `batch.entity-agent-responses-latest-only`, and `company.agent_responses_legacy` is the scar |
 | `stat.external.io-only-here` | external owns all I/O and returns data | `layers.core-vs-external-bright-line` |
 | `stat.config.secrets-from-environ` | `os.environ["KEY"]` — no `.get`, no fallback, crash at startup; never a secret in `config.py` | `config.secrets-and-env-specific-from-environ` |
-| `stat.utils.data-late-import-only` | the one approved `utils → data` path is the log-handler flush | `standards.utils-data-late-import-only` |
+| *(folded)* `stat.utils.data-late-import-only` | do **not** draft this id — the `logging.py` `_flush_buffer` late-import is the temporary exception on `stat.layers.import-rules` until production monitoring exists | was `standards.utils-data-late-import-only` |
 | `stat.scripts.exempt-from-layer-rules` | `scripts/` may import any layer | `layers.scripts-exempt-from-layer-rules` |
 | `stat.dispatch.seed-auto-false` | seed paths leave `auto_mode` false | `dispatch.seed-auto-false` |
 | `stat.dispatch.provision-idempotent` | `ensure_*` is safe to run repeatedly; boot or explicit script only, never per-request | `seed.boot-only-not-hot-path` + your `idempotent-as-default` |
