@@ -341,6 +341,32 @@ def retire_candidate_requested_wrapper_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
+def correct_meteorite_ingress_dispatch_entity_types() -> Dict[str, Any]:
+    """UPDATE NULL/blank entity_type → meteorite on ingress/notify dispatch rows (AST-1623).
+
+    Seed INSERT … WHERE NOT EXISTS cannot rewrite live NULL rows. Idempotent UPDATE only —
+    does not insert, and does not touch retention or meteorite_email mailbox keys.
+    """
+    keys = {
+        METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+        METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],
+    }
+    scanned = 0
+    updated = 0
+    for row in database.list_dispatch_tasks():
+        scanned += 1
+        tk = (row.get("task_key") or "").strip()
+        if tk not in keys:
+            continue
+        if str(row.get("entity_type") or "").strip():
+            continue
+        _db_update_dispatch_task(int(row["id"]), entity_type="meteorite")
+        updated += 1
+    return {"scanned": scanned, "updated": updated, "task_keys": sorted(keys)}
+
+
 def ensure_meteorite_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
     """Idempotent insert of candidate-bound meteorite_email dispatch_task (AST-1134 / AST-1466)."""
     cid = str(candidate_id or "").strip()
@@ -824,7 +850,7 @@ async def _dispatch_one(task: Dict) -> None:
             ledger_cid,
             _now_iso(),
             "RUNNING",
-            entity_type=None,
+            entity_type="meteorite",
         )
         log_batch_id.set(entity_batch_id)
         dispatch_ledger_id = entity_batch_id
@@ -909,7 +935,7 @@ async def _dispatch_one(task: Dict) -> None:
             ledger_cid,
             _now_iso(),
             "RUNNING",
-            entity_type=None,
+            entity_type="meteorite",
         )
         log_batch_id.set(entity_batch_id)
         dispatch_ledger_id = entity_batch_id
@@ -1640,6 +1666,16 @@ def start_scheduler() -> None:
         _sched_log.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
     # AST-1496: no scheduler-start save_dispatch_task provision (meteorite /
     # meteorite_email / fetch_email). Helpers remain in-module but unused from boot.
+    # AST-1623: UPDATE-only correction for live NULL entity_type on ingress/notify keys.
+    try:
+        cstats = correct_meteorite_ingress_dispatch_entity_types()
+        _sched_log.info(
+            "meteorite ingress/notify entity_type correction scanned=%s updated=%s",
+            cstats.get("scanned"),
+            cstats.get("updated"),
+        )
+    except Exception:
+        _sched_log.exception("meteorite ingress/notify entity_type correction failed")
     try:
         rstats = retire_candidate_requested_wrapper_dispatch_tasks()
         _sched_log.info(
