@@ -215,6 +215,78 @@ context_tokens≈42000
 
 **Built @ `f9cabdcd6bb418fa1c47208e7f0f33e3ade28bd1`** — `origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`
 
-Stages 1–3 landed: singular `patt.artifact.ui-consistency` / `patt.artifact.traceability` drafts with `# Examples`; `docs/features/**` plural-id cite sweep. No `src/` / `tests/` diff.
+Stages 1–3 landed: singular `patt.artifact.ui-consistency` / `patt.artifact.traceability` drafts with `# Examples`; `docs/features/**` plural-id cite sweep. No `src/` product diff (Betty may retarget `tests/**` cites).
 
 **Betty retarget (qa-child):** `docs/test-bible/frontend/pages.md`, `docs/test-bible/data/database/artifacts.md`, `docs/test-bible/core/candidate.md`, `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — former plural draft path/id strings.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1628
+**Publish ref:** `c949645742d55fe9ac3e7e6502e47e2267ba639a` (`origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`)
+**Corpus:** `7a40a9e0de4324d0d1c4d56abc52b13d3c297715` (canon tree on `origin/dev`; `canon_clerk.py` absent — clerk sha / `corpus_dirty` unavailable)
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | |
+patt.artifact.traceability | A | |
+astral.standards.in-scope-only | A | |
+astral.standards.names-not-ticket-ids | A | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** `docs/features/foundation/ast-1577-ui-consistency-base-resume-editor.md` — Stage 1 Decision callout
+- **Finding:** Mechanical cite sweep left a self-contradictory line: `Pattern id is patt.artifact.ui-consistency (plural artifacts) … — not patt.artifact.ui-consistency` (same id twice; “plural” note stale).
+- **Recommendation:** `resolve-child` or a follow-up docs pass should rewrite that Decision block to honest historical prose (e.g. “was plural at AST-1577; renamed singular at AST-1628”) or delete the callout.
+
+- **Location:** Linear AC4 vs plan / Betty manifest
+- **Finding:** Ticket AC4 text says no `src/` / `tests/` diff; publish tip has **no `src/` diff** but Betty landed a **4-line cite retarget** in `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` (`test(AST-1628)` + `merge-tests`). Plan and Betty manifest explicitly authorized this; behavior unchanged.
+- **Recommendation:** Accept for User Testing under standard test-tree ownership; optionally clarify Linear AC4 wording on the parent/child to match plan (“no `src/`; Betty may retarget test-tree cites”).
+
+### advisory
+
+- **Location:** Issue doc `## Review (build)` stub @ `f9cabdcd`
+- **Finding:** States “No `src/` / `tests/` diff” — inaccurate after Betty `merge-tests`; `src/` is still empty.
+- **Recommendation:** Chuckles corrects stub when appending this review.
+
+- **Location:** `docs/test-bible/README.md` AST-1628 block
+- **Finding:** `**Bible shasum (after publish):**` is still a command placeholder (`ac998e34…` computable on tip).
+- **Recommendation:** Doc hygiene only; manifest content otherwise matches Betty’s retarget pass.
+
+- **Location:** `src/ui/frontend/src/components/ArtifactEditor.tsx`, `src/core/tracker.py`
+- **Finding:** Plural `patt.artifacts.*` id strings remain in comments — intentional per plan AC4 / explicit `src/**` comment freeze.
+- **Recommendation:** No action this ticket; optional future comment sweep is out of scope.
+
+## Notes
+
+- **Cite sweep:** `docs/features/**` clean for `patt.artifacts.ui-consistency` / `patt.artifacts.traceability`; `docs/test-bible/**` + Vitest retargeted; remaining plural strings are the AST-1627 sibling-gate historical line in bible README, manifest `test ! -f` guards, and frozen `src/` comments.
+- **Sibling gate:** Five core AST-1627 drafts show zero diff vs `origin/dev` on this tip — AST-1628 did not re-edit them.
+- **Epic ancestry:** Branch carries AST-1627 bible manifest block via shared `merge-tests` history; canon product for AST-1627 is not in this three-dot diff.
+
+## What's solid
+
+- AC1: plural draft paths gone; singular `patt.artifact.ui-consistency` / `patt.artifact.traceability` exist with matching frontmatter ids.
+- AC2: both drafts have `# Examples` with live harvested shapes (`bodyShape` / `ArtifactEditor`; `database.save_artifact(..., source_artifact_ids=...)` with live-vs-illustrative boundary).
+- AC3: `docs/features/**` cite sweep complete; Betty retargeted `docs/test-bible/{frontend/pages,data/database/artifacts,core/candidate}.md` + AST-1577 Vitest draft assert.
+- Law headings intact on both renamed drafts.
+- Estimate **2** fits docs-only rename + examples + cite sweep footprint.
+
+## Plan adherence (§5.4)
+
+- **Plan fidelity:** Stages 1–3 delivered; Examples-after-Implementation convention matches AST-1627.
+- **Estimate footprint:** Estimate 2 appropriate.
+- **Cross-ticket scope:** AST-1627 five-core drafts untouched; no `src/` product diff.
+- **Database / SQL:** N/A.
+
+context_tokens≈42000
