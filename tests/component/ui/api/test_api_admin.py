@@ -3560,3 +3560,86 @@ class TestAst1618PersistEntityTypeAdmin:
         kw = update.call_args.kwargs
         assert kw["min_count"] == 3
         assert "entity_type" not in kw
+
+
+class TestAst1623AdminMeteoriteStateOptionsAvail:
+    """AST-1623: state_options meteorite + Available without candidate_id short-circuit."""
+
+    def test_state_options_includes_meteorite(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        from src.utils.config import METEORITE_STATES, dispatch_entity_state_registry
+
+        states = admin_client.get("/api/admin/dispatch_tasks/state_options", headers=auth_headers).get_json()
+        assert "meteorite" in states
+        assert set(states["meteorite"]) == set(METEORITE_STATES)
+        assert states["meteorite"] == list(dispatch_entity_state_registry("meteorite").keys())
+        # Existing keys stay present (order not rebuilt from ENTITY_TYPES).
+        assert "job" in states and "company" in states and "candidate" in states
+
+    def test_list_dtasks_meteorite_avail_without_candidate_id(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "stage_meteorite",
+                    "trigger_state": "NEW",
+                    "entity_type": "meteorite",
+                    "candidate_id": None,
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "grade_do",
+                    "trigger_state": "PASSED_JD",
+                    "entity_type": "job",
+                    "candidate_id": None,
+                    "score_floor": None,
+                },
+                {
+                    "id": 3,
+                    "task_key": "scrape_meteorite",
+                    "trigger_state": "SCRAPE_LINK",
+                    "entity_type": "meteorite",
+                    "candidate_id": "c-x",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+
+        def count(row: dict[str, Any]) -> int:
+            return 7 if row.get("entity_type") == "meteorite" else 3
+
+        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", count)
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        by = {r["id"]: r for r in rows}
+        assert by[1]["available_count"] == 7
+        assert by[2]["available_count"] == 0  # job still requires candidate_id
+        assert by[3]["available_count"] == 7
+
+    def test_create_accepts_meteorite_entity_type(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=1623)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "NEW",
+                "entity_type": "meteorite",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["entity_type"] == "meteorite"
+        assert save.call_args.kwargs["trigger_state"] == "NEW"
+
