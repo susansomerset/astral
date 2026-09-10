@@ -53,7 +53,7 @@ body = get_operative_base_resume(artifact_uuid)
 # ARTIFACT_CONFIG["candidate.artifacts.base_resume"]; returns body or None
 ```
 
-Do not resolve explainability pins by reading `*_data` JSON blobs or by mid-turn coat-check; on miss return empty / surface ingestion gap. Prefer storing pins at write time over scoped-without-pin reads.
+do not resolve explainability pins by reading `*_data` JSON blobs or by mid-turn coat-check; on miss return empty / surface ingestion gap. Prefer storing pins at write time over scoped-without-pin reads.
 
 # OPEN QUESTIONS / DECISIONS
 

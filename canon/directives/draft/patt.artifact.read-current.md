@@ -55,7 +55,7 @@ body = get_candidate_current(candidate_id, "candidate.artifacts.base_resume")
 
 API GET hydrate for the pilot overlays via `hydrate_operative_base_resume_for_response(candidate_id, cd)` in `src/ui/api/api_candidate.py` / `src/core/candidate.py` — editors open on that current body, not a stale blob copy. Job current-read twin: `tracker.get_job_current(astral_job_id, artifact_key)` (mention only).
 
-Do not hydrate catalog keys from `candidate_data` / `job_data` blob dotted paths for edit or live display.
+do not hydrate catalog keys from `candidate_data` / `job_data` blob dotted paths for edit or live display.
 
 # OPEN QUESTIONS / DECISIONS
 

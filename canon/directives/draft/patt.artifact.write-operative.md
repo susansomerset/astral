@@ -65,7 +65,7 @@ new_uuid = save_candidate_data(
 
 Job-scoped operative writes use `tracker.save_job_artifact(astral_job_id, artifact_key, blob, …)` the same way (live on `origin/dev`) — not expanded here.
 
-Do not `UPDATE artifact SET artifact_data = …` (or any in-place body UPDATE) for operative writes; always retire+insert via `save_artifact`.
+do not `UPDATE artifact SET artifact_data = …` (or any in-place body UPDATE) for operative writes; always retire+insert via `save_artifact`.
 
 # OPEN QUESTIONS / DECISIONS
 

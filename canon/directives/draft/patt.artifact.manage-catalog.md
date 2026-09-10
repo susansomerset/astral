@@ -58,7 +58,7 @@ if entry is None:
     raise ValueError(f"unknown catalog key: {artifact_key!r}")
 ```
 
-Do not invent catalog keys in consumer code or dump the full key inventory in examples beyond what the snippet needs.
+do not invent catalog keys in consumer code or dump the full key inventory in examples beyond what the snippet needs.
 
 # OPEN QUESTIONS / DECISIONS
 
