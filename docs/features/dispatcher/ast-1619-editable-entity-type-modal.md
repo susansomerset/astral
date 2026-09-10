@@ -139,3 +139,156 @@ context_tokens≈45000
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `655144b9` | Editable Entity Type `<select>` from `stateOptions`; clear invalid Input State; POST/PUT send `entity_type` |
+
+## Radia review
+
+# Radia review — AST-1619
+
+**Publish ref:** `origin/sub/AST-1616/AST-1619-editable-entity-type-modal` @ `bfc19678`  
+**Diff baseline:** `origin/dev...origin/sub/AST-1616/AST-1619-editable-entity-type-modal` (11 paths; layers: `ui`, `data`, `docs`)  
+**AST-1619 product footprint:** `655144b9` + `2c554f69` — 1 product file (`AdminScheduledActions.tsx`) + frontend component tests + bible  
+**Internal grade:** CLEAN
+
+---
+
+```
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1619
+**Publish ref:** origin/sub/AST-1616/AST-1619-editable-entity-type-modal @ bfc19678
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent grading paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no do_task changes |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grade-vector paths |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch claim paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch-id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process helpers |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity_agent_responses |
+| `astral.config.config-source-of-truth` | scoped | conforms | entity keys/options from `/state_options` + task-key catalog meta |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no seed paths |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run-next changes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | `docs/features/dispatcher/ast-1619-editable-entity-type-modal.md` |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Radia read-only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | tests + Betty bible manifest aligned |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no core/external edits |
+| `astral.layers.import-direction` | scoped | conforms | frontend page only; no layer violations |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | entity options from `stateOptions` API keys; no hardcoded entity enum |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no render/verdict |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no new API routes (sibling AST-1618 in branch diff) |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed overrides |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed hot-path |
+| `astral.seed.define-approved` | scoped | not-applicable | no define/seed |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no AST-1619 data edits (sibling in branch diff only) |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no AST-1619 DB edits |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no debug emission |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | small `inputStatesForEntity` helper; localized modal change |
+| `astral.standards.in-scope-only` | scoped | conforms | AST-1619 commits touch only planned `AdminScheduledActions.tsx` (+ tests/docs) |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new logging |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | ticket id in test comments only |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no unrelated module rewrites in AST-1619 commits |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | `Object.keys(stateOptions)` for entity `<option>` values; plan anti-pattern avoided |
+| `astral.standards.public-then-helpers` | scoped | conforms | helper placed above component; modal logic unchanged structure |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no data/utils changes in AST-1619 commits |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job prior-state enforcement |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no daisy-chain runtime |
+| `astral.ui.frontend-file-placement` | scoped | conforms | change in existing routed page under `src/ui/frontend/src/pages/` |
+| `astral.ui.naming-conventions` | scoped | conforms | no new misnamed modules |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1619)` at tip |
+| `orch.git.commit-vocabulary` | universal | conforms | `code`/`test`/`docs` prefixes on AST-1619 commits |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub branch under parent |
+| `orch.git.ftr-sub-topology` | universal | conforms | `sub/AST-1616/AST-1619-...` |
+| `orch.git.merge-on-checkout` | universal | conforms | no merge-gate evidence in AST-1619 commits |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear stage commits |
+| `orch.git.no-dev-agent-branches` | universal | conforms | engineer sub branch |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | review in `astral-AST-1616` |
+| `orch.git.three-permanent-branches` | universal | conforms | no main/master/dev writes |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no unresolved product forks |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stage 1 Done-when satisfied |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | UI-only sibling to AST-1618 |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no statute edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | `pages.md` manifest + combobox-index regression notes |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | n/a to diff |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Katherine assignee; review recommend-only |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path commits |
+
+**Sweep count:** 65 active statutes scored in-session (0 `violates`, 0 `needs-discussion` on statutes).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | plan cites no `canon/patterns/**` ids |
+
+## Plan adherence
+
+Stage 1 lands per plan and UAT fitness:
+
+| Plan step | Status |
+|-----------|--------|
+| `inputStatesForEntity` helper indexing `stateOptions` | Done — matches plan signature + `hasOwnProperty` guard |
+| `inputStateOptions` useMemo delegates to helper | Done |
+| Entity Type `<select>` replaces readOnly `<input>` | Done — no `readOnly`/opacity lock |
+| onChange clears invalid `trigger_state` | Done — `nextStates.includes(...) ? keep : ""` |
+| POST + PUT include `entity_type: form.entity_type` | Done — both `handleSave` branches |
+| Candidate on Add stays readOnly | Done — unchanged row; test asserts |
+| Task prefill keeps entity editable | Done — Add `onChange` still sets `cfg?.entity_type`; Edit uses `taskKeyChangePatch` |
+| No API/data edits | Done in AST-1619 commits (sibling AST-1618 present in branch diff vs `dev`, not in AST-1619 commits) |
+| Estimate 2 | Fits — single TSX file + targeted Vitest |
+
+**Traceability:** AC1→select control; AC2→entity change swaps Input State + clears invalid trigger; AC3→Candidate readOnly; Save payloads→POST/PUT `entity_type` tests.
+
+## Findings
+
+### advisory — Empty Entity Type on Save
+
+**Location:** `AdminScheduledActions.tsx` — Entity Type `<option value="">Select…</option>` + unconditional `entity_type: form.entity_type` in POST/PUT  
+**Finding:** Admin can choose empty entity and Save; body sends `entity_type: ""` → AST-1618 returns 400 (`entity_type must be non-empty when provided`). Toast surfaces via existing `readApiError` path. Plan explicitly allows both the empty option and always sending `entity_type`.  
+**Recommendation:** UAT note only; optional follow-up: omit key when `""`, disable Save, or inline validation — not blocking if normal flow is Task-select prefill.
+
+### advisory — Stacked sibling in three-dot diff
+
+**Location:** branch diff vs `origin/dev`  
+**Finding:** Three-dot diff includes AST-1618 product/tests/docs (not yet on `origin/dev`) alongside AST-1619. AST-1619's own commits are scope-clean (4 files). Expected mid-epic stacking until `merge-child` / ftr rollup.  
+**Recommendation:** Chuckles/`merge-child` hygiene only; not an AST-1619 scope violation.
+
+### advisory — Edit + Task-key change stale Input State (Joan discuss, pre-existing)
+
+**Location:** `taskKeyChangePatch` Edit branch  
+**Finding:** Edit Task change updates catalog `entity_type` but may leave `trigger_state` invalid for new entity until admin changes Entity Type or Input State. Joan flagged as out-of-AC / optional follow-up.  
+**Recommendation:** Defer unless UAT hits Edit+Task-change path; not introduced by this ticket.
+
+## What's solid
+
+- Config-driven entity list via `Object.keys(stateOptions)` — avoids parallel `ENTITY_TYPES` hardcoding (plan UAT fitness “wrong fix rejected”).
+- `inputStatesForEntity` replaces brittle inline ternary; empty entity → `[]` options per plan decision.
+- Betty manifest covers AC1–AC3 + POST/PUT payload asserts; combobox-index regressions revised for inserted Entity Type select (Task=0, Entity=1, Input State=2).
+- Sibling boundary respected: no API/data edits in AST-1619 commits; persistence delegated to AST-1618.
+
+## Frame diff
+
+(none) — AST-1619 description frame, scope gate, and UAT fitness match the implementation; parent AC1/AC2/AC7 restored without scope creep in product commits.
+
+## Notes
+
+- Joan plan-rubric APPROVED; no Excluded-statute list → no stragglers.
+- Tip `bfc19678` is merge-tests; product `655144b9`, tests `2c554f69`.
+- C7 artifact complete; recommend Chuckles append + **Review Posted**.
+
+context_tokens≈38000
