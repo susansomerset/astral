@@ -137,3 +137,13 @@ AC4→Stage 2 (relaxed candidate_id gate + meteorite branch in `count_eligible_f
 
 context_tokens≈52000
 ```
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1620/AST-1622-meteorite-count-eligible-auto-due`
+**Tip:** `a8a7e0b2`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `2b63c4da` | `count_meteorites_unclaimed_in_states` + header inventory |
+| 2 | `a8a7e0b2` | meteorite gate/branch in `count_eligible_for_dispatch_task` + `get_due_tasks` |
