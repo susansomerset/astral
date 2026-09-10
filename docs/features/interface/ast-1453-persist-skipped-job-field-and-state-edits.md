@@ -1,3 +1,68 @@
+<!-- linear-archive: AST-1453 archived 2026-09-09 -->
+
+## Linear archive (AST-1453)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1453/persist-skipped-job-field-and-state-edits-when-a-job-is-in-a-skipped  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1446 — When a job is in a Skipped state, make all fields editable  
+**Blocked by / blocks / related:** parent: AST-1446; blocks: AST-1454
+
+### Description
+
+## What this implements
+
+Authenticated persist for title, link, and job description on jobs whose current state is skipped; state changes use the existing job transition path with prior-state enforcement. API tells the client whether the job is field-editable and which states are legal next. Rejects edits when the job is not skipped. Does not own the Job Detail form chrome (#2).
+
+## Citations
+
+`pattern.state.entity-state-transitions`, `pattern.ui.admin-endpoint`, `pattern.config.config-block`, `astral.state.job-prior-states-enforced`, `astral.state.core-decides-transitions`, `astral.layers.ui-config-driven-business-logic`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.no-hardcoded-sets`, `astral.layers.import-direction`.
+
+## Acceptance criteria
+
+- [X] Open a job whose state is a skipped state: GET returns `fields_editable` and `legal_next_states` (editable form controls → sibling #2 / AST-1454); agent story tabs remain non-editable chrome.
+- [X] Save (PUT) persists title, link, and job description; reload of Job Detail via GET shows the saved values (Skipped list after refresh once chrome wires).
+- [X] A skipped job with no job description still accepts a job-description write; saving a pasted description persists it.
+- [X] `legal_next_states` lists only legal successors; PUT with a legal `state` moves the job through `transition_job_state` (history recorded). An illegal target is rejected (409) and the job stays in its current state (field edits already applied).
+- [X] After a save that leaves a skipped state, GET shows non-skipped state / `fields_editable=false`; job leaves Skipped list on refresh.
+- [X] Open a job that is not in a skipped state: `fields_editable=false`, `legal_next_states=[]`; PUT rejected with 409 (title/link/JD/state remain display-only as today until chrome).
+
+## Boundaries
+
+- [X] Does not own Job Detail form chrome (sibling #2).
+- [X] Does not waive prior-state law.
+- [X] Does not unlock non-skipped jobs.
+- [X] Does not auto-re-run consult, scrape, or dispatch.
+- [X] Does not change bulk Retry, Skip This Job, Copy, or list-row Skip.
+
+## Notes for planning
+
+Estimate: 3. After persist exists, #2 wires the modal.
+
+### Comments
+
+#### radia — 2026-08-24T23:06:22.438Z
+[code-rubric] PROCEED (Commit: 23a69171) skipped-job persist clean
+
+#### betty — 2026-08-24T22:29:29.420Z
+`origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits` @ `23a691710ee3ed4aea4959161d21cc70fa6e0516` · skipped persist coverage
+
+#### chuckles — 2026-08-24T22:14:19.556Z
+[agent-busy-timeout] blocked: Cursor conversation still busy after 20m call-wait (spawn=`6b38f971`, attempts=14).
+- parent: `AST-1446`
+- agent: **Joan** role=validate `validate-plan` on `AST-1453`
+- AGENT_SESSION: `7219634c-bc1b-47c3-bc3f-b2cb04ac5901`
+
+Do **not** `agent create-chat` and do **not** treat this as `[thread-missing]` — the Thread UUID is fine; another run held it.
+
+#### ada — 2026-08-19T20:15:56.349Z
+`origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits` @ `147c59ae1dcf95e75ada48b22cc7454ac1592c1b` · persist API plan ready
+
+---
+
 # AST-1453 — Persist skipped-job field and state edits
 
 **Linear:** [AST-1453](https://linear.app/astralcareermatch/issue/AST-1453/persist-skipped-job-field-and-state-edits-when-a-job-is-in-a-skipped)  
