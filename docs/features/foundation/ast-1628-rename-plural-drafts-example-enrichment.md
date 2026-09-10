@@ -213,7 +213,7 @@ context_tokens≈42000
 
 ## Review (build)
 
-**Built @ PLACEHOLDER** — `origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`
+**Built @ `f9cabdcd6bb418fa1c47208e7f0f33e3ade28bd1`** — `origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`
 
 Stages 1–3 landed: singular `patt.artifact.ui-consistency` / `patt.artifact.traceability` drafts with `# Examples`; `docs/features/**` plural-id cite sweep. No `src/` / `tests/` diff.
 
