@@ -36,6 +36,25 @@ An **operative read** returns the artifact body that was **current when some dow
 5. **On miss** — Return empty or surface ingestion gap; do not coat-check or read from `*_data` blob in new code.
 6. **Legacy pins** — Migration tickets may resolve agent_data string pins once; new runtime paths use artifact_id only.
 
+# Examples
+
+By pin (data layer):
+
+```python
+row = database.get_artifact(artifact_uuid)
+# None on miss; else deserialize via row["artifact_data"] — no coat-check, no blob fallback
+```
+
+Pilot pin→body helper (`src/core/candidate.py`) — Contact / explainability callers pass a stored pin, not “latest current”:
+
+```python
+body = get_operative_base_resume(artifact_uuid)
+# loads database.get_artifact; checks entity_type / artifact_type against
+# ARTIFACT_CONFIG["candidate.artifacts.base_resume"]; returns body or None
+```
+
+Do not resolve explainability pins by reading `*_data` JSON blobs or by mid-turn coat-check; on miss return empty / surface ingestion gap. Prefer storing pins at write time over scoped-without-pin reads.
+
 # OPEN QUESTIONS / DECISIONS
 
 1. Timestamp-based operative read without pin — avoid for new code; pins are SoT for explainability.
