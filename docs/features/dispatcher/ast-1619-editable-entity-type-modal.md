@@ -130,3 +130,12 @@ Child AC1→Stage 1 step 3 (`<select>` replaces readOnly Entity Type input); AC2
 **Considered:** (in-session — corpus present; cited ui patterns/statutes + universal orch.* conform; no `violates`)
 
 context_tokens≈45000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1616/AST-1619-editable-entity-type-modal`
+**Tip:** `655144b9`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `655144b9` | Editable Entity Type `<select>` from `stateOptions`; clear invalid Input State; POST/PUT send `entity_type` |
