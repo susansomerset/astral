@@ -1,3 +1,89 @@
+<!-- linear-archive: AST-1465 archived 2026-09-09 -->
+
+## Linear archive (AST-1465)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1465/draft-job-resume-prompt-omit-bullet-marker-glyphs-job-resume-draft  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1458 — Job resume draft prompt is asking for bullet chars  
+**Blocked by / blocks / related:** parent: AST-1458
+
+### Description
+
+## What this implements
+
+Reword the current `draft_job_resume` `user_prompt` so accomplishment guidance no longer embeds `` `•`/`-`/`*` `` literals; keep job-array experience rules, nested `resume`/`deviations` example, and trace-to-base-materials discipline unchanged. Add or extend a prompt contract test only if needed to prevent glyph regression.
+
+## Citations
+
+[`astral.seed.archie-catalog-wins`](<https://github.com/susansomerset/astral/blob/dev/canon/statutes/astral/seed/astral.seed.archie-catalog-wins.md>), [`astral.standards.in-scope-only`](<https://github.com/susansomerset/astral/blob/dev/canon/statutes/astral/standards/astral.standards.in-scope-only.md>)
+
+## Scope
+
+`data/admin/agent_task.json` — modify current `draft_job_resume` row `user_prompt` only (replace accomplishments clause that names marker glyphs with plain-language bare-string wording). `tests/component/core/test_candidate.py` — modify only if a new assertion is required to lock omission of marker glyph literals.
+
+## Acceptance criteria
+
+- [X] The current `draft_job_resume` `user_prompt` in `data/admin/agent_task.json` contains no literal `` `•` ``, `` `-` ``, or `` `*` `` characters used to illustrate list-marker prefixes.
+- [X] The same prompt still instructs Judith that `experience` is a job array and `accomplishments` is an ordered array of plain strings (semantic unchanged from Susan's intent).
+- [X] Existing component tests for draft-hop prompt contract (`TestAst1270…`, `TestAst1349…` Manage Tasks assertions) pass without weakening array-only experience or nested-envelope requirements.
+- [X] A manual or dispatched `draft_job_resume` run still accepts well-formed nested resume JSON (no new validation failures introduced by this wording-only change).
+
+## Boundaries
+
+- [X] Does not change `craft_resume_base`, `finalize_job_resume`, `advise_job_resume`, or `check_job_resume` prompts. No runtime validation, normalize, or builder changes.
+
+## Notes for planning
+
+Prompt-only seed edit in `data/admin/agent_task.json`. Estimate 1. Glyph-regression test lock is Betty qa-child (engineer `code()` did not touch `tests/**`).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1458-job-resume-draft-prompt-is-asking-for-bullet-chars`, child `sub/AST-1458/<child-id>-draft-job-resume-prompt-omit-bullet-marker-glyphs`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. **Gaps (glyph lock):** `tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract` — assert retired `` `•`/`-`/`*` `` pattern absent; preserve `ordered **array of strings**` + existing nested-envelope / job-array asserts.
+2. **Existing coverage:** same node id (AST-1270 nested contract) + `tests/component/core/test_candidate.py::TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy`.
+3. **Broken / obsolete:** none revised this pass. Twin lock `TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits` already red on tip (multi-key catalog↔twin drift) — out of glyph scope; not in run list.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/candidate.md` — 40cbce13c743251d97d4efab2a1f58bc92753351
+
+### Comments
+
+#### radia — 2026-08-24T22:31:39.976Z
+[code-rubric] PROCEED (Commit: 9a1bb3aa) prompt glyph lock clean
+
+#### betty — 2026-08-24T22:23:07.309Z
+`origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs` @ `9a1bb3aacb6e6d1f58a7c717767aac2ab597b7ed` · glyph lock delivered
+
+#### betty — 2026-08-24T22:21:46.534Z
+`origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs` @ `9a1bb3aa` · glyph lock ready
+
+#### katherine — 2026-08-24T22:08:39.133Z
+[plan-discuss] round=1 reply
+
+Moved glyph-regression assertions to Betty qa-child; Stage 1 engineer = `data/admin/agent_task.json` only (`astral.git.engineer-test-tree-ban`).
+
+`origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs` @ `873cd34566c726062ab7b6828cae7b0f094077d1` · Betty owns glyph lock
+
+#### katherine — 2026-08-24T22:02:12.877Z
+`origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs` @ `4b0662d6f7fecb5efed283cc33f3d9090ee48742` · prompt-only glyph fix
+
+---
+
 # AST-1465 — draft_job_resume prompt — omit bullet marker glyphs
 
 **Linear:** [AST-1465](https://linear.app/astralcareermatch/issue/AST-1465/draft-job-resume-prompt-omit-bullet-marker-glyphs)  
