@@ -1,5 +1,5 @@
 ---
-id: patt.artifacts.ui-consistency
+id: patt.artifact.ui-consistency
 kind: pattern
 scope: [src/ui/frontend/src/components/ArtifactEditor.tsx, src/ui/frontend/src/pages]
 point: >
@@ -37,6 +37,23 @@ UI editors for versioned artifact bodies select their layout and payload shape f
 4. **Load** — GET entity detail; map `candidate_data.artifacts[artifactKey]` (or job equivalent) into tabs. Empty/missing → empty sections, not a client-side blob invent.
 5. **Save** — PUT entity data with `{ artifacts: { [artifactKey]: dictPayload } }` via existing candidate/job API. Do not add a one-off `artifact_id` field on the client.
 6. **Verify** — Save then reload (or use PUT response body) shows the same section bodies the operator just saved.
+
+# Examples
+
+Page passes catalog `body_shape` as the `bodyShape` prop; the pilot hardcodes the literal matching `ARTIFACT_CONFIG["candidate.artifacts.base_resume"]["body_shape"]` — no new frontend catalog fetch.
+
+```tsx
+// ArtifactsBaseResumeContent — pilot body_shape resume_content, leaf base_resume
+<ArtifactEditor
+  bodyShape="resume_content"
+  artifactKey="base_resume"
+  /* existing craft taskKey / load+save props unchanged */
+/>
+```
+
+Save still PUTs `{ artifacts: { base_resume: dictPayload } }` via the existing candidate data API; GET / hydrate reloads the current leaf (operative hydrate already on the candidate path). Do not invent a client-side `artifact_id` field or a parallel storage key.
+
+do not fork a second base-resume-only editor component when `bodyShape` is `resume_content`; do not add a frontend `ARTIFACT_CONFIG` fetch this ticket.
 
 # OPEN QUESTIONS / DECISIONS
 
