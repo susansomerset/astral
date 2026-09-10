@@ -314,6 +314,34 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read docs-acceptance on the five prose files under `~/team-chuckles` (+ installed `~/.cursor/skills/…` / agents) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-1002** out of scope.
 
+### AST-1627 · AST-1626 (core patt.artifact.* example enrichment)
+
+**Docs-only** (five singular draft directives gain harvested `# Examples`). Live edits on **`origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment`**: `canon/directives/draft/patt.artifact.{manage-catalog,write-operative,read-current,read-operative,no-coat-check}.md` — fenced Python snippets naming live `src/` symbols (`ARTIFACT_CONFIG`, `database.save_artifact` / `get_current_artifact` / `get_artifact`, `save_candidate_data`, `get_candidate_current`, `get_operative_base_resume`, coat-check surfaces as **FORBIDDEN** only). No `src/**`, no `tests/**`, no draft→`active/` promotion. Sibling **AST-1628** owns plural→singular rename + ui-consistency / traceability examples.
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip) — no pytest / zero-arg harness / branch-lock gate.
+
+## QA test manifest
+
+1. **Fences (AC1):** each of the five drafts has ≥1 fenced code block under `# Examples`.
+2. **Live symbols (AC2):** every callable in new fences exists under `src/` on `origin/dev`.
+3. **No product diff (AC3):** `git diff origin/dev -- src/ tests/` empty on publish tip.
+4. **Law headings (AC4):** `# Abstract` / `# Arc` / `# Applications` / `# Exceptions` remain on all five.
+5. **Wrong-shape (AC5):** greppable `do not` / `FORBIDDEN` on write-operative, read-current, read-operative, no-coat-check.
+6. **Sibling gate:** `patt.artifacts.ui-consistency.md` / `patt.artifacts.traceability.md` unmodified vs `origin/dev`.
+
+```bash
+# AC1
+rg -n '```' canon/directives/draft/patt.artifact.{manage-catalog,write-operative,read-current,read-operative,no-coat-check}.md
+# AC4
+rg -n '^# Abstract|^# Arc|^# Applications|^# Exceptions' canon/directives/draft/patt.artifact.{manage-catalog,write-operative,read-current,read-operative,no-coat-check}.md
+# AC5
+rg -n 'do not|FORBIDDEN|never UPDATE|never.*blob' canon/directives/draft/patt.artifact.{write-operative,read-current,read-operative,no-coat-check}.md
+# AC3
+git diff origin/dev -- src/ tests/
+```
+
+**Bible shasum:** fill after `merge-tests` — `git show origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment:docs/test-bible/README.md | shasum`
+
 
 ## 2. Where tests live
 
