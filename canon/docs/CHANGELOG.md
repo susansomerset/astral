@@ -141,6 +141,7 @@ the export — that shape has no hoisting justification and is a genuine miss).
 | 2026-09-10 | `stat.logging.warning` | drafted | per-item fail summary plus batch tally | AST-1625 |
 | 2026-09-10 | `stat.logging.warning` | amended | per-item who/why only; task rollup is `stat.logging.info.dispatcher` | AST-1625 |
 | 2026-09-10 | `stat.logging.error` | drafted | thrown exceptions once at the handler; cites `stat.errors.raise-once-log-once` | AST-1625 |
+| 2026-09-10 | `stat.logging.error` | amended | one `logger.exception`: live facts, affirmative next step, traceback; never a tally | — |
 | 2026-09-10 | `stat.logging.debug` | drafted | gated Style D inputs/outputs; replaces harvest `debug-contract-gated` | AST-1625 |
 | 2026-09-10 | `stat.utils.data-late-import-only` | dropped | not a separate statute — temporary `logging.py` `_flush_buffer` exception already on `stat.layers.import-rules` / EXCEPTIONLOG until production monitoring | AST-1625 |
 | 2026-09-10 | harvest `stat.standards.logging-via-utils` / `debug-contract-gated` | deleted from `directives/draft/` | superseded by `stat.logging.*` | AST-1625 |

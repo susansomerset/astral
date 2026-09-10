@@ -188,11 +188,21 @@ class TestWarmThenGather:
         assert out == [{"total_processed": 1}, {"total_processed": 2}]
 
     @pytest.mark.asyncio
-    async def test_converts_gather_exceptions_to_error_summary(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_converts_gather_exceptions_to_error_summary(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.asyncio, "sleep", AsyncMock())
         one = AsyncMock(side_effect=[{"total_processed": 1}, RuntimeError("boom")])
-        out = await dispatcher_mod._warm_then_gather(one, ["a", "b"], dispatcher_mod._SUMMARY_ZERO)
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            out = await dispatcher_mod._warm_then_gather(one, ["a", "b"], dispatcher_mod._SUMMARY_ZERO)
         assert out[1]["total_errors"] == 1
+        assert any(
+            "b" in r.message
+            and "RuntimeError: boom" in r.message
+            and "Continuing to the next entity" in r.message
+            and r.exc_info is not None
+            for r in caplog.records
+        )
 
     @pytest.mark.asyncio
     async def test_skips_delay_when_cache_warm_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -930,14 +940,24 @@ def test_current_agent_task_run_next_missing_agent_task_row(monkeypatch: pytest.
 
 class TestDispatchOne:
     @pytest.mark.asyncio
-    async def test_skips_without_candidate_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_skips_without_candidate_context(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda candidate_id: None)
-        await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        assert any("skipped — no candidate or API key" in r.message for r in caplog.records)
+        assert not any(r.levelname == "ERROR" for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_skips_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_skips_without_api_key(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
-        await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        assert any("skipped — no candidate or API key" in r.message for r in caplog.records)
+        assert not any(r.levelname == "ERROR" for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_run_next_chain_skips_dispatch_level_ledger(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1113,7 +1133,7 @@ class TestAst841DispatchTerminalLogging:
     """AST-841: terminal ERROR/INFO app_log lines align ledger status with log severities."""
 
     @pytest.mark.asyncio
-    async def test_interrupted_dispatch_emits_terminal_error_log(
+    async def test_interrupted_dispatch_emits_killed_warning(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         monkeypatch.setattr(
@@ -1134,12 +1154,46 @@ class TestAst841DispatchTerminalLogging:
         task = {"id": 41, "task_key": "inflow_discovery", "candidate_id": "cand-1", "auto_mode": 0}
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[41] = {"asyncio_task": None}
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(task)
+        assert any("KILLED by admin" in r.message and "inflow_discovery" in r.message for r in caplog.records)
+        assert not any("batch finished" in r.message for r in caplog.records)
+        assert not any("Truncating the batch" in r.message for r in caplog.records)
+
+    @pytest.mark.asyncio
+    async def test_failed_dispatch_emits_one_exception_with_facts(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=RuntimeError("boom")))
+        task = {
+            "id": 43,
+            "task_key": "evaluate_jd",
+            "candidate_id": "cand-1",
+            "entity_type": "job",
+            "auto_mode": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[43] = {"asyncio_task": None}
         with caplog.at_level("ERROR", logger="src.core.dispatcher"):
             await dispatcher_mod._dispatch_one(task)
-        assert any(
-            "batch finished INTERRUPTED" in r.message and "inflow_discovery" in r.message
-            for r in caplog.records
-        )
+        errors = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert len(errors) == 1
+        msg = errors[0].message
+        assert "cand-1 | dispatch job evaluate_jd" in msg
+        assert "RuntimeError: boom" in msg
+        assert "Truncating the batch" in msg
+        assert errors[0].exc_info is not None
+        assert "batch finished" not in msg
 
     @pytest.mark.asyncio
     async def test_completed_with_errors_emits_terminal_info_log(
