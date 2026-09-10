@@ -1,3 +1,106 @@
+<!-- linear-archive: AST-1573 archived 2026-09-09 -->
+
+## Linear archive (AST-1573)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1573/artifact-catalog-registry-implement-pattartifactmanage-catalog  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1568 — Implement patt.artifact.manage-catalog  
+**Blocked by / blocks / related:** parent: AST-1568
+
+### Description
+
+## What this implements
+
+Ship `ARTIFACT_CATALOG` in config with **only** candidate `base_resume`, `artifact_catalog.py` helpers, and component scaffold test. Does **not** register job keys, wire UI/API read paths, grade pins, or coat-check retirement (siblings AST-1569–1572).
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`
+
+**Joan / Betty (Archie 2026-09-02):** Joan treats `patt.artifact.manage-catalog` as superseding all conflicting patterns for `base_resume`/catalog. Betty revises `base_resume` tests to adhere to that pattern.
+
+## Scope
+
+- [X] `src/utils/config.py` (catalog block + `base_resume` entry)
+- [X] `src/utils/artifact_catalog.py` (new helpers)
+- [ ] `tests/component/utils/test_artifact_catalog.py` (lookup + data-layer scaffold round-trip) — Betty qa-child
+
+## Acceptance criteria
+
+- [X] 1. Catalog contains exactly one pilot entry: candidate `base_resume`, with complete metadata.
+- [X] 2. Unknown artifact type strings fail fast via catalog helpers — no silent fallback.
+- [ ] 3. Component test demonstrates lookup → save_artifact → get_current_artifact round-trip for `base_resume`. — Betty qa-child
+- [X] 4. No new runtime blob reads or coat-check registrations introduced (catalog-only scope).
+- [X] 5. AST-1569 can import catalog helpers without reaching into config internals.
+
+## Boundaries
+
+- [X] Does not register job keys (`job_resume`, `cover_letter`). Does not wire write-operative / read-current product paths (AST-1569+). Does not retire coat-check. Does not change UI/API.
+
+## Notes for planning
+
+Pilot key only: candidate `base_resume`. Draft pattern on `canon/directives/draft/patt.artifact.manage-catalog.md`. Confirm Chuckles estimate: 3 — single registry + helpers + scaffold test.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1568-artifact-catalog`, child `sub/AST-1568/AST-1573-artifact-catalog-registry`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Delivery: **`origin/sub/AST-1568/AST-1573-artifact-catalog-registry` @ `2de65c08` (`merge-tests(AST-1573): origin/tests ff7d4620`)
+
+**Bible: **`docs/test-bible/utils/artifact_catalog.md` · shasum `cfe8280a12a4807df24488feb0d9d5578118937f`
+**Test: **`tests/component/utils/test_artifact_catalog.py` · shasum `ec0c83206c668b3761776bc3b81a6a93de1fadf8`
+
+1. **Existing coverage:** none for `artifact_catalog.py` (new module). Data-layer `test_artifacts.py` base_resume table coverage stays; not a substitute for catalog AC.
+2. **Broken / obsolete:** none this slice. Blob / coat-check retargets = AST-1569–AST-1572.
+3. **Gaps (this pass):**
+   * Lookup + fail-fast + shallow copy: `TestAst1573ArtifactCatalog` (pilot / unknown / blank / copy)
+   * Scaffold round-trip (AC3): `test_catalog_identity_save_get_round_trip` — catalog-derived `entity_type` → `save_artifact` → `get_current_artifact`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog::test_pilot_entry_lookup_and_scope \
+  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog::test_unknown_and_blank_fail_fast \
+  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog::test_require_returns_shallow_copy \
+  tests/component/utils/test_artifact_catalog.py::TestAst1573ArtifactCatalog::test_catalog_identity_save_get_round_trip \
+  -q
+```
+
+**Pass criterion:** pytest green on those node ids — not zero-arg harness / branch-lock gate unless test-child widens.
+
+### Publish repair
+
+**Delivery: **`origin/sub/AST-1568/AST-1573-artifact-catalog-registry` @ `bfc55e22` (`merge-tests(AST-1573): origin/tests 318ed7e7`)
+**Bible: **`docs/test-bible/utils/artifact_catalog.md` · shasum `cfe8280a12a4807df24488feb0d9d5578118937f`
+**Test: **`tests/component/utils/test_artifact_catalog.py` · shasum `ec0c83206c668b3761776bc3b81a6a93de1fadf8`
+
+### Comments
+
+#### betty — 2026-09-02T17:40:09.507Z
+`origin/sub/AST-1568/AST-1573-artifact-catalog-registry` @ `bfc55e22` · merge-tests ancestry repaired
+
+#### chuckles — 2026-09-02T17:38:30.076Z
+[merge-child] blocked: git pull merge on sub — `09216f77 Merge remote-tracking branch 'origin/ftr/AST-1555-…'` reachable via merge-tests second parent `ff7d4620` (polluted `origin/tests` still on AST-1562 stack, not origin/dev). @Betty White: reset `origin/tests` onto `origin/dev` (or current ftr), recommit `test(AST-1573)` cleanly, replace `merge-tests(AST-1573)` so ftr..sub has no `Merge remote-tracking` subjects. Ada stays assignee.
+
+#### radia — 2026-09-02T17:36:32.509Z
+[code-rubric] PROCEED (Commit: 2de65c08) catalog registry clean
+
+#### betty — 2026-09-02T17:32:46.201Z
+`origin/sub/AST-1568/AST-1573-artifact-catalog-registry` @ `2de65c08` · catalog scaffold ready
+
+#### joan — 2026-09-02T17:23:38.648Z
+[plan-rubric] PROCEED (Commit: c4215e2e) catalog registry clean
+
+#### ada — 2026-09-02T17:21:10.396Z
+`origin/sub/AST-1568/AST-1573-artifact-catalog-registry` @ `c4215e2e` · plan ready
+
+---
+
 # Artifact catalog registry
 
 **Linear:** [AST-1573](https://linear.app/astralcareermatch/issue/AST-1573/artifact-catalog-registry-implement-pattartifactmanage-catalog)
