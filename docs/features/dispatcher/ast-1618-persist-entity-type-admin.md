@@ -189,3 +189,140 @@ context_tokens≈28000
 | 2 | `f4fad519` | create/update accept `entity_type`; trigger override; update sort recompute; PUT null = omit |
 
 PUT `entity_type: null` treated as omitted (Joan discuss).
+
+## Radia review
+
+```
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1618
+**Publish ref:** origin/sub/AST-1616/AST-1618-persist-entity-type-admin @ f64677e0
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent grading paths in diff |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no do_task / agent dispatch changes |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grade-vector paths |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch-id claim paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch-id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process/finally batch helpers |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity_agent_responses writes |
+| `astral.config.config-source-of-truth` | scoped | conforms | entity/trigger/sort derived from `dispatch_task_admin_defaults`, `ENTITY_TYPES`, `_dispatch_sort_by_for` |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env wiring |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact dirs |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no seed/bootstrap paths |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run-next / chain authority changes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single plan doc `docs/features/dispatcher/ast-1618-persist-entity-type-admin.md` |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Radia read-only; Betty bible edits on branch are expected |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | engineer test additions paired with Betty bible manifest updates |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no core/external boundary edits |
+| `astral.layers.import-direction` | scoped | conforms | `api_admin`→`utils.config`; `database` late-imports utils inside function |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/` changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | validation/sort use config registries, not hardcoded state lists in handlers |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check storage |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no render/verdict paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | `create_dtask` / `update_dtask` retain `@require_admin` |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog overrides |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed hot-path |
+| `astral.seed.define-approved` | scoped | not-applicable | no define/seed |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator-row seed |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage-join seed |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | `save_dispatch_task` raises `ValueError`; API maps to 400/500 |
+| `astral.standards.database-header-inventory` | scoped | conforms | INSERT column list / bind tuple unchanged |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no new debug emission |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | changes localized to existing helpers |
+| `astral.standards.in-scope-only` | scoped | conforms | only planned `database.py` + `api_admin.py` product paths (+ tests/docs) |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new `print` / raw `logging` |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | ticket id only in trace comments |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no unrelated module rewrites |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | `ENTITY_TYPES` / registries from config |
+| `astral.standards.public-then-helpers` | scoped | conforms | public save/API paths updated; helper signature extended in place |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | `_dispatch_sort_by_for` late-imported in `save_dispatch_task` with existing mailbox pattern |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no entity state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job prior-state enforcement |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no daisy-chain runtime |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no frontend |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no new UI modules |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1618)` present on branch |
+| `orch.git.commit-vocabulary` | universal | conforms | stage commits use `code`/`test`/`docs` prefixes appropriately on branch |
+| `orch.git.flow-direction-inviolable` | universal | conforms | work on `sub/AST-1616/...` |
+| `orch.git.ftr-sub-topology` | universal | conforms | child publish ref under parent segment |
+| `orch.git.merge-on-checkout` | universal | conforms | no evidence of skipped merge gate in diff |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear stage commits |
+| `orch.git.no-dev-agent-branches` | universal | conforms | engineer sub branch only |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | review in `astral-AST-1616` |
+| `orch.git.three-permanent-branches` | universal | conforms | no main/master/dev writes |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no unresolved product forks |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 implemented per plan AC3–AC6 |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | ticket isolated to dispatcher admin persist |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no statute edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | bible manifest + revised regression mocks |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | n/a to diff |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada assignee; review recommend-only |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path commits in diff |
+
+**Sweep count:** 65 active statutes scored in-session (0 `violates`, 0 `needs-discussion` on statutes).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | plan / parent scope cite no `canon/patterns/**` ids |
+
+## Plan adherence
+
+Stages 1–2 land as specified:
+
+- **`save_dispatch_task`:** caller `entity_type` preserved; `sort_by` via `_dispatch_sort_by_for` when caller entity set; mailbox `sort_by=None`; catalog path unchanged when entity omitted.
+- **Necessary extension beyond plan text:** when `caller_entity` is set, `dispatch_task_admin_defaults(..., trigger_state=None)` so a trigger valid only for the chosen entity does not fail against the catalog entity during defaults fill — required by Stage 1 Done-when and Betty’s bible note; correctly fixed at tip (`f64677e0`).
+- **`api_admin`:** create/update accept `entity_type`; `_dispatch_task_key_trigger_error` entity override; unified update validation; `sort_by` recompute on entity/trigger/task_key changes (non-mailbox); PUT `entity_type: null` treated as omit (Joan discuss resolved).
+- **Scope gate honored:** no React, no scheduler/claim runtime, only the two planned product files.
+- **Estimate 3:** footprint matches (2 product files + targeted component tests + bible).
+- **Sibling boundary:** AST-1619 React control correctly untouched.
+
+## Findings
+
+### advisory — Commit message vs product touch (`f64677e0`)
+
+**Location:** `f64677e0` — message `test(AST-1618): defaults skip trigger when caller entity set`  
+**Finding:** commit adjusts `src/data/database.py` (defaults `trigger_state=None` when caller entity set), not tests-only.  
+**Recommendation:** harmless for product; optional `resolve-child` amend note or leave as-is.
+
+### advisory — Mailbox + caller `entity_type`
+
+**Location:** `save_dispatch_task` mailbox branch; `test_mailbox_caller_entity_still_null_sort`  
+**Finding:** caller may persist a non-null `entity_type` on a mailbox row while `sort_by` stays `None` (plan only guarantees null-entity path when entity **omitted**).  
+**Recommendation:** acceptable until AST-1619 UI exists; if product wants mailbox rows to always force null entity, add explicit API rejection downstream.
+
+### advisory — Hop-label sort recompute
+
+**Location:** update `sort_by` path via `_dispatch_sort_by_for(effective_entity_type, effective_trigger_state)`  
+**Finding:** no new component test for hop-label trigger + entity override combo (existing registry tests may cover indirectly).  
+**Recommendation:** optional hardening in a follow-up; not blocking.
+
+## What's solid
+
+- Trigger validation against **submitted** entity, not only catalog default — core AC5 satisfied.
+- Update path consolidates validation and sort recompute cleanly; regression mocks revised (AST-773/804/DispatchTasks).
+- Data layer correctly omits request trigger from catalog defaults when caller entity is set — closes the red-path Betty flagged.
+- Joan `entity_type: null` PUT discuss addressed in implementation.
+
+## Frame diff
+
+(none) — diff matches plan scope gate and parent technical intent; no description-frame drift.
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute list → no stragglers.
+- Three-dot diff vs `origin/dev` is AST-1618-scoped only (7 files); AST-1614 commit in branch history is outside the diff hunk set.
+- C7 artifact complete; recommend Chuckles append + **Review Posted**.
+
+context_tokens≈42000
