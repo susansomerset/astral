@@ -468,7 +468,7 @@ Expect **all pytest passed** (includes **`TestDispatchTasks::test_scheduler_and_
 
 **Manifest (test-child):**
 
-1. **Plan audit (required):** **`docs/features/agent/ast-688-radia-review-criteria-external-cleanliness.md`** — **Implementation record** lists **§5g** table, verification hints, and sample review comment block; matches global skill (read-only spot-check).
+1. **Plan audit (required):** **[`docs/features/agent/agent-ast-680-…md` § AST-688](../features/agent/agent-ast-680-why-is-srcexternalanthropic-still-in-the-logs.md#ast-688--radia-review-criteria-for-external-layer-cleanliness)** — **Implementation record** lists **§5g** table, verification hints, and sample review comment block; matches global skill (read-only spot-check).
 
 2. **Regression (required):** Publish ref includes sibling **AST-687** product from **`code(AST-688)`** spill — run **AST-687** narrowed manifest (**`docs/test-bible/utils/llm_external.md`**):
 
