@@ -383,13 +383,14 @@ describe("AdminScheduledActions", () => {
     localStorage.setItem("astral_selected_candidate", "c1")
     mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig })
     renderWithProviders(<ScheduledActions />)
-    await expandFirstPhaseSection()
-    await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
     const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
     const selects = within(modal).getAllByRole("combobox")
     await userEvent.selectOptions(selects[0], "watch_cos")
-    const stateOptions = Array.from(selects[1].querySelectorAll("option")).map(o => o.textContent)
+    // AST-1619: Task=0, Entity Type=1, Input State=2 — re-query after Task prefill
+    const inputState = within(modal).getAllByRole("combobox")[2]
+    const stateOptions = Array.from(inputState.querySelectorAll("option")).map(o => o.textContent)
     expect(stateOptions).toContain("WATCH")
     await userEvent.click(within(modal).getByRole("button", { name: "Cancel" }))
   }, 20000)
@@ -920,7 +921,8 @@ describe("AdminScheduledActions", () => {
       const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
       const selects = within(modal).getAllByRole("combobox")
       await userEvent.selectOptions(selects[0], "scan_jobs")
-      await userEvent.selectOptions(selects[1], "NEW")
+      // AST-1619: Task=0, Entity Type=1 (prefills job), Input State=2
+      await userEvent.selectOptions(selects[2], "NEW")
       await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
       await waitFor(() => expect(screen.getByText("nope")).toBeInTheDocument())
       expect(window.alert).not.toHaveBeenCalled()
@@ -1084,7 +1086,8 @@ describe("AdminScheduledActions", () => {
       await userEvent.click(within(candidatePanel).getByText("inflow_discovery"))
       await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
       const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
-      const inputStateSelect = within(modal).getAllByRole("combobox")[1]
+      // AST-1619: Entity Type select inserted — Input State is combobox[2]
+      const inputStateSelect = within(modal).getAllByRole("combobox")[2]
       expect(within(inputStateSelect).getByRole("option", { name: "ACTIVE_SEARCH" })).toBeInTheDocument()
       expect(within(inputStateSelect).queryByRole("option", { name: "PASSED_JD" })).not.toBeInTheDocument()
     }, 20000)
@@ -1433,4 +1436,134 @@ describe("AdminScheduledActions", () => {
       expect(within(freqRow).getByRole("spinbutton")).toHaveValue(7.5)
     }, 20000)
   })
+
+  describe("AST-1619 editable Entity Type", () => {
+    const stateOpts = {
+      job: ["NEW", "PASSED_JD"],
+      company: ["WATCH", "WEBSITE_FOUND"],
+      candidate: ["ACTIVE_SEARCH"],
+    }
+
+    function entityTypeSelect(modal: HTMLElement) {
+      const row = within(modal).getByText("Entity Type").closest(".modal-detail-row") as HTMLElement
+      return within(row).getByRole("combobox")
+    }
+
+    function inputStateSelect(modal: HTMLElement) {
+      const row = within(modal).getByText("Input State").closest(".modal-detail-row") as HTMLElement
+      return within(row).getByRole("combobox")
+    }
+
+    it("Add Task Entity Type is a select (not readOnly text)", async () => {
+      localStorage.setItem("astral_selected_candidate", "c1")
+      mockApi(false, {
+        tasks: [dispatchTask],
+        taskKeysPayload: taskKeysConfig,
+        stateOptionsPayload: stateOpts,
+        threads: {},
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      const et = entityTypeSelect(modal)
+      expect(et.tagName).toBe("SELECT")
+      expect(et).not.toHaveAttribute("readOnly")
+      expect(et).not.toHaveStyle({ opacity: "0.7" })
+      expect(within(et).getByRole("option", { name: "job" })).toBeInTheDocument()
+      expect(within(et).getByRole("option", { name: "company" })).toBeInTheDocument()
+      expect(within(et).getByRole("option", { name: "candidate" })).toBeInTheDocument()
+      // Candidate on Add stays read-only / context-bound
+      const candRow = within(modal).getByText("Candidate").closest(".modal-detail-row") as HTMLElement
+      const candInput = within(candRow).getByRole("textbox")
+      expect(candInput).toHaveAttribute("readOnly")
+      expect(candInput).toHaveValue("c1")
+    }, 20000)
+
+    it("changing Entity Type swaps Input State options and clears invalid trigger", async () => {
+      localStorage.setItem("astral_selected_candidate", "c1")
+      mockApi(false, {
+        tasks: [dispatchTask],
+        taskKeysPayload: taskKeysConfig,
+        stateOptionsPayload: stateOpts,
+        threads: {},
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      await userEvent.selectOptions(within(modal).getAllByRole("combobox")[0], "scan_jobs")
+      expect(entityTypeSelect(modal)).toHaveValue("job")
+      expect(inputStateSelect(modal)).toHaveValue("NEW")
+      expect(within(inputStateSelect(modal)).getByRole("option", { name: "PASSED_JD" })).toBeInTheDocument()
+      expect(within(inputStateSelect(modal)).queryByRole("option", { name: "WATCH" })).not.toBeInTheDocument()
+      await userEvent.selectOptions(entityTypeSelect(modal), "company")
+      expect(inputStateSelect(modal)).toHaveValue("")
+      expect(within(inputStateSelect(modal)).getByRole("option", { name: "WATCH" })).toBeInTheDocument()
+      expect(within(inputStateSelect(modal)).queryByRole("option", { name: "PASSED_JD" })).not.toBeInTheDocument()
+    }, 20000)
+
+    it("Edit Save PUT body includes entity_type", async () => {
+      let putBody: Record<string, unknown> | null = null
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => adminCandidates } as Response
+        if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [dispatchTask] } as Response
+        if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => taskKeysConfig } as Response
+        if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => stateOpts } as Response
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+        if (url.startsWith("/api/admin/dispatch_tasks/") && init?.method === "PUT") {
+          putBody = JSON.parse(String(init.body))
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return { ok: false, json: async () => ({}) } as Response
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
+      await userEvent.selectOptions(entityTypeSelect(modal), "company")
+      await userEvent.selectOptions(inputStateSelect(modal), "WATCH")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBody).not.toBeNull())
+      expect(putBody!.entity_type).toBe("company")
+      expect(putBody!.trigger_state).toBe("WATCH")
+    }, 20000)
+
+    it("Add Save POST body includes entity_type", async () => {
+      let postBody: Record<string, unknown> | null = null
+      localStorage.setItem("astral_selected_candidate", "c1")
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => adminCandidates } as Response
+        if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [dispatchTask] } as Response
+        if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => taskKeysConfig } as Response
+        if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => stateOpts } as Response
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks" && init?.method === "POST") {
+          postBody = JSON.parse(String(init.body))
+          return { ok: true, json: async () => ({ id: 99 }) } as Response
+        }
+        return { ok: false, json: async () => ({}) } as Response
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      await userEvent.selectOptions(within(modal).getAllByRole("combobox")[0], "scan_jobs")
+      await userEvent.selectOptions(entityTypeSelect(modal), "company")
+      await userEvent.selectOptions(inputStateSelect(modal), "WATCH")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(postBody).not.toBeNull())
+      expect(postBody!.entity_type).toBe("company")
+      expect(postBody!.trigger_state).toBe("WATCH")
+      expect(postBody!.candidate_id).toBe("c1")
+    }, 20000)
+  })
+
 })
