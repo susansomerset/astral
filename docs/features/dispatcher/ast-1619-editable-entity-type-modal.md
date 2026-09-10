@@ -94,3 +94,39 @@ No other files. No API/data changes. Does not make Candidate editable on Add. Do
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1619
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1616/AST-1619-editable-entity-type-modal` @ `95601ca6f6a1d1248ebb6e7b000927da89aa112c`
+
+## Traceability
+
+Child AC1→Stage 1 step 3 (`<select>` replaces readOnly Entity Type input); AC2→Stage 1 steps 1–3 (`inputStatesForEntity` + onChange clears invalid `trigger_state`); AC3→Stage 1 step 4 (Candidate row untouched). Save payloads add `entity_type` (parent Functional/Technical scope). Parent AC3–AC6 N/A — AST-1618 API/data sibling.
+
+## Findings
+
+### acceptable — Procedure — Assignee at fetch
+
+**Location:** Linear AST-1619
+**Finding:** Status `Plan Ready` but assignee was Katherine Johnson, not Joan, at `get-issue` time.
+**Recommendation:** Chuckles restores implementer after posting; no plan defect.
+
+### discuss — Plan structure — Missing Self-Assessment block
+
+**Location:** plan doc
+**Finding:** No `## Self-Assessment` / confidence section (same gap as AST-1618).
+**Recommendation:** Optional add; stages + explicit scope gate + UAT fitness are otherwise complete.
+
+### discuss — Edit task-key change — Stale Input State (pre-existing)
+
+**Location:** `taskKeyChangePatch` / Task `onChange` Edit branch
+**Finding:** Add path resets `trigger_state` on Task change; Edit path only patches `entity_type` via `taskKeyChangePatch` and may leave a `trigger_state` invalid for the new catalog entity until the admin changes Entity Type or Input State manually.
+**Recommendation:** Out of child AC (entity-change clearing is covered). Optional follow-up if UAT hits Edit+Task-change; not blocking this ticket.
+
+**Considered:** (in-session — corpus present; cited ui patterns/statutes + universal orch.* conform; no `violates`)
+
+context_tokens≈45000
