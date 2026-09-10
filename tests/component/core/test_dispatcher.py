@@ -92,6 +92,13 @@ def _stub_scheduler_boot_provisions(monkeypatch: pytest.MonkeyPatch) -> None:
                 }
             ),
         )
+    # AST-1623: UPDATE-only ingress/notify entity_type correction on boot.
+    if hasattr(dispatcher_mod, "correct_meteorite_ingress_dispatch_entity_types"):
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "correct_meteorite_ingress_dispatch_entity_types",
+            MagicMock(return_value={"scanned": 0, "updated": 0, "task_keys": []}),
+        )
 
 
 class TestDispatchWrappers:
@@ -2773,4 +2780,124 @@ class TestAst1135GazeEmailDueTasks:
         monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
         assert dispatcher_mod.run_task(55, ui_initiated=True) is True
         assert captured[0]["available_count"] == 4
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "correct_meteorite_ingress_dispatch_entity_types"),
+    reason="AST-1623 meteorite entity_type correction not on this publish tip",
+)
+class TestAst1623MeteoriteLedgerAndBackfill:
+    """AST-1623: ingress/notify ledger entity_type=meteorite + NULL→meteorite correction."""
+
+    @pytest.mark.asyncio
+    async def test_ingress_ledger_entity_type_meteorite(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_stage_meteorite", runner)
+        monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", AsyncMock())
+        monkeypatch.setattr(meteorite_mod, "run_land_meteorite", AsyncMock())
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock())
+        tk = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]
+        task = {"id": 1623, "task_key": tk, "candidate_id": None, "auto_mode": 1, "debug": 0}
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[1623] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        assert save_ledger.call_args.kwargs.get("entity_type") == "meteorite"
+
+    @pytest.mark.asyncio
+    async def test_notify_ledger_entity_type_meteorite(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_notify_meteorite_bot_blocked", runner)
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock())
+        tk = dispatcher_mod.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
+        task = {"id": 16231, "task_key": tk, "candidate_id": None, "auto_mode": 1, "debug": 0}
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[16231] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        assert save_ledger.call_args.kwargs.get("entity_type") == "meteorite"
+
+    def test_correct_null_entity_type_ingress_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ingress = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG
+        notify_tk = dispatcher_mod.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
+        rows = [
+            {"id": 1, "task_key": ingress["stage_task_key"], "entity_type": None},
+            {"id": 2, "task_key": ingress["scrape_task_key"], "entity_type": ""},
+            {"id": 3, "task_key": ingress["land_task_key"], "entity_type": "meteorite"},
+            {"id": 4, "task_key": notify_tk, "entity_type": None},
+            {"id": 5, "task_key": "meteorite_retention", "entity_type": None},
+            {"id": 6, "task_key": "grade_do", "entity_type": None},
+        ]
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        updates: list[tuple[int, dict]] = []
+
+        def _upd(tid: int, **kwargs):
+            updates.append((int(tid), dict(kwargs)))
+
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", _upd)
+        out = dispatcher_mod.correct_meteorite_ingress_dispatch_entity_types()
+        assert out["scanned"] == 6
+        assert out["updated"] == 3
+        assert sorted(updates) == [
+            (1, {"entity_type": "meteorite"}),
+            (2, {"entity_type": "meteorite"}),
+            (4, {"entity_type": "meteorite"}),
+        ]
+        # Second call: already-corrected rows are no-ops.
+        rows[0]["entity_type"] = "meteorite"
+        rows[1]["entity_type"] = "meteorite"
+        rows[3]["entity_type"] = "meteorite"
+        updates.clear()
+        out2 = dispatcher_mod.correct_meteorite_ingress_dispatch_entity_types()
+        assert out2["updated"] == 0
+        assert updates == []
+
+    def test_start_scheduler_invokes_entity_type_correction(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dispatcher_mod._tick_thread = None
+        monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0))
+        _stub_scheduler_boot_provisions(monkeypatch)
+        corr = MagicMock(return_value={"scanned": 2, "updated": 1, "task_keys": ["stage_meteorite"]})
+        monkeypatch.setattr(dispatcher_mod, "correct_meteorite_ingress_dispatch_entity_types", corr)
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon = daemon
+
+            def start(self) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        dispatcher_mod.start_scheduler()
+        corr.assert_called_once_with()
 

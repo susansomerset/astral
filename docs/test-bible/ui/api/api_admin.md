@@ -671,3 +671,37 @@ Persist explicit `entity_type` on admin create/update; validate `trigger_state` 
 **Pass criterion:** pytest green on items 1–3 — not zero-arg harness / branch-lock gate.
 
 **Product note for test-child:** `test_caller_entity_overrides_catalog_sort` encodes Stage 1 Done-when (`entity_type=company` + `trigger_state=WATCH` on `grade_do`). Today `save_dispatch_task` calls `dispatch_task_admin_defaults(tk, trigger_state=…)` before applying the caller entity, so a trigger valid only for the chosen entity raises `ValueError` (API 500). Fix the data path so defaults fill does not require the request trigger to be valid for the catalog entity when the caller supplied `entity_type`.
+
+### AST-1623 · AST-1620
+
+**Parent:** [AST-1620 — Treat meteorite as a first-class dispatch entity_type](https://linear.app/astralcareermatch/issue/AST-1620/treat-meteorite-as-a-first-class-dispatch-entity-type). **Publish:** `origin/sub/AST-1620/AST-1623-admin-available-state-options-ledger`.
+
+Admin `state_options` exposes `meteorite` via `dispatch_entity_state_registry`; `list_dtasks` Available counts meteorite rows without requiring `candidate_id`; create/update accept `meteorite` via `ENTITY_TYPES` (no parallel enum). Dispatcher ingress/notify ledger writes `entity_type="meteorite"`; `correct_meteorite_ingress_dispatch_entity_types` UPDATE-only NULL→meteorite for ingress/notify keys (boot from `start_scheduler`). Count helper: **AST-1622**; registries/seeds: **AST-1621**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| state_options + Available + create | `src/ui/api/api_admin.py` | **`TestAst1623AdminMeteoriteStateOptionsAvail`** |
+| Ledger entity_type + correction + boot | `src/core/dispatcher.py` | **`TestAst1623MeteoriteLedgerAndBackfill`** |
+| Boot stub for correction | same | revised **`_stub_scheduler_boot_provisions`** |
+
+**Broken / obsolete:** `_stub_scheduler_boot_provisions` — stub `correct_meteorite_ingress_dispatch_entity_types` so start_scheduler unit tests stay DB-free (correction was try/except-swallowed before).
+
+**Integration:** none — no existing scenario asserts meteorite state_options / NULL-cid Available / ingress ledger entity_type; do not invent.
+
+## QA test manifest
+
+1. Admin state_options + Available + create: `tests/component/ui/api/test_api_admin.py::TestAst1623AdminMeteoriteStateOptionsAvail`
+2. Ledger + correction + boot: `tests/component/core/test_dispatcher.py::TestAst1623MeteoriteLedgerAndBackfill`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1623AdminMeteoriteStateOptionsAvail \
+  tests/component/core/test_dispatcher.py::TestAst1623MeteoriteLedgerAndBackfill \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–2 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/ui/api/api_admin.md` — *(filled after publish)*
+
