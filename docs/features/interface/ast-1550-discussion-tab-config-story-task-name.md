@@ -1,3 +1,95 @@
+<!-- linear-archive: AST-1550 archived 2026-09-09 -->
+
+## Linear archive (AST-1550)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1550/discussion-tab-config-story-task-name-add-discussion-tab-to  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1541 — Add "Discussion" tab to Recommended Job modal  
+**Blocked by / blocks / related:** parent: AST-1541; blocks: AST-1551
+
+### Description
+
+## What this implements
+
+Register Discussion on `JOBS_RECOMMENDED_REPORT_TOP_TABS`, expose the ordered nine-hop section list (keys + `task_name` labels, all `default_expanded: false`) on the UI manifest, and enrich `get_entity_agent_story` with `task_name`. Does not own the React Discussion pane (#2).
+
+## Citations
+
+`astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`, `astral.config.config-source-of-truth`.
+
+## Scope
+
+`src/utils/config.py` (Discussion top tab + hop-order source); `src/ui/api/api_system.py` (manifest Discussion sections); `src/core/agent.py` (`task_name` on story entries).
+
+## Acceptance criteria
+
+1. Opening a Recommended job shows top tabs Summary | Analysis | Artifacts | **Discussion** (Discussion immediately after Artifacts).
+2. Each header displays that hop’s `agent_task.task_name` when set; otherwise `task_key`.
+   (Partial — this child delivers the config/manifest/`task_name` data the UI consumes.)
+
+## Boundaries
+
+Does not own the React Discussion pane (#2). Does not change Job Detail / Company Detail Agent Story tabs, artifact generation, or Analysis/Summary bodies.
+
+## Notes for planning
+
+Citations as above. Domain: config + api_system + agent story enrichment.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1541-discussion-tab-recommended-job-modal`, child `sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` at dispatch-parent.
+
+## QA test manifest
+
+1. Config tabs + hop walk: `tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys`
+2. Revised report tabs (AST-948→1550): `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`
+3. Manifest Discussion sections: `tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections`
+4. Story `task_name`: `tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
+  tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`):
+
+* `docs/test-bible/utils/config.md` — `77ae16f020017456850494ea0a35c9bce4a0194a2daa554e25f3cfa2b0383c3b`
+* `docs/test-bible/ui/api/api_system.md` — `51c73a48f1b0fba90d014929571dc4ec91a6f53b3aff572bac299dee07b72143`
+* `docs/test-bible/core/agent.md` — `4feac54b2ba1c856d89af3902f9b4c10b07e16c79f5eb3687fcd05981ef45d84`
+
+### Comments
+
+#### chuckles — 2026-08-31T21:22:05.638Z
+[merge-child] blocked: git pull merge on sub — `Merge remote-tracking branch 'origin/dev' into sub/AST-1541/AST-1550-…` @ 25b54b38 — @Ada Lovelace please drop that merge and merge origin/ftr/AST-1541-discussion-tab-recommended-job-modal instead, then republish.
+
+#### chuckles — 2026-08-31T21:21:31.703Z
+[merge-child] blocked: git pull merge on sub — `Merge remote-tracking branch 'origin/dev' into sub/AST-1541/AST-1550-…` @ 25b54b38 — @Ada Lovelace please drop that merge and merge origin/ftr/AST-1541-discussion-tab-recommended-job-modal instead, then republish.
+
+#### betty — 2026-08-31T21:18:20.695Z
+`origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `9d57e822` · Toast bleed dropped
+
+#### radia — 2026-08-31T21:16:32.882Z
+[code-rubric] REVIEW (Commit: 814c237c) Sibling Toast tests orphan
+
+#### betty — 2026-08-31T21:11:16.339Z
+`origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `814c237c` · Discussion QA ready
+
+#### joan — 2026-08-31T21:01:58.076Z
+[plan-rubric] PROCEED (Commit: 6a05e07) config manifest task_name
+
+#### ada — 2026-08-31T20:59:31.751Z
+`origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `6a05e07e893fa93469e42cb0547da4b277711981` · plan ready
+
+---
+
 # AST-1550 — Discussion tab config + story task_name
 
 **Linear:** [AST-1550](https://linear.app/astralcareermatch/issue/AST-1550/discussion-tab-config-story-task-name-add-discussion-tab-to-recommended)  
