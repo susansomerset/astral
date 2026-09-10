@@ -939,9 +939,11 @@ def list_dtasks():
             row["available_count"] = int(bound_counts.get(cid_s, 0)) if cid_s else 0
         else:
             try:
-                row["available_count"] = (
-                    database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
-                )
+                # Meteorite claim pool is global — count without requiring candidate_id (AST-1623).
+                if et and ts and (cid or et == "meteorite"):
+                    row["available_count"] = database.count_eligible_for_dispatch_task(row)
+                else:
+                    row["available_count"] = 0
             except Exception as exc:
                 logger.warning(
                     "list_dtasks: available_count failed for dispatch_task id=%s task_key=%r: %s",
@@ -1050,6 +1052,7 @@ def dispatch_task_state_options():
         "job": list(JOB_STATES.keys()),
         "company": list(COMPANY_STATES.keys()),
         "candidate": list(CANDIDATE_STATES.keys()),
+        "meteorite": list(dispatch_entity_state_registry("meteorite").keys()),
     })
 
 
