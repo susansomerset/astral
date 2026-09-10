@@ -51,6 +51,16 @@ function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMe
   }
 }
 
+function inputStatesForEntity(
+  entityType: string,
+  options: { job: string[]; company: string[]; candidate: string[] },
+): string[] {
+  if (Object.prototype.hasOwnProperty.call(options, entityType)) {
+    return options[entityType as keyof typeof options]
+  }
+  return []
+}
+
 interface DispatchTask {
   id: number
   candidate_id: string | null
@@ -325,13 +335,7 @@ export default function ScheduledActions() {
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
   const [maxRunsFilter, setMaxRunsFilter] = useState("")
   const inputStateOptions = useMemo(
-    () => (
-      form.entity_type === "company"
-        ? stateOptions.company
-        : form.entity_type === "candidate"
-          ? stateOptions.candidate
-          : stateOptions.job
-    ),
+    () => inputStatesForEntity(form.entity_type, stateOptions),
     [form.entity_type, stateOptions],
   )
 
@@ -623,6 +627,7 @@ export default function ScheduledActions() {
             min_count: parseInt(form.min_count, 10),
             trigger_state: form.trigger_state,
             task_key: form.task_key,
+            entity_type: form.entity_type,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
             score_floor: form.is_scored
@@ -652,6 +657,7 @@ export default function ScheduledActions() {
             candidate_id: form.candidate_id,
             task_key: form.task_key,
             trigger_state: form.trigger_state,
+            entity_type: form.entity_type,
             freq_hrs: parseFloat(form.freq_hrs) || 0,
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
@@ -907,7 +913,23 @@ export default function ScheduledActions() {
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Entity Type</span>
-                <input type="text" value={form.entity_type} readOnly style={{ opacity: 0.7 }} />
+                <select
+                  value={form.entity_type}
+                  onChange={e => {
+                    const next = e.target.value
+                    const nextStates = inputStatesForEntity(next, stateOptions)
+                    setForm({
+                      ...form,
+                      entity_type: next,
+                      trigger_state: nextStates.includes(form.trigger_state) ? form.trigger_state : "",
+                    })
+                  }}
+                >
+                  <option value="">Select…</option>
+                  {Object.keys(stateOptions).map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Input State</span>
