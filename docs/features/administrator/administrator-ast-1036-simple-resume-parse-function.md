@@ -238,6 +238,15 @@ if task_key == "craft_resume_base":
 
 `python3 -m compileall -q src/utils/config.py src/core/agent.py`; then assert `simple_resume_parse` is in `TASK_CONFIG` and shares the exact `response_schema` object with `craft_resume_base`. No edits under `tests/`.
 
+#### Code Rules check
+
+- **§1.1 / in-scope-only:** No Admin wire, no Open HTML, no Judith prompt edits.
+- **§1.3 DRY:** One `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` shared by both task keys; normalize function reused.
+- **§1.4 / no-hardcoded-sets:** Task key lives in `TASK_CONFIG` + `agent_task` seed; normalize membership is `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` in `config.py` — `agent.py` does not grow an inline tuple/frozenset.
+- **§2.1 config source of truth:** Schema, task meta, and normalize membership in `config.py`; prompts in `agent_task` seed.
+- **§2.2 / do-task delegation:** Task is only reachable via `do_task` once a caller (sibling) invokes it — no new direct LLM calls.
+- **§3.3 imports:** `agent.py` imports `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` with `TASK_CONFIG`; keeps the existing lazy import of `normalize_craft_resume_base_agent_payload`.
+
 #### Revisions
 
 Revision 1 — 2026-07-29. Driven by Joan `[plan-discuss] round=1 concern`: Stage 3 originally used an inline `task_key in ("craft_resume_base", "simple_resume_parse")` membership set in `agent.py`, which violates `astral.standards.no-hardcoded-sets` / §1.4 (allowed-value sets must live in `config.py`; growing the set later would re-touch `agent.py`). Fix: Stage 1 adds `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` in `config.py`; Stage 3 gates the normalize call via that constant; Files Changed + Code Rules check updated to match. Joan re-review: **APPROVED** (tip `fd31b3b4`).
@@ -327,6 +336,16 @@ Ada self-assessment (plan `a81c4939`): Scope Single-Component — one core call-
 #### Stage 3: Compile check (plan-owned files only)
 
 `python3 -m compileall -q src/core/candidate.py src/ui/api/api_admin.py`; optional venv sanity that `simple_resume_parse` is in `TASK_CONFIG`. No edits under `tests/`.
+
+#### Code Rules check
+
+- **§1.1 / in-scope-only:** No Judith craft / Open HTML / Paste chrome / sibling catalog edits.
+- **§1.4 / no-hardcoded-sets:** No new membership frozensets; single task-key literal at the existing call site (catalog key authored in AST-1037 config).
+- **§2.1 / config source of truth:** Task meta/schema remain in `TASK_CONFIG` from AST-1037; this ticket only selects that key.
+- **§2.2 / do-task delegation:** Still reaches the model only via `do_task`.
+- **§1.5.1 / debug-contract-gated:** Preserve existing Style D gated on `debug=True`; no new ungated debug lines.
+- **§3.3 imports:** UI stays ui → core; no new data imports in Admin route.
+- **pattern.ui.admin-endpoint / require-auth:** Route stays thin + `@require_admin`.
 
 #### Comments
 
