@@ -106,7 +106,7 @@ Equivalent harness:
 
 ### AST-802 · AST-801
 
-**AST-802:** When **`inflow_discovery`** dispatch loop skips for **`available < min_count`** at first iteration with **`debug=True`**, emit eligibility reason via **`database.describe_candidate_inflow_discovery_eligibility`** → **`logger.debug_detail`**. Narrow exception to **AST-615** no log-string policy — **`eligibility:`** substring only.
+**AST-802:** When **`inflow_discovery`** dispatch loop skips for **`available < min_count`** at first iteration, emit eligibility reason via **`database.describe_candidate_inflow_discovery_eligibility`** → **`logger.debug`**. Narrow exception to **AST-615** no log-string policy — **`eligibility:`** substring only.
 
 | Behavior | Sources | Manifest tests |
 | --- | --- | --- |
@@ -184,12 +184,12 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 
 ### AST-1022 · AST-1018
 
-**AST-1022:** Candidate stage-dispatch rows seed **AUTO off** from `CANDIDATE_STAGE_DISPATCH.auto_mode`; `ensure_candidate_stage_dispatch_tasks` reads config (insert-missing only — never rewrites existing `auto_mode`). Tick Style D helper `_debug_log_auto_off_stage_skips` logs AUTO-off + `debug` stage rows that meet `min_count` (index N/M); does not spawn. `get_due_tasks` / CLICK `run_task(..., ui_initiated=True)` unchanged.
+**AST-1022:** Candidate stage-dispatch rows seed **AUTO off** from `CANDIDATE_STAGE_DISPATCH.auto_mode`; `ensure_candidate_stage_dispatch_tasks` reads config (insert-missing only — never rewrites existing `auto_mode`). Tick helper `_debug_log_auto_off_stage_skips` logs AUTO-off + `debug` stage rows that meet `min_count` (`Beginning`/`Calling`/`End`); does not spawn. `get_due_tasks` / CLICK `run_task(..., ui_initiated=True)` unchanged.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Config seed `auto_mode: False` | `src/utils/config.py` | **`TestAst1022HonorAutoOffStageDispatch`** (`test_config.py`) |
-| Ensure seed + persist; Style D skip; tick calls helper before spawn | `src/core/dispatcher.py` | **`TestAst1022HonorAutoOffStageDispatch`**; revised **`_run_one_tick`** / **`TestScheduler`** (list_dispatch_tasks stub) |
+| Ensure seed + persist; AUTO-off skip debug; tick calls helper before spawn | `src/core/dispatcher.py` | **`TestAst1022HonorAutoOffStageDispatch`**; revised **`_run_one_tick`** / **`TestScheduler`** (list_dispatch_tasks stub) |
 
 **Broken / obsolete:** tick unit helpers must stub `list_dispatch_tasks` (new side path) — same DB-free contract as AST-972 `age_stale` stub.
 

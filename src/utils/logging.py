@@ -20,22 +20,14 @@ when unset, candidate_id is NULL. Callers that want a stamp set the
 contextvar (dispatcher/UI wiring is out of AST-1598 scope — this module
 only defines and reads it).
 
+The `log_debug` context var is the emit gate for `logger.debug` (stat.logging.debug).
+The run entry sets it; call sites always call `logger.debug` and do not inspect it.
+
 Usage:
     from src.utils.logging import get_logger
 
-    logger = get_logger(__name__, debug_flag=debug)
-    logger.set_debug_flag(debug)
-    logger.debug_index(
-        func="module.batch_fn",
-        index=1,
-        total=10,
-        identifier="acme",
-        outcome="passed",
-    )
-    logger.debug_detail("hits=3")
-    logger.debug_detail_block(long_multiline_text)
-
-    logger.debug("Debug message")  # Automatically prefixed with "[ ~ ] "
+    logger = get_logger(__name__)
+    logger.debug("Beginning filename loop on %s items", n)
     logger.info("Info message")
     logger.warning("Warning message")
     logger.error("Error message")
@@ -55,6 +47,7 @@ log_batch_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 log_candidate_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "log_candidate_id", default=None
 )
+log_debug: contextvars.ContextVar[bool] = contextvars.ContextVar("log_debug", default=False)
 
 _FLUSH_THRESHOLD = 50
 
@@ -203,22 +196,28 @@ def log_llm_batch_summary(
 
 
 class _PrefixedLogger:
-    """Logger wrapper that adds '[ ~ ] ' prefix to all debug messages"""
+    """Facade over stdlib Logger. `debug()` is gated by `log_debug`, not the call site."""
 
     def __init__(self, base_logger: logging.Logger, debug_flag: bool = False):
-        """Initialize with a base logger from logging.getLogger()"""
+        """Initialize with a base logger from logging.getLogger().
+
+        Do not `log_debug.set(False)` here — module import would clobber a live run.
+        """
         self._logger = base_logger
-        # Apply flag + named-logger level together (same path as explicit set_debug_flag).
-        self.set_debug_flag(debug_flag)
+        self._debug_flag = bool(debug_flag)
+        if debug_flag:
+            self._logger.setLevel(logging.DEBUG)
+            log_debug.set(True)
 
     def set_debug_flag(self, flag: bool):
-        """Set the debug flag for debug-gated helpers (.test / debug_index / detail).
+        """Set the run debug flag for leftover Style D helpers (.test / debug_index).
 
-        Raises the named logger to DEBUG when enabled so Logger.debug reaches handlers;
-        restores INFO when disabled so bare .debug() does not leak after a debug run.
+        Also sets `log_debug` so `logger.debug` emits in this context.
+        Raises the named logger to DEBUG when enabled so records reach handlers.
         Does not raise the root logger (avoids third-party httpcore DEBUG flood).
         """
-        self._debug_flag = flag
+        self._debug_flag = bool(flag)
+        log_debug.set(bool(flag))
         if flag:
             self._logger.setLevel(logging.DEBUG)
         elif self._logger.level == logging.DEBUG:
@@ -229,8 +228,13 @@ class _PrefixedLogger:
         return self._logger.isEnabledFor(level)
 
     def debug(self, message: str, *args, **kwargs):
-        """Debug logging with '[ ~ ] ' prefix"""
-        self._logger.debug(f"[ ~ ] {message}", *args, **kwargs)
+        """Always-call debug. Emits `{lineno}: {message}` only when `log_debug` is true."""
+        if not log_debug.get():
+            return
+        lineno = sys._getframe(1).f_lineno
+        if self._logger.level > logging.DEBUG:
+            self._logger.setLevel(logging.DEBUG)
+        self._logger.debug("%s: " + str(message), lineno, *args, **kwargs)
 
     def test(self, message: str):
         """Test logging - uses DEBUG level but only when debug flag is set.
@@ -299,16 +303,12 @@ def get_logger(name: Optional[str] = None, debug_flag: bool = False) -> _Prefixe
 
     Args:
         name: Module name (typically __name__). If None, returns root logger.
-        debug_flag: If True, .test() method will log messages (default: False)
+        debug_flag: If True, enable leftover Style D helpers and set `log_debug`
+            for this context. Prefer the run entry `log_debug.set(True)`.
 
     Returns:
-        Logger instance with debug prefix support
-
-    Example:
-        logger = get_logger(__name__, debug_flag=True)
-        logger.debug("This will have [ ~ ] prefix")
-        logger.test("This will only log if debug_flag is True")
-        logger.info("This will not have prefix")
+        Logger instance. `debug()` stamps the caller line and emits only when
+        `log_debug` is true.
     """
     base_logger = logging.getLogger(name)
 

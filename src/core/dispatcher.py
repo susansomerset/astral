@@ -52,7 +52,7 @@ from src.utils.config import (
     DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
-from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
+from src.utils.logging import get_logger, log_batch_id, log_debug, flush_log_buffer
 
 logger = get_logger(__name__)
 
@@ -82,17 +82,6 @@ def _is_meteorite_retention_task_key(task_key: str) -> bool:
     return (task_key or "").strip() == METEORITE_RETENTION_CONFIG["task_key"]
 
 
-def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
-    """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
-    if entity_type == "job":
-        return str(row.get("astral_job_id") or row.get("company") or "?")
-    if entity_type == "company":
-        return str(row.get("short_name") or row.get("company") or "?")
-    if entity_type == "candidate":
-        return str(row.get("astral_candidate_id") or row.get("candidate_id") or "?")
-    return str(row.get("id") or "?")
-
-
 def _task_key_scored(task_key: str) -> bool:
     return dispatch_task_key_is_scored(task_key)
 
@@ -104,10 +93,14 @@ def _trigger_state_scored(trigger_state: Optional[str], task_key: str) -> bool:
 async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
     """Run the first entity sequentially to warm the cache, wait for cache_warm_delay_seconds,
     then fire the rest concurrently. Gives Anthropic time to commit the cache entry."""
+    n = len(entities)
+    logger.debug("Beginning gather loop on %s items", n)
     if not entities:
+        logger.debug("End gather loop after %s items", n)
         return []
     first = await one_fn(entities[0])
     if len(entities) == 1:
+        logger.debug("End gather loop after %s items", n)
         return [first]
     delay = ASTRAL_CONFIG.get("cache_warm_delay_seconds", 1.0)
     if delay > 0:
@@ -132,6 +125,7 @@ async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
             cleaned.append({**zero, "total_processed": 1, "total_errors": 1})
         else:
             cleaned.append(r)
+    logger.debug("End gather loop after %s items", n)
     return cleaned
 
 
@@ -506,19 +500,12 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     Other batch_call_mode=1 runners: single consult pass for all claimed rows.
     batch_call_mode=0: per-job _warm_then_gather (legacy rows, companies, fetch_jd, …)."""
     if not check_internet_reachable():
-        if debug:
-            logger.set_debug_flag(True)
-            logger.debug_index(
-                func="dispatcher._run_unified",
-                index=1,
-                total=1,
-                identifier=(task.get("task_key") or "?").strip() or "?",
-                outcome="skipped — network unreachable",
-            )
-            logger.debug_detail(
-                f"entity_type={task.get('entity_type', '')!r} "
-                f"trigger_state={task.get('trigger_state', '')!r}"
-            )
+        logger.debug(
+            "skipped — network unreachable task_key=%s entity_type=%s trigger_state=%s",
+            task.get("task_key"),
+            task.get("entity_type"),
+            task.get("trigger_state"),
+        )
         logger.warning(
             "%s | dispatch %s skipped — network unreachable\n  The batch is not running",
             ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
@@ -545,8 +532,6 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     if entity_type == "candidate":
         use_full_batch = False
     s               = dict(_SUMMARY_ZERO)
-    if debug:
-        logger.set_debug_flag(True)
 
     claim_cap = None
     claim_states: Optional[List[str]] = None
@@ -560,12 +545,20 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         if raw_in == stage_trigger or (parsed_in and parsed_in[0] == stage_trigger):
             from src.core.candidate import requested_artifacts_dispatch_claim_states
             claim_states = requested_artifacts_dispatch_claim_states()
+        logger.debug(
+            "Calling get_new_candidate_batch: [state=%s, limit=%s, sort_by=%s, batch_id=%s, states=%s]",
+            input_state, limit, sort_by, bid, claim_states,
+        )
         bid, entities = get_new_candidate_batch(
             input_state,
             limit=limit,
             sort_by=sort_by,
             batch_id=bid,
             states=claim_states,
+        )
+        logger.debug(
+            "Response from get_new_candidate_batch: %s entities batch=%s",
+            len(entities), bid,
         )
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
@@ -584,6 +577,10 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 (input_state or "").strip(),
                 task_key_run,
             )
+        logger.debug(
+            "Calling get_new_job_batch: [state=%s, limit=%s, sort_by=%s, score_floor=%s, candidate_id=%s, batch_id=%s, claim_cap=%s, states=%s]",
+            input_state, limit, sort_by, floor, candidate_id, bid, claim_cap, claim_states,
+        )
         bid, entities = get_new_job_batch(
             input_state,
             limit=limit,
@@ -593,6 +590,10 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             batch_id=bid,
             claim_cap=claim_cap,
             states=claim_states,
+        )
+        logger.debug(
+            "Response from get_new_job_batch: %s entities batch=%s",
+            len(entities), bid,
         )
         if is_dispatch_chain_trigger((input_state or "").strip()):
             entities = [
@@ -611,6 +612,10 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         resolve_key = INFLOW_CONFIG["resolve"]["task_key"]
         floor = float(task["score_floor"]) if task.get("score_floor") is not None else None
         claim_states = dispatch_claim_states(input_state, "company")
+        logger.debug(
+            "Calling get_new_company_batch: [state=%s, limit=%s, candidate_id=%s, batch_id=%s, sort_by=%s, scan_interval_hours=%s, score_floor=%s, states=%s]",
+            input_state, limit, candidate_id, bid, sort_override, scan_override, floor, claim_states,
+        )
         bid, entities = get_new_company_batch(
             input_state,
             limit=limit,
@@ -624,52 +629,21 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             states=claim_states,
             exclude_prefilter_second_strike=(dispatch_task_key == "fetch_website"),
         )
+        logger.debug(
+            "Response from get_new_company_batch: %s entities batch=%s",
+            len(entities), bid,
+        )
 
+    entity_total = len(entities)
+    logger.debug("Beginning %s claim loop on %s items", entity_type, entity_total)
+    logger.debug("End %s claim loop after %s items", entity_type, entity_total)
     if not entities:
         if entity_type == "job" and bid:
             clear_job_batch(bid)
         elif entity_type == "candidate" and bid:
             clear_candidate_batch(bid)
-        if debug:
-            logger.debug_index(
-                func="dispatcher._run_unified",
-                index=1,
-                total=1,
-                identifier=f"{entity_type}/{input_state}",
-                outcome="no entities claimed",
-            )
-            logger.debug_detail(
-                f"task_key={dispatch_task_key} batch_id={bid} batch_call_mode={batch_call_mode} "
-                f"dispatch batch_size={limit!r}"
-            )
         return s
 
-    entity_total = len(entities)
-    if debug:
-        logger.debug_index(
-            func="dispatcher._run_unified",
-            index=1,
-            total=1,
-            identifier=f"{entity_type}/{input_state}",
-            outcome=f"claimed {entity_total} entity/entities",
-        )
-        logger.debug_detail(
-            f"task_key={dispatch_task_key} batch_id={bid} batch_call_mode={batch_call_mode} "
-            f"dispatch batch_size={limit!r} claim_cap={claim_cap!r}"
-            + (f" claim_states={claim_states!r}" if claim_states is not None else "")
-        )
-        for ei, entity in enumerate(entities, start=1):
-            logger.debug_index(
-                func="dispatcher._run_unified",
-                index=ei,
-                total=entity_total,
-                identifier=_dispatch_entity_identifier(entity_type, entity),
-                outcome="claimed",
-            )
-            logger.debug_detail(
-                f"entity_type={entity_type} trigger_state={input_state} "
-                f"state={entity.get('state')!r}"
-            )
     try:
         if use_full_batch:
             job_tk = task.get("task_key", "") if entity_type == "job" else ""
@@ -683,23 +657,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             if use_chunk_split:
                 chunk_sz = int(task["batch_size"])
                 chunks = [entities[i : i + chunk_sz] for i in range(0, len(entities), chunk_sz)]
-                if debug:
-                    chunk_total = len(chunks)
-                    for ci, chunk_rows in enumerate(chunks):
-                        logger.debug_index(
-                            func="dispatcher._run_unified",
-                            index=ci + 1,
-                            total=chunk_total,
-                            identifier=f"chunk task_key={dispatch_task_key}",
-                            outcome=f"consult chunk size={len(chunk_rows)}",
-                        )
-                        logger.debug_detail(
-                            f"batch_id={bid} batch_chunk_index={ci} chunk_width={chunk_sz} "
-                            f"entities_in_chunk={len(chunk_rows)}"
-                        )
+                logger.debug("Beginning consult chunk loop on %s items", len(chunks))
 
                 async def _consult_chunk(ci: int, chunk_rows: List[Dict[str, Any]]) -> Dict[str, Any]:
-                    return await consult.run_consult_task(
+                    logger.debug(
+                        "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=%s, batch=%s, task_key=%s]",
+                        entity_type, input_state, len(chunk_rows), bid, dispatch_task_key,
+                    )
+                    result = await consult.run_consult_task(
                         entity_type,
                         input_state,
                         chunk_rows,
@@ -709,6 +674,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                         batch_chunk_index=ci,
                         dispatch_task_key=dispatch_task_key,
                     )
+                    logger.debug("Response from consult.run_consult_task: %s", result)
+                    return result
 
                 head = await _consult_chunk(0, chunks[0])
                 delay_sec = float(ASTRAL_CONFIG.get("cache_warm_delay_seconds", 1.0))
@@ -720,25 +687,35 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 for piece in [head] + list(tail):
                     for k in s:
                         s[k] += piece.get(k, 0)
+                logger.debug("End consult chunk loop after %s items", len(chunks))
             else:
+                logger.debug(
+                    "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=%s, batch=%s, task_key=%s]",
+                    entity_type, input_state, len(entities), bid, dispatch_task_key,
+                )
                 result = await consult.run_consult_task(
                     entity_type, input_state, entities, bid, ctx, debug,
                     dispatch_task_key=dispatch_task_key,
                 )
+                logger.debug("Response from consult.run_consult_task: %s", result)
                 for k in s:
                     s[k] += result.get(k, 0)
         else:
             async def _one(e):
-                return await consult.run_consult_task(
+                logger.debug(
+                    "Calling consult.run_consult_task: [entity_type=%s, state=%s, n=1, batch=%s, task_key=%s]",
+                    entity_type, input_state, bid, dispatch_task_key,
+                )
+                result = await consult.run_consult_task(
                     entity_type, input_state, [e], bid, ctx, debug,
                     dispatch_task_key=dispatch_task_key,
                 )
+                logger.debug("Response from consult.run_consult_task: %s", result)
+                return result
             results = await _warm_then_gather(_one, entities, _SUMMARY_ZERO)
             for r in results:
                 for k in s:
                     s[k] += r.get(k, 0)
-        if debug and entity_total > 0:
-            logger.debug_detail(f"batch end summary={s}")
     finally:
         if entity_type == "job":
             clear_job_batch(bid)
@@ -756,18 +733,16 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
 _CIRCUIT_BREAKER_THRESHOLD = 3  # consecutive zero-progress runs before auto-disable
 
 
-def _check_circuit_breaker(task_key: str, candidate_id: str, task_id: int, debug: bool) -> None:
+def _check_circuit_breaker(task_key: str, candidate_id: str, task_id: int) -> None:
     """Auto-disable a dispatch task if the last N completed runs all had 0 passed and 0 failed."""
     recent = database.get_recent_ledger_summaries(task_key, candidate_id, n=_CIRCUIT_BREAKER_THRESHOLD)
     if len(recent) < _CIRCUIT_BREAKER_THRESHOLD:
         return
     if all(r.get("total_passed", 0) == 0 and r.get("total_failed", 0) == 0 for r in recent):
-        if debug:
-            logger.set_debug_flag(True)
-            logger.debug_detail(
-                f"circuit breaker: task_key={task_key} candidate_id={candidate_id} "
-                f"task_id={task_id} consecutive_zero_progress={_CIRCUIT_BREAKER_THRESHOLD}"
-            )
+        logger.debug(
+            "circuit breaker: task_key=%s candidate_id=%s task_id=%s consecutive_zero_progress=%s",
+            task_key, candidate_id, task_id, _CIRCUIT_BREAKER_THRESHOLD,
+        )
         logger.warning(
             "%s | dispatch %s task_id=%s\n  %d consecutive runs with 0 passed / 0 failed\n  This task will not AUTO until re-enabled",
             candidate_id or "-",
@@ -780,24 +755,15 @@ def _check_circuit_breaker(task_key: str, candidate_id: str, task_id: int, debug
 
 async def _run_task(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Run a single batch through the unified runner. Returns summary counts."""
-    bid = log_batch_id.get()
-    task_key = (task.get("task_key") or "").strip()
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_index(
-            func="dispatcher._run_task",
-            index=1,
-            total=1,
-            identifier=task_key or "?",
-            outcome="running batch",
-        )
-        logger.debug_detail(
-            f"batch_size={task.get('batch_size')} batch_id={bid} "
-            f"entity_type={task.get('entity_type')!r} trigger_state={task.get('trigger_state')!r}"
-        )
+    logger.debug(
+        "Calling _run_unified: [task_key=%s, batch_size=%s, entity_type=%s, trigger_state=%s]",
+        (task.get("task_key") or "").strip(),
+        task.get("batch_size"),
+        task.get("entity_type"),
+        task.get("trigger_state"),
+    )
     summary = await _run_unified(task, ctx, debug)
-    if debug:
-        logger.debug_detail(f"runner returned summary={summary}")
+    logger.debug("Response from _run_unified: %s", summary)
     return summary
 
 
@@ -843,16 +809,24 @@ _tick_event = threading.Event()
 
 async def _dispatch_one(task: Dict) -> None:
     """Run a single dispatch task to completion inside its own asyncio event loop.
-    Registers the asyncio task for cancellation, writes ledger, clears registry on exit."""
+    Registers the asyncio task for cancellation, writes ledger, clears registry on exit.
+    Sets log_debug for this run; callees always call logger.debug (stat.logging.debug)."""
+    ui_initiated = bool(task.get("_ui_initiated"))
+    debug = bool(task.get("debug")) or (ui_initiated and is_local_deploy_env())
+    _dbg = log_debug.set(debug)
+    try:
+        await _dispatch_one_body(task, debug)
+    finally:
+        log_debug.reset(_dbg)
+
+
+async def _dispatch_one_body(task: Dict, debug: bool) -> None:
+    """Inner run. debug= is leftover for consult/meteorite until those audits; logging does not gate on it."""
     task_id = task["id"]
     task_key = task["task_key"]
     candidate_id = task["candidate_id"]
     timeout = ASTRAL_CONFIG.get("dispatch_timeout_seconds", 3600)
     is_click = not bool(task.get("auto_mode"))
-    ui_initiated = bool(task.get("_ui_initiated"))
-    debug = bool(task.get("debug")) or (ui_initiated and is_local_deploy_env())
-    if debug:
-        logger.set_debug_flag(True)
 
     # AST-1560: meteorite table transition runners — custom branch before mailbox / _run_unified.
     if _is_meteorite_ingress_transition_task_key(task_key):
@@ -869,18 +843,10 @@ async def _dispatch_one(task: Dict) -> None:
         }
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip() or None
-        if debug:
-            logger.debug_index(
-                func="dispatcher._dispatch_one",
-                index=1,
-                total=1,
-                identifier=task_key,
-                outcome="task start",
-            )
-            logger.debug_detail(
-                f"meteorite ingress transition entity_batch_id={entity_batch_id} "
-                f"candidate_id={ledger_cid!r} mode={'AUTO' if not is_click else 'CLICK'}"
-            )
+        logger.debug(
+            "Calling %s: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
+            runners[task_key].__name__, task_key, entity_batch_id, ledger_cid,
+        )
         database.save_dispatch_ledger(
             entity_batch_id,
             task_key,
@@ -900,6 +866,7 @@ async def _dispatch_one(task: Dict) -> None:
         final_status = "COMPLETED"
         try:
             summary = await runners[task_key](task, debug=debug)
+            logger.debug("Response from %s: %s", runners[task_key].__name__, summary)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
@@ -979,18 +946,10 @@ async def _dispatch_one(task: Dict) -> None:
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip() or None
-        if debug:
-            logger.debug_index(
-                func="dispatcher._dispatch_one",
-                index=1,
-                total=1,
-                identifier=task_key,
-                outcome="task start",
-            )
-            logger.debug_detail(
-                f"meteorite bot_blocked notify entity_batch_id={entity_batch_id} "
-                f"candidate_id={ledger_cid!r} mode={'AUTO' if not is_click else 'CLICK'}"
-            )
+        logger.debug(
+            "Calling run_notify_meteorite_bot_blocked: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
+            task_key, entity_batch_id, ledger_cid,
+        )
         database.save_dispatch_ledger(
             entity_batch_id,
             task_key,
@@ -1010,6 +969,7 @@ async def _dispatch_one(task: Dict) -> None:
         final_status = "COMPLETED"
         try:
             summary = await run_notify_meteorite_bot_blocked(task, debug=debug)
+            logger.debug("Response from run_notify_meteorite_bot_blocked: %s", summary)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
@@ -1088,18 +1048,10 @@ async def _dispatch_one(task: Dict) -> None:
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip() or None
-        if debug:
-            logger.debug_index(
-                func="dispatcher._dispatch_one",
-                index=1,
-                total=1,
-                identifier=task_key,
-                outcome="task start",
-            )
-            logger.debug_detail(
-                f"meteorite retention entity_batch_id={entity_batch_id} "
-                f"candidate_id={ledger_cid!r} mode={'AUTO' if not is_click else 'CLICK'}"
-            )
+        logger.debug(
+            "Calling run_meteorite_retention: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
+            task_key, entity_batch_id, ledger_cid,
+        )
         database.save_dispatch_ledger(
             entity_batch_id,
             task_key,
@@ -1119,6 +1071,7 @@ async def _dispatch_one(task: Dict) -> None:
         final_status = "COMPLETED"
         try:
             summary = await run_meteorite_retention(task, debug=debug)
+            logger.debug("Response from run_meteorite_retention: %s", summary)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
@@ -1199,25 +1152,16 @@ async def _dispatch_one(task: Dict) -> None:
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip()
         if not ledger_cid:
+            logger.debug(
+                "skipped — mailbox requires bound candidate_id task_key=%s candidate_id=%s",
+                task_key, candidate_id,
+            )
             logger.warning(
                 "%s | dispatch %s skipped — mailbox requires bound candidate_id\n  This task is not starting",
                 candidate_id or "-",
                 task_key,
             )
             return
-        if debug:
-            logger.debug_index(
-                func="dispatcher._dispatch_one",
-                index=1,
-                total=1,
-                identifier=task_key,
-                outcome="task start",
-            )
-            logger.debug_detail(
-                f"mailbox runner (check_inbox path) entity_batch_id={entity_batch_id} "
-                f"candidate_id={ledger_cid} "
-                f"mode={'AUTO' if not is_click else 'CLICK'}"
-            )
         database.save_dispatch_ledger(
             entity_batch_id,
             task_key,
@@ -1235,7 +1179,12 @@ async def _dispatch_one(task: Dict) -> None:
         accumulated = dict(_SUMMARY_ZERO)
         final_status = "COMPLETED"
         try:
+            logger.debug(
+                "Calling check_inbox: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
+                task_key, entity_batch_id, ledger_cid,
+            )
             summary = await check_inbox(task, debug=debug)
+            logger.debug("Response from check_inbox: %s", summary)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
@@ -1310,15 +1259,10 @@ async def _dispatch_one(task: Dict) -> None:
 
     ctx = database.get_candidate(candidate_id)
     if not ctx or not ctx.get("candidate_api_key"):
-        if debug:
-            logger.debug_index(
-                func="dispatcher._dispatch_one",
-                index=1,
-                total=1,
-                identifier=task_key,
-                outcome="skipped — no candidate or API key",
-            )
-            logger.debug_detail(f"candidate_id={candidate_id!r}")
+        logger.debug(
+            "skipped — no candidate or API key task_key=%s candidate_id=%s",
+            task_key, candidate_id,
+        )
         logger.warning(
             "%s | dispatch %s skipped — no candidate or API key\n  This task is not starting",
             candidate_id or "-",
@@ -1336,20 +1280,6 @@ async def _dispatch_one(task: Dict) -> None:
 
     entity_batch_id = f"{task_key}-{uuid.uuid4()}"
     has_run_next_chain = bool(_current_agent_task_run_next(task_key))
-    if debug:
-        logger.debug_index(
-            func="dispatcher._dispatch_one",
-            index=1,
-            total=1,
-            identifier=task_key,
-            outcome="task start",
-        )
-        logger.debug_detail(
-            f"candidate_id={candidate_id} available_count={task.get('available_count', 0)} "
-            f"entity_batch_id={entity_batch_id} mode={'AUTO' if not is_click else 'CLICK'} "
-            f"run_next_chain={has_run_next_chain} entity_type={task.get('entity_type')!r} "
-            f"trigger_state={task.get('trigger_state')!r}"
-        )
     ctx["entity_batch_id"] = entity_batch_id
     dispatch_ledger_id: Optional[str] = None
     task_entity_type = task.get("entity_type")
@@ -1395,7 +1325,12 @@ async def _dispatch_one(task: Dict) -> None:
     accumulated = dict(_SUMMARY_ZERO)
     final_status = "COMPLETED"
     try:
+        logger.debug(
+            "Calling _run_dispatch_loop: [task_key=%s, available=%s, entity_batch_id=%s]",
+            task_key, task.get("available_count", 0), entity_batch_id,
+        )
         await _tracked()
+        logger.debug("Response from _run_dispatch_loop: %s", accumulated)
     except asyncio.TimeoutError as exc:
         final_status = "INTERRUPTED"
         logger.exception(
@@ -1483,7 +1418,7 @@ async def _dispatch_one(task: Dict) -> None:
             )
 
     if final_status == "COMPLETED":
-        _check_circuit_breaker(task_key, candidate_id, task_id, bool(task.get("debug")))
+        _check_circuit_breaker(task_key, candidate_id, task_id)
 
 
 async def _run_dispatch_loop(
@@ -1495,9 +1430,7 @@ async def _run_dispatch_loop(
     dispatch_ledger_id: Optional[str],
 ) -> None:
     """Inner loop: run batches until drained or max_runs hit. Mutates accumulated in place."""
-    debug = bool(task.get("debug"))
-    if debug:
-        logger.set_debug_flag(True)
+    debug = bool(task.get("debug"))  # leftover for consult via _run_task; logging does not gate on it
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
     ui_initiated = bool(task.get("_ui_initiated"))
@@ -1505,36 +1438,22 @@ async def _run_dispatch_loop(
     run_count = 0
     while True:
         et = task.get("entity_type")
-        ts = task.get("trigger_state")
         available = database.count_eligible_for_dispatch_task(task)
+        logger.debug("Beginning dispatch loop on %s items", available)
         # min_count gate only applies to unattended AUTO ticks — CLICK and manual
         # Sweep (UI-initiated run on an AUTO row) bypass it and run whatever's available.
         effective_min = (task.get("min_count") or 1) if (is_auto and not ui_initiated) else 1
         if available < effective_min:
-            if debug:
-                if run_count == 0:
-                    logger.debug_index(
-                        func="dispatcher._run_dispatch_loop",
-                        index=1,
-                        total=1,
-                        identifier=task_key,
-                        outcome="skipped — below min_count",
-                    )
-                    logger.debug_detail(
-                        f"available={available} effective_min={effective_min} is_auto={is_auto}"
-                    )
-                    if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
-                        _eligible, reason = database.describe_candidate_inflow_discovery_eligibility(
-                            task.get("candidate_id") or "",
-                            float(task.get("freq_hrs") or 0),
-                        )
-                        if reason:
-                            logger.debug_detail(reason)
-                else:
-                    logger.debug_detail(
-                        f"loop stop: remaining below min_count available={available} "
-                        f"effective_min={effective_min} run_count={run_count}"
-                    )
+            reason = ""
+            if task_key == INFLOW_CONFIG["discovery"]["task_key"] and run_count == 0:
+                _eligible, reason = database.describe_candidate_inflow_discovery_eligibility(
+                    task.get("candidate_id") or "",
+                    float(task.get("freq_hrs") or 0),
+                )
+            logger.debug(
+                "loop stop: below min_count available=%s effective_min=%s is_auto=%s run_count=%s %s",
+                available, effective_min, is_auto, run_count, reason,
+            )
             if run_count == 0:
                 logger.info(
                     "%s | dispatch %s skipped %s — %d available (min_count=%s)",
@@ -1553,13 +1472,13 @@ async def _run_dispatch_loop(
                     available,
                     run_count,
                 )
+            logger.debug("End dispatch loop after %s run(s)", run_count)
             break
         # Honour graceful drain request — finish current batch then stop
         with _registry_lock:
             draining = _task_registry.get(task["id"], {}).get("drain", False)
         if draining:
-            if debug:
-                logger.debug_detail(f"loop stop: drain flag set run_count={run_count}")
+            logger.debug("loop stop: drain flag set run_count=%s", run_count)
             logger.info(
                 "%s | dispatch %s drain stopping %s after %d run(s)",
                 cid,
@@ -1567,49 +1486,34 @@ async def _run_dispatch_loop(
                 task_key,
                 run_count,
             )
+            logger.debug("End dispatch loop after %s run(s)", run_count)
             break
-        loop_iter = run_count + 1
-        if debug:
-            logger.debug_index(
-                func="dispatcher._run_dispatch_loop",
-                index=loop_iter,
-                total=loop_iter,
-                identifier=task_key,
-                outcome=f"loop iteration {loop_iter} starting",
-            )
-            logger.debug_detail(
-                f"available={available} effective_min={effective_min} max_runs={max_runs!r} "
-                f"draining={draining} entity_batch_id={entity_batch_id}"
-            )
+        logger.debug("Calling _run_task: [task_key=%s, available=%s]", task_key, available)
         summary = await _run_task(task, ctx, debug)
+        logger.debug("Response from _run_task: %s", summary)
         for k in accumulated:
             accumulated[k] += summary.get(k, 0)
         run_count += 1
-        if debug:
-            logger.debug_detail(
-                f"iteration {loop_iter} summary processed={summary.get('total_processed', 0)} "
-                f"passed={summary.get('total_passed', 0)} failed={summary.get('total_failed', 0)} "
-                f"errors={summary.get('total_errors', 0)} accumulated={accumulated}"
-            )
         # Update ledger mid-run so the execution history reflects live progress
         if dispatch_ledger_id:
             database.update_dispatch_ledger(dispatch_ledger_id, **accumulated)
         if summary.get("total_processed", 0) == 0:
-            if debug:
-                logger.debug_detail(f"loop stop: zero processed this iteration run_count={run_count}")
+            logger.debug("loop stop: zero processed this iteration run_count=%s", run_count)
             logger.info(
                 "%s | dispatch %s stopping %s — 0 processed",
                 cid,
                 et or "-",
                 task_key,
             )
+            logger.debug("End dispatch loop after %s run(s)", run_count)
             break
         if max_runs != 0:
             if max_runs is None or run_count >= max_runs:
-                if debug:
-                    logger.debug_detail(
-                        f"loop stop: max_runs reached max_runs={max_runs!r} run_count={run_count}"
-                    )
+                logger.debug(
+                    "loop stop: max_runs reached max_runs=%s run_count=%s",
+                    max_runs, run_count,
+                )
+                logger.debug("End dispatch loop after %s run(s)", run_count)
                 break
 
 
@@ -1750,11 +1654,10 @@ def task_status_all() -> Dict[int, Dict[str, Any]]:
 
 
 def _debug_log_auto_off_stage_skips() -> None:
-    """Style D: stage rows with AUTO off + debug on that would have met min_count (AST-1022)."""
+    """Stage rows with AUTO off + debug on that would have met min_count (AST-1022)."""
     stage_keys = frozenset(
         str(entry["task_key"]).strip() for entry in CANDIDATE_STAGE_DISPATCH.values()
     )
-    # Collect would-have-run skips first so index N/M is honest across the batch.
     eligible: List[tuple] = []
     for task in database.list_dispatch_tasks():
         tk = str(task.get("task_key") or "").strip()
@@ -1771,19 +1674,22 @@ def _debug_log_auto_off_stage_skips() -> None:
     total = len(eligible)
     if not total:
         return
-    logger.set_debug_flag(True)
-    for i, (task, avail) in enumerate(eligible, start=1):
-        logger.debug_index(
-            func="dispatcher._tick_loop",
-            index=i,
-            total=total,
-            identifier=task.get("task_key"),
-            outcome="skipped — AUTO off",
-        )
-        logger.debug_detail(
-            f"candidate_id={task.get('candidate_id')!r} task_id={task.get('id')} "
-            f"available={avail} min_count={task.get('min_count') or 1} auto_mode={task.get('auto_mode')}"
-        )
+    _dbg = log_debug.set(True)
+    try:
+        logger.debug("Beginning AUTO-off skip loop on %s items", total)
+        for task, avail in eligible:
+            logger.debug(
+                "Calling skip AUTO-off: [task_key=%s, candidate_id=%s, task_id=%s, available=%s, min_count=%s]",
+                task.get("task_key"),
+                task.get("candidate_id"),
+                task.get("id"),
+                avail,
+                task.get("min_count") or 1,
+            )
+            logger.debug("Response from skip AUTO-off: skipped — AUTO off")
+        logger.debug("End AUTO-off skip loop after %s items", total)
+    finally:
+        log_debug.reset(_dbg)
 
 
 def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
@@ -1845,6 +1751,8 @@ def _tick_loop() -> None:
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
             # meteorite_email has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
             _debug_log_auto_off_stage_skips()
+            logger.debug("Beginning AUTO spawn loop on %s items", len(due))
+            spawned = 0
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])
                 running_ids = set(_task_registry.keys())
@@ -1857,7 +1765,9 @@ def _tick_loop() -> None:
                     if tid in running_ids:
                         continue  # already running
                     if run_task(tid):
+                        spawned += 1
                         slots -= 1
+            logger.debug("End AUTO spawn loop after %s items", spawned)
         except Exception as exc:
             logger.exception(
                 "Tick loop\n  %s: %s\n  The scheduler is still running; the next tick will retry",

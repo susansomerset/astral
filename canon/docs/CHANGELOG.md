@@ -148,6 +148,9 @@ the export — that shape has no hoisting justification and is a genuine miss).
 | 2026-09-10 | `stat.logging.error` | amended | admin dispatch `CancelledError` is warning, not this statute | — |
 | 2026-09-10 | `stat.logging.error` | amended | tick/boot `logger.exception` still needs live facts and a product next step | — |
 | 2026-09-10 | `stat.logging.debug` | drafted | gated Style D inputs/outputs; replaces harvest `debug-contract-gated` | AST-1625 |
+| 2026-09-10 | `stat.logging.debug` | amended | production who/why is warning per item; task counts are info.dispatcher, not a warning tally | — |
+| 2026-09-10 | `stat.logging.debug` | amended | always-call `logger.debug`; logger stamps caller line; `log_debug` ContextVar gates emit; no call-site flag; no truncate | — |
+| 2026-09-10 | `stat.logging.debug` | amended | verbosity is the duty: loop begin/end, callee params in, full response out; a terminal summary is not enough | — |
 | 2026-09-10 | `stat.utils.data-late-import-only` | dropped | not a separate statute — temporary `logging.py` `_flush_buffer` exception already on `stat.layers.import-rules` / EXCEPTIONLOG until production monitoring | AST-1625 |
 | 2026-09-10 | harvest `stat.standards.logging-via-utils` / `debug-contract-gated` | deleted from `directives/draft/` | superseded by `stat.logging.*` | AST-1625 |
 

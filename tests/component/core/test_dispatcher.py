@@ -38,9 +38,7 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
         "src.core.candidate.age_stale_candidate_states",
         MagicMock(return_value=0),
     )
-    # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
-    monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
-    # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
+    # AST-1022: tick AUTO-off skip path lists stage rows — keep unit ticks DB-free
     monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
 
 
@@ -773,7 +771,7 @@ class TestCircuitBreaker:
         update = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", update)
         with caplog.at_level("WARNING", logger="src.core.dispatcher"):
-            dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9, False)
+            dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9)
         update.assert_called_once_with(9, enabled=False)
         assert any(
             "cand-1" in r.message
@@ -792,7 +790,7 @@ class TestCircuitBreaker:
         )
         update = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", update)
-        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9, False)
+        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9)
         update.assert_not_called()
 
     def test_keeps_enabled_when_recent_runs_show_progress(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -807,7 +805,7 @@ class TestCircuitBreaker:
         )
         update = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", update)
-        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9, False)
+        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9)
         update.assert_not_called()
 
 
@@ -1479,8 +1477,8 @@ class TestAst802InflowDiscoveryDebug:
         }
         await dispatcher_mod._run_dispatch_loop({}, task, "inflow_discovery", "batch-802", accumulated, None)
         run.assert_not_awaited()
-        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
-        assert any("eligibility:" in d for d in details)
+        joined = [" ".join(str(a) for a in c.args) for c in log.debug.call_args_list]
+        assert any("eligibility:" in d for d in joined)
 
 
 class TestAst814InflowDiscoveryDebug:
@@ -1510,9 +1508,9 @@ class TestAst814InflowDiscoveryDebug:
         }
         await dispatcher_mod._run_dispatch_loop({}, task, "inflow_discovery", "batch-814", accumulated, None)
         run.assert_not_awaited()
-        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
-        assert any("freq_hrs=168" in d for d in details)
-        assert not any("scan_interval_hours" in d for d in details)
+        joined = [" ".join(str(a) for a in c.args) for c in log.debug.call_args_list]
+        assert any("freq_hrs=168" in d for d in joined)
+        assert not any("scan_interval_hours" in d for d in joined)
 
 
 class TestTaskThreadTarget:
@@ -2543,14 +2541,14 @@ class TestAst1134MeteoriteEmailDispatchProvision:
     reason="AST-1022 product not on this publish tip",
 )
 class TestAst1022HonorAutoOffStageDispatch:
-    """AST-1022 → AST-1252: stage AUTO-off Style D uses craft_get_rubric stage key."""
+    """AST-1022 → AST-1252: stage AUTO-off debug uses craft_get_rubric stage key."""
 
     def test_stage_auto_mode_false_in_config(self) -> None:
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
         assert arts["auto_mode"] is False
         assert arts["task_key"] == "craft_get_rubric"
 
-    def test_debug_log_auto_off_stage_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_debug_log_auto_off_stage_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rows = [
             {
                 "id": 1,
@@ -2595,9 +2593,10 @@ class TestAst1022HonorAutoOffStageDispatch:
         monkeypatch.setattr(dispatcher_mod, "run_task", run)
         dispatcher_mod._debug_log_auto_off_stage_skips()
         run.assert_not_called()
-        log.set_debug_flag.assert_called_once_with(True)
-        assert log.debug_index.call_count == 1
-        assert log.debug_index.call_args.kwargs["identifier"] == "craft_get_rubric"
+        joined = [" ".join(str(a) for a in c.args) for c in log.debug.call_args_list]
+        assert any("Beginning AUTO-off skip loop" in m for m in joined)
+        assert any("craft_get_rubric" in m for m in joined)
+        assert any("End AUTO-off skip loop" in m for m in joined)
 
     def test_debug_log_skips_when_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rows = [
@@ -2621,7 +2620,7 @@ class TestAst1022HonorAutoOffStageDispatch:
         log = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "logger", log)
         dispatcher_mod._debug_log_auto_off_stage_skips()
-        log.set_debug_flag.assert_not_called()
+        log.debug.assert_not_called()
 
     def test_tick_loop_calls_auto_off_debug_helper_before_spawn(
         self, monkeypatch: pytest.MonkeyPatch

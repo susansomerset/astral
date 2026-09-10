@@ -3,7 +3,7 @@ id: stat.logging.debug
 kind: statute
 scope: logging
 point: >
-  Gated debug dumps inputs and outputs.
+  logger.debug is a noisy, generous backstop; the logger ContextVar decides whether it prints.
 approved_by: null
 approved_at: null
 supersedes: null
@@ -15,88 +15,103 @@ applies_when:
   change_types: ["add", "modify"]
 canonical_refs:
   - path: src/utils/logging.py
-    symbol: debug_index
+    symbol: get_logger
   - path: src/utils/logging.py
-    symbol: debug_detail_block
+    symbol: log_debug
 ---
 
 # Abstract
 
-When the debug mode is activated, the log should carry the guts — what was
-found and what was recorded, inputs and outputs — so UAT can see data that
-tests cannot yet pin.
-When debug is off, those lines must not appear. `logger.info("[DEBUG] …")` is
-always-on noise. `print` never reaches `app_log`. Debug is a gated dump through
-the Style D helpers on `get_logger`, not a second `info` dialect.
+When something is not working, debug is the backstop: watch the code walk
+through its logic. That dump is **generous and noisy on purpose**. Every
+loop logs begin and end (how many items going in, how many came out).
+Every call into a callee like `agent.do_task` logs the param keys/values
+on the way in and the full response string on the way out. Call sites
+always call `logger.debug`; they do not inspect a flag.
+`src.utils.logging` reads the `log_debug` ContextVar and either prints or
+drops the line. `logger.info("[DEBUG] …")` is always-on noise. `print`
+never reaches `app_log`.
 
 # Statement
 
-Emit debug-contract lines only when this run is debug-gated. Use `get_logger`
-from `src.utils.logging` and `_PrefixedLogger.debug_index` / `debug_detail` /
-`debug_detail_block` (long blobs via `truncate_debug_content`). Show found and
-recorded inputs/outputs per batch item. No `print`, no stdlib `getLogger`, no
-new `logger.info("[DEBUG] …")`, no debug noise in `src/data/`.
+Call `logger.debug` through `get_logger(__name__)` from `src.utils.logging`
+at the logic joints, not as a rare aside:
+
+- **Loop start:** `Beginning <what> loop on N items`
+- **Loop end:** `End <what> loop after X items`
+- **Callee in:** `Calling <fn>: [<param key/values>]`
+- **Callee out:** `Response from <fn>: <response string>`
+
+Do not skip those because they are noisy. Do not wrap the call in
+`if debug` / `if log_debug.get()`. The logger prefixes the caller source line
+and emits only when `log_debug` is true. The run entry sets that
+ContextVar; callees do not take a `debug=` just to log. No `print`, no
+stdlib `getLogger`, no `logger.info("[DEBUG] …")`, no debug noise in
+`src/data/`. Do not truncate the message.
 
 # Scenario
 
-An inflow batch of 95 terms runs with debug mode activated so CSE hits and
-whether ingest wrote the slug are visible. A terminal `summary={failed=3}` without per-index
-bodies is useless. The same dump on a quiet AUTO tick fills `app_log` and hides
-real `warning`/`error`. Passing `debug=` through every callee is how the flag
-gets dropped; the run's debug setting should already be in scope (AST-1625
-`log_debug` ContextVar — until that lands, the entry `debug=` sets the flag).
+A consult loop of N jobs is misbehaving and debug mode is on. The scan
+must show the loop started on N, each `do_task` with its keys, the full
+response string, and that the loop ended after X items — each line stamped
+with the source line that emitted it. A single `summary={failed=3}` at
+the bottom is not that walk. Wrapping the calls in `if debug` is how the
+flag gets dropped three frames down. Checking the ContextVar at the call
+site duplicates the logger. The same calls with debug off must be silent in
+`app_log` — `info` / `warning` / `error` still fire.
 
 # Do
 
 ```python
 from src.utils.logging import get_logger
 
-log = get_logger(__name__)
-# entry already set the run's debug flag (log_debug / debug=True)
+logger = get_logger(__name__)
+# run entry already set log_debug; this file does not check it
 
-log.debug_index(
-    func="roster.vet_inflow_discovery",
-    index=12,
-    total=95,
-    identifier="acme-corp",
-    outcome="pass",
-)
-log.debug_detail('google_cse query="acme corp careers" hits=6')
-log.debug_detail("recorded candidate_slug=acme-corp")
-log.debug_detail_block(raw_response)
+logger.debug("Beginning filename loop on %s items", n)
+logger.debug("Calling agent.do_task: %s", params)
+logger.debug("Response from agent.do_task: %s", response)
+logger.debug("End filename loop after %s items", x)
 ```
+
+The logger stamps the caller line, e.g. `1847: Beginning filename loop on 12 items`.
 
 # Don't
 
 ```python
-logger.info("[DEBUG] cse hits=%s urls=%s", n, urls)   # ungated, wrong helper
-print(prompt)                                         # no app_log
-log.debug_index(...)                                  # when this run is not debug-gated
-# src/data/database.py
-logger.debug("row missing id=%s", job_id)             # data does not log
-logger.debug_index(..., func="term 12/95")            # domain counter; use index N/M
+if debug:
+    logger.debug("Beginning loop")          # call site must not gate
+if log_debug.get():
+    logger.debug("Beginning loop")          # logger already reads the var
+logger.info("[DEBUG] cse hits=%s", n)       # ungated, wrong level
+print(prompt)                               # no app_log
+log.debug_index(...)                        # Style D is not this statute
+logger.debug("row missing id=%s", job_id)   # in src/data/ — data does not log
+logger.debug("batch done summary=%s", s)   # instead of begin/end + call/response
+logger.debug("Response from agent.do_task: %s…", response[:200])  # do not truncate
 ```
 
 # Resolution
 
 The dump is useful but the run might be production.
 
-1. **Debug off?** Do not emit contract lines. Hop `info` and item `warning` still
-   fire — those statutes are not gated.
-2. **Need who failed in production?** `stat.logging.warning` (per item + tally),
-   not an ungated debug dump.
-3. **Blob longer than 50 lines?** `debug_detail_block` / `truncate_debug_content`
-   (first 15, `<n lines omitted>`, last 15). Do not log the full prompt/response
-   untruncated.
-4. **Callee has no `debug=` argument?** Read the run flag (ContextVar once
-   AST-1625 lands). Do not default to dumping.
+1. **Debug off?** The `logger.debug` calls still run; the logger drops them.
+   `info` and item `warning` still fire — those statutes are not gated.
+2. **Need who failed in production?** `stat.logging.warning` (per item).
+   Task counts are `stat.logging.info.dispatcher`, not a warning tally and
+   not a debug dump.
+3. **Huge response / prompt?** Still `logger.debug` the whole string. Do not
+   truncate. Noise is the point.
+4. **Callee has no `debug=` argument?** Good. Do not add one for logging.
+   The ContextVar is already in scope.
 5. **`utils → data` for the sink?** Not this statute — the temporary late-import
    lives on `stat.layers.import-rules` until production monitoring exists.
 
 # Notes
 
-Header shape is Style D: `{func} index {N}/{M} {identifier} -> {outcome}`.
-Working lines use prefix ` | `. Backend only — no React debug-contract duty.
-Ungated progress stays `info` (`stat.logging.info`); those lines are not
-contract lines. `log_llm_batch_summary` success when `log_batch_id` is set
-stays `info` as well.
+Backend only — no React debug-contract duty. Ungated progress stays `info`
+(`stat.logging.info`); those lines are not debug. `log_llm_batch_summary`
+success when `log_batch_id` is set stays `info`. The run entry (dispatcher
+task debug, UI local debug) sets `log_debug`; it does not pass the flag down
+for logging. `debug_index` / `debug_detail` remain in `logging.py` for
+unconverted files until those audits; they are not the contract.
