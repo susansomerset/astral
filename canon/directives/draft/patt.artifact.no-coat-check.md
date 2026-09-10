@@ -37,6 +37,27 @@ point: >
 5. **On miss** — Fail visibly, transition to ingestion state, or return user-facing gap — never hide I/O inside an agent tool loop.
 6. **Review** — Reject PRs that add runtime `get_job_data` / `get_company_data` / direct `entity["*_data"]` reads for catalog-covered keys outside migration tickets.
 
+# Examples
+
+Forbidden mid-turn — fetch-if-missing coat-check (legacy surfaces; do not extend):
+
+```python
+# FORBIDDEN mid-turn — fetch-if-missing coat-check (legacy surfaces; do not extend)
+# await get_job_data(job, "job_description")   # self-heal scrape path
+# await get_company_data(company, "nav_links")  # registered company_data_keys handler
+```
+
+Required — component/state already ingested; turn uses artifact APIs only:
+
+```python
+# REQUIRED — component/state already ingested; turn uses artifact APIs only
+body = get_candidate_current(candidate_id, "candidate.artifacts.base_resume")
+# or pin→body for explainability:
+body = get_operative_base_resume(pinned_artifact_uuid)
+```
+
+Missing content → fail visibly / ingestion state — never hide I/O inside an agent tool loop. Do not invent new ban APIs or expand `*_data_keys` maps as if they were approved for greenfield keys.
+
 # OPEN QUESTIONS / DECISIONS
 
 1. Retirement timeline for existing coat-check maps — tracked on migration epics, not this pattern file.
