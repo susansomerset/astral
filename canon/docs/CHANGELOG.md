@@ -128,7 +128,16 @@ the export — that shape has no hoisting justification and is a genuine miss).
 | 2026-08-14 | *all* | `status:` removed | status is now the directory a file lives in, not a field | — |
 | 2026-08-14 | `stat.layers.import-rules` | amended | added: within `core`, entity data goes through `roster` / `tracker` / `candidate`, never `data.database` directly | — |
 | 2026-09-10 | `stat.logging.info` | drafted | expected-progress `info` via utils; replaces harvest `logging-via-utils` for the channel | AST-1625 |
+| 2026-09-10 | `stat.logging.info` | amended | `info` is the everyday always-on progress channel (succinct, clear, useful); skipping it for debug is a Don't, not a Notes aside | AST-1625 |
+| 2026-09-10 | `stat.logging.info` | amended | Do/Don't are operator-scan lines (company/job/batch in English); `run_next hop:` / `task_key` messages are Don't | AST-1625 |
+| 2026-09-10 | `stat.logging.info` | amended | parent is channel/duty only; pipe shapes live on `.dispatcher` / `.entity` / `.api` | AST-1625 |
+| 2026-09-10 | `stat.logging.info.dispatcher` | drafted | candidate-pipe task completed + hop completed | AST-1625 |
+| 2026-09-10 | `stat.logging.info.entity` | drafted | id-pipe company/job/candidate progress | AST-1625 |
+| 2026-09-10 | `stat.logging.info.contact` | drafted | Slack listen + Estelle outcome/action/aside; skill completion is `.api` | AST-1625 |
+| 2026-09-10 | `stat.logging.info.api` | drafted | one line at the completing route; Contact does not duplicate | AST-1625 |
+| 2026-09-10 | `stat.logging.info.api` | amended | webhook `/api/slack/events` 200 is not confirmation; listen/aside is `.contact` | AST-1625 |
 | 2026-09-10 | `stat.logging.warning` | drafted | per-item fail summary plus batch tally | AST-1625 |
+| 2026-09-10 | `stat.logging.warning` | amended | per-item who/why only; task rollup is `stat.logging.info.dispatcher` | AST-1625 |
 | 2026-09-10 | `stat.logging.error` | drafted | thrown exceptions once at the handler; cites `stat.errors.raise-once-log-once` | AST-1625 |
 | 2026-09-10 | `stat.logging.debug` | drafted | gated Style D inputs/outputs; replaces harvest `debug-contract-gated` | AST-1625 |
 | 2026-09-10 | `stat.utils.data-late-import-only` | dropped | not a separate statute — temporary `logging.py` `_flush_buffer` exception already on `stat.layers.import-rules` / EXCEPTIONLOG until production monitoring | AST-1625 |

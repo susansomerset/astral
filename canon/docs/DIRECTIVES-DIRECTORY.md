@@ -189,8 +189,12 @@ the repo-owned tables and the prompt corpus.
 | `stat.component.file-organization` | public functions first, then helpers, grouped by responsibility | `standards.public-then-helpers` |
 | `stat.component.comment-hygiene` | — | **new** |
 | `stat.errors.data-raises-caller-logs` | data raises and never logs; core raises domain; dispatcher catches and logs at batch; UI returns JSON | `standards.data-raises-caller-logs` |
-| `stat.logging.info` | expected progress via `get_logger` / `logger.info` | new — splits `standards.logging-via-utils` |
-| `stat.logging.warning` | per-item fail summary plus batch tally | new |
+| `stat.logging.info` | always-on succinct operator-readable progress via `logger.info`; shape is the surface statute | new — splits `standards.logging-via-utils` |
+| `stat.logging.info.dispatcher` | candidate-pipe dispatch task/hop completion line | new |
+| `stat.logging.info.entity` | id-pipe company/job/candidate progress | new |
+| `stat.logging.info.contact` | Slack listen accepted + Estelle outcome, intended action, aside | new |
+| `stat.logging.info.api` | one pipe line at the completing `ui/api` route (confirms the action ran) | new |
+| `stat.logging.warning` | per-item fail who+why; task rollup is `stat.logging.info.dispatcher` | new |
 | `stat.logging.error` | thrown exceptions once at the handler | new — level/channel; cites `stat.errors.raise-once-log-once` |
 | `stat.logging.debug` | gated Style D found/recorded inputs and outputs | replaces `standards.debug-contract-gated` |
 | `stat.layers.import-rules` | ui → core+utils; core → data+external+utils; external → utils; data → utils | `layers.import-direction` |

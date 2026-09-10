@@ -97,5 +97,6 @@ The dump is useful but the run might be production.
 
 Header shape is Style D: `{func} index {N}/{M} {identifier} -> {outcome}`.
 Working lines use prefix ` | `. Backend only — no React debug-contract duty.
-`run_next hop` and `log_llm_batch_summary` success stay `info`; they are not
-contract lines.
+Ungated progress stays `info` (`stat.logging.info`); those lines are not
+contract lines. `log_llm_batch_summary` success when `log_batch_id` is set
+stays `info` as well.

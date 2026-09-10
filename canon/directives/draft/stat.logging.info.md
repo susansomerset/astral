@@ -3,7 +3,7 @@ id: stat.logging.info
 kind: statute
 scope: logging
 point: >
-  Log expected progress through utils logger.info.
+  Always-on progress is succinct operator-readable logger.info.
 approved_by: null
 approved_at: null
 supersedes: null
@@ -16,29 +16,35 @@ applies_when:
 canonical_refs:
   - path: src/utils/logging.py
     symbol: get_logger
-  - path: src/core/agent.py
-    symbol: run_next hop
 ---
 
 # Abstract
 
-Production logs should show that the run is moving as designed — a hop fired, a
-batch finished, an item took the success path. Dumping search hits, prompts, or
-fail guts onto `info` either hides real progress or trains operators to ignore
-the level. Expected progress is `logger.info` via `src.utils.logging.get_logger`.
+`info` is the everyday production record: the run moved as designed. Those
+lines are always on, succinct, and written for a monitoring scan. Parking
+that progress on debug makes a quiet run look idle. Dumping search hits or
+fail guts onto `info` trains operators to ignore the level. The words on the
+line are the surface statute — `stat.logging.info.dispatcher`,
+`stat.logging.info.entity`, `stat.logging.info.contact`,
+`stat.logging.info.api`. Channel is
+`logger.info` via `src.utils.logging.get_logger`.
 
 # Statement
 
-When a backend path makes expected progress, emit `logger.info` through
-`get_logger` from `src.utils.logging`. Do not `print`, do not call stdlib
-`logging.getLogger`, and do not put payloads or failure detail on `info`.
+When a backend path makes expected progress, emit a succinct `logger.info`
+through `get_logger` from `src.utils.logging`. The line is never gated.
+Message shape is the statute for that surface, not function names or
+parameter keys. Do not skip it because debug exists. Do not `print`, do not
+call stdlib `logging.getLogger`, and do not put payloads or failure detail
+on `info`.
 
 # Scenario
 
-A consult hop completes and the next `run_next` label is written. You want that
-visible in Execution History without turning debug on. Putting the CSE hit list
-or the raw model body on the same `info` line makes every quiet production run
-as noisy as a debug dump, and `print("hop done")` never reaches `app_log`.
+A path finishes work with debug off. Execution History should show that it
+moved. Leaving the line out because a `debug_index` will fire when debug
+mode is activated means a quiet AUTO tick looks idle. `print("done")` never
+reaches `app_log`. The pipe template itself lives on the surface statute
+for dispatcher, entity, contact, or api.
 
 # Do
 
@@ -46,25 +52,17 @@ as noisy as a debug dump, and `print("hop done")` never reaches `app_log`.
 from src.utils.logging import get_logger
 
 logger = get_logger(__name__)
-
-logger.info(
-    "run_next hop: %s -> %s batch_id=%s",
-    from_hop,
-    to_hop,
-    batch_id,
-)
-logger.info(
-    "[%s/%s] completed processed=%s passed=%s",
-    task_key,
-    batch_id,
-    processed,
-    passed,
-)
+# `line` shape: stat.logging.info.dispatcher | .entity | .contact | .api
+logger.info(line)
 ```
 
 # Don't
 
 ```python
+# progress only when debug is activated
+log.debug_index(func="run_next", index=1, total=1, identifier=batch_id, outcome=to_hop)
+if debug:
+    logger.info(line)  # gated everyday progress
 print("starting batch")                          # never reaches app_log
 import logging
 logging.getLogger(__name__).info("hop done")     # bypasses utils facade
@@ -74,17 +72,25 @@ logger.info("vet reject slug=%s reason=%s", slug, reason)  # item failure is war
 
 # Resolution
 
-The line feels like progress but also carries found/recorded guts.
+The line feels like progress but also carries found/recorded guts, or nothing
+was logged because debug will cover it.
 
-1. **Success path, one scannable fact?** `info`. Hop boundaries and
-   `log_llm_batch_summary` success when `log_batch_id` is set stay here.
+1. **Success path, one scannable fact?** `info`. Always. Pick the surface
+   statute for the words: `stat.logging.info.dispatcher` (task/hop),
+   `stat.logging.info.entity` (company/job/candidate),
+   `stat.logging.info.contact` (Slack listen + Estelle notes/action),
+   `stat.logging.info.api` (route confirmation). Debug does not replace this line.
+   `log_llm_batch_summary` success when `log_batch_id` is set stays `info`
+   (its wording is that helper's).
 2. **The item failed its happy path without throwing?** `stat.logging.warning`.
 3. **An exception was thrown?** `stat.logging.error` (and
    `stat.errors.raise-once-log-once`).
 4. **Inputs, outputs, CSE hits, prompt/response bodies?** `stat.logging.debug`,
-   and only when this run is debug-gated.
+   and only when this run is debug-gated — additive, not instead of `info`.
 
 # Notes
 
-`info` is always on. Debug is additive; do not gate hop/`info` progress behind
-the debug flag.
+`info` is always on. Debug is additive. Do not gate progress behind the debug
+flag. Slack listen + Estelle's intended action and aside are
+`stat.logging.info.contact`. Skill/route completion is
+`stat.logging.info.api` — do not log both for the same completion.
