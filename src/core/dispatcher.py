@@ -520,9 +520,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
                 f"trigger_state={task.get('trigger_state', '')!r}"
             )
         logger.warning(
-            "[%s/%s] dispatch skipped: network unreachable",
-            task.get("task_key", "?"),
-            log_batch_id.get() or "?",
+            "%s | dispatch %s skipped — network unreachable\n  The batch is not running",
+            ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+            task.get("task_key") or "-",
         )
         return dict(_SUMMARY_ZERO)
     from src.core import consult
@@ -769,8 +769,11 @@ def _check_circuit_breaker(task_key: str, candidate_id: str, task_id: int, debug
                 f"task_id={task_id} consecutive_zero_progress={_CIRCUIT_BREAKER_THRESHOLD}"
             )
         logger.warning(
-            "CIRCUIT BREAKER: %s has had %d consecutive runs with 0 passed / 0 failed — auto-disabling task %s",
-            task_key, _CIRCUIT_BREAKER_THRESHOLD, task_id,
+            "%s | dispatch %s task_id=%s\n  %d consecutive runs with 0 passed / 0 failed\n  This task will not AUTO until re-enabled",
+            candidate_id or "-",
+            task_key,
+            task_id,
+            _CIRCUIT_BREAKER_THRESHOLD,
         )
         _db_update_dispatch_task(task_id, enabled=False)
 
@@ -901,7 +904,13 @@ async def _dispatch_one(task: Dict) -> None:
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
-            logger.warning("[%s/%s] KILLED by admin — meteorite ingress", task_key, entity_batch_id)
+            # Admin cancel is operator stop, not a crash (stat.logging.warning).
+            logger.warning(
+                "%s | dispatch %s %s\n  Killed by admin\n  The batch is stopping",
+                candidate_id or "-",
+                task.get("entity_type") or "-",
+                task_key,
+            )
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
@@ -1005,7 +1014,12 @@ async def _dispatch_one(task: Dict) -> None:
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
-            logger.warning("[%s/%s] KILLED by admin — bot_blocked notify", task_key, entity_batch_id)
+            logger.warning(
+                "%s | dispatch %s %s\n  Killed by admin\n  The batch is stopping",
+                candidate_id or "-",
+                task.get("entity_type") or "-",
+                task_key,
+            )
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
@@ -1109,7 +1123,12 @@ async def _dispatch_one(task: Dict) -> None:
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
-            logger.warning("[%s/%s] KILLED by admin — meteorite retention", task_key, entity_batch_id)
+            logger.warning(
+                "%s | dispatch %s %s\n  Killed by admin\n  The batch is stopping",
+                candidate_id or "-",
+                task.get("entity_type") or "-",
+                task_key,
+            )
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
@@ -1181,7 +1200,7 @@ async def _dispatch_one(task: Dict) -> None:
         ledger_cid = str(candidate_id or "").strip()
         if not ledger_cid:
             logger.warning(
-                "%s | dispatch %s skipped — mailbox requires bound candidate_id",
+                "%s | dispatch %s skipped — mailbox requires bound candidate_id\n  This task is not starting",
                 candidate_id or "-",
                 task_key,
             )
@@ -1221,7 +1240,12 @@ async def _dispatch_one(task: Dict) -> None:
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
-            logger.warning("[%s/%s] KILLED by admin — check_inbox", task_key, entity_batch_id)
+            logger.warning(
+                "%s | dispatch %s %s\n  Killed by admin\n  The batch is stopping",
+                candidate_id or "-",
+                task.get("entity_type") or "-",
+                task_key,
+            )
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception as exc:
             final_status = "FAILED"
@@ -1296,7 +1320,7 @@ async def _dispatch_one(task: Dict) -> None:
             )
             logger.debug_detail(f"candidate_id={candidate_id!r}")
         logger.warning(
-            "%s | dispatch %s skipped — no candidate or API key",
+            "%s | dispatch %s skipped — no candidate or API key\n  This task is not starting",
             candidate_id or "-",
             task_key,
         )
@@ -1380,7 +1404,12 @@ async def _dispatch_one(task: Dict) -> None:
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except asyncio.CancelledError:
         final_status = "INTERRUPTED"
-        logger.warning("[%s/%s] KILLED by admin — thread cleared from memory", task_key, entity_batch_id)
+        logger.warning(
+            "%s | dispatch %s %s\n  Killed by admin\n  The batch is stopping",
+            candidate_id or "-",
+            task.get("entity_type") or "-",
+            task_key,
+        )
         accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
     except Exception as exc:
         final_status = "FAILED"
@@ -1597,12 +1626,15 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
         try:
             from src.core.inbox import count_inbox_messages_bound_to_candidate
             task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
-        except Exception:
-            logger.warning(
-                "run_task: mailbox available_count failed task_id=%s task_key=%r",
-                task_id,
+        except Exception as exc:
+            logger.exception(
+                "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The task is still starting; Avail is 0",
+                cid or "-",
+                et or "-",
                 task_key,
-                exc_info=True,
+                task_id,
+                type(exc).__name__,
+                exc,
             )
             task["available_count"] = 0
     else:
@@ -1661,8 +1693,11 @@ def cancel_task(task_id: int) -> Dict[str, Any]:
         return {"task_id": task_id, "task_key": entry.get("task_key"),
                 "candidate_id": entry.get("candidate_id"), "killed": False, "reason": "already_done"}
     loop.call_soon_threadsafe(asyncio_task.cancel)
-    logger.warning("cancel_task(%s): cancellation sent to %s/%s",
-                       task_id, entry["task_key"], entry["candidate_id"])
+    logger.warning(
+        "%s | dispatch %s\n  Cancel sent\n  The running batch is being stopped",
+        entry["candidate_id"] or "-",
+        entry["task_key"],
+    )
     return {"task_id": task_id, "task_key": entry["task_key"],
             "candidate_id": entry["candidate_id"], "killed": True}
 
@@ -1741,8 +1776,12 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
         return []
     try:
         bound_counts = count_inbox_bound_by_candidate()
-    except Exception:
-        logger.warning("mailbox due: inbox bind counts failed", exc_info=True)
+    except Exception as exc:
+        logger.exception(
+            "AUTO mailbox bind counts\n  %s: %s\n  AUTO mailbox will not start this tick",
+            type(exc).__name__,
+            exc,
+        )
         return []
     due: List[Dict[str, Any]] = []
     for task in auto_gaze:
@@ -1805,7 +1844,10 @@ def start_scheduler() -> None:
         return
     n = database.mark_stale_ledger_interrupted(_now_iso())
     if n:
-        logger.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
+        logger.warning(
+            "%d stale RUNNING ledger row(s) marked INTERRUPTED on startup\n  Those batches will show INTERRUPTED",
+            n,
+        )
     # AST-1496: no scheduler-start save_dispatch_task provision (meteorite /
     # meteorite_email / fetch_email). Helpers remain in-module but unused from boot.
     # AST-1623: UPDATE-only correction for live NULL entity_type on ingress/notify keys.

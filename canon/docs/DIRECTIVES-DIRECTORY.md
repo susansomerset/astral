@@ -194,7 +194,7 @@ the repo-owned tables and the prompt corpus.
 | `stat.logging.info.entity` | id-pipe company/job/candidate progress | new |
 | `stat.logging.info.contact` | Slack listen accepted + Estelle outcome, intended action, aside | new |
 | `stat.logging.info.api` | one pipe line at the completing `ui/api` route (confirms the action ran) | new |
-| `stat.logging.warning` | per-item fail who+why; task rollup is `stat.logging.info.dispatcher` | new |
+| `stat.logging.warning` | per-item who+why (consult); dispatcher skip/cancel/disable; throw is error | new |
 | `stat.logging.error` | thrown exceptions once: live facts, next step, traceback | new — level/channel/body; cites `stat.errors.raise-once-log-once` |
 | `stat.logging.debug` | gated Style D found/recorded inputs and outputs | replaces `standards.debug-contract-gated` |
 | `stat.layers.import-rules` | ui → core+utils; core → data+external+utils; external → utils; data → utils | `layers.import-direction` |

@@ -91,10 +91,10 @@ Unsure whether this is info, warning, or error.
 1. **Task reached COMPLETED (item fails allowed)?** This info line — the
    counts are the rollup. Per-item who/why is `stat.logging.warning`. Do
    not also warning-tally the same task.
-2. **FAILED / INTERRUPTED / thrown?** `stat.logging.error` — one
+2. **FAILED / timeout INTERRUPTED / thrown?** `stat.logging.error` — one
    `logger.exception` with live facts, what is happening next, and the
-   traceback. Do not emit `task completed`. Do not emit a `batch finished
-   FAILED` count tally.
+   traceback. Admin `CancelledError` is `stat.logging.warning`. Do not emit
+   `task completed`. Do not emit a `batch finished FAILED` count tally.
 3. **Company/job/candidate row progressed inside the task?**
    `stat.logging.info.entity`, not a second dispatch line.
 4. **Guts (CSE hits, prompts)?** `stat.logging.debug` when debug is

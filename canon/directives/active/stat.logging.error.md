@@ -113,3 +113,5 @@ failure is not product `error` logging — see `stat.layers.import-rules`.
 The next-step line is the product consequence (`Truncating the batch`,
 `Continuing to the next entity`, `The run is over; this batch was not
 recorded as finished`). Not the next statement in the function.
+Admin `CancelledError` on a running dispatch task is `stat.logging.warning`
+(killed by admin), not this statute.

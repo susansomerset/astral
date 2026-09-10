@@ -33,8 +33,11 @@ warning tally.
 
 When a batch item fails its happy path without an exception, emit
 `logger.warning` through `get_logger` from `src.utils.logging`: one summary line
-per failed item (identifier + reason). Do not `print`. Do not use `warning` for
-thrown exceptions, debug payloads, or the task rollup.
+per failed item (identifier + reason). Dispatcher skip, admin kill, circuit
+disable, and startup ledger repair are the same level: who, why, product next
+step. Do not `print`. Do not use `warning` for thrown exceptions (except admin
+`CancelledError` on a running dispatch task), debug payloads, or the task
+rollup.
 
 # Scenario
 
@@ -66,6 +69,10 @@ logger.warning(
     batch_id, processed, passed, failed, errors,
 )  # rollup is stat.logging.info.dispatcher
 logger.warning("cse raw=%s", page_html)          # payload is debug
+logger.warning("[%s/%s] KILLED by admin — thread cleared from memory",
+               task_key, batch_id)               # task/batch brackets
+logger.warning("run_task: mailbox available_count failed",
+               exc_info=True)                    # throw is stat.logging.error
 ```
 
 # Resolution
@@ -75,13 +82,23 @@ Unsure whether this miss is a warning or an error.
 1. **No exception — configured fail / retry / skip?** Warning, per item.
    Task counts: `stat.logging.info.dispatcher`.
 2. **Something was thrown (or you are in `except Exception`)?**
-   `stat.logging.error`.
+   `stat.logging.error`. Do not `logger.warning(..., exc_info=True)`.
 3. **Need the CSE body or prompt that led here?** Warning stays; the body goes
    on `stat.logging.debug` when the run is debug-gated.
 4. **Empty batch, nothing failed?** No warning. That is not a failed item.
+5. **Admin cancelled the running dispatch task (`CancelledError`)?**
+   Warning — operator stop, not a crash. Unexpected throws stay
+   `stat.logging.error`.
 
 # Notes
 
 Warnings stay on when debug is on. Do not wrap them in `if not debug`.
 Estelle `admin_aside` (listen + intended action) is
 `stat.logging.info.contact`, not a warning.
+
+Per-item who/why (`aid -> dest [reason]`) is consult. Dispatcher warnings are
+skip, cancel, auto-disable, and startup repair — not a second item pipe and not
+a task tally. English: candidate, task, why, then the product consequence
+(`This task is not starting`, `The batch is stopping`). Do not
+`task_key/batch_id` square-bracket prefixes. The next-step line is the product
+consequence, not the next statement in the function.
