@@ -134,3 +134,20 @@ Confirm Chuckles estimate: 2 — agree
 ## Traceability
 
 AC3 → Stage 1 (`state_options`); AC4 → Stage 1 (Available); AC5 → Stage 2 (live-row correction); AC6 → Stage 2 (ledger); AC7 → Boundaries / Out of scope (retention + mailbox untouched). Parent AC1–2,4,6 → siblings.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1623
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1620/AST-1623-admin-available-state-options-ledger` @ `3ae3615bc0fa85b1f96226188b6ddeda31e5b658`
+
+### Traceability
+AC3→Stage 1 (`state_options`); AC4→Stage 1 (Available gate mirrors AST-1622 `get_due_tasks`); AC5→Stage 2 (`correct_meteorite_ingress_dispatch_entity_types` + `start_scheduler`); AC6→Stage 2 (ingress/notify ledger `entity_type="meteorite"`); AC7→Boundaries (retention + `meteorite_email` mailbox untouched; ledger `entity_type=None` retained on retention path). Parent AC1–2,8–9 N/A (AST-1621); parent AC4,6 partially satisfied here; count/due implementation N/A (AST-1622 on ftr).
+
+### Findings
+- **acceptable** — Linear assignee is Katherine, not Joan; Chuckles preflight only.
+- **acceptable** — Stage 1 step 3 is verify-only for `ENTITY_TYPES` / `dispatch_entity_state_registry` validation (AST-1621 on ftr); no parallel allowlist if literals are already clean.
+
+context_tokens≈68000
