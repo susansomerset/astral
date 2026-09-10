@@ -62,3 +62,33 @@ Register `meteorite` as a first-class member of `ENTITY_TYPES` and wire the shar
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1621
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1620/AST-1621-register-meteorite-entity-types` @ `1bcee4e9413712d46ad3231186b94303ff6d0da6`
+
+## Traceability
+AC1→Stage 1; AC2→Stage 1; AC3→Stage 2; parent AC3–5,7–9 N/A (AST-1622/AST-1623). Stages 1–3→child Scope + parent Purpose (meteorite first-class in ENTITY_TYPES / dispatch registries / ingress seeds).
+
+## Findings
+(none — no fix-now or discuss)
+
+context_tokens≈38000
+
+```
+AST-1621 plan approved.
+```
+
+---
+
+**Gate summary:** Plan Ready, assignee Joan — identity OK. Child-only scope respected; siblings and parent remainder out of band.
+
+**R5/R6:** Plan matches the child slice: `ENTITY_TYPES` append, three dispatch helpers wired to `METEORITE_STATES`, ingress/bot-blocked `SEED_CONFIG` literals, Code Rules §2.1/§2.4 — with explicit exclusions for count/due, admin, ledger, and live-row backfill. Stages align with child AC 1–3; parent AC 3–5 and 7–9 correctly deferred. Layer placement (`utils` + `docs`) is clean; cited patterns (`pattern.config.config-block`, `pattern.state.entity-state-transitions`) match the solution shape; retention/mailbox boundaries preserved; `auto_mode` untouched per `astral.dispatch.seed-auto-false`.
+
+**Statute pass (in-session):** Universal orchestration statutes conform (plan review only). Scoped statutes considered for `src/utils/config.py` + `docs/ASTRAL_CODE_RULES.md` (`config-source-of-truth`, `no-hardcoded-sets`, `seed-auto-false`, `in-scope-only`, layer/import standards, etc.) — all conform; batch/UI/data statutes excluded by path/layer. No fix-now findings.
+
+**Intermediate epic note (acceptable):** After this child lands, `ENTITY_TYPES` and registries accept `meteorite` while `state_options`/Available/ledger/backfill remain sibling work — documented in plan boundaries and stage-2 seed-only decision; not a blocker for AST-1621.
