@@ -18,7 +18,7 @@ approved_at: "2026-07-23"
 
 # Statement
 
-Touch only what ASTRAL_CODE_RULES or a module header explicitly scopes. Do not expand scope silently.
+Touch only what the ticket's scope or a module header explicitly scopes. Do not expand scope silently.
 
 ## Rationale
 

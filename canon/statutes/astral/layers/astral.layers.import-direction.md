@@ -18,7 +18,7 @@ approved_at: "2026-07-22"
 
 # Statement
 
-Imports obey ASTRAL_CODE_RULES §3.3 one-line-per-layer rules: ui → core + utils; core → data + external + utils; external → utils only; data → utils only; utils → utils only (except the documented `logging.py` late-import of `database` inside the DB log handler flush path).
+Imports obey the one-line-per-layer rules: ui → core + utils; core → data + external + utils; external → utils only; data → utils only; utils → utils only (except the documented `logging.py` late-import of `database` inside the DB log handler flush path).
 
 ## Rationale
 
