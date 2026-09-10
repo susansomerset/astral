@@ -161,3 +161,181 @@ context_tokens≈68000
 |-------|--------|---------|
 | 1 | `2ca13c89` | `state_options` meteorite + Available without candidate_id |
 | 2 | `01de74f3` | ledger `entity_type='meteorite'` + live-row NULL→meteorite correction |
+
+
+## Radia review
+
+# Radia review — AST-1623
+
+**Publish ref:** `origin/sub/AST-1620/AST-1623-admin-available-state-options-ledger` @ `567cd6a6`  
+**Baseline:** `origin/dev`  
+**Diff:** 15 files, +1311 / −16 (includes AST-1621/1622 sibling rollup on branch)
+
+---
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1623
+**Publish ref:** 567cd6a6
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent.py diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector diff |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch-id format change |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch-id format change |
+| astral.batch.claim-process-release | scoped | conforms | ledger `entity_type` set; correction UPDATE-only; claim loop unchanged |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no agent_data diff |
+| astral.config.config-source-of-truth | scoped | conforms | `state_options` uses `dispatch_entity_state_registry`; task keys from config constants |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets introduced |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug paths |
+| astral.dispatch.seed-auto-false | scoped | conforms | boot correction is UPDATE-only, not `save_dispatch_task` provision (AST-1496 comment preserved) |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next / chain diff |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | AST-1623 issue doc present |
+| astral.git.betty-no-src-or-features | scoped | conforms | tests/bible via Betty merge-tests |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer `code(AST-1623)` limited to `api_admin.py` + `dispatcher.py` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | core→data wrappers unchanged; no external imports |
+| astral.layers.import-direction | scoped | conforms | no new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | `state_options` registry-backed; no hardcoded state lists in UI |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render diff |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | existing `@require_admin` on touched endpoints |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed diff in AST-1623 commits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no catalog reconcile |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | scheduler boot runs idempotent UPDATE, not row insert |
+| astral.seed.define-approved | scoped | not-applicable | no define surface |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row reconcile |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join paths |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data not edited; core logs via `_sched_log` |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py diff in AST-1623 commits |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug contract changes |
+| astral.standards.dry-and-focused-functions | scoped | conforms | focused helper + two gate relaxations |
+| astral.standards.in-scope-only | scoped | conforms | AST-1623 `code()` commits touch only `api_admin.py` + `dispatcher.py` |
+| astral.standards.logging-via-utils | scoped | conforms | `_sched_log` only; no new `print()` / raw loggers |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names only |
+| astral.standards.no-cross-contamination | scoped | conforms | retention/mailbox keys excluded from correction set |
+| astral.standards.no-hardcoded-sets | scoped | conforms | task keys from `METEORITE_*_CONFIG`; no parallel entity allowlist |
+| astral.standards.public-then-helpers | scoped | conforms | public `correct_meteorite_ingress_dispatch_entity_types` |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data late imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | no transition logic diff |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job transition diff |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no runner refactor |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend diff |
+| astral.ui.naming-conventions | scoped | not-applicable | no new UI files |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no deploy diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1623)` at tip |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `docs` / `test` / `merge-tests` |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1620/AST-1623-*` vs `origin/dev` |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/<parent>/<child>` |
+| orch.git.merge-on-checkout | universal | conforms | `sync(ftr)` in history |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops observed |
+| orch.git.no-dev-agent-branches | universal | conforms | publish ref is `sub/` |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1620 worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | plan decisions documented |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–2 match plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | explicit scope gate honored |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | Joan APPROVED |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest + component tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine (engineer) |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | engineer still assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Active set:** 65 scored in-session.  
+**Straggler (C4):** Joan verdict attached; no Excluded statute list — no stragglers.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | plan has no "Patterns to reuse" block; admin Available mirrors AST-1622 `get_due_tasks` gate shape |
+
+## Plan adherence
+
+- **Stage 1:** `state_options` adds registry-backed `"meteorite"` key; `list_dtasks` Available uses `et and ts and (cid or et == "meteorite")`; mailbox branch unchanged; no parallel entity allowlist added.
+- **Stage 2:** Ingress + bot-blocked notify `save_dispatch_ledger(..., entity_type="meteorite")`; `correct_meteorite_ingress_dispatch_entity_types` UPDATE-only from config task keys; invoked from `start_scheduler` with try/except + `_sched_log`; retention ledger stays `entity_type=None`.
+- **Explicit scope gate:** AST-1623 `code()` commits touch only `api_admin.py` and `dispatcher.py`.
+- **Estimate (2):** Footprint matches.
+
+## C6 judgment aids (§5a–§5g)
+
+| Lens | Result |
+|------|--------|
+| Imports (B1) | OK — no new function-scoped imports |
+| Layer compliance (B2) | OK — UI uses existing `database` import; core uses data wrappers |
+| Silent failure (D2) | OK — boot correction logs exception via `_sched_log.exception` |
+| Fallbacks (D3) | OK — explicit gates; empty `entity_type` treated as blank for correction |
+| Logging (E1) | OK — `_sched_log` only |
+| Config/state in UI (G1) | OK — `state_options` registry-driven |
+| Batch/transitions (H*) | OK — ledger attribution fixed; claim loop unchanged |
+| Debug contract (§5f) | N/A |
+| External cleanliness (§5g) | N/A |
+
+## Test / bible alignment
+
+- **`TestAst1623AdminMeteoriteStateOptionsAvail`:** `state_options` membership/order; Available for NULL-cid meteorite; job still 0 without cid; create accepts `entity_type='meteorite'`.
+- **`TestAst1623MeteoriteLedgerAndBackfill`:** ingress + notify ledger kwargs; correction scans/updates/idempotency; retention/grade_do skipped; `start_scheduler` invokes correction; boot stub updated.
+
+Betty manifest in `docs/test-bible/ui/api/api_admin.md` matches.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+
+1. **`run_task` logging enrichment still gates on `cid`** (`dispatcher.py` ~1470: `count_eligible… if et and ts else 0`). `list_dtasks` and `_run_dispatch_loop` are fixed; this path only affects log `available_count` for UI-initiated runs, not execution. Out of AST-1623 explicit scope gate — optional follow-up if operators rely on that log line.
+
+2. **Boot correction scans all `dispatch_task` rows** on every `start_scheduler` — acceptable at current scale; note if row count grows materially.
+
+3. **Three-dot diff includes AST-1621/1622 sibling rollup** (`config.py`, `database.py`, sibling issue docs/tests). AST-1623 product commits are `api_admin.py` + `dispatcher.py` only — epic-branch coupling expected until ftr merge.
+
+4. **Create test uses `grade_do` + `entity_type='meteorite'`** — validates `ENTITY_TYPES` path, not a recommended admin combo; sufficient for step-3 verify-only.
+
+## What's solid
+
+- Available gate mirrors AST-1622 `get_due_tasks` contract exactly.
+- Correction uses config task keys, skips retention/mailbox, idempotent, UPDATE-only (AST-1496 safe).
+- Retention ledger deliberately left `entity_type=None` per plan AC7.
+- Tests cover ledger kwargs, correction boundaries, boot wiring, and admin paths.
+
+## Frame diff
+
+Post-Joan (`3ae3615b`) → tip (`567cd6a6`):
+
+| Area | Change | Ticket |
+|------|--------|--------|
+| `src/ui/api/api_admin.py` | `state_options` meteorite + Available gate | **AST-1623** |
+| `src/core/dispatcher.py` | ledger `entity_type="meteorite"` + correction + boot hook | **AST-1623** |
+| `tests/.../test_api_admin.py`, `test_dispatcher.py` | AST-1623 test classes + boot stub | **AST-1623** |
+| `docs/test-bible/ui/api/api_admin.md` | Betty manifest | **AST-1623** |
+| `config.py`, `database.py`, sibling docs/tests | AST-1621/1622 rollup | siblings |
+
+AST-1623 product surface is admin + dispatcher only.
+
+## Notes
+
+- Joan APPROVED @ `3ae3615b`; assignee + verify-only validation findings closed — no re-litigation.
+- Completes parent epic admin/ledger/backfill slice; pairs with AST-1621 registries and AST-1622 count/due.
+- C7 complete; recommend **Review Posted**.
+
+context_tokens≈48000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 567cd6a6) admin ledger backfill clean
+```
