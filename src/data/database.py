@@ -7825,12 +7825,17 @@ def save_dispatch_task(
     if not cid_raw:
         raise ValueError("candidate_id is required")
     cid_val: Optional[str] = cid_raw
-    try:
-        defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
-    except KeyError as e:
-        raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
     # Caller override vs catalog fill (AST-1618) — capture before defaults overwrite.
     caller_entity = str(entity_type).strip() if (entity_type and str(entity_type).strip()) else None
+    try:
+        # When caller supplies entity_type, omit request trigger from catalog defaults —
+        # trigger may be valid only for the chosen entity (not the catalog entity).
+        defaults = dispatch_task_admin_defaults(
+            tk,
+            trigger_state=None if caller_entity is not None else trigger_state,
+        )
+    except KeyError as e:
+        raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
     # late: avoid widening module-top config imports
     from src.utils.config import (
         METEORITE_EMAIL_MAILBOX_CONFIG,
