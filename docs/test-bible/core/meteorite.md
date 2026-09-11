@@ -14,13 +14,13 @@
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
 
-Lazy-ensure `meteorite-<candidate_id>` from `METEORITE_CONFIG` (IGNORE). Idempotent insert/no-op; Style D debug when `debug=True`. No job create (AST-1042). Leave-in-place (no reaper). Claim exclusion: **`docs/test-bible/data/database/companies.md`**. Config: **`docs/test-bible/utils/config.md`**.
+Lazy-ensure `meteorite-<candidate_id>` from `METEORITE_CONFIG` (IGNORE). Idempotent insert/no-op. No job create (AST-1042). Leave-in-place (no reaper). Claim exclusion: **`docs/test-bible/data/database/companies.md`**. Config: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Empty id / insert once / no-op / Style D on+off | `src/core/meteorite.py` | **`TestAst1041EnsureMeteoriteCompany`** |
+| Empty id / insert once / no-op | `src/core/meteorite.py` | **`TestAst1041EnsureMeteoriteCompany`** |
 
-**Broken / obsolete:** none — new module.
+**Broken / obsolete:** Style D on/off asserts retired (logging statutes; product locks insert/no-op).
 
 **Integration:** no existing scenario asserts meteorite placeholders — no revision; do not invent new integration coverage.
 
@@ -117,15 +117,15 @@ Optional `job_link=` on `create_meteorite_job` for link-sourced ingest; `company
 
 **Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track`.
 
-Stem-keyed `ensure_meteorite_company(stem=)` into **METEORITE**; leave-in-place for legacy IGNORE `meteorite-{candidate}` rows; `is_meteorite_company` = prefix **or** company state METEORITE; Style D includes `stem=`. Config: **`docs/test-bible/utils/config.md`** (**AST-1493**). Ruth/inbox stem wiring = siblings AST-1494 / AST-1495.
+Stem-keyed `ensure_meteorite_company(stem=)` into **METEORITE**; leave-in-place for legacy IGNORE `meteorite-{candidate}` rows; `is_meteorite_company` = prefix **or** company state METEORITE. Config: **`docs/test-bible/utils/config.md`** (**AST-1493**). Ruth/inbox stem wiring = siblings AST-1494 / AST-1495.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Email / self / slug / default stem ensure + leave-in-place + track predicate + Style D stem | `src/core/meteorite.py` | **`TestAst1493StemEnsureAndTrack`** |
-| Default ensure / Style D multi-detail (stem + company_state) | `src/core/meteorite.py` | revised **`TestAst1041EnsureMeteoriteCompany`** |
+| Email / self / slug / default stem ensure + leave-in-place + track predicate | `src/core/meteorite.py` | **`TestAst1493StemEnsureAndTrack`** |
+| Default ensure | `src/core/meteorite.py` | revised **`TestAst1041EnsureMeteoriteCompany`** |
 | Create path company state honesty | `src/core/meteorite.py` | revised **`TestAst1042CreateMeteoriteJob`** (IGNORE → METEORITE) |
 
-**Broken / obsolete:** AST-1041 Style D last-`call_args` `candidate_id=` (product now emits multiple `debug_detail` lines ending in `stem=` / `company_state=`); AST-1042 hard `state == "IGNORE"` on ensured company.
+**Broken / obsolete:** AST-1041 Style D last-`call_args` `candidate_id=` / Style D stem details (logging statutes); AST-1042 hard `state == "IGNORE"` on ensured company.
 
 **Integration:** no existing scenario asserts ensure/track — none revised; do not invent new integration coverage.
 
@@ -147,7 +147,7 @@ Stem-keyed `ensure_meteorite_company(stem=)` into **METEORITE**; leave-in-place 
 
 **Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
 
-`land_meteorite`: enrich-first (no pre-enrich default); per-row Ruth `company_stem` → `ensure_meteorite_company(stem=…)` → `save_meteorite_job(company=…)`; empty stem → `default_stem`; enrich failure → `company: None`. `create_meteorite_job` optional `stem=`. Inbox email paths: post-land Style D `company=`. Optional METEORITE companies list: **`docs/test-bible/ui/api/api_companies.md`**, **`docs/test-bible/frontend/pages.md`**, NAV **`docs/test-bible/utils/config.md`**.
+`land_meteorite`: enrich-first (no pre-enrich default); per-row Ruth `company_stem` → `ensure_meteorite_company(stem=…)` → `save_meteorite_job(company=…)`; empty stem → `default_stem`; enrich failure → `company: None`. `create_meteorite_job` optional `stem=`. Optional METEORITE companies list: **`docs/test-bible/ui/api/api_companies.md`**, **`docs/test-bible/frontend/pages.md`**, NAV **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -181,11 +181,11 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1517-create-contact-meteorite`.
 
-`create_contact_meteorite`: URL detector (`_contact_param_looks_like_url`); link mode → `contact_task_gazer_scrape` then `create_meteorite_job` with `job_link`; text mode → direct create; soft returns for scrape fail / empty visible text; Style D on `debug=True`. Markup/dispatch: **`docs/test-bible/core/contact.md`** (AST-1515, revised AST-1517).
+`create_contact_meteorite`: URL detector (`_contact_param_looks_like_url`); link mode → `contact_task_gazer_scrape` then `create_meteorite_job` with `job_link`; text mode → direct create; soft returns for scrape fail / empty visible text. Markup/dispatch: **`docs/test-bible/core/contact.md`** (AST-1515, revised AST-1517).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| URL detector + create path + scrape soft-fail + Style D | `src/core/meteorite.py` | **`TestAst1517CreateContactMeteorite`** |
+| URL detector + create path + scrape soft-fail | `src/core/meteorite.py` | **`TestAst1517CreateContactMeteorite`** |
 
 **Broken / obsolete:** AST-1515 **`TestAst1515ContactTaskMarkup`** / **`TestAst1515ContactEstelleTurnMarkup`** — `handler_unavailable` fixtures revised to mock `_resolve_contact_task_handler` → `None` (all six handlers now resolve).
 
@@ -209,7 +209,7 @@ Public `stage_meteorite`: blob + source handle → `invoke_stage_meteorite` → 
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Classify-only stage gates / skip / Style D | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`** (revised AST-1560) |
+| Classify-only stage gates / skip | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`** (revised AST-1560) |
 
 **Broken / obsolete (AST-1560):** `_map_stage_jobs_to_scraps` tests and land-via-`stage_meteorite` assertions — removed; classify-only contract.
 
@@ -233,11 +233,11 @@ Public `stage_meteorite`: blob + source handle → `invoke_stage_meteorite` → 
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
 
-Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAPE_LINK | READY), `run_scrape_meteorite` (Playwright → READY | BOT_BLOCKED | ERROR), `run_land_meteorite` (READY → `METEORITE_NEW` job + LANDED, no enrich-in-front). Always-on row-transition monitoring via `log_meteorite_row_transition`. Config/dispatcher wiring: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**.
+Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAPE_LINK | READY), `run_scrape_meteorite` (Playwright → READY | BOT_BLOCKED | ERROR), `run_land_meteorite` (READY → `METEORITE_NEW` job + LANDED, no enrich-in-front). Entity-pipe info on success; configured misses are warnings. Config/dispatcher wiring: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Stage / scrape / land runners + monitoring | `src/core/meteorite.py` | **`TestAst1560RunStageMeteorite`**, **`TestAst1560RunScrapeMeteorite`**, **`TestAst1560RunLandMeteorite`** |
+| Stage / scrape / land runners | `src/core/meteorite.py` | **`TestAst1560RunStageMeteorite`**, **`TestAst1560RunScrapeMeteorite`**, **`TestAst1560RunLandMeteorite`** |
 | Revised classify-only public stage | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`** |
 
 **Broken / obsolete:** **`TestAst1530StageMeteorite`** scrap-map / land-via-stage tests (AST-1560).
@@ -272,7 +272,7 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
 
-Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + always-on info lines for stale `ERROR` / `BOT_BLOCKED` / `ABANDONED` (no deletes in transition runners). Deletes `src/core/meteorite_email.py`; retires unbound/selected-ids mailbox literals. Config/dispatcher: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**.
+Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + warnings for stale `ERROR` / `BOT_BLOCKED` / `ABANDONED` (no deletes in transition runners). Deletes `src/core/meteorite_email.py`; retires unbound/selected-ids mailbox literals. Config/dispatcher: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -353,7 +353,7 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + always
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
 
-`check_inbox` fan-out + monitoring + archive; dispatcher repoint. See **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/core/dispatcher.md`**.
+`check_inbox` fan-out + archive; dispatcher repoint. See **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/core/dispatcher.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |

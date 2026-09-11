@@ -49,10 +49,10 @@ Config sections:
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
-  METEORITE_MONITORING_CONFIG — always-on info inbox classify + row-transition line formats (AST-1559 / AST-1560); not Style D
+  METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
-  METEORITE_RETENTION_CONFIG — scheduled LANDED purge + stale-row info list + day cutoffs (AST-1562)
+  METEORITE_RETENTION_CONFIG — scheduled LANDED purge + stale-row day cutoffs (AST-1562)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -2599,9 +2599,6 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
     "scrape_trigger_state": "SCRAPE_LINK",
     "land_trigger_state": "READY",
     "batch_size": 10,
-    "debug_func_stage": "meteorite.run_stage_meteorite",
-    "debug_func_scrape": "meteorite.run_scrape_meteorite",
-    "debug_func_land": "meteorite.run_land_meteorite",
     "scrape_page_status_states": {
         "blocked": "BOT_BLOCKED",
         "ok": "READY",
@@ -2629,7 +2626,6 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
     "trigger_state": "BOT_BLOCKED",
     "batch_size": 10,
     "nag_limit": 3,
-    "debug_func": "meteorite.run_notify_meteorite_bot_blocked",
     "dm_first_template": (
         "That job link hit a bot block. Please paste the full job description text here "
         "(copy from the listing page). Blocked link: {link}"
@@ -2645,34 +2641,24 @@ assert _mid_notify["trigger_state"] == "BOT_BLOCKED"
 assert _mid_notify["trigger_state"] in METEORITE_STATES
 assert isinstance(_mid_notify["batch_size"], int) and _mid_notify["batch_size"] >= 1
 assert isinstance(_mid_notify["nag_limit"], int) and _mid_notify["nag_limit"] >= 1
-assert isinstance(_mid_notify["debug_func"], str) and _mid_notify["debug_func"]
 for _tpl_key in ("dm_first_template", "dm_nag_template"):
     _tpl = _mid_notify[_tpl_key]
     assert isinstance(_tpl, str) and _tpl and "{link}" in _tpl
 assert "{nag_count}" in _mid_notify["dm_nag_template"]
 assert "{nag_limit}" in _mid_notify["dm_nag_template"]
 
-# AST-1562: scheduled retention — purge old LANDED; info-list stale ERROR/BOT_BLOCKED/ABANDONED.
+# AST-1562: scheduled retention — purge old LANDED; warn stale ERROR/BOT_BLOCKED/ABANDONED.
 METEORITE_RETENTION_CONFIG = {
     "task_key": "meteorite_retention",
     "landed_purge_days": 90,
     "stale_list_days": 14,
     "batch_size": 200,
-    "debug_func": "meteorite.run_meteorite_retention",
-    "stale_list_line": (
-        "meteorite retention stale id={row_id} state={state} candidate={candidate_id} "
-        "changed={state_changed_at}"
-    ),
 }
 _mid_retention = METEORITE_RETENTION_CONFIG
 assert isinstance(_mid_retention["task_key"], str) and _mid_retention["task_key"]
-assert isinstance(_mid_retention["debug_func"], str) and _mid_retention["debug_func"]
-assert isinstance(_mid_retention["stale_list_line"], str) and _mid_retention["stale_list_line"]
 assert isinstance(_mid_retention["landed_purge_days"], int) and _mid_retention["landed_purge_days"] >= 1
 assert isinstance(_mid_retention["stale_list_days"], int) and _mid_retention["stale_list_days"] >= 1
 assert isinstance(_mid_retention["batch_size"], int) and _mid_retention["batch_size"] >= 1
-for _ph in ("{row_id}", "{state}", "{candidate_id}", "{state_changed_at}"):
-    assert _ph in _mid_retention["stale_list_line"]
 assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
 assert set(METEORITE_STATES_RETENTION["stale_list_states"]) == {
     "ERROR", "BOT_BLOCKED", "ABANDONED",
@@ -2835,50 +2821,15 @@ assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "h
 assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite.check_inbox"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
-# AST-1559: always-on info monitoring for meteorite ingress (not Style D).
+# AST-1559: inbox already-ingested outcome (row/classify line templates retired).
 METEORITE_MONITORING_CONFIG = {
-    "subject_max_len": 120,
     "outcome_already_ingested": "already_ingested",
-    "inbox_classify_line": (
-        "meteorite inbox classify from={from_address} mid={message_id} ts={internal_date_ms} "
-        "subj={subject} candidate={candidate_id} outcome={classify_outcome} jobs={job_count}"
-    ),
-    # AST-1560: always-on info row-transition lines (not inbox classify — AST-1559).
-    "row_bot_blocked_line": (
-        "meteorite scrape blocked id={row_id} candidate={candidate_id} link={link}"
-    ),
-    "row_error_line": (
-        "meteorite row error id={row_id} candidate={candidate_id} task={task_key} error={error}"
-    ),
-    "row_landed_line": (
-        "meteorite land id={row_id} candidate={candidate_id} job={astral_job_id}"
-    ),
 }
 
-assert isinstance(METEORITE_MONITORING_CONFIG["subject_max_len"], int)
-assert METEORITE_MONITORING_CONFIG["subject_max_len"] > 0
 assert (
     isinstance(METEORITE_MONITORING_CONFIG["outcome_already_ingested"], str)
     and METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
 )
-_inbox_line = METEORITE_MONITORING_CONFIG["inbox_classify_line"]
-for _placeholder in (
-    "{from_address}",
-    "{message_id}",
-    "{candidate_id}",
-    "{classify_outcome}",
-    "{job_count}",
-):
-    assert _placeholder in _inbox_line
-for _row_key, _row_placeholders in (
-    ("row_bot_blocked_line", ("{row_id}", "{candidate_id}", "{link}")),
-    ("row_error_line", ("{row_id}", "{candidate_id}", "{task_key}", "{error}")),
-    ("row_landed_line", ("{row_id}", "{candidate_id}", "{astral_job_id}")),
-):
-    _row_line = METEORITE_MONITORING_CONFIG[_row_key]
-    assert isinstance(_row_line, str) and _row_line
-    for _ph in _row_placeholders:
-        assert _ph in _row_line
 
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(
