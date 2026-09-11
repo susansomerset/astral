@@ -11,32 +11,41 @@ superseded_by: null
 terms: []
 applies_when:
   layers: ["core"]
-  paths: ["src/core/roster.py", "src/core/consult.py", "src/core/candidate.py"]
+  paths:
+    - "src/core/roster.py"
+    - "src/core/consult.py"
+    - "src/core/candidate.py"
+    - "src/core/meteorite.py"
   change_types: ["add", "modify"]
 canonical_refs:
+  - path: src/utils/config.py
+    symbol: ENTITY_TYPES
   - path: src/core/roster.py
     symbol: saved nav_links
   - path: src/core/consult.py
     symbol: title to_state
+  - path: src/core/meteorite.py
+    symbol: meteorite state
 ---
 
 # Abstract
 
-A company, job, or candidate taking its success path is a different grep
-from a dispatch task rolling up. Operators look up the entity id, the type,
-and what finished. `[short_name] saved 12 nav_links` and `  title -> state`
-are close but do not share a scan family. Channel and always-on duty are
+An `ENTITY_TYPES` member taking its success path is a different grep from a
+dispatch task rolling up. Operators look up the entity id, the type, and
+what finished. `[short_name] saved 12 nav_links` and `  title -> state` are
+close but do not share a scan family. Channel and always-on duty are
 `stat.logging.info`. This statute is the pipe.
 
 # Statement
 
-When a company, job, or candidate makes expected progress, emit one
-`logger.info` through `get_logger`:
+When an entity makes expected progress, emit one `logger.info` through
+`get_logger`:
 
 `<entity_id> | <entity_type> <event>: <detail> (batch: <batch_id>)`
 
-`entity_type` is `company`, `job`, or `candidate`. Do not gate. Do not log
-I/O guts (page bodies, char counts, CSE hits) on this line.
+`entity_type` is a member of `ENTITY_TYPES` in `src/utils/config.py`. Do not
+restate that list here. Do not gate. Do not log I/O guts (page bodies, char
+counts, CSE hits) on this line.
 
 # Scenario
 
@@ -76,6 +85,14 @@ logger.info(
     to_state,
     batch_id,
 )
+logger.info(
+    "%s | meteorite %s: %s -> %s (batch: %s)",
+    row_id,
+    "state",
+    from_state,
+    to_state,
+    batch_id,
+)
 ```
 
 # Don't
@@ -97,12 +114,13 @@ Unsure whether this is an entity line, a dispatch rollup, or debug.
 2. **This row missed the happy path, no throw?** `stat.logging.warning`
    (who + why). Not this statute.
 3. **The whole dispatch task finished?** `stat.logging.info.dispatcher` —
-   do not also write a dispatch-shaped line from roster/consult/candidate.
+   do not also write a dispatch-shaped line from the entity caller.
 4. **Page HTML, CSE hits, prompt bodies?** `stat.logging.debug` when debug
    is activated.
 
 # Notes
 
-`entity_id` is `short_name` for company, job id for job, candidate id for
-candidate — the same handle operators already use in admin. `src/core/tracker`
-does not log; core callers emit this line.
+`entity_id` is the operator handle already used in admin/dispatch for that
+type. `src/core/tracker` does not log; core callers emit this line. Adding a
+type is a config change to `ENTITY_TYPES`; this statute does not need another
+edit.

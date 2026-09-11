@@ -80,7 +80,7 @@ was logged because debug will cover it.
 
 1. **Success path, one scannable fact?** `info`. Always. Pick the surface
    statute for the words: `stat.logging.info.dispatcher` (task),
-   `stat.logging.info.entity` (company/job/candidate),
+   `stat.logging.info.entity` (`ENTITY_TYPES` members),
    `stat.logging.info.contact` (Slack listen + Estelle notes/action),
    `stat.logging.info.api` (route confirmation). Debug does not replace this line.
    `log_llm_batch_summary` success when `log_batch_id` is set stays `info`
