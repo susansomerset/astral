@@ -318,11 +318,10 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 ### AST-855 · AST-852
 
-**Scope:** Dispatch-chain hop success debug aligns Style D index/total when `_dispatch_chain_hop_total` is unset on ctx — fixes multi-hop BUILD_ARTIFACTS crash (`index 2/1`) on `_write_dispatch_hop_label_on_success`. Shared `_dispatch_chain_hop_debug_counts` helper with `_resume_hop_debug_index`.
+**Scope:** Dispatch-chain hop success increments `_dispatch_chain_hop_index` on ctx (fixes multi-hop BUILD_ARTIFACTS `index 2/1`). Style D helpers `_dispatch_chain_hop_debug_counts` / `_resume_hop_debug_index` are gone.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Hop debug index/total helper | `src/core/agent.py` | `TestAst855DispatchChainHopDebug::test_dispatch_chain_hop_debug_counts_expands_unset_total`, `::test_dispatch_chain_hop_debug_counts_preserves_explicit_total` |
 | Second-hop success path (`contemplate_job`) | `src/core/agent.py` | `TestAst855DispatchChainHopDebug::test_contemplate_job_hop_ok_debug_valid_index_total_on_second_hop` |
 
 **Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`** (full class).
@@ -356,7 +355,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 ### AST-1190 · AST-1164
 
-**`do_task`:** coerce blank provider `error=` to a non-empty string on the `provider call failed` log/return; **`debug=True`** detail when **`is_provider_empty_response`**. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+**`do_task`:** coerce blank provider `error=` to a non-empty string on the return; agent does **not** emit a second `logger.error` (provider `log_llm_batch_summary(..., error=)` is the hop error line). When `log_batch_id` is unset, warning `{task_key} skipped — provider failed`. **`debug=True`** detail when **`is_provider_empty_response`**. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -456,7 +455,7 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
 | Agent-row above floor wins | same | **`TestAst1391DeepseekBigOutputFloor::test_deepseek_big_agent_row_above_floor_wins`** |
 | Medium / Little unchanged | same | **`test_deepseek_medium_keeps_agent_row`**, **`test_deepseek_little_keeps_agent_row`** |
 | Anthropic Big not 384000 | same | **`test_anthropic_big_does_not_use_deepseek_floor`** |
-| `debug=True` max_tokens line | same | **`test_debug_true_max_tokens_line_shows_floor`** |
+| `debug=True` does not put `[DEBUG] do_task` on info | same | **`test_debug_true_max_tokens_line_shows_floor`** |
 | Craft thinking-off still holds; tokens now Big floor | same | **`TestAst1391DeepseekBigOutputFloor::test_craft_deepseek_big_thinking_off_uses_big_floor`**; **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false`** (revised assertion) |
 | Named 384000 + helper None on Little/Medium | `src/utils/config.py` | **`TestAst1391DeepseekBigMaxTokensFloor`** (`test_config.py`) |
 
@@ -477,15 +476,14 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
 
 **Parent:** [AST-1392](https://linear.app/astralcareermatch/issue/AST-1392). **Publish:** `origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text`.
 
-Workbench Test success path stringifies the extracted body via **`_caller_response_blob`** before **`_store_response_block`**: dict/list → compact JSON text; already-`str` unchanged; empty `{}` / `[]` store as `"{}"` / `"[]"` (not `""`). Envelope still extracts **`agent_payload`** when present. Style D found type/shape → recorded text when `debug=True`; quiet when `debug=False`. Does **not** own Admin HTTP/React (sibling #2) or `do_task` schema coerce. Data layer still raises on non-text.
+Workbench Test success path stringifies the extracted body via **`_caller_response_blob`** before **`_store_response_block`**: dict/list → compact JSON text; already-`str` unchanged; empty `{}` / `[]` store as `"{}"` / `"[]"` (not `""`). Envelope still extracts **`agent_payload`** when present. Does **not** own Admin HTTP/React (sibling #2) or `do_task` schema coerce. Data layer still raises on non-text.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Object payload JSON text + ledger COMPLETED | `src/core/agent.py` (`run_adhoc_workbench_test`) | **`TestAst1393SerializeAdhocSuccessBody::test_success_stores_serialized_text`** (`object-payload`) |
 | Empty dict/list, list payload, plain text, dict without payload key | same | **`test_success_stores_serialized_text`** (remaining ids) |
 | String payload regression | same | **`TestAst515AdhocWorkbenchLedger::test_success_completes_ledger_and_stores_blocks`**; **`test_success_stores_serialized_text`** (`str-payload`) |
-| Style D found→recorded (dict/list/str/none/other) | same | **`test_debug_true_style_d_found_to_recorded`** |
-| `debug=False` adds no serialize lines | same | **`test_debug_false_adds_no_serialize_lines`** |
+| Serialize still holds under `debug=True` / `debug=False` | same | **`test_debug_true_style_d_found_to_recorded`**, **`test_debug_false_adds_no_serialize_lines`** |
 | Failure path unchanged | same | **`TestAst515AdhocWorkbenchLedger::test_failure_marks_ledger_failed_and_stores_failure_response`** |
 
 **Broken / obsolete this pass:** none — existing string-payload AST-515 assertion (`_store_response_block` arg `[3] == "ok"`) still holds.
@@ -990,14 +988,14 @@ Pre-validate soft-coerce on shared `do_task` path: `_coerce_schema_str_fields_fr
 
 **Parent:** [AST-1316](https://linear.app/astralcareermatch/issue/AST-1316/cant-find-agent-data-for-proposed-application-responses). **Sibling product:** AST-1354 (`get_entity_agent_story` → `agent.py`; metadata-only list; per-id soft-fail). **Publish:** `origin/sub/AST-1316/AST-1355-gap-agent-story-tests`.
 
-Retarget entity-story coverage from roster → agent; add dangling `propose_application_responses` TASK sibling → partial story / no `logger.exception` stack (**[bug-repro]**).
+Retarget entity-story coverage from roster → agent; add dangling `propose_application_responses` TASK sibling → partial story / no raise to the caller (**[bug-repro]**). Thrown resolve failures log `logger.exception` then continue.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Story ownership + enrich / AST-520 label | `src/core/agent.py` (`get_entity_agent_story`) | **`TestEntityAgentStory`** |
 | Duplicate block labels / scored filter | same + `_filter_response_block` | **`TestEntityAgentStoryBranches`**, **`TestFilterResponseBlock`** |
 | Soft-fail list / per-id resolve (AST-1274/1354) | same | **`TestAst1274AgentStorySoftFail`** |
-| Dangling TASK sibling → partial story, warning only | same | **`TestAst1354AgentStoryDanglingTaskSibling::test_partial_story_no_exception_stack`** (**[bug-repro]**) |
+| Dangling TASK sibling → partial story, exception log then continue | same | **`TestAst1354AgentStoryDanglingTaskSibling::test_partial_story_does_not_raise`** (**[bug-repro]**) |
 | Company `vector_grades` (AST-726) | same | **`TestEntityAgentStory::test_company_prefilter_vector_grades_from_company_data`** |
 
 **Broken / obsolete:** roster `TestEntityAgentStory*` / `TestAst1274AgentStorySoftFail` / `TestFilterResponseBlock` / story method on `TestAst726LatestOnlyRosterStory` — deleted; bible rows retargeted here + `docs/test-bible/core/roster.md` / `frontend/components.md`.
@@ -1018,13 +1016,13 @@ Retarget entity-story coverage from roster → agent; add dangling `propose_appl
 
 **Parent:** [AST-1442](https://linear.app/astralcareermatch/issue/AST-1442). **Publish:** `origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`.
 
-Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_prompt_blocks` **before** `send_to_anthropic` / `run_adhoc`. `_store_response_block` stays after return. Persist failure is swallowed. `store_agent_data=False` and bare `run_adhoc` write no `agent_data`. Latest-per-task stays RESPONSE-gated. Debug found/recorded for prompt persist happens before the provider await; quiet when `debug=False`.
+Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_prompt_blocks` **before** `send_to_anthropic` / `run_adhoc`. `_store_response_block` stays after return. Persist failure is swallowed (`logger.exception`, hop continues). `store_agent_data=False` and bare `run_adhoc` write no `agent_data`. Latest-per-task stays RESPONSE-gated.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | `do_task` prompt-before-await + RESPONSE after | `src/core/agent.py` | **`tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider`** |
 | Kill mid-call + later batch isolation | same | **`test_do_task_provider_raise_keeps_prompt_omits_response`**, **`test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts`** |
-| Storage-off / persist failure / debug | same | **`test_do_task_storage_off_skips_prompt_and_response`**, **`test_do_task_prompt_persist_failure_still_calls_provider`**, **`test_do_task_debug_emits_prompt_found_recorded_before_provider`**, **`test_do_task_debug_false_skips_persist_contract_lines`** |
+| Storage-off / persist failure | same | **`test_do_task_storage_off_skips_prompt_and_response`**, **`test_do_task_prompt_persist_failure_still_calls_provider`** |
 | Workbench Test sequencing; bare `run_adhoc` | same | **`test_workbench_stores_prompt_before_run_adhoc`**, **`test_workbench_raise_keeps_prompt_omits_response`**, **`test_bare_run_adhoc_does_not_store_agent_data`** |
 | Prompt-only batch is not latest story | `src/data/database.py` | **`test_prompt_only_batch_is_not_latest_ref`**; existing **`tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key`** |
 | Existing store-once + ledger | `src/core/agent.py` | **`TestDoTask::test_returns_api_failure_and_stores_agent_data`**, **`TestAst515AdhocWorkbenchLedger`**, **`TestDoTaskStorageFailures`** |
@@ -1045,12 +1043,12 @@ Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_pr
 
 **Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload`.
 
-Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per `batch_id`, newest first, includes `adhoc-*`); `GET /api/admin/adhoc/runs` `@require_admin`; Style D found→recorded on the list when `debug=True`; one leading `adhoc-` strip in `run_adhoc_workbench_test` so ledger stays `adhoc-<task_key>`. Load body is existing `GET /api/agent_data/<batch_id>` (unchanged). Picker chrome: sibling AST-1452. **Filter/cap (candidate + task_key + config limit):** superseded by **AST-1534** — unfiltered full-history list retired.
+Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per `batch_id`, newest first, includes `adhoc-*`); `GET /api/admin/adhoc/runs` `@require_admin`; one leading `adhoc-` strip in `run_adhoc_workbench_test` so ledger stays `adhoc-<task_key>`. Load body is existing `GET /api/agent_data/<batch_id>` (unchanged). Picker chrome: sibling AST-1452. **Filter/cap (candidate + task_key + config limit):** superseded by **AST-1534** — unfiltered full-history list retired.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | One row per batch; newest first; adhoc + production; no `block_data` | `src/data/database.py` (`list_agent_data_batches`) | **`TestAst1451ListAgentDataBatches`** |
-| Core list + debug gate | `src/core/agent.py` (`list_agent_data_runs`) | **`TestAst1451ListAgentDataRuns`** |
+| Core list returns data rows | `src/core/agent.py` (`list_agent_data_runs`) | **`TestAst1451ListAgentDataRuns`** |
 | Catalog key still `adhoc-<task_key>` | same (`run_adhoc_workbench_test`) | existing **`TestAst515AdhocWorkbenchLedger`** |
 | Prefixed workbench key does not double `adhoc-`; `TASK_CONFIG` uses stripped key | same | **`TestAst515AdhocWorkbenchLedger::test_prefixed_workbench_key_does_not_double_adhoc`** |
 | Admin list JSON + auth + `ui_llm_debug` | `src/ui/api/api_admin.py` (`adhoc_runs`) | **`TestAst1451AdhocRuns`** |
