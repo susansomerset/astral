@@ -4,9 +4,10 @@ Centralized logging utility for ASTRAL.
 Provides a standardized logger interface that can be used across all layers.
 Uses Python's standard logging module with consistent formatting.
 
-Log output goes to both stdout and the app_log database table. The database
-handler is the abstraction boundary — switching to Better Stack or another
-provider means updating this module only.
+Log output goes to both stdout and the app_log database table. Console lines are
+`LEVEL logger.name: message`. The database handler stores message only — level
+and logger_name are columns. Switching to Better Stack or another provider means
+updating this module only.
 
 B2 / D2 (AST-388): `add_log_entry` is imported inside `_flush_buffer` only (late import — utils must not load `data` at module import time). Handler errors print one line to stderr so failures are visible without crashing the logging caller.
 
@@ -50,6 +51,9 @@ log_candidate_id: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar
 log_debug: contextvars.ContextVar[bool] = contextvars.ContextVar("log_debug", default=False)
 
 _FLUSH_THRESHOLD = 50
+# Console only — app_log keeps message-only (level / logger_name are columns).
+_CONSOLE_FORMAT = "%(levelname)s %(name)s: %(message)s"
+_CONSOLE_FORMATTER = logging.Formatter(_CONSOLE_FORMAT)
 
 DEBUG_DETAIL_PREFIX = " | "  # two spaces, pipe, two spaces — working-log detail only
 DEBUG_LINE_THRESHOLD = 50
@@ -88,6 +92,15 @@ def format_debug_index_header(
     if total < 1 or index < 1 or index > total:
         raise ValueError(f"index must be 1..{total}, got {index}/{total}")
     return f"{func} index {index}/{total} {identifier} -> {outcome}"
+
+
+def _apply_console_formatter() -> None:
+    """Put logger + level on stdout/stderr handlers. Skip the DB handler."""
+    for h in logging.getLogger().handlers:
+        if isinstance(h, _DatabaseLogHandler):
+            continue
+        if getattr(h, "stream", None) in (sys.stdout, sys.stderr):
+            h.setFormatter(_CONSOLE_FORMATTER)
 
 
 def _db_handler_stderr(line: str) -> None:
@@ -316,8 +329,9 @@ def get_logger(name: Optional[str] = None, debug_flag: bool = False) -> _Prefixe
     if not base_logger.handlers:
         logging.basicConfig(
             level=logging.INFO,
-            format='%(message)s'
+            format=_CONSOLE_FORMAT,
         )
+    _apply_console_formatter()
 
     # Attach database handler once to the root logger
     global _db_handler_attached, _db_handler_instance

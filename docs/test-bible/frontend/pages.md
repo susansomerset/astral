@@ -532,6 +532,8 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-840** | **Level** dropdown (All/DEBUG/INFO/WARNING/ERROR); `log_level` URL param; `LogViewer` `visibleLogs` filter; filtered-empty message; filtered **Copy** | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` | **`tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx`** — **`AST-840 log level filter`** describe |
 
+**Log viewer:** `visibleLogs` is oldest-first by `created_at` (then `id`); Copy uses that order. API `list_log_entries` is still `ORDER BY created_at DESC`. Log cells use `.list-page-table .dispatch-log-table tbody td` so they beat `.list-page-table tbody td` (5px padding); vertical padding and line-height are 80% of those prior values. **`renders and copies log rows oldest-first by created_at`**.
+
 **AST-840** narrowed run:
 
 ```bash

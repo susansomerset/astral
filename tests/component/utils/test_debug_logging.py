@@ -208,6 +208,27 @@ class TestAst979DebugLevelPersistence:
         assert logger._logger.level == logging.INFO
 
 
+class TestConsoleFormat:
+    """Stdout shows level + logger name; app_log message stays the product line."""
+
+    def test_console_line_includes_level_and_logger_name(self) -> None:
+        record = logging.LogRecord(
+            "src.core.meteorite", logging.INFO, __file__, 0, "hello", (), None
+        )
+        assert logging_mod._CONSOLE_FORMATTER.format(record) == (
+            "INFO src.core.meteorite: hello"
+        )
+
+    def test_db_handler_message_is_message_only(self) -> None:
+        get_logger("test.console.db")
+        handler = logging_mod._db_handler_instance
+        assert handler is not None
+        record = logging.LogRecord(
+            "src.core.meteorite", logging.WARNING, __file__, 0, "hello", (), None
+        )
+        assert handler.format(record) == "hello"
+
+
 class TestLogDebugAlwaysCall:
     """stat.logging.debug: logger.debug is always called; log_debug gates emit; lineno prefix; no truncate."""
 
