@@ -11,6 +11,8 @@ get_operative_base_resume(artifact_uuid) pin→body for pilot
 candidate.artifacts.base_resume (AST-1584 / patt.artifact.read-operative).
 get_candidate_current(candidate_id, artifact_key) current-read by catalog key
 (AST-1586 / patt.artifact.read-current).
+Strengths (candidate.context.strengths) uses the same operative save +
+get_candidate_current hydrate path (AST-1633).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -787,10 +789,23 @@ def save_candidate_data(
             for key, spec in shape.items():
                 if isinstance(spec, dict) and spec.get("required") and key not in blob:
                     raise ValueError(f"resume_content missing required key: {key!r}")
+        elif entry["body_shape"] == "plain_text":
+            # AST-1633: raw string body (BUILD_CONFIG sentinel "raw_string" — validate type here).
+            if not isinstance(blob, str) or not blob.strip():
+                raise ValueError("plain_text body must be a non-empty string")
         artifact_type = artifact_key.rsplit(".", 1)[-1]
-        return database.save_artifact(
+        new_uuid = database.save_artifact(
             entry["entity_type"], candidate_id, artifact_type, blob
         )
+        if artifact_key == _STRENGTHS_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "strengths artifact saved",
+                new_uuid,
+                "-",
+            )
+        return new_uuid
 
     if not isinstance(data_or_artifact_key, dict):
         raise ValueError("candidate data must be a dict or artifact_key str")
@@ -861,6 +876,15 @@ def save_candidate_data(
             proposed = copy.deepcopy(contact)
         _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
         blob_merge["contact"] = proposed
+
+    # AST-1633: catalog owns context.strengths — never library-merge that leaf.
+    ctx = blob_merge.get("context")
+    if isinstance(ctx, dict) and "strengths" in ctx:
+        cleaned = {k: v for k, v in ctx.items() if k != "strengths"}
+        if cleaned:
+            blob_merge["context"] = cleaned
+        else:
+            blob_merge.pop("context", None)
 
     steps = []
     if col_kwargs:
@@ -1484,6 +1508,29 @@ def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> N
     arts["base_resume"] = body
 
 
+_STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
+
+
+def hydrate_operative_strengths_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Strengths into candidate_data.context (display only).
+
+    Miss → leave legacy context.strengths blob untouched (parent AC7 migration window).
+    Hit → write current string onto context.strengths for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _STRENGTHS_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["strengths"] = body
+
+
 def _normalize_search_term_lines(val: str) -> list[str]:
     return [line for line in (s.strip() for s in val.split("\n")) if line]
 
@@ -1574,6 +1621,7 @@ def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
     if not isinstance(cd, dict):
         cd = {}
     hydrate_operative_base_resume_for_response(candidate_id, cd)
+    hydrate_operative_strengths_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return candidate
 
