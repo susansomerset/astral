@@ -524,7 +524,7 @@ TASK_CONFIG = {
         "pass_state": "METEORITE_QUALIFIED",
         "fail_state": "METEORITE_FAILED_QUALIFY",
         "error_state": "METEORITE_ERROR_QUALIFY",
-        "email_link_prefix": "email-",  # AST-1197: synthesized link; waive http + empty company_job_id gates
+        "email_link_prefix": "email-",  # AST-1197: synthesized job_link token when there is no ATS URL
         "bot_blocked_state": "BOT_BLOCKED",  # AST-1197: challenge/Cloudflare JD → universal bot state (AST-1195)
         "company_stem_response_key": "company_stem",  # AST-1494: RESPONSE + enrich map key
         "context_format": "qualify_meteorite_{index}",

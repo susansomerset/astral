@@ -105,6 +105,13 @@ def _warn_job(aid: Any, dest: Any, reason: str) -> None:
     logger.warning("%s -> %s [%s]", aid, dest, reason)
 
 
+def _hold_log_batch(batch_id: str):
+    """Stamp log_batch_id only when a parent dispatch batch is not already set."""
+    if log_batch_id.get():
+        return None
+    return log_batch_id.set(batch_id)
+
+
 def _consult_job_identifier(job: Dict[str, Any]) -> str:
     """Primary debug identifier for a consult job row."""
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
@@ -583,6 +590,42 @@ def _bind_response_jobs_by_job_link(response_jobs: list, claimed_jobs: list) -> 
             continue
         rj["astral_job_id"] = target
         assigned.add(target)
+
+
+def _bind_unmatched_empty_link_jobs_by_order(
+    response_jobs: list, claimed_jobs: list
+) -> None:
+    """Positional leftover bind when unmatched claims have no job_link (email body rows)."""
+    if not response_jobs or not claimed_jobs:
+        return
+    claimed_set = {
+        (j.get("astral_job_id") or "").strip()
+        for j in claimed_jobs
+        if (j.get("astral_job_id") or "").strip()
+    }
+    assigned = {
+        (rj.get("astral_job_id") or "").strip()
+        for rj in response_jobs
+        if isinstance(rj, dict) and (rj.get("astral_job_id") or "").strip() in claimed_set
+    }
+    leftover_claimed = [
+        j for j in claimed_jobs
+        if (j.get("astral_job_id") or "").strip()
+        and (j.get("astral_job_id") or "").strip() not in assigned
+    ]
+    if not leftover_claimed:
+        return
+    if any((j.get("job_link") or "").strip() for j in leftover_claimed):
+        return
+    leftover_resp = [
+        rj for rj in response_jobs
+        if isinstance(rj, dict)
+        and (rj.get("astral_job_id") or "").strip() not in claimed_set
+    ]
+    if len(leftover_claimed) != len(leftover_resp):
+        return
+    for rj, row in zip(leftover_resp, leftover_claimed):
+        rj["astral_job_id"] = row["astral_job_id"]
 
 
 def _job_from_rubric_json(obj: dict, task_config: dict, ctx: dict) -> dict:
@@ -1520,6 +1563,7 @@ async def _run_batch_consult(
     _bind_response_jobs_to_claimed(response_jobs, jobs)
     if task_key == "qualify_meteorite":
         _bind_response_jobs_by_job_link(response_jobs, jobs)
+        _bind_unmatched_empty_link_jobs_by_order(response_jobs, jobs)
         bound_ids = [
             (rj.get("astral_job_id") or "").strip()
             for rj in response_jobs
@@ -1886,7 +1930,7 @@ async def enrich_meteorite_land_packet(
 
     batch_id = f"{task_key}-land-{uuid4()}"
     do_index = f"{task_key}_batch_{batch_id}"
-    log_batch_id.set(batch_id)
+    token = _hold_log_batch(batch_id)
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, scraps=%s]",
@@ -1900,54 +1944,55 @@ async def enrich_meteorite_land_packet(
             debug=debug,
         )
         logger.debug("Response from agent.do_task: %s", result)
+
+        if not result.get("success"):
+            logger.debug("enrich_failed batch_id=%s error=%r", batch_id, result.get("error"))
+            logger.warning(
+                "%s — land packet enrich failed: %s\n  Jobs are not landing from this packet",
+                cid, result.get("error") or "do_task failed",
+            )
+            return {
+                "success": False,
+                "error": result.get("error") or "do_task failed",
+                "jobs": [],
+                "raw": result,
+                "batch_id": batch_id,
+            }
+
+        parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+        response_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
+        out_jobs: List[Dict[str, Any]] = []
+        for i, scrap in enumerate(rows):
+            rj = response_jobs[i] if i < len(response_jobs) and isinstance(response_jobs[i], dict) else {}
+            ruth_link = (rj.get("job_link") or "").strip() if isinstance(rj.get("job_link"), str) else ""
+            job_link = ruth_link or scrap["job_link"]
+            ai_cid = (rj.get("company_job_id") or "").strip() if isinstance(rj.get("company_job_id"), str) else ""
+            company_job_id = _resolve_company_job_id(ai_cid, job_link)
+            job_title = (rj.get("job_title") or "").strip() if isinstance(rj.get("job_title"), str) else ""
+            jd_text = (rj.get("jd_text") or "").strip() if isinstance(rj.get("jd_text"), str) else ""
+            ruth_emp = (rj.get("employer_name") or "").strip() if isinstance(rj.get("employer_name"), str) else ""
+            employer_name = ruth_emp or scrap["employer_name"]
+            stem_key = TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"]
+            ruth_stem = (rj.get(stem_key) or "").strip() if isinstance(rj.get(stem_key), str) else ""
+            out_jobs.append({
+                "company_job_id": company_job_id,
+                "job_title": job_title,
+                "job_link": job_link,
+                "jd_text": jd_text,
+                "employer_name": employer_name,
+                "company_stem": ruth_stem,
+                "scrap_index": i,
+            })
+            logger.debug(
+                "enriched %s/%s link=%r content_chars_in=%s jd_chars=%s employer_name=%s company_stem=%r",
+                i + 1, len(rows), job_link, len(scrap["content"]), len(jd_text),
+                "yes" if employer_name else "no", ruth_stem,
+            )
+
+        return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
     finally:
-        log_batch_id.set(None)
-
-    if not result.get("success"):
-        logger.debug("enrich_failed batch_id=%s error=%r", batch_id, result.get("error"))
-        logger.warning(
-            "%s — land packet enrich failed: %s\n  Jobs are not landing from this packet",
-            cid, result.get("error") or "do_task failed",
-        )
-        return {
-            "success": False,
-            "error": result.get("error") or "do_task failed",
-            "jobs": [],
-            "raw": result,
-            "batch_id": batch_id,
-        }
-
-    parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
-    response_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
-    out_jobs: List[Dict[str, Any]] = []
-    for i, scrap in enumerate(rows):
-        rj = response_jobs[i] if i < len(response_jobs) and isinstance(response_jobs[i], dict) else {}
-        ruth_link = (rj.get("job_link") or "").strip() if isinstance(rj.get("job_link"), str) else ""
-        job_link = ruth_link or scrap["job_link"]
-        ai_cid = (rj.get("company_job_id") or "").strip() if isinstance(rj.get("company_job_id"), str) else ""
-        company_job_id = _resolve_company_job_id(ai_cid, job_link)
-        job_title = (rj.get("job_title") or "").strip() if isinstance(rj.get("job_title"), str) else ""
-        jd_text = (rj.get("jd_text") or "").strip() if isinstance(rj.get("jd_text"), str) else ""
-        ruth_emp = (rj.get("employer_name") or "").strip() if isinstance(rj.get("employer_name"), str) else ""
-        employer_name = ruth_emp or scrap["employer_name"]
-        stem_key = TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"]
-        ruth_stem = (rj.get(stem_key) or "").strip() if isinstance(rj.get(stem_key), str) else ""
-        out_jobs.append({
-            "company_job_id": company_job_id,
-            "job_title": job_title,
-            "job_link": job_link,
-            "jd_text": jd_text,
-            "employer_name": employer_name,
-            "company_stem": ruth_stem,
-            "scrap_index": i,
-        })
-        logger.debug(
-            "enriched %s/%s link=%r content_chars_in=%s jd_chars=%s employer_name=%s company_stem=%r",
-            i + 1, len(rows), job_link, len(scrap["content"]), len(jd_text),
-            "yes" if employer_name else "no", ruth_stem,
-        )
-
-    return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
+        if token is not None:
+            log_batch_id.reset(token)
 
 
 @_with_log_debug
@@ -1986,7 +2031,7 @@ async def invoke_stage_meteorite(
     if ctx and ctx.get("candidate_api_key") is not None:
         task_ctx["candidate_api_key"] = ctx["candidate_api_key"]
 
-    log_batch_id.set(batch_id)
+    token = _hold_log_batch(batch_id)
     try:
         logger.debug(
             "Calling agent.do_task: [task_key=%s, index=%s, source_kind=%s]",
@@ -2000,59 +2045,60 @@ async def invoke_stage_meteorite(
             debug=debug,
         )
         logger.debug("Response from agent.do_task: %s", result)
+
+        if not result.get("success"):
+            logger.debug("stage_failed batch_id=%s error=%r", batch_id, result.get("error"))
+            logger.warning(
+                "%s — stage_meteorite failed: %s\n  This blob is not classifying",
+                cid, result.get("error") or "do_task failed",
+            )
+            return {
+                "success": False,
+                "error": result.get("error") or "do_task failed",
+                "outcome": None,
+                "jobs": [],
+                "batch_id": batch_id,
+                "raw": result,
+            }
+
+        parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+        raw_outcome = parsed.get("outcome")
+        outcome = raw_outcome.strip() if isinstance(raw_outcome, str) else ""
+        raw_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
+        jobs = [j for j in raw_jobs if isinstance(j, dict)]
+
+        if outcome not in STAGE_METEORITE_CONFIG["outcomes"]:
+            logger.warning(
+                "%s — invalid stage outcome %r\n  This blob is not classifying",
+                cid, outcome,
+            )
+            return {
+                "success": False,
+                "error": "invalid stage outcome",
+                "outcome": outcome or None,
+                "jobs": [],
+                "batch_id": batch_id,
+                "raw": result,
+            }
+        if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+            jobs = []
+
+        logger.debug(
+            "stage outcome=%s batch_id=%s job_count=%s source_kind=%s",
+            outcome, batch_id, len(jobs), kind,
+        )
+
+        return {
+            "success": True,
+            "outcome": outcome,
+            "jobs": jobs,
+            "error": None,
+            "batch_id": batch_id,
+            "raw": result,
+        }
     finally:
-        log_batch_id.set(None)
-
-    if not result.get("success"):
-        logger.debug("stage_failed batch_id=%s error=%r", batch_id, result.get("error"))
-        logger.warning(
-            "%s — stage_meteorite failed: %s\n  This blob is not classifying",
-            cid, result.get("error") or "do_task failed",
-        )
-        return {
-            "success": False,
-            "error": result.get("error") or "do_task failed",
-            "outcome": None,
-            "jobs": [],
-            "batch_id": batch_id,
-            "raw": result,
-        }
-
-    parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
-    raw_outcome = parsed.get("outcome")
-    outcome = raw_outcome.strip() if isinstance(raw_outcome, str) else ""
-    raw_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
-    jobs = [j for j in raw_jobs if isinstance(j, dict)]
-
-    if outcome not in STAGE_METEORITE_CONFIG["outcomes"]:
-        logger.warning(
-            "%s — invalid stage outcome %r\n  This blob is not classifying",
-            cid, outcome,
-        )
-        return {
-            "success": False,
-            "error": "invalid stage outcome",
-            "outcome": outcome or None,
-            "jobs": [],
-            "batch_id": batch_id,
-            "raw": result,
-        }
-    if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-        jobs = []
-
-    logger.debug(
-        "stage outcome=%s batch_id=%s job_count=%s source_kind=%s",
-        outcome, batch_id, len(jobs), kind,
-    )
-
-    return {
-        "success": True,
-        "outcome": outcome,
-        "jobs": jobs,
-        "error": None,
-        "batch_id": batch_id,
-        "raw": result,
-    }
+        if token is not None:
+            log_batch_id.reset(token)
 
 
 @_with_log_debug
@@ -2117,10 +2163,16 @@ async def qualify_meteorite(
             id_source = "UUID-from-job_link"
         else:
             id_source = "neither"
-        subject = _qualify_meteorite_email_subject(input_jd)
-        title_source = _qualify_meteorite_title_source(job_title, subject)
         min_title = int(cfg.get("min_job_title_length", 5))
         min_jd = int(cfg.get("min_jd_chars", 40))
+        subject = _qualify_meteorite_email_subject(input_jd)
+        # AST-1197: fail only when neither Ruth title nor email subject meets the floor.
+        if len(job_title) < min_title and len(subject) >= min_title:
+            job_title = subject
+        title_source = _qualify_meteorite_title_source(job_title, subject)
+        land_jd = input_jd.strip()
+        if len(jd_text) < min_jd and len(land_jd) >= min_jd:
+            jd_text = land_jd
 
         # Bot/challenge before content fails — lazy gazer classify (shared jd_classifier).
         from src.core.gazer import _classify_jd
@@ -2135,12 +2187,9 @@ async def qualify_meteorite(
             _transition_job_state_for_task(task_key, [aid], to_state)
             return to_state
 
-        is_email_link = job_link.startswith(email_prefix)
         fail_reason = None
-        if not company_job_id and not is_email_link:
-            fail_reason = "empty company_job_id"
         # AST-1152: length/blank content gate only — not roster title-pattern screening.
-        elif len(job_title) < min_title:
+        if len(job_title) < min_title:
             fail_reason = f"title too short len={len(job_title)} min={min_title}"
         elif len(jd_text) < min_jd:
             fail_reason = f"jd_text too short len={len(jd_text)} min={min_jd}"

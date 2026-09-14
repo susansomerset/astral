@@ -793,13 +793,13 @@ Retires Do/Get overlay read path; `_consult_orchestration_for_entity` returns `T
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
 
-`qualify_meteorite` Pattern-A fields batch: content gates → FAILED_QUALIFY; pass → `initialize_job` + METEORITE_QUALIFIED; collision → fail count without transition. Not in `_STRICT_ENCODED_BATCH_CONSULT_KEYS`.
+`qualify_meteorite` Pattern-A fields batch: title/JD length gates → FAILED_QUALIFY; empty `company_job_id` qualifies (schema already optional); pass → `initialize_job` + METEORITE_QUALIFIED; collision → fail count without transition. Not in `_STRICT_ENCODED_BATCH_CONSULT_KEYS`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Batch apply + gates | `src/core/consult.py` | **`TestAst1062QualifyMeteorite`**; revised **`TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches`** |
 
-**Broken / obsolete:** route test omitted `qualify_meteorite` arm (revised).
+**Broken / obsolete:** route test omitted `qualify_meteorite` arm (revised). Empty-`company_job_id` content fail (original AST-1062 gate) — **`test_empty_company_job_id_qualifies`**. Relative-link fail case retired (no meteorite http gate).
 
 **Integration:** none.
 
@@ -814,15 +814,15 @@ Retires Do/Get overlay read path; `_consult_orchestration_for_entity` returns `T
 
 **Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`.
 
-`_resolve_company_job_id` + wire immediately before `qualify_meteorite` empty-`company_job_id` gate: AI wins; else UUID path segment from response/input `job_link`; else empty-id fail. No Style D source labels (AST-1121). Pure extract: **`docs/test-bible/utils/formatting.md`**. Config pattern: **`docs/test-bible/utils/config.md`**.
+`_resolve_company_job_id` + wire in `qualify_meteorite` process: AI wins; else UUID path segment from `job_link`; else record empty id and continue (title/JD floors still apply). No Style D source labels (AST-1121). Pure extract: **`docs/test-bible/utils/formatting.md`**. Config pattern: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Resolve + qualify wire (AC1–3) | `src/core/consult.py` | **`TestAst1120CompanyJobIdFallback`** |
+| Resolve + qualify wire | `src/core/consult.py` | **`TestAst1120CompanyJobIdFallback`** |
 
-**Broken / obsolete:** none — existing `TestAst1062QualifyMeteorite::test_content_gates_fail_state` empty-id case still uses a non-UUID `job_link`.
+**Broken / obsolete:** `test_empty_ai_no_uuid_still_empty_id_fail` — empty AI + no UUID now qualifies (`test_empty_ai_no_uuid_qualifies_with_empty_id`). `TestAst1062QualifyMeteorite::test_content_gates_fail_state` empty-id case retired.
 
-**Integration:** no existing scenarios assert qualify empty-id / company_job_id resolve — none revised.
+**Integration:** no existing scenarios assert qualify empty-id fail — none revised.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -876,15 +876,15 @@ RESPONSE omits `company_job_id` key + UUID in `job_link` → `_resolve_company_j
 
 **Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites`.
 
-`_bind_response_jobs_by_job_link` after AST-1076 digit bind for `qualify_meteorite` only; Create-time `job_link` fallback when Ruth link is empty/non-http. Digit bind / content FAILED / envelope ERROR unchanged.
+`_bind_response_jobs_by_job_link` after AST-1076 digit bind for `qualify_meteorite` only; leftover empty-`job_link` claims bind by order (`_bind_unmatched_empty_link_jobs_by_order`); Create-time `job_link` fallback when Ruth link is empty/non-http. Digit bind / content FAILED / envelope ERROR unchanged.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Link claim bind helper | `src/core/consult.py` | **`TestAst1133BindResponseJobsByJobLink`** |
 | List-created qualify path | `src/core/consult.py` | **`TestAst1133QualifyMeteoriteListCreated`** |
-| Relative-link content gate | `src/core/consult.py` | revised **`TestAst1062QualifyMeteorite::test_content_gates_fail_state`** (empty Create link) |
+| Title/JD length gates | `src/core/consult.py` | **`TestAst1062QualifyMeteorite::test_content_gates_fail_state`** (short title / short land+Ruth JD) |
 
-**Broken / obsolete:** AST-1062 relative `job_link` fail used Create http input — would pass under AST-1133 fallback (revised).
+**Broken / obsolete:** AST-1062 relative `job_link` fail used Create http input — would pass under AST-1133 fallback (revised). Relative-link fail row later dropped with empty-id gate.
 
 **Integration:** none revised.
 
@@ -1007,14 +1007,14 @@ ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code,
 
 **Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
 
-`qualify_meteorite` assemble emits `CONTENT:` (stored `job_description`); process: challenge/`_classify_jd==bot` → **BOT_BLOCKED**; `email-` prefix waives empty-`company_job_id` + http gates → **METEORITE_QUALIFIED**; short title → **METEORITE_FAILED_QUALIFY**. Config knobs / bot_signals: **`docs/test-bible/utils/config.md`**. Admin assemble: **`docs/test-bible/ui/api/api_admin.md`**. Classifier: **`docs/test-bible/core/gazer.md`**.
+`qualify_meteorite` assemble emits `CONTENT:` (stored `job_description`); process: challenge/`_classify_jd==bot` → **BOT_BLOCKED**; empty `company_job_id` qualifies; email subject fills short/blank Ruth title; land JD fills short Ruth `jd_text`; short title (no subject) / short JD (no land body) → **METEORITE_FAILED_QUALIFY**. Config knobs / bot_signals: **`docs/test-bible/utils/config.md`**. Admin assemble: **`docs/test-bible/ui/api/api_admin.md`**. Classifier: **`docs/test-bible/core/gazer.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Assemble / email QUALIFY / BOT_BLOCKED / fail | `src/core/consult.py` | **`TestAst1197QualifyMeteoriteApply`** |
 | Existing content gates still green | same | **`TestAst1062QualifyMeteorite`** |
 
-**Broken / obsolete:** Style D `link_source` / `title_source` asserts retired (logging statutes); **`TestAst1133…::test_debug_detail_includes_link_source_input`** removed (product lock is **`test_empty_ruth_link_uses_create_link_and_qualifies`**).
+**Broken / obsolete:** Style D `link_source` / `title_source` asserts retired (logging statutes); **`TestAst1133…::test_debug_detail_includes_link_source_input`** removed (product lock is **`test_empty_ruth_link_uses_create_link_and_qualifies`**). `email-` prefix as empty-id waiver retired — empty id qualifies without it.
 
 **Integration:** none revised.
 
