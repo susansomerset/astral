@@ -206,3 +206,57 @@ context_tokens≈22000
 - Stage 1: `plain_text` shape + `candidate.context.strengths` catalog + `STRENGTHS` artifact token — `bd7411988e4df0a614706be9bcc4a63ddc9f99dd`.
 
 **Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Strengths metadata, `plain_text` == `raw_string`, context sibling freeze, `TOKEN_SOURCES["STRENGTHS"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1632
+**Publish ref:** f0c27497390d605c53c0f4cabae0e168c6dd5158
+**Corpus:** 0b920f4e7dfc842c1032277aa99ac34e1bd0f9b9
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.manage-catalog | A | | Register-only slice: `candidate.context.strengths` catalog entry, `plain_text` shape, STRENGTHS artifact token; read/write/retire correctly deferred per Boundaries
+astral.config.config-source-of-truth | A | | Catalog, shape sentinel, token flip, and all asserts confined to `src/utils/config.py`
+astral.standards.no-hardcoded-sets | A | | Closed ARTIFACT_CONFIG key set, per-entry `_st` asserts, context sibling-absence loop, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}`
+stat.logging.info | X | | id-only; config-only slice adds no `logger.info` surfaces
+stat.logging.debug | X | | id-only; config-only slice adds no `logger.debug` surfaces
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `src/utils/config.py` — `TOKEN_SOURCES["STRENGTHS"]` + `resolve_tokens`
+- **Finding:** Flipping `STRENGTHS` to `source_type: "artifact"` is typing/registry-only today; `resolve_tokens` still walks `path: "context.strengths"` (same as pre-flip). Plan documents this and bounds operative hydrate + blob retirement to sibling tickets.
+- **Recommendation:** No action on AST-1632; sibling owns runtime artifact overlay.
+
+### advisory
+
+- **Location:** Canon clerk / frozen list resolution
+- **Finding:** `canon_clerk expand` serves `canon/directives/active/` only; three frozen ids (`patt.artifact.manage-catalog`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`) were scored from repo statute/pattern files at the epic worktree, not clerk payload.
+- **Recommendation:** Corpus hygiene is downstream; scores above are from those files' Statement/Examples.
+
+## What's solid
+
+- Stage 1 plan steps 1–8 delivered verbatim in `config.py`: `plain_text: "raw_string"`, full Strengths catalog metadata, closed key-set assert, context sibling freeze, per-entry `_st` asserts, STRENGTHS token flip with explicit linkage asserts, module docstring inventory update.
+- Betty manifest coverage is tight: `TestAst1632CatalogPlainTextStrengthsToken` plus revised `TestAst1590JobArtifactCatalogKeys` / `TestAst1596TokenCatalogSourceTypeTyping` counts and getters.
+- AC1–AC3 one-liners exit 0 against publish tip.
+
+## Scope notes (not findings)
+
+- Product diff is `src/utils/config.py` only; `tests/component/utils/test_config.py` and `docs/test-bible/utils/config.md` are expected qa-child / Betty pipeline artifacts.
+- Estimate **2** fits: single-file config registration + targeted test revisions.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1632): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
