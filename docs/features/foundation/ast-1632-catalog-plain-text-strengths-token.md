@@ -161,3 +161,39 @@ Confirm Chuckles estimate: 2 — agree
 | `astral.standards.no-hardcoded-sets` | statute — closed key/shape membership via asserts |
 | `stat.logging.info` | id-only — no new logging surface this ticket |
 | `stat.logging.debug` | id-only — no new logging surface this ticket |
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1632
+**Overall:** APPROVED
+**Corpus:** 0b920f4e7dfc842c1032277aa99ac34e1bd0f9b9
+**Publish ref tip:** 12d49988f6295cc4e5e6909842d6b38934d08452
+
+## Canon scores
+
+patt.artifact.manage-catalog | A | | Register-only slice matches epic partition; closed catalog + sibling freeze; read/write/retire correctly deferred to siblings per Boundaries
+astral.config.config-source-of-truth | A | | All catalog/shape/token changes confined to config.py blocks
+astral.standards.no-hardcoded-sets | A | | Closed key set, per-entry asserts, artifact-token set, context sibling-absence loops mirror existing config patterns
+stat.logging.info | X | | id-only; Stage 1 §8 explicitly defers — no new logging surfaces in config-only slice
+stat.logging.debug | X | | id-only; same deferral — no new debug surfaces
+
+## Traceability
+
+AC1→Stage 1 §3–4+verify; AC2→Stage 1 §2+§5+verify; AC3→Stage 1 §6–7+verify; parent AC4–9 N/A (operative save, hydrate, blob retirement, editor reload, backfill, sibling freeze UI — sibling tickets #2/#3).
+
+## Findings
+
+### acceptable
+
+- **Location:** Canon clerk / ticket list
+- **Finding:** `canon_clerk expand` serves only `canon/directives/active/` (12 ids). Three frozen ids (`patt.artifact.manage-catalog`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`) live under draft/statutes paths and were scored from repo files at the epic worktree, not clerk payload.
+- **Recommendation:** No plan change. Corpus hygiene is Archie/Chuckles territory; scores above are from those files' Statement/Examples.
+
+### acceptable
+
+- **Location:** Stage 1 §6 / resolve_tokens
+- **Finding:** Flipping `STRENGTHS` to `source_type: artifact` does not change `resolve_tokens` runtime (still walks `path` until sibling hydrate overlays `context.strengths`). Plan documents this explicitly and bounds resolve_tokens out of scope.
+- **Recommendation:** None for this ticket; sibling #2 owns hydrate + blob retirement per parent partition.
+
+context_tokens≈22000
