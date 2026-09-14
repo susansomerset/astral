@@ -197,3 +197,12 @@ AC1→Stage 1 §3–4+verify; AC2→Stage 1 §2+§5+verify; AC3→Stage 1 §6–
 - **Recommendation:** None for this ticket; sibling #2 owns hydrate + blob retirement per parent partition.
 
 context_tokens≈22000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1629/AST-1632-catalog-plain-text-strengths-token` @ `bd7411988e4df0a614706be9bcc4a63ddc9f99dd`.
+
+**Stages delivered:**
+- Stage 1: `plain_text` shape + `candidate.context.strengths` catalog + `STRENGTHS` artifact token — `bd7411988e4df0a614706be9bcc4a63ddc9f99dd`.
+
+**Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Strengths metadata, `plain_text` == `raw_string`, context sibling freeze, `TOKEN_SOURCES["STRENGTHS"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}`.
