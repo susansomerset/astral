@@ -118,3 +118,40 @@ Confirm Chuckles estimate: 3 — agree
 - Parent/child AC7 / parent AC9 (UI path; ArtifactEditor untouched) → Stage 1 §§1, 5–6
 - Parent AC7 (no backfill; legacy until re-save) → Stage 1 §2 miss path (hydrate leaves blob)
 - Sibling freeze / other context pages → scope gate; no sibling page edits
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1634
+**Overall:** APPROVED
+**Corpus:** 0b920f4e7dfc842c1032277aa99ac34e1bd0f9b9
+**Publish ref tip:** 4ee246c14722f591c99ab654ad27dbd08167fde0
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | | Optional `bodyShape` on ContextTextPage; Strengths hardcodes `plain_text`; mirrors ArtifactEditor pilot pattern; no frontend catalog fetch; ArtifactEditor untouched
+patt.artifact.read-current | A | | Single GET load from hydrated `context[contextKey]`; no client artifact_id or second fetch; miss leaves legacy blob per parent AC7
+patt.artifact.write-operative | A | | Save keeps `{ context: { strengths } }` PUT → AST-1633 operative intercept; client empty gate before PUT matches server plain_text validation
+
+## Traceability
+
+AC6→Stage 1 §§2–3 + verify (save/reload same text); AC7→Stage 1 §§1, 5–6 (ContextTextPage only; ArtifactEditor diff empty); parent AC7→Stage 1 §2 miss path; parent AC9→scope gate + §6 (sibling pages omit `bodyShape`).
+
+## Findings
+
+### acceptable
+
+- **Location:** Stage 1 §1 / `patt.artifact.ui-consistency`
+- **Finding:** Pattern prose is ArtifactEditor/`artifacts[leaf]`-centric; this plan correctly applies the same `bodyShape` parameterization to ContextTextPage with `context[contextKey]` leaf per parent Technical scope and AST-1633 API intercept — not a parallel client slot.
+- **Recommendation:** None — definition-faithful; pattern Abstract allows existing API leaf contracts.
+
+### acceptable
+
+- **Location:** Canon clerk
+- **Finding:** Three frozen pattern ids live under `canon/directives/draft/` outside clerk `active/` roster; scored from draft files at epic worktree.
+- **Recommendation:** No plan change.
+
+context_tokens≈45000
+```
+
