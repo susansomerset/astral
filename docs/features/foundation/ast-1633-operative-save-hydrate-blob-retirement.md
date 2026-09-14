@@ -241,6 +241,16 @@ Confirm Chuckles estimate: 5 — agree
 - Parent/child AC7 / parent AC8 (sibling freeze) → scope gate; no other `ARTIFACT_CONFIG` keys
 - Editor reload (parent AC6) → Stage 1 §6–7 + Stage 2 §2 (Katherine UI unchanged)
 
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1629/AST-1633-operative-save-hydrate-blob-retirement` @ `20d3e95d509e80d5c1cbaf8e09b893815d683060`.
+
+**Stages delivered:**
+- Stage 1: plain_text validate + hydrate + library gate — `bce5e8ce15f41f9d827b1259e24a05484728d4d6`.
+- Stage 2: PUT intercept + GET hydrate + logging (Joan exception format) — `20d3e95d509e80d5c1cbaf8e09b893815d683060`.
+
+**Betty:** at **Code Complete** — cover operative `plain_text` validation (non-empty string), Strengths `save_artifact` round-trip + retire prior current, dict-path strips `context.strengths`, hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf.
+
 ## Joan validate
 
 ```
