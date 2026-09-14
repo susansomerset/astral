@@ -3698,3 +3698,38 @@ Register `meteorite` in `ENTITY_TYPES`; wire `dispatch_entity_state_registry` / 
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 
+### AST-1632 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1632-catalog-plain-text-strengths-token`.
+
+Config-only: `BUILD_CONFIG["artifact_shapes"]["plain_text"] = "raw_string"`; register `candidate.context.strengths` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, `ingestion_owner: candidate`); context sibling freeze (priorities / deal_breakers / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["STRENGTHS"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}`. No UI / hydrate / API / blob retirement (siblings).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text shape + strengths catalog + sibling freeze + STRENGTHS token | `src/utils/config.py` | **`TestAst1632CatalogPlainTextStrengthsToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts; `test_base_resume_artifact_linkage`) |
+
+**Broken / obsolete this pass:** AST-1590 three-key singleton; AST-1596 sole-`BASE_RESUME` artifact set / `data_field==23` / `get_tokens_by_source_type("artifact") == ["BASE_RESUME"]`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Strengths key, `plain_text` shape, or `STRENGTHS` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Strengths catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+

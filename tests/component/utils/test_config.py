@@ -5532,10 +5532,12 @@ class TestAst1590JobArtifactCatalogKeys:
     )
 
     def test_artifact_config_has_pilot_and_job_keys(self) -> None:
+        # AST-1632 adds candidate.context.strengths — membership stays closed-set.
         assert set(cfg.ARTIFACT_CONFIG.keys()) == {
             "candidate.artifacts.base_resume",
             "job.artifacts.job_resume",
             "job.artifacts.cover_letter",
+            "candidate.context.strengths",
         }
         for sibling in self._SIBLINGS:
             assert sibling not in cfg.ARTIFACT_CONFIG
@@ -5594,7 +5596,7 @@ class TestAst1590JobArtifactCatalogKeys:
         assert "job.artifacts.proposed_answers" not in cfg.ARTIFACT_CONFIG
 
 
-# Branches: TOKEN_SOURCE_TYPES; every row typed; BASE_RESUME sole artifact + key;
+# Branches: TOKEN_SOURCE_TYPES; every row typed; BASE_RESUME + STRENGTHS artifact keys;
 # COMPANY_SEARCH_TERMS data_field; get_tokens names; by-type + artifact-key getters;
 # assert-loop contract (missing/invalid/bad key / stray artifact_key).
 def _assert_token_sources_typing(
@@ -5602,7 +5604,7 @@ def _assert_token_sources_typing(
     artifact_config: dict,
     token_source_types: frozenset,
 ) -> None:
-    """Mirror of src.utils.config AST-1596 import-time TOKEN_SOURCES asserts."""
+    """Mirror of src.utils.config AST-1596 / AST-1632 import-time TOKEN_SOURCES asserts."""
     for _token_name, _spec in token_sources.items():
         assert isinstance(_spec, dict), _token_name
         assert "source_type" in _spec, f"TOKEN_SOURCES[{_token_name!r}] missing source_type"
@@ -5624,10 +5626,13 @@ def _assert_token_sources_typing(
 
     assert token_sources["BASE_RESUME"]["source_type"] == "artifact"
     assert token_sources["BASE_RESUME"]["artifact_key"] == "candidate.artifacts.base_resume"
+    # AST-1632: STRENGTHS joins the closed artifact-token set.
+    assert token_sources["STRENGTHS"]["source_type"] == "artifact"
+    assert token_sources["STRENGTHS"]["artifact_key"] == "candidate.context.strengths"
     _artifact_tokens = {
         name for name, spec in token_sources.items() if spec["source_type"] == "artifact"
     }
-    assert _artifact_tokens == {"BASE_RESUME"}
+    assert _artifact_tokens == {"BASE_RESUME", "STRENGTHS"}
 
 
 class TestAst1596TokenCatalogSourceTypeTyping:
@@ -5642,16 +5647,16 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         _assert_token_sources_typing(
             cfg.TOKEN_SOURCES, cfg.ARTIFACT_CONFIG, cfg.TOKEN_SOURCE_TYPES
         )
-        # Classification counts from plan (23 data_field / 1 artifact / 27 special_case).
+        # AST-1632: STRENGTHS flips data_field → artifact (22 / 2 / 27).
         by_type = {
             st: cfg.get_tokens_by_source_type(st) for st in sorted(cfg.TOKEN_SOURCE_TYPES)
         }
-        assert by_type["artifact"] == ["BASE_RESUME"]
-        assert len(by_type["data_field"]) == 23
+        assert by_type["artifact"] == ["BASE_RESUME", "STRENGTHS"]
+        assert len(by_type["data_field"]) == 22
         assert len(by_type["special_case"]) == 27
         assert sum(len(v) for v in by_type.values()) == len(cfg.TOKEN_SOURCES)
 
-    def test_base_resume_sole_artifact_linkage(self) -> None:
+    def test_base_resume_artifact_linkage(self) -> None:
         assert cfg.TOKEN_SOURCES["BASE_RESUME"] == {
             "source": "candidate",
             "path": "artifacts.base_resume",
@@ -5671,14 +5676,16 @@ class TestAst1596TokenCatalogSourceTypeTyping:
     def test_get_tokens_names_unchanged(self) -> None:
         assert cfg.get_tokens() == sorted(cfg.TOKEN_SOURCES.keys())
         assert "BASE_RESUME" in cfg.get_tokens()
+        assert "STRENGTHS" in cfg.get_tokens()
 
     def test_get_tokens_by_source_type_filters_and_rejects(self) -> None:
-        assert cfg.get_tokens_by_source_type("artifact") == ["BASE_RESUME"]
+        assert cfg.get_tokens_by_source_type("artifact") == ["BASE_RESUME", "STRENGTHS"]
         data = cfg.get_tokens_by_source_type("data_field")
         assert data == sorted(data)
         assert "FIRST_NAME" in data
         assert "COMPANY_SEARCH_TERMS" in data
         assert "BASE_RESUME" not in data
+        assert "STRENGTHS" not in data
         special = cfg.get_tokens_by_source_type("special_case")
         assert "THEY" in special and "VISIBLE_JD" in special and "RUBRIC_VECTORS" in special
         with pytest.raises(ValueError, match="invalid source_type"):
@@ -5730,7 +5737,7 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         with pytest.raises(AssertionError, match="non-artifact must not carry artifact_key"):
             _assert_token_sources_typing(stray_key, arts, types)
 
-        # Sole-artifact set breaks when a second artifact is validly keyed.
+        # Closed artifact-token set breaks when an extra artifact is validly keyed.
         second = dict(live)
         second["EXTRA_ART"] = {
             "source": "candidate",
@@ -5740,6 +5747,52 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         }
         with pytest.raises(AssertionError):
             _assert_token_sources_typing(second, arts, types)
+
+
+class TestAst1632CatalogPlainTextStrengthsToken:
+    """AST-1632: plain_text shape + strengths catalog key + STRENGTHS artifact token."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    _CTX_SIBLINGS = (
+        "candidate.context.priorities",
+        "candidate.context.deal_breakers",
+        "candidate.context.backstory",
+        "candidate.context.ideal_day",
+        "candidate.context.writing_preferences",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_strengths_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.strengths"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_strengths_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["STRENGTHS"] == {
+            "source": "candidate",
+            "path": "context.strengths",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.strengths",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("STRENGTHS")
+            == "candidate.context.strengths"
+        )
+        # Sibling context tokens stay data_field (Boundaries — Strengths only).
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["PRIORITIES"]
 
 
 class TestAst1621MeteoriteEntityTypeRegistry:
