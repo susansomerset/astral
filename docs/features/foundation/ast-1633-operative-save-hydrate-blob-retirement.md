@@ -296,3 +296,70 @@ AC4→Stage 1 §§3–4 + Stage 2 §§3–4 + verify; AC5→Stage 1 §5 + Stage 
 
 context_tokens≈38000
 ```
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1633
+**Publish ref:** 4f4475e9ac55349f67fcfc805639706b56c86927
+**Corpus:** 0b920f4e7dfc842c1032277aa99ac34e1bd0f9b9
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.write-operative | A | | Str-path `plain_text` validate → `save_artifact` retire+insert; returns uuid; mirrors base_resume pilot
+patt.artifact.read-current | A | | `get_candidate_current` + `hydrate_operative_strengths_for_response` on `get_candidate` and GET detail; hit overlays current string
+patt.artifact.manage-catalog | A | | Retires Strengths library SoT: API pop + dict-path strip; operative row is authoritative on write
+astral.standards.in-scope-only | A | | Product commits confined to `candidate.py` + `api_candidate.py`; catalog dependency from sibling AST-1632 on branch tip
+stat.logging.info.entity | A | | Strengths operative save emits pipe-format entity info only for `_STRENGTHS_ARTIFACT_KEY`
+stat.logging.info.api | A | | One api info line when Strengths PUT completes 200, after successful handler path
+stat.logging.error | A | | Handler `logger.exception` includes `type(e).__name__`, `e`, and next-step “returning 400” — Joan’s plan-stage gap closed at build
+
+## Column diff vs plan stage
+
+stat.logging.error | Joan C/2 → Radia A | Build extended except format string per statute Do (`type(e).__name__`, `e` in message body)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `src/core/candidate.py` — `_STRENGTHS_ARTIFACT_KEY` placement
+- **Finding:** Constant is defined at module line ~1511 but referenced in `save_candidate_data` at ~800. Python late-binding makes this runtime-safe; plan preferred placement near `_PILOT_BASE_RESUME_ARTIFACT_KEY` or above the hydrate helper.
+- **Recommendation:** Optional style tidy in a future pass; not a canon or AC blocker.
+
+### advisory
+
+- **Location:** `hydrate_operative_strengths_for_response` / `patt.artifact.read-current`
+- **Finding:** Miss path preserves legacy `context.strengths` blob instead of empty contract — diverges from pattern default but matches parent AC7 / no-backfill migration window; plan documents explicitly.
+- **Recommendation:** None for AST-1633; expected until operator re-save.
+
+### advisory
+
+- **Location:** Canon clerk / frozen list
+- **Finding:** Four frozen ids (`patt.artifact.*`, `astral.standards.in-scope-only`) live outside clerk `active/` roster; scored from draft/statute files at epic worktree.
+- **Recommendation:** Corpus hygiene downstream; scores from those files' Statement/Examples.
+
+## What's solid
+
+- Stage 1 + Stage 2 plan delivered: `plain_text` validation (non-empty string), operative save with retire+insert, dict-path `context.strengths` strip, hydrate overlay / legacy-on-miss, PUT pop+operative intercept, GET detail hydrate, empty-strengths → 400.
+- Betty manifest coverage is thorough: `TestAst1633StrengthsOperativeSaveHydrate` (core round-trip, retire, dict strip, hydrate hit/miss) and `TestAst1633StrengthsOperativeApi` (PUT/GET, sibling context merge, empty 400).
+- Joan’s `stat.logging.error` discuss item resolved in `20d3e95d` — exception log now carries live facts plus traceback.
+
+## Scope notes (not findings)
+
+- Three-dot diff vs `origin/dev` includes AST-1632 catalog commits (`config.py`, sibling tests/bible) stacked on the epic branch; AST-1633 product commits touch only the two scoped files.
+- `tests/` and `docs/test-bible/**` changes are expected Betty pipeline artifacts.
+- Estimate **5** fits operative save + hydrate + API intercept + targeted test/bible updates.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1633): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
+
+context_tokens≈32000
+```
