@@ -23,6 +23,7 @@ from src.core.candidate import (
     get_candidate,
     get_pending_craft_generation,
     hydrate_operative_base_resume_for_response,
+    hydrate_operative_strengths_for_response,
     hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
     IllegalCandidateTransition,
@@ -57,8 +58,10 @@ from src.utils.config import (
     UI_CONFIG,
 )
 from src.utils.deploy_status import ui_llm_debug
+from src.utils.logging import get_logger
 
 candidate_bp = Blueprint("candidate", __name__, url_prefix="/api/candidates")
+logger = get_logger(__name__)
 
 _SENTINEL_CLEAR = ""
 
@@ -206,6 +209,7 @@ def get_candidate_detail(candidate_id):
     cd = candidate.get("candidate_data") or {}
     hydrate_rubric_artifacts_for_response(candidate_id, cd)
     hydrate_operative_base_resume_for_response(candidate_id, cd)
+    hydrate_operative_strengths_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
 
@@ -261,6 +265,7 @@ def update_candidate_data(candidate_id):
     # AST-904: capture submitted rubric before apply deletes keys; re-stash on failure
     submitted_rubric = {}
     rubric_keys_to_clear = []
+    strengths_saved = False
     try:
         state_override = body.pop("state", None)
         api_key = body.pop("api_key", None)
@@ -272,6 +277,13 @@ def update_candidate_data(candidate_id):
         base_resume_in_save = False
         pilot_body = None
         if body:
+            # AST-1633: Strengths → operative save; do not library-merge the leaf.
+            strengths_body = None
+            ctx = body.get("context")
+            if isinstance(ctx, dict) and "strengths" in ctx:
+                strengths_body = ctx.pop("strengths")
+                if not ctx:
+                    body.pop("context", None)
             arts = body.get("artifacts")
             if isinstance(arts, dict):
                 apply_company_search_terms_save(candidate_id, arts)
@@ -338,6 +350,14 @@ def update_candidate_data(candidate_id):
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
+            # Strengths-only PUT leaves body empty after pop — still operative-save.
+            if strengths_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.strengths",
+                    strengths_body,
+                )
+                strengths_saved = True
         # AST-1287 / AST-1288: illegal hops return code=illegal_candidate_transition
         # with from_state/to_state; admin retry with confirm_state_override=true forces.
         # Same-state in the PUT body is skipped here (not a core no-op).
@@ -366,6 +386,12 @@ def update_candidate_data(candidate_id):
                 clear_candidate_api_key(candidate_id)
     except Exception as e:
         # Failed Save: keep submitted criteria recoverable via GET …/pending
+        logger.exception(
+            "%s | api update_candidate_data failed %s: %s — returning 400",
+            candidate_id,
+            type(e).__name__,
+            e,
+        )
         for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
             val = submitted_rubric.get(artifact_key)
             if isinstance(val, list) and val:
@@ -376,6 +402,13 @@ def update_candidate_data(candidate_id):
                     {"criteria": val},
                 )
         return jsonify({"error": str(e)}), 400
+    if strengths_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
     updated = get_candidate(candidate_id)
     return jsonify(_sanitize_candidate(updated) if updated else {})
 
