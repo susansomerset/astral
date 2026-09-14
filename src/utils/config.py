@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -5630,6 +5630,9 @@ BUILD_CONFIG = {
             "Letter": {"type": "str", "required": True},
             "signature": {"type": "str", "required": False},
         },
+        # AST-1632: raw string body — value is NOT a field-keyed schema (unlike resume_content / cover_letter).
+        # Operative validation (sibling) gates on body_shape == "plain_text", not shape.items().
+        "plain_text": "raw_string",
     },
     # AST-1350: Print / Open HTML when experience is non-array — exact operator toast.
     "unsupported_resume_structure_message": (
@@ -5713,12 +5716,21 @@ ARTIFACT_CONFIG = {
         "body_shape": "cover_letter",
         "ingestion_owner": "tracker",
     },
+    "candidate.context.strengths": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Strengths (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
 }
 
 assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.artifacts.base_resume",
     "job.artifacts.job_resume",
     "job.artifacts.cover_letter",
+    "candidate.context.strengths",
 }
 # Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2).
 for _sibling in (
@@ -5732,6 +5744,16 @@ for _sibling in (
     "job.artifacts.application_responses",
 ):
     assert _sibling not in ARTIFACT_CONFIG
+
+# Sibling context leaves stay out of the catalog until their own epics (parent AC8 / AST-1632).
+for _ctx_sibling in (
+    "candidate.context.priorities",
+    "candidate.context.deal_breakers",
+    "candidate.context.backstory",
+    "candidate.context.ideal_day",
+    "candidate.context.writing_preferences",
+):
+    assert _ctx_sibling not in ARTIFACT_CONFIG
 
 _br = ARTIFACT_CONFIG["candidate.artifacts.base_resume"]
 assert _br["entity_type"] == "candidate"
@@ -5774,6 +5796,22 @@ assert _cl["body_shape"] == "cover_letter"
 assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert _cl["ingestion_owner"] == "tracker"
 assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_st = ARTIFACT_CONFIG["candidate.context.strengths"]
+assert _st["entity_type"] == "candidate"
+assert _st["entity_type"] in ENTITY_TYPES
+assert _st["candidate_scoped"] is True
+assert isinstance(_st["candidate_scoped"], bool)
+assert _st["body_shape"] == "plain_text"
+assert _st["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _st["ingestion_owner"] == "candidate"
+assert set(_st.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
@@ -6270,7 +6308,12 @@ TOKEN_SOURCES = {
     "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.raw_resume", "source_type": "data_field"},
     "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.raw_profile", "source_type": "data_field"},
     "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.raw_sample", "source_type": "data_field"},
-    "STRENGTHS":            {"source": "candidate", "path": "context.strengths", "source_type": "data_field"},
+    "STRENGTHS": {
+        "source": "candidate",
+        "path": "context.strengths",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.strengths",
+    },
     "PRIORITIES":           {"source": "candidate", "path": "context.priorities", "source_type": "data_field"},
     "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers", "source_type": "data_field"},
     "BACKSTORY":            {"source": "candidate", "path": "context.backstory", "source_type": "data_field"},
@@ -6354,10 +6397,12 @@ for _token_name, _spec in TOKEN_SOURCES.items():
 
 assert TOKEN_SOURCES["BASE_RESUME"]["source_type"] == "artifact"
 assert TOKEN_SOURCES["BASE_RESUME"]["artifact_key"] == "candidate.artifacts.base_resume"
+assert TOKEN_SOURCES["STRENGTHS"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["STRENGTHS"]["artifact_key"] == "candidate.context.strengths"
 _artifact_tokens = {
     name for name, spec in TOKEN_SOURCES.items() if spec["source_type"] == "artifact"
 }
-assert _artifact_tokens == {"BASE_RESUME"}
+assert _artifact_tokens == {"BASE_RESUME", "STRENGTHS"}
 
 # AST-513: phase token → persisted job_data grades_key + rubric artifact key.
 JOB_TOKEN_CONFIG = {
