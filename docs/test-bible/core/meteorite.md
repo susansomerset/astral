@@ -233,12 +233,13 @@ Public `stage_meteorite`: blob + source handle → `invoke_stage_meteorite` → 
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
 
-Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAPE_LINK | READY), `run_scrape_meteorite` (Playwright → READY | BOT_BLOCKED | ERROR), `run_land_meteorite` (READY → `METEORITE_NEW` job + LANDED, no enrich-in-front). Entity-pipe info on success; configured misses are warnings. Config/dispatcher wiring: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**.
+Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAPE_LINK | READY), `run_scrape_meteorite` (Playwright → READY | BOT_BLOCKED | ERROR), `run_land_meteorite` (READY → `METEORITE_NEW` job + LANDED, no enrich-in-front). Entity-pipe info on success; configured misses are warnings. Dispatch **Run** loops to `max_runs`; **Sweep** is one batch. Config/dispatcher wiring: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/dispatcher.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Stage / scrape / land runners | `src/core/meteorite.py` | **`TestAst1560RunStageMeteorite`**, **`TestAst1560RunScrapeMeteorite`**, **`TestAst1560RunLandMeteorite`** |
 | Revised classify-only public stage | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`** |
+| Dispatch Sweep vs Run | `src/core/dispatcher.py` | **`TestRunDispatchLoop::test_sweep_ui_initiated_auto_is_one_batch`**, **`test_click_honours_max_runs`**, **`TestAst1560IngressTransitionDispatchOne::test_click_loops_to_max_runs`** |
 
 **Broken / obsolete:** **`TestAst1530StageMeteorite`** scrap-map / land-via-stage tests (AST-1560).
 
@@ -251,7 +252,9 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 3. `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite`
 4. `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
 5. `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne`
-6. `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig`
+6. `tests/component/core/test_dispatcher.py::TestRunDispatchLoop::test_sweep_ui_initiated_auto_is_one_batch`
+7. `tests/component/core/test_dispatcher.py::TestRunDispatchLoop::test_click_honours_max_runs`
+8. `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -260,6 +263,8 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
   tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite \
   tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
   tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne \
+  tests/component/core/test_dispatcher.py::TestRunDispatchLoop::test_sweep_ui_initiated_auto_is_one_batch \
+  tests/component/core/test_dispatcher.py::TestRunDispatchLoop::test_click_honours_max_runs \
   tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
   -q
 ```
@@ -353,7 +358,7 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + warnin
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
 
-`check_inbox` fan-out + archive; dispatcher repoint. See **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/core/dispatcher.md`**.
+`check_inbox` fan-out + archive; dispatcher repoint. Inserted rows use `{id} | meteorite state: NEW` on the parent `meteorite_email` batch (`invoke_stage_meteorite` does not wipe `log_batch_id`). See **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/core/dispatcher.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |

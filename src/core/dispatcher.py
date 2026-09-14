@@ -72,6 +72,20 @@ def _is_meteorite_ingress_transition_task_key(task_key: str) -> bool:
     )
 
 
+def _meteorite_ingress_runner(task_key: str):
+    """Table transition runner for stage/scrape/land (late import keeps meteorite off module-top)."""
+    from src.core.meteorite import (
+        run_land_meteorite,
+        run_scrape_meteorite,
+        run_stage_meteorite,
+    )
+    return {
+        METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]: run_stage_meteorite,
+        METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]: run_scrape_meteorite,
+        METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]: run_land_meteorite,
+    }[task_key]
+
+
 def _is_meteorite_bot_blocked_notify_task_key(task_key: str) -> bool:
     """True for BOT_BLOCKED Estelle notify runner (AST-1561)."""
     return (task_key or "").strip() == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
@@ -754,10 +768,20 @@ def _check_circuit_breaker(task_key: str, candidate_id: str, task_id: int) -> No
 
 
 async def _run_task(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
-    """Run a single batch through the unified runner. Returns summary counts."""
+    """Run a single batch. Meteorite table transitions skip consult `_run_unified`."""
+    task_key = (task.get("task_key") or "").strip()
+    if _is_meteorite_ingress_transition_task_key(task_key):
+        runner = _meteorite_ingress_runner(task_key)
+        logger.debug(
+            "Calling %s: [task_key=%s, batch_size=%s]",
+            runner.__name__, task_key, task.get("batch_size"),
+        )
+        summary = await runner(task, debug=debug)
+        logger.debug("Response from %s: %s", runner.__name__, summary)
+        return summary
     logger.debug(
         "Calling _run_unified: [task_key=%s, batch_size=%s, entity_type=%s, trigger_state=%s]",
-        (task.get("task_key") or "").strip(),
+        task_key,
         task.get("batch_size"),
         task.get("entity_type"),
         task.get("trigger_state"),
@@ -830,22 +854,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
 
     # AST-1560: meteorite table transition runners — custom branch before mailbox / _run_unified.
     if _is_meteorite_ingress_transition_task_key(task_key):
-        from src.core.meteorite import (
-            run_land_meteorite,
-            run_scrape_meteorite,
-            run_stage_meteorite,
-        )
-
-        runners = {
-            METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]: run_stage_meteorite,
-            METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]: run_scrape_meteorite,
-            METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]: run_land_meteorite,
-        }
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip() or None
         logger.debug(
             "Calling %s: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
-            runners[task_key].__name__, task_key, entity_batch_id, ledger_cid,
+            _meteorite_ingress_runner(task_key).__name__, task_key, entity_batch_id, ledger_cid,
         )
         database.save_dispatch_ledger(
             entity_batch_id,
@@ -865,10 +878,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         accumulated = dict(_SUMMARY_ZERO)
         final_status = "COMPLETED"
         try:
-            summary = await runners[task_key](task, debug=debug)
-            logger.debug("Response from %s: %s", runners[task_key].__name__, summary)
-            for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
-                accumulated[k] = int(summary.get(k, 0) or 0)
+            await _run_dispatch_loop({}, task, task_key, entity_batch_id, accumulated, dispatch_ledger_id)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             # Admin cancel is operator stop, not a crash (stat.logging.warning).
@@ -1434,6 +1444,9 @@ async def _run_dispatch_loop(
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
     ui_initiated = bool(task.get("_ui_initiated"))
+    # Sweep = UI click on an AUTO row: one batch. Run (CLICK) and AUTO ticks honour row max_runs.
+    if ui_initiated and is_auto:
+        max_runs = 1
     cid = task.get("candidate_id") or ctx.get("astral_candidate_id") or "-"
     run_count = 0
     while True:

@@ -82,7 +82,7 @@ Equivalent harness:
 | Touched path | Existing tests |
 | --- | --- |
 | `_run_unified` claim / chunk / batch-call / network skip | **`TestRunUnified`** (`test_returns_zero_without_debug_logging`, `test_ast502_chunked_evaluate_await_chunk0_sleep_once_then_gather_tails`, inflow rows) |
-| `_run_dispatch_loop` min_count / drain / max_runs / zero processed | **`TestRunDispatchLoop`** |
+| `_run_dispatch_loop` min_count / drain / max_runs / zero processed / Sweep vs Run | **`TestRunDispatchLoop`** |
 | `_dispatch_one` scheduler handoff | **`TestDispatchOne`** |
 | `_run_task` debug=False passthrough | **`TestRunTask::test_runs_without_debug_logging`** |
 | `_check_circuit_breaker` | **`TestCircuitBreaker`** |
@@ -475,7 +475,7 @@ Mailbox branch awaits **`check_inbox`** — revised **`TestAst1090GazeEmailDispa
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
 
-`_dispatch_one` custom branch before mailbox / `_run_unified`: mints `entity_batch_id`, sets `task["entity_batch_id"]`, routes `stage_meteorite` / `scrape_meteorite` / `land_meteorite` to meteorite transition runners (not consult). **`TestAst1560IngressTransitionDispatchOne`**. Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+`_dispatch_one` custom branch before mailbox / `_run_unified`: mints `entity_batch_id`, sets `task["entity_batch_id"]`, routes `stage_meteorite` / `scrape_meteorite` / `land_meteorite` through `_run_dispatch_loop` → `_run_task` (not consult). **Sweep** (UI + AUTO) is one batch; **Run** (CLICK) honours `max_runs`. **`TestRunDispatchLoop::test_sweep_ui_initiated_auto_is_one_batch`**, **`test_click_honours_max_runs`**, **`TestAst1560IngressTransitionDispatchOne`** (`test_click_loops_to_max_runs`). Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
 
 **Integration:** none revised.
 

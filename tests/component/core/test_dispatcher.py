@@ -1399,6 +1399,48 @@ class TestRunDispatchLoop:
         assert accumulated["total_processed"] == 2
 
     @pytest.mark.asyncio
+    async def test_sweep_ui_initiated_auto_is_one_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
+        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {
+            "id": 11,
+            "task_key": "evaluate_jd",
+            "entity_type": "job",
+            "trigger_state": "JD_READY",
+            "auto_mode": 1,
+            "min_count": 1,
+            "max_runs": 10,
+            "_ui_initiated": True,
+        }
+        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        run.assert_awaited_once()
+        assert accumulated["total_processed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_click_honours_max_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
+        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {
+            "id": 11,
+            "task_key": "evaluate_jd",
+            "entity_type": "job",
+            "trigger_state": "JD_READY",
+            "auto_mode": 0,
+            "min_count": 1,
+            "max_runs": 3,
+            "_ui_initiated": True,
+        }
+        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        assert run.await_count == 3
+        assert accumulated["total_processed"] == 3
+
+    @pytest.mark.asyncio
     async def test_stops_after_first_run_when_max_runs_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
         run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
@@ -2783,11 +2825,10 @@ class TestAst1560IngressTransitionDispatchOne:
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 1)
         monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
         monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
         monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
-        loop = AsyncMock()
-        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
         tk = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]
         task = {
             "id": 1560,
@@ -2802,9 +2843,44 @@ class TestAst1560IngressTransitionDispatchOne:
         runner.assert_awaited_once()
         assert runner.await_args.args[0]["entity_batch_id"]
         assert runner.await_args.args[0]["entity_batch_id"].startswith(f"{tk}-")
-        loop.assert_not_called()
         save_ledger.assert_called_once()
         assert save_ledger.call_args.args[1] == tk
+
+    @pytest.mark.asyncio
+    async def test_click_loops_to_max_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_land_meteorite", runner)
+        monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", AsyncMock())
+        monkeypatch.setattr(meteorite_mod, "run_stage_meteorite", AsyncMock())
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        tk = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]
+        task = {
+            "id": 15602,
+            "task_key": tk,
+            "candidate_id": "somerset",
+            "auto_mode": 0,
+            "debug": 0,
+            "max_runs": 2,
+            "_ui_initiated": True,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[15602] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        assert runner.await_count == 2
 
 
 @pytest.mark.skipif(
