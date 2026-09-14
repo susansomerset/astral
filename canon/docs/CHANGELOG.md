@@ -153,6 +153,7 @@ the export — that shape has no hoisting justification and is a genuine miss).
 | 2026-09-10 | `stat.logging.debug` | amended | verbosity is the duty: loop begin/end, callee params in, full response out; a terminal summary is not enough | — |
 | 2026-09-10 | `stat.utils.data-late-import-only` | dropped | not a separate statute — temporary `logging.py` `_flush_buffer` exception already on `stat.layers.import-rules` / EXCEPTIONLOG until production monitoring | AST-1625 |
 | 2026-09-10 | harvest `stat.standards.logging-via-utils` / `debug-contract-gated` | deleted from `directives/draft/` | superseded by `stat.logging.*` | AST-1625 |
+| 2026-09-14 | `stat.variables.named-constants`, `stat.functions.clear-names`, `stat.functions.dont-repeat-yourself`, `stat.component.public-then-helpers`, `stat.errors.raise-once-log-once`, `stat.layers.import-rules` | moved `directives/active/` → `directives/draft/` | portable-statute slop; logging statutes and new-generation patterns stay active | — |
 
 ## What counts as a change worth a row
 
