@@ -240,3 +240,49 @@ Confirm Chuckles estimate: 5 — agree
 - Parent/child AC6 / parent AC7 (no backfill; legacy until re-save) → Stage 1 §6 miss path
 - Parent/child AC7 / parent AC8 (sibling freeze) → scope gate; no other `ARTIFACT_CONFIG` keys
 - Editor reload (parent AC6) → Stage 1 §6–7 + Stage 2 §2 (Katherine UI unchanged)
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1633
+**Overall:** APPROVED
+**Corpus:** 0b920f4e7dfc842c1032277aa99ac34e1bd0f9b9
+**Publish ref tip:** 797e0cd5195ab2c9eb7a20ce694b44db599b3189
+
+## Canon scores
+
+patt.artifact.write-operative | A | | Stage 1 str-path → validate → save_artifact retire+insert; returns uuid; mirrors base_resume pilot
+patt.artifact.read-current | A | | get_candidate_current + hydrate overlay on GET/get_candidate; miss leaves legacy blob per parent AC7 (documented §6)
+patt.artifact.manage-catalog | A | | Retires Strengths library SoT: API pop + dict-path strip; depends on catalog sibling already on ftr
+astral.standards.in-scope-only | A | | Two scoped files only; explicit scope gate; no config/React/database/backfill
+stat.logging.info.entity | A | | Stage 1 §4 pipe on Strengths operative save only
+stat.logging.info.api | A | | Stage 2 §5 one info line when Strengths PUT completes 200
+stat.logging.error | C | 2 | Stage 2 §6 — handler exception log omits exc type/message in the format string (traceback only)
+
+## Traceability
+
+AC4→Stage 1 §§3–4 + Stage 2 §§3–4 + verify; AC5→Stage 1 §5 + Stage 2 §§3–4; AC6→Stage 1 §6 miss path; AC7→scope gate (no new catalog keys); parent AC6 editor reload→Stage 1 §§6–7 + Stage 2 §2 (UI sibling unchanged).
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 2 §6 / `update_candidate_data` except
+- **Finding:** `logger.exception("%s | api update_candidate_data failed — returning 400", candidate_id)` satisfies once-at-handler and next-step, but `stat.logging.error` Do examples include `type(exc).__name__` and `exc` in the message body, not only traceback.
+- **Recommendation:** At build, extend the format string per statute Do (`… %s: %s … returning 400`, type(e), e) — mechanical tweak.
+
+### acceptable
+
+- **Location:** Stage 1 §6 / `patt.artifact.read-current`
+- **Finding:** Miss path keeps legacy `context.strengths` blob instead of empty contract — diverges from pattern default but matches parent AC7 / epic no-backfill window; plan documents explicitly.
+- **Recommendation:** None — definition-faithful migration window.
+
+### acceptable
+
+- **Location:** Canon clerk
+- **Finding:** Four frozen ids (`patt.artifact.*`, `astral.standards.in-scope-only`) outside clerk `active/` roster; scored from draft/statute files at epic worktree.
+- **Recommendation:** No plan change.
+
+context_tokens≈38000
+```
