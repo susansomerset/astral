@@ -184,7 +184,7 @@ function ScheduledPhaseTable({
             const isRunning = thread?.running ?? false
             const isDraining = thread?.draining ?? false
             const avail = row.available_count ?? 0
-            const isSweep = avail > 0
+            const isSweep = !!row.auto_mode && avail > 0
             const sweepDisabled = !!row.auto_mode && avail >= (row.min_count || 1)
             return (
               <tr
@@ -560,7 +560,27 @@ export default function ScheduledActions() {
       }
       return
     }
-    setTimeout(loadThreadStatus, 500)
+    const body = await res.json().catch(() => ({ started: true }))
+    if (body.started !== false) {
+      setThreadStatus(prev => ({
+        ...prev,
+        [row.id]: {
+          running: true,
+          draining: false,
+          task_key: row.task_key,
+          candidate_id: row.candidate_id ?? "",
+          is_auto: !!row.auto_mode,
+        },
+      }))
+    }
+    const watch = async () => {
+      const res = await api("/api/admin/scheduler/thread_status")
+      if (!res.ok) return
+      const next = await res.json() as Record<number, ThreadEntry>
+      setThreadStatus(next)
+      if (next[row.id]?.running) setTimeout(watch, 500)
+    }
+    setTimeout(watch, 500)
   }
 
   const handleStop = async (e: React.MouseEvent, row: DispatchTask) => {

@@ -435,11 +435,9 @@ describe("AdminScheduledActions", () => {
   }, 20000)
 
   it("reloads dispatch tasks when a manual run thread finishes", async () => {
-    let poll = 0
+    let running = true
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/admin/scheduler/thread_status") {
-        poll += 1
-        const running = poll === 1
         return {
           ok: true,
           json: async () => ({
@@ -448,7 +446,7 @@ describe("AdminScheduledActions", () => {
         } as Response
       }
       if (url === "/api/admin/dispatch_tasks" && !init?.method) {
-        const avail = poll > 1 ? 99 : 12
+        const avail = running ? 12 : 99
         return { ok: true, json: async () => [{ ...dispatchTask, available_count: avail }] } as Response
       }
       if (url === "/api/admin/dispatch_tasks/task_keys") {
@@ -462,8 +460,8 @@ describe("AdminScheduledActions", () => {
       }
     })
     renderWithProviders(<ScheduledActions />)
-    await expandFirstPhaseSection()
     await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument())
+    running = false
     await vi.advanceTimersByTimeAsync(5000)
     await waitFor(() => expect(screen.getByText("99")).toBeInTheDocument())
   }, 20000)
@@ -1358,6 +1356,36 @@ describe("AdminScheduledActions", () => {
     expect(within(tbody).getByRole("button", { name: "Draining…" })).toHaveClass("btn", "danger", "in-row")
   }, 20000)
 
+  it("AUTO off always labels Run; AUTO on with Avail > 0 labels Sweep", async () => {
+    mockApi(false, {
+      tasks: [
+        { ...dispatchTask, id: 1, auto_mode: 0, available_count: 12 },
+      ],
+      threads: {},
+    })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Run" })).toBeInTheDocument()
+    expect(within(tbody).queryByRole("button", { name: "Sweep" })).not.toBeInTheDocument()
+  }, 20000)
+
+  it("AUTO on with Avail > 0 labels Sweep", async () => {
+    mockApi(false, {
+      tasks: [
+        { ...dispatchTask, id: 1, auto_mode: 1, available_count: 12, min_count: 1 },
+      ],
+      threads: {},
+    })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Sweep" })).toBeInTheDocument()
+    expect(within(tbody).queryByRole("button", { name: "Run" })).not.toBeInTheDocument()
+  }, 20000)
+
   describe("AST-1409 in-place live refresh", () => {
     it("AUTO and Dbg toggles update the same row without Loading…", async () => {
       mockApi(false, { threads: {} })
@@ -1387,11 +1415,9 @@ describe("AdminScheduledActions", () => {
     }, 20000)
 
     it("running→idle merges Avail and last-run; open Add Task draft survives", async () => {
-      let poll = 0
+      let running = true
       installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
         if (url === "/api/admin/scheduler/thread_status") {
-          poll += 1
-          const running = poll === 1
           return {
             ok: true,
             json: async () => ({
@@ -1400,13 +1426,12 @@ describe("AdminScheduledActions", () => {
           } as Response
         }
         if (url === "/api/admin/dispatch_tasks" && !init?.method) {
-          const later = poll > 1
           return {
             ok: true,
             json: async () => [{
               ...dispatchTask,
-              available_count: later ? 99 : 12,
-              last_run_at: later ? "2026-06-15T12:00:00Z" : "2026-05-01T00:00:00Z",
+              available_count: running ? 12 : 99,
+              last_run_at: running ? "2026-05-01T00:00:00Z" : "2026-06-15T12:00:00Z",
             }],
           } as Response
         }
@@ -1422,6 +1447,7 @@ describe("AdminScheduledActions", () => {
       })
       renderWithProviders(<ScheduledActions />)
       await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument())
+      running = false
       await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
       const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
       const freqRow = within(modal).getByText("Freq (hrs)").closest(".modal-detail-row") as HTMLElement
@@ -1434,6 +1460,38 @@ describe("AdminScheduledActions", () => {
       expect(screen.getByText("6/15/26, 12:00:00 PM")).toBeInTheDocument()
       expect(screen.getByText("Add Task")).toBeInTheDocument()
       expect(within(freqRow).getByRole("spinbutton")).toHaveValue(7.5)
+    }, 20000)
+
+    it("reloads Avail after Run even when thread_status never reports running", async () => {
+      let avail = 12
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/scheduler/thread_status") {
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) {
+          return { ok: true, json: async () => [{ ...dispatchTask, available_count: avail }] } as Response
+        }
+        if (url.endsWith("/run")) {
+          avail = 7
+          return { ok: true, json: async () => ({ started: true }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/task_keys") {
+          return { ok: true, json: async () => taskKeysConfig } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/state_options") {
+          return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument())
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      await userEvent.click(within(tbody).getByRole("button", { name: "Run" }))
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => expect(screen.getByText("7")).toBeInTheDocument())
     }, 20000)
   })
 

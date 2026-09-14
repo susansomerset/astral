@@ -16,7 +16,9 @@ evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over
 grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(task_key=grade_*).
 """
 
+import functools
 import html
+import inspect
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -52,14 +54,66 @@ from src.utils.config import (
     is_task_alias,
 )
 from src.utils.formatting import enumerate_array, normalize_link, uuid_path_segment_from_url
-from src.utils.logging import get_logger, log_batch_id
+from src.utils.logging import get_logger, log_batch_id, log_debug
 from src.utils.llm_external import is_provider_balance_refusal
 
 logger = get_logger(__name__)
 
 
+def _with_log_debug(fn):
+    """Set log_debug from debug= for this frame; nested set/reset is correct."""
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def async_wrapper(*args, **kwargs):
+            bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+            token = log_debug.set(bool(bound.arguments.get("debug", False)))
+            try:
+                return await fn(*args, **kwargs)
+            finally:
+                log_debug.reset(token)
+        return async_wrapper
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        token = log_debug.set(bool(bound.arguments.get("debug", False)))
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            log_debug.reset(token)
+    return wrapper
+
+
+def _entity_info(entity_id: Any, entity_type: str, event: str, detail: Any) -> None:
+    logger.info(
+        "%s | %s %s: %s (batch: %s)",
+        entity_id,
+        entity_type,
+        event,
+        detail,
+        log_batch_id.get() or "-",
+    )
+
+
+def _job_consult_info(job_id: Any, to_state: Any) -> None:
+    _entity_info(job_id, "job", "consult completed", to_state)
+
+
+def _warn_job(aid: Any, dest: Any, reason: str) -> None:
+    logger.warning("%s -> %s [%s]", aid, dest, reason)
+
+
+def _hold_log_batch(batch_id: str):
+    """Stamp log_batch_id only when a parent dispatch batch is not already set."""
+    if log_batch_id.get():
+        return None
+    return log_batch_id.set(batch_id)
+
+
 def _consult_job_identifier(job: Dict[str, Any]) -> str:
-    """Primary debug identifier for a consult job row (§1.5.1 style D)."""
+    """Primary debug identifier for a consult job row."""
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
 
 
@@ -111,7 +165,7 @@ def _render_pass_fail(task_key: str, grades: list, entity_state: Optional[str] =
     Raises KeyError if orchestration lookup fails (missing TASK_CONFIG key)."""
     cfg = _consult_orchestration_for_entity(task_key, entity_state)
     if not grades:
-        logger.debug_detail(f"pass_fail task_key={task_key} branch=empty_grades -> fail")
+        logger.debug("pass_fail task_key=%s branch=empty_grades -> fail", task_key)
         return cfg["fail_state"]
     if any(
         g.get("grade") == "F"
@@ -119,15 +173,15 @@ def _render_pass_fail(task_key: str, grades: list, entity_state: Optional[str] =
         and g["confidence"] >= 2
         for g in grades
     ):
-        logger.debug_detail(f"pass_fail task_key={task_key} branch=F2_dealbreaker -> fail grades={grades!r}")
+        logger.debug("pass_fail task_key=%s branch=F2_dealbreaker -> fail grades=%s", task_key, grades)
         return cfg["fail_state"]
     if all(g.get("grade") == "X" for g in grades):
-        logger.debug_detail(f"pass_fail task_key={task_key} branch=all_literal_X -> fail")
+        logger.debug("pass_fail task_key=%s branch=all_literal_X -> fail", task_key)
         return cfg["fail_state"]
     if not any(isinstance(g.get("confidence"), int) and g["confidence"] > 1 for g in grades):
-        logger.debug_detail(f"pass_fail task_key={task_key} branch=no_confidence_gt_1 -> fail grades={grades!r}")
+        logger.debug("pass_fail task_key=%s branch=no_confidence_gt_1 -> fail grades=%s", task_key, grades)
         return cfg["fail_state"]
-    logger.debug_detail(f"pass_fail task_key={task_key} branch=pass -> {cfg['pass_state']}")
+    logger.debug("pass_fail task_key=%s branch=pass -> %s", task_key, cfg["pass_state"])
     return cfg["pass_state"]
 
 
@@ -210,8 +264,7 @@ def _vector_labels_map(rubric_criteria: list, *, debug: bool = False) -> Dict[st
     if dupes:
         detail = "; ".join(f"{code}→{labels!r}" for code, labels in sorted(dupes.items()))
         logger.warning("duplicate rubric codes: %s", detail)
-        if debug:
-            logger.debug_detail(detail)
+        logger.debug("duplicate rubric codes: %s", detail)
     # First-wins keeps decode stable until duplicate rows are data-fixed (not silent last-wins).
     out: Dict[str, str] = {}
     for code, label in pairs:
@@ -539,6 +592,42 @@ def _bind_response_jobs_by_job_link(response_jobs: list, claimed_jobs: list) -> 
         assigned.add(target)
 
 
+def _bind_unmatched_empty_link_jobs_by_order(
+    response_jobs: list, claimed_jobs: list
+) -> None:
+    """Positional leftover bind when unmatched claims have no job_link (email body rows)."""
+    if not response_jobs or not claimed_jobs:
+        return
+    claimed_set = {
+        (j.get("astral_job_id") or "").strip()
+        for j in claimed_jobs
+        if (j.get("astral_job_id") or "").strip()
+    }
+    assigned = {
+        (rj.get("astral_job_id") or "").strip()
+        for rj in response_jobs
+        if isinstance(rj, dict) and (rj.get("astral_job_id") or "").strip() in claimed_set
+    }
+    leftover_claimed = [
+        j for j in claimed_jobs
+        if (j.get("astral_job_id") or "").strip()
+        and (j.get("astral_job_id") or "").strip() not in assigned
+    ]
+    if not leftover_claimed:
+        return
+    if any((j.get("job_link") or "").strip() for j in leftover_claimed):
+        return
+    leftover_resp = [
+        rj for rj in response_jobs
+        if isinstance(rj, dict)
+        and (rj.get("astral_job_id") or "").strip() not in claimed_set
+    ]
+    if len(leftover_claimed) != len(leftover_resp):
+        return
+    for rj, row in zip(leftover_resp, leftover_claimed):
+        rj["astral_job_id"] = row["astral_job_id"]
+
+
 def _job_from_rubric_json(obj: dict, task_config: dict, ctx: dict) -> dict:
     rubric = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), task_config)
     grade_rows: List[Dict[str, Any]] = []
@@ -708,16 +797,11 @@ def _debug_incomplete_grade_set(
     total: int = 1,
 ) -> None:
     missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
-    logger.debug_index(
-        func=func,
-        index=index,
-        total=total,
-        identifier=identifier,
-        outcome=f"incomplete grade set -> {dest or '?'}",
-    )
-    logger.debug_detail(
-        f"missing={sorted(missing)} | unexpected={sorted(extra)} | "
-        f"decoded_vectors={sorted(_strip_code(str(g.get('vector') or '')) for g in (grades or []) if isinstance(g, dict))}"
+    logger.debug(
+        "incomplete grade set %s %s/%s %s -> %s missing=%s unexpected=%s decoded=%s",
+        func, index, total, identifier, dest or "?",
+        sorted(missing), sorted(extra),
+        sorted(_strip_code(str(g.get("vector") or "")) for g in (grades or []) if isinstance(g, dict)),
     )
 
 
@@ -753,9 +837,9 @@ def _phase_score_breakdown(
         contrib = base_counted * density * imp
         earned += contrib
         possible += base_counted * 1.0 * imp
-        logger.debug_detail(
-            f"vec={g.get('vector')!r} grade={g.get('grade')} conf={conf} "
-            f"base={base_counted} density={density} imp={imp} contrib={contrib}"
+        logger.debug(
+            "vec=%r grade=%s conf=%s base=%s density=%s imp=%s contrib=%s",
+            g.get("vector"), g.get("grade"), conf, base_counted, density, imp, contrib,
         )
     max_total = 0.0
     for g in grades:
@@ -777,7 +861,7 @@ def _render_score(
         and g["confidence"] >= 2
         for g in grades
     ):
-        logger.debug_detail(f"branch=F2_dealbreaker scored_fail grades={grades!r}")
+        logger.debug("branch=F2_dealbreaker scored_fail grades=%s", grades)
         return (consult_cfg["fail_state"], None)
     _require_complete_grade_set(rubric_criteria, grades)
     breakdown = _phase_score_breakdown(rubric_criteria, grades)
@@ -785,16 +869,19 @@ def _render_score(
     rubric_score = breakdown[earned_key]
     v = len([g for g in grades if not _effective_no_signal_for_score(g)])
     score = (rubric_score / float(RUBRIC_TOTAL)) * 10.0
-    logger.debug_detail(
-        f"rubric_score={rubric_score} score={score} score_floor={score_floor} v={v}"
+    logger.debug(
+        "rubric_score=%s score=%s score_floor=%s v=%s",
+        rubric_score, score, score_floor, v,
     )
     if score < score_floor:
-        logger.debug_detail(
-            f"branch=below_score_floor -> fail score={score} score_floor={score_floor}"
+        logger.debug(
+            "branch=below_score_floor -> fail score=%s score_floor=%s",
+            score, score_floor,
         )
         return (consult_cfg["fail_state"], score)
-    logger.debug_detail(
-        f"branch=pass -> {consult_cfg['pass_state']} score={score} score_floor={score_floor}"
+    logger.debug(
+        "branch=pass -> %s score=%s score_floor=%s",
+        consult_cfg["pass_state"], score, score_floor,
     )
     return (consult_cfg["pass_state"], score)
 
@@ -887,7 +974,6 @@ def _format_analysis_phase_text(
     evaluate_jd's — analysis_phases_meteorite_override supplies the swapped owner/artifact.
     Live label-or-code first; on miss, job-carried ``*_rubric`` snapshot identity + live content-by-code.
     """
-    log = get_logger(__name__, debug_flag=debug)
     phases = dict(JOB_TOKEN_CONFIG.get("analysis_phases") or {})
     if _entity_state_is_meteorite((job_data or {}).get("state")):
         phases.update(JOB_TOKEN_CONFIG.get("analysis_phases_meteorite_override") or {})
@@ -898,18 +984,11 @@ def _format_analysis_phase_text(
     recorded = 0
 
     def _emit_debug(text: str) -> None:
-        if not debug:
-            return
-        log.debug_index(
-            func="_format_analysis_phase_text",
-            index=phase_index,
-            total=phase_total,
-            identifier=f"{job_id}:{phase_token}",
-            outcome="formatted" if text else "empty",
-        )
-        log.debug_detail(
-            f"found_grades={found} recorded_vectors={recorded} "
-            f"live_criteria={len(live_criteria)} snapshot_criteria={len(snapshot)}"
+        logger.debug(
+            "_format_analysis_phase_text %s/%s %s:%s outcome=%s found_grades=%s recorded_vectors=%s live_criteria=%s snapshot_criteria=%s",
+            phase_index, phase_total, job_id, phase_token,
+            "formatted" if text else "empty",
+            found, recorded, len(live_criteria), len(snapshot),
         )
 
     if not phase_cfg:
@@ -955,11 +1034,7 @@ def _format_analysis_phase_text(
                     title = str(live_by_code.get("label") or title).strip()
                     rubric_blob = str(live_by_code.get("content") or "").strip()
         if criterion is None and not snapshot_hit:
-            logger.warning(
-                "_format_analysis_phase_text: no rubric criterion for vector %r (phase=%s)",
-                vector_label,
-                phase_token,
-            )
+            _warn_job(job_id or "-", phase_token, f"no rubric criterion for vector {vector_label!r}")
             continue
         letter = str(g.get("grade") or "").strip().upper()
         conf = g.get("confidence")
@@ -973,6 +1048,7 @@ def _format_analysis_phase_text(
     return text
 
 
+@_with_log_debug
 def build_job_token_context(
     job: Dict[str, Any], candidate_data: dict, *, candidate_id: str = "", debug: bool = False
 ) -> Dict[str, str]:
@@ -1048,6 +1124,7 @@ async def _prep_analysis_upshot_live_content(
     return "\n\n".join(parts)
 
 
+@_with_log_debug
 async def _run_analysis_upshot_batch(
     batch_id: str,
     entities: List[Dict[str, Any]],
@@ -1056,11 +1133,10 @@ async def _run_analysis_upshot_batch(
     task_key: str = "analysis_upshot",
 ) -> Dict[str, int]:
     """AST-480 / AST-1055: synthesis upshot; persist job_data.analysis_upshot → pass_state."""
-    if debug:
-        logger.set_debug_flag(True)
     task_cfg = TASK_CONFIG[task_key]
     processed = passed = failed = errors = 0
     base_ctx = dict(ctx or {})
+    logger.debug("Beginning %s loop on %s items", task_key, len(entities))
     for job in entities:
         aid = job["astral_job_id"]
         processed += 1
@@ -1072,6 +1148,7 @@ async def _run_analysis_upshot_batch(
                 dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
                 if dest:
                     _transition_job_state_for_task(task_key, [aid], dest)
+                _warn_job(aid, dest or "-", "no company")
                 errors += 1
                 continue
         live_content = await _prep_analysis_upshot_live_content(
@@ -1083,9 +1160,13 @@ async def _run_analysis_upshot_batch(
                 dest = _consult_batch_fail_dest(fresh.get("state"), task_cfg.get("error_state"))
                 if dest:
                     _transition_job_state_for_task(task_key, [aid], dest)
+                _warn_job(aid, dest or (fresh.get("state") or "-"), "no live content")
+            else:
+                _warn_job(aid, "NEED_WEBSITE_CONTENT", "no live content")
             errors += 1
             continue
         task_ctx = {**base_ctx, "batch_entities": [row], "job": row, "batch_size": 1}
+        logger.debug("Calling agent.do_task: [task_key=%s, index=%s]", task_key, aid)
         result = await do_task(
             task_key=task_key,
             live_content=live_content,
@@ -1093,25 +1174,20 @@ async def _run_analysis_upshot_batch(
             ctx=task_ctx,
             debug=debug,
         )
+        logger.debug("Response from agent.do_task: %s", result)
         if not result.get("success"):
             if is_provider_balance_refusal(result):
-                if debug:
-                    logger.debug_index(
-                        func="consult._run_analysis_upshot_batch",
-                        index=processed,
-                        total=len(entities),
-                        identifier=aid,
-                        outcome="provider_balance_refusal — state held",
-                    )
-                    logger.debug_detail(
-                        f"failure_class={result.get('failure_class')!r} error={result.get('error')!r} "
-                        f"current_state={row.get('state')!r}"
-                    )
+                logger.debug(
+                    "provider_balance_refusal aid=%s error=%r current_state=%r",
+                    aid, result.get("error"), row.get("state"),
+                )
+                _warn_job(aid, row.get("state") or "-", "provider balance refusal — state held")
                 errors += 1
                 continue
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest)
+            _warn_job(aid, dest or "-", result.get("error") or "do_task failed")
             errors += 1
             continue
         parsed = result.get("parsed_response")
@@ -1119,12 +1195,15 @@ async def _run_analysis_upshot_batch(
             dest = _consult_batch_fail_dest(row.get("state"), task_cfg.get("error_state"))
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest)
+            _warn_job(aid, dest or "-", "parsed_response is not a dict")
             errors += 1
             continue
         # Same job_data key as analysis_upshot so Recommended report consumers keep working.
         tracker.save_job_data(aid, {"analysis_upshot": parsed})
         _transition_job_state_for_task(task_key, [aid], task_cfg["pass_state"])
+        _job_consult_info(aid, task_cfg["pass_state"])
         passed += 1
+    logger.debug("End %s loop after %s items", task_key, processed)
     return {
         "total_processed": processed,
         "total_passed": passed,
@@ -1142,8 +1221,6 @@ def _apply_render_verdict_decoded_job(
     debug: bool = False,
 ) -> Tuple[str, Optional[Any], List[Any]]:
     """Decode path: hydrate reasons, graded verdict, persist {prefix}_* + transition (single row or batch)."""
-    if debug:
-        logger.set_debug_flag(True)
     agent_task = cfg.get("agent_task") or (dispatch_task_key or "").strip()
     grades = response_job.get("grades")
     if not isinstance(grades, list):
@@ -1154,10 +1231,10 @@ def _apply_render_verdict_decoded_job(
 
     agent_cfg = TASK_CONFIG[agent_task]
     mode = agent_cfg.get("grading_mode", "binary")
-    if debug:
-        logger.debug_detail(
-            f"apply_verdict dispatch_task_key={dispatch_task_key} mode={mode} grades={grades!r}"
-        )
+    logger.debug(
+        "apply_verdict dispatch_task_key=%s mode=%s grades=%s",
+        dispatch_task_key, mode, grades,
+    )
     nt = response_job.get("notes")
     notes_tail = nt.strip() if isinstance(nt, str) and nt.strip() else ""
 
@@ -1206,9 +1283,18 @@ def _apply_render_verdict_decoded_job(
     save_data[f"{prefix}_rubric"] = _rubric_snapshot_for_job_data(rubric_criteria)
     tracker.save_job_data(astral_job_id, save_data)
     _transition_job_state_for_task(agent_task, [astral_job_id], to_state, score)
+    if to_state == cfg.get("pass_state"):
+        _job_consult_info(astral_job_id, to_state)
+    else:
+        failed_vecs = [
+            g["vector"] for g in grades
+            if isinstance(g, dict) and g.get("grade") == "F" and g.get("vector")
+        ]
+        _warn_job(astral_job_id, to_state, ", ".join(failed_vecs) if failed_vecs else "consult fail")
     return to_state, score, grades
 
 
+@_with_log_debug
 async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[str, Any]] = None, debug: bool = False) -> Dict[str, Any]:
     """Full pipeline for one job through one agent task.
     Fetches job/company internally, preps live content, calls agent, audits,
@@ -1222,21 +1308,15 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     agent_task = cfg.get("agent_task") or task_type
     error_state = cfg.get("error_state")
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_index(
-            func="consult.render_verdict",
-            index=1,
-            total=1,
-            identifier=astral_job_id,
-            outcome="single-job consult start",
-        )
-        logger.debug_detail(f"task_type={task_type} agent_task={agent_task}")
+    logger.debug(
+        "Calling render_verdict: [task_type=%s, astral_job_id=%s, agent_task=%s]",
+        task_type, astral_job_id, agent_task,
+    )
 
     def _fail(error: str) -> Dict[str, Any]:
         """Transition to error_state (if configured) and return failure dict."""
-        if debug:
-            logger.debug_detail(f"render_verdict failed: {error}")
+        logger.debug("render_verdict failed: %s", error)
+        _warn_job(astral_job_id, error_state or "-", error)
         if error_state:
             _transition_job_state_for_task(agent_task, [astral_job_id], error_state)
         return {"success": False, "to_state": error_state, "error": error}
@@ -1266,23 +1346,18 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     job_row = dict(job)
     task_ctx: Dict[str, Any] = {**(ctx or {}), "batch_entities": [job_row], "vector_labels": vector_labels, "batch_size": 1}
 
+    logger.debug("Calling agent.do_task: [task_key=%s, index=%s]", agent_task, astral_job_id)
     result = await do_task(task_key=agent_task, live_content=live_content, index=astral_job_id, ctx=task_ctx, debug=debug)
+    logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
         if is_provider_balance_refusal(result):
             current_state = (job.get("state") or (tracker.get_job(astral_job_id) or {}).get("state"))
-            if debug:
-                logger.debug_index(
-                    func="consult.render_verdict",
-                    index=1,
-                    total=1,
-                    identifier=astral_job_id,
-                    outcome="provider_balance_refusal — state held",
-                )
-                logger.debug_detail(
-                    f"failure_class={result.get('failure_class')!r} error={result.get('error')!r} "
-                    f"current_state={current_state!r}"
-                )
+            logger.debug(
+                "provider_balance_refusal aid=%s error=%r current_state=%r",
+                astral_job_id, result.get("error"), current_state,
+            )
+            _warn_job(astral_job_id, current_state or "-", "provider balance refusal — state held")
             return {
                 "success": False,
                 "to_state": current_state,
@@ -1320,15 +1395,15 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     except IncompleteGradeSetError as e:
         # Incomplete/extra → retry holding, never first-touch technical (AST-1155).
         dest = _consult_batch_fail_dest(job.get("state"), error_state)
-        if debug:
-            grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
-            _debug_incomplete_grade_set(
-                func="consult.render_verdict",
-                identifier=astral_job_id,
-                rubric_criteria=rubric_criteria,
-                grades=grades_dbg,
-                dest=dest,
-            )
+        grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
+        _debug_incomplete_grade_set(
+            func="consult.render_verdict",
+            identifier=astral_job_id,
+            rubric_criteria=rubric_criteria,
+            grades=grades_dbg,
+            dest=dest,
+        )
+        _warn_job(astral_job_id, dest or "-", str(e))
         if dest:
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
         return {"success": False, "to_state": dest, "error": str(e)}
@@ -1339,16 +1414,10 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
             raise
         return _fail(es)
 
-    if debug:
-        logger.debug_index(
-            func="consult.render_verdict",
-            index=1,
-            total=1,
-            identifier=astral_job_id,
-            outcome=str(to_state),
-        )
-        logger.debug_detail(f"score={score} grades_count={len(grades_out or [])}")
-
+    logger.debug(
+        "Response from render_verdict: to_state=%s score=%s grades_count=%s",
+        to_state, score, len(grades_out or []),
+    )
     return {"success": True, "to_state": to_state, "score": score, "grades": grades_out, "timesheet": result.get("timesheet", {})}
 
 
@@ -1384,6 +1453,7 @@ def _transition_batch_consult_failures(
         _transition_job_state_for_task(task_key, ids, dest)
 
 
+@_with_log_debug
 async def _run_batch_consult(
     task_key: str,
     batch_id: str,
@@ -1408,19 +1478,14 @@ async def _run_batch_consult(
     batch_states = sorted({j.get("state") for j in jobs if j.get("state")})
     error_state = cfg.get("error_state")
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_index(
-            func=f"consult._run_batch_consult({task_key})",
-            index=1,
-            total=1,
-            identifier=task_key,
-            outcome=f"batch start n={len(jobs)}",
-        )
-        logger.debug_detail(
-            f"batch_id={batch_id} batch_states={batch_states!r} "
-            f"batch_chunk_index={batch_chunk_index!r} astral_ids={astral_ids}"
-        )
+    logger.debug(
+        "Beginning %s loop on %s items",
+        task_key, len(jobs),
+    )
+    logger.debug(
+        "batch_id=%s batch_states=%s batch_chunk_index=%s astral_ids=%s",
+        batch_id, batch_states, batch_chunk_index, astral_ids,
+    )
 
     live_content = assemble_fn(jobs)
     # Build code→label map from candidate's rubric so _decode_payload can hydrate vector names
@@ -1436,22 +1501,24 @@ async def _run_batch_consult(
     do_index = f"{task_key}_batch_{batch_id}"
     if batch_chunk_index is not None:
         do_index = f"{do_index}_c{batch_chunk_index}"
+    logger.debug(
+        "Calling agent.do_task: [task_key=%s, index=%s, n=%s]",
+        task_key, do_index, len(jobs),
+    )
     result = await do_task(task_key=task_key, live_content=live_content, index=do_index, ctx=task_ctx, debug=debug)
+    logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
         # Envelope failure — whole batch to error_state (unless provider balance refusal — hold)
         if is_provider_balance_refusal(result):
-            if debug:
-                logger.debug_index(
-                    func=f"consult._run_batch_consult({task_key})",
-                    index=1,
-                    total=1,
-                    identifier=task_key,
-                    outcome="provider_balance_refusal — batch state held",
-                )
-                logger.debug_detail(
-                    f"error={result.get('error')!r} failure_class={result.get('failure_class')!r}"
-                )
+            logger.debug(
+                "provider_balance_refusal task=%s error=%r",
+                task_key, result.get("error"),
+            )
+            logger.warning(
+                "%s — provider balance refusal\n  The batch is holding state",
+                task_key,
+            )
             return {
                 "success": False,
                 "error": result.get("error"),
@@ -1461,17 +1528,16 @@ async def _run_batch_consult(
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
             }
-        if debug:
-            logger.debug_index(
-                func=f"consult._run_batch_consult({task_key})",
-                index=1,
-                total=1,
-                identifier=task_key,
-                outcome="do_task failed — batch error transition",
-            )
-            logger.debug_detail(f"error={result.get('error')!r} error_state={error_state!r}")
+        logger.debug(
+            "do_task failed task=%s error=%r error_state=%r",
+            task_key, result.get("error"), error_state,
+        )
         if error_state:
             _transition_batch_consult_failures(task_key, jobs, error_state)
+        logger.warning(
+            "%s — do_task failed: %s\n  The batch is transitioning to error",
+            task_key, result.get("error"),
+        )
         return {"success": False, "error": result.get("error"), "passed": 0, "failed": 0, "total": len(jobs)}
 
     parsed = result["parsed_response"]
@@ -1480,7 +1546,10 @@ async def _run_batch_consult(
     try:
         _hydrate_response_jobs_grade_reasons(response_jobs, rubric_criteria)
     except ValueError as e:
-        logger.error("[%s] grade reason hydration failed: %s", task_key, e)
+        logger.exception(
+            "%s | grade reason hydration\n  %s: %s\n  The batch is transitioning to error",
+            task_key, type(e).__name__, e,
+        )
         if error_state:
             _transition_batch_consult_failures(task_key, jobs, error_state)
         return {
@@ -1494,20 +1563,19 @@ async def _run_batch_consult(
     _bind_response_jobs_to_claimed(response_jobs, jobs)
     if task_key == "qualify_meteorite":
         _bind_response_jobs_by_job_link(response_jobs, jobs)
-        if debug:
-            bound_ids = [
-                (rj.get("astral_job_id") or "").strip()
-                for rj in response_jobs
-                if isinstance(rj, dict)
-            ]
-            logger.debug_detail(f"qualify_meteorite bound astral_job_ids={bound_ids}")
+        _bind_unmatched_empty_link_jobs_by_order(response_jobs, jobs)
+        bound_ids = [
+            (rj.get("astral_job_id") or "").strip()
+            for rj in response_jobs
+            if isinstance(rj, dict)
+        ]
+        logger.debug("qualify_meteorite bound astral_job_ids=%s", bound_ids)
 
-    if debug:
-        ts = result.get("timesheet", {})
-        logger.debug_detail(
-            f"do_task returned jobs={len(response_jobs)} "
-            f"tokens input={ts.get('inputtotal')} cached={ts.get('inputcached')} output={ts.get('outputtotal')}"
-        )
+    ts = result.get("timesheet", {})
+    logger.debug(
+        "do_task returned jobs=%s tokens input=%s cached=%s output=%s",
+        len(response_jobs), ts.get("inputtotal"), ts.get("inputcached"), ts.get("outputtotal"),
+    )
 
     sent_ids = set(input_by_id.keys())
     received_ids = {rj["astral_job_id"] for rj in response_jobs}
@@ -1522,23 +1590,12 @@ async def _run_batch_consult(
             d = _consult_batch_fail_dest(row.get("state"), error_state)
             if d:
                 missing_dest_counts[d] = missing_dest_counts.get(d, 0) + 1
-        if len(missing_dest_counts) == 1:
-            sole_dest = next(iter(missing_dest_counts))
-            dest_label = f"-> {sole_dest}"
-        elif missing_dest_counts:
-            dest_label = f"per-entity retry/error routing {dict(sorted(missing_dest_counts.items()))}"
-        else:
-            dest_label = "(no dest configured)"
-        logger.warning(
-            "[%s] batch incomplete: %d/%d IDs omitted %s: %s",
-            task_key, len(missing), len(sent_ids), dest_label, sorted(missing),
-        )
+            _warn_job(row.get("astral_job_id"), d or "-", "omitted from response")
         _transition_batch_consult_failures(task_key, missing_rows, error_state)
-    if debug:
-        if missing:
-            logger.debug_detail(f"MISSING {len(missing)} IDs: {sorted(missing)}")
-        if fabricated:
-            logger.debug_detail(f"FABRICATED {len(fabricated)} IDs: {sorted(fabricated)}")
+    if missing:
+        logger.debug("MISSING %s IDs: %s", len(missing), sorted(missing))
+    if fabricated:
+        logger.debug("FABRICATED %s IDs: %s", len(fabricated), sorted(fabricated))
 
     passed = failed = 0
     bad_grades: set = set()
@@ -1552,7 +1609,7 @@ async def _run_batch_consult(
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
             bad_grades.add(aid)
-            if debug and isinstance(e, IncompleteGradeSetError):
+            if isinstance(e, IncompleteGradeSetError):
                 _debug_incomplete_grade_set(
                     func=f"consult._run_batch_consult({task_key})",
                     identifier=_consult_job_identifier(input_job),
@@ -1562,45 +1619,19 @@ async def _run_batch_consult(
                     index=job_idx,
                     total=len(response_jobs),
                 )
-            elif debug:
-                logger.debug_index(
-                    func=f"consult._run_batch_consult({task_key})",
-                    index=job_idx,
-                    total=len(response_jobs),
-                    identifier=_consult_job_identifier(input_job),
-                    outcome="process_fn failed",
-                )
-                logger.debug_detail(f"astral_job_id={aid} error={e!r} grades={response_job.get('grades')!r}")
-            logger.warning(f"[{aid}] process_fn failed: {e} | grades: {response_job.get('grades')}")
+            logger.exception(
+                "%s | process_fn %s\n  %s: %s\n  Continuing to the next job",
+                aid, task_key, type(e).__name__, e,
+            )
             continue
-        if debug:
-            logger.debug_index(
-                func=f"consult._run_batch_consult({task_key})",
-                index=job_idx,
-                total=len(response_jobs),
-                identifier=_consult_job_identifier(input_job),
-                outcome=str(to_state),
-            )
-            logger.debug_detail(
-                f"astral_job_id={aid} pass_state={cfg['pass_state']!r} fail_state={cfg['fail_state']!r} "
-                f"grades={response_job.get('grades')!r}"
-            )
+        logger.debug(
+            "%s -> %s pass_state=%r fail_state=%r grades=%r",
+            aid, to_state, cfg["pass_state"], cfg["fail_state"], response_job.get("grades"),
+        )
         if to_state == cfg["pass_state"]:
             passed += 1
         else:
             failed += 1
-
-    if debug and missing:
-        for mi, mid in enumerate(sorted(missing), start=1):
-            row = input_by_id.get(mid)
-            d = _consult_batch_fail_dest(row.get("state") if row else None, error_state)
-            logger.debug_index(
-                func=f"consult._run_batch_consult({task_key})",
-                index=mi,
-                total=len(missing),
-                identifier=mid,
-                outcome=f"missing from response -> {d or (row.get('state') if row else '?')}",
-            )
 
     # Tag RESPONSE rows with each processed job entity_id (AST-984)
     agent_ref = result.get("agent_ref")
@@ -1610,24 +1641,15 @@ async def _run_batch_consult(
         try:
             ensure_batch_response_entity_ids(entity_type, list(processed_ids), agent_ref)
         except Exception:
-            logger.debug("ensure_batch_response_entity_ids failed", exc_info=True)
+            logger.exception(
+                "%s | ensure_batch_response_entity_ids\n  Continuing without RESPONSE entity tags",
+                task_key,
+            )
 
     # bad_grades → per-entity retry holding or terminal error
     error_ids = list(bad_grades)
     if error_ids:
         bad_rows = [input_by_id[aid] for aid in error_ids if aid in input_by_id]
-        if debug and bad_rows:
-            for bi, row in enumerate(bad_rows, start=1):
-                logger.debug_index(
-                    func=f"consult._run_batch_consult({task_key})",
-                    index=bi,
-                    total=len(bad_rows),
-                    identifier=_consult_job_identifier(row),
-                    outcome=f"bad_grades -> {_consult_batch_fail_dest(row.get('state'), error_state)}",
-                )
-                logger.debug_detail(
-                    f"astral_job_id={row.get('astral_job_id')!r} from_state={row.get('state')!r}"
-                )
         _transition_batch_consult_failures(task_key, bad_rows, error_state)
 
     errors = []
@@ -1648,11 +1670,10 @@ async def _run_batch_consult(
         else:
             truncated_note = f"truncated: {len(missing)} IDs (no dest): {sorted(missing)}"
 
-    if debug:
-        logger.debug_detail(
-            f"batch end processed={len(jobs)} passed={passed} failed={failed} "
-            f"bad_grades={len(bad_grades)} missing={len(missing)} fabricated={len(fabricated)}"
-        )
+    logger.debug(
+        "End %s loop after %s items passed=%s failed=%s bad_grades=%s missing=%s fabricated=%s",
+        task_key, len(jobs), passed, failed, len(bad_grades), len(missing), len(fabricated),
+    )
 
     return {
         "success": not fabricated and not bad_grades,
@@ -1667,6 +1688,7 @@ async def _run_batch_consult(
     }
 
 
+@_with_log_debug
 async def qualify_job_listings(
     batch_id: str,
     jobs: List[Dict[str, Any]],
@@ -1695,19 +1717,12 @@ async def qualify_job_listings(
         roster_new = [j for j in new_jobs if not is_meteorite_company(j.get("company"))]
         # AST-1152: candidate submission is title qualification — never pattern-screen meteorites.
         meteorite_landing = METEORITE_CONFIG["job_create_state"]
-        if debug and meteorite_new:
-            logger.set_debug_flag(True)
-        for mi, j in enumerate(meteorite_new, start=1):
+        logger.debug("Beginning meteorite NEW re-home loop on %s items", len(meteorite_new))
+        for j in meteorite_new:
             aid = j["astral_job_id"]
             tracker.transition_job_state([aid], meteorite_landing)
-            if debug:
-                logger.debug_index(
-                    func="consult.qualify_job_listings",
-                    index=mi,
-                    total=len(meteorite_new),
-                    identifier=_consult_job_identifier(j),
-                    outcome=f"re-home meteorite NEW -> {meteorite_landing}",
-                )
+            _entity_info(aid, "job", "state", f"NEW -> {meteorite_landing}")
+        logger.debug("End meteorite NEW re-home loop after %s items", len(meteorite_new))
         if roster_new:
             tr = await validate_title_batch(batch_id, roster_new, ctx or {}, debug=debug)
             title_screen_failed = int(tr.get("failed", 0))
@@ -1730,24 +1745,16 @@ async def qualify_job_listings(
 
     # AST-350: same as evaluate_jd_batch — numeric score for latest_score / dispatch sort (informational).
     rubric_list = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), cfg)
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_detail(f"qualify_job_listings batch_id={batch_id} job_count={len(jobs)}")
-        for ji, j in enumerate(jobs, start=1):
-            listing_len = len(j.get("job_data", {}).get("raw_job_listing", "") or "")
-            logger.debug_index(
-                func="consult.qualify_job_listings",
-                index=ji,
-                total=len(jobs),
-                identifier=_consult_job_identifier(j),
-                outcome="input job",
-            )
-            logger.debug_detail(
-                f"title={j.get('job_title', 'UNKNOWN TITLE')!r} listing_chars={listing_len} "
-                f"link={j.get('job_link', 'NO LINK')!r}"
-            )
-        total_chars = sum(len(j.get("job_data", {}).get("raw_job_listing", "") or "") for j in jobs)
-        logger.debug_detail(f"total_listing_chars≈{total_chars}")
+    logger.debug("Beginning qualify_job_listings loop on %s items", len(jobs))
+    for ji, j in enumerate(jobs, start=1):
+        listing_len = len(j.get("job_data", {}).get("raw_job_listing", "") or "")
+        logger.debug(
+            "input job %s/%s %s title=%r listing_chars=%s link=%r",
+            ji, len(jobs), _consult_job_identifier(j),
+            j.get("job_title", "UNKNOWN TITLE"), listing_len, j.get("job_link", "NO LINK"),
+        )
+    total_chars = sum(len(j.get("job_data", {}).get("raw_job_listing", "") or "") for j in jobs)
+    logger.debug("total_listing_chars=%s", total_chars)
 
     def assemble(jobs):
         # 0-based numbered format — astral_job_id is intentionally excluded from live content
@@ -1792,8 +1799,7 @@ async def qualify_job_listings(
             _save_joblist_result()
             _transition_job_state_for_task(task_key, [aid], to_state, score)
             failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
-            if not debug:
-                logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [{', '.join(failed_vecs)}]")
+            _warn_job(aid, to_state, ", ".join(failed_vecs) if failed_vecs else "joblist fail")
             return to_state
 
         # Passing job — validate title and URL before initializing
@@ -1801,36 +1807,24 @@ async def qualify_job_listings(
         min_len = cfg.get("min_job_title_length", 5)
         if len(raw_title) < min_len:
             dest = _consult_batch_fail_dest(input_job.get("state"), cfg.get("error_state"))
-            if debug:
-                logger.debug_index(
-                    func="consult.qualify_job_listings",
-                    index=1,
-                    total=1,
-                    identifier=_consult_job_identifier(input_job),
-                    outcome=f"title too short -> {dest}",
-                )
-                logger.debug_detail(
-                    f"from_state={input_job.get('state')!r} "
-                    f"title too short: {repr(raw_title)} min_len={min_len}"
-                )
-            logger.warning(f"  {aid} -> {dest} [title too short: {repr(raw_title)}]")
+            logger.debug(
+                "title too short aid=%s from_state=%r title=%r min_len=%s",
+                aid, input_job.get("state"), raw_title, min_len,
+            )
+            _warn_job(aid, dest or cfg.get("error_state"), f"title too short: {raw_title!r}")
             if dest:
                 _transition_job_state_for_task(task_key, [aid], dest, score)
             return dest or cfg["error_state"]
         job_link = (response_job.get("job_link") or "").strip()
         if not job_link.startswith("http"):
-            if debug:
-                logger.debug_detail(f"relative job_link: {job_link!r}")
-            logger.warning(f"  {aid} skipped — relative job_link: {job_link}")
+            logger.debug("relative job_link: %r", job_link)
             raise ValueError(f"relative job_link: {job_link}")
         if not tracker.initialize_job(aid, input_job["company"], response_job):
-            if not debug:
-                logger.info(f"  {aid} -> deleted (identity collision)")
+            _warn_job(aid, cfg["fail_state"], "identity collision")
             return cfg["fail_state"]
         _save_joblist_result()
         _transition_job_state_for_task(task_key, [aid], to_state, score)
-        if not debug:
-            logger.info(f"  {input_job.get('job_title') or aid} -> {to_state}")
+        _job_consult_info(aid, to_state)
         return to_state
 
     result = await _run_batch_consult(
@@ -1844,7 +1838,7 @@ async def qualify_job_listings(
 
 
 def _qualify_meteorite_email_subject(html_body: str) -> str:
-    """Unescaped subject from AST-1049 email-subject wrapper; '' when absent (AST-1197 Style D)."""
+    """Unescaped subject from AST-1049 email-subject wrapper; '' when absent."""
     m = re.search(
         r'class="email-subject"[^>]*>.*?<h1>(.*?)</h1>',
         html_body or "",
@@ -1856,7 +1850,7 @@ def _qualify_meteorite_email_subject(html_body: str) -> str:
 
 
 def _qualify_meteorite_title_source(job_title: str, subject: str) -> str:
-    """Style D label: subject vs content vs neither (collapsed whitespace, casefold)."""
+    """Title source: subject vs content vs neither (collapsed whitespace, casefold)."""
     title_n = " ".join((job_title or "").split())
     subject_n = " ".join((subject or "").split())
     if title_n and subject_n and title_n.casefold() == subject_n.casefold():
@@ -1875,6 +1869,7 @@ def _land_scrap_body(scrap: Dict[str, Any]) -> str:
     return ""
 
 
+@_with_log_debug
 async def enrich_meteorite_land_packet(
     candidate_id: str,
     scraps: List[Dict[str, Any]],
@@ -1935,13 +1930,12 @@ async def enrich_meteorite_land_packet(
 
     batch_id = f"{task_key}-land-{uuid4()}"
     do_index = f"{task_key}_batch_{batch_id}"
-    log_batch_id.set(batch_id)
+    token = _hold_log_batch(batch_id)
     try:
-        if debug:
-            logger.set_debug_flag(True)
-            logger.debug_detail(
-                f"enrich_meteorite_land_packet batch_id={batch_id} scrap_count={len(rows)}"
-            )
+        logger.debug(
+            "Calling agent.do_task: [task_key=%s, index=%s, scraps=%s]",
+            task_key, do_index, len(rows),
+        )
         result = await do_task(
             task_key=task_key,
             live_content=live_content,
@@ -1949,70 +1943,59 @@ async def enrich_meteorite_land_packet(
             ctx=task_ctx,
             debug=debug,
         )
+        logger.debug("Response from agent.do_task: %s", result)
+
+        if not result.get("success"):
+            logger.debug("enrich_failed batch_id=%s error=%r", batch_id, result.get("error"))
+            logger.warning(
+                "%s — land packet enrich failed: %s\n  Jobs are not landing from this packet",
+                cid, result.get("error") or "do_task failed",
+            )
+            return {
+                "success": False,
+                "error": result.get("error") or "do_task failed",
+                "jobs": [],
+                "raw": result,
+                "batch_id": batch_id,
+            }
+
+        parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+        response_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
+        out_jobs: List[Dict[str, Any]] = []
+        for i, scrap in enumerate(rows):
+            rj = response_jobs[i] if i < len(response_jobs) and isinstance(response_jobs[i], dict) else {}
+            ruth_link = (rj.get("job_link") or "").strip() if isinstance(rj.get("job_link"), str) else ""
+            job_link = ruth_link or scrap["job_link"]
+            ai_cid = (rj.get("company_job_id") or "").strip() if isinstance(rj.get("company_job_id"), str) else ""
+            company_job_id = _resolve_company_job_id(ai_cid, job_link)
+            job_title = (rj.get("job_title") or "").strip() if isinstance(rj.get("job_title"), str) else ""
+            jd_text = (rj.get("jd_text") or "").strip() if isinstance(rj.get("jd_text"), str) else ""
+            ruth_emp = (rj.get("employer_name") or "").strip() if isinstance(rj.get("employer_name"), str) else ""
+            employer_name = ruth_emp or scrap["employer_name"]
+            stem_key = TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"]
+            ruth_stem = (rj.get(stem_key) or "").strip() if isinstance(rj.get(stem_key), str) else ""
+            out_jobs.append({
+                "company_job_id": company_job_id,
+                "job_title": job_title,
+                "job_link": job_link,
+                "jd_text": jd_text,
+                "employer_name": employer_name,
+                "company_stem": ruth_stem,
+                "scrap_index": i,
+            })
+            logger.debug(
+                "enriched %s/%s link=%r content_chars_in=%s jd_chars=%s employer_name=%s company_stem=%r",
+                i + 1, len(rows), job_link, len(scrap["content"]), len(jd_text),
+                "yes" if employer_name else "no", ruth_stem,
+            )
+
+        return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
     finally:
-        log_batch_id.set(None)
-
-    if not result.get("success"):
-        if debug:
-            logger.debug_index(
-                func="consult.enrich_meteorite_land_packet",
-                index=1,
-                total=1,
-                identifier=cid,
-                outcome="enrich_failed",
-            )
-            logger.debug_detail(
-                f"batch_id={batch_id} error={result.get('error')!r}"
-            )
-        return {
-            "success": False,
-            "error": result.get("error") or "do_task failed",
-            "jobs": [],
-            "raw": result,
-            "batch_id": batch_id,
-        }
-
-    parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
-    response_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
-    out_jobs: List[Dict[str, Any]] = []
-    for i, scrap in enumerate(rows):
-        rj = response_jobs[i] if i < len(response_jobs) and isinstance(response_jobs[i], dict) else {}
-        ruth_link = (rj.get("job_link") or "").strip() if isinstance(rj.get("job_link"), str) else ""
-        job_link = ruth_link or scrap["job_link"]
-        ai_cid = (rj.get("company_job_id") or "").strip() if isinstance(rj.get("company_job_id"), str) else ""
-        company_job_id = _resolve_company_job_id(ai_cid, job_link)
-        job_title = (rj.get("job_title") or "").strip() if isinstance(rj.get("job_title"), str) else ""
-        jd_text = (rj.get("jd_text") or "").strip() if isinstance(rj.get("jd_text"), str) else ""
-        ruth_emp = (rj.get("employer_name") or "").strip() if isinstance(rj.get("employer_name"), str) else ""
-        employer_name = ruth_emp or scrap["employer_name"]
-        stem_key = TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"]
-        ruth_stem = (rj.get(stem_key) or "").strip() if isinstance(rj.get(stem_key), str) else ""
-        out_jobs.append({
-            "company_job_id": company_job_id,
-            "job_title": job_title,
-            "job_link": job_link,
-            "jd_text": jd_text,
-            "employer_name": employer_name,
-            "company_stem": ruth_stem,
-            "scrap_index": i,
-        })
-        if debug:
-            logger.debug_index(
-                func="consult.enrich_meteorite_land_packet",
-                index=i + 1,
-                total=len(rows),
-                identifier=cid,
-                outcome="enriched",
-            )
-            logger.debug_detail(
-                f"batch_id={batch_id} link={job_link!r} content_chars_in={len(scrap['content'])} "
-                f"jd_chars={len(jd_text)} employer_name={'yes' if employer_name else 'no'} "
-                f"company_stem={ruth_stem!r}"
-            )
-
-    return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
+        if token is not None:
+            log_batch_id.reset(token)
 
 
+@_with_log_debug
 async def invoke_stage_meteorite(
     candidate_id: str,
     blob: str,
@@ -2037,7 +2020,7 @@ async def invoke_stage_meteorite(
     if not body.strip():
         return {**empty, "error": "blob is required"}
 
-    # Source handle for core source-refs + Style D; Ruth classifies CONTENT.
+    # Source handle for core source-refs; Ruth classifies CONTENT.
     live_content = f"SOURCE_KIND: {kind}\nSOURCE_ID: {sid}\nCONTENT:\n{body}"
     task_key = STAGE_METEORITE_CONFIG["task_key"]
     batch_id = f"{task_key}-stage-{uuid4()}"
@@ -2048,8 +2031,12 @@ async def invoke_stage_meteorite(
     if ctx and ctx.get("candidate_api_key") is not None:
         task_ctx["candidate_api_key"] = ctx["candidate_api_key"]
 
-    log_batch_id.set(batch_id)
+    token = _hold_log_batch(batch_id)
     try:
+        logger.debug(
+            "Calling agent.do_task: [task_key=%s, index=%s, source_kind=%s]",
+            task_key, do_index, kind,
+        )
         result = await do_task(
             task_key=task_key,
             live_content=live_content,
@@ -2057,72 +2044,64 @@ async def invoke_stage_meteorite(
             ctx=task_ctx,
             debug=debug,
         )
+        logger.debug("Response from agent.do_task: %s", result)
+
+        if not result.get("success"):
+            logger.debug("stage_failed batch_id=%s error=%r", batch_id, result.get("error"))
+            logger.warning(
+                "%s — stage_meteorite failed: %s\n  This blob is not classifying",
+                cid, result.get("error") or "do_task failed",
+            )
+            return {
+                "success": False,
+                "error": result.get("error") or "do_task failed",
+                "outcome": None,
+                "jobs": [],
+                "batch_id": batch_id,
+                "raw": result,
+            }
+
+        parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+        raw_outcome = parsed.get("outcome")
+        outcome = raw_outcome.strip() if isinstance(raw_outcome, str) else ""
+        raw_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
+        jobs = [j for j in raw_jobs if isinstance(j, dict)]
+
+        if outcome not in STAGE_METEORITE_CONFIG["outcomes"]:
+            logger.warning(
+                "%s — invalid stage outcome %r\n  This blob is not classifying",
+                cid, outcome,
+            )
+            return {
+                "success": False,
+                "error": "invalid stage outcome",
+                "outcome": outcome or None,
+                "jobs": [],
+                "batch_id": batch_id,
+                "raw": result,
+            }
+        if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+            jobs = []
+
+        logger.debug(
+            "stage outcome=%s batch_id=%s job_count=%s source_kind=%s",
+            outcome, batch_id, len(jobs), kind,
+        )
+
+        return {
+            "success": True,
+            "outcome": outcome,
+            "jobs": jobs,
+            "error": None,
+            "batch_id": batch_id,
+            "raw": result,
+        }
     finally:
-        log_batch_id.set(None)
-
-    if not result.get("success"):
-        if debug:
-            logger.set_debug_flag(True)
-            logger.debug_index(
-                func="consult.invoke_stage_meteorite",
-                index=1,
-                total=1,
-                identifier=cid,
-                outcome="stage_failed",
-            )
-            logger.debug_detail(
-                f"batch_id={batch_id} error={result.get('error')!r}"
-            )
-        return {
-            "success": False,
-            "error": result.get("error") or "do_task failed",
-            "outcome": None,
-            "jobs": [],
-            "batch_id": batch_id,
-            "raw": result,
-        }
-
-    parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
-    raw_outcome = parsed.get("outcome")
-    outcome = raw_outcome.strip() if isinstance(raw_outcome, str) else ""
-    raw_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
-    jobs = [j for j in raw_jobs if isinstance(j, dict)]
-
-    if outcome not in STAGE_METEORITE_CONFIG["outcomes"]:
-        return {
-            "success": False,
-            "error": "invalid stage outcome",
-            "outcome": outcome or None,
-            "jobs": [],
-            "batch_id": batch_id,
-            "raw": result,
-        }
-    if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-        jobs = []
-
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_index(
-            func="consult.invoke_stage_meteorite",
-            index=1,
-            total=1,
-            identifier=cid,
-            outcome=outcome,
-        )
-        logger.debug_detail(
-            f"batch_id={batch_id} job_count={len(jobs)} source_kind={kind}"
-        )
-
-    return {
-        "success": True,
-        "outcome": outcome,
-        "jobs": jobs,
-        "error": None,
-        "batch_id": batch_id,
-        "raw": result,
-    }
+        if token is not None:
+            log_batch_id.reset(token)
 
 
+@_with_log_debug
 async def qualify_meteorite(
     batch_id: str,
     jobs: List[Dict[str, Any]],
@@ -2136,21 +2115,14 @@ async def qualify_meteorite(
     cfg = _consult_orchestration(task_key)
     jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_detail(f"qualify_meteorite batch_id={batch_id} job_count={len(jobs)}")
-        for ji, j in enumerate(jobs, start=1):
-            jd_len = len((j.get("job_data") or {}).get(jd_key, "") or "")
-            logger.debug_index(
-                func="consult.qualify_meteorite",
-                index=ji,
-                total=len(jobs),
-                identifier=_consult_job_identifier(j),
-                outcome="input job",
-            )
-            logger.debug_detail(
-                f"job_link={(j.get('job_link') or '')!r} job_description_chars={jd_len}"
-            )
+    logger.debug("Beginning qualify_meteorite loop on %s items", len(jobs))
+    for ji, j in enumerate(jobs, start=1):
+        jd_len = len((j.get("job_data") or {}).get(jd_key, "") or "")
+        logger.debug(
+            "input job %s/%s %s job_link=%r job_description_chars=%s",
+            ji, len(jobs), _consult_job_identifier(j),
+            (j.get("job_link") or ""), jd_len,
+        )
 
     def assemble(jobs):
         # 0-based numbered format — astral_job_id excluded from live content (position map in decode/response).
@@ -2191,81 +2163,46 @@ async def qualify_meteorite(
             id_source = "UUID-from-job_link"
         else:
             id_source = "neither"
-        subject = _qualify_meteorite_email_subject(input_jd)
-        title_source = _qualify_meteorite_title_source(job_title, subject)
         min_title = int(cfg.get("min_job_title_length", 5))
         min_jd = int(cfg.get("min_jd_chars", 40))
+        subject = _qualify_meteorite_email_subject(input_jd)
+        # AST-1197: fail only when neither Ruth title nor email subject meets the floor.
+        if len(job_title) < min_title and len(subject) >= min_title:
+            job_title = subject
+        title_source = _qualify_meteorite_title_source(job_title, subject)
+        land_jd = input_jd.strip()
+        if len(jd_text) < min_jd and len(land_jd) >= min_jd:
+            jd_text = land_jd
 
         # Bot/challenge before content fails — lazy gazer classify (shared jd_classifier).
         from src.core.gazer import _classify_jd
 
         if _classify_jd(input_jd) == "bot" or (jd_text and _classify_jd(jd_text) == "bot"):
             to_state = cfg["bot_blocked_state"]
-            if debug:
-                logger.debug_index(
-                    func="consult.qualify_meteorite",
-                    index=1,
-                    total=1,
-                    identifier=_consult_job_identifier(input_job),
-                    outcome=f"bot block -> {to_state}",
-                )
-                logger.debug_detail(
-                    " ".join(
-                        [
-                            "gate=bot_classification",
-                            f"link_source={link_source}",
-                            f"title_source={title_source}",
-                            f"company_job_id={company_job_id!r}",
-                            f"title={job_title!r}",
-                            f"link={job_link!r}",
-                            f"jd_chars={len(jd_text)}",
-                        ]
-                    )
-                )
-            else:
-                logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [bot_classification]")
+            logger.debug(
+                "bot block aid=%s link_source=%s title_source=%s company_job_id=%r title=%r link=%r jd_chars=%s",
+                aid, link_source, title_source, company_job_id, job_title, job_link, len(jd_text),
+            )
+            _warn_job(aid, to_state, "bot_classification")
             _transition_job_state_for_task(task_key, [aid], to_state)
             return to_state
 
-        is_email_link = job_link.startswith(email_prefix)
         fail_reason = None
-        if not company_job_id and not is_email_link:
-            fail_reason = "empty company_job_id"
         # AST-1152: length/blank content gate only — not roster title-pattern screening.
-        elif len(job_title) < min_title:
+        if len(job_title) < min_title:
             fail_reason = f"title too short len={len(job_title)} min={min_title}"
         elif len(jd_text) < min_jd:
             fail_reason = f"jd_text too short len={len(jd_text)} min={min_jd}"
 
         if fail_reason:
             to_state = cfg["fail_state"]
-            if debug:
-                logger.debug_index(
-                    func="consult.qualify_meteorite",
-                    index=1,
-                    total=1,
-                    identifier=_consult_job_identifier(input_job),
-                    outcome=f"content fail -> {to_state}",
-                )
-                fail_bits = [
-                    f"gate={fail_reason}",
-                    f"found source={id_source}",
-                    f"link_source={link_source}",
-                    f"title_source={title_source}",
-                ]
-                if id_source != "AI":
-                    fail_bits.append(f"fallback_job_link={job_link!r}")
-                fail_bits.extend(
-                    [
-                        f"company_job_id={company_job_id!r}",
-                        f"title={job_title!r}",
-                        f"link={job_link!r}",
-                        f"jd_chars={len(jd_text)}",
-                    ]
-                )
-                logger.debug_detail(" ".join(fail_bits))
-            else:
-                logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [{fail_reason}]")
+            logger.debug(
+                "content fail aid=%s gate=%s found source=%s link_source=%s title_source=%s "
+                "fallback_job_link=%r company_job_id=%r title=%r link=%r jd_chars=%s",
+                aid, fail_reason, id_source, link_source, title_source,
+                job_link, company_job_id, job_title, job_link, len(jd_text),
+            )
+            _warn_job(aid, to_state, fail_reason)
             _transition_job_state_for_task(task_key, [aid], to_state)
             return to_state
 
@@ -2277,49 +2214,17 @@ async def qualify_meteorite(
         }
         if not tracker.initialize_job(aid, input_job["company"], parsed_job):
             # Identity collision deleted the row — same as listing qualify fail_state return.
-            if not debug:
-                logger.info(f"  {aid} -> deleted (identity collision)")
+            _warn_job(aid, cfg["fail_state"], "identity collision")
             return cfg["fail_state"]
 
         to_state = cfg["pass_state"]
         _transition_job_state_for_task(task_key, [aid], to_state)
-        if debug:
-            recorded = tracker.get_job(aid) or {}
-            rec_jd = len((recorded.get("job_data") or {}).get(jd_key, "") or "")
-            logger.debug_index(
-                func="consult.qualify_meteorite",
-                index=1,
-                total=1,
-                identifier=_consult_job_identifier(input_job),
-                outcome=str(to_state),
-            )
-            found_bits = [
-                f"found source={id_source}",
-                f"link_source={link_source}",
-                f"title_source={title_source}",
-            ]
-            if id_source == "UUID-from-job_link":
-                found_bits.append(f"fallback_job_link={job_link!r}")
-            found_bits.extend(
-                [
-                    f"company_job_id={company_job_id!r}",
-                    f"title={job_title!r}",
-                    f"link={job_link!r}",
-                    f"jd_chars={len(jd_text)}",
-                ]
-            )
-            stem_key = cfg["company_stem_response_key"]
-            ruth_stem = (response_job.get(stem_key) or "").strip() if isinstance(response_job.get(stem_key), str) else ""
-            if ruth_stem:
-                found_bits.append(f"company_stem={ruth_stem!r}")
-            logger.debug_detail(
-                f"{' '.join(found_bits)} | "
-                f"recorded company_job_id={recorded.get('company_job_id')!r} "
-                f"title={recorded.get('job_title')!r} link={recorded.get('job_link')!r} "
-                f"jd_chars={rec_jd}"
-            )
-        else:
-            logger.info(f"  {input_job.get('job_title') or aid} -> {to_state}")
+        logger.debug(
+            "qualify pass aid=%s found source=%s link_source=%s title_source=%s "
+            "company_job_id=%r title=%r link=%r jd_chars=%s",
+            aid, id_source, link_source, title_source, company_job_id, job_title, job_link, len(jd_text),
+        )
+        _job_consult_info(aid, to_state)
         return to_state
 
     return await _run_batch_consult(
@@ -2344,6 +2249,7 @@ def _jd_ready_for_evaluate(job: Dict[str, Any], min_chars: int) -> bool:
     return len(jd) >= min_chars
 
 
+@_with_log_debug
 async def evaluate_jd_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
@@ -2373,12 +2279,10 @@ async def evaluate_jd_batch(
         else:
             not_ready_jobs.append(job)
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_detail(
-            f"{task_key} batch_id={batch_id} ready={len(ready_jobs)} "
-            f"not_ready={len(not_ready_jobs)} min_chars={min_chars}"
-        )
+    logger.debug(
+        "%s batch_id=%s ready=%s not_ready=%s min_chars=%s",
+        task_key, batch_id, len(ready_jobs), len(not_ready_jobs), min_chars,
+    )
 
     for ni, job in enumerate(not_ready_jobs, start=1):
         aid = job["astral_job_id"]
@@ -2391,24 +2295,14 @@ async def evaluate_jd_batch(
             },
         })
         _transition_job_state_for_task(task_key, [aid], not_ready_state, score=None)
-        if debug:
-            logger.debug_index(
-                func=f"consult.evaluate_jd_batch[{task_key}]",
-                index=ni,
-                total=len(not_ready_jobs),
-                identifier=_consult_job_identifier(job),
-                outcome=f"jd readiness skip -> {not_ready_state}",
-            )
-            logger.debug_detail(f"jd_chars={len(jd)} min_chars={min_chars}")
-        if not debug:
-            title = job.get("job_title") or aid
-            logger.info("  %s -> %s [jd readiness skip]", title, not_ready_state)
+        logger.debug(
+            "jd readiness skip %s/%s %s jd_chars=%s min_chars=%s -> %s",
+            ni, len(not_ready_jobs), _consult_job_identifier(job), len(jd), min_chars, not_ready_state,
+        )
+        _warn_job(aid, not_ready_state, "jd readiness skip")
 
     if not ready_jobs:
-        if debug:
-            logger.debug_detail(
-                f"{task_key} batch_id={batch_id} all jobs not JD-ready skipped={len(not_ready_jobs)}"
-            )
+        logger.debug("%s all jobs not JD-ready skipped=%s", task_key, len(not_ready_jobs))
         return {
             "success": True,
             "passed": 0,
@@ -2450,13 +2344,11 @@ async def evaluate_jd_batch(
             )
         tracker.save_job_data(aid, save_data)
         _transition_job_state_for_task(task_key, [aid], to_state, score)
-        title = input_job.get("job_title") or aid
-        if not debug:
-            if to_state == cfg["pass_state"]:
-                logger.info(f"  {title} -> {to_state}")
-            else:
-                failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
-                logger.info(f"  {title} -> {to_state} [{', '.join(failed_vecs)}]")
+        if to_state == cfg["pass_state"]:
+            _job_consult_info(aid, to_state)
+        else:
+            failed_vecs = [g["vector"] for g in grades if isinstance(grades, list) and g.get("grade") == "F"]
+            _warn_job(aid, to_state, ", ".join(failed_vecs) if failed_vecs else "evaluate fail")
         return to_state
 
     result = await _run_batch_consult(
@@ -2492,6 +2384,7 @@ async def evaluate_meteorite_batch(
     )
 
 
+@_with_log_debug
 async def _consult_scored_dispatch_batch_encoded(
     dispatch_task_key: str,
     batch_id: str,
@@ -2510,11 +2403,10 @@ async def _consult_scored_dispatch_batch_encoded(
     error_state = cfg_dispatch.get("error_state")
     skipped = 0
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_detail(
-            f"{dispatch_task_key} batch_id={batch_id} claimed={len(jobs)} agent_task={agent_tk}"
-        )
+    logger.debug(
+        "%s batch_id=%s claimed=%s agent_task=%s",
+        dispatch_task_key, batch_id, len(jobs), agent_tk,
+    )
 
     eligible: List[Dict[str, Any]] = []
     live_rows: List[str] = []
@@ -2529,15 +2421,7 @@ async def _consult_scored_dispatch_batch_encoded(
             if not company:
                 if error_state:
                     _transition_job_state_for_task(agent_tk, [aid], error_state)
-                if debug:
-                    logger.debug_index(
-                        func=f"consult._consult_scored_dispatch_batch_encoded({dispatch_task_key})",
-                        index=skipped + 1,
-                        total=len(jobs),
-                        identifier=aid,
-                        outcome="skipped — prep failed",
-                    )
-                    logger.debug_detail("reason=no_company")
+                _warn_job(aid, error_state or "-", "no company")
                 skipped += 1
                 continue
 
@@ -2547,15 +2431,9 @@ async def _consult_scored_dispatch_batch_encoded(
             if fresh.get("state") != "NEED_WEBSITE_CONTENT":
                 if error_state:
                     _transition_job_state_for_task(agent_tk, [aid], error_state)
-            if debug:
-                logger.debug_index(
-                    func=f"consult._consult_scored_dispatch_batch_encoded({dispatch_task_key})",
-                    index=skipped + 1,
-                    total=len(jobs),
-                    identifier=aid,
-                    outcome="skipped — prep failed",
-                )
-                logger.debug_detail(f"reason=no_live_content state={fresh.get('state')!r}")
+                _warn_job(aid, error_state or (fresh.get("state") or "-"), "no live content")
+            else:
+                _warn_job(aid, "NEED_WEBSITE_CONTENT", "no live content")
             skipped += 1
             continue
 
@@ -2563,8 +2441,7 @@ async def _consult_scored_dispatch_batch_encoded(
         live_rows.append(lc)
 
     if not eligible:
-        if debug:
-            logger.debug_detail(f"no eligible rows after prep skipped={skipped}")
+        logger.debug("no eligible rows after prep skipped=%s", skipped)
         return {"success": True, "passed": 0, "failed": 0, "total": len(jobs), "skipped": skipped}
 
     def assemble(rows: List[Dict[str, Any]]) -> str:
@@ -2661,6 +2538,7 @@ async def _run_cover_letter_for_job(
     await run_cover_letter_artifact_chain_for_job(astral_job_id, chain_ctx, debug=debug)
 
 
+@_with_log_debug
 async def _run_dispatch_chain_job_batch(
     batch_id: str,
     entities: List[Dict[str, Any]],
@@ -2675,6 +2553,10 @@ async def _run_dispatch_chain_job_batch(
     passed = errors = 0
     row_trigger = (input_state or "").strip()
     registry_trigger = dispatch_chain_registry_trigger(row_trigger) or row_trigger
+    logger.debug(
+        "Beginning _run_dispatch_chain_job_batch on %s items task=%s",
+        len(entities), dispatch_task_key,
+    )
     for job in entities:
         aid = job["astral_job_id"]
         row = tracker.get_job(aid) or job
@@ -2685,6 +2567,7 @@ async def _run_dispatch_chain_job_batch(
         cd = tracker._candidate_data_for_job(aid)
         if not cd:
             tracker.release_job_dispatch_claim(aid)
+            _warn_job(aid, row.get("state") or "-", "no candidate_data")
             errors += 1
             continue
         task_ctx: Dict[str, Any] = {
@@ -2707,20 +2590,30 @@ async def _run_dispatch_chain_job_batch(
             task_ctx["vector_labels"] = {}
         # AST-1298: release on raise as well as success=False (dispatcher finally is third belt).
         try:
+            logger.debug(
+                "Calling agent.do_task: [task_key=%s, index=%s]",
+                dispatch_task_key, aid,
+            )
             result = await do_task(
                 dispatch_task_key,
                 index=aid,
                 ctx=task_ctx,
                 debug=debug,
             )
+            logger.debug("Response from agent.do_task: %s", result)
         except BaseException:
             tracker.release_job_dispatch_claim(aid)
             raise
         if not result.get("success"):
             tracker.release_job_dispatch_claim(aid)
+            _warn_job(aid, row.get("state") or "-", result.get("error") or "do_task failed")
             errors += 1
             continue
         passed += 1
+    logger.debug(
+        "End _run_dispatch_chain_job_batch after %s items passed=%s errors=%s",
+        len(entities), passed, errors,
+    )
     return {
         "total_processed": len(entities),
         "total_passed": passed,
@@ -2731,6 +2624,7 @@ async def _run_dispatch_chain_job_batch(
 
 # ---- Public entry point for dispatcher ----
 
+@_with_log_debug
 async def run_consult_task(
     entity_type: str,
     input_state: str,
@@ -2855,7 +2749,8 @@ async def run_consult_task(
                 skip_daisy_chain=skip_daisy,
             )
         logger.warning(
-            "run_consult_task: unhandled candidate task_key=%s",
+            "%s — unhandled candidate task_key %s\n  This task is not starting",
+            cid or "-",
             tk,
         )
         return zero
@@ -2863,7 +2758,8 @@ async def run_consult_task(
     task_key = (dispatch_task_key or "").strip()
     if not task_key:
         logger.warning(
-            "run_consult_task: dispatch_task_key required for job dispatch (input_state=%s)",
+            "%s — dispatch_task_key required for job dispatch (input_state=%s)\n  This task is not starting",
+            "-",
             input_state,
         )
         return zero
@@ -2925,7 +2821,12 @@ async def run_consult_task(
             batch_id, entities, ctx, debug, task_key, input_state,
         )
     else:
-        logger.warning("run_consult_task: unhandled task_key=%s for input_state=%s", task_key, input_state)
+        logger.warning(
+            "%s — unhandled task_key %s for input_state %s\n  This task is not starting",
+            "-",
+            task_key,
+            input_state,
+        )
         return zero
 
     # Normalize batch result shapes (passed/failed/total) to summary shape

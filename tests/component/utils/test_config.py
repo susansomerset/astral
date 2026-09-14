@@ -5070,14 +5070,16 @@ class TestAst1558FetchEmailBindRetired:
         assert "dispatch_task-fetch-email" not in cfg.SEED_CONFIG
 
 class TestAst1559MonitoringConfig:
-    """AST-1559: always-on inbox classify monitoring + mailbox runner repoint."""
+    """AST-1559: already-ingested outcome + mailbox runner repoint."""
 
     def test_monitoring_config_literals(self) -> None:
         mon = cfg.METEORITE_MONITORING_CONFIG
-        assert mon["subject_max_len"] == 120
         assert mon["outcome_already_ingested"] == "already_ingested"
-        for ph in ("{from_address}", "{message_id}", "{candidate_id}", "{classify_outcome}", "{job_count}"):
-            assert ph in mon["inbox_classify_line"]
+        assert "inbox_classify_line" not in mon
+        assert "row_bot_blocked_line" not in mon
+        assert "row_landed_line" not in mon
+        assert "row_error_line" not in mon
+        assert "subject_max_len" not in mon
 
     def test_mailbox_runner_debug_func_repointed(self) -> None:
         g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
@@ -5407,7 +5409,7 @@ class TestAst1557MeteoriteStates:
 
 
 class TestAst1560IngressDispatchConfig:
-    """AST-1560: METEORITE_INGRESS_DISPATCH_CONFIG + row monitoring lines."""
+    """AST-1560: METEORITE_INGRESS_DISPATCH_CONFIG + ingress seeds."""
 
     def test_ingress_task_keys_and_triggers(self) -> None:
         ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
@@ -5426,12 +5428,6 @@ class TestAst1560IngressDispatchConfig:
             "ERROR",
         }
 
-    def test_row_monitoring_format_literals(self) -> None:
-        mon = cfg.METEORITE_MONITORING_CONFIG
-        assert "{row_id}" in mon["row_bot_blocked_line"]
-        assert "{astral_job_id}" in mon["row_landed_line"]
-        assert "{task_key}" in mon["row_error_line"]
-
     def test_seed_catalog_has_ingress_dispatch_rows(self) -> None:
         assert "dispatch_task-meteorite-ingress" in cfg.SEED_CONFIG
         sql = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress"]
@@ -5449,7 +5445,6 @@ class TestAst1561BotBlockedNotifyConfig:
         assert notify["task_key"] == "meteorite_bot_blocked_notify"
         assert notify["trigger_state"] == "BOT_BLOCKED"
         assert notify["trigger_state"] in cfg.METEORITE_STATES
-        assert notify["debug_func"] == "meteorite.run_notify_meteorite_bot_blocked"
         assert "{link}" in notify["dm_first_template"]
         assert "{nag_count}" in notify["dm_nag_template"]
         assert "{nag_limit}" in notify["dm_nag_template"]
@@ -5468,12 +5463,11 @@ class TestAst1562RetentionConfig:
     def test_retention_config_literals(self) -> None:
         retention = cfg.METEORITE_RETENTION_CONFIG
         assert retention["task_key"] == "meteorite_retention"
-        assert retention["debug_func"] == "meteorite.run_meteorite_retention"
         assert retention["landed_purge_days"] >= 1
         assert retention["stale_list_days"] >= 1
         assert retention["batch_size"] >= 1
-        for ph in ("{row_id}", "{state}", "{candidate_id}", "{state_changed_at}"):
-            assert ph in retention["stale_list_line"]
+        assert "stale_list_line" not in retention
+        assert "debug_func" not in retention
         assert set(cfg.METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
         assert set(cfg.METEORITE_STATES_RETENTION["stale_list_states"]) == {
             "ERROR",

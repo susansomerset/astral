@@ -532,6 +532,8 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-840** | **Level** dropdown (All/DEBUG/INFO/WARNING/ERROR); `log_level` URL param; `LogViewer` `visibleLogs` filter; filtered-empty message; filtered **Copy** | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` | **`tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx`** — **`AST-840 log level filter`** describe |
 
+**Log viewer:** `visibleLogs` is oldest-first by `created_at` (then `id`); Copy uses that order. API `list_log_entries` is still `ORDER BY created_at DESC`. Log cells use `.list-page-table .dispatch-log-table tbody td` so they beat `.list-page-table tbody td` (5px padding); vertical padding and line-height are 80% of those prior values. **`renders and copies log rows oldest-first by created_at`**.
+
 **AST-840** narrowed run:
 
 ```bash
@@ -1866,9 +1868,12 @@ Read-time hydrate: `GET /resume_structure` unions usable `artifacts.base_resume`
 
 Consume AST-1317 `.btn.in-row`: Scheduled Actions row Run / Stop (busy label `Draining…`) gain `in-row` on the existing role classes. Presentation only — handlers, `disabled`, overlay `inset`, AUTO / running gating unchanged. Toolbar Stop All / Add Task, both modal footers, and icon-controls stay full-size / `icon-control`. Inventory on this tree: only those two labeled `btn`s sit in a `<td>`.
 
+**Run vs Sweep:** AUTO off is always **Run** (loop to `max_runs`). AUTO on and Avail > 0 is **Sweep** (one batch; min_count disable unchanged).
+
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Routed page (**§6c**) row size + leave-alone | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1318: row Run uses in-row; toolbar and modals stay full size`**; **`AST-1318: row Stop uses in-row`**; **`AST-1318: row Draining uses in-row`** |
+| Run vs Sweep label | same | **`AUTO off always labels Run; AUTO on with Avail > 0 labels Sweep`**; **`AUTO on with Avail > 0 labels Sweep`** |
 | Existing catalog / enablement | same | **`AST-1301: labeled actions use catalog classes`**; **`renders tasks, edits, runs, and stops threads`** |
 
 **Broken / obsolete this pass:** none — AST-1301 `toHaveClass("btn", "danger")` still holds with the added size token. Leave-alone modal case uses `mockApi(true)` (running thread) so toolbar Stop All is enabled — `mockApi(false)` leaves `activeThreads` empty and the click never opens Kill Running Threads.
@@ -2017,6 +2022,7 @@ Scheduled Actions consumes shared `useInPlaceLiveRefresh`: first paint may show 
 | Routed Scheduled Actions (**§6c**) silent AUTO/Dbg | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1409 in-place live refresh`** → AUTO/Dbg without `Loading…` |
 | Avail / last-run + overlay draft | same | **`running→idle merges Avail and last-run; open Add Task draft survives`** |
 | Existing run-complete Avail | same | **`reloads dispatch tasks when a manual run thread finishes`** (regression) |
+| Fast Run never seen in thread_status | same | **`reloads Avail after Run even when thread_status never reports running`** |
 
 **Broken / obsolete:** none — first-paint `Loading…` and existing AUTO click / run-complete Avail cases stay. Filters stay client-side (no query-identity spinner on this page).
 
