@@ -5786,3 +5786,116 @@ class TestAst1587BaseResumeConsumerRewires:
             for m in msgs
         )
 
+
+_STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
+
+
+# Branches: plain_text validate; retire+insert; dict-path strip; hydrate hit/miss/non-str; get_candidate.
+class TestAst1633StrengthsOperativeSaveHydrate:
+    """AST-1633: Strengths plain_text operative save + hydrate + library gate."""
+
+    def test_plain_text_rejects_empty_and_non_str(self) -> None:
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _STRENGTHS_ARTIFACT_KEY, "")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _STRENGTHS_ARTIFACT_KEY, "   ")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _STRENGTHS_ARTIFACT_KEY, {"x": 1})
+
+    def test_operative_save_writes_current_and_skips_library_blob(self, seeded_db) -> None:
+        db = seeded_db
+        uid = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "systems thinker"
+        )
+        assert uid
+        row = db.get_current_artifact("candidate", "cand-1", "strengths")
+        assert row is not None
+        assert row["artifact_uuid"] == uid
+        assert row["artifact_data"] == "systems thinker"
+        assert row["current"] == 1
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        assert "strengths" not in (cd.get("context") or {})
+
+    def test_second_operative_save_retires_prior(self, seeded_db) -> None:
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "v1 strengths"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "v2 strengths"
+        )
+        assert uid1 != uid2
+        current = db.get_current_artifact("candidate", "cand-1", "strengths")
+        assert current["artifact_uuid"] == uid2
+        assert current["artifact_data"] == "v2 strengths"
+        history = db.list_artifacts(
+            "candidate", "cand-1", "strengths", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_dict_path_strips_strengths_keeps_siblings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        spy = _spy_save_artifact(monkeypatch)
+        candidate_mod.save_candidate_data(
+            "c1",
+            {"context": {"strengths": "drop-me", "priorities": "keep-me"}},
+        )
+        assert spy == []
+        ctx = save.call_args.kwargs["candidate_data"]["context"]
+        assert ctx == {"priorities": "keep-me"}
+        assert "strengths" not in ctx
+
+    def test_dict_path_strengths_only_skips_empty_library_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # After strip, blob is empty → save_candidate_data returns without DB write.
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        out = candidate_mod.save_candidate_data("c1", {"context": {"strengths": "only"}})
+        assert out is None
+        save.assert_not_called()
+
+    def test_hydrate_overlays_hit_leaves_legacy_on_miss(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "operative strengths"
+        )
+        cd: dict[str, Any] = {"context": {"strengths": "stale blob"}}
+        candidate_mod.hydrate_operative_strengths_for_response("cand-1", cd)
+        assert cd["context"]["strengths"] == "operative strengths"
+
+        legacy: dict[str, Any] = {"context": {"strengths": "legacy until re-save"}}
+        candidate_mod.hydrate_operative_strengths_for_response("missing-id", legacy)
+        assert legacy["context"]["strengths"] == "legacy until re-save"
+
+    def test_hydrate_ignores_non_dict_cd_and_non_str_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        candidate_mod.hydrate_operative_strengths_for_response("c1", "not-a-dict")  # type: ignore[arg-type]
+        monkeypatch.setattr(
+            candidate_mod, "get_candidate_current", lambda cid, key: {"not": "str"}
+        )
+        cd: dict[str, Any] = {"context": {"strengths": "keep"}}
+        candidate_mod.hydrate_operative_strengths_for_response("c1", cd)
+        assert cd["context"]["strengths"] == "keep"
+
+    def test_get_candidate_hydrates_strengths(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "from get_candidate"
+        )
+        row = candidate_mod.get_candidate("cand-1")
+        assert row["candidate_data"]["context"]["strengths"] == "from get_candidate"
+

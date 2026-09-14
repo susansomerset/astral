@@ -1882,3 +1882,35 @@ Public `get_operative_base_resume(artifact_uuid)` pin→body for pilot `candidat
 - `docs/test-bible/core/candidate.md` — `898792225f7786c7dc9456ae0a5ee8d06d7465277c95d867f22a9e2abd73cf79`
 - `docs/test-bible/core/builder.md` — `e4123fd99fd3dc048b72c905534dc48c3bbc23bfaf15359a3ea14815e3136540`
 
+### AST-1633 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1633-operative-save-hydrate-blob-retirement`.
+
+Operative `plain_text` validate on str-path; Strengths `save_artifact` retire+insert; dict-path strips `context.strengths` (siblings keep library-merge); `hydrate_operative_strengths_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1632**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1633. No React / backfill.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text validate + save/retire + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1633StrengthsOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** none — Ideal Day / completeness tests still seed legacy `context.strengths` blobs without dict-path Strengths writes.
+
+**Integration:** none — no existing scenario asserts Strengths operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core Strengths operative: `tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate`
+2. API PUT/GET Strengths: `tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+

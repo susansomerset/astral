@@ -195,3 +195,35 @@ PUT `/data` pops `artifacts.base_resume` then `save_candidate_data(candidate_id,
 
 **Integration:** none.
 
+### AST-1633 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1633-operative-save-hydrate-blob-retirement`.
+
+PUT `/data` pops `context.strengths` then `save_candidate_data(candidate_id, "candidate.context.strengths", body)`; sibling context keys still library-merge; GET detail hydrates Strengths (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1633.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT operative + retire + sibling merge + GET hydrate + empty 400 | `src/ui/api/api_candidate.py` | **`TestAst1633StrengthsOperativeApi`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Core: `tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate`
+2. API: `tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+

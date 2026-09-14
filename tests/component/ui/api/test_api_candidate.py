@@ -1597,3 +1597,147 @@ class TestAst1586ReadCurrentGetApi:
         assert body["accent_color"] == structure["accent_color"]
         assert len(body["sections"]) > 0
 
+
+_STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
+
+
+# Branches: PUT pop+operative; retire; sibling library-merge; GET hydrate; empty → 400.
+class TestAst1633StrengthsOperativeApi:
+    """AST-1633: PUT intercept Strengths + GET hydrate overlay."""
+
+    @staticmethod
+    def _patch_put_extras(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+
+    def test_put_strengths_writes_current_artifact(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate("c1633", state="NEW_CANDIDATE", candidate_data={})
+        resp = candidate_client.put(
+            "/api/candidates/c1633/data",
+            json={"context": {"strengths": "alpha strengths"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.get_json()
+        row = db.get_current_artifact("candidate", "c1633", "strengths")
+        assert row is not None
+        assert row["current"] == 1
+        assert row["artifact_data"] == "alpha strengths"
+        raw = db.get_candidate("c1633")["candidate_data"]
+        assert "strengths" not in (raw.get("context") or {})
+        assert resp.get_json()["candidate_data"]["context"]["strengths"] == "alpha strengths"
+
+    def test_second_put_retires_prior(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate("c1633b", state="NEW_CANDIDATE", candidate_data={})
+        r1 = candidate_client.put(
+            "/api/candidates/c1633b/data",
+            json={"context": {"strengths": "v1"}},
+            headers=auth_headers,
+        )
+        assert r1.status_code == 200, r1.get_json()
+        uid1 = db.get_current_artifact("candidate", "c1633b", "strengths")["artifact_uuid"]
+        r2 = candidate_client.put(
+            "/api/candidates/c1633b/data",
+            json={"context": {"strengths": "v2"}},
+            headers=auth_headers,
+        )
+        assert r2.status_code == 200, r2.get_json()
+        current = db.get_current_artifact("candidate", "c1633b", "strengths")
+        assert current["artifact_uuid"] != uid1
+        assert current["artifact_data"] == "v2"
+        history = db.list_artifacts(
+            "candidate", "c1633b", "strengths", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_put_strips_strengths_keeps_sibling_context(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate("c1633c", state="NEW_CANDIDATE", candidate_data={})
+        resp = candidate_client.put(
+            "/api/candidates/c1633c/data",
+            json={"context": {"strengths": "op", "priorities": "ship"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.get_json()
+        raw = db.get_candidate("c1633c")["candidate_data"]
+        assert raw.get("context", {}).get("priorities") == "ship"
+        assert "strengths" not in (raw.get("context") or {})
+        row = db.get_current_artifact("candidate", "c1633c", "strengths")
+        assert row["artifact_data"] == "op"
+
+    def test_get_detail_hydrates_strengths_leaves_legacy_on_miss(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as core_candidate
+
+        monkeypatch.setattr(
+            candidate_mod, "company_search_terms_joined_text", lambda cid: ""
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "hydrate_rubric_artifacts_for_response",
+            lambda cid, cd: None,
+        )
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c1633d",
+            state="NEW_CANDIDATE",
+            candidate_data={"context": {"strengths": "legacy blob"}},
+        )
+        miss = candidate_client.get("/api/candidates/c1633d", headers=auth_headers)
+        assert miss.status_code == 200
+        assert miss.get_json()["candidate_data"]["context"]["strengths"] == "legacy blob"
+
+        core_candidate.save_candidate_data(
+            "c1633d", _STRENGTHS_ARTIFACT_KEY, "table current"
+        )
+        hit = candidate_client.get("/api/candidates/c1633d", headers=auth_headers)
+        assert hit.status_code == 200
+        assert hit.get_json()["candidate_data"]["context"]["strengths"] == "table current"
+
+    def test_put_empty_strengths_returns_400(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate("c1633e", state="NEW_CANDIDATE", candidate_data={})
+        resp = candidate_client.put(
+            "/api/candidates/c1633e/data",
+            json={"context": {"strengths": "   "}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "plain_text" in resp.get_json()["error"]
+        assert db.get_current_artifact("candidate", "c1633e", "strengths") is None
+
