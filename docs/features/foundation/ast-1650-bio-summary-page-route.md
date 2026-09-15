@@ -128,3 +128,10 @@ context_tokens≈62000
 
 
 **Summary:** AST-1650 is **APPROVED**. The plan is a faithful Strengths twin: new `CandidateBioSummary.tsx` with `contextKey="bio_summary"` and `bodyShape="plain_text"`, plus one route registration in `routes.tsx`. No `ContextTextPage` / `ArtifactEditor` edits, no scope creep into config or API. Load/save rides the existing context-leaf contract and sibling operative paths. All three canon ids grade **A**; no fix-now or discuss blockers. Status **Plan Ready**, zero `[plan-discuss]` rounds.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1647/AST-1650-bio-summary-page-route` @ `8bd6162bcb75538a55a0118442d472ccae1371c5`.
+
+**Stages delivered:**
+- Stage 1: Bio Summary page + route — `8bd6162bcb75538a55a0118442d472ccae1371c5`.
