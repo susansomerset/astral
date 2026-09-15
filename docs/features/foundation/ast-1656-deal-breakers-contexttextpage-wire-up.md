@@ -224,4 +224,8 @@ patt.artifact.write-operative | A | | Save keeps `{ context: { deal_breakers: dr
 - datt: **PROCEED** → **User Testing** (no resolve-child round needed).
 - Downstream: ensure AST-1654 + AST-1655 land on ftr before parent AC6 hand-verify.
 
+## Resolution
+
+**2026-09-15** — Radia **CLEAN** (no fix-now / discuss). §3h clean shortcut blocked: publish-ref was not an ancestor of `origin/ftr/AST-1642-migrate-deal-breakers-artifact-table` (sync-child short name `ftr/AST-1642` absent). Merged that ftr tip into the sub; `CandidateDealBreakers.tsx` `bodyShape="plain_text"` retained; catalog + operative siblings now on tip. §9a dry-run clean vs `origin/dev` and vs that ftr ref.
+
 ---
