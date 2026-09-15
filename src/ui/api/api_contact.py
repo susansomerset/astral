@@ -24,6 +24,11 @@ logger = get_logger(__name__)
 contact_bp = Blueprint("contact", __name__, url_prefix="/api/admin/contact")
 
 
+def _api_completed(candidate_id: str, route: str, method: str, status: int) -> None:
+    cid = (candidate_id or "").strip() or "-"
+    logger.info("%s | api %s completed: %s %s", cid, route, method, status)
+
+
 def _listen_payload() -> dict:
     return {
         "listen_enabled": slack_listen_enabled(),
@@ -55,8 +60,12 @@ def contact_put_listen():
     except TypeError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.warning("[api_contact] listen set failed: %s", e)
+        logger.exception(
+            "%s | api %s\n  %s: %s\n  Returning 502",
+            "-", "/api/admin/contact/listen", type(e).__name__, e,
+        )
         return jsonify({"error": str(e)}), 502
+    _api_completed("-", "/api/admin/contact/listen", "PUT", 200)
     return jsonify(_listen_payload()), 200
 
 
@@ -91,8 +100,12 @@ def contact_put_debug():
     except TypeError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.warning("[api_contact] debug set failed: %s", e)
+        logger.exception(
+            "%s | api %s\n  %s: %s\n  Returning 502",
+            "-", "/api/admin/contact/debug", type(e).__name__, e,
+        )
         return jsonify({"error": str(e)}), 502
+    _api_completed("-", "/api/admin/contact/debug", "PUT", 200)
     return jsonify(_debug_payload()), 200
 
 
@@ -104,7 +117,10 @@ def contact_get_estelle_activity():
     try:
         users = list_estelle_activity(debug=debug)
     except Exception as e:
-        logger.warning("[api_contact] estelle_activity list failed: %s", e)
+        logger.exception(
+            "%s | api %s\n  %s: %s\n  Returning 502",
+            "-", "/api/admin/contact/estelle_activity", type(e).__name__, e,
+        )
         return jsonify({"error": str(e)}), 502
     return jsonify({"users": users}), 200
 
@@ -148,6 +164,10 @@ def contact_run_skill(skill_key: str):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.warning("[api_contact] skill failed key=%s: %s", skill_key, e)
+        logger.exception(
+            "%s | api %s\n  %s: %s\n  Returning 502",
+            cid or "-", f"/api/admin/contact/skills/{skill_key}", type(e).__name__, e,
+        )
         return jsonify({"error": str(e)}), 502
+    _api_completed(cid, f"/api/admin/contact/skills/{skill_key}", "POST", 200)
     return jsonify(result), 200

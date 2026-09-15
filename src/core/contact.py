@@ -8,7 +8,7 @@ AST-1070: Slack-sourced conversation context load / process-local cache / append
 AST-1067: Manage Slack listen hydrate/set + non-prod reply prefix / post helper.
 AST-1206: Manage Slack debug get/set.
 AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
-(`slack_debug_enabled`); Style D found/recorded depth on Contact Slack path.
+(`slack_debug_enabled`); logger.debug on the Contact Slack path (log_debug ContextVar).
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
 AST-1471 / AST-1531: Contact scrap path → `contact_land_meteorite` → `stage_meteorite`.
@@ -22,7 +22,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import functools
 import importlib
+import inspect
 import json
 import os
 import re
@@ -62,7 +64,7 @@ from src.utils.config import (
     STAGE_METEORITE_CONFIG,
 )
 from src.utils.deploy_status import get_deploy_label
-from src.utils.logging import get_logger, truncate_debug_content
+from src.utils.logging import get_logger, log_debug
 
 logger = get_logger(__name__)
 
@@ -75,9 +77,57 @@ _seen_lock = threading.Lock()
 _context_cache: "OrderedDict[Tuple[str, str], Dict[str, Any]]" = OrderedDict()
 _context_lock = threading.Lock()
 
-_TEXT_DEBUG_MAX = 200
+
+def _with_log_debug(fn):
+    """Set log_debug from debug= for this frame; nested set/reset is correct."""
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def async_wrapper(*args, **kwargs):
+            bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+            token = log_debug.set(bool(bound.arguments.get("debug", False)))
+            try:
+                return await fn(*args, **kwargs)
+            finally:
+                log_debug.reset(token)
+        return async_wrapper
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        token = log_debug.set(bool(bound.arguments.get("debug", False)))
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            log_debug.reset(token)
+    return wrapper
 
 
+def _contact_listen_info(
+    candidate_id: Any,
+    event_type: Any,
+    outcome: Any,
+    skill_keys: Any,
+    channel: Any,
+    aside: Any,
+) -> None:
+    cid = (str(candidate_id).strip() if candidate_id is not None else "") or "-"
+    et = (str(event_type).strip() if event_type is not None else "") or "-"
+    oc = (str(outcome).strip() if outcome is not None else "") or "-"
+    if isinstance(skill_keys, (list, tuple)):
+        action = ",".join(str(k) for k in skill_keys if k) or "-"
+    else:
+        action = (str(skill_keys).strip() if skill_keys else "") or "-"
+    ch = (str(channel).strip() if channel is not None else "") or "-"
+    aside_s = aside.strip() if isinstance(aside, str) and aside.strip() else "-"
+    logger.info(
+        "%s | contact listen %s %s: action:%s (channel: %s) aside: %s",
+        cid, et, oc, action, ch, aside_s,
+    )
+
+
+@_with_log_debug
 def load_slack_conversation_context(
     *,
     channel: str,
@@ -90,8 +140,6 @@ def load_slack_conversation_context(
     SoT is Slack. Cache is process-local only — never a DB transcript store.
     Envelope: ``{"channel", "thread_ts", "messages", "source": "cache"|"slack"}``.
     """
-    log = get_logger(__name__)
-    log.set_debug_flag(debug)
     channel_n = (channel or "").strip()
     if not channel_n:
         raise ValueError("channel must be a non-empty string")
@@ -100,6 +148,10 @@ def load_slack_conversation_context(
     now = time.time()
     ttl = float(CONTACT_CONFIG["context_cache_ttl_seconds"])
     limit = int(CONTACT_CONFIG["context_history_limit"])
+    logger.debug(
+        "Calling load_slack_conversation_context: [channel=%r, thread_ts=%r, refresh=%s]",
+        channel_n, thread_n, refresh,
+    )
 
     if not refresh:
         with _context_lock:
@@ -113,35 +165,19 @@ def load_slack_conversation_context(
                     "messages": messages,
                     "source": "cache",
                 }
-                if debug:
-                    ident = f"{channel_n}:{thread_n or '-'}"
-                    log.debug_index(
-                        func="contact.load_slack_conversation_context",
-                        index=1,
-                        total=2,
-                        identifier=ident,
-                        outcome="found",
-                    )
-                    log.debug_detail(
-                        f"channel={channel_n!r} thread_ts={thread_n!r} refresh={refresh}"
-                    )
-                    log.debug_index(
-                        func="contact.load_slack_conversation_context",
-                        index=2,
-                        total=2,
-                        identifier=ident,
-                        outcome="recorded",
-                    )
-                    log.debug_detail(
-                        f"source=cache len(messages)={len(messages)}"
-                    )
+                logger.debug("Response from load_slack_conversation_context: %s", out)
                 return out
 
+    logger.debug(
+        "Calling fetch_conversation_history: [channel=%r, thread_ts=%r, limit=%s]",
+        channel_n, thread_n or None, limit,
+    )
     messages = fetch_conversation_history(
         channel=channel_n,
         thread_ts=thread_n or None,
         limit=limit,
     )
+    logger.debug("Response from fetch_conversation_history: %s", messages)
     _context_cache_put(key, {"messages": list(messages), "fetched_at": now})
     out = {
         "channel": channel_n,
@@ -149,31 +185,11 @@ def load_slack_conversation_context(
         "messages": list(messages),
         "source": "slack",
     }
-    if debug:
-        ident = f"{channel_n}:{thread_n or '-'}"
-        log.debug_index(
-            func="contact.load_slack_conversation_context",
-            index=1,
-            total=2,
-            identifier=ident,
-            outcome="found",
-        )
-        log.debug_detail(
-            f"channel={channel_n!r} thread_ts={thread_n!r} refresh={refresh}"
-        )
-        log.debug_index(
-            func="contact.load_slack_conversation_context",
-            index=2,
-            total=2,
-            identifier=ident,
-            outcome="recorded",
-        )
-        log.debug_detail(
-            f"source=slack len(messages)={len(messages)}"
-        )
+    logger.debug("Response from load_slack_conversation_context: %s", out)
     return out
 
 
+@_with_log_debug
 def append_slack_conversation_message(
     *,
     channel: str,
@@ -182,8 +198,6 @@ def append_slack_conversation_message(
     debug: bool = False,
 ) -> None:
     """Append one message into the process-local cache for that conversation key."""
-    log = get_logger(__name__)
-    log.set_debug_flag(debug)
     if not isinstance(message, dict) or "text" not in message or "ts" not in message:
         raise ValueError("message must be a dict with text and ts")
     if not isinstance(message["text"], str) or not isinstance(message["ts"], str):
@@ -192,6 +206,10 @@ def append_slack_conversation_message(
     key = _context_cache_key(channel, thread_ts)
     limit = int(CONTACT_CONFIG["context_history_limit"])
     now = time.time()
+    logger.debug(
+        "Calling append_slack_conversation_message: [channel=%r, thread_ts=%r, ts=%r, text=%r]",
+        key[0], key[1], message["ts"], message["text"],
+    )
     with _context_lock:
         entry = _context_cache.get(key)
         if entry is None:
@@ -208,30 +226,13 @@ def append_slack_conversation_message(
         max_n = int(CONTACT_CONFIG["context_cache_max_conversations"])
         while len(_context_cache) > max_n:
             _context_cache.popitem(last=False)
-
-    if debug:
-        ident = f"{key[0]}:{key[1] or '-'}"
-        log.debug_index(
-            func="contact.append_slack_conversation_message",
-            index=1,
-            total=2,
-            identifier=ident,
-            outcome="found",
-        )
-        preview = message["text"]
-        if len(preview) > _TEXT_DEBUG_MAX:
-            preview = preview[:_TEXT_DEBUG_MAX] + "…"
-        log.debug_detail(f"ts={message['ts']!r} text={preview!r}")
-        log.debug_index(
-            func="contact.append_slack_conversation_message",
-            index=2,
-            total=2,
-            identifier=ident,
-            outcome="recorded",
-        )
-        log.debug_detail(f"len(messages)={len(entry['messages'])}")
+    logger.debug(
+        "Response from append_slack_conversation_message: len(messages)=%s",
+        len(entry["messages"]),
+    )
 
 
+@_with_log_debug
 def contact_post_message(
     *,
     channel: str,
@@ -240,21 +241,12 @@ def contact_post_message(
     debug: bool = False,
 ) -> dict:
     """Post via external slack.post_message, then append outbound text into cache."""
-    log = get_logger(__name__)
-    log.set_debug_flag(debug)
-    chan_id = str(channel)[:80] if channel is not None else ""
-    if debug:
-        log.debug_index(
-            func="contact.contact_post_message",
-            index=1,
-            total=2,
-            identifier=chan_id,
-            outcome="found",
-        )
-        log.debug_detail(f"channel={channel!r} thread_ts={thread_ts!r}")
-        for line in truncate_debug_content(str(text) if text is not None else ""):
-            log.debug_detail(f"text={line}")
+    logger.debug(
+        "Calling post_message: [channel=%r, thread_ts=%r, text=%r]",
+        channel, thread_ts, text,
+    )
     resp = post_message(channel=channel, text=text, thread_ts=thread_ts)
+    logger.debug("Response from post_message: %s", resp)
     if resp.get("ok"):
         # Prefer Slack response ts; fall back so cache still warms if shape odd.
         out_ts = resp.get("ts") or (resp.get("message") or {}).get("ts") or ""
@@ -272,18 +264,6 @@ def contact_post_message(
                 },
                 debug=debug,
             )
-    if debug:
-        log.debug_index(
-            func="contact.contact_post_message",
-            index=2,
-            total=2,
-            identifier=chan_id,
-            outcome="recorded",
-        )
-        out_ts = resp.get("ts") or (resp.get("message") or {}).get("ts") or ""
-        log.debug_detail(
-            f"ok={resp.get('ok')!r} error={resp.get('error')!r} ts={out_ts!r}"
-        )
     return resp
 
 
@@ -344,35 +324,20 @@ def contact_is_production_deploy() -> bool:
     return raw.lower() == str(CONTACT_CONFIG["production_deploy_env"]).strip().lower()
 
 
+@_with_log_debug
 def set_slack_listen_enabled(enabled: bool, *, debug: bool = False) -> bool:
     """Persist + apply listen flag for this deploy environment. Returns the stored bool."""
-    if debug:
-        logger.set_debug_flag(True)
     if not isinstance(enabled, bool):
         raise TypeError("enabled must be bool")
+    logger.debug("Calling save_contact_listen_enabled: [enabled=%s]", enabled)
     save_contact_listen_enabled(enabled)
     CONTACT_CONFIG["listen_enabled"] = enabled
-    if debug:
-        logger.debug_index(
-            func="contact.set_slack_listen_enabled",
-            index=1,
-            total=2,
-            identifier="listen",
-            outcome="found",
-        )
-        logger.debug_detail(f"requested={enabled}")
-        logger.debug_index(
-            func="contact.set_slack_listen_enabled",
-            index=2,
-            total=2,
-            identifier="listen",
-            outcome="recorded",
-        )
-        logger.debug_detail(
-            f"listen_enabled={CONTACT_CONFIG['listen_enabled']} "
-            f"environment={get_deploy_label()}"
-        )
-    return bool(CONTACT_CONFIG["listen_enabled"])
+    stored = bool(CONTACT_CONFIG["listen_enabled"])
+    logger.debug(
+        "Response from save_contact_listen_enabled: listen_enabled=%s environment=%s",
+        stored, get_deploy_label(),
+    )
+    return stored
 
 
 def slack_debug_enabled() -> bool:
@@ -384,53 +349,30 @@ def slack_debug_enabled() -> bool:
     return bool(CONTACT_CONFIG["debug_enabled"])
 
 
+@_with_log_debug
 def set_slack_debug_enabled(enabled: bool, *, debug: bool = False) -> bool:
     """Persist + apply Contact Slack debug flag for this deploy environment. Returns the stored bool."""
-    if debug:
-        logger.set_debug_flag(True)
     if not isinstance(enabled, bool):
         raise TypeError("enabled must be bool")
+    logger.debug("Calling save_contact_debug_enabled: [enabled=%s]", enabled)
     save_contact_debug_enabled(enabled)
     CONTACT_CONFIG["debug_enabled"] = enabled
-    if debug:
-        logger.debug_index(
-            func="contact.set_slack_debug_enabled",
-            index=1,
-            total=2,
-            identifier="debug",
-            outcome="found",
-        )
-        logger.debug_detail(f"requested={enabled}")
-        logger.debug_index(
-            func="contact.set_slack_debug_enabled",
-            index=2,
-            total=2,
-            identifier="debug",
-            outcome="recorded",
-        )
-        logger.debug_detail(
-            f"debug_enabled={CONTACT_CONFIG['debug_enabled']} "
-            f"environment={get_deploy_label()}"
-        )
-    return bool(CONTACT_CONFIG["debug_enabled"])
+    stored = bool(CONTACT_CONFIG["debug_enabled"])
+    logger.debug(
+        "Response from save_contact_debug_enabled: debug_enabled=%s environment=%s",
+        stored, get_deploy_label(),
+    )
+    return stored
 
 
+@_with_log_debug
 def list_estelle_activity(*, debug: bool = False) -> list[dict]:
     """Return durable @Estelle activity rows for Manage Slack (AST-1094)."""
     from src.data.contact_estelle_activity import list_estelle_activity_rows
 
+    logger.debug("Calling list_estelle_activity_rows: []")
     rows = list_estelle_activity_rows()
-    if debug:
-        log = get_logger(__name__)
-        log.set_debug_flag(True)
-        log.debug_index(
-            func="contact.list_estelle_activity",
-            index=1,
-            total=1,
-            identifier="activity",
-            outcome="listed",
-        )
-        log.debug_detail(f"row_count={len(rows)}")
+    logger.debug("Response from list_estelle_activity_rows: row_count=%s", len(rows))
     return rows
 
 
@@ -442,6 +384,7 @@ def format_contact_reply_text(text: str) -> str:
     return non_production_reply_prefix(get_deploy_label()) + body
 
 
+@_with_log_debug
 def post_contact_reply(
     *,
     channel: str,
@@ -450,31 +393,14 @@ def post_contact_reply(
     debug: bool = False,
 ) -> dict:
     """Format outbound text (non-prod prefix) then ``external.slack.post_message``."""
-    if debug:
-        logger.set_debug_flag(True)
     outbound = format_contact_reply_text(text)
-    if debug:
-        logger.debug_index(
-            func="contact.post_contact_reply",
-            index=1,
-            total=2,
-            identifier=str(channel)[:80],
-            outcome="found",
-        )
-        for line in truncate_debug_content(str(text) if text is not None else ""):
-            logger.debug_detail(f"text={line}")
-        logger.debug_index(
-            func="contact.post_contact_reply",
-            index=2,
-            total=2,
-            identifier=str(channel)[:80],
-            outcome="recorded",
-        )
-        prefixed = outbound != (text if isinstance(text, str) else "")
-        logger.debug_detail(f"prefixed={prefixed}")
-        for line in truncate_debug_content(outbound):
-            logger.debug_detail(f"outbound={line}")
-    return post_message(channel=channel, text=outbound, thread_ts=thread_ts)
+    logger.debug(
+        "Calling post_message: [channel=%r, thread_ts=%r, text=%r, outbound=%r]",
+        channel, thread_ts, text, outbound,
+    )
+    resp = post_message(channel=channel, text=outbound, thread_ts=thread_ts)
+    logger.debug("Response from post_message: %s", resp)
+    return resp
 
 
 def contact_skill_meta(skill_key: str) -> Dict[str, Any]:
@@ -487,6 +413,7 @@ def contact_skill_meta(skill_key: str) -> Dict[str, Any]:
     return meta
 
 
+@_with_log_debug
 def run_contact_skill(
     skill_key: str,
     *,
@@ -494,10 +421,7 @@ def run_contact_skill(
     fields: Dict[str, Any],
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """ACL-gated entity save for Contact. Writes only allowlisted candidate_data paths."""
-    if debug:
-        logger.set_debug_flag(True)
-
+    """ACL-gated entity save for Contact. Writes only allowlisted paths (name columns or library blobs)."""
     cid = (astral_candidate_id or "").strip()
     if not cid:
         raise ValueError("astral_candidate_id is required")
@@ -516,24 +440,14 @@ def run_contact_skill(
         if value is not None and not isinstance(value, str):
             raise ValueError(f"field {path!r} must be a string or null")
 
+    logger.debug(
+        "Calling get_candidate: [astral_candidate_id=%r, skill_key=%s, fields=%s]",
+        cid, key, fields,
+    )
     row = get_candidate(cid)
+    logger.debug("Response from get_candidate: %s", row)
     if not row:
         raise ValueError(f"candidate not found: {cid}")
-
-    if debug:
-        logger.debug_index(
-            func="run_contact_skill",
-            index=1,
-            total=2,
-            identifier=cid[:80],
-            outcome="found",
-        )
-        logger.debug_detail(f"skill_key={key}")
-        for path, value in fields.items():
-            if value is None:
-                continue
-            for line in truncate_debug_content(str(value)):
-                logger.debug_detail(f"{path}={line}")
 
     merge_dict: Dict[str, Any] = {}
     paths_written: List[str] = []
@@ -544,19 +458,11 @@ def run_contact_skill(
         paths_written.append(path)
 
     if merge_dict:
+        logger.debug("Calling save_candidate_data: [astral_candidate_id=%r, merge=%s]", cid, merge_dict)
         save_candidate_data(cid, merge_dict)
+        logger.debug("Response from save_candidate_data: paths_written=%s", paths_written)
 
     paths_written = sorted(paths_written)
-    if debug:
-        logger.debug_index(
-            func="run_contact_skill",
-            index=2,
-            total=2,
-            identifier=cid[:80],
-            outcome="recorded",
-        )
-        logger.debug_detail(f"paths_written={','.join(paths_written)}")
-
     return {
         "ok": True,
         "skill_key": key,
@@ -707,6 +613,7 @@ def _is_dm_message(event: dict) -> bool:
     return isinstance(channel, str) and channel.startswith("D")
 
 
+@_with_log_debug
 def resolve_slack_user(
     slack_user_id: str,
     *,
@@ -714,9 +621,6 @@ def resolve_slack_user(
     debug: bool = False,
 ) -> dict:
     """Lookup Slack user → astral candidate; create PROSPECT only when estelle_in_play."""
-    if debug:
-        logger.set_debug_flag(True)
-
     sid = (slack_user_id or "").strip()
     if not sid:
         raise ValueError("slack_user_id is required")
@@ -732,7 +636,12 @@ def resolve_slack_user(
             "",
         )
 
+    logger.debug(
+        "Calling get_candidate_id_for_query: [slack_user_id=%r, estelle_in_play=%s]",
+        sid, estelle_in_play,
+    )
     cid = get_candidate_id_for_query(sid, debug=debug)
+    logger.debug("Response from get_candidate_id_for_query: %s", cid)
     if cid is not None:
         row = get_candidate(cid)
         state = (row or {}).get("state")
@@ -740,7 +649,9 @@ def resolve_slack_user(
         display = ""
         # users.info for activity display; persist username when contact lacks it (AST-1105).
         try:
+            logger.debug("Calling fetch_user_profile: [slack_user_id=%r]", sid)
             profile = fetch_user_profile(sid)
+            logger.debug("Response from fetch_user_profile: %s", profile)
             fetched_user = str(profile.get("username") or "").strip()
             display = str(profile.get("display_name") or "").strip()
             if fetched_user:
@@ -757,23 +668,14 @@ def resolve_slack_user(
                     )
                 username = fetched_user
         except Exception as exc:
-            logger.error(
-                "contact resolve_slack_user username backfill failed: %s",
-                exc,
-                exc_info=True,
+            logger.exception(
+                "%s | contact resolve_slack_user\n  %s: %s\n  Continuing with the candidate already bound",
+                cid, type(exc).__name__, exc,
             )
-        if debug:
-            logger.debug_index(
-                func="contact.resolve_slack_user",
-                index=1,
-                total=1,
-                identifier=sid[:80],
-                outcome="found|matched",
-            )
-            logger.debug_detail(f"slack_user_id={sid}")
-            logger.debug_detail(f"candidate_id={cid}")
-            logger.debug_detail(f"state={state}")
-            logger.debug_detail(f"slack_username={username!r}")
+        logger.debug(
+            "Response from resolve_slack_user: candidate_id=%s state=%s slack_username=%r",
+            cid, state, username,
+        )
         return {
             "astral_candidate_id": cid,
             "state": state,
@@ -783,15 +685,7 @@ def resolve_slack_user(
         }
 
     if not estelle_in_play:
-        if debug:
-            logger.debug_index(
-                func="contact.resolve_slack_user",
-                index=1,
-                total=1,
-                identifier=sid[:80],
-                outcome="found|none",
-            )
-            logger.debug_detail(f"slack_user_id={sid}")
+        logger.debug("Response from resolve_slack_user: candidate_id=None")
         return {
             "astral_candidate_id": None,
             "state": None,
@@ -800,7 +694,9 @@ def resolve_slack_user(
             "slack_display_name": "",
         }
 
+    logger.debug("Calling fetch_user_profile: [slack_user_id=%r]", sid)
     profile = fetch_user_profile(sid)
+    logger.debug("Response from fetch_user_profile: %s", profile)
     new_id = (
         CONTACT_CONFIG["prospect_candidate_id_template"]
         .format(slack_user_id=sid)
@@ -820,6 +716,10 @@ def resolve_slack_user(
         },
     }
     try:
+        logger.debug(
+            "Calling initiate_prospect_candidate: [candidate_id=%r, first=%r, last=%r]",
+            new_id, first, last,
+        )
         initiate_prospect_candidate(new_id, candidate_data, first=first, last=last)
     except ValueError:
         # Race: another accept already created — re-lookup.
@@ -836,19 +736,10 @@ def resolve_slack_user(
             "slack_display_name": display,
         }
 
-    if debug:
-        logger.debug_index(
-            func="contact.resolve_slack_user",
-            index=1,
-            total=1,
-            identifier=sid[:80],
-            outcome="recorded|created",
-        )
-        logger.debug_detail(f"slack_user_id={sid}")
-        logger.debug_detail(f"candidate_id={new_id}")
-        logger.debug_detail("state=PROSPECT")
-        logger.debug_detail(f"slack_username={username!r}")
-
+    logger.debug(
+        "Response from resolve_slack_user: candidate_id=%s state=PROSPECT created=True",
+        new_id,
+    )
     return {
         "astral_candidate_id": new_id,
         "state": "PROSPECT",
@@ -914,6 +805,7 @@ def _is_artifact_uuid(value: str) -> bool:
     return bool(_ARTIFACT_UUID_RE.match((value or "").strip()))
 
 
+@_with_log_debug
 def resolve_pinned_base_resume(
     astral_candidate_id: str,
     artifact_uuid: str,
@@ -924,28 +816,14 @@ def resolve_pinned_base_resume(
 
     Calls candidate.get_operative_base_resume. No candidate_data blob fallback.
     """
-    log = get_logger(__name__)
-    log.set_debug_flag(debug)
     cid = (astral_candidate_id or "").strip()
     uid = (artifact_uuid or "").strip()
+    logger.debug(
+        "Calling resolve_pinned_base_resume: [astral_candidate_id=%r, artifact_uuid=%r]",
+        cid, uid,
+    )
     if not cid or not uid:
-        if debug:
-            log.debug_index(
-                func="contact.resolve_pinned_base_resume",
-                index=1,
-                total=2,
-                identifier=(cid or "?")[:80],
-                outcome="found",
-            )
-            log.debug_detail(f"artifact_uuid={uid!r}")
-            log.debug_index(
-                func="contact.resolve_pinned_base_resume",
-                index=2,
-                total=2,
-                identifier=(cid or "?")[:80],
-                outcome="recorded",
-            )
-            log.debug_detail("hit=False")
+        logger.debug("Response from resolve_pinned_base_resume: hit=False")
         return None
 
     row = database.get_artifact(uid)
@@ -955,47 +833,11 @@ def resolve_pinned_base_resume(
         body = get_operative_base_resume(uid)
         hit = body is not None
 
-    if debug:
-        log.debug_index(
-            func="contact.resolve_pinned_base_resume",
-            index=1,
-            total=2,
-            identifier=cid[:80],
-            outcome="found",
-        )
-        log.debug_detail(f"artifact_uuid={uid}")
-        log.debug_index(
-            func="contact.resolve_pinned_base_resume",
-            index=2,
-            total=2,
-            identifier=cid[:80],
-            outcome="recorded",
-        )
-        log.debug_detail(f"hit={hit}")
+    logger.debug("Response from resolve_pinned_base_resume: hit=%s", hit)
     return body
 
 
-def _dispatch_recorded_debug(
-    log, *, index: int, total: int, key: str, row: Dict[str, Any], debug: bool
-) -> None:
-    """Style D recorded epilog for one contact-task span (handler or short-circuit)."""
-    if not debug:
-        return
-    log.debug_index(
-        func="contact.run_contact_task_dispatch",
-        index=index,
-        total=total,
-        identifier=key,
-        outcome="recorded",
-    )
-    if bool(row.get("ok")):
-        payload = json.dumps(row, default=str)
-        for line in truncate_debug_content(payload):
-            log.debug_detail(f"ok=True {line}")
-    else:
-        log.debug_detail(f"ok=False error={row.get('error')!r}")
-
-
+@_with_log_debug
 def run_contact_task_dispatch(
     *,
     astral_candidate_id: str,
@@ -1003,33 +845,21 @@ def run_contact_task_dispatch(
     debug: bool = False,
 ) -> List[Dict[str, Any]]:
     """Run allowlisted contact tasks from parsed reply markup (AST-1515)."""
-    log = get_logger(__name__)
-    log.set_debug_flag(debug)
     results: List[Dict[str, Any]] = []
-    total = len(markup_spans)
     cid = (astral_candidate_id or "").strip()
+    logger.debug("Beginning contact-task loop on %s items", len(markup_spans))
 
-    for index, (key, param) in enumerate(markup_spans, start=1):
+    for key, param in markup_spans:
         if key not in CONTACT_TASK_CONFIG:
             continue
         meta = CONTACT_TASK_CONFIG[key]
-        if debug:
-            log.debug_index(
-                func="contact.run_contact_task_dispatch",
-                index=index,
-                total=total,
-                identifier=key,
-                outcome="found",
-            )
-            for line in truncate_debug_content(f"param={param!r}"):
-                log.debug_detail(line)
+        logger.debug("Calling contact task %s: [param=%r, candidate_id=%r]", key, param, cid)
 
         if meta.get("requires_candidate") and not cid:
             row = {"ok": False, "error": "no_candidate", "task_key": key}
+            logger.warning("%s -> %s [%s]", key, "task_failed", "no_candidate")
             results.append(row)
-            _dispatch_recorded_debug(
-                log, index=index, total=total, key=key, row=row, debug=debug
-            )
+            logger.debug("Response from contact task %s: %s", key, row)
             continue
 
         # AST-1585: pin→body / refuse blob dual-read for get_candidate_data.
@@ -1049,10 +879,9 @@ def run_contact_task_dispatch(
                         "error": "not_found",
                         "task_key": "get_candidate_data",
                     }
+                    logger.warning("%s -> %s [%s]", key, "task_failed", "not_found")
                 results.append(row)
-                _dispatch_recorded_debug(
-                    log, index=index, total=total, key=key, row=row, debug=debug
-                )
+                logger.debug("Response from contact task %s: %s", key, row)
                 continue
             if param_n == "artifacts.base_resume":
                 row = {
@@ -1060,19 +889,17 @@ def run_contact_task_dispatch(
                     "error": "pin_required",
                     "task_key": "get_candidate_data",
                 }
+                logger.warning("%s -> %s [%s]", key, "task_failed", "pin_required")
                 results.append(row)
-                _dispatch_recorded_debug(
-                    log, index=index, total=total, key=key, row=row, debug=debug
-                )
+                logger.debug("Response from contact task %s: %s", key, row)
                 continue
 
         handler = _resolve_contact_task_handler(meta.get("handler") or "")
         if handler is None:
             row = {"ok": False, "error": "handler_unavailable", "task_key": key}
+            logger.warning("%s -> %s [%s]", key, "task_failed", "handler_unavailable")
             results.append(row)
-            _dispatch_recorded_debug(
-                log, index=index, total=total, key=key, row=row, debug=debug
-            )
+            logger.debug("Response from contact task %s: %s", key, row)
             continue
 
         try:
@@ -1089,15 +916,16 @@ def run_contact_task_dispatch(
                 row = {"ok": True, "result": raw_result, "task_key": key}
         except Exception as exc:
             row = {"ok": False, "error": str(exc), "task_key": key}
+            logger.warning("%s -> %s [%s]", key, "task_failed", str(exc))
 
         results.append(row)
-        _dispatch_recorded_debug(
-            log, index=index, total=total, key=key, row=row, debug=debug
-        )
+        logger.debug("Response from contact task %s: %s", key, row)
 
+    logger.debug("End contact-task loop after %s items", len(results))
     return results
 
 
+@_with_log_debug
 def run_contact_estelle_turn(
     *,
     channel: str,
@@ -1114,9 +942,6 @@ def run_contact_estelle_turn(
     Returns a dict with at least:
       ok, outcome, reply, admin_aside, skill_results, slack_post, error
     """
-    log = get_logger(__name__)
-    log.set_debug_flag(debug)
-
     empty = {
         "ok": False,
         "outcome": None,
@@ -1133,27 +958,11 @@ def run_contact_estelle_turn(
         out["error"] = "listen_off"
         return out
 
-    ident = (
-        astral_candidate_id
-        if isinstance(astral_candidate_id, str) and astral_candidate_id.strip()
-        else str(channel)
+    logger.debug(
+        "Calling run_contact_estelle_turn: [channel=%r, thread_ts=%r, "
+        "astral_candidate_id=%r, candidate_state=%r, text=%r]",
+        channel, thread_ts, astral_candidate_id, candidate_state, text,
     )
-    # Style D found bookend early so a mid-turn crash still leaves an accept trail.
-    if debug:
-        log.debug_index(
-            func="contact.run_contact_estelle_turn",
-            index=1,
-            total=2,
-            identifier=ident,
-            outcome="found",
-        )
-        log.debug_detail(
-            f"channel={channel!r} thread_ts={thread_ts!r} "
-            f"astral_candidate_id={astral_candidate_id!r} "
-            f"candidate_state={candidate_state!r}"
-        )
-        for line in truncate_debug_content(str(text) if text is not None else ""):
-            log.debug_detail(f"text={line}")
 
     # Late import avoids core→agent cycles at module load.
     from src.core.agent import conversational_turn_from_do_task_result, do_task
@@ -1250,6 +1059,10 @@ def run_contact_estelle_turn(
 
     # d. do_task + envelope helper
     task_key = CONTACT_ESTELLE_CONFIG["task_key"]
+    logger.debug(
+        "Calling agent.do_task: [task_key=%s, index=%s]",
+        task_key, astral_candidate_id or channel,
+    )
     result = asyncio.run(
         do_task(
             task_key,
@@ -1260,6 +1073,7 @@ def run_contact_estelle_turn(
             store_agent_data=True,
         )
     )
+    logger.debug("Response from agent.do_task: %s", result)
     turn = conversational_turn_from_do_task_result(result)
 
     reply_raw = turn.get("reply") if isinstance(turn.get("reply"), str) else ""
@@ -1294,6 +1108,10 @@ def run_contact_estelle_turn(
         follow_lines.append("## Latest inbound")
         follow_lines.append(_trim(text if isinstance(text, str) else ""))
         follow_live_content = "\n".join(follow_lines)
+        logger.debug(
+            "Calling agent.do_task: [task_key=%s, index=%s, follow_up=True]",
+            task_key, astral_candidate_id or channel,
+        )
         follow_result = asyncio.run(
             do_task(
                 task_key,
@@ -1304,6 +1122,7 @@ def run_contact_estelle_turn(
                 store_agent_data=True,
             )
         )
+        logger.debug("Response from agent.do_task: %s", follow_result)
         follow_turn = conversational_turn_from_do_task_result(follow_result)
         turn = follow_turn
         reply_for_slack = strip_contact_task_markup(
@@ -1326,6 +1145,7 @@ def run_contact_estelle_turn(
             skill_results.append(
                 {"ok": False, "error": "no_candidate", "skill_key": skill_key}
             )
+            logger.warning("%s -> %s [%s]", skill_key, "skill_failed", "no_candidate")
             continue
         try:
             skill_results.append(
@@ -1340,6 +1160,7 @@ def run_contact_estelle_turn(
             skill_results.append(
                 {"ok": False, "error": str(exc), "skill_key": skill_key}
             )
+            logger.warning("%s -> %s [%s]", skill_key, "skill_failed", str(exc))
 
     # e2. Optional land_calls → contact_land_meteorite (AST-1531; not ACL skill)
     land_results: List[Dict[str, Any]] = []
@@ -1356,6 +1177,7 @@ def run_contact_estelle_turn(
             continue
         if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
             land_results.append({"ok": False, "error": "no_candidate"})
+            logger.warning("%s -> %s [%s]", "land_meteorite", "land_failed", "no_candidate")
             continue
         try:
             from src.core.meteorite import (
@@ -1399,6 +1221,7 @@ def run_contact_estelle_turn(
             land_results.append({"ok": True, "result": land_out})
         except Exception as exc:
             land_results.append({"ok": False, "error": str(exc)})
+            logger.warning("%s -> %s [%s]", "land_meteorite", "land_failed", str(exc))
 
     # f. Outbound reply — only success/concern with non-empty reply
     reply = turn.get("reply")
@@ -1420,15 +1243,8 @@ def run_contact_estelle_turn(
             debug=debug,
         )
 
-    # g. Admin aside → logs only (never Slack)
+    # g. Admin aside rides the always-on listen info line (never Slack, never a warning).
     aside = turn.get("admin_aside")
-    if outcome == "concern" and isinstance(aside, str) and aside.strip():
-        aside_preview = aside if len(aside) <= _TEXT_DEBUG_MAX else aside[:_TEXT_DEBUG_MAX] + "…"
-        log.warning(
-            "contact estelle concern aside candidate=%s aside=%s",
-            astral_candidate_id,
-            aside_preview,
-        )
 
     do_task_error = None
     if isinstance(result, dict) and not result.get("success"):
@@ -1445,36 +1261,28 @@ def run_contact_estelle_turn(
         "slack_post": slack_post,
         "error": do_task_error,
     }
-
-    # h. Style D recorded bookend (debug=True only) — lengths/counts, not full blobs
-    if debug:
-        log.debug_index(
-            func="contact.run_contact_estelle_turn",
-            index=2,
-            total=2,
-            identifier=ident,
-            outcome="recorded",
-        )
-        skill_ok = sum(1 for r in skill_results if isinstance(r, dict) and r.get("ok"))
-        land_ok = sum(1 for r in land_results if isinstance(r, dict) and r.get("ok"))
-        contact_task_ok = sum(
-            1 for r in contact_task_results if isinstance(r, dict) and r.get("ok")
-        )
-        reply_len = len(reply_for_slack) if isinstance(reply_for_slack, str) else 0
-        aside_len = len(aside) if isinstance(aside, str) else 0
-        slack_ok = None
-        if isinstance(slack_post, dict):
-            slack_ok = bool(slack_post.get("ok"))
-        log.debug_detail(
-            f"outcome={outcome!r} success={bool(turn.get('success'))} "
-            f"reply_len={reply_len} admin_aside_len={aside_len} "
-            f"skill_calls={len(calls)} skill_ok={skill_ok} "
-            f"land_calls={len(land_items)} land_ok={land_ok} "
-            f"contact_tasks={len(contact_task_results)} contact_task_ok={contact_task_ok} "
-            f"slack_ok={slack_ok}"
-        )
-
+    logger.debug("Response from run_contact_estelle_turn: %s", out)
     return out
+
+
+def _emit_listen_info(result: dict, event_type: Any, channel: Any, turn_out: Any) -> None:
+    keys: List[str] = []
+    aside = None
+    outcome = None
+    if isinstance(turn_out, dict):
+        outcome = turn_out.get("outcome")
+        aside = turn_out.get("admin_aside")
+        for row in turn_out.get("skill_results") or []:
+            if isinstance(row, dict) and row.get("skill_key"):
+                keys.append(str(row["skill_key"]))
+    _contact_listen_info(
+        result.get("astral_candidate_id") if isinstance(result, dict) else None,
+        event_type,
+        outcome,
+        keys,
+        channel,
+        aside,
+    )
 
 
 def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
@@ -1482,44 +1290,25 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
     # AST-1207: Manage Slack Debug is sole SoT for Contact Slack Events (Archie).
     # Caller kwarg kept for signature compat; durable file wins every call.
     debug = slack_debug_enabled()
-    log = get_logger(__name__)
-    log.set_debug_flag(debug)
+    token = log_debug.set(debug)
+    try:
+        return _handle_slack_event_body(payload, debug)
+    finally:
+        log_debug.reset(token)
 
+
+def _handle_slack_event_body(payload: dict, debug: bool) -> dict:
     if not slack_listen_enabled():
-        if debug:
-            log.debug_index(
-                func="contact.handle_slack_event",
-                index=1,
-                total=1,
-                identifier="listen",
-                outcome="listen_off",
-            )
-            log.debug_detail("accepted=False reason=listen_off")
+        logger.debug("Response from handle_slack_event: accepted=False reason=listen_off")
         return {"accepted": False, "reason": "listen_off"}
 
     event_id = payload.get("event_id") if isinstance(payload, dict) else None
     if not event_id or not isinstance(event_id, str):
-        if debug:
-            log.debug_index(
-                func="contact.handle_slack_event",
-                index=1,
-                total=1,
-                identifier="event_id",
-                outcome="missing_event_id",
-            )
-            log.debug_detail("accepted=False reason=missing_event_id")
+        logger.debug("Response from handle_slack_event: accepted=False reason=missing_event_id")
         return {"accepted": False, "reason": "missing_event_id"}
 
     if not _remember_event_id(event_id):
-        if debug:
-            log.debug_index(
-                func="contact.handle_slack_event",
-                index=1,
-                total=1,
-                identifier=event_id,
-                outcome="duplicate_event",
-            )
-            log.debug_detail("accepted=False reason=duplicate_event")
+        logger.debug("Response from handle_slack_event: accepted=False reason=duplicate_event")
         return {"accepted": False, "reason": "duplicate_event"}
 
     event = payload.get("event") or {}
@@ -1527,40 +1316,19 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
         event = {}
     etype = event.get("type")
     if etype not in CONTACT_CONFIG["bot_event_types"]:
-        if debug:
-            log.debug_index(
-                func="contact.handle_slack_event",
-                index=1,
-                total=1,
-                identifier=event_id,
-                outcome="type_skipped",
-            )
-            log.debug_detail(f"accepted=False reason=type_skipped etype={etype!r}")
+        logger.debug(
+            "Response from handle_slack_event: accepted=False reason=type_skipped etype=%r",
+            etype,
+        )
         return {"accepted": False, "reason": "type_skipped"}
 
     if etype == "message":
         # Ignore bot echoes / edits / subtypes; only human DM text.
         if event.get("subtype") or event.get("bot_id"):
-            if debug:
-                log.debug_index(
-                    func="contact.handle_slack_event",
-                    index=1,
-                    total=1,
-                    identifier=event_id,
-                    outcome="message_skipped",
-                )
-                log.debug_detail("accepted=False reason=message_skipped")
+            logger.debug("Response from handle_slack_event: accepted=False reason=message_skipped")
             return {"accepted": False, "reason": "message_skipped"}
         if not _is_dm_message(event):
-            if debug:
-                log.debug_index(
-                    func="contact.handle_slack_event",
-                    index=1,
-                    total=1,
-                    identifier=event_id,
-                    outcome="not_dm",
-                )
-                log.debug_detail("accepted=False reason=not_dm")
+            logger.debug("Response from handle_slack_event: accepted=False reason=not_dm")
             return {"accepted": False, "reason": "not_dm"}
     # app_mention: accept as channel @Estelle
 
@@ -1579,20 +1347,10 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
         "thread_ts": event.get("thread_ts"),
         "text": text,
     }
-    # Style D found bookend early (Joan discuss) — survives turn crash.
-    if debug:
-        log.debug_index(
-            func="contact.handle_slack_event",
-            index=1,
-            total=2,
-            identifier=event_id,
-            outcome="found",
-        )
-        preview = text if len(text) <= _TEXT_DEBUG_MAX else text[:_TEXT_DEBUG_MAX] + "…"
-        log.debug_detail(
-            f"event_type={etype!r} user={event.get('user')!r} "
-            f"channel={channel!r} text={preview!r}"
-        )
+    logger.debug(
+        "Calling handle_slack_event: [event_id=%r, event_type=%r, user=%r, channel=%r, text=%r]",
+        event_id, etype, event.get("user"), channel, text,
+    )
     user = result.get("user")
     # AST-1105: identity for activity rows (filled by resolve or fallback fetch).
     resolved_meta = {"slack_username": None, "slack_display_name": None}
@@ -1611,7 +1369,10 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
                 dname if isinstance(dname, str) and dname.strip() else None
             )
         except Exception as exc:
-            log.error("contact resolve_slack_user failed: %s", exc, exc_info=True)
+            logger.exception(
+                "%s | contact resolve_slack_user\n  %s: %s\n  Continuing without a bound candidate",
+                "-", type(exc).__name__, exc,
+            )
             result["astral_candidate_id"] = None
             result["candidate_state"] = None
             result["candidate_created"] = False
@@ -1624,10 +1385,9 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
                 resolved_meta["slack_username"] = uname or None
                 resolved_meta["slack_display_name"] = dname or None
             except Exception as fetch_exc:
-                log.error(
-                    "contact activity identity fetch failed: %s",
-                    fetch_exc,
-                    exc_info=True,
+                logger.exception(
+                    "%s | contact activity identity fetch\n  %s: %s\n  Manage Slack will show this user without a name",
+                    "-", type(fetch_exc).__name__, fetch_exc,
                 )
     else:
         result["astral_candidate_id"] = None
@@ -1656,31 +1416,17 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
                 slack_username=resolved_meta.get("slack_username"),
                 slack_display_name=resolved_meta.get("slack_display_name"),
             )
-            if debug:
-                log.debug_index(
-                    func="contact.handle_slack_event",
-                    index=1,
-                    total=1,
-                    identifier=event_id,
-                    outcome="activity_recorded",
-                )
-                log.debug_detail(
-                    f"activity user={user_for_activity!r} bind_ok={bind_ok} "
-                    f"channel={channel!r} ts={msg_ts!r}"
-                )
-        except Exception as exc:
-            log.error("contact estelle activity record failed: %s", exc, exc_info=True)
-    elif result.get("accepted"):
-        # Accepted event with no Slack user → cannot key a row; skip record.
-        if debug:
-            log.debug_index(
-                func="contact.handle_slack_event",
-                index=1,
-                total=1,
-                identifier=event_id,
-                outcome="activity_skipped_no_user",
+            logger.debug(
+                "Response from record_estelle_activity: user=%r bind_ok=%s channel=%r ts=%r",
+                user_for_activity, bind_ok, channel, msg_ts,
             )
-            log.debug_detail("activity skipped: missing slack user")
+        except Exception as exc:
+            logger.exception(
+                "%s | contact estelle activity record\n  %s: %s\n  Manage Slack activity was not updated",
+                result.get("astral_candidate_id") or "-", type(exc).__name__, exc,
+            )
+    elif result.get("accepted"):
+        logger.debug("Response from record_estelle_activity: skipped missing slack user")
     # Warm process-local cache — key uses Slack thread_ts only (never message ts).
     if isinstance(channel, str) and channel and isinstance(msg_ts, str) and msg_ts:
         append_slack_conversation_message(
@@ -1724,7 +1470,10 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
                     ),
                 }
             except Exception as exc:
-                log.error("contact paste ack failed: %s", exc, exc_info=True)
+                logger.exception(
+                    "%s | contact paste ack\n  %s: %s\n  Paste was saved; Slack ack was not posted",
+                    result.get("astral_candidate_id") or "-", type(exc).__name__, exc,
+                )
                 result["estelle_turn"] = {
                     "ok": True,
                     "outcome": "paste_applied",
@@ -1744,10 +1493,16 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
                 )
                 result["estelle_turn"] = turn_out
             except Exception as exc:
-                log.error("contact estelle turn failed: %s", exc, exc_info=True)
+                logger.exception(
+                    "%s | contact estelle turn\n  %s: %s\n  The inbound event is accepted; Estelle did not complete this turn",
+                    result.get("astral_candidate_id") or "-", type(exc).__name__, exc,
+                )
                 result["estelle_turn"] = {"ok": False, "error": str(exc)}
-        # AST-1101: hear-ack when Estelle turn did not successfully post to Slack.
         turn_out = result.get("estelle_turn")
+        # Listen accepted and Estelle (or paste) returned — a thrown crash has no outcome.
+        if isinstance(turn_out, dict) and turn_out.get("outcome") is not None:
+            _emit_listen_info(result, etype, channel, turn_out)
+        # AST-1101: hear-ack when Estelle turn did not successfully post to Slack.
         slack_post = turn_out.get("slack_post") if isinstance(turn_out, dict) else None
         posted = isinstance(slack_post, dict) and slack_post.get("ok") is True
         if not posted:
@@ -1764,65 +1519,24 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
                     thread_ts=reply_thread_ts,
                     debug=debug,
                 )
-                if debug:
-                    preview = (
-                        outbound
-                        if len(outbound) <= _TEXT_DEBUG_MAX
-                        else outbound[:_TEXT_DEBUG_MAX] + "…"
-                    )
-                    log.debug_index(
-                        func="contact.handle_slack_event",
-                        index=1,
-                        total=1,
-                        identifier=event_id,
-                        outcome="hear_ack_posted",
-                    )
-                    log.debug_detail(f"hear_ack outbound={preview!r}")
+                logger.debug("Response from hear_ack post_message: %s", result["hear_ack_post"])
             except Exception as exc:
-                log.error("contact hear_ack post failed: %s", exc, exc_info=True)
+                logger.exception(
+                    "%s | contact hear_ack\n  %s: %s\n  Estelle did not post; hear-ack was not sent",
+                    result.get("astral_candidate_id") or "-", type(exc).__name__, exc,
+                )
                 result["hear_ack_post"] = {"ok": False, "error": str(exc)}
-                if debug:
-                    log.debug_index(
-                        func="contact.handle_slack_event",
-                        index=1,
-                        total=1,
-                        identifier=event_id,
-                        outcome="hear_ack_failed",
-                    )
-                    log.debug_detail(f"hear_ack error={exc!r}")
-    if debug:
-        log.debug_index(
-            func="contact.handle_slack_event",
-            index=2,
-            total=2,
-            identifier=event_id,
-            outcome="recorded",
-        )
-        turn_out = result.get("estelle_turn")
-        estelle_ok = turn_out.get("ok") if isinstance(turn_out, dict) else None
-        hear = result.get("hear_ack_post")
-        if hear is None:
-            hear_ack = None
-        elif isinstance(hear, dict):
-            hear_ack = bool(hear.get("ok"))
-        else:
-            hear_ack = False
-        log.debug_detail(
-            f"astral_candidate_id={result.get('astral_candidate_id')!r} "
-            f"candidate_state={result.get('candidate_state')!r} "
-            f"candidate_created={result.get('candidate_created')!r} "
-            f"estelle_turn_ok={estelle_ok!r} hear_ack={hear_ack!r}"
-        )
+    logger.debug("Response from handle_slack_event: %s", result)
     return result
-
 
 def _run_handle_slack_event_background(payload: dict, debug: bool = False) -> None:
     """Background Events worker — log failures; never raise into the ack path."""
     try:
         handle_slack_event(payload, debug=debug)
     except Exception as exc:
-        get_logger(__name__).error(
-            "contact handle_slack_event background failed: %s", exc, exc_info=True
+        logger.exception(
+            "%s | contact handle_slack_event background\n  %s: %s\n  The Slack ack already returned; this event was not processed",
+            "-", type(exc).__name__, exc,
         )
 
 
@@ -1840,70 +1554,42 @@ def receive_slack_events_http(
     # AST-1207: Manage Slack Debug is sole SoT for Contact Slack Events (Archie).
     # Caller kwarg kept for signature compat; durable file wins every call.
     debug = slack_debug_enabled()
-    log = get_logger(__name__)
-    log.set_debug_flag(debug)
-
-    signing_secret = os.environ[CONTACT_CONFIG["signing_secret_env"]]
-    if not verify_slack_signature(
-        signing_secret=signing_secret,
-        timestamp=timestamp or "",
-        body=raw_body,
-        signature=signature or "",
-    ):
-        if debug:
-            log.debug_index(
-                func="contact.receive_slack_events_http",
-                index=1,
-                total=1,
-                identifier="signature",
-                outcome="unauthorized",
-            )
-            log.debug_detail("status=401 reason=bad_signature")
-        return (401, "")
-
+    token = log_debug.set(debug)
     try:
-        payload = json.loads(raw_body.decode("utf-8") if isinstance(raw_body, bytes) else raw_body)
-    except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
-        if debug:
-            log.debug_index(
-                func="contact.receive_slack_events_http",
-                index=1,
-                total=1,
-                identifier="body",
-                outcome="bad_json",
-            )
-            log.debug_detail("status=400 reason=bad_json")
-        return (400, "")
+        signing_secret = os.environ[CONTACT_CONFIG["signing_secret_env"]]
+        if not verify_slack_signature(
+            signing_secret=signing_secret,
+            timestamp=timestamp or "",
+            body=raw_body,
+            signature=signature or "",
+        ):
+            logger.debug("Response from receive_slack_events_http: status=401 reason=bad_signature")
+            return (401, "")
 
-    if not isinstance(payload, dict):
-        return (400, "")
+        try:
+            payload = json.loads(raw_body.decode("utf-8") if isinstance(raw_body, bytes) else raw_body)
+        except (UnicodeDecodeError, json.JSONDecodeError, TypeError):
+            logger.debug("Response from receive_slack_events_http: status=400 reason=bad_json")
+            return (400, "")
 
-    challenge = parse_url_verification(payload)
-    if challenge is not None:
-        if debug:
-            log.debug_index(
-                func="contact.receive_slack_events_http",
-                index=1,
-                total=1,
-                identifier="url_verification",
-                outcome="challenge",
-            )
-            log.debug_detail("status=200 reason=url_verification")
-        return (200, {"challenge": challenge})
+        if not isinstance(payload, dict):
+            return (400, "")
 
-    # Ack immediately; process off the request thread (Slack ~3s window).
-    threading.Thread(
-        target=_run_handle_slack_event_background,
-        args=(payload, debug),
-        daemon=True,
-    ).start()
-    if debug:
-        log.debug_index(
-            func="contact.receive_slack_events_http",
-            index=1,
-            total=1,
-            identifier=str(payload.get("event_id") or "event"),
-            outcome="acked",
+        challenge = parse_url_verification(payload)
+        if challenge is not None:
+            logger.debug("Response from receive_slack_events_http: status=200 reason=url_verification")
+            return (200, {"challenge": challenge})
+
+        # Ack immediately; process off the request thread (Slack ~3s window).
+        threading.Thread(
+            target=_run_handle_slack_event_background,
+            args=(payload, debug),
+            daemon=True,
+        ).start()
+        logger.debug(
+            "Response from receive_slack_events_http: status=200 reason=event_acked event_id=%s",
+            payload.get("event_id"),
         )
-        log.debug_detail("status=200 reason=event_acked")
-    return (200, "")
+        return (200, "")
+    finally:
+        log_debug.reset(token)
