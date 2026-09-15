@@ -88,3 +88,62 @@ Confirm Chuckles estimate: 2 — agree
 - Parent AC7 (no backfill; legacy until re-save) → existing ContextTextPage miss path + AST-1655 hydrate (no client clear)
 - Sibling freeze / other context pages → scope gate; no sibling page edits
 - Parent AC1–5 / AC8 → N/A (AST-1654 / AST-1655)
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1656
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** 667eceb71272ec99d7a8b5fe0dd00c53aa9d5c32
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | | `bodyShape="plain_text"` hardcoded on Deal Breakers page; ContextTextPage path; ArtifactEditor untouched
+patt.artifact.read-current | A | | Existing GET → `context.deal_breakers` leaf; no second fetch; no client clear on miss
+patt.artifact.write-operative | A | | Save keeps `{ context: { deal_breakers: draft } }` PUT; AST-1655 intercept owns operative write
+
+## Traceability
+
+AC6→S1·1-2+verify | AC7/parent AC9→S1·1-2+Files Changed | parent AC7→ContextTextPage miss path+AST-1655 hydrate (no client change) | parent AC1-5,AC8→N/A (siblings #1/#2)
+
+## Findings
+
+### acceptable (procedural)
+
+- **Location:** Linear assignee
+- **Finding:** Ticket is **Plan Ready** with assignee **Katherine**; validate-plan §1 expects Joan assigned at spawn.
+- **Recommendation:** Chuckles procedural hygiene only — does not block plan substance.
+
+### acceptable
+
+- **Location:** `CandidateDealBreakers.tsx` as-is on tip
+- **Finding:** Page omits `bodyShape="plain_text"` today (one-liner without prop); without this change, empty Save can reach PUT and fail operative validation post-AST-1655. Plan's sole delta closes that gap.
+- **Recommendation:** No plan revision; implement Stage 1 verbatim.
+
+### acceptable
+
+- **Location:** Build / hand-verify prerequisite
+- **Finding:** Plan requires AST-1654 + AST-1655 on tip (via `sync-child` / ftr merge) before hand-check — correct ordering for editor-reload AC.
+- **Recommendation:** Chuckles merge-child before Katherine hand-verify; no plan change.
+
+### discuss
+
+- **Location:** `## Estimate`
+- **Finding:** Confirm line agrees to **2** points for a single-file, ~6-line mirror of AST-1634 Stage 1 §5 (Strengths already parameterized ContextTextPage on AST-1634).
+- **Recommendation:** Acceptable if parent dispatch estimate is authoritative; optional Chuckles note that product diff is trivial — not a plan blocker.
+
+### acceptable
+
+- **Location:** Canon clerk resolution
+- **Finding:** `patt.artifact.ui-consistency` is draft under `canon/directives/draft/`; scored from repo file, not `canon_clerk expand` active payload.
+- **Recommendation:** Corpus hygiene downstream; grades cite draft pattern Arc/Implementation.
+
+## R6 checklist (summary)
+
+Definition fidelity: pass — single-file scope gate; mirrors AST-1634 Strengths twin exactly; does not re-open ContextTextPage / ArtifactEditor / routes.
+DRY / scope: pass — reuses parameterized ContextTextPage; defers catalog/API to siblings; no sibling context page edits.
+UAT fitness: pass — cites parent AC6/AC9, correct outcome vs symptom-only fix, sibling partition, wrong-fix rejection.
+Self-assessment: pass — Estimate confirm present; no `!!-NONE` conf gap; complexity honestly bounded to one prop addition.
+
+context_tokens≈88000
