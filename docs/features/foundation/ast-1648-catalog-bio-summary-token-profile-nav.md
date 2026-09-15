@@ -165,3 +165,37 @@ Confirm Chuckles estimate: 2 — agree
 | `astral.standards.no-hardcoded-sets` | statute — closed key/shape membership via asserts |
 | `stat.logging.info` | id-only — no new logging surface this ticket |
 | `stat.logging.debug` | id-only — no new logging surface this ticket |
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1648
+**Overall:** APPROVED
+**Corpus:** fc0c368e59
+**Publish-ref tip:** 8815aefbc13d17e3f64c93f12e97a4cacf5f19d6
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | Config-only slice; no new info logging surfaces — id-only citation correct |
+| stat.logging.debug | X | | Config-only slice; no new debug surfaces — id-only citation correct |
+
+## Traceability
+
+AC1→S1:2–3 · AC2→S1:2,4 · AC3→S1:5–6 · AC4→S1:7 · AC7(nav)→S1:8 · AC5(sibling freeze)→S1:3,9 · Parent AC4/5/8→N/A (AST-1649) · Parent AC7(page/route)/AC10→N/A (AST-1650)
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan header / Stage 1
+- **Finding:** Plan cites AST-1632 for `plain_text` reuse; parent epic cites AST-1629 — same Strengths cutover lineage, not a scope conflict.
+- **Recommendation:** Optional editorial alignment only; no plan change required.
+
+context_tokens≈42000
+
+**Summary:** AST-1648 is **APPROVED**. The plan is a faithful, config-only slice: one file (`src/utils/config.py`), mirrors the AST-1632 Strengths pattern for catalog entry, closed-set asserts, `BIO_SUMMARY` artifact flip, profile removal, and nav leaf. Boundaries to AST-1649/AST-1650 are explicit. All five canon ids score A or X; no fix-now, discuss, or escalate items. Status was **Plan Ready** with zero `[plan-discuss]` rounds.
