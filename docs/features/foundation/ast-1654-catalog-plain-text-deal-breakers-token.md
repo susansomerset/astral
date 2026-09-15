@@ -158,3 +158,51 @@ Confirm Chuckles estimate: 1 — agree
 | `astral.standards.no-hardcoded-sets` | statute — closed key/shape membership via asserts |
 | `stat.logging.info` | id-only — no new logging surface this ticket |
 | `stat.logging.debug` | id-only — no new logging surface this ticket |
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1654
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** ca2d61cc77f32fccdb256257180a419e811a6607
+
+## Canon scores
+
+patt.artifact.manage-catalog | A | | Register-only slice: `candidate.context.deal_breakers` catalog entry reuses `plain_text`; STRENGTHS/BASE_RESUME pattern; read/write/blob-retire correctly deferred to siblings
+astral.config.config-source-of-truth | A | | Catalog entry, token flip, closed-set and per-entry asserts confined to `src/utils/config.py`
+astral.standards.no-hardcoded-sets | A | | Closed `ARTIFACT_CONFIG` key set, `_db` per-entry asserts, context sibling-absence loop, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "DEAL_BREAKERS"}`
+stat.logging.info | X | | id-only; config-only slice adds no `logger.info` surfaces
+stat.logging.debug | X | | id-only; config-only slice adds no `logger.debug` surfaces
+
+## Traceability
+
+AC1→S1·3-4 | AC2→S1·2-3 | AC3→S1·6-7 | AC4→S1·4 | parent AC4–7, AC9→N/A (sibling #2/#3 scope)
+
+## Findings
+
+### acceptable
+
+- **Location:** `src/utils/config.py` — `TOKEN_SOURCES["DEAL_BREAKERS"]` + `resolve_tokens`
+- **Finding:** Flipping `DEAL_BREAKERS` to `source_type: "artifact"` is typing/registry-only at import; `resolve_tokens` still walks `path: "context.deal_breakers"` until sibling #2 wires operative hydrate and blob retirement. Plan documents this explicitly (step 8) and mirrors AST-1632 precedent.
+- **Recommendation:** No plan change; sibling #2 owns runtime artifact overlay.
+
+### discuss (Canon Scope gap — do not score)
+
+- **Location:** Parent Canon Scope vs child frozen list
+- **Finding:** `astral.standards.in-scope-only` governs this config-only slice (explicit scope gate is present and honored) but is absent from the child's frozen five-id list.
+- **Recommendation:** Archie may amend at Discussion if cross-child comparability matters; plan already demonstrates in-scope behavior.
+
+### acceptable
+
+- **Location:** Canon clerk resolution
+- **Finding:** `canon_clerk expand` serves `directives/active/` only; three frozen ids (`patt.artifact.manage-catalog`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`) were scored from repo statute/pattern files at the epic worktree, not clerk payload.
+- **Recommendation:** Corpus hygiene is downstream; grades above cite those files' Statement/Examples.
+
+## R6 checklist (summary)
+
+Definition fidelity: pass — single-file scope gate matches ticket `## Scope`; mirrors AST-1632 (reuses existing `plain_text` shape, does not re-add `artifact_shapes` entry); no sibling file creep.
+DRY / scope: pass — copies proven Strengths registration pattern; defers operative/API/UI to siblings.
+Self-assessment: pass — `!!` child with explicit Decision callouts; Estimate confirm line present; no `!!-NONE` conf gap.
+
+context_tokens≈52000
