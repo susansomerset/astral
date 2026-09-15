@@ -199,3 +199,12 @@ AC1→S1:2–3 · AC2→S1:2,4 · AC3→S1:5–6 · AC4→S1:7 · AC7(nav)→S1:
 context_tokens≈42000
 
 **Summary:** AST-1648 is **APPROVED**. The plan is a faithful, config-only slice: one file (`src/utils/config.py`), mirrors the AST-1632 Strengths pattern for catalog entry, closed-set asserts, `BIO_SUMMARY` artifact flip, profile removal, and nav leaf. Boundaries to AST-1649/AST-1650 are explicit. All five canon ids score A or X; no fix-now, discuss, or escalate items. Status was **Plan Ready** with zero `[plan-discuss]` rounds.
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1647/AST-1648-catalog-bio-summary-token-profile-nav` @ `fc963ea12e9c69ad9791825fd164117be10b932a`.
+
+**Stages delivered:**
+- Stage 1: `candidate.context.bio_summary` catalog + `BIO_SUMMARY` artifact token + profile Bio Summary removed + Candidate nav leaf — `fc963ea12e9c69ad9791825fd164117be10b932a`.
+
+**Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Bio Summary metadata, `plain_text` == `raw_string` reuse, context sibling freeze (priorities/deal_breakers/backstory/ideal_day/writing_preferences absent), `TOKEN_SOURCES["BIO_SUMMARY"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY"}`, profile DATA_SHAPES Bio Summary gone, NAV_CONFIG Candidate Bio Summary → `/candidate/bio_summary`.
