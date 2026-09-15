@@ -226,3 +226,63 @@ Confirm Chuckles estimate: 3 — agree
 - Parent/child AC6 (no backfill; legacy until re-save) → Stage 1 §6 miss path
 - Editor reload (parent AC6 for UI) → Stage 1 §§6–7 + Stage 2 §2 (Katherine UI unchanged this ticket)
 - Sibling freeze / catalog ownership → Ada AST-1654 on ftr; this ticket does not touch `ARTIFACT_CONFIG`
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-1655
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** a8f5f31260a209d5518636ca21f869b4094fca8f
+
+## Canon scores
+
+patt.artifact.write-operative | A | | Deal Breakers str-path via shared `save_candidate_data` → `save_artifact`; AST-1635 identical no-op reused; dict-path library gate strips leaf
+patt.artifact.read-current | A | | `hydrate_operative_deal_breakers_for_response` + `get_candidate_current`; miss leaves legacy blob (AC6 migration window)
+patt.artifact.manage-catalog | A | | Blob authority retired for `context.deal_breakers` only via operative save + library strip; no config registration (sibling AST-1654 on ftr)
+astral.standards.in-scope-only | A | | Two-file scope gate honored; mirrors AST-1633 Strengths wiring without config/React/database touches
+stat.logging.info.entity | A | | Entity info on Deal Breakers operative save matches approved Strengths pipe in `candidate.py`
+stat.logging.info.api | A | | Api info on Deal Breakers PUT completion matches existing Strengths intercept pattern
+stat.logging.error | A | | Plan confirms existing `logger.exception` on PUT handler — no regression introduced
+
+## Traceability
+
+AC4→S1·4,S2·3-4 | AC5→S1·5,S2·3-4 | AC6→S1·6 miss path | parent AC1-3,8-9→N/A (sibling #1/#3) | parent AC6 editor reload→S1·6-7,S2·2 via GET hydrate (UI wire sibling #3)
+
+## Findings
+
+### acceptable (procedural)
+
+- **Location:** Linear assignee
+- **Finding:** Ticket is **Plan Ready** with assignee **Hedy**; validate-plan §1 expects Joan assigned at spawn.
+- **Recommendation:** Chuckles procedural hygiene only — does not block plan substance.
+
+### acceptable
+
+- **Location:** `src/ui/api/api_candidate.py` — combined PUT
+- **Finding:** A single PUT carrying both `context.strengths` and `context.deal_breakers` may emit two identical api info lines (same route/method/status). Plan allows both operative saves; Strengths precedent did not cover this combo.
+- **Recommendation:** No plan change required; optional future consolidation is out of scope for this mirror ticket.
+
+### acceptable
+
+- **Location:** `TOKEN_SOURCES["DEAL_BREAKERS"]` + `resolve_tokens`
+- **Finding:** After AST-1654 catalog lands on ftr, token is artifact-typed but runtime overlay/hydrate for live assembly is owned by this ticket's read-current path; plan does not touch `resolve_tokens` (same boundary as AST-1633 for Strengths).
+- **Recommendation:** No plan change; verify at build that token resolution still reads hydrated overlay post-GET.
+
+### acceptable
+
+- **Location:** Canon clerk resolution
+- **Finding:** `canon_clerk expand` serves `directives/active/` only; three frozen pattern ids were scored from repo `canon/directives/draft/` files at the epic worktree.
+- **Recommendation:** Corpus hygiene downstream; grades cite those files' Arc/Implementation.
+
+## R6 checklist (summary)
+
+Definition fidelity: pass — explicit two-file scope gate; mirrors AST-1633 verbatim (hydrate, library gate, PUT intercept, entity/api logging); reuses existing `plain_text` branch instead of re-adding validation.
+DRY / scope: pass — parallel Strengths constants/helpers; AST-1654 catalog prerequisite documented and present on `origin/ftr/AST-1642-migrate-deal-breakers-artifact-table`.
+UAT fitness: pass — cites parent AC4–6, correct outcome vs symptom-only fix, sibling partition, wrong-fix rejection.
+Self-assessment: pass — Estimate confirm line present; `!!` child with Decision callouts; no `!!-NONE` conf gap.
+
+context_tokens≈78000
+```
+
