@@ -95,3 +95,36 @@ Confirm Chuckles estimate: 2 — agree
 - Ticket / parent AC8 / parent AC10 (UI path purity; ArtifactEditor + ContextTextPage diffs empty) → Stage 1 §4 + Files Changed
 - Parent AC8 (no backfill; legacy until re-save) → existing ContextTextPage miss path + AST-1649 hydrate (no client clear)
 - Sibling freeze / other context pages → scope gate; no sibling page edits
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1650
+**Overall:** APPROVED
+**Corpus:** fc0c368e59
+**Publish-ref tip:** ab3db8c031da42075b2f6fe18fdea432f83a76ca
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Traceability
+
+AC7→S1:1–3 · AC8/AC10→S1:4 · Parent AC1–6/9→N/A (AST-1648/1649) · Parent AC8→S1:4+ContextTextPage GET (AST-1649 hydrate; no client clear)
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan preamble / Execution contract
+- **Finding:** Runtime depends on AST-1648 nav leaf and AST-1649 GET hydrate / PUT intercept already on the synced epic tip.
+- **Recommendation:** Engineer verifies sibling commits are present before hand-verify — already documented; not a plan defect.
+
+context_tokens≈62000
+
+
+**Summary:** AST-1650 is **APPROVED**. The plan is a faithful Strengths twin: new `CandidateBioSummary.tsx` with `contextKey="bio_summary"` and `bodyShape="plain_text"`, plus one route registration in `routes.tsx`. No `ContextTextPage` / `ArtifactEditor` edits, no scope creep into config or API. Load/save rides the existing context-leaf contract and sibling operative paths. All three canon ids grade **A**; no fix-now or discuss blockers. Status **Plan Ready**, zero `[plan-discuss]` rounds.
