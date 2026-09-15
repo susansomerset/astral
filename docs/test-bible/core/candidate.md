@@ -1914,3 +1914,30 @@ Operative `plain_text` validate on str-path; Strengths `save_artifact` retire+in
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
 
+### AST-1635 · AST-1629 (bug — identical artifact no-op)
+
+**Parent:** [AST-1629](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1635-no-identical-artifact-version`.
+
+`[bug-repro]` — identical Strengths body must return the existing `artifact_uuid` (no retire+insert). Plan-fix patches AST-1633 feature doc. Changed-body second save (AST-1633) must still retire+insert.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Identical body no-op | `src/core/candidate.py` | **`[bug-repro]`** `TestAst1635IdenticalArtifactNoOp::test_identical_strengths_save_keeps_current_uuid` |
+
+**Broken / obsolete:** none — AST-1633 different-body retire cases stay.
+
+## QA test manifest
+
+1. **[bug-repro]** `tests/component/core/test_candidate.py::TestAst1635IdenticalArtifactNoOp::test_identical_strengths_save_keeps_current_uuid`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1635IdenticalArtifactNoOp::test_identical_strengths_save_keeps_current_uuid \
+  -q
+```
+
+**Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
