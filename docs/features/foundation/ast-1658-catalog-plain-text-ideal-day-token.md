@@ -163,3 +163,34 @@ Confirm Chuckles estimate: 1 — agree
 | `astral.standards.no-hardcoded-sets` | statute — closed key/shape membership via asserts |
 | `stat.logging.info` | id-only — no new logging surface this ticket |
 | `stat.logging.debug` | id-only — no new logging surface this ticket |
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1658
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref tip:** `4083cd8134bef9aa12911e9a368ab7ea0fd65af3` (`origin/sub/AST-1643/AST-1658-catalog-plain-text-ideal-day-token`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | config-only slice; plan explicitly defers new info surfaces |
+| stat.logging.debug | X | | config-only slice; plan explicitly defers new debug surfaces |
+
+## Traceability
+
+AC1→Stage 1; AC2→Stage 1; AC3→Stage 1; AC4→Stage 1; parent AC4–7, AC9→N/A (operative save/hydrate/UI — siblings AST-1659/AST-1660).
+
+## Findings
+
+None (`fix-now` / `discuss`).
+
+**R6 notes (acceptable):** Plan mirrors existing `_st` / `_bs` per-entry assert pattern for `_id`; explicit scope gate confines work to `src/utils/config.py`; sibling freeze loop update is spelled out; `TOKEN_SOURCES["IDEAL_DAY"]` flip matches `STRENGTHS` / `BIO_SUMMARY` artifact shape; `_artifact_tokens` widen is explicit. `patt.artifact.manage-catalog` is scored from draft text (not yet in `canon_clerk` roster) — appropriate for this ticket's frozen list.
+
+context_tokens≈32000
+
