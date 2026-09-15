@@ -287,3 +287,60 @@ context_tokens≈78000
 - Stage 2: PUT intercept + GET hydrate + api info — `dd89f7299445a55310b23c9c11b372cde18ee48d`.
 
 **Betty:** at **Code Complete** — cover Priorities `save_artifact` round-trip + retire prior current (changed body), identical no-op (shared gate), dict-path strips `context.priorities`, hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf; Strengths path still green.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1652
+**Publish ref:** `1af7df47a28b8dbb4512910123ee43682ebce4ea`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Composite publish-ref diff.** `origin/dev...origin/sub/AST-1641/AST-1652-operative-save-hydrate-blob-retirement` includes sibling **AST-1651** product (`src/utils/config.py` catalog + `PRIORITIES` token) and **AST-1651** issue doc, merged via `sync(ftr)` / prior sub history. AST-1652's explicit scope gate excludes `config.py`; the precondition comment in the plan expects the catalog on the composite tip. Not Hedy scope creep — epic branch composition — but worth noting for `merge-child` / UT that reviewers are seeing a multi-sibling tip, not a two-file-only delta vs `origin/dev`.
+
+### advisory
+
+- **Plan vs implementation (library gate).** Stage 1 §4 specified widening the Strengths-only tuple to `("strengths", "priorities")`. Tip uses `_CONTEXT_OPERATIVE_LEAVES = frozenset({"strengths", "bio_summary", "priorities"})` — cleaner, and correct on this composite tip where **AST-1649** bio_summary is already catalog-owned. Behavior for Priorities matches plan; no functional gap.
+- **API info gate consolidation.** `update_candidate_data` now emits one `stat.logging.info.api` line when `strengths_saved or priorities_saved or bio_summary_saved` — fixes a pre-existing double-info risk when Strengths + Bio Summary saved in one PUT. Good hygiene bundled with Priorities wiring.
+- **Canon clerk resolution.** `patt.artifact.*` and `astral.standards.in-scope-only` resolve via draft/statute paths, not `canon_clerk expand` active corpus — same `corpus_sha` Joan used.
+- **Regression test sibling key swap.** AST-1633 / AST-1649 dict-path and PUT sibling asserts revised from `priorities` (formerly library-merge) to `deal_breakers` — necessary now that priorities is operative; documented in bible **Broken / obsolete** rows.
+
+## What's solid
+
+- **write-operative:** PUT intercept pops `context.priorities` and calls `save_candidate_data(candidate_id, "candidate.context.priorities", body)`; str-path reuses shared `plain_text` validation + AST-1635 identical no-op before `database.save_artifact`; second changed save retires prior `current=1` row; tests cover validate / retire / no-op / empty→400.
+- **read-current:** `hydrate_operative_priorities_for_response` delegates to `get_candidate_current`; miss leaves legacy blob; hit overlays operative string; wired in both `get_candidate` and `get_candidate_detail`; tests cover hit/miss/non-str/non-dict guards.
+- **manage-catalog:** Dict-path library merge strips `priorities` via `_CONTEXT_OPERATIVE_LEAVES`; operative row is durable SoT — library blob does not receive priorities on save (core + API tests assert).
+- **Logging:** Entity info on successful Priorities `save_artifact` only (not identical no-op), matching Strengths pipe format; single API info on operative PUT success; existing `logger.exception` handler untouched (no duplicate error log).
+- **Strengths path preserved:** Combined context pop refactor; Strengths operative save/hydrate unchanged in semantics; regression manifest lines retained.
+
+## Recommended actions (for Chuckles — not Radia)
+
+- Append this artifact to the issue doc; commit `docs(AST-1652): Radia review — clean` on `origin/sub/AST-1641/AST-1652-operative-save-hydrate-blob-retirement`.
+- Post slim upshot via `linear_proxy --as radia`; advance to **Review Posted** → datt **§3h** PROCEED (no `resolve-child` product work from canon).
+- No action required on composite AST-1651 config in diff unless Susan wants sub tips rebased slimmer before UT.
+
+context_tokens≈72000
