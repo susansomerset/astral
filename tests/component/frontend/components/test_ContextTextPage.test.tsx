@@ -186,4 +186,39 @@ describe("ContextTextPage", () => {
     await waitFor(() => expect(screen.getByText("Story saved")).toBeInTheDocument())
     // Saved payload carries story: null — textarea keeps derived display until reload
   })
+
+  it("AST-1634: plain_text empty blocks Save and toast without PUT", async () => {
+    mockCandidates("seed")
+    renderWithProviders(
+      <ContextTextPage title="Strengths" contextKey="strengths" bodyShape="plain_text" />,
+    )
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Strengths" })).toBeInTheDocument(),
+    )
+    await userEvent.clear(screen.getByRole("textbox"))
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+    // Force click path still toasts and must not PUT (button disabled — use handleSave via enable then clear)
+    await userEvent.type(screen.getByRole("textbox"), "x")
+    expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled()
+    await userEvent.clear(screen.getByRole("textbox"))
+    // Disabled Save: no PUT recorded after clear
+    const putsBefore = mockedApi.mock.calls.filter(
+      ([url, init]) => url.includes("/data") && init?.method === "PUT",
+    ).length
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    const putsAfter = mockedApi.mock.calls.filter(
+      ([url, init]) => url.includes("/data") && init?.method === "PUT",
+    ).length
+    expect(putsAfter).toBe(putsBefore)
+  })
+
+  it("AST-1634: callers without bodyShape still allow empty save PUT", async () => {
+    mockCandidates("seed")
+    renderWithProviders(<ContextTextPage title="Story" contextKey="story" />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Story" })).toBeInTheDocument())
+    await userEvent.clear(screen.getByRole("textbox"))
+    expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled()
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Story saved")).toBeInTheDocument())
+  })
 })

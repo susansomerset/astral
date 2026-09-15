@@ -2606,3 +2606,35 @@ npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1634 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1634-strengths-contexttextpage-plain-text-path`.
+
+Strengths page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { strengths } }` GET/PUT (AST-1633 operative intercept); empty/whitespace Save disabled + client toast; `ArtifactEditor` untouched; sibling context pages omit `bodyShape`. Catalog/API: siblings **AST-1632** / **AST-1633**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Strengths page (§6c) — load / save reload / empty gate | `CandidateStrengths.tsx` | **`test_CandidateStrengths.test.tsx`** — `AST-1634` |
+| Shared plain_text empty gate + legacy callers | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** none — prior Strengths render case expanded under AST-1634 names.
+
+**Integration:** none — no existing scenario asserts Strengths ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Strengths page (§6c): `tests/component/frontend/pages/test_CandidateStrengths.test.tsx` — pattern **`AST-1634`**
+2. Shared ContextTextPage plain_text gate: `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateStrengths.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
