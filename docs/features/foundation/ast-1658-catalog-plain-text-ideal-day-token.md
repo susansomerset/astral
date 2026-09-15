@@ -194,3 +194,12 @@ None (`fix-now` / `discuss`).
 
 context_tokens≈32000
 
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1643/AST-1658-catalog-plain-text-ideal-day-token` @ `a0d9f811ba6c6e9d0b220c94eb283baa5caf5b90`.
+
+**Stages delivered:**
+- Stage 1: `candidate.context.ideal_day` catalog + `IDEAL_DAY` artifact token — `a0d9f811ba6c6e9d0b220c94eb283baa5caf5b90`.
+
+**Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Ideal Day metadata, `plain_text` == `raw_string` reuse, context sibling freeze (priorities/deal_breakers/backstory/writing_preferences absent; ideal_day registered), `TOKEN_SOURCES["IDEAL_DAY"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY", "IDEAL_DAY"}`.
+
