@@ -13,6 +13,8 @@ get_candidate_current(candidate_id, artifact_key) current-read by catalog key
 (AST-1586 / patt.artifact.read-current).
 Strengths (candidate.context.strengths) uses the same operative save +
 get_candidate_current hydrate path (AST-1633).
+Bio summary (candidate.context.bio_summary) uses the same operative save +
+get_candidate_current hydrate path (AST-1649).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -811,6 +813,14 @@ def save_candidate_data(
                 new_uuid,
                 "-",
             )
+        elif artifact_key == _BIO_SUMMARY_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "bio_summary artifact saved",
+                new_uuid,
+                "-",
+            )
         return new_uuid
 
     if not isinstance(data_or_artifact_key, dict):
@@ -883,10 +893,10 @@ def save_candidate_data(
         _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
         blob_merge["contact"] = proposed
 
-    # AST-1633: catalog owns context.strengths — never library-merge that leaf.
+    # AST-1633 / AST-1649: catalog owns these context leaves — never library-merge SoT.
     ctx = blob_merge.get("context")
-    if isinstance(ctx, dict) and "strengths" in ctx:
-        cleaned = {k: v for k, v in ctx.items() if k != "strengths"}
+    if isinstance(ctx, dict):
+        cleaned = {k: v for k, v in ctx.items() if k not in _CONTEXT_OPERATIVE_LEAVES}
         if cleaned:
             blob_merge["context"] = cleaned
         else:
@@ -1515,6 +1525,9 @@ def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> N
 
 
 _STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
+_BIO_SUMMARY_ARTIFACT_KEY = "candidate.context.bio_summary"
+# Catalog-owned context leaves — never durable library-merge SoT (AST-1633 / AST-1649).
+_CONTEXT_OPERATIVE_LEAVES = frozenset({"strengths", "bio_summary"})
 
 
 def hydrate_operative_strengths_for_response(candidate_id: str, cd: dict) -> None:
@@ -1535,6 +1548,26 @@ def hydrate_operative_strengths_for_response(candidate_id: str, cd: dict) -> Non
         ctx = {}
         cd["context"] = ctx
     ctx["strengths"] = body
+
+
+def hydrate_operative_bio_summary_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current bio summary into candidate_data.context (display only).
+
+    Miss → leave legacy context.bio_summary blob untouched (parent AC8 / ticket AC6 migration window).
+    Hit → write current string onto context.bio_summary for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _BIO_SUMMARY_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["bio_summary"] = body
 
 
 def _normalize_search_term_lines(val: str) -> list[str]:
@@ -1628,6 +1661,7 @@ def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
         cd = {}
     hydrate_operative_base_resume_for_response(candidate_id, cd)
     hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_bio_summary_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return candidate
 
