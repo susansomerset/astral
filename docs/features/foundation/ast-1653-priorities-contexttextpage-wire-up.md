@@ -119,3 +119,10 @@ AC6→S1 load/save/reload via `ContextTextPage` + AST-1652 GET hydrate overlay o
 - Plan Discuss rounds completed: **0**.
 
 context_tokens≈95000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1641/AST-1653-priorities-contexttextpage-wire-up` @ `bf9dc1c94fb8036d2216132854bd9d86f79f6e6b`.
+
+**Stages delivered:**
+- Stage 1: Wire Priorities `bodyShape="plain_text"` — `bf9dc1c94fb8036d2216132854bd9d86f79f6e6b`.
