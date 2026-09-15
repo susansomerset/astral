@@ -74,3 +74,48 @@ Hardcode `bodyShape="plain_text"` to match `ARTIFACT_CONFIG["candidate.context.p
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1653
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1641/AST-1653-priorities-contexttextpage-wire-up` @ `1dbd480859bc2eae8ba9095c25b470ee62ae170c`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Traceability
+
+AC6→S1 load/save/reload via `ContextTextPage` + AST-1652 GET hydrate overlay on `context.priorities`; AC7→S1§1 `ContextTextPage` only, `ArtifactEditor`/`ContextTextPage.tsx` untouched — parent AC1–5/AC8 N/A (siblings #1/#2 / config).
+
+## Findings
+
+### discuss
+
+- **Location:** Linear assignee at fetch
+- **Finding:** Assignee is Katherine Johnson, not Joan — validate-plan §1 expects Joan assigned before this pass.
+- **Recommendation:** Chuckles assign Joan before status flip; restore Katherine after writeback per §8. Substance review completed below.
+
+### acceptable
+
+- **Location:** plan doc tail
+- **Finding:** No `## Canon Scope` table in the plan doc (siblings AST-1651/1652 carry one); ticket Description citations are present and sufficient to score.
+- **Recommendation:** Optional plan-child hygiene — append Canon Scope table for Radia parity; not blocking.
+
+### R6 — Definition fidelity (checklist)
+
+- Single-file scope (`CandidatePriorities.tsx`); explicit scope gate; build precondition on AST-1651 + AST-1652.
+- Correct delta vs tip: add `bodyShape="plain_text"` to mirror `CandidateStrengths.tsx`; keeps `contextKey="priorities"` and existing PUT `{ context: { priorities } }` contract AST-1652 intercepts.
+- UAT fitness names AC6/AC7, correct outcome vs stacktrace-only fix, rejects ArtifactEditor / `ContextTextPage` edits / parallel `artifacts` payload.
+- `ContextTextPage` on tip already supports `bodyShape` empty-save gate and context-leaf PUT — plan does not over-scope.
+- Self-assessment `Confirm Chuckles estimate: 2 — agree` is defensible (thin but includes hand-verify + sibling compile check).
+- Plan Discuss rounds completed: **0**.
+
+context_tokens≈95000
