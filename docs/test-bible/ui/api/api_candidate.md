@@ -227,3 +227,35 @@ PUT `/data` pops `context.strengths` then `save_candidate_data(candidate_id, "ca
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
 
+
+### AST-1649 · AST-1647
+
+**Parent:** [AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page](https://linear.app/astralcareermatch/issue/AST-1647). **Publish:** `origin/sub/AST-1647/AST-1649-operative-save-hydrate-blob-retirement`.
+
+PUT `/data` pops `context.bio_summary` then `save_candidate_data(candidate_id, "candidate.context.bio_summary", body)`; sibling context keys still library-merge; GET detail hydrates Bio Summary (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1649.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT operative + retire + sibling merge + GET hydrate + empty 400 | `src/ui/api/api_candidate.py` | **`TestAst1649BioSummaryOperativeApi`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Core: `tests/component/core/test_candidate.py::TestAst1649BioSummaryOperativeSaveHydrate`
+2. API: `tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1649BioSummaryOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
