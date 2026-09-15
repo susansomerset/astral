@@ -132,3 +132,63 @@ Gate checks: **Plan Ready**, assignee Joan, parent AST-1638, zero `[plan-discuss
 context_tokens≈32000
 
 ---
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1639
+**Publish ref:** `0546f9dd89def51f131e03e5ff0222be52ddfc56` (`origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix`)
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded both directives **A**; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `tests/component/core/test_agent.py` — `TestAst1450RunAdhocWorkbench` (`test_success_completes_ledger_and_stores_blocks`, etc.)
+- **Finding:** Workbench `_store_prompt_blocks` now receives prefixed `system_content` per Stage 1 step 6, but existing workbench tests assert ledger/dispatch fields only — not that `store_kw["system_content"]` begins with `[astral-<id>]`.
+- **Recommendation:** Optional follow-up test row for stored SYSTEM parity (AC3 stored-row half); product path in `run_adhoc_workbench_test` is correct on read-through.
+
+- **Location:** Diff footprint vs plan `## Scope`
+- **Finding:** Product scope stayed `src/core/agent.py` only; `tests/component/core/test_agent.py` and `docs/test-bible/core/agent.md` also changed (Betty `merge-tests` + manifest). Expected workflow divergence, not a canon defect.
+- **Recommendation:** No action — note for traceability only.
+
+## What's solid
+
+- `_system_text_with_candidate_prefix` is the single chokepoint: strips id only, no separator before body, `ValueError` with no new `logger.exception` at the raise site (`stat.logging.error`).
+- `_assemble_blocks_seven_segment` prefixes the first system block and `_track("system_prompt", …)` before cache A–D; cache/user segments stay unprefixed.
+- `do_task` passes `candidate_id` into assembly; store uses the helper once on the unresolved body (no double-prefix); missing/blank id raises before `send_to_*` (`test_do_task_fail_closed_when_candidate_id_missing`).
+- `run_adhoc` and `preview_prompt` wired; id resolution uses `_astral_candidate_id` / `astral_candidate_id` only.
+- `TestAst1639CandidateIdSystemPrefix` covers helper, assemble, preview, both providers, and fail-closed adhoc/preview paths.
+- No `user_id` / `metadata.user_id` isolation added; no files outside the four-file diff (`agent.py`, plan doc, bible, tests).
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append this artifact to `docs/features/agent/ast-1639-candidate-id-system-prompt-prefix.md`, commit `docs(AST-1639): Radia review — clean`, push sub-branch, post slim upshot `--as radia`, move to **Review Posted**.
+- datt: **PROCEED** → `resolve-child` optional (no fix-now); engineer may tick Frame diff (none proposed) and advance to **User Testing** when ready.
+- Betty (optional): add one workbench store assertion for prefixed `system_content` if Susan wants explicit AC3 stored-row coverage beyond code review.
+
+context_tokens≈28000
