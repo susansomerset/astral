@@ -3733,3 +3733,38 @@ Config-only: `BUILD_CONFIG["artifact_shapes"]["plain_text"] = "raw_string"`; reg
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 
+### AST-1648 · AST-1647
+
+**Parent:** [AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page](https://linear.app/astralcareermatch/issue/AST-1647). **Publish:** `origin/sub/AST-1647/AST-1648-catalog-bio-summary-token-profile-nav`.
+
+Config-only: register `candidate.context.bio_summary` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (priorities / deal_breakers / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["BIO_SUMMARY"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY"}`; delete profile `DATA_SHAPES` Bio Summary section; add Candidate `NAV_CONFIG` leaf `/candidate/bio_summary`. No hydrate / API / React (siblings AST-1649 / AST-1650).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| bio_summary catalog + plain_text reuse + sibling freeze + BIO_SUMMARY token + profile omit + nav | `src/utils/config.py` | **`TestAst1648CatalogBioSummaryTokenProfileNav`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+
+**Broken / obsolete this pass:** AST-1590 four-key singleton (missing bio_summary); AST-1596 `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}` / `data_field==22` / `get_tokens_by_source_type("artifact") == ["BASE_RESUME", "STRENGTHS"]`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Bio Summary key, `BIO_SUMMARY` artifact typing, profile Bio Summary section, or Candidate Bio Summary nav; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Bio Summary catalog + token + profile/nav: `tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
