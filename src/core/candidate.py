@@ -794,6 +794,12 @@ def save_candidate_data(
             if not isinstance(blob, str) or not blob.strip():
                 raise ValueError("plain_text body must be a non-empty string")
         artifact_type = artifact_key.rsplit(".", 1)[-1]
+        # AST-1635: identical-to-current → return existing pin; no retire+insert.
+        current_row = database.get_current_artifact(
+            entry["entity_type"], candidate_id, artifact_type
+        )
+        if current_row is not None and current_row.get("artifact_data") == blob:
+            return current_row.get("artifact_uuid")
         new_uuid = database.save_artifact(
             entry["entity_type"], candidate_id, artifact_type, blob
         )
