@@ -203,3 +203,74 @@ context_tokens≈32000
 
 **Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Ideal Day metadata, `plain_text` == `raw_string` reuse, context sibling freeze (priorities/deal_breakers/backstory/writing_preferences absent; ideal_day registered), `TOKEN_SOURCES["IDEAL_DAY"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY", "IDEAL_DAY"}`.
 
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1658
+**Publish ref:** c5af9cdc1f30718067f897182d655c6aebe78117
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | config-only slice; no new `logger.info` surfaces |
+| stat.logging.debug | X | | config-only slice; no new `logger.debug` surfaces |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `src/utils/config.py` — `TOKEN_SOURCES["IDEAL_DAY"]` + `resolve_tokens`
+- **Finding:** Flipping `IDEAL_DAY` to `source_type: "artifact"` is typing/registry-only on this tip; `resolve_tokens` still walks `path: "context.ideal_day"` (same pattern as STRENGTHS / BIO_SUMMARY pre-operative). Plan bounds operative save, hydrate, and blob retirement to AST-1659 / AST-1660.
+- **Recommendation:** No action on AST-1658; siblings own runtime artifact overlay.
+
+- **Location:** `merge-tests` tip — `tests/component/core/test_candidate.py`, `tests/component/ui/api/test_api_candidate.py`
+- **Finding:** `merge-tests(AST-1658)` landed AST-1652 / AST-1655 operative test classes (`TestAst1652PrioritiesOperativeApi`, `TestAst1655DealBreakersOperativeSaveHydrate`, etc.) but this tip's `src/core/candidate.py` has no `hydrate_operative_priorities_for_response` / `hydrate_operative_deal_breakers_for_response`. Betty manifest correctly scopes test-child to `test_config.py` only (green). Running the merged classes directly would fail.
+- **Recommendation:** Downstream hygiene only — Chuckles/Betty may add parallel-epic `skipif` guards on merge or leave as manifest-scoped; not a product gate for this ticket.
+
+- **Location:** `docs/test-bible/utils/config.md` § AST-1658 bible shasum
+- **Finding:** Issue doc bible shasum line still `*(filled after publish)*`.
+- **Recommendation:** Chuckles can sync on writeback — not a code gate.
+
+- **Location:** Canon clerk / frozen list resolution
+- **Finding:** `canon_clerk expand` does not serve `patt.artifact.manage-catalog`, `astral.config.config-source-of-truth`, or `astral.standards.no-hardcoded-sets` (draft pattern + `canon/statutes/` paths). Scored from repo files at epic worktree, not clerk payload.
+- **Recommendation:** Corpus hygiene is downstream; no scope gap on the frozen list.
+
+## Notes
+
+- **Scope divergence (expected):** Product diff is confined to `src/utils/config.py` per plan Stage 1. `tests/component/utils/test_config.py`, `docs/test-bible/utils/config.md`, and `merge-tests` revisions to core/api test files + bible are Betty pipeline artifacts — not sibling product scope creep in `src/`.
+- **Estimate footprint:** Confirm **1** point still fits; product surface is single-file catalog registration + token flip.
+
+## What's solid
+
+- Stage 1 delivered verbatim: `candidate.context.ideal_day` catalog entry (`plain_text` / `raw_string` reuse), closed six-key `ARTIFACT_CONFIG` set, full `_id` per-entry asserts, context sibling freeze loop (ideal_day removed; priorities / deal_breakers / backstory / writing_preferences still absent), `IDEAL_DAY` artifact flip with explicit linkage asserts, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY", "IDEAL_DAY"}`, module docstring inventory cites AST-1658.
+- `TestAst1658CatalogPlainTextIdealDayToken` locks catalog metadata, sibling freeze, token linkage, and plain_text shape reuse; prior AST-1590 / AST-1596 / AST-1365 / AST-1632 / AST-1648 tests revised for the new closed sets on this tip.
+- Plan hand one-liners (AC1–AC4) match publish tip config state.
+
+## Recommended actions
+
+(none downstream — artifact complete)
+
+context_tokens≈38000
+
