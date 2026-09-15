@@ -162,3 +162,60 @@ AC6→Stage 1 §§2–3 + verify (save/reload same text); AC7→Stage 1 §§1, 5
 context_tokens≈45000
 ```
 
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1634
+**Publish ref:** 40aa80a23d34567fcfc805639706b56c86927
+**Corpus:** 0b920f4e7dfc842c1032277aa99ac34e1bd0f9b9
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | | Optional `bodyShape` on `ContextTextPage`; Strengths hardcodes `plain_text`; mirrors ArtifactEditor pilot; no frontend catalog fetch; `ArtifactEditor` untouched
+patt.artifact.read-current | A | | Single GET load from hydrated `context[contextKey]`; no client `artifact_id` or second fetch; legacy blob on miss via server hydrate
+patt.artifact.write-operative | A | | Save keeps `{ context: { strengths } }` PUT → AST-1633 operative intercept; client empty gate before PUT matches server `plain_text` validation
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `patt.artifact.ui-consistency` / `ContextTextPage`
+- **Finding:** Pattern prose is ArtifactEditor/`artifacts[leaf]`-centric; this diff correctly applies the same `bodyShape` parameterization to `ContextTextPage` with `context[contextKey]` leaf per parent Technical scope and AST-1633 API intercept — not a parallel client slot.
+- **Recommendation:** None — definition-faithful; pattern Abstract allows existing API leaf contracts.
+
+### advisory
+
+- **Location:** Canon clerk / frozen list
+- **Finding:** Three frozen pattern ids live under `canon/directives/draft/` outside clerk `active/` roster; scored from draft files at epic worktree.
+- **Recommendation:** Corpus hygiene downstream; scores from those files' Statement/Examples.
+
+## What's solid
+
+- Stage 1 plan delivered verbatim in the two scoped files: optional `bodyShape` prop, `plain_text` empty gate (disabled Save + `handleSave` guard), unchanged GET/PUT `{ context: { [contextKey] } }` contract, `CandidateStrengths` wires `bodyShape="plain_text"`.
+- Product commit `853c8897` touches only `ContextTextPage.tsx` and `CandidateStrengths.tsx` — no `ArtifactEditor`, sibling context pages, or backend files.
+- Betty manifest coverage: `TestAst1634` in `test_CandidateStrengths.test.tsx` (load, save/reload, empty gate) and `test_ContextTextPage.test.tsx` (plain_text empty blocks PUT; legacy callers without `bodyShape` unchanged).
+
+## Scope notes (not findings)
+
+- Three-dot diff vs `origin/dev` includes AST-1632 catalog and AST-1633 operative/API commits stacked on the epic branch; AST-1634 product commits are frontend-only.
+- `tests/` and `docs/test-bible/**` changes are expected Betty pipeline artifacts.
+- Estimate **3** fits two-file UI parameterization + targeted component tests.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1634): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
+
+context_tokens≈18000
+```
+
