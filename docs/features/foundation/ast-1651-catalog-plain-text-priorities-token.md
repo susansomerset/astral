@@ -202,3 +202,56 @@ context_tokens≈52000
 - Stage 1: `candidate.context.priorities` catalog + `PRIORITIES` artifact token — `ded632db5cfe3f05658db73b84b348f49ab64157`.
 
 **Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Priorities metadata, context sibling freeze without priorities, `TOKEN_SOURCES["PRIORITIES"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES"}`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1651
+**Publish ref:** `09ea76f5fdaf89cd5111ead3ab442e2d61869aa2`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | config-only slice; no new info surfaces |
+| stat.logging.debug | X | | config-only slice; no new debug surfaces |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Cross-ticket scope on publish ref.** Branch history includes `90a33f94 test(AST-1648): bio_summary catalog + BIO_SUMMARY token + profile/nav`, which adds `TestAst1648CatalogBioSummaryTokenProfileNav` (~90 lines) and an AST-1648 `docs/test-bible/utils/config.md` block. The same bible append also documents AST-1654 (deal_breakers parallel epic). None of this is AST-1651 product work; `config.py` on this tip still has `BIO_SUMMARY` as `data_field` with no `candidate.context.bio_summary` catalog key. The AST-1648 class is `skipif`-gated and harmless here, but the diff carries sibling-epic test/bible footprint that the ticket **## Explicit scope gate** and **Out of this ticket** rows exclude for the engineer slice. Worth a Chuckles/Susan call on whether parallel-epic scaffolding stays on the sub branch until `merge-child` or should be stripped before UT.
+
+### advisory
+
+- **Plan vs pipeline scope wording.** Engineer plan scoped **only** `src/utils/config.py`; Betty's `TestAst1651CatalogPlainTextPrioritiesToken` + bible manifest are correct pipeline additions and mirror AST-1632. The AST-1648/AST-1654 artifacts above are the divergence — not the AST-1651 test class itself.
+- **Canon clerk resolution.** `patt.artifact.manage-catalog`, `astral.config.config-source-of-truth`, and `astral.standards.no-hardcoded-sets` do not resolve via `canon_clerk expand` (active corpus only). Scored from `canon/directives/draft/patt.artifact.manage-catalog.md` and `canon/statutes/astral/{config,standards}/` mirrors — same `corpus_sha` Joan used; not a scope gap.
+- **Bible shasum placeholders** in the appended manifest blocks still read `*(filled after publish)*` — Betty hygiene, not a canon block.
+
+## What's solid
+
+- `src/utils/config.py` delivers Stage 1 exactly: `candidate.context.priorities` registered with `plain_text` reuse (no new `artifact_shapes` entry), closed `ARTIFACT_CONFIG` key set, priorities removed from sibling-freeze loop, per-entry `_pr` asserts, `TOKEN_SOURCES["PRIORITIES"]` flipped to `artifact` + `artifact_key`, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES"}`, module docstring inventory updated.
+- `TestAst1651CatalogPlainTextPrioritiesToken` covers catalog metadata, sibling freeze, and token linkage; shared `TestAst1590` / `TestAst1596` helpers updated to the new closed sets and counts (21 / 3 / 27).
+- `TestAst1632` freeze list correctly drops `priorities`; sibling assertion pivots to `DEAL_BREAKERS` still-`data_field`.
+- No new logging, no `resolve_tokens` / API / UI / `database.py` touches in product diff.
+
+## Recommended actions (for Chuckles — not Radia)
+
+- Append this artifact to the issue doc; commit `docs(AST-1651): Radia review — clean` on `origin/sub/AST-1641/AST-1651-catalog-plain-text-priorities-token`.
+- Post slim upshot via `linear_proxy --as radia`; advance to **Review Posted** → datt **§3h** PROCEED path (no `resolve-child` product work from canon).
+- If Susan wants a leaner sub tip: discuss stripping `90a33f94` AST-1648 test/bible hunks from this branch vs keeping skipif merge-hygiene for parallel epics.
+
+context_tokens≈58000
