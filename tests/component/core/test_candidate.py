@@ -5899,3 +5899,29 @@ class TestAst1633StrengthsOperativeSaveHydrate:
         row = candidate_mod.get_candidate("cand-1")
         assert row["candidate_data"]["context"]["strengths"] == "from get_candidate"
 
+
+class TestAst1635IdenticalArtifactNoOp:
+    """AST-1635 [bug-repro]: identical body must not retire+insert a new version."""
+
+    def test_identical_strengths_save_keeps_current_uuid(self, seeded_db) -> None:
+        # Pre-fix: second identical save returns a new uuid and retires prior.
+        # Post-fix: uid2 == uid1; exactly one current=1 row.
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "alpha"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "alpha"
+        )
+        assert uid2 == uid1
+        current = db.get_current_artifact("candidate", "cand-1", "strengths")
+        assert current is not None
+        assert current["artifact_uuid"] == uid1
+        assert current["artifact_data"] == "alpha"
+        assert current["current"] == 1
+        history = db.list_artifacts(
+            "candidate", "cand-1", "strengths", current_only=False
+        )
+        assert len(history) == 1
+        assert history[0]["current"] == 1
+
