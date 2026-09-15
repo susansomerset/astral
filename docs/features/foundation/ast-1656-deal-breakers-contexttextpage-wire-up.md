@@ -156,3 +156,72 @@ context_tokens≈88000
 - Stage 1: Wire Deal Breakers `plain_text` bodyShape — `62bbf1ff826437a8580a912ddec066d298f9ece3`.
 
 **Notes:** Product diff is only `CandidateDealBreakers.tsx` (`bodyShape="plain_text"`). `ContextTextPage.tsx` / `ArtifactEditor.tsx` untouched. Hand-verify of editor reload (parent AC6) still needs AST-1654 + AST-1655 on tip (`origin/ftr/AST-1642` was absent at sync).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1656
+**Publish ref:** 9462861853341ea4135479c0017f03e3451c4332
+**Corpus:** 4a0e30e37a6c5898021b2e5718787edfb1b6c37a · `canon_clerk expand` unknown for frozen pattern ids under `canon/directives/draft/`; scored from repo files at publish tip
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.ui-consistency | A | | `bodyShape="plain_text"` hardcoded on Deal Breakers page; ContextTextPage path; mirrors `CandidateStrengths.tsx`; no frontend catalog fetch; `ArtifactEditor` untouched
+patt.artifact.read-current | A | | Existing GET → `context.deal_breakers` leaf via `ContextTextPage`; no second fetch; no client clear on miss
+patt.artifact.write-operative | A | | Save keeps `{ context: { deal_breakers: draft } }` PUT; client `plain_text` empty gate before PUT; AST-1655 intercept owns operative write
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `patt.artifact.ui-consistency` / `ContextTextPage`
+- **Finding:** Pattern prose is ArtifactEditor / `artifacts[leaf]`-centric; this diff correctly applies the same `bodyShape` hardcode pattern to `ContextTextPage` with `context[contextKey]` leaf per parent Technical scope and AST-1655 API intercept — not a parallel client slot.
+- **Recommendation:** None — definition-faithful; mirrors AST-1634 precedent.
+
+### advisory
+
+- **Location:** Build stub / UAT prerequisite
+- **Finding:** Parent AC6 editor-reload hand-verify still depends on AST-1654 catalog + AST-1655 operative hydrate/PUT on integrated ftr tip; build stub notes `origin/ftr/AST-1642` was absent at sync. Product change here is correct and sufficient for this ticket’s scope.
+- **Recommendation:** Downstream: `merge-child` / ftr integration before parent UAT; not a resolve-child item on AST-1656 alone.
+
+### advisory
+
+- **Location:** `## Estimate` (Joan carry-forward)
+- **Finding:** Confirm line agrees to **2** points for a single-file ~6-line mirror of AST-1634 Stage 1 §5 (Strengths twin).
+- **Recommendation:** Acceptable if parent dispatch estimate is authoritative; optional Chuckles note that product diff is trivial — not a plan blocker.
+
+### advisory
+
+- **Location:** Canon clerk / frozen list
+- **Finding:** Three frozen pattern ids live under `canon/directives/draft/` outside clerk `active/` roster; scored from draft files at epic worktree.
+- **Recommendation:** Corpus hygiene downstream; scores from those files' Arc/Implementation.
+
+## What's solid
+
+- Stage 1 plan delivered verbatim in `62bbf1ff`: `CandidateDealBreakers.tsx` matches `CandidateStrengths.tsx` twin — `title="Deal Breakers"`, `contextKey="deal_breakers"`, `bodyShape="plain_text"`.
+- Product commit touches only `src/ui/frontend/src/pages/CandidateDealBreakers.tsx`; `ContextTextPage.tsx`, `ArtifactEditor.tsx`, `routes.tsx`, backend files untouched on `src/**` three-dot diff.
+- Betty coverage is tight: `test_CandidateDealBreakers.test.tsx` — render/load, PUT `{ context: { deal_breakers } }` + reload, empty Save disabled (no PUT), source asserts hardcoded `bodyShape="plain_text"` and no `ArtifactEditor`.
+- Ticket AC7 / parent AC9 satisfied: Deal Breakers stays on ContextTextPage thin wrapper; ArtifactEditor diff empty.
+
+## Scope notes (not findings)
+
+- Three-dot diff vs `origin/dev` also includes `merge-tests` sibling artifacts (`test_candidate.py`, `test_api_candidate.py`, `test_config.py`, test-bible rows for AST-1654/1655/1652/1658, etc.); **`src/**` product surface is only `CandidateDealBreakers.tsx`.**
+- `tests/` and `docs/test-bible/**` changes are expected Betty / test-child pipeline artifacts.
+- Estimate **2** fits single-page wire-up + frontend component tests (Joan discuss on triviality is procedural, not a canon miss).
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1656): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
+- Downstream: ensure AST-1654 + AST-1655 land on ftr before parent AC6 hand-verify.
+
+---
