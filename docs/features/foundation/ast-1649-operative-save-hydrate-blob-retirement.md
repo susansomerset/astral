@@ -278,3 +278,69 @@ context_tokens≈52000
 ```
 
 **Summary:** AST-1649 is **APPROVED**. The plan faithfully clones the AST-1633 Strengths operative pattern for bio summary across exactly two scoped files: library-gate strip via `_CONTEXT_OPERATIVE_LEAVES`, str-path save (reusing `plain_text` + AST-1635 identical no-op), hydrate-on-miss preserving legacy blob (AC6/AC8), PUT intercept + GET hydrate, and entity/api logging matching existing Strengths blocks. All seven canon ids grade **A**; no fix-now or discuss blockers. Status **Plan Ready**, zero `[plan-discuss]` rounds.
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1649
+**Publish ref:** 5a6f8d59d2396aa94ac4cd4f22e99c47c2b022d7
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** publish ref `origin/sub/AST-1647/AST-1649-operative-save-hydrate-blob-retirement` — commits `e178ee28` (AST-1651), `188ab8a2` (AST-1654)
+- **Finding:** Betty `merge-tests` landed parallel-sibling test scaffolding (`TestAst1651CatalogPlainTextPrioritiesToken`, `TestAst1654CatalogPlainTextDealBreakersToken`) on this publish ref. AST-1651 is `skipif`-gated; AST-1654 is not and asserts catalog keys that are absent on this tip (`priorities` / `deal_breakers` not in `ARTIFACT_CONFIG`).
+- **Recommendation:** Not an AST-1649 product defect (manifest green). Chuckles/downstream should keep sibling test classes off this sub until their product lands, or add matching `skipif` on AST-1654 before anyone runs full `test_config.py` on this ref.
+
+### advisory
+
+- **Location:** three-dot diff vs `origin/dev`
+- **Finding:** Diff includes stacked AST-1648 catalog work (`src/utils/config.py`, AST-1648 issue doc) because this sub was built atop the catalog sibling — plan documents that dependency; engineer `code(AST-1649)` commits touch only `candidate.py` and `api_candidate.py`.
+- **Recommendation:** Expected epic stacking pre-`ftr` merge; no AST-1649 action required.
+
+## Notes
+
+- **Canon clerk:** artifact patterns (`patt.artifact.*`) and `astral.standards.in-scope-only` are outside the clerk `expand` roster; scored from frozen-list bodies on disk.
+- **Plan fidelity:** Stage 1 + Stage 2 delivered — `_CONTEXT_OPERATIVE_LEAVES` frozenset strip, str-path operative save (reuses `plain_text` + AST-1635 identical no-op), entity info on changed save only, hydrate miss preserves legacy blob, PUT pop + operative path, GET double-hydrate, api info on success, existing `logger.exception` unchanged.
+- **Tests:** `TestAst1649BioSummaryOperativeSaveHydrate` and `TestAst1649BioSummaryOperativeApi` cover round-trip, retire, identical no-op, dict-path strip, legacy-on-miss, empty → 400, sibling library-merge.
+
+## What's solid
+
+- Faithful clone of AST-1633 Strengths operative pattern for bio summary across exactly the two scoped product files.
+- Blob retirement: dict-path gate strips `bio_summary` (and `strengths`) before library merge; operative row is SoT on str-path and PUT intercept.
+- Migration window honored: hydrate on miss leaves legacy `context.bio_summary` untouched (AC6 / parent AC8).
+
+## Recommended actions
+
+(none on AST-1649 product — artifact complete; Chuckles append + `docs(AST-1649): Radia review — clean`, post slim upshot, → Review Posted → User Testing. Downstream: prune or skip-gate AST-1651/1654 test scaffolding on this sub before broad `test_config.py` runs.)
+
+context_tokens≈38000
+```
