@@ -234,3 +234,41 @@ Confirm Chuckles estimate: 3 — agree
 ## Review (build stub)
 
 _Pending build-child._
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1649
+**Overall:** APPROVED
+**Corpus:** fc0c368e59
+**Publish-ref tip:** f98540691b55e1538054b325ac76ebd171b1168e
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC4→S1:4–6,S2:3–4 · AC5→S1:5,S2:3–4 · AC6→S1:6(miss) · Parent AC1–3/7/9/10→N/A (AST-1648/1650) · Parent AC8→S1:6 (legacy blob until re-save)
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan preamble / Execution contract
+- **Finding:** Build assumes AST-1648 catalog key `candidate.context.bio_summary` is on the synced epic tip before operative paths run.
+- **Recommendation:** Engineer syncs `origin/ftr/AST-1647-migrate-bio-summary-artifact` (or waits for Ada merge) before Stage 1 — already documented; not a plan defect.
+
+context_tokens≈52000
+```
+
+**Summary:** AST-1649 is **APPROVED**. The plan faithfully clones the AST-1633 Strengths operative pattern for bio summary across exactly two scoped files: library-gate strip via `_CONTEXT_OPERATIVE_LEAVES`, str-path save (reusing `plain_text` + AST-1635 identical no-op), hydrate-on-miss preserving legacy blob (AC6/AC8), PUT intercept + GET hydrate, and entity/api logging matching existing Strengths blocks. All seven canon ids grade **A**; no fix-now or discuss blockers. Status **Plan Ready**, zero `[plan-discuss]` rounds.
