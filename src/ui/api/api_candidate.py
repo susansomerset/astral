@@ -25,6 +25,7 @@ from src.core.candidate import (
     hydrate_operative_base_resume_for_response,
     hydrate_operative_bio_summary_for_response,
     hydrate_operative_strengths_for_response,
+    hydrate_operative_priorities_for_response,
     hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
     IllegalCandidateTransition,
@@ -211,6 +212,7 @@ def get_candidate_detail(candidate_id):
     hydrate_rubric_artifacts_for_response(candidate_id, cd)
     hydrate_operative_base_resume_for_response(candidate_id, cd)
     hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_priorities_for_response(candidate_id, cd)
     hydrate_operative_bio_summary_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
@@ -268,6 +270,7 @@ def update_candidate_data(candidate_id):
     submitted_rubric = {}
     rubric_keys_to_clear = []
     strengths_saved = False
+    priorities_saved = False
     bio_summary_saved = False
     try:
         state_override = body.pop("state", None)
@@ -280,16 +283,20 @@ def update_candidate_data(candidate_id):
         base_resume_in_save = False
         pilot_body = None
         if body:
-            # AST-1633 / AST-1649: Strengths + bio summary → operative save; do not library-merge.
+            # AST-1633 / AST-1649 / AST-1652: Strengths + Priorities + bio summary → operative; no library-merge.
             strengths_body = None
+            priorities_body = None
             bio_summary_body = None
             ctx = body.get("context")
-            if isinstance(ctx, dict) and "strengths" in ctx:
-                strengths_body = ctx.pop("strengths")
-            if isinstance(ctx, dict) and "bio_summary" in ctx:
-                bio_summary_body = ctx.pop("bio_summary")
-            if isinstance(ctx, dict) and not ctx:
-                body.pop("context", None)
+            if isinstance(ctx, dict):
+                if "strengths" in ctx:
+                    strengths_body = ctx.pop("strengths")
+                if "priorities" in ctx:
+                    priorities_body = ctx.pop("priorities")
+                if "bio_summary" in ctx:
+                    bio_summary_body = ctx.pop("bio_summary")
+                if not ctx:
+                    body.pop("context", None)
             arts = body.get("artifacts")
             if isinstance(arts, dict):
                 apply_company_search_terms_save(candidate_id, arts)
@@ -356,7 +363,7 @@ def update_candidate_data(candidate_id):
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
-            # Strengths/bio-summary-only PUT leaves body empty after pop — still operative-save.
+            # Leaf-only PUT may leave body empty after pop — still operative-save.
             if strengths_body is not None:
                 save_candidate_data(
                     candidate_id,
@@ -364,6 +371,13 @@ def update_candidate_data(candidate_id):
                     strengths_body,
                 )
                 strengths_saved = True
+            if priorities_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.priorities",
+                    priorities_body,
+                )
+                priorities_saved = True
             if bio_summary_body is not None:
                 save_candidate_data(
                     candidate_id,
@@ -415,14 +429,7 @@ def update_candidate_data(candidate_id):
                     {"criteria": val},
                 )
         return jsonify({"error": str(e)}), 400
-    if strengths_saved:
-        logger.info(
-            "%s | api %s completed: PUT %s",
-            candidate_id,
-            f"/api/candidates/{candidate_id}/data",
-            200,
-        )
-    if bio_summary_saved:
+    if strengths_saved or priorities_saved or bio_summary_saved:
         logger.info(
             "%s | api %s completed: PUT %s",
             candidate_id,
