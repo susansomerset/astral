@@ -2638,3 +2638,32 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1650 · AST-1647
+
+**Parent:** [AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page](https://linear.app/astralcareermatch/issue/AST-1647). **Publish:** `origin/sub/AST-1647/AST-1650-bio-summary-page-route`.
+
+Thin `CandidateBioSummary.tsx` (`contextKey="bio_summary"`, `bodyShape="plain_text"`) + route `candidate/bio_summary`. Reuses `ContextTextPage` (no edits this ticket — shared gate covered by **AST-1634**). Nav/catalog: **AST-1648**. Operative PUT/GET: **AST-1649**. `ArtifactEditor` untouched.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Bio Summary page (§6c) — load / save reload / empty gate | `CandidateBioSummary.tsx` | **`test_CandidateBioSummary.test.tsx`** — `AST-1650` |
+
+**Broken / obsolete this pass:** none — profile Bio Summary section already removed in config (**AST-1648**); page-level profile Vitest mocks are local fixtures, not live `DATA_SHAPES`.
+
+**Integration:** none — no existing scenario asserts Bio Summary route / ContextTextPage wrapper; do not invent.
+
+## QA test manifest
+
+1. Routed Bio Summary page (§6c): `tests/component/frontend/pages/test_CandidateBioSummary.test.tsx` — pattern **`AST-1650`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateBioSummary.test.tsx \
+  --testNamePattern="AST-1650"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
