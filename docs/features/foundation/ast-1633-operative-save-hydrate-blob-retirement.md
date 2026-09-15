@@ -363,3 +363,76 @@ stat.logging.error | Joan C/2 → Radia A | Build extended except format string 
 
 context_tokens≈32000
 ```
+
+## Bug: AST-1635 — Do not save a new artifact version when body is identical to current
+
+### As-is
+
+Operative Strengths save via `save_candidate_data` str-path always calls `database.save_artifact` (retire prior `current=1`, insert new uuid) even when the validated body is identical to the existing current row's `artifact_data`. Re-saving unchanged Strengths text creates a useless new version.
+
+### To-be
+
+When the body being saved is identical to the current artifact version for that catalog key, do not retire+insert — leave the existing `current` row in place and return its `artifact_uuid`. When the body differs (or there is no current row), keep today's retire+insert behavior.
+
+### Repro
+
+1. Candidate has a current Strengths artifact with body `"alpha"`.
+2. PUT `/api/candidates/<id>/data` with `{"context": {"strengths": "alpha"}}` (same string), or call `save_candidate_data(cid, "candidate.context.strengths", "alpha")`.
+3. Observe: new `artifact_uuid`, prior row `current=0`, new row `current=1` with the same `"alpha"` body.
+
+Fixture shape (core):
+
+```python
+# After one successful operative save of "alpha":
+uid1 = save_candidate_data(cid, "candidate.context.strengths", "alpha")
+uid2 = save_candidate_data(cid, "candidate.context.strengths", "alpha")  # identical
+# As-is: uid2 != uid1 and prior current retired.
+# To-be: uid2 == uid1; still exactly one current=1 row for strengths.
+```
+
+### Root cause
+
+`save_candidate_data` str-path (AST-1633 Stage 1) validates then unconditionally invokes `database.save_artifact`. There is no compare-to-current gate. Parent epic Component scope marks `database.py` **untouched**, so the no-op belongs in the entity operative wrapper — not a data-layer change.
+
+### Proposed change
+
+In `src/core/candidate.py`, inside `save_candidate_data` **str-path**, after body_shape validation and after `artifact_type = artifact_key.rsplit(".", 1)[-1]`, **before** `database.save_artifact(...)`:
+
+1. Load the current row:
+
+```python
+        current_row = database.get_current_artifact(
+            entry["entity_type"], candidate_id, artifact_type
+        )
+```
+
+2. If `current_row is not None` and `current_row.get("artifact_data") == blob`, return the existing pin without writing:
+
+```python
+        if current_row is not None and current_row.get("artifact_data") == blob:
+            return current_row.get("artifact_uuid")
+```
+
+⚠️ **Decision:** Equality is Python `==` on deserialized `artifact_data` vs the already-validated `blob` (plain_text string or resume_content dict). No extra normalize/strip — `plain_text` validation still requires non-empty after strip, but stored value is compared as passed. Applies to **all** candidate catalog str-path keys (shared operative path in `candidate.py`), not a Strengths-only `if` — matches bug wording; stays inside `candidate.py` (parent Component scope). Do **not** edit `database.py` (parent: untouched). Do **not** change `api_candidate.py` — PUT still calls operative save; core no-op is enough.
+
+3. On the no-op return path: do **not** emit the Strengths `logger.info` entity line (that line stays only after a real `save_artifact` insert). On a real insert path, behavior unchanged (including Strengths info log).
+
+4. When `current_row` is missing or `artifact_data != blob`, fall through to existing `save_artifact` + Strengths log + return new uuid.
+
+No React, no config, no `database.py`, no other context keys.
+
+### Blast radius
+
+- `save_candidate_data` str-path also serves `candidate.artifacts.base_resume` — identical base_resume re-save will likewise skip a new version (same gate; desired shared-path behavior).
+- Job/tracker `save_job_artifact` is **out of this bug** (parent Component scope for this UAT fix is candidate operative; do not widen to tracker/database).
+- Betty's AST-1633 tests that assert "second save → new uuid" use a **different** body (`alpha` → `beta`); those must still pass. A new identical-body case will need qa-fix / board attention if TESTS: REVISE.
+- API PUT success + hydrate still hold; editor reload AC unchanged.
+
+### What must still hold
+
+- Parent/AST-1633 AC4 when body **changes**: second save still new uuid + prior `current` retired (not in-place UPDATE).
+- Parent AC5: successful Strengths save still goes through operative `save_artifact` when the body is new or changed — not library-merge alone.
+- Parent AC6/AC7: no backfill; legacy blob on hydrate miss unchanged.
+- Parent AC8 sibling freeze: no other context keys registered.
+- Empty / non-str `plain_text` still raises `ValueError` before any current compare.
+- First save (no current row) still inserts a new current version.
