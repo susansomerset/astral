@@ -13,6 +13,8 @@ get_candidate_current(candidate_id, artifact_key) current-read by catalog key
 (AST-1586 / patt.artifact.read-current).
 Strengths (candidate.context.strengths) uses the same operative save +
 get_candidate_current hydrate path (AST-1633).
+Priorities (candidate.context.priorities) uses the same operative save +
+get_candidate_current hydrate path (AST-1652).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -811,6 +813,14 @@ def save_candidate_data(
                 new_uuid,
                 "-",
             )
+        elif artifact_key == _PRIORITIES_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "priorities artifact saved",
+                new_uuid,
+                "-",
+            )
         return new_uuid
 
     if not isinstance(data_or_artifact_key, dict):
@@ -883,10 +893,12 @@ def save_candidate_data(
         _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
         blob_merge["contact"] = proposed
 
-    # AST-1633: catalog owns context.strengths — never library-merge that leaf.
+    # AST-1633 / AST-1652: catalog owns context.strengths + context.priorities — never library-merge those leaves.
     ctx = blob_merge.get("context")
-    if isinstance(ctx, dict) and "strengths" in ctx:
-        cleaned = {k: v for k, v in ctx.items() if k != "strengths"}
+    if isinstance(ctx, dict) and ("strengths" in ctx or "priorities" in ctx):
+        cleaned = {
+            k: v for k, v in ctx.items() if k not in ("strengths", "priorities")
+        }
         if cleaned:
             blob_merge["context"] = cleaned
         else:
@@ -1537,6 +1549,29 @@ def hydrate_operative_strengths_for_response(candidate_id: str, cd: dict) -> Non
     ctx["strengths"] = body
 
 
+_PRIORITIES_ARTIFACT_KEY = "candidate.context.priorities"
+
+
+def hydrate_operative_priorities_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Priorities into candidate_data.context (display only).
+
+    Miss → leave legacy context.priorities blob untouched (parent AC7 / ticket AC6 migration window).
+    Hit → write current string onto context.priorities for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _PRIORITIES_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["priorities"] = body
+
+
 def _normalize_search_term_lines(val: str) -> list[str]:
     return [line for line in (s.strip() for s in val.split("\n")) if line]
 
@@ -1628,6 +1663,7 @@ def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
         cd = {}
     hydrate_operative_base_resume_for_response(candidate_id, cd)
     hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_priorities_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return candidate
 
