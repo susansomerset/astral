@@ -226,3 +226,35 @@ Confirm Chuckles estimate: 3 — agree
 - Parent/child AC6 / parent AC6–7 (no backfill; legacy until re-save) → Stage 1 §6 miss path
 - Sibling freeze (parent AC8) → scope gate; no other `ARTIFACT_CONFIG` keys
 - Editor reload (parent AC6, Katherine AST-1660) → Stage 1 §§6–7 + Stage 2 §2 (UI sibling unchanged)
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1659
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref tip:** `d5f9e7aee248854e92ce1fc55386a9612dc4e475` (`origin/sub/AST-1643/AST-1659-operative-save-hydrate-blob-retirement`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC4→Stage 1 §§4–6 + Stage 2 §§3–4 + verify; AC5→Stage 1 §5 + Stage 2 §§3–4; AC6→Stage 1 §6 miss path; parent AC7 (no backfill)→Stage 1 §6; parent AC8→scope gate (no `ARTIFACT_CONFIG` edits); parent AC6 (editor reload)→N/A — AST-1660 UI sibling.
+
+## Findings
+
+None (`fix-now` / `discuss`).
+
+**R6 notes (acceptable):** Plan extends proven Strengths/bio_summary mechanics (`_CONTEXT_OPERATIVE_LEAVES`, hydrate-on-miss preserves legacy blob, PUT pop→operative save, entity+api info, existing `logger.exception`) for `ideal_day` only; explicit scope gate limits to `candidate.py` + `api_candidate.py`; catalog prerequisite on AST-1658 documented with build-block stop; migration-window hydrate matches parent AC6/AC7 and `read-current` migration exception; no second validate path or config registration in this slice.
+
+context_tokens≈48000
