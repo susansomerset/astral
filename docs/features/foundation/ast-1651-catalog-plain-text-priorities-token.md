@@ -193,3 +193,12 @@ None.
 - Plan Discuss rounds completed: **0** (status Plan Ready; no `[plan-discuss]` thread).
 
 context_tokens≈52000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1641/AST-1651-catalog-plain-text-priorities-token` @ `ded632db5cfe3f05658db73b84b348f49ab64157`.
+
+**Stages delivered:**
+- Stage 1: `candidate.context.priorities` catalog + `PRIORITIES` artifact token — `ded632db5cfe3f05658db73b84b348f49ab64157`.
+
+**Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Priorities metadata, context sibling freeze without priorities, `TOKEN_SOURCES["PRIORITIES"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES"}`.
