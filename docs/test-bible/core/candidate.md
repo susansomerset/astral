@@ -1973,3 +1973,36 @@ Operative `plain_text` validate on str-path (reuse); Bio Summary `save_artifact`
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1655 · AST-1642
+
+**Parent:** [AST-1642 — Migrate candidate_data.context.deal_breakers to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1642). **Publish:** `origin/sub/AST-1642/AST-1655-operative-save-hydrate-blob-retirement`.
+
+Operative `plain_text` validate on str-path (reuse AST-1633); Deal Breakers `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.deal_breakers` (siblings keep library-merge); `hydrate_operative_deal_breakers_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1654**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1655. No React / backfill.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text validate + save/retire + identical no-op + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1655DealBreakersOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** none for Strengths strip (priorities still library sibling on this tip). Parallel **AST-1649** Bio Summary suite `skipif` when `bio_summary` catalog key absent.
+
+**Integration:** none — no existing scenario asserts Deal Breakers operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core Deal Breakers operative: `tests/component/core/test_candidate.py::TestAst1655DealBreakersOperativeSaveHydrate`
+2. API PUT/GET Deal Breakers: `tests/component/ui/api/test_api_candidate.py::TestAst1655DealBreakersOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1655DealBreakersOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1655DealBreakersOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
