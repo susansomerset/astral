@@ -233,7 +233,13 @@ Confirm Chuckles estimate: 3 — agree
 
 ## Review (build stub)
 
-_Pending build-child._
+**Built:** `origin/sub/AST-1647/AST-1649-operative-save-hydrate-blob-retirement` @ `0a0af4bc01caaa0158ec39b0ce8812a045f2ed58`.
+
+**Stages delivered:**
+- Stage 1: library gate + hydrate + entity log — `fecec8815e0a6a86c269d8d47d44e3ebf8580024`.
+- Stage 2: PUT intercept + GET hydrate + api info — `0a0af4bc01caaa0158ec39b0ce8812a045f2ed58`.
+
+**Betty:** at **Code Complete** — cover operative bio_summary round-trip + retire prior current, identical-body no-op (shared AST-1635), dict-path strips `context.bio_summary` (and still strips strengths), hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf, empty bio_summary → 400.
 
 ## Joan validate
 
