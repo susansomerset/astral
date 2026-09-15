@@ -135,3 +135,66 @@ context_tokens≈62000
 
 **Stages delivered:**
 - Stage 1: Bio Summary page + route — `8bd6162bcb75538a55a0118442d472ccae1371c5`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1650
+**Publish ref:** cd5a29018c09c175fef9e5a9620268208084340f
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** publish ref history (inherited from stacked epic tip)
+- **Finding:** Three-dot diff vs `origin/dev` includes AST-1648 catalog, AST-1649 core/API, and Betty `merge-tests` scaffolding for AST-1651/AST-1654 on `test_config.py` — not introduced by `code(AST-1650)`.
+- **Recommendation:** Expected epic stacking pre-`ftr` merge; no AST-1650 product action. Chuckles keeps sibling test classes gated/off this sub if broad `test_config.py` runs are planned (same note as AST-1649 review).
+
+- **Location:** `docs/features/foundation/ast-1650-bio-summary-page-route.md` § bible shasum
+- **Finding:** Issue doc still shows `*(filled after publish)*`; Linear description records `56867d7767f3326262afabad586eaf06e5cb5cee`.
+- **Recommendation:** Chuckles sync on writeback — not a code gate.
+
+## Notes
+
+- **Canon clerk:** `patt.artifact.ui-consistency` is draft under `canon/directives/draft/` — not in clerk `expand` roster; scored from frozen-list body on disk.
+- **blockedBy AST-1648 / AST-1649:** Both land on this publish ref (catalog nav + operative hydrate/PUT); runtime contract for the page is satisfied on tip.
+- **Product commit scope:** `code(AST-1650)` touches exactly two files — `CandidateBioSummary.tsx` (new) and `routes.tsx` (import + route). `ContextTextPage.tsx` and `ArtifactEditor.tsx` have zero diff vs `origin/dev`.
+
+## What's solid
+
+- Faithful Strengths twin: `contextKey="bio_summary"`, `bodyShape="plain_text"`, title "Bio Summary".
+- Route `candidate/bio_summary` registered immediately after Strengths; matches `NAV_CONFIG` path `/candidate/bio_summary`.
+- `test_CandidateBioSummary.test.tsx` covers §6c load, PUT `{ context: { bio_summary } }` + reload, and empty `plain_text` Save gate (no PUT).
+- No frontend catalog fetch, no `ArtifactEditor`, no `ContextTextPage` edits — AC8/AC10 satisfied.
+
+## Recommended actions
+
+(none on AST-1650 product — artifact complete; Chuckles append + `docs(AST-1650): Radia review — clean`, post slim upshot, → Review Posted → User Testing.)
+
+context_tokens≈42000
