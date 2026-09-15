@@ -296,3 +296,85 @@ context_tokens≈78000
 
 **Betty:** at **Code Complete** — cover operative `plain_text` validation reuse for Deal Breakers (non-empty string), `save_artifact` round-trip + retire prior current, identical-body no-op (AST-1635 shared), dict-path strips `context.deal_breakers`, hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf; Strengths path unchanged.
 
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-1655
+**Publish ref:** f2db229ca45d96e8d46938b4573b9fe83b138e08
+**Corpus:** 4a0e30e37a6c5898021b2e5718787edfb1b6c37a · `canon_clerk expand` unknown for three frozen pattern ids (`patt.artifact.*` under `canon/directives/draft/`); scored from repo files at publish tip
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.write-operative | A | | Deal Breakers str-path reuses shared `plain_text` validate → `save_artifact`; AST-1635 identical no-op; dict-path strips `deal_breakers` via `_CONTEXT_OPERATIVE_LEAVES`
+patt.artifact.read-current | A | | `hydrate_operative_deal_breakers_for_response` + `get_candidate_current` on `get_candidate` and GET detail; miss leaves legacy blob (AC6 migration window)
+patt.artifact.manage-catalog | A | | Blob authority retired for `context.deal_breakers` only via operative save + library strip; catalog registration from sibling AST-1654 on branch tip, not AST-1655 code commits
+astral.standards.in-scope-only | A | | AST-1655 product commits confined to `candidate.py` + `api_candidate.py`; branch diff also carries AST-1654 catalog + `merge-resume` bio_summary integration (scope note below)
+stat.logging.info.entity | A | | Entity info on Deal Breakers operative save matches approved Strengths pipe in `candidate.py`
+stat.logging.info.api | A | | Api info on Deal Breakers PUT completion matches existing Strengths intercept pattern
+stat.logging.error | A | | Handler `logger.exception` still includes `type(e).__name__`, `e`, and “returning 400” — no regression
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `src/core/candidate.py` — dict-path library gate (Stage 1 §5)
+- **Finding:** Plan specified a separate Deal Breakers strip block after the Strengths block; build unified `_CONTEXT_OPERATIVE_LEAVES` frozenset (`strengths`, `bio_summary`, `deal_breakers`) after `merge-resume` with bio_summary operative work on dev. Deal Breakers strip behavior matches plan intent.
+- **Recommendation:** No resolve-child action; optional doc note that dev tip evolved the shared frozenset pattern.
+
+### advisory
+
+- **Location:** `tests/component/ui/api/test_api_candidate.py` — `TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context`
+- **Finding:** Merge-tests retargeted the library-sibling assertion from `priorities` to `deal_breakers`, but on this tip Deal Breakers is operative and should not persist in the raw library blob after PUT. `TestAst1655DealBreakersOperativeApi::test_put_strips_deal_breakers_keeps_sibling_context` correctly uses `priorities` as the data_field sibling.
+- **Recommendation:** Downstream: revert the AST-1633 test to `priorities` (still `data_field` on this tip) or pick another unmigrated leaf; likely outside Betty manifest today but stale if the class runs broadly.
+
+### advisory
+
+- **Location:** `src/ui/api/api_candidate.py` — combined PUT
+- **Finding:** A single PUT carrying both `context.strengths` and `context.deal_breakers` may emit two identical api info lines (same route/method/status). Joan flagged at plan; Strengths precedent did not cover the combo.
+- **Recommendation:** No action on AST-1655; optional future consolidation out of scope.
+
+### advisory
+
+- **Location:** `hydrate_operative_deal_breakers_for_response` / `patt.artifact.read-current`
+- **Finding:** Miss path preserves legacy `context.deal_breakers` blob instead of empty contract — diverges from pattern default but matches parent AC6 / no-backfill migration window; plan documents explicitly (mirrors AST-1633 Strengths).
+- **Recommendation:** None for AST-1655; expected until operator re-save.
+
+### advisory
+
+- **Location:** Canon clerk / frozen list
+- **Finding:** Three frozen pattern ids live outside clerk `active/` roster; scored from draft pattern files at epic worktree.
+- **Recommendation:** Corpus hygiene downstream; scores from those files' Arc/Implementation.
+
+## What's solid
+
+- Stage 1 + Stage 2 plan delivered in AST-1655 code commits (`a54dab6b`, `07bb9858`): module docstring line; `_DEAL_BREAKERS_ARTIFACT_KEY`; entity info on operative save (not on identical no-op path); library gate; `hydrate_operative_deal_breakers_for_response`; `get_candidate` hydrate; API PUT pop + operative save + GET detail hydrate; api info on success.
+- Reuses existing `plain_text` validation branch — no duplicate validate logic.
+- Betty coverage is thorough: `TestAst1655DealBreakersOperativeSaveHydrate` (core round-trip, retire, identical no-op, dict strip, hydrate hit/miss, `get_candidate`) and `TestAst1655DealBreakersOperativeApi` (PUT/GET, sibling context merge, empty → 400).
+- Parent AC4–AC6 paths satisfied: operative round-trip, blob not SoT on write, legacy blob until re-save.
+
+## Scope notes (not findings)
+
+- Three-dot diff vs `origin/dev` includes AST-1654 catalog commits (`config.py`, sibling tests/bible) stacked on the epic branch plus `merge-resume(AST-1655)` bio_summary integration (`config.py` NAV/DATA_SHAPES churn, `CandidateBioSummary.tsx`, extra bio_summary operative lines in `candidate.py` / `api_candidate.py`). **AST-1655 product commits touch only the two scoped files.**
+- `merge-tests` also landed skipif-gated / parallel-epic test classes (`TestAst1649*`, `TestAst1652*`) and bible rows; they do not change Deal Breakers product behavior on this tip.
+- `tests/` and `docs/test-bible/**` changes are expected Betty / test-child pipeline artifacts.
+- Estimate **3** fits operative save + hydrate + API intercept + targeted test updates.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1655): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
+- Downstream (optional, not blocking): fix `TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context` library-sibling choice on this tip.
+
+context_tokens≈38000
+```
+
