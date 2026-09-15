@@ -1973,3 +1973,38 @@ Operative `plain_text` validate on str-path (reuse); Bio Summary `save_artifact`
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+### AST-1652 · AST-1641
+
+**Parent:** [AST-1641 — Migrate candidate_data.context.priorities to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1641). **Publish:** `origin/sub/AST-1641/AST-1652-operative-save-hydrate-blob-retirement`.
+
+Operative `plain_text` validate on str-path (reuse); Priorities `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.priorities` alongside `strengths` (siblings like `deal_breakers` keep library-merge); `hydrate_operative_priorities_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1651**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1652. No React / backfill (sibling AST-1653). Parallel **AST-1649** (`bio_summary`) skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text validate + save/retire + identical no-op + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1652PrioritiesOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** AST-1633 / AST-1649 dict-path / PUT sibling asserts that treated `priorities` as a library-merge leaf — revised to use `deal_breakers`.
+
+**Integration:** none — no existing scenario asserts Priorities operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core Priorities operative: `tests/component/core/test_candidate.py::TestAst1652PrioritiesOperativeSaveHydrate`
+2. API PUT/GET Priorities: `tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi`
+3. Regression Strengths strip/sibling (revised): `tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate::test_dict_path_strips_strengths_keeps_siblings`
+4. Regression Strengths API sibling (revised): `tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1652PrioritiesOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi \
+  tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate::test_dict_path_strips_strengths_keeps_siblings \
+  tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
