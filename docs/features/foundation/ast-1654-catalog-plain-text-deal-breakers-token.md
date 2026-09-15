@@ -215,3 +215,61 @@ context_tokens≈52000
 - Stage 1: `candidate.context.deal_breakers` catalog + `DEAL_BREAKERS` artifact token (reuse `plain_text`) — `571526008e1350442ed5e0a48e2bf45c8ee6ea1e`.
 
 **Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Deal Breakers metadata, context sibling freeze without deal_breakers, `TOKEN_SOURCES["DEAL_BREAKERS"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "DEAL_BREAKERS"}`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1654
+**Publish ref:** 7814d07d8704e4733cad36f6b2a9c6d85915af0c
+**Corpus:** 4a0e30e37a6c5898021b2e5718787edfb1b6c37a · `canon_clerk expand` unknown for three frozen ids (draft pattern + scoped statutes under `canon/directives/draft/` and `canon/statutes/astral/`); scored from repo files at publish tip
+**Overall:** CLEAN
+
+## Canon scores
+
+patt.artifact.manage-catalog | A | | Register-only slice: `candidate.context.deal_breakers` catalog entry reuses `plain_text`; STRENGTHS/BASE_RESUME pattern; read/write/blob-retire correctly deferred to siblings
+astral.config.config-source-of-truth | A | | Catalog entry, token flip, closed-set and per-entry asserts confined to `src/utils/config.py`
+astral.standards.no-hardcoded-sets | A | | Closed `ARTIFACT_CONFIG` key set, `_db` per-entry asserts, context sibling-absence loop, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "DEAL_BREAKERS"}`
+stat.logging.info | X | | id-only; config-only slice adds no `logger.info` surfaces
+stat.logging.debug | X | | id-only; config-only slice adds no `logger.debug` surfaces
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `src/utils/config.py` — `TOKEN_SOURCES["DEAL_BREAKERS"]` + `resolve_tokens`
+- **Finding:** Flipping `DEAL_BREAKERS` to `source_type: "artifact"` is typing/registry-only at import; `resolve_tokens` still walks `path: "context.deal_breakers"` until sibling #2 wires operative hydrate and blob retirement. Plan documents this explicitly (Stage 1 step 8) and mirrors AST-1632 precedent.
+- **Recommendation:** No action on AST-1654; sibling owns runtime artifact overlay.
+
+### advisory
+
+- **Location:** Canon clerk resolution
+- **Finding:** `canon_clerk expand` serves `canon/directives/active/` only; three frozen ids (`patt.artifact.manage-catalog`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`) were scored from repo statute/pattern files at the epic worktree, not clerk payload.
+- **Recommendation:** Corpus hygiene is downstream; grades above cite those files' Statement/Examples.
+
+## What's solid
+
+- Stage 1 plan steps 1–8 delivered verbatim in `config.py`: module docstring inventory cites AST-1654; `plain_text` shape reused (not re-added); full Deal Breakers catalog metadata; closed key-set assert; context sibling freeze with `deal_breakers` removed from absent list; per-entry `_db` asserts mirroring `_st`; `DEAL_BREAKERS` token flip with explicit linkage asserts; `_artifact_tokens` widened to three artifact tokens.
+- Betty manifest coverage is tight: `TestAst1654CatalogPlainTextDealBreakersToken` plus revised `TestAst1590JobArtifactCatalogKeys` / `TestAst1596TokenCatalogSourceTypeTyping` counts and getters match publish tip.
+- Plan AC1–AC4 one-liners (Stage 1 verify block) align with delivered config state.
+
+## Scope notes (not findings)
+
+- Product diff is `src/utils/config.py` only (+217 plan doc on branch). `tests/component/utils/test_config.py` and `docs/test-bible/utils/config.md` are expected qa-child / Betty pipeline artifacts; plan explicit scope gate names build scope as config-only.
+- `merge-tests(AST-1654)` tip also carries skipif-gated `TestAst1648*` / `TestAst1651*` forward-compat classes and parallel bible sections from `origin/tests`; they do not run on this tip and do not change product behavior — documented in bible AST-1654 section.
+- Estimate **1** fits: single-file config registration + targeted test revisions.
+- **Canon Scope observation (Joan plan carry-forward):** `astral.standards.in-scope-only` governs this slice but is absent from the frozen five-id list; diff honors the plan's explicit scope gate — no new off-scope product files.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1654): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
+
+---
