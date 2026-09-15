@@ -208,3 +208,62 @@ context_tokens≈42000
 - Stage 1: `candidate.context.bio_summary` catalog + `BIO_SUMMARY` artifact token + profile Bio Summary removed + Candidate nav leaf — `fc963ea12e9c69ad9791825fd164117be10b932a`.
 
 **Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Bio Summary metadata, `plain_text` == `raw_string` reuse, context sibling freeze (priorities/deal_breakers/backstory/ideal_day/writing_preferences absent), `TOKEN_SOURCES["BIO_SUMMARY"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY"}`, profile DATA_SHAPES Bio Summary gone, NAV_CONFIG Candidate Bio Summary → `/candidate/bio_summary`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1648
+**Publish ref:** bdb3318da7ce2b3bc32714b947309c1589df9a62
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | Config-only slice; no new info logging surfaces |
+| stat.logging.debug | X | | Config-only slice; no new debug surfaces |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `docs/features/foundation/ast-1648-catalog-bio-summary-token-profile-nav.md` § AST-1648 bible shasum
+- **Finding:** Issue doc still shows `*(filled after publish)*` for the bible shasum; Linear description already records `8b40977c5a095e6434db7becd1f2562dfcdb42cb`.
+- **Recommendation:** Chuckles can sync the doc line on writeback — not a code gate.
+
+## Notes
+
+- **Canon clerk:** `patt.artifact.manage-catalog`, `astral.config.config-source-of-truth`, and `astral.standards.no-hardcoded-sets` are not in `canon_clerk.py expand` roster (pattern is draft; statutes live under `canon/statutes/`). Scored from frozen-list bodies on disk; no scope gap — list was locked at Plan Approved.
+- **Scope divergence (expected):** Product diff is confined to `src/utils/config.py` per plan. `tests/component/utils/test_config.py` and `docs/test-bible/utils/config.md` changes are Betty `merge-tests` / manifest work — not sibling scope creep.
+
+## What's solid
+
+- Stage 1 delivered verbatim: `candidate.context.bio_summary` catalog entry (AST-1632 `plain_text` reuse), closed `ARTIFACT_CONFIG` set, full `_bs` per-entry asserts, context sibling freeze loop untouched, `BIO_SUMMARY` artifact flip + `_artifact_tokens` widen, profile Bio Summary section removed, Candidate nav leaf after Strengths.
+- `TestAst1648CatalogBioSummaryTokenProfileNav` locks catalog metadata, sibling freeze, token linkage, profile omission, and nav ordering/path.
+- Prior AST-1590 / AST-1596 tests revised for the new closed sets and artifact-token counts — matches Betty manifest.
+
+## Recommended actions
+
+(none downstream — artifact complete)
+
+context_tokens≈32000
