@@ -436,3 +436,24 @@ No React, no config, no `database.py`, no other context keys.
 - Parent AC8 sibling freeze: no other context keys registered.
 - Empty / non-str `plain_text` still raises `ValueError` before any current compare.
 - First save (no current row) still inserts a new current version.
+
+## Radia review (AST-1635)
+
+[code-rubric]
+**Ticket:** AST-1635
+**Publish ref:** 8aa1291cca7944badd3cbf2953a83f194499a815
+**Overall:** CLEAN
+**Parent shape:** Normal (diff base `origin/ftr/AST-1629-migrate-strengths-artifact-table`)
+
+### Canon scores
+patt.artifact.write-operative | A | identical-body no-op gate + draft pattern update
+
+### Fix-specific checks
+- **[bug-repro]** OK — TestAst1635IdenticalArtifactNoOp asserts uid2==uid1 / single current / history==1
+- **## What must still hold** — OK (seven items)
+
+### discuss
+- Issue description had no frozen Canon Scope table; scored from board + validate-plan fix-mode. Not a merge blocker.
+
+### Recommended actions
+PROCEED → Review Posted → User Testing (resolve-child skipped).
