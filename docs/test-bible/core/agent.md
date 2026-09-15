@@ -197,7 +197,7 @@ Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. FEEDBACK modal le
 | --- | --- | --- |
 | Early-return skip debug | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_debug_skip_empty_batch_id`, `test_debug_skip_empty_expected_codes` |
 | Pipeline trace on capture | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_debug_emits_pipeline_trace_on_capture_start` |
-| `do_task` skip when no candidate | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_do_task_debug_skip_when_candidate_id_missing` |
+| `do_task` skip when no candidate | `src/core/agent.py` | **AST-1639 revised:** `TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing` (blank id raises before send; old skip-feedback path obsolete) |
 
 **AST-820** narrowed run:
 
@@ -1346,4 +1346,42 @@ Catalog-land coerce for text-format finalize `parsed` (string JSON → dict befo
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/agent.md` — *(filled after publish)*
 - `docs/test-bible/core/tracker.md` — *(filled after publish)*
+
+### AST-1639 · AST-1638 (candidate-id system-prompt prefix)
+
+**Publish:** `origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix`.
+
+Shared assembly prepends `[astral-<id>]` as the first bytes of the first system text block (no separator before body); `do_task` / `run_adhoc` / `preview_prompt` / stored SYSTEM rows share that shape; blank/missing candidate id fails closed before provider send. No DeepSeek `user_id` / Anthropic metadata isolation; no second prefix outside `agent.py`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper + assemble lead + cache/user clean | `src/core/agent.py` | `TestAst1639CandidateIdSystemPrefix` (helper / assemble / preview / fail-closed) |
+| Provider-agnostic wire prefix | `src/core/agent.py` | `TestAst1639CandidateIdSystemPrefix::test_do_task_anthropic_and_deepseek_both_get_prefix` |
+| Fail-closed do_task | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing` |
+| Legacy assemble / preview / adhoc ctx | `src/core/agent.py` | Revised: `TestPromptHelpers::test_builds_context_and_assembles_blocks`, `TestAssembleBlocks`, `TestAgentDataHelpers::test_preview_prompt_resolves_blocks`, `TestRunAdhoc`, do_task ctx helpers (`_draft_job_resume_ctx`, `_rubric_evaluate_jd_ctx`, …) now carry top-level `astral_candidate_id` |
+
+**Broken / obsolete this pass:** `test_do_task_debug_skip_when_candidate_id_missing` (silent skip of vector-feedback capture when id missing) — replaced by fail-closed raise before send. All other do_task/assemble/preview/adhoc call sites that omitted top-level `astral_candidate_id` revised to supply one (product now requires it at assembly).
+
+**Integration:** none (no existing integration scenario asserts un-prefixed system text).
+
+## QA test manifest (AST-1639)
+
+1. New prefix suite: `tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix`
+2. Fail-closed revision: `tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing`
+3. Revised assemble / preview / adhoc smoke: `TestPromptHelpers::test_builds_context_and_assembles_blocks`, `TestAssembleBlocks::test_builds_cached_and_minimal_blocks`, `TestAgentDataHelpers::test_preview_prompt_resolves_blocks`, `TestRunAdhoc`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing \
+  tests/component/core/test_agent.py::TestPromptHelpers::test_builds_context_and_assembles_blocks \
+  tests/component/core/test_agent.py::TestAssembleBlocks::test_builds_cached_and_minimal_blocks \
+  tests/component/core/test_agent.py::TestAgentDataHelpers::test_preview_prompt_resolves_blocks \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix:docs/test-bible/core/agent.md | shasum`
 
