@@ -93,6 +93,13 @@ Do **not** edit: `src/external/**`, `src/core/contact.py`, chatbot modules, `src
 
 Confirm Chuckles estimate: 3 — agree
 
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix`  
+**Product commits:**  (Stage 1 — candidate-id system-prompt prefix)
+
+`_system_text_with_candidate_prefix` at shared `_assemble_blocks_seven_segment`; `do_task` / `run_adhoc` / workbench store / `preview_prompt` parity; fail-closed on missing id. No external `user_id` / metadata isolation.
+
 ## Joan validate
 
 [plan-rubric]
