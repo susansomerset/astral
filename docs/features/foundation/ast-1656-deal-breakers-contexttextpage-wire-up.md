@@ -147,3 +147,12 @@ UAT fitness: pass — cites parent AC6/AC9, correct outcome vs symptom-only fix,
 Self-assessment: pass — Estimate confirm present; no `!!-NONE` conf gap; complexity honestly bounded to one prop addition.
 
 context_tokens≈88000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1642/AST-1656-deal-breakers-contexttextpage-wire-up` @ `62bbf1ff826437a8580a912ddec066d298f9ece3`.
+
+**Stages delivered:**
+- Stage 1: Wire Deal Breakers `plain_text` bodyShape — `62bbf1ff826437a8580a912ddec066d298f9ece3`.
+
+**Notes:** Product diff is only `CandidateDealBreakers.tsx` (`bodyShape="plain_text"`). `ContextTextPage.tsx` / `ArtifactEditor.tsx` untouched. Hand-verify of editor reload (parent AC6) still needs AST-1654 + AST-1655 on tip (`origin/ftr/AST-1642` was absent at sync).
