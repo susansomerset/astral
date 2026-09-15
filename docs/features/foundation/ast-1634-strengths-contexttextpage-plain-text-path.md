@@ -119,6 +119,13 @@ Confirm Chuckles estimate: 3 — agree
 - Parent AC7 (no backfill; legacy until re-save) → Stage 1 §2 miss path (hydrate leaves blob)
 - Sibling freeze / other context pages → scope gate; no sibling page edits
 
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1629/AST-1634-strengths-contexttextpage-plain-text-path` @ `853c88979f02731ae9b9770875c9ca097431631f`.
+
+**Stages delivered:**
+- Stage 1: Parameterize ContextTextPage + wire Strengths — `853c88979f02731ae9b9770875c9ca097431631f`.
+
 ## Joan validate
 
 ```
