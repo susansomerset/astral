@@ -156,3 +156,40 @@ Confirm Chuckles estimate: 1 — agree
 | `astral.standards.no-hardcoded-sets` | statute — closed key/shape membership via asserts |
 | `stat.logging.info` | id-only — no new logging surface this ticket |
 | `stat.logging.debug` | id-only — no new logging surface this ticket |
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1651
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1641/AST-1651-catalog-plain-text-priorities-token` @ `1e1b67943d96acb3c972238a396536d979cf837b`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | config-only slice; no new info surfaces (Stage 1 §9) |
+| stat.logging.debug | X | | config-only slice; no new debug surfaces (Stage 1 §9) |
+
+## Traceability
+
+AC1→S1§3-4; AC2→S1§2-3,6; AC3→S1§7-8; AC4→S1§5 — parent AC5–9 N/A (operative/hydrate/API/UI owned by AST-1652/AST-1653).
+
+## Findings
+
+None.
+
+### R6 — Definition fidelity (checklist)
+
+- Plan implements child **## Scope** only (`src/utils/config.py`); explicit scope gate present; no out-of-scope files in Files Changed or Stages.
+- All four child acceptance criteria have concrete Stage 1 steps and verify one-liners.
+- Mirrors AST-1632 (Strengths) catalog/token pattern: adds `candidate.context.priorities`, removes it from sibling-freeze loop, reuses existing `plain_text` shape (correctly does **not** re-add `BUILD_CONFIG["artifact_shapes"]["plain_text"]`), flips `TOKEN_SOURCES["PRIORITIES"]` with `source`/`path` retained like `STRENGTHS`.
+- Operative save, hydrate, API intercept, blob retirement, and UI correctly deferred to siblings per ticket boundaries.
+- Self-assessment: `Confirm Chuckles estimate: 1 — agree` is honest for a single-file closed-assert change.
+- Plan Discuss rounds completed: **0** (status Plan Ready; no `[plan-discuss]` thread).
+
+context_tokens≈52000
