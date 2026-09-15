@@ -277,3 +277,13 @@ None.
 - Plan Discuss rounds completed: **0**.
 
 context_tokens≈78000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1641/AST-1652-operative-save-hydrate-blob-retirement` @ `dd89f7299445a55310b23c9c11b372cde18ee48d`.
+
+**Stages delivered:**
+- Stage 1: priorities hydrate + library gate + save log — `e1e0c4b21a3c53720b1d3ae391356afea8373435`.
+- Stage 2: PUT intercept + GET hydrate + api info — `dd89f7299445a55310b23c9c11b372cde18ee48d`.
+
+**Betty:** at **Code Complete** — cover Priorities `save_artifact` round-trip + retire prior current (changed body), identical no-op (shared gate), dict-path strips `context.priorities`, hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf; Strengths path still green.
