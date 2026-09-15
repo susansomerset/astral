@@ -206,3 +206,12 @@ DRY / scope: pass — copies proven Strengths registration pattern; defers opera
 Self-assessment: pass — `!!` child with explicit Decision callouts; Estimate confirm line present; no `!!-NONE` conf gap.
 
 context_tokens≈52000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1642/AST-1654-catalog-plain-text-deal-breakers-token` @ `571526008e1350442ed5e0a48e2bf45c8ee6ea1e`.
+
+**Stages delivered:**
+- Stage 1: `candidate.context.deal_breakers` catalog + `DEAL_BREAKERS` artifact token (reuse `plain_text`) — `571526008e1350442ed5e0a48e2bf45c8ee6ea1e`.
+
+**Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Deal Breakers metadata, context sibling freeze without deal_breakers, `TOKEN_SOURCES["DEAL_BREAKERS"]` artifact_key linkage, `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "DEAL_BREAKERS"}`.
