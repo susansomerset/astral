@@ -24,6 +24,7 @@ from src.core.candidate import (
     get_pending_craft_generation,
     hydrate_operative_base_resume_for_response,
     hydrate_operative_bio_summary_for_response,
+    hydrate_operative_deal_breakers_for_response,
     hydrate_operative_strengths_for_response,
     hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
@@ -211,6 +212,7 @@ def get_candidate_detail(candidate_id):
     hydrate_rubric_artifacts_for_response(candidate_id, cd)
     hydrate_operative_base_resume_for_response(candidate_id, cd)
     hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_deal_breakers_for_response(candidate_id, cd)
     hydrate_operative_bio_summary_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
@@ -268,6 +270,7 @@ def update_candidate_data(candidate_id):
     submitted_rubric = {}
     rubric_keys_to_clear = []
     strengths_saved = False
+    deal_breakers_saved = False
     bio_summary_saved = False
     try:
         state_override = body.pop("state", None)
@@ -280,16 +283,20 @@ def update_candidate_data(candidate_id):
         base_resume_in_save = False
         pilot_body = None
         if body:
-            # AST-1633 / AST-1649: Strengths + bio summary → operative save; do not library-merge.
+            # AST-1633 / AST-1649 / AST-1655: catalog context leaves → operative save; do not library-merge.
             strengths_body = None
+            deal_breakers_body = None
             bio_summary_body = None
             ctx = body.get("context")
-            if isinstance(ctx, dict) and "strengths" in ctx:
-                strengths_body = ctx.pop("strengths")
-            if isinstance(ctx, dict) and "bio_summary" in ctx:
-                bio_summary_body = ctx.pop("bio_summary")
-            if isinstance(ctx, dict) and not ctx:
-                body.pop("context", None)
+            if isinstance(ctx, dict):
+                if "strengths" in ctx:
+                    strengths_body = ctx.pop("strengths")
+                if "deal_breakers" in ctx:
+                    deal_breakers_body = ctx.pop("deal_breakers")
+                if "bio_summary" in ctx:
+                    bio_summary_body = ctx.pop("bio_summary")
+                if not ctx:
+                    body.pop("context", None)
             arts = body.get("artifacts")
             if isinstance(arts, dict):
                 apply_company_search_terms_save(candidate_id, arts)
@@ -356,7 +363,7 @@ def update_candidate_data(candidate_id):
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
-            # Strengths/bio-summary-only PUT leaves body empty after pop — still operative-save.
+            # Strengths / Deal Breakers / bio-summary-only PUT leaves body empty after pop — still operative-save.
             if strengths_body is not None:
                 save_candidate_data(
                     candidate_id,
@@ -364,6 +371,13 @@ def update_candidate_data(candidate_id):
                     strengths_body,
                 )
                 strengths_saved = True
+            if deal_breakers_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.deal_breakers",
+                    deal_breakers_body,
+                )
+                deal_breakers_saved = True
             if bio_summary_body is not None:
                 save_candidate_data(
                     candidate_id,
@@ -416,6 +430,13 @@ def update_candidate_data(candidate_id):
                 )
         return jsonify({"error": str(e)}), 400
     if strengths_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if deal_breakers_saved:
         logger.info(
             "%s | api %s completed: PUT %s",
             candidate_id,
