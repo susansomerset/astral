@@ -286,3 +286,13 @@ Self-assessment: pass — Estimate confirm line present; `!!` child with Decisio
 context_tokens≈78000
 ```
 
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1642/AST-1655-operative-save-hydrate-blob-retirement` @ `07bb98584ba8c4c5c81aad4fec92605c3976b26b`.
+
+**Stages delivered:**
+- Stage 1: Deal Breakers hydrate + library gate + entity log — `a54dab6b55d0842c742d21ec5615d112ed9809c4`.
+- Stage 2: PUT intercept + GET hydrate + api info — `07bb98584ba8c4c5c81aad4fec92605c3976b26b`.
+
+**Betty:** at **Code Complete** — cover operative `plain_text` validation reuse for Deal Breakers (non-empty string), `save_artifact` round-trip + retire prior current, identical-body no-op (AST-1635 shared), dict-path strips `context.deal_breakers`, hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf; Strengths path unchanged.
+
