@@ -237,3 +237,43 @@ Confirm Chuckles estimate: 3 — agree
 - Parent/child AC6 / parent AC7 (no backfill; legacy until re-save) → Stage 1 §2 miss path
 - Parent AC8 (sibling freeze) → scope gate; no other `ARTIFACT_CONFIG` keys
 - Editor reload (parent AC6) → Stage 1 §§2–3 + Stage 2 §2 (Katherine UI unchanged this ticket)
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1652
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1641/AST-1652-operative-save-hydrate-blob-retirement` @ `cdac163f29327ac30ddcf84f5ef7d717f617c09c`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC4→S1§§2-5+S2§§3-4+verify; AC5→S1§4+S2§§3-4; AC6→S1§2 miss-path — parent AC6 editor reload enabled via hydrate (S1§§2-3, S2§2); React chrome N/A (AST-1653); parent AC1–3/AC8/AC9 N/A (catalog #1 / UI #3 / config).
+
+## Findings
+
+None.
+
+### R6 — Definition fidelity (checklist)
+
+- Scope limited to `candidate.py` + `api_candidate.py`; explicit scope gate; build precondition on AST-1651 catalog key.
+- Faithfully mirrors AST-1635 Strengths operative path: shared `plain_text` str-path + AST-1635 identical no-op reuse; `hydrate_operative_priorities_for_response` parallels Strengths miss→legacy-blob / hit→overlay; dict-path library gate widened to strip both `strengths` and `priorities`; PUT combined pop + operative save + GET hydrate follow existing Strengths intercept pattern.
+- UAT fitness cites AC4–AC6, names correct outcome vs symptom-only fixes, rejects library-merge/in-place UPDATE wrong paths.
+- Combined context pop refactor is in-scope (same handler, prevents double-pop race) and preserves Strengths-only PUT semantics (operative save outside inner `if body:`).
+- Entity/api info logging matches shipped Strengths format; error handler left single `logger.exception` at route.
+- Self-assessment `Confirm Chuckles estimate: 3 — agree` is honest for two-file Strengths-pattern wiring.
+- Plan Discuss rounds completed: **0**.
+
+context_tokens≈78000
