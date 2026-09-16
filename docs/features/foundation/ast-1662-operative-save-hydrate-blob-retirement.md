@@ -294,3 +294,81 @@ context_tokens≈38000
 
 **Scope fix:** stripped Writing Preferences operative path from this publish-ref (Betty gate) — `writing_preferences` library-merges again; Backstory-only remains.
 **Betty:** at **Code Complete** — cover operative Backstory round-trip + retire prior current, identical-body no-op (shared AST-1635), dict-path strips `context.backstory` (and still strips strengths / bio_summary / ideal_day / writing_preferences), hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf, empty backstory → 400.
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1662
+**Publish ref:** `b59121e46e9aeed8f69560e4b7033dd67b9be5cb` (`origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement`)
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`
+**Overall:** FIX-NOW
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | D | 2 | `5b2facb4` strips AST-1665 writing_preferences operative paths |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+| Id | Joan | Radia | Note |
+|----|------|-------|------|
+| astral.standards.in-scope-only | A | D | Plan scoped Backstory-only two files; commit `5b2facb4` deletes Writing Preferences operative/hydrate/PUT intercept |
+
+## Frame diff
+
+- [ ] `ftr`→`dev` union keeps **all three** context catalog keys landed on dev: `candidate.context.ideal_day`, `candidate.context.backstory`, `candidate.context.writing_preferences` — plan union was Ideal Day + Backstory, not Backstory replacing Writing Preferences
+- [ ] AST-1665 operative paths (`_CONTEXT_OPERATIVE_LEAVES`, hydrate, PUT intercept) restored on dev merge after backstory lands — or explicit parent-epic ordering documents intentional temporary regression on sub tip only
+
+## Findings
+
+### fix-now
+
+- **Location:** `src/utils/config.py` (tip vs `origin/dev`); `TOKEN_SOURCES["WRITING_PREFERENCES"]`; `ARTIFACT_CONFIG` closed set
+- **Finding:** Three-dot diff vs dev **removes** `candidate.context.writing_preferences` from `ARTIFACT_CONFIG`, drops per-entry `_wp` asserts, and demotes `WRITING_PREFERENCES` from `artifact` → `data_field`. `origin/dev` already ships AST-1664 catalog + AST-1665 operative paths for Writing Preferences. Tip unions backstory + ideal_day only — merge to dev would regress a landed parallel epic.
+- **Recommendation:** At `merge-child` / ftr→dev, union catalog + token typing for backstory **and** writing_preferences (and ideal_day); do not ship this config resolution as-is onto dev.
+
+- **Location:** `src/core/candidate.py`, `src/ui/api/api_candidate.py` — commit `5b2facb4`
+- **Finding:** Engineer commit explicitly strips Writing Preferences operative save, hydrate, PUT pop/intercept, and entity log — outside ticket scope gate (Backstory-only; plan: other operative paths unchanged). Build stub documents Betty gate cleanup after ftr/dev merge picked up AST-1665 paths prematurely.
+- **Recommendation:** Acceptable **on isolated sub tip** only if merge restores AST-1665 paths on dev; otherwise revert strip and resolve slot collision via proper ftr union ordering, not deletion of sibling operative code.
+
+### discuss
+
+- **Location:** Three-dot diff stat (9 files, ~1395 lines) vs explicit scope gate (two product files)
+- **Finding:** Wider diff carries expected epic stacking: AST-1661 catalog prerequisite (`7e34dc65`, ftr sync `824ec0ea`), Betty `merge-tests`, parallel-epic bible blocks (AST-1665 skipif, AST-1661 config). Engineer Stage 1–2 product commits (`b3576294`, `bd8d2d5a`) touch only `candidate.py` + `api_candidate.py` as planned.
+- **Recommendation:** Chuckles notes at merge-child; not engineer replan.
+
+- **Location:** `docs/features/foundation/ast-1662-operative-save-hydrate-blob-retirement.md` build stub — "Scope fix: stripped Writing Preferences operative"
+- **Finding:** Documented intentional tip cleanup mirrors AST-1665's parallel-epic strip pattern; rationale is sound for **sub-branch isolation** but conflicts with dev-ready merge hygiene above.
+- **Recommendation:** Frame-diff rows above before UT on parent ftr.
+
+### advisory
+
+- **Location:** `canon/canon_clerk.py expand` for `patt.artifact.*` draft ids
+- **Finding:** Same draft-vs-active roster gap as AST-1661; scored from `canon/directives/draft/` bodies @ `fc0c368e`.
+- **Recommendation:** Corpus hygiene — no block on backstory slice scoring.
+
+- **Location:** `TestAst1665*` skipif (`writing_preferences` not in `ARTIFACT_CONFIG`)
+- **Finding:** Parallel-epic test pattern correct — suites skip on this tip, run when catalog present.
+- **Recommendation:** None.
+
+## What's solid
+
+- Backstory operative slice matches plan Stages 1–2: `_BACKSTORY_ARTIFACT_KEY`, `_CONTEXT_OPERATIVE_LEAVES` widened with `backstory`, `hydrate_operative_backstory_for_response` (miss preserves legacy blob), `get_candidate` + `get_candidate_detail` hydrate calls, PUT pop → `save_candidate_data("candidate.context.backstory", …)`, `backstory_saved` api info line.
+- Entity/api logging follows existing Strengths/Ideal Day pipe templates (`stat.logging.info.entity` / `stat.logging.info.api`); `logger.exception` PUT handler unchanged (`stat.logging.error`).
+- `TestAst1662BackstoryOperativeSaveHydrate` / `TestAst1662BackstoryOperativeApi` cover plain_text reject, retire+insert, AST-1635 identical no-op, dict-path strip with `writing_preferences` library sibling, hydrate hit/miss, empty → 400 — aligned with `docs/test-bible/core/candidate.md` and `docs/test-bible/ui/api/api_candidate.md` § AST-1662.
+- `plain_text` validate + AST-1635 identical no-op reused via catalog str-path — no second validate path invented.
+
+## Recommended actions (downstream — not executed here)
+
+1. `resolve-child` / Chuckles: document dev-merge union requirement (backstory + ideal_day + writing_preferences) before parent UT; restore AST-1665 operative if this ref merges toward dev.
+2. Re-run AST-1662 manifest after merge resolution.
+3. Optional: parent AST-1644 comment on parallel-epic slot collision policy if strips become routine.
+```
