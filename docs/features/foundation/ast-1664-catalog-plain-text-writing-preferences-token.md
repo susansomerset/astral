@@ -169,3 +169,44 @@ Confirm Chuckles estimate: 1 — agree
 | `astral.standards.no-hardcoded-sets` | statute — closed key/shape membership via asserts |
 | `stat.logging.info` | id-only — no new logging surface this ticket |
 | `stat.logging.debug` | id-only — no new logging surface this ticket |
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1664
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token` @ `1beaa024e0fbe2db1a5922510df96930f99fca6e`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | config-only slice; no new info surfaces (Stage 1 §9) |
+| stat.logging.debug | X | | config-only slice; no new debug surfaces (Stage 1 §9) |
+
+## Traceability
+
+AC1→S1§3-4; AC2→S1§2-3,6; AC3→S1§7-8; AC4→S1§5 — parent AC4–9 N/A (operative/hydrate/API/UI owned by AST-1665/AST-1666).
+
+## Findings
+
+### discuss
+
+- **Stale child AC4 wording on Linear Description.** Ticket AC4 still reads “no priorities/deal_breakers/ideal_day/backstory keys,” but `priorities`, `deal_breakers`, and `bio_summary` already register on the ftr tip via parallel epics. Plan correctly narrows sibling-freeze duty to `backstory` / `ideal_day` absent, removes `writing_preferences` from the freeze loop, and verify one-liners match that interpretation (S1§5, Verify block). Recommend Archie amend child AC4 text to match plan Decision §4 — not a plan defect.
+
+### R6 — Definition fidelity (checklist)
+
+- Plan implements child **## Scope** only (`src/utils/config.py`); explicit scope gate present; no out-of-scope files in Files Changed or Stages.
+- All four child acceptance criteria have concrete Stage 1 steps and hand-verify one-liners.
+- Mirrors AST-1632 / AST-1651 catalog/token pattern: adds `candidate.context.writing_preferences`, removes it from sibling-freeze loop, reuses existing `plain_text` shape (correctly does **not** re-add `BUILD_CONFIG["artifact_shapes"]["plain_text"]`), flips `TOKEN_SOURCES["WRITING_PREFERENCES"]` with `source`/`path` retained like `STRENGTHS` / `PRIORITIES` / `BIO_SUMMARY`.
+- Operative save, hydrate, API intercept, blob retirement, and UI correctly deferred to siblings per ticket boundaries.
+- Self-assessment: `Confirm Chuckles estimate: 1 — agree` is honest for a single-file closed-assert change.
+- Plan Discuss rounds completed: **0** (status Plan Ready).
+
+context_tokens≈48000
+```
