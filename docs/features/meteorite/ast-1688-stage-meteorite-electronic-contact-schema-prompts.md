@@ -194,3 +194,56 @@ context_tokens≈42000
 | 2 | `04aba196` | `agent_task` stage_meteorite metadata-first electronic_contact prompts (surgical; no catalog-wide rewrite) |
 
 **Betty note:** AST-756 / uat-fixtures twin intentionally out of Scope — sync at qa-child if component tests require it.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1688
+**Publish ref:** `30f3c1ce2025c5acf3f071a36939162245f4fdf3`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | X | | |
+| stat.logging.info | X | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `patt.task.daisy-chain` A, `stat.logging.debug` X, `stat.logging.info` X; code review matches on all three.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** `data/admin/agent_task.json` `stage_meteorite` `cache_prompt` § ELECTRONIC CONTACT; plan Scope gate (“Fetching new Gmail headers (e.g. Reply-To) in `gmail.py` — not in Scope”)
+- **Finding:** Prompt names Reply-To as preferred metadata, but live email ingress (`strip_extract_email_html` / `INBOX_CREATE_JOB_CONFIG["subject_html_template"]`) wraps **From / To / Subject / Date** only — Reply-To is not in today’s blob unless added elsewhere.
+- **Recommendation:** Acceptable for this child (AC1–AC2 only): metadata-first + forbid-invention still holds via From/To (and explicit JD/context fallback). Flag for parent epic / AST-1689 UAT if Reply-To–driven cases must pass before header ingest lands; do not block AST-1688 on `gmail.py` work.
+
+### advisory
+
+- **Location:** `feea51d2` → `04aba196` commit pair on `data/admin/agent_task.json`
+- **Finding:** Stage 2’s first commit reformatted the whole catalog (~92-line diff); the follow-up commit narrowed to `stage_meteorite` only (~90-line revert/re-apply). Tip + `TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog` confirm whole-file byte identity is restored.
+- **Recommendation:** No action on tip; worth remembering for future catalog edits — surgical row edit only.
+
+## What's solid
+
+- `TASK_CONFIG["stage_meteorite"].response_schema.jobs.items_schema` gains optional `electronic_contact`; `STAGE_METEORITE_CONFIG["electronic_contact_response_key"]` and `METEORITE_CONFIG["electronic_contact_column"]` are lockstep with module-level asserts — sibling AST-1689 can consume literals without parallel strings.
+- Six outcome literals and `text_source_ref_outcomes` (`single_jd_no_link`, `multi_jd_inline`) unchanged; new asserts explicitly guard that partition.
+- `agent_task.json` `stage_meteorite` prompts match plan Stage 2 verbatim (metadata-first, forbid invention, names text + link outcomes).
+- Component tests cover schema literals, `_validate_response_schema` omit/string/empty paths, prompt content, and AST-756 fixture twin sync (Betty path; plan had deferred fixture to qa-child).
+- Diff stays inside ticket partition: `config.py` + `agent_task.json` product surface only; no DB/map/persist/UI creep.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1688): Radia review — clean`, post slim upshot, move to **Review Posted** → datt **PROCEED** path to **User Testing** (no fix-now items).
+- Epic follow-on (not AST-1688): if parent AC requires Reply-To specifically, track header ingest separately; prompts already allow “equivalent header lines” once blob carries them.
+
+context_tokens≈38000
