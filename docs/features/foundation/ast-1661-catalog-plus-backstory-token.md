@@ -220,3 +220,12 @@ AC1→Stage 1 (catalog key + closed-set assert); AC2→Stage 1 (reuse `plain_tex
 - **Recommendation:** None — mirror pattern is intentional.
 
 context_tokens≈22000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token` @ `(pending push)`.
+
+**Stages delivered:**
+- Stage 1: `candidate.context.backstory` catalog + `BACKSTORY` artifact token — reuse existing `plain_text`; freeze remaining unmigrated leaves (`ideal_day`, `writing_preferences`); keep pre-landed `priorities` / `deal_breakers` / `bio_summary` registered (dev sync after plan).
+
+**Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Backstory metadata, context sibling freeze (ideal_day / writing_preferences absent; backstory present), `TOKEN_SOURCES["BACKSTORY"]` artifact_key linkage, `_artifact_tokens` includes `BACKSTORY`.
