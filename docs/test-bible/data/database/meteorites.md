@@ -39,3 +39,73 @@ Flat `meteorite` staging table + data-layer claim/insert/update/retention helper
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1689 · AST-1684
+
+**Parent:** [AST-1684](https://linear.app/astralcareermatch/issue/AST-1684/reply-to-emails-in-meteorite-when-single-jd-no-link). **Publish:** `origin/sub/AST-1684/AST-1689-meteorite-row-contact-column-map-persist-soft-fail`.
+
+Meteorite-table `electronic_contact` column (CREATE + ALTER ensure), `_UPDATE_METEORITE_ALLOWED`, and `insert_meteorite_rows` bind via `METEORITE_CONFIG["electronic_contact_column"]` (literal from AST-1688). Map/persist/Style D: **`docs/test-bible/core/meteorite.md`** § AST-1689.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema CREATE + ALTER + allowlist + insert bind | `src/data/database.py` | **`TestAst1689ElectronicContactColumn`** |
+
+**Broken / obsolete this pass (return):** dropped AST-1560 prior scrape/land nodes from the sibling **`docs/test-bible/core/meteorite.md`** § AST-1689 manifest (retired info-string asserts; not this ticket’s AC). Column coverage unchanged.
+
+**Integration:** none — no existing scenario asserts meteorite contact column; do not invent.
+
+## QA test manifest
+
+1. Column schema/allowlist/insert: `tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn`
+2. Map/persist/BOT_BLOCKED/land/debug: `tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn \
+  tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/data/database/meteorites.md` — *(filled after publish)*
+- `docs/test-bible/core/meteorite.md` — *(filled after publish)*
+
+### AST-1691 · AST-1685
+
+**Publish:** `origin/sub/AST-1685/AST-1691-meteorite-lookup-report-config-api`.
+
+`get_meteorite_by_astral_job_id`. Primary QA manifest for AST-1691.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Reverse-link helper | `src/data/database.py` | **`TestAst1691GetMeteoriteByAstralJobId`** |
+
+## QA test manifest
+
+1. `tests/component/data/database/test_meteorites.py::TestAst1691GetMeteoriteByAstralJobId`
+2. `tests/component/utils/test_config.py::TestAst1691MeteoriteReportConfig`
+3. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`
+4. `tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`
+5. `tests/component/ui/api/test_api_system.py::TestAst1691ReportMeteoriteSections`
+6. `tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections`
+7. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_object`
+8. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_soft_fail`
+9. revised detail null: `test_detail_returns_agent_story`, `test_detail_soft_fails_agent_story`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py::TestAst1691GetMeteoriteByAstralJobId \
+  tests/component/utils/test_config.py::TestAst1691MeteoriteReportConfig \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts \
+  tests/component/ui/api/test_api_system.py::TestAst1691ReportMeteoriteSections \
+  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_returns_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_soft_fails_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_object \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_soft_fail \
+  -q
+```
+
