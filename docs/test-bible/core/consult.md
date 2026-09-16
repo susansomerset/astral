@@ -1223,3 +1223,39 @@ Board REVISE: `_vector_labels_map` HT/TP duplicate-code collision (last-wins dro
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/consult.md` — *(filled after publish)*
+
+### AST-1680 · AST-1677
+
+**Parent:** [AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1680-job-drafting-interface-rewires`.
+
+`build_job_token_context` hydrates operative structure onto a working `cd` copy when `candidate_id` / `_astral_candidate_id` is known, then assembles `RESUME_SECTION_CATALOG` via `resolve_resume_structure` / `enabled_resume_structure_sections` — table current wins when the library blob is empty/missing. `TOKEN_SOURCES["RESUME_SECTION_CATALOG"]` stays `special_case`. Tracker prepare/filter: **`docs/test-bible/core/tracker.md`** § AST-1680. Operative hydrate helper: sibling **AST-1679**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| hydrate→catalog (table-only + no-cid blob path) + token source_type | `src/core/consult.py` | **`TestAst1680JobDraftingHydrateCatalog`** |
+
+**Broken / obsolete this pass:** none — AST-513 catalog tests still seed a library blob (valid without cid).
+
+**Integration:** none — no existing scenario asserts table-only RESUME_SECTION_CATALOG; do not invent.
+
+## QA test manifest
+
+1. Consult catalog hydrate: `tests/component/core/test_consult.py::TestAst1680JobDraftingHydrateCatalog`
+2. Tracker prepare/filter hydrate: `tests/component/core/test_tracker.py::TestAst1680JobResumeHydrateBeforeResolve`
+3. Regression catalog (blob path): `tests/component/core/test_consult.py::TestAst513JobTokenContext::test_build_job_token_context_resume_section_catalog`
+4. Regression prepare: `tests/component/core/test_tracker.py::TestAst518JobResumeArtifacts::test_prepare_job_resume_content_strips_orphan_and_snapshots_contact`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1680JobDraftingHydrateCatalog \
+  tests/component/core/test_tracker.py::TestAst1680JobResumeHydrateBeforeResolve \
+  tests/component/core/test_consult.py::TestAst513JobTokenContext::test_build_job_token_context_resume_section_catalog \
+  tests/component/core/test_tracker.py::TestAst518JobResumeArtifacts::test_prepare_job_resume_content_strips_orphan_and_snapshots_contact \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/consult.md` — *(filled after publish)*
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
