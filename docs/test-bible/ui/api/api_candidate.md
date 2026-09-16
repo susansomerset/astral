@@ -360,13 +360,13 @@ PUT `/data` pops `context.ideal_day` then `save_candidate_data(candidate_id, "ca
 
 **Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement`.
 
-PUT `/data` pops `context.backstory` then `save_candidate_data(candidate_id, "candidate.context.backstory", body)`; sibling context keys still library-merge (`writing_preferences`); GET detail hydrates Backstory (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1662.
+PUT `/data` pops `context.backstory` then `save_candidate_data(candidate_id, "candidate.context.backstory", body)`; sibling context keys still library-merge (`hopes`); GET detail hydrates Backstory (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1662.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | PUT operative + retire + sibling merge + GET hydrate + empty 400 | `src/ui/api/api_candidate.py` | **`TestAst1662BackstoryOperativeApi`** |
 
-**Broken / obsolete:** AST-1633 / AST-1649 / AST-1655 / AST-1652 / AST-1659 PUT sibling asserts that library-merged `backstory` — revised to `writing_preferences`.
+**Broken / obsolete:** AST-1633 / AST-1649 / AST-1655 / AST-1652 / AST-1659 PUT sibling asserts that library-merged `backstory` — revised to `hopes`.
 
 **Integration:** none.
 

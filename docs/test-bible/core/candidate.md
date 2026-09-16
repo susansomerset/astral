@@ -2046,7 +2046,7 @@ Operative `plain_text` validate on str-path (reuse); Priorities `save_artifact` 
 
 **Parent:** [AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1643). **Publish:** `origin/sub/AST-1643/AST-1659-operative-save-hydrate-blob-retirement`.
 
-Operative `plain_text` validate on str-path (reuse); Ideal Day `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.ideal_day` via `_CONTEXT_OPERATIVE_LEAVES` (with strengths / bio_summary / priorities / deal_breakers; siblings like `backstory` keep library-merge); `hydrate_operative_ideal_day_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1658**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1659. No React / backfill (sibling AST-1660).
+Operative `plain_text` validate on str-path (reuse); Ideal Day `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.ideal_day` via `_CONTEXT_OPERATIVE_LEAVES` (with strengths / bio_summary / priorities / deal_breakers; siblings like `hopes` keep library-merge); `hydrate_operative_ideal_day_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1658**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1659. No React / backfill (sibling AST-1660).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -2085,13 +2085,13 @@ Operative `plain_text` validate on str-path (reuse); Ideal Day `save_artifact` r
 
 **Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement`.
 
-Operative `plain_text` validate on str-path (reuse); Backstory `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.backstory` via `_CONTEXT_OPERATIVE_LEAVES` (with strengths / bio_summary / priorities / deal_breakers / ideal_day; sibling `writing_preferences` keeps library-merge); `hydrate_operative_backstory_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1661**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1662. No React / backfill (sibling AST-1663).
+Operative `plain_text` validate on str-path (reuse); Backstory `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.backstory` via `_CONTEXT_OPERATIVE_LEAVES` (with strengths / bio_summary / priorities / deal_breakers / ideal_day; sibling `hopes` keeps library-merge (writing_preferences operative on tip after AST-1665 union)); `hydrate_operative_backstory_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1661**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1662. No React / backfill (sibling AST-1663).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | plain_text validate + save/retire + identical no-op + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1662BackstoryOperativeSaveHydrate`** |
 
-**Broken / obsolete this pass:** AST-1633 / AST-1649 / AST-1655 / AST-1652 / AST-1659 sibling asserts that treated `backstory` as library-merge — revised to `writing_preferences`.
+**Broken / obsolete this pass:** AST-1633 / AST-1649 / AST-1655 / AST-1652 / AST-1659 sibling asserts that treated `backstory` as library-merge — revised to `hopes`.
 
 **Integration:** none — no existing scenario asserts Backstory operative save/hydrate; do not invent new integration coverage.
 
@@ -2125,7 +2125,7 @@ Operative `plain_text` validate on str-path (reuse); Backstory `save_artifact` r
 
 **Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement`.
 
-Operative `plain_text` validate on str-path (reuse); Writing Preferences `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.writing_preferences` via `_CONTEXT_OPERATIVE_LEAVES` (siblings like `backstory` keep library-merge); `hydrate_operative_writing_preferences_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1664**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1665. No React / backfill (sibling AST-1666). Tip unions Ideal Day catalog — `TestAst1365IdealDayLibrary` strip revised; Priorities API sibling retargeted to `backstory`.
+Operative `plain_text` validate on str-path (reuse); Writing Preferences `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.writing_preferences` via `_CONTEXT_OPERATIVE_LEAVES` (siblings like `hopes` keep library-merge); `hydrate_operative_writing_preferences_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1664**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1665. No React / backfill (sibling AST-1666). Tip unions Ideal Day catalog — `TestAst1365IdealDayLibrary` strip revised; Priorities API sibling retargeted to `hopes`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
