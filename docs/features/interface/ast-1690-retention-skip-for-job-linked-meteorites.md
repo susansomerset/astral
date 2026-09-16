@@ -122,3 +122,8 @@ context_tokens≈28000
 
 [plan-rubric] PROCEED (Commit: 3f93d358) retention skip plan clean
 
+## Review
+
+**Publish ref:** `sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites`
+**Build tip:** `4dccbcbb03751d6234b993fe51412f5942a21cb0`
+**Status:** Code Complete pending Betty
