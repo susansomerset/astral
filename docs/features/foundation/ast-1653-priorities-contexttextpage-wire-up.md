@@ -126,3 +126,56 @@ context_tokens≈95000
 
 **Stages delivered:**
 - Stage 1: Wire Priorities `bodyShape="plain_text"` — `bf9dc1c94fb8036d2216132854bd9d86f79f6e6b`.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1653
+**Publish ref:** `6eebba8b9a8c3acc8989a2d5471f9fd35c7b6f96`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Composite publish-ref diff vs AST-1653 scope.** Product commit `bf9dc1c9` is correctly single-file (`CandidatePriorities.tsx` only). Tip also carries `merge(dev): union priorities + deal_breakers catalog paths` (`6eebba8b`), which lands **AST-1642** sibling work on this branch: `candidate.context.deal_breakers` catalog + token in `config.py`, deal_breakers operative paths in `candidate.py` / `api_candidate.py`, and `CandidateDealBreakers.tsx` `bodyShape="plain_text"`. AST-1653 explicit scope gate excludes all of that. Epic `sync(ftr)` / `merge(dev)` composition — not Katherine scope creep — but UT and `merge-child` reviewers see a multi-epic tip, not a one-file delta vs `origin/dev`.
+- **Test-bible regression on composite tip.** `docs/test-bible/core/candidate.md` and `docs/test-bible/ui/api/api_candidate.md` lose their **AST-1655** manifest blocks while deal_breakers operative product code is present from `merge(dev)`. Betty's AST-1653 frontend bible append is fine; the backend bible removals look accidental relative to landed product — flag for Chuckles/Betty before parent UT.
+
+### advisory
+
+- **`config.py` merge hygiene (AST-1654 lane, not AST-1653).** Closed key-set assert lists `"candidate.context.deal_breakers"` twice (harmless in a set literal). `_db` per-entry asserts were added but `assert set(_db.keys()) == {...}` is missing after the `_db` block (priorities `_pr` key-set assert still runs). Import succeeds; incomplete vs sibling catalog pattern — downstream AST-1642 tickets should clean on their sub tip.
+- **Canon clerk resolution.** `patt.artifact.*` scored from `canon/directives/draft/` mirrors — same `corpus_sha` Joan used; not on active `canon_clerk expand` roster.
+- **Plan doc hygiene.** Joan noted no `## Canon Scope` table in the issue doc (Description citations sufficient); optional append for Radia parity, not blocking.
+
+## What's solid
+
+- **`CandidatePriorities.tsx`** matches Stage 1 exactly: `ContextTextPage` with `title="Priorities"`, `contextKey="priorities"`, `bodyShape="plain_text"` — twin of `CandidateStrengths.tsx` / `CandidateBioSummary.tsx`; no `ArtifactEditor`; no frontend config fetch; no `artifactKey` prop.
+- **read-current / write-operative (client contract):** Tests assert GET loads `context.priorities`, Save PUTs `{ context: { priorities: <draft> } }`, reload shows same text, empty draft disables Save with no PUT — rides AST-1634 `plain_text` gate and AST-1652 server intercept unchanged.
+- **ui-consistency:** Parameterized shared editor path; `bodyShape` hardcoded literal matching catalog `plain_text` shape (plan decision); `ContextTextPage.tsx` untouched on AST-1653 product commit.
+- **Vitest coverage:** `test_CandidatePriorities.test.tsx` expanded from render-only to load / save-reload / empty-gate / source-shape assert — mirrors Strengths AST-1634 test pattern.
+
+## Recommended actions (for Chuckles — not Radia)
+
+- Append this artifact; commit `docs(AST-1653): Radia review — clean` on `origin/sub/AST-1641/AST-1653-priorities-contexttextpage-wire-up`.
+- Post slim upshot via `linear_proxy --as radia`; advance to **Review Posted** → datt **§3h** PROCEED (no `resolve-child` product work from AST-1653 canon).
+- Before parent UT: confirm whether `merge(dev)` deal_breakers union and bible AST-1655 deletions are intentional; restore bible blocks or revert cross-epic merge if not.
+- Optional: append `## Canon Scope` table to issue doc for Radia parity (Joan advisory).
+
+context_tokens≈48000
