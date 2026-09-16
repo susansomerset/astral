@@ -266,3 +266,73 @@ context_tokens≈48000
 **Built:** `origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal` @ `8ce9a6d607d8b97bc4489d1784709d36c733f078`
 
 Stages 1–2: `report_meteorite_sections` typed; `JobMeteoritePane` read-only stack; Meteorite top tab filtered on non-null `related_meteorite` and wired in `JobAnalysisReportModal`. Tests deferred to Betty.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1692
+**Publish ref:** 1090acb60260c93e45d08e5e51b7d11f1f81952e
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+*(Frozen list empty by design — ticket Citations: `none`; presentational React only; API/logging statutes owned by AST-1691. No directive ids to score.)*
+
+## Column diff vs plan stage
+
+(aligned) — Joan plan stage recorded no canon ids; code review has none to diff.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** `origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal` tip (`merge-tests` `1090acb6`)  
+- **Finding:** Branch carries sibling merge-tests baggage beyond AST-1692’s three-file product scope: backend tests/bible for AST-1688–1694, core `test_meteorite.py` expansion, etc. AST-1692 product diff is frontend-only (`StateUiContext.tsx`, `JobMeteoritePane.tsx`, `JobAnalysisReportModal.tsx`); no `App.css` (per plan).  
+- **Recommendation:** No AST-1692 product fix. Chuckles/merge-child: keep epic rollup tests aligned with landed product per sibling.
+
+- **Severity:** advisory  
+- **Location:** `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `describe("JobAnalysisReportModal — AST-1696 Copy Link")`  
+- **Finding:** AST-1696 Copy Link tests landed on this branch; `RecommendedJobReportHeader` at tip has no `Copy Link` affordance. Betty’s manifest filters `--testNamePattern="AST-1692|AST-1551 Discussion"` — AST-1696 block excluded from manifest run.  
+- **Recommendation:** None for AST-1692 canon/plan pass; reconcile when AST-1696 product lands or gate those tests.
+
+## Notes
+
+- **Canon Scope:** Empty frozen list is intentional (dispatch + Joan validate), not a scope gap. Do not retroactively score `astral.standards.*` or logging statutes — AST-1691 owns backend law; this child consumes shapes only.
+- **Plan fidelity:** Stage 1 — `report_meteorite_sections` typed on manifest; `JobMeteoritePane` with `RelatedMeteorite`, `isNavigableHttpLink` (http/https prefix after trim), four `section_id` cases, read-only AI (`classify_outcome` + `entity-story-content` textarea), provenance + conditional `error`. Stage 2 — `related_meteorite` on `JobDetail`; `topTabs` filters `meteorite` when `related_meteorite == null`; `meteoriteSections` from manifest; pane wired on `activeTopTab === "meteorite"`. No Discussion/Summary/Artifacts edits beyond tab-order test expectations. `App.css` correctly omitted.
+- **Sibling dependency (AST-1691):** Consumes `report_top_tabs`, `report_meteorite_sections`, and flat `related_meteorite` — field names and section ids lockstep with AST-1691 config. Tab label/order from manifest, not hardcoded TSX insertion.
+- **Estimate footprint:** Confirm estimate **2** — ~169 lines new pane + ~25 lines modal/context wiring; proportionate.
+- **AC coverage (manifest):** `test_JobMeteoritePane.test.tsx` — timestamps, http vs breadcrumb, read-only AI, provenance/error; `test_JobAnalysisReportModal.test.tsx` AST-1692 — tab present/absent; fixture updated with Meteorite tab + sections.
+
+## What's solid
+
+- AC1: Meteorite tab appears only when `related_meteorite != null`; omitted when null (Discussion remains last visible tab in null case).
+- AC2–AC4: Timestamps from row; `estelle_notified_at` gated; http(s) → `<a>` with `noopener noreferrer`; breadcrumb → plain `<p>`; AI read-only with JSON pretty-print; no agent-story or stem fields.
+- Reuses `ReportSectionList` + existing report CSS classes — matches plan’s no-`App.css` decision.
+- Existing `useEffect` tab-reset when active key absent from `topTabs` handles job switch away from Meteorite — no duplicate reset added.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+- Append this artifact to `docs/features/interface/ast-1692-meteorite-pane-recommended-modal.md` under `## Review`.
+- Commit + push `docs(AST-1692): Radia review — clean` on `origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal`.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`.
+- Move AST-1692 → **Review Posted**; datt **§3h** → **User Testing** (PROCEED).
+
+context_tokens≈52000
+
+---
+
+[code-rubric] PROCEED (Commit: 1090acb6) Meteorite pane clean
