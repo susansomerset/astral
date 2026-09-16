@@ -336,3 +336,14 @@ context_tokens≈52000
 ---
 
 [code-rubric] PROCEED (Commit: 1090acb6) Meteorite pane clean
+
+---
+
+## Resolution
+
+**Date:** 2026-09-16  
+**Publish tip:** `origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal` @ `c9e83a0a5fc45f86625c31ab2205848579c32917`
+
+- Radia **CLEAN / PROCEED** — no fix-now / discuss product changes.
+- §9a: Betty cleared ftr test-tree conflict @ `40b9a5b5`; published `sync(dev)` tip so `origin/dev` is an ancestor.
+- Dry-run clean vs `origin/dev` and vs `origin/ftr/AST-1685-view-related-meteorite-record-data`.
