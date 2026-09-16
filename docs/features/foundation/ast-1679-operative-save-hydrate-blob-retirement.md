@@ -340,3 +340,61 @@ context_tokens≈42000
 - Stage 2: agent craft-persist + API PUT intercept + GET hydrate + api info — `ce12e7ee5df425086d20caa9e8f65dbacf4c32d3`.
 
 **Betty:** at **Code Complete** — cover operative `resume_structure` validate via `normalize_resume_structure`, `save_artifact` round-trip + retire prior current, identical-body no-op (AST-1635 shared), dict-path strips `artifacts.resume_structure` via `_ARTIFACTS_OPERATIVE_LEAVES`, hydrate overlays current / leaves legacy on miss (not base_resume strip-on-miss), PUT pop after normalize/ingest + operative path (incl. base_resume-ingest-updated structure), GET detail + `/resume_structure` via `get_candidate` hydrate, craft/parse + agent craft-persist structure operative / body base_resume; no backfill.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1679
+**Publish ref:** 6b0ff39183311813af9e308e41ebea1d2b65b742
+**Corpus:** fc0c368e59 · ticket pattern ids not in `canon_clerk` active roster (bodies resolved from `canon/directives/draft/` + `canon/directives/active/` for logging statutes)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `origin/dev...publish-ref` diff includes `src/utils/config.py`, `tests/component/utils/test_config.py`, `docs/features/foundation/ast-1678-*.md`
+- **Finding:** Cumulative three-dot diff carries AST-1678 catalog ancestor commits on the epic branch union. AST-1679 code commits (`b800d2b7`–`88a73032`) touch only `candidate.py`, `agent.py`, `api_candidate.py` — no AST-1679 edits to config.
+- **Recommendation:** Expected epic stacking; no AST-1679 action. Downstream reviewers should score 1679 product slice via those three files.
+
+- **Location:** `canon/canon_clerk.py expand`
+- **Finding:** `patt.artifact.*` and `astral.standards.in-scope-only` still fail clerk expand; logging statutes resolve from active roster.
+- **Recommendation:** Infrastructure track only — out of AST-1679 scope.
+
+- **Location:** `src/core/candidate.py` dict-path `_ARTIFACTS_OPERATIVE_LEAVES` strip
+- **Finding:** `save_candidate_data(..., {"artifacts": {"resume_structure": …}})` strips the leaf without operative write (by design). All in-repo durable callers retargeted to str-path; grep shows no remaining dict-path structure saves in `src/`.
+- **Recommendation:** AST-1680 / future callers must use str-path or API intercept — not a fix-now for this ticket.
+
+## What's solid
+
+- **Operative validate/save (AC3/AC5):** str-path `resume_structure` branch validates non-empty dict, runs `normalize_resume_structure`, shares AST-1635 identical-body no-op, then `save_artifact` retire+insert. `TestAst1679ResumeStructureOperativeSaveHydrate` covers round-trip, second-save rotation, identical uuid, library blob absence.
+- **Hydrate (AC4/AC7):** `hydrate_operative_resume_structure_for_response` overlays current via `get_candidate_current`; miss leaves legacy blob (not base_resume strip-on-miss). Wired in `get_candidate` and `get_candidate_detail`. API tests confirm GET detail + `/resume_structure` overlay after operative save and legacy preservation on miss.
+- **Blob retirement (AC5):** `_ARTIFACTS_OPERATIVE_LEAVES` dict-path strip + API pop after normalize/ingest; post-save raw library lacks `resume_structure`.
+- **Craft/parse/agent land (AC6):** `parse_candidate_resume`, `run_candidate_artifact_generation` craft branch, and `agent.persist_candidate_craft_hops` use `candidate.artifacts.resume_structure` str-path; body stays on `base_resume` key. Agent integration test asserts both operative keys on craft persist.
+- **API PUT leaf-only fix:** `base_resume` operative save moved outside nested `if body:` (commit `88a73032`) per plan §6 — regression-gated by `test_leaf_only_base_resume_put_still_saves_pilot_and_structure`.
+- **Logging:** entity info on successful structure save only (mirrors context-leaf chain); api info on `resume_structure_saved` PUT; existing `logger.exception` with `type(e).__name__` + `e` on `update_candidate_data` failure unchanged.
+
+## Recommended actions (for Chuckles — not Radia)
+
+1. Post slim upshot and advance to **Review Posted** — catalog prerequisite (AST-1678) is on the branch ancestor; operative slice is complete.
+2. No `resolve-child` product work indicated from canon pass; engineer may tick frame rows if any were added (none proposed here).
