@@ -159,3 +159,63 @@ logger.debug(
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1689
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref tip:** `2b916c344d565a6be7e38f289c6d5884f6ec307f` (`sub/AST-1684/AST-1689-meteorite-row-contact-column-map-persist-soft-fail`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | Contact on meteorite row via insert/update_meteorite; no side queue; dispatch runners unchanged |
+| patt.task.daisy-chain | A | | Map at classify fan-out; BOT_BLOCKED preserve explicit; no re-derive in scrape/land |
+| stat.logging.debug | A | | Ungated `logger.debug` returned/recorded lines; `@_with_log_debug` gating; no `if debug` wrappers |
+| stat.logging.info | A | | No new always-on progress lines; existing `_meteorite_state_info` only |
+| stat.logging.info.entity | A | | Existing entity pipe on state transitions unchanged; no contact payload on info |
+| stat.logging.warning | A | | Soft-fail via `_warn_item` per-item who/why/next_step pattern |
+
+## Traceability
+
+AC3 → Stage 1 insert + Stage 2 map + soft-persist · AC4 → Stage 2 §5 BOT_BLOCKED preserve · AC5 → Stage 2 §6 land/job_data · AC6 → Stage 2 `_soft_persist_meteorite_electronic_contact` · AC7 → map optional None + soft-persist non-aborting · AC8 → Stage 2 §4 `logger.debug` returned/recorded · AC9 N/A (no UI) · parent AC1–2 N/A (AST-1688)
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 2 §4 Style D; parent AC8 wording; Canon Scope “Style D via `logger.debug`”
+- **Finding:** Parent AC8 says “Style D”; plan implements `logger.debug("electronic_contact returned=%r recorded=%r …")`, not `debug_index`. Meteorite test bible notes Style D on/off asserts retired under logging statutes; `stat.logging.debug` explicitly separates Style D (`debug_index`) from this statute.
+- **Recommendation:** Acceptable under current canon — plan’s mapping is documented and matches `stat.logging.debug`. If Betty/UAT fixtures still grep `debug_index` func= for contact, flag at qa-child; not a plan blocker here.
+
+- **Location:** Scope gate Reply-To note; Stage 2 ingest only (email)
+- **Finding:** Reply-To not in today’s email blob (From/To only); sole `insert_meteorite_rows` / `_map_classify_jobs_to_meteorite_rows` caller is `ingest_candidate_email_message` — matches epic email focus and child partition.
+- **Recommendation:** None for this ticket; epic Reply-To header ingest remains out of scope (same Joan finding on AST-1688).
+
+- **Location:** Stage 2 `_soft_persist_meteorite_electronic_contact` exception path
+- **Finding:** On `update_meteorite` failure, helper returns `None` without re-read — debug line may show `recorded=None` while Stage 1 insert already bound contact.
+- **Recommendation:** Optional polish at build (read-after-insert-failure for accurate debug); does not violate AC6 warn-and-continue or row survival.
+
+### acceptable
+
+- **Location:** Files Changed — `consult.py` / `agent.py` omitted
+- **Finding:** Plan documents decision: `invoke_stage_meteorite` returns full job dicts; optional `items_schema` validation accepts new field post-AST-1688.
+- **Recommendation:** None; matches codebase (`get_meteorite` already imported in `meteorite.py`).
+
+- **Location:** Stage 1 preflight Depends-on AST-1688
+- **Finding:** Stop gate if config keys missing after sync — correct bang-first sequencing.
+- **Recommendation:** None.
+
+## R6 checklist (summary)
+
+- Definition fidelity: DB column + map/persist + soft-fail + debug observability; no schema/prompt/UI/job_data work.
+- Scope gate: two files only; AST-1688 literals consumed, not redefined.
+- DRY: reuses `_warn_item`, `_meteorite_state_info`, existing lockstep/config-key patterns.
+- Self-assessment: Estimate confirm line present; stages have concrete done-when gates.
+- Plan Discuss rounds: 0 (Plan Ready first pass).
+
+context_tokens≈58000
+
