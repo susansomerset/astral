@@ -1940,6 +1940,7 @@ class TestRunConsultTaskRoutes:
 
     @pytest.mark.asyncio
     async def test_routes_prefilter_company_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1675: lasting catalog identity is prefilter_company only.
         monkeypatch.setattr(
             "src.core.roster.prefilter_company_batch",
             AsyncMock(return_value={"total": 3, "passed": 2, "failed": 1, "skipped": 1}),
@@ -1950,7 +1951,7 @@ class TestRunConsultTaskRoutes:
             [{"short_name": "c1"}, {"short_name": "c2"}, {"short_name": "c3"}],
             "batch-1",
             {},
-            dispatch_task_key="prefilter",
+            dispatch_task_key="prefilter_company",
         )
         assert out["total_processed"] == 3
         assert out["total_passed"] == 2
@@ -1958,25 +1959,23 @@ class TestRunConsultTaskRoutes:
         assert out["total_errors"] == 0
 
     @pytest.mark.asyncio
-    async def test_routes_prefilter_company_batch_legacy_dispatch_key(
+    async def test_bare_prefilter_dispatch_key_does_not_route_to_batch(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """AST-823: legacy dispatch rows may still carry agent task_key prefilter_company."""
-        batch = AsyncMock(return_value={"total": 2, "passed": 1, "failed": 1, "skipped": 0})
+        """AST-1675: leftover bare `prefilter` is not a lasting consult route."""
+        batch = AsyncMock(return_value={"total": 1, "passed": 1, "failed": 0, "skipped": 0})
         monkeypatch.setattr("src.core.roster.prefilter_company_batch", batch)
         out = await consult_mod.run_consult_task(
             "company",
             "HOMEPAGE_READY",
-            [{"short_name": "c1"}, {"short_name": "c2"}],
+            [{"short_name": "c1"}],
             "batch-1",
             {},
-            dispatch_task_key="prefilter_company",
+            dispatch_task_key="prefilter",
         )
-        batch.assert_awaited_once()
-        assert out["total_processed"] == 2
-        assert out["total_passed"] == 1
-        assert out["total_failed"] == 1
-        assert out["total_errors"] == 0
+        batch.assert_not_awaited()
+        # Falls through to run_company_task / error path — not the batch hop.
+        assert out["total_errors"] >= 1 or out.get("total_processed", 0) == 0
 
     @pytest.mark.asyncio
     async def test_routes_qualify_and_evaluate_batches(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5821,14 +5820,15 @@ class TestAst1277DispatchScoreFloorVerdict:
             "list_dispatch_tasks_for_candidate",
             MagicMock(
                 return_value=[
-                    {"id": 9, "task_key": "prefilter", "score_floor": 0.0},
-                    {"id": 8, "task_key": "prefilter", "score_floor": 6.0},
+                    {"id": 9, "task_key": "prefilter_company", "score_floor": 0.0},
+                    {"id": 8, "task_key": "prefilter_company", "score_floor": 6.0},
                 ]
             ),
         )
-        # Newest-first (id DESC walk) — first match wins; consult key maps to prefilter.
+        # Newest-first (id DESC walk) — first match wins; identity key (AST-1675, no shim).
         assert consult_mod._dispatch_score_floor_for_task("c1", "prefilter_company") == 0.0
-        assert consult_mod._dispatch_score_floor_for_task("c1", "prefilter") == 0.0
+        # Bare leftover key does not match lasting rows.
+        assert consult_mod._dispatch_score_floor_for_task("c1", "prefilter") == 1.0
 
     def test_apply_soft_fails_below_floor_and_passes_at_zero_floor(
         self, monkeypatch: pytest.MonkeyPatch

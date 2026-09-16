@@ -460,7 +460,7 @@ class TestAst1069ContactSlackIngress:
         assert "Ev-http" in contact_mod._seen_event_ids
 
 
-# Branches: resolve hit/miss/create gate; Events accept wires resolve (AST-1068).
+# Branches: resolve hit/miss lookup-only (AST-1068; create-on-miss retired AST-1668).
 class TestAst1068ResolveSlackUser:
     def setup_method(self) -> None:
         contact_mod._seen_event_ids.clear()
@@ -477,8 +477,6 @@ class TestAst1068ResolveSlackUser:
                 }
             ),
         )
-        create = MagicMock()
-        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
         # AST-1105 found path always calls users.info for display / backfill check.
         monkeypatch.setattr(
             contact_mod,
@@ -503,15 +501,14 @@ class TestAst1068ResolveSlackUser:
             "slack_username": "ada",
             "slack_display_name": "Ada",
         }
-        create.assert_not_called()
         save.assert_not_called()
+        # AST-1668: create-on-miss retired — symbol must not live on contact module.
+        assert not hasattr(contact_mod, "initiate_prospect_candidate")
 
     def test_resolve_miss_without_estelle_does_not_create(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
-        create = MagicMock()
-        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
         fetch = MagicMock()
         monkeypatch.setattr(contact_mod, "fetch_user_profile", fetch)
         out = contact_mod.resolve_slack_user("Umiss", estelle_in_play=False)
@@ -522,10 +519,12 @@ class TestAst1068ResolveSlackUser:
             "slack_username": "",
             "slack_display_name": "",
         }
-        create.assert_not_called()
         fetch.assert_not_called()
 
-    def test_resolve_create_prospect(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resolve_miss_estelle_lookup_only_no_prospect(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1668: miss + estelle_in_play fetches profile but never mints PROSPECT.
         monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
         monkeypatch.setattr(
             contact_mod,
@@ -540,23 +539,19 @@ class TestAst1068ResolveSlackUser:
                 }
             ),
         )
-        create = MagicMock()
-        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
         out = contact_mod.resolve_slack_user("Unew", estelle_in_play=True)
-        assert out["created"] is True
-        assert out["state"] == "PROSPECT"
-        assert out["astral_candidate_id"] == "slack-unew"
-        assert out["slack_username"] == "ada.lovelace"
-        assert out["slack_display_name"] == "ada"
-        create.assert_called_once()
-        assert create.call_args.args[0] == "slack-unew"
-        assert create.call_args.args[1] == {
-            "contact": {"slack_user_id": "Unew", "slack_username": "ada.lovelace"}
+        assert out == {
+            "astral_candidate_id": None,
+            "state": None,
+            "created": False,
+            "slack_username": "ada.lovelace",
+            "slack_display_name": "ada",
         }
-        assert create.call_args.kwargs.get("first") == "Ada"
-        assert create.call_args.kwargs.get("last") == "L"
+        assert not hasattr(contact_mod, "initiate_prospect_candidate")
 
-    def test_resolve_create_seeds_display_name(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resolve_miss_estelle_returns_display_when_names_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value=None))
         monkeypatch.setattr(
             contact_mod,
@@ -571,14 +566,11 @@ class TestAst1068ResolveSlackUser:
                 }
             ),
         )
-        create = MagicMock()
-        monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
-        contact_mod.resolve_slack_user("Ux", estelle_in_play=True)
-        assert create.call_args.args[1] == {
-            "contact": {"slack_user_id": "Ux", "slack_username": "onlydisplay"}
-        }
-        assert create.call_args.kwargs.get("first") == "OnlyDisplay"
-        assert create.call_args.kwargs.get("last") == ""
+        out = contact_mod.resolve_slack_user("Ux", estelle_in_play=True)
+        assert out["created"] is False
+        assert out["astral_candidate_id"] is None
+        assert out["slack_username"] == "onlydisplay"
+        assert out["slack_display_name"] == "OnlyDisplay"
 
     def test_resolve_rejects_empty(self) -> None:
         with pytest.raises(ValueError, match="slack_user_id"):
@@ -587,11 +579,16 @@ class TestAst1068ResolveSlackUser:
     def test_handle_accept_wires_resolve(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
         resolved = {
-            "astral_candidate_id": "slack-u9",
-            "state": "PROSPECT",
-            "created": True,
+            "astral_candidate_id": "c-known",
+            "state": "INTAKE_INITIATED",
+            "created": False,
         }
         monkeypatch.setattr(contact_mod, "resolve_slack_user", MagicMock(return_value=resolved))
+        monkeypatch.setattr(
+            contact_mod,
+            "contact_post_message",
+            MagicMock(return_value={"ok": True, "ts": "1.1"}),
+        )
         _stub_estelle_turn(monkeypatch)
         out = contact_mod.handle_slack_event(
             {
@@ -606,9 +603,9 @@ class TestAst1068ResolveSlackUser:
             }
         )
         assert out["accepted"] is True
-        assert out["astral_candidate_id"] == "slack-u9"
-        assert out["candidate_state"] == "PROSPECT"
-        assert out["candidate_created"] is True
+        assert out["astral_candidate_id"] == "c-known"
+        assert out["candidate_state"] == "INTAKE_INITIATED"
+        assert out["candidate_created"] is False
         contact_mod.resolve_slack_user.assert_called_once_with(
             "U9", estelle_in_play=True, debug=False
         )
@@ -1130,12 +1127,15 @@ class TestAst1101ChannelHearEvidence:
         )
         assert out["accepted"] is True
         assert out["hear_ack_post"]["ok"] is True
-        post.assert_called_once()
-        assert post.call_args.kwargs["channel"] == "C-hear"
-        assert post.call_args.kwargs["thread_ts"] == "3.3"
-        text = post.call_args.kwargs["text"]
-        assert text.startswith("[staging] ")
-        assert CONTACT_CONFIG["hear_ack_reply_text"] in text
+        # AST-1668: recognition post runs before Estelle/hear-ack.
+        assert post.call_count == 2
+        recog = post.call_args_list[0].kwargs
+        assert CONTACT_CONFIG["known_recognition_reply_text"] in recog["text"]
+        hear = post.call_args_list[1].kwargs
+        assert hear["channel"] == "C-hear"
+        assert hear["thread_ts"] == "3.3"
+        assert hear["text"].startswith("[staging] ")
+        assert CONTACT_CONFIG["hear_ack_reply_text"] in hear["text"]
         rows = contact_mod.list_estelle_activity()
         assert len(rows) == 1
         assert rows[0]["slack_user_id"] == "U-hear"
@@ -1163,7 +1163,11 @@ class TestAst1101ChannelHearEvidence:
         )
         assert out["accepted"] is True
         assert "hear_ack_post" not in out
-        post.assert_not_called()
+        # AST-1668: known recognition posts once; Estelle turn already posted so no hear-ack.
+        post.assert_called_once()
+        assert CONTACT_CONFIG["known_recognition_reply_text"] in post.call_args.kwargs["text"]
+        assert out["recognition_post"]["ok"] is True
+
 
     def test_listen_off_skips_hear_ack(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -2047,3 +2051,115 @@ class TestAst1585ContactPinnedBaseResume:
         assert "base_resume" not in (raft2.get("artifacts") or {})
         contact_mod.resolve_pinned_base_resume.assert_not_called()
 
+
+
+# Branches: unbound filter; known/unknown recognition; unknown skips Estelle (AST-1668).
+class TestAst1668UnboundAndRecognition:
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def test_list_unbound_omits_bound_ids(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            contact_mod,
+            "list_workspace_posters",
+            MagicMock(
+                return_value=[
+                    {"slack_user_id": "U_FREE", "username": "free"},
+                    {"slack_user_id": "U_BOUND", "username": "bound"},
+                    {"slack_user_id": "  ", "username": "blank"},
+                    "skip",
+                ]
+            ),
+        )
+
+        def _lookup(sid: str, *, debug: bool = False):
+            return "c1" if sid == "U_BOUND" else None
+
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", _lookup)
+        out = contact_mod.list_unbound_slack_users()
+        assert out == [{"slack_user_id": "U_FREE", "username": "free"}]
+
+    def test_known_recognition_then_estelle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "state": "INTAKE_INITIATED",
+                    "created": False,
+                }
+            ),
+        )
+        turn = _stub_estelle_turn(monkeypatch)
+        post = MagicMock(return_value={"ok": True, "ts": "9.9"})
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-1668-known",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U1",
+                    "channel": "C1",
+                    "ts": "1.0",
+                    "text": "hi",
+                },
+            },
+        )
+        assert out["accepted"] is True
+        assert out["recognition_post"]["ok"] is True
+        assert CONTACT_CONFIG["known_recognition_reply_text"] in post.call_args_list[0].kwargs["text"]
+        turn.assert_called_once()
+        assert out["estelle_turn"]["ok"] is True
+        assert out["estelle_turn"].get("skipped") is not True
+
+    def test_unknown_recognition_skips_estelle(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": None,
+                    "state": None,
+                    "created": False,
+                    "slack_username": "stranger",
+                    "slack_display_name": "Stranger",
+                }
+            ),
+        )
+        turn = _stub_estelle_turn(monkeypatch)
+        paste = MagicMock(return_value={"applied": False})
+        monkeypatch.setattr(contact_mod, "try_meteorite_apply_paste_from_slack", paste)
+        post = MagicMock(return_value={"ok": True, "ts": "8.8"})
+        monkeypatch.setattr(contact_mod, "contact_post_message", post)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-1668-unk",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U-new",
+                    "channel": "C1",
+                    "ts": "2.0",
+                    "text": "hi",
+                },
+            },
+        )
+        assert out["accepted"] is True
+        assert out["candidate_created"] is False
+        assert out["astral_candidate_id"] is None
+        assert out["recognition_post"]["ok"] is True
+        assert CONTACT_CONFIG["unknown_recognition_reply_text"] in post.call_args.kwargs["text"]
+        assert out["estelle_turn"] == {
+            "ok": True,
+            "outcome": "unrecognized",
+            "skipped": True,
+        }
+        turn.assert_not_called()
+        paste.assert_not_called()
+        assert "hear_ack_post" not in out

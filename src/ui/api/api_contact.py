@@ -10,6 +10,7 @@ from src.core.contact import (
     contact_is_production_deploy,
     contact_skills,
     list_estelle_activity,
+    list_unbound_slack_users,
     run_contact_skill,
     set_slack_debug_enabled,
     set_slack_listen_enabled,
@@ -120,6 +121,25 @@ def contact_get_estelle_activity():
         logger.exception(
             "%s | api %s\n  %s: %s\n  Returning 502",
             "-", "/api/admin/contact/estelle_activity", type(e).__name__, e,
+        )
+        return jsonify({"error": str(e)}), 502
+    return jsonify({"users": users}), 200
+
+
+@contact_bp.route("/unbound_slack_users", methods=["GET"])
+@require_admin
+def contact_get_unbound_slack_users():
+    # Idempotent GET — no progress info line (stat.logging.info.api).
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        users = list_unbound_slack_users(debug=debug)
+    except Exception as e:
+        logger.exception(
+            "- | api /api/admin/contact/unbound_slack_users failed: %s: %s\n"
+            "  Unbound list was not returned",
+            type(e).__name__,
+            e,
         )
         return jsonify({"error": str(e)}), 502
     return jsonify({"users": users}), 200

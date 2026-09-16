@@ -83,13 +83,13 @@ ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted paths via `sav
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
 
-`resolve_slack_user`: lookup via `get_candidate_id_for_query`; create PROSPECT only when `estelle_in_play=True` via `initiate_prospect_candidate(..., first=, last=)` (names from `users.info`; display_name fills `first` when empty); `handle_slack_event` accept wires resolve. Candidate: **`docs/test-bible/core/candidate.md`**. External: **`docs/test-bible/external/slack.md`**. Config: **`docs/test-bible/utils/config.md`**.
+`resolve_slack_user`: lookup via `get_candidate_id_for_query`; **AST-1668** retired create-on-miss (`initiate_prospect_candidate` removed from Contact) — miss + `estelle_in_play` fetches profile only (`created=False`, no PROSPECT); `handle_slack_event` accept wires resolve. Candidate: **`docs/test-bible/core/candidate.md`**. External: **`docs/test-bible/external/slack.md`**. Config: **`docs/test-bible/utils/config.md`**. Sibling unbound/recognition: **§ AST-1668** below.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Resolve hit/miss/create; Events accept wire | `src/core/contact.py` | **`TestAst1068ResolveSlackUser`** |
+| Resolve hit/miss lookup-only; Events accept wire | `src/core/contact.py` | **`TestAst1068ResolveSlackUser`** (revised **AST-1668**) |
 
-**Broken / obsolete:** **`TestAst1069ContactSlackIngress`** accept-path — revised to stub `resolve_slack_user`. Create asserts that expected `candidate_data.profile` — revised for AST-1014 `first=`/`last=` kwargs.
+**Broken / obsolete:** **`TestAst1069ContactSlackIngress`** accept-path — revised to stub `resolve_slack_user`. Create-on-miss asserts — **revised AST-1668** to lookup-only. Profile kwargs — revised for AST-1014 `first=`/`last=` kwargs.
 
 **Integration:** no existing scenario asserts Slack resolve / PROSPECT create — no revision.
 
@@ -349,3 +349,46 @@ Contact `resolve_pinned_base_resume` (ownership + `get_operative_base_resume`); 
   -q
 ```
 
+
+---
+
+### AST-1668 · AST-1636
+
+**Parent:** [AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve`.
+
+`list_unbound_slack_users` (posters minus `get_candidate_id_for_query` hits); `resolve_slack_user` lookup-only (no PROSPECT mint); `handle_slack_event` known/unknown recognition posts + unknown skips Estelle/paste/hear-ack. Config keys: **`docs/test-bible/utils/config.md`** § AST-1668. Admin GET: **`docs/test-bible/ui/api/api_contact.md`** § AST-1668. External posters: **`docs/test-bible/external/slack.md`** § AST-1667.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unbound filter + recognition / unknown skip | `src/core/contact.py` | **`TestAst1668UnboundAndRecognition`** |
+| Revised resolve lookup-only | `src/core/contact.py` | **`TestAst1068ResolveSlackUser`** |
+| Revised hear-ack vs recognition | `src/core/contact.py` | **`TestAst1101ChannelHearEvidence`** |
+
+**Broken / obsolete this pass:** AST-1068 create-on-miss tests; AST-1101 hear-ack `post.assert_called_once` / `assert_not_called` (recognition now posts first).
+
+**Integration:** no existing scenario exercises Contact unbound / recognition — no revision; do not invent.
+
+## QA test manifest
+
+1. Core unbound + recognition: `tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition`
+2. Revised resolve: `tests/component/core/test_contact.py::TestAst1068ResolveSlackUser`
+3. Revised hear-ack: `tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence`
+4. Config recognition keys: `tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig`
+5. Admin GET unbound: `tests/component/ui/api/test_api_contact.py::TestAst1668UnboundSlackUsersApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition \
+  tests/component/core/test_contact.py::TestAst1068ResolveSlackUser \
+  tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence \
+  tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig \
+  tests/component/ui/api/test_api_contact.py::TestAst1668UnboundSlackUsersApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/contact.md` — *(filled after publish)*
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_contact.md` — *(filled after publish)*
