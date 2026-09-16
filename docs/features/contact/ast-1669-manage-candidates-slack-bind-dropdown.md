@@ -156,18 +156,5 @@ context_tokens≈54000
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | `d240d8ae` | Manage Candidates Slack bind dropdown |
-
-## Review (build stub)
-
-| Field | Value |
-|-------|-------|
-| Status | Code Complete |
-| Publish ref | `origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown` |
-| Tip | `d240d8ae` |
-| Branch | `sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown` |
-
-| Stage | Commit | Summary |
-|-------|--------|---------|
 | 1 | `d240d8ae` | Manage Candidates Slack bind dropdown on add/edit |
 
