@@ -50,7 +50,7 @@ Meteorite-table `electronic_contact` column (CREATE + ALTER ensure), `_UPDATE_ME
 | --- | --- | --- |
 | Schema CREATE + ALTER + allowlist + insert bind | `src/data/database.py` | **`TestAst1689ElectronicContactColumn`** |
 
-**Broken / obsolete this pass (return):** dropped AST-1560 prior scrape/land nodes from the sibling **`docs/test-bible/core/meteorite.md`** § AST-1689 manifest (retired info-string asserts; not this ticket’s AC). Column coverage unchanged.
+**Broken / obsolete this pass:** none — additive column on AST-1557 table.
 
 **Integration:** none — no existing scenario asserts meteorite contact column; do not invent.
 
