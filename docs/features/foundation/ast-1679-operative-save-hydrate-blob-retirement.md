@@ -294,3 +294,39 @@ Confirm Chuckles estimate: 5 — agree
 - Parent/child AC7 (no backfill; legacy until re-save) → Stage 1 §6 miss path
 - Sibling freeze / catalog ownership → Ada AST-1678 on tip; this ticket does not touch `ARTIFACT_CONFIG`
 - Job drafting interfaces → Katherine AST-1680 (out of scope; hydrate/resolve honesty is the handoff)
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1679
+**Overall:** APPROVED
+**Corpus:** fc0c368e59 · ticket ids partially outside clerk roster (draft patterns + statute paths resolved from worktree)
+**Publish ref:** sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement @ 2126fc8ddaca32ab9ad2054d9bb92820014da98b
+
+## Canon scores
+
+patt.artifact.write-operative | A | | Stage 1 §3 str-path validate+normalize; AST-1635 identical no-op; save_artifact retire+insert
+patt.artifact.read-current | A | | Stage 1 §6 hydrate via get_candidate_current; miss→legacy blob per AC7 (documented deviation from strip-on-miss)
+patt.artifact.manage-catalog | A | | Stage 1 §2+5 dict-path strip + Stage 2 §5-6 API pop; blob retirement for resume_structure only; catalog from AST-1678
+astral.standards.in-scope-only | A | | Three scoped files only; explicit out-of-scope fence for config/React/consult/tracker/database
+stat.logging.info.entity | A | | Stage 1 §4 mirrors existing context-leaf entity info chain on successful save only
+stat.logging.info.api | A | | Stage 2 §7 api info on structure PUT completion; matches writing_preferences pattern
+stat.logging.error | A | | Stage 2 §8 confirm existing logger.exception on update_candidate_data (type+exc present on tip)
+
+## Traceability
+
+AC3→Stage 1 §§3-4 + Stage 2 §§5-6; AC4→Stage 1 §§6-7 + Stage 2 §§3-4; AC5→Stage 1 §§2+5 + Stage 2 §§5-6; AC6→Stage 1 §8 + Stage 2 §1; AC7→Stage 1 §6 miss path | Parent functional scope §§2-5 + AC3-8 via child slice; parent AC1-2 N/A (AST-1678); parent AC9 N/A (config); job drafting AC7 parent → AST-1680
+
+## Findings
+
+### acceptable — plan placement nuance
+- **Location:** Stage 2 §5 snippet vs §6 placement note
+- **Finding:** Step 5 snippet initializes `resume_structure_body` inside the `arts` block; step 6 requires outer init before `if body:` for structure-only PUT when library `body` empties after pop.
+- **Recommendation:** No plan revision required — step 6 "Required behavior" is explicit; engineer follows §6 over the inline snippet scope.
+
+### acceptable — canon infrastructure
+- **Location:** canon_clerk roster
+- **Finding:** `patt.artifact.*` and `astral.standards.in-scope-only` not in active clerk roster; logging statutes are. Bodies read from worktree paths.
+- **Recommendation:** No plan change; scores based on resolved directive text.
+
+context_tokens≈42000
