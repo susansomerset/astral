@@ -225,3 +225,42 @@ Confirm Chuckles estimate: 3 — agree
 - Parent/child AC6 (no backfill; legacy until re-save) → Stage 1 §6 miss path
 - Editor reload (parent AC6 for UI) → Stage 1 §§6–7 + Stage 2 §2 (Katherine UI unchanged this ticket)
 - Sibling freeze / catalog ownership → Ada AST-1664 on ftr (merged); this ticket does not touch `ARTIFACT_CONFIG`
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1665
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement` @ `d9f6408a8f5f4b035ab01f384e1612db2ed89095`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC4→S1§§2-5+S2§§3-4+verify; AC5→S1§§2+5+S2§§3-4; AC6→S1§6 miss-path — parent editor-reload AC6 via hydrate (S1§§6-7,S2§2); UI chrome N/A (AST-1666); parent AC1–3/AC8–9 N/A (catalog AST-1664 / UI #3).
+
+## Findings
+
+None.
+
+### R6 — Definition fidelity (checklist)
+
+- Scope limited to `candidate.py` + `api_candidate.py`; explicit scope gate; build precondition on AST-1664 catalog key (satisfied on tip).
+- Faithfully mirrors AST-1659 / AST-1652 operative path: extends `_CONTEXT_OPERATIVE_LEAVES` with `writing_preferences`; reuses shared `plain_text` str-path + AST-1635 identical no-op; `hydrate_operative_writing_preferences_for_response` parallels Ideal Day / Strengths (miss→legacy blob / hit→overlay); dict-path strip via frozenset; PUT pop + operative save + GET hydrate follow existing Ideal Day intercept pattern.
+- UAT fitness cites AC4–AC6, names correct outcome vs symptom-only fixes, rejects library-merge-only / config / React / backfill wrong paths.
+- Entity/api info logging matches shipped Ideal Day format; error handler left as single `logger.exception` at route (confirm-only, no edit).
+- Self-assessment `Confirm Chuckles estimate: 3 — agree` is honest for two-file Strengths-pattern wiring.
+- Plan Discuss rounds completed: **0**.
+
+context_tokens≈58000
