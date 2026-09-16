@@ -274,3 +274,54 @@ None.
 - Plan Discuss rounds completed: **0**.
 
 context_tokens≈58000
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1665
+**Publish ref:** `7ae6c3d918cd314180e06553ac925f33151d7ab1`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Publish-ref three-dot diff vs ticket scope gate.** `origin/dev...origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement` is 11 files / ~811 lines; AST-1665 engineer commits (`774d2e77`, `1781c083`) touch only `src/core/candidate.py` and `src/ui/api/api_candidate.py` (+62 lines product). The wider diff carries prerequisite **AST-1664** catalog work (`src/utils/config.py`, `docs/features/foundation/ast-1664-*.md`) via `merge(ftr): union writing_preferences catalog with ideal_day tip`, plus Betty `merge-tests` and `2abd0400` stripping parallel-epic AST-1659 bible pollution. Expected epic stacking on a dependent child — not engineer scope creep — but Chuckles should note at merge-child that the three-dot diff is wider than the explicit two-file gate.
+
+### advisory
+
+- **Parallel-epic bible hygiene:** `2abd0400 test(AST-1661): strip AST-1659 Ideal Day pollution from publish tip` and net bible deletions (e.g. AST-1655 deal_breakers block removed) reflect tip-alignment cleanup on a union branch, not AST-1665 product logic.
+
+## What's solid
+
+- Stage 1 + 2 deliver the AST-1659 mirror faithfully: `_WRITING_PREFERENCES_ARTIFACT_KEY`; `writing_preferences` added to `_CONTEXT_OPERATIVE_LEAVES` (single frozenset strip site); `hydrate_operative_writing_preferences_for_response` (miss → legacy blob untouched / hit → overlay); `get_candidate` + `get_candidate_detail` hydrate; PUT pop + operative `save_candidate_data("candidate.context.writing_preferences", …)`; shared `plain_text` str-path validation + AST-1635 identical no-op (entity info only after real `save_artifact`, not on no-op return).
+- Blob retirement (AC5/AC6): dict-path strips `writing_preferences` from library merge; operative row is SoT; legacy blob preserved on hydrate miss.
+- Logging matches shipped Ideal Day / Strengths pipes: entity `writing_preferences artifact saved` chain; api info on `writing_preferences_saved`; existing `logger.exception` with `type(e).__name__` + `e` unchanged at PUT handler.
+- Betty coverage (`TestAst1665WritingPreferencesOperativeSaveHydrate`, `TestAst1665WritingPreferencesOperativeApi`) exercises plain_text reject, save/retire, identical no-op, dict strip, hydrate hit/miss, PUT round-trip, sibling `backstory` library-merge, GET hydrate — integration correctly none.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-1665): Radia review — clean`, post slim upshot, → **Review Posted** → datt **PROCEED** to User Testing.
+
+context_tokens≈62000
