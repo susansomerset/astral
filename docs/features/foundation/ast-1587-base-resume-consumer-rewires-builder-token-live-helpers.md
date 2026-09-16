@@ -434,3 +434,66 @@ Scope = this child’s `## Scope` (copied from AST-1681 Component/Technical scop
 - `TOKEN_SOURCES` / `ARTIFACT_CONFIG` membership unchanged.
 - Contact read-operative **pin** behavior for non-token consumers unchanged (this bug’s to-be is **current**, not pin).
 - Engineer must not create or edit `tests/` or `docs/test-bible/**`.
+
+## Radia review-fix — AST-1682
+
+[code-rubric]
+**Ticket:** AST-1682
+**Publish ref:** `sub/AST-1681/AST-1682-base-resume-token-reads-current` @ `f40d9e502690d8fa441da69c24e9200061a5efe5`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+**Parent shape:** Orphaned mini-parent AST-1681 — Chuckles merge target is `origin/dev` (finish-up-style), not `merge-child`/`prep-uat`.
+
+**Diff base:** `origin/ftr/AST-1681-base-resume-does-not-read-current-artifact...origin/sub/AST-1681/AST-1682-base-resume-token-reads-current` (3 files: plan-fix doc append, `src/core/agent.py`, `src/core/candidate.py`).
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| patt.artifact.read-current | A | | index-as-cid path loads `build_candidate_token_view` → `format_base_resume_for_token` current-read; no blob fallback introduced |
+| patt.artifact.write-operative | X | | no write paths touched |
+| astral.standards.debug-contract-gated | X | | no debug contract changes |
+| astral.standards.in-scope-only | A | | product footprint = `agent.py` + `candidate.py` only, matching plan-fix steps 1–2; `config.py` audit-only (no edit) |
+| astral.layers.import-direction | A | | existing lazy `candidate` import inside `_token_view_for_do_task`; no new cross-layer violations |
+
+## Column diff vs plan stage
+
+no plan-stage scores attached (fix-board `[board-joan] CANON: OK` only; no `validate-plan` artifact on AST-1682 bug section)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro]** — not on AST-1682 publish ref (board `TESTS: REVISE` routed repro to sibling **AST-1683** @ Tests Ready). Sibling repro on `origin/sub/AST-1681/AST-1683-cover-contact-base-resume-current-read` @ `af453c56`: **OK** — `TestAst1683ContactBaseResumeCurrentRead::test_do_task_index_cid_ctx_none_resolves_base_resume` exercises Contact Estelle shape (`library_blob` without `_astral_candidate_id`, `index=cid`, `ctx=None`), registers operative body, asserts resolved prompt contains operative summary text and `!= "XY"` (pre-fix blank). Concrete To-be pinning; would fail pre-fix (`is_candidate_token_view` True on bare `contact` key).
+
+**## What must still hold — OK**
+
+1. **No blob fallback / miss→empty** — `format_base_resume_for_token` unchanged (current-read only via `candidate_id_for_current_read`); `is_candidate_token_view` now requires `_astral_candidate_id` key so raw library blobs are not mistaken for finished views; index recovery only when `get_candidate(index)` hits, else fall-through unchanged.
+2. **AST-607 JSON serialize** — unchanged `ingest_legacy_label_content_base_resume` + `filter_base_resume_to_structure` path.
+3. **TOKEN_SOURCES / ARTIFACT_CONFIG** — `config.py` untouched; `resume_sections_json` → `format_base_resume_for_token` branch intact.
+4. **Contact pin** — `contact.py` untouched.
+5. **Engineer test-tree ban on AST-1682** — no `tests/` or test-bible edits on this publish ref (repro correctly on AST-1683 sibling).
+
+## Findings
+
+None (no fix-now, discuss, or advisory items on AST-1682 product diff).
+
+## What's solid
+
+- Plan-fix steps 1–2 delivered exactly: `is_candidate_token_view` tightened; `_token_view_for_do_task` accepts `index`, inserts Contact-style `get_candidate(index)` → `build_candidate_token_view` before the token-view shortcut.
+- Ordering respects plan: arbitrary non-candidate indexes fall through on `get_candidate` miss (no false candidate binding).
+- `do_task` call site threads `index=index` — single integration point.
+
+## Chuckles branching
+
+| Gate | Action |
+|------|--------|
+| **PROCEED** + orphaned parent | → **Review Posted** → skip `resolve-child` → merge `sub/AST-1681/AST-1682-base-resume-token-reads-current` straight to **`origin/dev`** |
+| AST-1683 | separate lane — repro test OK qualitatively; still **Tests Ready** on its own branch |
+
+```
+[code-rubric] PROCEED (Commit: f40d9e50) cid threading clean
+```
