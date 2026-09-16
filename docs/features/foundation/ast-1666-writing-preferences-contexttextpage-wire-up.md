@@ -91,6 +91,15 @@ Confirm Chuckles estimate: 2 — agree
 - Sibling freeze / other context pages → scope gate; no sibling page edits
 - Parent AC1–5 / AC8 → N/A (AST-1664 / AST-1665)
 
+## Review (build stub)
+
+**Built:**  @ .
+
+**Stages delivered:**
+- Stage 1: Writing Preferences  bodyShape — .
+
+**Betty:** at **Code Complete** — cover Writing Preferences ContextTextPage render + hydrated load, save PUT  + textarea reload,  empty-save gate (Save disabled, no PUT), and source assert for  / no ;  /  untouched.
+
 ## Joan validate
 
 [plan-rubric]
