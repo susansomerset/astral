@@ -3917,6 +3917,7 @@ Config-only: register `candidate.context.backstory` in `ARTIFACT_CONFIG` (`body_
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 
+
 ### AST-1664 · AST-1645
 
 **Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token`.
@@ -3954,4 +3955,3 @@ Config-only: register `candidate.context.writing_preferences` in `ARTIFACT_CONFI
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
-

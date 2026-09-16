@@ -1831,14 +1831,15 @@ class TestAst1652PrioritiesOperativeApi:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
         db.save_candidate("c1652c", state="NEW_CANDIDATE", candidate_data={})
+        # Union tip: deal_breakers operative — use backstory as library sibling.
         resp = candidate_client.put(
             "/api/candidates/c1652c/data",
-            json={"context": {"priorities": "op", "deal_breakers": "ship"}},
+            json={"context": {"priorities": "op", "backstory": "ship"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
         raw = db.get_candidate("c1652c")["candidate_data"]
-        assert raw.get("context", {}).get("deal_breakers") == "ship"
+        assert raw.get("context", {}).get("backstory") == "ship"
         assert "priorities" not in (raw.get("context") or {})
         row = db.get_current_artifact("candidate", "c1652c", "priorities")
         assert row["artifact_data"] == "op"
@@ -2200,19 +2201,23 @@ class TestAst1655DealBreakersOperativeApi:
         assert db.get_current_artifact("candidate", "c1655e", "deal_breakers") is None
 
 
-_IDEAL_DAY_ARTIFACT_KEY = "candidate.context.ideal_day"
+_WRITING_PREFERENCES_ARTIFACT_KEY = "candidate.context.writing_preferences"
 
 
 # Branches: PUT pop+operative; retire; sibling library-merge; GET hydrate; empty → 400.
-class TestAst1659IdealDayOperativeApi:
-    """AST-1659: PUT intercept Ideal Day + GET hydrate overlay."""
+@pytest.mark.skipif(
+    "candidate.context.writing_preferences" not in ARTIFACT_CONFIG,
+    reason="AST-1665 product not on this tip (parallel epic; skip until writing_preferences catalog lands)",
+)
+class TestAst1665WritingPreferencesOperativeApi:
+    """AST-1665: PUT intercept Writing Preferences + GET hydrate overlay."""
 
     @staticmethod
     def _patch_put_extras(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
 
-    def test_put_ideal_day_writes_current_artifact(
+    def test_put_writing_preferences_writes_current_artifact(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
@@ -2221,20 +2226,23 @@ class TestAst1659IdealDayOperativeApi:
     ) -> None:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
-        db.save_candidate("c1659", state="NEW_CANDIDATE", candidate_data={})
+        db.save_candidate("c1665", state="NEW_CANDIDATE", candidate_data={})
         resp = candidate_client.put(
-            "/api/candidates/c1659/data",
-            json={"context": {"ideal_day": "alpha ideal day"}},
+            "/api/candidates/c1665/data",
+            json={"context": {"writing_preferences": "NO EM DASHES"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
-        row = db.get_current_artifact("candidate", "c1659", "ideal_day")
+        row = db.get_current_artifact("candidate", "c1665", "writing_preferences")
         assert row is not None
         assert row["current"] == 1
-        assert row["artifact_data"] == "alpha ideal day"
-        raw = db.get_candidate("c1659")["candidate_data"]
-        assert "ideal_day" not in (raw.get("context") or {})
-        assert resp.get_json()["candidate_data"]["context"]["ideal_day"] == "alpha ideal day"
+        assert row["artifact_data"] == "NO EM DASHES"
+        raw = db.get_candidate("c1665")["candidate_data"]
+        assert "writing_preferences" not in (raw.get("context") or {})
+        assert (
+            resp.get_json()["candidate_data"]["context"]["writing_preferences"]
+            == "NO EM DASHES"
+        )
 
     def test_second_put_retires_prior(
         self,
@@ -2245,32 +2253,32 @@ class TestAst1659IdealDayOperativeApi:
     ) -> None:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
-        db.save_candidate("c1659b", state="NEW_CANDIDATE", candidate_data={})
+        db.save_candidate("c1665b", state="NEW_CANDIDATE", candidate_data={})
         r1 = candidate_client.put(
-            "/api/candidates/c1659b/data",
-            json={"context": {"ideal_day": "v1"}},
+            "/api/candidates/c1665b/data",
+            json={"context": {"writing_preferences": "v1"}},
             headers=auth_headers,
         )
         assert r1.status_code == 200, r1.get_json()
-        uid1 = db.get_current_artifact("candidate", "c1659b", "ideal_day")[
+        uid1 = db.get_current_artifact("candidate", "c1665b", "writing_preferences")[
             "artifact_uuid"
         ]
         r2 = candidate_client.put(
-            "/api/candidates/c1659b/data",
-            json={"context": {"ideal_day": "v2"}},
+            "/api/candidates/c1665b/data",
+            json={"context": {"writing_preferences": "v2"}},
             headers=auth_headers,
         )
         assert r2.status_code == 200, r2.get_json()
-        current = db.get_current_artifact("candidate", "c1659b", "ideal_day")
+        current = db.get_current_artifact("candidate", "c1665b", "writing_preferences")
         assert current["artifact_uuid"] != uid1
         assert current["artifact_data"] == "v2"
         history = db.list_artifacts(
-            "candidate", "c1659b", "ideal_day", current_only=False
+            "candidate", "c1665b", "writing_preferences", current_only=False
         )
         assert len(history) == 2
         assert history[0]["current"] == 0
 
-    def test_put_strips_ideal_day_keeps_sibling_context(
+    def test_put_strips_writing_preferences_keeps_sibling_context(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
@@ -2279,21 +2287,21 @@ class TestAst1659IdealDayOperativeApi:
     ) -> None:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
-        db.save_candidate("c1659c", state="NEW_CANDIDATE", candidate_data={})
-        # priorities is operative after merge(dev) — use backstory as library sibling.
+        db.save_candidate("c1665c", state="NEW_CANDIDATE", candidate_data={})
+        # backstory stays library-merge on this tip (not catalogued).
         resp = candidate_client.put(
-            "/api/candidates/c1659c/data",
-            json={"context": {"ideal_day": "op", "backstory": "ship"}},
+            "/api/candidates/c1665c/data",
+            json={"context": {"writing_preferences": "op", "backstory": "ship"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
-        raw = db.get_candidate("c1659c")["candidate_data"]
+        raw = db.get_candidate("c1665c")["candidate_data"]
         assert raw.get("context", {}).get("backstory") == "ship"
-        assert "ideal_day" not in (raw.get("context") or {})
-        row = db.get_current_artifact("candidate", "c1659c", "ideal_day")
+        assert "writing_preferences" not in (raw.get("context") or {})
+        row = db.get_current_artifact("candidate", "c1665c", "writing_preferences")
         assert row["artifact_data"] == "op"
 
-    def test_get_detail_hydrates_ideal_day_leaves_legacy_on_miss(
+    def test_get_detail_hydrates_writing_preferences_leaves_legacy_on_miss(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
@@ -2312,26 +2320,28 @@ class TestAst1659IdealDayOperativeApi:
         )
         db = sqlite_in_memory
         db.save_candidate(
-            "c1659d",
+            "c1665d",
             state="NEW_CANDIDATE",
-            candidate_data={"context": {"ideal_day": "legacy blob"}},
+            candidate_data={"context": {"writing_preferences": "legacy blob"}},
         )
-        miss = candidate_client.get("/api/candidates/c1659d", headers=auth_headers)
+        miss = candidate_client.get("/api/candidates/c1665d", headers=auth_headers)
         assert miss.status_code == 200
         assert (
-            miss.get_json()["candidate_data"]["context"]["ideal_day"] == "legacy blob"
+            miss.get_json()["candidate_data"]["context"]["writing_preferences"]
+            == "legacy blob"
         )
 
         core_candidate.save_candidate_data(
-            "c1659d", _IDEAL_DAY_ARTIFACT_KEY, "table current"
+            "c1665d", _WRITING_PREFERENCES_ARTIFACT_KEY, "table current"
         )
-        hit = candidate_client.get("/api/candidates/c1659d", headers=auth_headers)
+        hit = candidate_client.get("/api/candidates/c1665d", headers=auth_headers)
         assert hit.status_code == 200
         assert (
-            hit.get_json()["candidate_data"]["context"]["ideal_day"] == "table current"
+            hit.get_json()["candidate_data"]["context"]["writing_preferences"]
+            == "table current"
         )
 
-    def test_put_empty_ideal_day_returns_400(
+    def test_put_empty_writing_preferences_returns_400(
         self,
         candidate_client: FlaskClient,
         auth_headers: dict[str, str],
@@ -2340,12 +2350,15 @@ class TestAst1659IdealDayOperativeApi:
     ) -> None:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
-        db.save_candidate("c1659e", state="NEW_CANDIDATE", candidate_data={})
+        db.save_candidate("c1665e", state="NEW_CANDIDATE", candidate_data={})
         resp = candidate_client.put(
-            "/api/candidates/c1659e/data",
-            json={"context": {"ideal_day": "   "}},
+            "/api/candidates/c1665e/data",
+            json={"context": {"writing_preferences": "   "}},
             headers=auth_headers,
         )
         assert resp.status_code == 400
         assert "plain_text" in resp.get_json()["error"]
-        assert db.get_current_artifact("candidate", "c1659e", "ideal_day") is None
+        assert (
+            db.get_current_artifact("candidate", "c1665e", "writing_preferences")
+            is None
+        )
