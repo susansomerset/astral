@@ -124,6 +124,7 @@ def _craft_resume_base_payload(
 
 
 _PILOT_ARTIFACT_KEY = "candidate.artifacts.base_resume"
+_RESUME_STRUCTURE_ARTIFACT_KEY = "candidate.artifacts.resume_structure"
 
 
 def _resume_content_blob(**overrides: Any) -> dict[str, Any]:
@@ -6636,4 +6637,153 @@ class TestAst1665WritingPreferencesOperativeSaveHydrate:
             row["candidate_data"]["context"]["writing_preferences"]
             == "from get_candidate"
         )
+
+
+class TestAst1679ResumeStructureOperativeSaveHydrate:
+    """AST-1679: resume_structure operative validate/save/hydrate + artifacts library gate."""
+
+    def test_resume_structure_rejects_empty_and_non_dict(self) -> None:
+        with pytest.raises(ValueError, match="resume_structure body must be a non-empty dict"):
+            candidate_mod.save_candidate_data("c1", _RESUME_STRUCTURE_ARTIFACT_KEY, {})
+        with pytest.raises(ValueError, match="resume_structure body must be a non-empty dict"):
+            candidate_mod.save_candidate_data("c1", _RESUME_STRUCTURE_ARTIFACT_KEY, "nope")
+
+    def test_operative_save_writes_current_and_skips_library_blob(self, seeded_db) -> None:
+        db = seeded_db
+        structure = candidate_mod.default_resume_structure()
+        structure["accent_color"] = "#1A1A2E"
+        uid = candidate_mod.save_candidate_data(
+            "cand-1", _RESUME_STRUCTURE_ARTIFACT_KEY, structure
+        )
+        assert uid
+        row = db.get_current_artifact("candidate", "cand-1", "resume_structure")
+        assert row is not None
+        assert row["artifact_uuid"] == uid
+        assert row["current"] == 1
+        assert isinstance(row["artifact_data"], dict)
+        assert "sections" in row["artifact_data"]
+        assert row["artifact_data"]["accent_color"] == "#1A1A2E"
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        assert "resume_structure" not in (cd.get("artifacts") or {})
+
+    def test_second_operative_save_retires_prior(self, seeded_db) -> None:
+        db = seeded_db
+        s1 = candidate_mod.default_resume_structure()
+        s1["accent_color"] = "#1A1A2E"
+        s2 = candidate_mod.default_resume_structure()
+        s2["accent_color"] = "#16213E"
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _RESUME_STRUCTURE_ARTIFACT_KEY, s1
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _RESUME_STRUCTURE_ARTIFACT_KEY, s2
+        )
+        assert uid1 != uid2
+        current = db.get_current_artifact("candidate", "cand-1", "resume_structure")
+        assert current["artifact_uuid"] == uid2
+        assert current["artifact_data"]["accent_color"] == "#16213E"
+        history = db.list_artifacts(
+            "candidate", "cand-1", "resume_structure", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_identical_body_keeps_current_uuid(self, seeded_db) -> None:
+        # Shared AST-1635 identical no-op on str-path.
+        db = seeded_db
+        structure = candidate_mod.default_resume_structure()
+        structure["accent_color"] = "#1A1A2E"
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _RESUME_STRUCTURE_ARTIFACT_KEY, structure
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _RESUME_STRUCTURE_ARTIFACT_KEY, structure
+        )
+        assert uid2 == uid1
+        history = db.list_artifacts(
+            "candidate", "cand-1", "resume_structure", current_only=False
+        )
+        assert len(history) == 1
+        assert history[0]["current"] == 1
+
+    def test_dict_path_strips_resume_structure_keeps_siblings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        spy = _spy_save_artifact(monkeypatch)
+        structure = candidate_mod.default_resume_structure()
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "artifacts": {
+                    "resume_structure": structure,
+                    "notes": "keep-me",
+                }
+            },
+        )
+        assert spy == []
+        arts = save.call_args.kwargs["candidate_data"]["artifacts"]
+        assert arts == {"notes": "keep-me"}
+        assert "resume_structure" not in arts
+
+    def test_dict_path_structure_only_skips_empty_library_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        out = candidate_mod.save_candidate_data(
+            "c1",
+            {"artifacts": {"resume_structure": candidate_mod.default_resume_structure()}},
+        )
+        assert out is None
+        save.assert_not_called()
+
+    def test_hydrate_overlays_hit_leaves_legacy_on_miss(self, seeded_db) -> None:
+        current = candidate_mod.default_resume_structure()
+        current["accent_color"] = "#0F3460"
+        candidate_mod.save_candidate_data(
+            "cand-1", _RESUME_STRUCTURE_ARTIFACT_KEY, current
+        )
+        stale = candidate_mod.default_resume_structure()
+        stale["accent_color"] = "#111111"
+        cd: dict[str, Any] = {"artifacts": {"resume_structure": stale}}
+        candidate_mod.hydrate_operative_resume_structure_for_response("cand-1", cd)
+        assert cd["artifacts"]["resume_structure"]["accent_color"] == "#0F3460"
+
+        legacy_struct = candidate_mod.default_resume_structure()
+        legacy_struct["accent_color"] = "#2B2B2B"
+        legacy: dict[str, Any] = {"artifacts": {"resume_structure": legacy_struct}}
+        # Miss must not strip legacy blob (unlike base_resume hydrate).
+        candidate_mod.hydrate_operative_resume_structure_for_response("missing-id", legacy)
+        assert legacy["artifacts"]["resume_structure"]["accent_color"] == "#2B2B2B"
+
+    def test_get_candidate_hydrates_resume_structure(self, seeded_db) -> None:
+        structure = candidate_mod.default_resume_structure()
+        structure["accent_color"] = "#1E3A5F"
+        candidate_mod.save_candidate_data(
+            "cand-1", _RESUME_STRUCTURE_ARTIFACT_KEY, structure
+        )
+        row = candidate_mod.get_candidate("cand-1")
+        assert (
+            row["candidate_data"]["artifacts"]["resume_structure"]["accent_color"]
+            == "#1E3A5F"
+        )
+
+    def test_craft_and_parse_land_structure_operatively(self) -> None:
+        # Source gate — dict-path structure land retired (AC6).
+        parse_src = inspect.getsource(candidate_mod.parse_candidate_resume)
+        assert "_RESUME_STRUCTURE_ARTIFACT_KEY" in parse_src
+        craft_src = inspect.getsource(candidate_mod.run_candidate_artifact_generation)
+        assert "_RESUME_STRUCTURE_ARTIFACT_KEY" in craft_src
 

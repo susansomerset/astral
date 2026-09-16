@@ -1385,3 +1385,24 @@ Shared assembly prepends `[astral-<id>]` as the first bytes of the first system 
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix:docs/test-bible/core/agent.md | shasum`
 
+### AST-1679 · AST-1677
+
+**Parent:** [AST-1677](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
+
+`do_task` persist_candidate_craft_hops (inline): when `artifact_key` set, land structure via `candidate.artifacts.resume_structure` then body via catalog key (no library dict-path for structure). Primary candidate: **`docs/test-bible/core/candidate.md`** § AST-1679.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft-persist dual operative keys | `src/core/agent.py` | revised **`TestAst1576CraftPersistOperative`** |
+| Source gate (catalog key, no library dict) | same | **`TestAst1679CraftPersistResumeStructureOperative`** |
+
+**Broken / obsolete:** AST-1576 expected a library dict-path save for structure — revised to operative str-path.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/agent.md` — *(filled after publish)*

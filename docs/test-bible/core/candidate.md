@@ -2156,3 +2156,47 @@ Operative `plain_text` validate on str-path (reuse); Writing Preferences `save_a
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1679 · AST-1677
+
+**Parent:** [AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
+
+Operative `resume_structure` validate via `normalize_resume_structure` on str-path; `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `artifacts.resume_structure` via `_ARTIFACTS_OPERATIVE_LEAVES`; `hydrate_operative_resume_structure_for_response` overlays current / leaves legacy blob on miss (AC7); `get_candidate` hydrates; craft/parse land via `_RESUME_STRUCTURE_ARTIFACT_KEY`. Catalog/shape: sibling **AST-1678**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1679. Agent craft-persist: **`docs/test-bible/core/agent.md`** § AST-1679.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| validate + save/retire + identical no-op + dict strip + hydrate + get_candidate + craft/parse source | `src/core/candidate.py` | **`TestAst1679ResumeStructureOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** AST-1576 craft-persist expected library dict-path for structure — revised to operative catalog key (agent bible).
+
+**Integration:** none — no existing scenario asserts resume_structure operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core resume_structure operative: `tests/component/core/test_candidate.py::TestAst1679ResumeStructureOperativeSaveHydrate`
+2. API PUT/GET resume_structure: `tests/component/ui/api/test_api_candidate.py::TestAst1679ResumeStructureOperativeApi`
+3. Revised craft-persist operative keys: `tests/component/core/test_agent.py::TestAst1576CraftPersistOperative`
+4. Agent source gate: `tests/component/core/test_agent.py::TestAst1679CraftPersistResumeStructureOperative`
+5. Revised leaf-only base_resume PUT (pilot + structure): `tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`
+6. Revised label ingest PUT (pilot + structure operative): `tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi::test_put_label_list_keeps_highlights_and_drops_prose_experience` + `test_put_title_keyed_dict_keeps_highlights_and_publications`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1679ResumeStructureOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1679ResumeStructureOperativeApi \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1679CraftPersistResumeStructureOperative \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi::test_put_label_list_keeps_highlights_and_drops_prose_experience \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi::test_put_title_keyed_dict_keeps_highlights_and_publications \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Product bug (hold Code Complete):** leaf-only `base_resume` PUT pops ingested `resume_structure` then empties `body`, so pilot `save_candidate_data(..., candidate.artifacts.base_resume, …)` (nested under `if body:`) never runs — AC6 body land broken. Fix: move pilot operative save outside `if body:` (same pattern as structure / context leaves). Manifest lines 5–6 + `TestAst1679ResumeStructureOperativeApi::test_leaf_only_base_resume_put_still_saves_pilot_and_structure` are red until that lands.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+- `docs/test-bible/core/agent.md` — *(filled after publish)*

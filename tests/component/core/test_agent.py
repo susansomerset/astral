@@ -7942,17 +7942,54 @@ class TestAst1576CraftPersistOperative:
                 "timesheet": {},
             }
         )
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "candidate_data": {
+                    "astral_candidate_id": "somerset",
+                    "contact": {"contact_email": "a@b.c"},
+                },
+            },
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.company_search_terms_joined_text",
+            lambda cid: "",
+        )
         self._stub_llm(monkeypatch, send)
         out = await agent_mod.do_task(
             "craft_resume_base",
             index="cand-1576",
-            ctx={ "astral_candidate_id": "somerset","persist_candidate_craft_hops": True},
+            ctx={
+                "astral_candidate_id": "somerset",
+                "candidate_data": {
+                    "astral_candidate_id": "somerset",
+                    "contact": {"contact_email": "a@b.c"},
+                },
+                "persist_candidate_craft_hops": True,
+            },
         )
         assert out.get("success") is True, out.get("error")
         helper.assert_not_called()
-        assert any(isinstance(c[0][1], str) and "candidate.artifacts.base_resume" in c[0] for c in saves)
-        assert any(isinstance(c[0][1], dict) for c in saves)
+        assert any(
+            isinstance(c[0][1], str) and c[0][1] == "candidate.artifacts.base_resume"
+            for c in saves
+        )
+        # AST-1679: structure also lands operatively (no library dict-path).
+        assert any(
+            isinstance(c[0][1], str) and c[0][1] == "candidate.artifacts.resume_structure"
+            for c in saves
+        )
 
+
+class TestAst1679CraftPersistResumeStructureOperative:
+    """AST-1679: persist_candidate_craft_hops lands structure via catalog key."""
+
+    def test_persist_craft_hops_source_uses_structure_catalog_key(self) -> None:
+        # Persist is inline in do_task (no named helper) — gate the catalog key there.
+        src = inspect.getsource(agent_mod.do_task)
+        assert "candidate.artifacts.resume_structure" in src
+        assert '{"artifacts":{"resume_structure"' not in src.replace(" ", "")
 
 
 class TestAst1264CandidateCraftSuccession:

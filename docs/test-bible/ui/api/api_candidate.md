@@ -419,3 +419,25 @@ PUT `/data` pops `context.writing_preferences` then `save_candidate_data(candida
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1679 · AST-1677
+
+**Parent:** [AST-1677](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
+
+PUT `/data` pops `artifacts.resume_structure` after normalize/ingest then `save_candidate_data(..., "candidate.artifacts.resume_structure", body)`; GET detail hydrates via `get_candidate` (miss leaves legacy blob). Leaf-only `base_resume` PUT must still operative-save pilot body **and** ingested structure (AC6). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1679.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT operative + retire + GET hydrate + leaf-only base_resume gate | `src/ui/api/api_candidate.py` | **`TestAst1679ResumeStructureOperativeApi`** |
+| Revised PUT structure asserts (operative, not library) | same | revised **`TestAst519ResumeStructureApi`**, **`TestAst1305LegacyLabelIngestApi`** |
+
+**Broken / obsolete:** AST-519 / AST-1305 asserts that expected `resume_structure` in the library blob or assumed pilot was `operative[0]` — retargeted to catalog key / pilot hit filter.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
