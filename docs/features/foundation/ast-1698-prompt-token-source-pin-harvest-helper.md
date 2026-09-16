@@ -214,3 +214,11 @@ AC1→S3§3-6; AC2→S1§2, S3§8; parent AC3–7 N/A (consult sibling persist +
 - Plan Discuss rounds completed: **0** (status Plan Ready).
 
 context_tokens≈52000
+
+## Review
+
+**Publish tip:** `265cb1ad3712316be918dcb259b9e528c7426d4f` on `sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper`
+
+- Stage 1: `list_artifact_keys_in_prompt_texts` in `src/utils/config.py`
+- Stage 2: `get_candidate_current_artifact_uuid` in `src/core/candidate.py`
+- Stage 3: `harvest_source_artifact_ids` + `do_task` attach `source_artifact_ids`
