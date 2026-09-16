@@ -156,3 +156,39 @@ assert TASK_CONFIG["find_company_website"]["trigger_state"] is None
 ## Estimate
 
 Confirm Chuckles estimate: 5 — revise to 3 because this is a single-file config/SSOT cutover of a known fetch-then-AI hop pattern (no schema migration, no new pattern, no product runners).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1672
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1670/AST-1672-discovered-resolve-registry-ssot` @ `2564468910143de059c710c8b479ee14beeb1011`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| stat.logging.debug | X | | config-only; no `logger.debug` call sites planned |
+
+## Traceability
+
+1→S1+S2.1 (`DISCOVERED` state + `land_state`) | 2→S2.2–S2.4+S3 asserts (`vet`/`vet_inflow_discovery` trigger `DISCOVERED`) | 3→S3 (`resolve_website` TASK_CONFIG + `_DISPATCH_COMPANY_ENTITY_TASK_KEYS` + `dispatch_task_admin_defaults`); parent AC3–5/7–8→N/A (siblings AST-1673/AST-1674); parent AC9→Out of scope ops gate
+
+## Findings
+
+### discuss
+
+- **Canon Scope gap:** `astral.config.config-source-of-truth` plainly governs a config-only SSOT ticket but is absent from the frozen list. Plan behavior is compliant (all literals land in `config.py`); Archie may amend Canon Scope at Discussion for comparability with Radia's pass on siblings.
+- **Location:** Stage 2 ⚠️ Decision (remove `ai_task_key`)
+- **Finding:** Deleting `INFLOW_CONFIG["resolve"]["ai_task_key"]` will `KeyError` today's `roster.resolve_company_website` until AST-1673 lands.
+- **Recommendation:** Accepted as documented epic sequencing; ensure AST-1673 merges promptly after this child.
+
+### acceptable
+
+- **Location:** Stage 1 step 3 (remove `NEW` outbound transitions)
+- **Finding:** `NEW` retains `batch_criteria` but loses all three outbound transition tuples with no replacement edges.
+- **Recommendation:** Consistent with inflow cutover intent; legacy `NEW` rows are out of this child's scope and should be handled operationally or in AST-1673 if any remain.
+
+context_tokens≈42000
