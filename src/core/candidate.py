@@ -1563,6 +1563,36 @@ def get_candidate_current(candidate_id: str, artifact_key: str) -> Optional[Any]
     return row.get("artifact_data")
 
 
+def get_candidate_current_artifact_uuid(
+    candidate_id: str, artifact_key: str
+) -> Optional[str]:
+    """Current-read ``artifact_uuid`` for a catalog key (patt.artifact.read-current).
+
+    Same ARTIFACT_CONFIG / candidate_scoped / entity resolve as
+    ``get_candidate_current``, but returns ``artifact_uuid`` (or None on miss)
+    instead of ``artifact_data``. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    uuid = row.get("artifact_uuid")
+    if not isinstance(uuid, str) or not uuid.strip():
+        return None
+    return uuid
+
+
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
     """Overlay operative current base_resume into candidate_data (display only)."""
     if not isinstance(cd, dict):
