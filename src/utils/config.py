@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1661)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -5751,6 +5751,14 @@ ARTIFACT_CONFIG = {
         # Candidate owns first-row ingestion for Backstory (UI/API operative save — sibling).
         "ingestion_owner": "candidate",
     },
+    "candidate.context.ideal_day": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Reuse BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string) — do not invent a second shape.
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Ideal Day (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
 }
 
 assert set(ARTIFACT_CONFIG.keys()) == {
@@ -5762,6 +5770,7 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.context.deal_breakers",
     "candidate.context.bio_summary",
     "candidate.context.backstory",
+    "candidate.context.ideal_day",
 }
 # Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2).
 for _sibling in (
@@ -5776,11 +5785,10 @@ for _sibling in (
 ):
     assert _sibling not in ARTIFACT_CONFIG
 
-# Sibling context leaves stay out of the catalog until their own epics (parent AC8 / AST-1661).
-# Backstory is registered above — no longer asserted absent.
+# Sibling context leaves stay out of the catalog until their own epics.
+# Backstory + Ideal Day registered above — no longer asserted absent.
 # priorities / deal_breakers / bio_summary already registered by prior epics — do not re-freeze them.
 for _ctx_sibling in (
-    "candidate.context.ideal_day",
     "candidate.context.writing_preferences",
 ):
     assert _ctx_sibling not in ARTIFACT_CONFIG
@@ -5900,6 +5908,22 @@ assert _bk["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
 assert _bk["ingestion_owner"] == "candidate"
 assert set(_bk.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_id = ARTIFACT_CONFIG["candidate.context.ideal_day"]
+assert _id["entity_type"] == "candidate"
+assert _id["entity_type"] in ENTITY_TYPES
+assert _id["candidate_scoped"] is True
+assert isinstance(_id["candidate_scoped"], bool)
+assert _id["body_shape"] == "plain_text"
+assert _id["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _id["ingestion_owner"] == "candidate"
+assert set(_id.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
@@ -6420,7 +6444,12 @@ TOKEN_SOURCES = {
         "source_type": "artifact",
         "artifact_key": "candidate.context.backstory",
     },
-    "IDEAL_DAY":            {"source": "candidate", "path": "context.ideal_day", "source_type": "data_field"},
+    "IDEAL_DAY": {
+        "source": "candidate",
+        "path": "context.ideal_day",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.ideal_day",
+    },
     "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences", "source_type": "data_field"},
     "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns", "source_type": "data_field"},
     "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes", "source_type": "data_field"},
@@ -6515,6 +6544,8 @@ assert TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
 assert TOKEN_SOURCES["BIO_SUMMARY"]["artifact_key"] == "candidate.context.bio_summary"
 assert TOKEN_SOURCES["BACKSTORY"]["source_type"] == "artifact"
 assert TOKEN_SOURCES["BACKSTORY"]["artifact_key"] == "candidate.context.backstory"
+assert TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"] == "candidate.context.ideal_day"
 _artifact_tokens = {
     name for name, spec in TOKEN_SOURCES.items() if spec["source_type"] == "artifact"
 }
@@ -6525,6 +6556,7 @@ assert _artifact_tokens == {
     "DEAL_BREAKERS",
     "BIO_SUMMARY",
     "BACKSTORY",
+    "IDEAL_DAY",
 }
 
 # AST-513: phase token → persisted job_data grades_key + rubric artifact key.
