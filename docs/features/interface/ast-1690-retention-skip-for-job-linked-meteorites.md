@@ -69,3 +69,56 @@ Ticket **## Scope** (only files this plan may touch):
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1690
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites` @ `3f93d3583a30a4e1302df908a04cd6fe58107c36`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.entity | A | | |
+| stat.logging.debug | C | 1 | Stage 1 §2 omits callee-out debug when `get_job` returns `None` on purge-eligible rows |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC7→Stage 1 §2–3 (job-linked LANDED skip); AC8→Stage 1 §2 else-branch (null/blank `astral_job_id` or missing job still purge-eligible); AC9→Stage 1 §5 + Files Changed verified-no-touch (runners/Manage Email/UI untouched).
+
+## Findings
+
+### discuss
+
+- **Severity:** discuss  
+- **Location:** Stage 1 §2 debug joints  
+- **Finding:** `stat.logging.debug` requires callee in/out for every `get_job` invocation. Plan logs Calling/Response only for skip (job exists); when `jid` is non-empty and `get_job` returns `None` (orphan job → purge), no Response line is specified.  
+- **Recommendation:** Add `logger.debug("Response from get_job: %s", row_or_none)` (or equivalent) on that branch before adding the id to the purge list.
+
+- **Severity:** discuss  
+- **Location:** Canon Scope (parent child #1 Citations)  
+- **Finding:** `astral.standards.in-scope-only` plainly governs this single-file retention tweak but is absent from the frozen list. Plan itself is tight (one file, explicit verified-no-touch table).  
+- **Recommendation:** No plan change required; Archie may add at Discussion if the parent Canon Scope should carry scope discipline for all core children.
+
+### acceptable
+
+- **Severity:** acceptable  
+- **Location:** Stage 1 §2 entity info  
+- **Finding:** `retention_kept` as `_meteorite_state_info` to_state parallels existing `purged` retention outcome in the same function — not a real DB state, but consistent id-pipe precedent.  
+- **Recommendation:** None.
+
+- **Severity:** acceptable  
+- **Location:** Scope gate decision  
+- **Finding:** Runner-side `get_job` filter vs optional SQL EXISTS — justified; reuses existing import; `database.py`/`config.py` omission is within ticket Scope (“only if”).  
+- **Recommendation:** None.
+
+context_tokens≈28000
+
+---
+
+[plan-rubric] PROCEED (Commit: 3f93d358) retention skip plan clean
+
