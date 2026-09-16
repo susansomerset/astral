@@ -206,3 +206,68 @@ context_tokens≈48000
 **Betty note:** coverage for lookup-only resolve (no prospect), known/unknown recognition posts, unbound filter vs bound ids, and `@require_admin` unbound GET deferred to qa-child.
 
 **Joan discuss addressed in build:** after `run_contact_estelle_turn` returns on the known path, emit canonical `stat.logging.info.contact` listen info line (before hear-ack).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1668
+**Publish ref:** `c465a815ef891035236b7edce0373c7dc2a90230` (`origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve`)
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.contact | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.debug | B | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+- `stat.logging.info.contact`: Joan **C** → Radia **A** — build emits canonical `contact listen` info line after `run_contact_estelle_turn` on the known path (`handle_slack_event` ~1778–1790).
+- `stat.logging.debug`: Joan **B** → Radia **B** — `list_unbound_slack_users` uses statute joints; rest of `contact.py` retains Style D `debug_index`/`debug_detail` (plan-acknowledged mix).
+- `stat.logging.info.api`, `stat.logging.error`: aligned with Joan **A**.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — Three-dot diff vs `origin/dev` is epic-polluted
+**Location:** `git diff origin/dev...origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve`
+**Finding:** Multiple merge bases + stacked epic history inflate the three-dot diff (canon migration, sibling tickets, AST-1667, etc.). **AST-1668 product commits are scoped:** `8f1fe6dc` (+5 config), `141ab871` (contact), `bf386176` (api) — three files only.
+**Recommendation:** Score footprint from ticket commits, not raw three-dot stat. Note for downstream doc hygiene.
+
+### advisory — Branch history includes sibling AST-1667
+**Location:** Publish-branch ancestry (`eb152ca2` … `827f1fa5`)
+**Finding:** Expected dependency — `list_unbound_slack_users` calls `list_workspace_posters()` from AST-1667. No AST-1668 product code in `src/external/slack.py`.
+**Recommendation:** None — dependency is declared in plan.
+
+## What's solid
+
+- **AC 1:** `initiate_prospect_candidate` absent from `contact.py`; miss + `estelle_in_play` is lookup-only with profile fetch, `created=False`.
+- **AC 2–3:** Known path posts `known_recognition_reply_text` then Estelle; unknown posts `unknown_recognition_reply_text`, sets `estelle_turn` skip marker, skips paste/Estelle/hear-ack — no PROSPECT mint.
+- **AC 4–5:** `list_unbound_slack_users` filters via `get_candidate_id_for_query`; preserves poster order; tests cover bound-id omission.
+- **AC 6:** `GET /api/admin/contact/unbound_slack_users` is `@require_admin`; 401/403/502 paths tested; no progress `info` on idempotent GET (`info.assert_not_called()`).
+- **Config:** Recognition defaults + asserts match Stage 1 plan.
+- **API errors:** `logger.exception` with live facts + next-step wording on upstream failure.
+- **Tests:** Manifest suites (`TestAst1668UnboundAndRecognition`, revised `TestAst1068ResolveSlackUser`, revised `TestAst1101ChannelHearEvidence`, config + API) align with bible intent.
+- **Estimate 5** fits three staged commits + focused test coverage.
+
+## Recommended actions (Chuckles downstream — not Radia lane)
+
+- Append artifact to `docs/features/contact/ast-1668-contact-unbound-known-unknown-resolve.md`, commit `docs(AST-1668): Radia review — clean`, push sub ref.
+- Post slim upshot via `linear_proxy --as radia save-comment`; move **Review Posted** → **User Testing** (PROCEED, no fix-now items).
+
+---
+
+**Slim Linear upshot (Chuckles posts):**
+
+```
+[code-rubric] PROCEED (Commit: c465a815) unbound resolve clean
+```
+
+context_tokens≈58000
