@@ -141,6 +141,12 @@ Confirm Chuckles estimate: 2 — agree
 
 Parent AC1–4 → AST-1693 / AST-1694. Out of scope here.
 
+## Review
+
+- **Publish ref:** `origin/sub/AST-1686/AST-1695-job-ui-listing-href`
+- **Tip:** `92b13d2896d2aa755c90d34c3c7a0439a9b3c87d`
+- **Stages:** 1 Recommended title+Apply `listing_href` · 2 Job Detail listing control
+
 ## Joan validate
 
 [plan-rubric]
