@@ -136,3 +136,13 @@ Confirm Chuckles estimate: 2 — agree
 **Recommendation:** None.
 
 context_tokens≈28000
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1687/AST-1696-copy-detail-deeplink-from-report-header` @ `b40369ec`
+
+Stage 1: `RecommendedJobReportHeader` — optional `onCopyDetailLink` / `detailLinkCopied`; **Copy Link** `.btn secondary` before diagnostic Copy; links row visible when link-copy alone.
+
+Stage 2: `JobAnalysisReportModal` — absolute `origin + /jobs/detail/<jobId>` clipboard write, 2s Copied feedback, reset on `jobId` change.
+
+Tests deferred to Betty (`qa-child`).
