@@ -164,10 +164,10 @@ context_tokens≈54000
 |-------|-------|
 | Status | Code Complete |
 | Publish ref | `origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown` |
-| Tip | `PLACEHOLDER` |
+| Tip | `d240d8ae` |
 | Branch | `sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown` |
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | `PLACEHOLDER` | Manage Candidates Slack bind dropdown on add/edit |
+| 1 | `d240d8ae` | Manage Candidates Slack bind dropdown on add/edit |
 
