@@ -26,6 +26,7 @@ from src.core.candidate import (
     hydrate_operative_bio_summary_for_response,
     hydrate_operative_deal_breakers_for_response,
     hydrate_operative_ideal_day_for_response,
+    hydrate_operative_backstory_for_response,
     hydrate_operative_strengths_for_response,
     hydrate_operative_priorities_for_response,
     hydrate_operative_writing_preferences_for_response,
@@ -219,6 +220,7 @@ def get_candidate_detail(candidate_id):
     hydrate_operative_deal_breakers_for_response(candidate_id, cd)
     hydrate_operative_bio_summary_for_response(candidate_id, cd)
     hydrate_operative_ideal_day_for_response(candidate_id, cd)
+    hydrate_operative_backstory_for_response(candidate_id, cd)
     hydrate_operative_writing_preferences_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
@@ -280,6 +282,7 @@ def update_candidate_data(candidate_id):
     deal_breakers_saved = False
     bio_summary_saved = False
     ideal_day_saved = False
+    backstory_saved = False
     writing_preferences_saved = False
     try:
         state_override = body.pop("state", None)
@@ -292,12 +295,13 @@ def update_candidate_data(candidate_id):
         base_resume_in_save = False
         pilot_body = None
         if body:
-            # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1665: catalog context leaves → operative save; do not library-merge.
+            # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1662 / AST-1665: catalog context leaves → operative save; do not library-merge.
             strengths_body = None
             priorities_body = None
             deal_breakers_body = None
             bio_summary_body = None
             ideal_day_body = None
+            backstory_body = None
             writing_preferences_body = None
             ctx = body.get("context")
             if isinstance(ctx, dict):
@@ -311,6 +315,8 @@ def update_candidate_data(candidate_id):
                     bio_summary_body = ctx.pop("bio_summary")
                 if "ideal_day" in ctx:
                     ideal_day_body = ctx.pop("ideal_day")
+                if "backstory" in ctx:
+                    backstory_body = ctx.pop("backstory")
                 if "writing_preferences" in ctx:
                     writing_preferences_body = ctx.pop("writing_preferences")
                 if not ctx:
@@ -417,6 +423,13 @@ def update_candidate_data(candidate_id):
                     ideal_day_body,
                 )
                 ideal_day_saved = True
+            if backstory_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.backstory",
+                    backstory_body,
+                )
+                backstory_saved = True
             if writing_preferences_body is not None:
                 save_candidate_data(
                     candidate_id,
@@ -476,6 +489,13 @@ def update_candidate_data(candidate_id):
             200,
         )
     if ideal_day_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if backstory_saved:
         logger.info(
             "%s | api %s completed: PUT %s",
             candidate_id,
