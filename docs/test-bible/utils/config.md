@@ -1922,6 +1922,32 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
+### AST-1672 · AST-1670
+
+**Parent:** [AST-1670 — Split inflow website resolve into CSE fetch + find_company_website dispatch](https://linear.app/astralcareermatch/issue/AST-1670). **Publish:** `origin/sub/AST-1670/AST-1672-discovered-resolve-registry-ssot`.
+
+Config/SSOT only: company **`DISCOVERED`** land/vet state; CSE-only **`INFLOW_CONFIG["resolve"]`** on **`DISCOVERED`** (waiting **`WEBSITE_REVIEW`**, hit-list key, no **`ai_task_key`**); schedulable **`resolve_website`** (`agent_task=find_company_website`). Runners / claim SQL: siblings **AST-1673** / **AST-1674**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Discovery land **`DISCOVERED`** | `src/utils/config.py` | **`TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals`**; **`TestAst1672DiscoveredResolveRegistrySsot::test_hit_list_key_and_cse_only_resolve_block`** |
+| 2 | Vet claim / admin defaults **`DISCOVERED`** | same | **`TestAst505InflowDiscoveryConfig::{test_inflow_config_vet_literals,test_vet_inflow_discovery_task,test_vet_inflow_discovery_dispatch_admin_defaults}`** |
+| 3 | **`resolve_website`** company/**`WEBSITE_REVIEW`** + agent identity | same | **`TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults`** |
+| — | CSE-only resolve + transitions + hit-list key | same | **`TestAst506InflowResolveConfig`**; **`TestAst1672DiscoveredResolveRegistrySsot::{test_discovered_state_batch_criteria_and_transitions,test_hit_list_key_and_cse_only_resolve_block}`**; revised **`TestAst1214DispatchAdminDefaultsWidened`** |
+
+**Broken / obsolete (Betty revision this pass):** AST-505/506/1214 asserts that expected vet/resolve triggers on **`NEW`**, **`ai_task_key`** on the resolve block, and **`NEW → WEBSITE_FOUND|NO_WEBSITE|VET_FAILED`** transition tuples — cut over to **`DISCOVERED`** / CSE-only / **`WEBSITE_REVIEW`** edges. Same pass: **`TestAst1214`** `meteorite_email` admin defaults expect **`entity_type: None`** (mailbox poller after AST-1529+; tip product).
+
+**Integration:** none — config-only; do not invent new integration coverage. Existing integration scenarios do not assert these literals.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
+  tests/component/utils/test_config.py::TestAst1672DiscoveredResolveRegistrySsot \
+  -q
+```
+
 ### AST-1206 · AST-1203
 
 **Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
