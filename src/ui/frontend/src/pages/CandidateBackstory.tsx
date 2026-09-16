@@ -1,2 +1,10 @@
 import ContextTextPage from "../components/ContextTextPage"
-export default function Backstory() { return <ContextTextPage title="Backstory" contextKey="backstory" /> }
+export default function Backstory() {
+  return (
+    <ContextTextPage
+      title="Backstory"
+      contextKey="backstory"
+      bodyShape="plain_text"
+    />
+  )
+}

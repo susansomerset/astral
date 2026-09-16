@@ -132,3 +132,12 @@ AC6→Stage 1 §§1–2 + verify (reload via PUT response + GET hydrate); AC7→
 - **Recommendation:** None.
 
 context_tokens≈52000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up` @ `(filled after commit)`.
+
+**Stages delivered:**
+- Stage 1: Wire Backstory `plain_text` bodyShape — `(filled after commit)`.
+
+**Betty:** at **Code Complete** — cover Backstory ContextTextPage render + hydrated load, save PUT `{ context: { backstory } }` + textarea reload, `plain_text` empty-save gate (Save disabled, no PUT), and source assert for `bodyShape="plain_text"` / no `ArtifactEditor`; `ContextTextPage.tsx` / `ArtifactEditor.tsx` untouched.
