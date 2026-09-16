@@ -90,3 +90,54 @@ No other files. Do **not** call Slack Web API URLs/tokens from React (parent AC 
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1669
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown` @ `82fb3b202528a53fea3faf519054d65cde1f34d0`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | X | | Plan touches no `src/ui/api/**` files; explicitly defers to existing create/PUT routes and forbids new progress info |
+| stat.logging.error | X | | No handler-layer exception logging in footprint; API errors continue via existing JSON + toast |
+
+## Traceability
+
+5 → Stage 1 steps 3–5 (unbound `<select>`; both `contact.slack_user_id` + `contact.slack_username` stamped on add/edit save; synthetic edit-only option for current bind) · 6 → Stage 1 step 2 (reload unbound after successful bind + sibling GET filter omits bound ids) · 7 → Stage 1 Files Changed + step 2 (`GET /api/admin/contact/unbound_slack_users` only; no Slack Web API URLs/tokens in TSX)
+
+## Findings
+
+### discuss — Canon Scope all-X (scope observation, not blocking)
+**Location:** Plan `## Scope gate` Canon Scope; `## Files Changed`
+**Finding:** Parent locked `stat.logging.info.api` and `stat.logging.error` anticipating optional `api_candidate.py` work. Plan’s no-`api_candidate.py` decision is justified (`POST /api/candidates` + `PUT …/data` already deep-merge `contact`; Slack-id uniqueness already enforced server-side). Neither statute applies to the sole planned file (`AdminManageCandidates.tsx`).
+**Recommendation:** No plan rewrite required. Radia’s column will also be all-X unless the diff accidentally touches API handlers.
+
+### acceptable — Scope & no-api decision
+**Location:** `## Scope gate`, Stage 1 ⚠️ Decision — no `api_candidate.py`
+**Finding:** Single-file footprint matches ticket partition. Existing `handleAddSave` / `handleEditSave` contact payloads can accept Slack keys without backend edits.
+**Recommendation:** None.
+
+### acceptable — Edit edge cases
+**Location:** Stage 1 steps 3 + 5
+**Finding:** Synthetic prepend for edit target’s current bind; empty selection omits Slack keys (no accidental unbind); illegal-state confirm retry must preserve Slack bind keys — aligns with existing AST-1287 confirm path in `handleEditSave`.
+**Recommendation:** None.
+
+### acceptable — Sibling dependency
+**Location:** Depends on AST-1668; Stage 1 step 2
+**Finding:** `GET /api/admin/contact/unbound_slack_users` is present on the epic worktree (`api_contact.py` + `list_unbound_slack_users` in core). Plan contract matches sibling return shape.
+**Recommendation:** None.
+
+## R6 checklist (summary)
+
+- Definition fidelity: pass — Manage Candidates dropdown + persist only; no resolve/poster/unbound-filter ownership creep.
+- AC coverage: pass — child AC 5–7 mapped in Execution contract.
+- DRY / scope creep: pass — reuses existing create/PUT, `dep-field`/`dep-select`, toast/error patterns.
+- Self-assessment: pass — estimate 2 for one focused stage is honest.
+
+context_tokens≈54000
+
