@@ -219,3 +219,16 @@ AC3 → Stage 1 insert + Stage 2 map + soft-persist · AC4 → Stage 2 §5 BOT_B
 
 context_tokens≈58000
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1684/AST-1689-meteorite-row-contact-column-map-persist-soft-fail`
+**Plan path:** `docs/features/meteorite/ast-1689-meteorite-row-contact-column-map-persist-soft-fail.md`
+
+**Built tip:** `a0ca31ec9fcc540d616585849aaa98e97bfd0d48` (`a0ca31ec`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `0f58c50b` | meteorite `electronic_contact` column + allowlist + insert |
+| 2 | `a0ca31ec` | classify→row map, soft-fail persist, Style D returned/recorded |
+
+**Betty note:** consult/agent untouched; land does not write contact into job_data.
