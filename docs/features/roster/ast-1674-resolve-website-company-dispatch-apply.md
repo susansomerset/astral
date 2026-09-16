@@ -135,3 +135,49 @@ if task_key == "resolve_website":
 Confirm Chuckles estimate: 2 — agree
 
 Lift of the deleted AI block from pre-AST-1673 `resolve_company_website` plus two routing branches; SSOT and hit persist already on tip from AST-1672 / AST-1673.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1674
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1670/AST-1674-resolve-website-company-dispatch-apply` @ `a080f3fed29f1e0934d9a209cf28bc208592d875`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.debug | B | | continues existing roster `debug_index`/`debug_detail` helpers (unconverted file) |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+6→S2 (`WEBSITE_REVIEW` routing) + AST-1672 SSOT on tip (`TASK_CONFIG["resolve_website"]`, `agent_task=find_company_website`) | 7→S1.10–11 (`WEBSITE_FOUND` / `NO_WEBSITE` terminal transitions + `update_company`); parent AC1–5/8–9→N/A (AST-1672/AST-1673 / ops gate)
+
+## Findings
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 4 / step 8
+- **Finding:** Missing/empty hit list or hard `do_task` failure returns `error` with **no** state transition (stays `WEBSITE_REVIEW`). Child AC7 targets AI success/decline terminals; data/task errors as retryable `total_errors` is consistent with `vet_inflow_discovery` soft-fail patterns.
+- **Recommendation:** Keep as planned; ops can inspect warning + error rollup.
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 4 / entity hydration
+- **Finding:** Hits load from `entity["company_data"]` at claim time — same contract as `vet_inflow_discovery_company` blurb reads; depends on dispatcher batch hydration (already true for inflow).
+- **Recommendation:** None — mirror existing claim entity shape at build.
+
+- **Severity:** acceptable
+- **Location:** Dependency / tip
+- **Finding:** AST-1672 + AST-1673 are ancestors of this publish ref; `resolve_company_website` is CSE-only with persisted `inflow_resolve_website_hits` on tip.
+- **Recommendation:** None — dependency satisfied.
+
+context_tokens≈72000
+
+[plan-rubric] PROCEED (Commit: a080f3fe) AI apply hop wired clean
