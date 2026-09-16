@@ -1187,3 +1187,39 @@ Board REVISE: `_vector_labels_map` HT/TP duplicate-code collision (last-wins dro
   tests/component/core/test_consult.py::TestAst1530InvokeStageMeteorite \
   -q
 ```
+
+
+### AST-1675 · AST-1671
+
+**Scope:** Consult company prefilter routes on **`prefilter_company` only** (no dual tuple). Score-floor lookup uses identity task_key (no `dispatch_row_task_key` shim). Bare leftover `prefilter` does not enter `prefilter_company_batch`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single-route batch | `src/core/consult.py` | revised **`TestRunConsultTaskRoutes::test_routes_prefilter_company_batch`** |
+| Bare leftover non-route | same | **`TestRunConsultTaskRoutes::test_bare_prefilter_dispatch_key_does_not_route_to_batch`** |
+| Score-floor identity | same | revised **`TestAst1277DispatchScoreFloorVerdict::test_dispatch_score_floor_lookup_null_zero_and_prefilter_key`** |
+| Dispatcher claim union | `src/core/dispatcher.py` | revised **`TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states`** (`task_key=prefilter_company`) |
+
+**Broken / obsolete this pass:** AST-823 dual-route / legacy-key tests; score-floor shim mapping `prefilter_company` → `prefilter` rows.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Consult route + bare reject: `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch` + `::test_bare_prefilter_dispatch_key_does_not_route_to_batch`
+2. Score floor: `tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict::test_dispatch_score_floor_lookup_null_zero_and_prefilter_key`
+3. Dispatcher union: `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_bare_prefilter_dispatch_key_does_not_route_to_batch \
+  tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict::test_dispatch_score_floor_lookup_null_zero_and_prefilter_key \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/consult.md` — *(filled after publish)*

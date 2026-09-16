@@ -1922,6 +1922,32 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
+### AST-1672 · AST-1670
+
+**Parent:** [AST-1670 — Split inflow website resolve into CSE fetch + find_company_website dispatch](https://linear.app/astralcareermatch/issue/AST-1670). **Publish:** `origin/sub/AST-1670/AST-1672-discovered-resolve-registry-ssot`.
+
+Config/SSOT only: company **`DISCOVERED`** land/vet state; CSE-only **`INFLOW_CONFIG["resolve"]`** on **`DISCOVERED`** (waiting **`WEBSITE_REVIEW`**, hit-list key, no **`ai_task_key`**); schedulable **`resolve_website`** (`agent_task=find_company_website`). Runners / claim SQL: siblings **AST-1673** / **AST-1674**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Discovery land **`DISCOVERED`** | `src/utils/config.py` | **`TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals`**; **`TestAst1672DiscoveredResolveRegistrySsot::test_hit_list_key_and_cse_only_resolve_block`** |
+| 2 | Vet claim / admin defaults **`DISCOVERED`** | same | **`TestAst505InflowDiscoveryConfig::{test_inflow_config_vet_literals,test_vet_inflow_discovery_task,test_vet_inflow_discovery_dispatch_admin_defaults}`** |
+| 3 | **`resolve_website`** company/**`WEBSITE_REVIEW`** + agent identity | same | **`TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults`** |
+| — | CSE-only resolve + transitions + hit-list key | same | **`TestAst506InflowResolveConfig`**; **`TestAst1672DiscoveredResolveRegistrySsot::{test_discovered_state_batch_criteria_and_transitions,test_hit_list_key_and_cse_only_resolve_block}`**; revised **`TestAst1214DispatchAdminDefaultsWidened`** |
+
+**Broken / obsolete (Betty revision this pass):** AST-505/506/1214 asserts that expected vet/resolve triggers on **`NEW`**, **`ai_task_key`** on the resolve block, and **`NEW → WEBSITE_FOUND|NO_WEBSITE|VET_FAILED`** transition tuples — cut over to **`DISCOVERED`** / CSE-only / **`WEBSITE_REVIEW`** edges. Same pass: **`TestAst1214`** `meteorite_email` admin defaults expect **`entity_type: None`** (mailbox poller after AST-1529+; tip product).
+
+**Integration:** none — config-only; do not invent new integration coverage. Existing integration scenarios do not assert these literals.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
+  tests/component/utils/test_config.py::TestAst1672DiscoveredResolveRegistrySsot \
+  -q
+```
+
 ### AST-1206 · AST-1203
 
 **Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
@@ -3975,3 +4001,38 @@ Config-only: register `candidate.context.writing_preferences` in `ARTIFACT_CONFI
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 
+
+### AST-1675 · AST-1671
+
+**Scope:** Company prefilter lasting catalog identity is **`prefilter_company`**. Dual-key shims **`dispatch_row_task_key`** / **`dispatch_task_grouping_catalog_key`** deleted; one-release alias dropped. **`ROSTER_CONFIG["prefilter"]`** hop-policy block key unchanged. Callables / **`prefilter_company_notes`** unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shims gone | `src/utils/config.py` | **`TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed`** |
+| Frozensets + helpers + admin defaults | same | **`TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity`**; revised **`TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults`**; revised **`TestAst1214DispatchAdminDefaultsWidened`** (`prefilter_company`) |
+| Meteorite grouping identity | same | revised **`TestAst1222MeteoriteAliasDispatchAndSeed::test_grouping_catalog_key_stays_on_alias`** |
+
+**Broken / obsolete this pass:** shim tests expecting `dispatch_row_task_key` / `dispatch_task_grouping_catalog_key`; Ast702/Ast1214 bare-`prefilter` helper membership.
+
+**Integration:** none — no existing scenario asserts catalog-key dual identity; do not invent.
+
+## QA test manifest
+
+1. Shim deletion: `tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed`
+2. Lasting catalog helpers: `tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity`
+3. Batch mode + defaults + bare reject: `tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults`
+4. Admin defaults matrix: `tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed \
+  tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
