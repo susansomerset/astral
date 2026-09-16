@@ -140,3 +140,40 @@ Confirm Chuckles estimate: 2 — agree
 | Non-http → not navigable | Stage 1 + 2 (`httpListingHref`; no `job_link` fallback for open) |
 
 Parent AC1–4 → AST-1693 / AST-1694. Out of scope here.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1695
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1686/AST-1695-job-ui-listing-href` @ `f269a1e5afdd3967657246b89a04d15717aaad6d`
+
+### Canon scores
+
+(no directives on frozen Canon Scope — parent partition: presentational / client-only; nothing to score)
+
+### Traceability
+
+AC5 → Stage 1 (`listing_href` on title `<a>` + CLIENT Apply `window.open` same URL); AC6 → Stage 2 (Job Detail read-only Link row + editable **Open listing** from `listing_href`); non-http → not navigable → Stage 1 + 2 (`httpListingHref`; no `job_link` fallback for open). Parent AC1–4 → AST-1693 / AST-1694 — N/A out of child Scope. Parent AC7 → satisfied by omission (no meteorite client resolve; consumes API field only).
+
+### Findings
+
+#### acceptable
+- **Location:** Stage 2 — read-only `<a rel="noreferrer">`
+- **Finding:** Read-only Job Detail link omits `noopener`; Stage 1 / header use `noopener noreferrer`.
+- **Recommendation:** Align `rel` on implement if trivial; not blocking.
+
+#### acceptable
+- **Location:** Stages 1–2 — duplicate `httpListingHref`
+- **Finding:** Same four-line helper copied into two files; no shared util per explicit scope gate.
+- **Recommendation:** Accept for this child; extract later only if a third consumer appears.
+
+### R6 checklist (summary)
+
+- Definition fidelity: three Files Changed rows match ticket Scope exactly; no API/database/meteorite writer creep.
+- AC coverage: AC5/AC6 mapped with done-when gates; AST-1694 `listing_href` dependency gated (stop comment if field missing post-sync).
+- DRY / scope: no second React resolve path; no sibling scope bleed; belt-and-suspenders http filter at open sites only.
+- Self-assessment: Estimate 2 — agree; stages are minimal and specific.
+
+context_tokens≈52000
