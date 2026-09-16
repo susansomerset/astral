@@ -167,3 +167,50 @@ grep -n 'list_artifact_keys_in_prompt_texts\|harvest_source_artifact_ids\|get_ar
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1698
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper` @ `ecc25c13a79d6a795701f5c821023b6609c506ff`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.traceability | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| patt.config.config-block | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| astral.standards.dry-and-focused-functions | B | | |
+| astral.layers.import-direction | A | | |
+
+## Traceability
+
+AC1→S3§3-6; AC2→S1§2, S3§8; parent AC3–7 N/A (consult sibling persist + craft-land wiring owned by AST-1699/AST-1700).
+
+## Findings
+
+### discuss
+
+- **Canon Scope gap (parent only):** `astral.standards.data-raises-caller-logs` governs harvest miss semantics (omit id, no invent) but is absent from this child’s frozen Citations list. Plan behavior matches the statute; Archie may amend Canon Scope at Discussion if she wants Radia’s column comparable on that id — not a plan defect.
+- **`intake_prompt_snapshot` vs unresolved harvest (S3§4 Decision):** Plan harvests DB unresolved templates and explicitly skips `intake_prompt_snapshot` overrides. For `intake_*` tasks where snap replaces slot text sent to the provider, harvested pins could diverge from tokens actually in the live prompt if snap-only differs from DB rows. Acceptable if intake paths never embed artifact-typed tokens solely via snap; flag for builder awareness — siblings #2/#3 should treat missing/`[]` harvest on intake edge cases consistently.
+
+### acceptable
+
+- **Bounded `get_candidate_current` preamble duplication (S2§2):** Plan defers refactoring `get_candidate_current` to call the new UUID helper in this ticket to avoid hydrate blast radius; honest tradeoff, one harvest entry point still centralizes parse+resolve for callers.
+- **`do_task` return-path surface area (S3§6):** Many post-harvest return dicts; `_with_harvest` wrapper and explicit “every path after harvest” rule are adequate plan guidance — implementation audit belongs to build/Radia, not a plan gap.
+
+### R6 — Definition fidelity (checklist)
+
+- Plan implements child **## Scope** only; **Explicit scope gate** present; Files Changed = three scoped paths; out-of-scope rows (consult, save signatures, tracker, draft traceability, tests) explicitly banned.
+- Child AC1–AC2 have concrete Stage steps and grep verify (S3§8).
+- Boundaries honored: no job_data siblings, no `save_*` threading, no sibling #2/#3 work.
+- Self-assessment `Confirm Chuckles estimate: 3 — agree` is honest for three ordered stages across config parse, candidate UUID helper, and agent harvest attach.
+- Plan Discuss rounds completed: **0** (status Plan Ready).
+
+context_tokens≈52000
