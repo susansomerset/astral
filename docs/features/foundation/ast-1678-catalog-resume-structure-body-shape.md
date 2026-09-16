@@ -168,3 +168,33 @@ Confirm Chuckles estimate: 2 — agree
 | `astral.config.config-source-of-truth` | statute — catalog key + body_shape live in config |
 | `astral.standards.no-hardcoded-sets` | statute — closed key/shape membership via asserts |
 | `astral.standards.in-scope-only` | statute — resume_structure catalog slice only; no sibling surfaces |
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1678
+**Overall:** APPROVED
+**Corpus:** fc0c368e59 · ticket ids not in clerk roster (resolved from worktree draft/statute paths)
+**Publish ref:** sub/AST-1677/AST-1678-catalog-resume-structure-body-shape @ 9155ada1e3bdf61e2c605f05b62da006dbbc5613
+
+## Canon scores
+
+patt.artifact.manage-catalog | A | | Register half only: ARTIFACT_CONFIG entry, closed-set asserts, sibling fence; read/write/blob-retire explicitly deferred to AST-1679 per partitioned epic
+astral.config.config-source-of-truth | A | | Catalog key + body_shape confined to src/utils/config.py BUILD_CONFIG/ARTIFACT_CONFIG
+astral.standards.no-hardcoded-sets | A | | Closed key-set assert, per-entry _rs asserts, job.artifacts.resume_structure absence loop
+astral.standards.in-scope-only | A | | Explicit scope gate; single file; operative/API/React/consult/tracker fenced out
+
+## Traceability
+
+AC1→Stage 1 §2-4,8 verify; AC2→Stage 1 §2,6,8 verify; AC3→Stage 1 §4-5,8 verify | Parent functional scope §1 (catalog resume_structure) + parent AC1/2/9 via child slice only; parent AC3-8 N/A (siblings AST-1679/AST-1680)
+
+## Findings
+
+### acceptable — canon infrastructure
+- **Location:** canon_clerk roster
+- **Finding:** Ticket's four cited ids are not in `canon/directives/active/` yet; expand fails; bodies read from draft/statute paths in worktree.
+- **Recommendation:** No plan change; clerk migration is out of AST-1678 scope. Scores based on resolved directive text.
+
+context_tokens≈28000
+```
