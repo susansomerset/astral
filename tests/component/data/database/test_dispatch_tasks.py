@@ -183,31 +183,37 @@ class TestAst814InflowDiscoveryFreqHrs:
 
 
 class TestAst506InflowResolveEligible:
-    """AST-506: company NEW without website eligibility for inflow_resolve_website."""
+    """AST-506/1673: DISCOVERED without website eligibility for inflow_resolve_website."""
 
-    def test_count_new_without_website(self, sqlite_in_memory) -> None:
+    def test_count_discovered_without_website(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("no_site", state="NEW", candidate_id="c506", company_name="no_site")
+        db.save_company("no_site", state="DISCOVERED", candidate_id="c506", company_name="no_site")
         db.save_company(
             "has_site",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c506",
             company_website="https://has.example",
             company_name="has_site",
         )
-        assert db.count_company_new_without_website("c506") == 1
+        assert db.count_company_discovered_without_website("c506") == 1
 
     def test_count_excludes_claimed_batch(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("claimed", state="NEW", candidate_id="c506", company_name="claimed")
-        db.claim_company_batch("batch-506", "NEW", 1, candidate_id="c506", require_empty_website=True)
-        assert db.count_company_new_without_website("c506") == 0
+        db.save_company("claimed", state="DISCOVERED", candidate_id="c506", company_name="claimed")
+        db.claim_company_batch(
+            "batch-506", "DISCOVERED", 1, candidate_id="c506", require_empty_website=True,
+        )
+        assert db.count_company_discovered_without_website("c506") == 0
 
-    def test_claim_skips_new_with_website(self, sqlite_in_memory) -> None:
+    def test_claim_skips_discovered_with_website(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("skip_me", state="NEW", candidate_id="c506", company_website="https://x.example")
-        db.save_company("claim_me", state="NEW", candidate_id="c506", company_name="claim_me")
-        n = db.claim_company_batch("batch-506", "NEW", 10, candidate_id="c506", require_empty_website=True)
+        db.save_company(
+            "skip_me", state="DISCOVERED", candidate_id="c506", company_website="https://x.example",
+        )
+        db.save_company("claim_me", state="DISCOVERED", candidate_id="c506", company_name="claim_me")
+        n = db.claim_company_batch(
+            "batch-506", "DISCOVERED", 10, candidate_id="c506", require_empty_website=True,
+        )
         assert n == 1
         rows = db.get_company_batch("batch-506")
         assert len(rows) == 1
@@ -215,10 +221,10 @@ class TestAst506InflowResolveEligible:
 
     def test_count_eligible_for_dispatch_task_resolve(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("resolve_me", state="NEW", candidate_id="c506", company_name="resolve_me")
+        db.save_company("resolve_me", state="DISCOVERED", candidate_id="c506", company_name="resolve_me")
         task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "inflow_resolve_website",
             "candidate_id": "c506",
         }
@@ -228,51 +234,55 @@ class TestAst506InflowResolveEligible:
 
 
 class TestAst776InflowVetEligible:
-    """AST-776: vet vs resolve eligibility split on inflow_discovery_blurb."""
+    """AST-776/1673: vet vs resolve eligibility split on DISCOVERED + blurb."""
 
-    def test_count_new_pending_inflow_vet(self, sqlite_in_memory) -> None:
+    def test_count_discovered_pending_inflow_vet(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "vet_me",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="vet_me",
             company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
         )
-        db.save_company("no_blurb", state="NEW", candidate_id="c776", company_name="no_blurb")
-        assert db.count_company_new_pending_inflow_vet("c776") == 1
+        db.save_company("no_blurb", state="DISCOVERED", candidate_id="c776", company_name="no_blurb")
+        assert db.count_company_discovered_pending_inflow_vet("c776") == 1
 
-    def test_count_new_without_website_excludes_blurb(self, sqlite_in_memory) -> None:
+    def test_count_discovered_without_website_excludes_blurb(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "blurb_only",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="blurb_only",
             company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
         )
-        db.save_company("legacy_new", state="NEW", candidate_id="c776", company_name="legacy_new")
-        assert db.count_company_new_without_website("c776") == 1
+        db.save_company(
+            "legacy_discovered", state="DISCOVERED", candidate_id="c776", company_name="legacy_discovered",
+        )
+        assert db.count_company_discovered_without_website("c776") == 1
 
     def test_count_eligible_vet_vs_resolve_split(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "vet_row",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="vet_row",
             company_data={"inflow_discovery_blurb": "000|Co|https://vet.example|snip"},
         )
-        db.save_company("resolve_row", state="NEW", candidate_id="c776", company_name="resolve_row")
+        db.save_company(
+            "resolve_row", state="DISCOVERED", candidate_id="c776", company_name="resolve_row",
+        )
         vet_task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "vet_inflow_discovery",
             "candidate_id": "c776",
         }
         resolve_task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "inflow_resolve_website",
             "candidate_id": "c776",
         }
