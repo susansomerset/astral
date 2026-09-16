@@ -274,3 +274,30 @@ PUT job_resume / cover_letter / legacy resume_content call `save_job_artifact` w
   tests/component/data/database/test_meteorites.py::TestAst1694GetMeteoriteLinkByAstralJobId \
   -q
 ```
+
+### AST-1691 · AST-1685
+
+**Publish:** `origin/sub/AST-1685/AST-1691-meteorite-lookup-report-config-api`.
+
+`GET /api/jobs/<id>` includes `related_meteorite` (flat object or `null`); soft-fail → `null` (not 500). Primary: **`docs/test-bible/data/database/meteorites.md`** § AST-1691.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| related_meteorite object | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_detail_related_meteorite_object`** |
+| related_meteorite soft-fail | same | **`TestJobsRoutes::test_detail_related_meteorite_soft_fail`** |
+| related_meteorite null (no link) | same | revised **`test_detail_returns_agent_story`**, **`test_detail_soft_fails_agent_story`** |
+
+**Broken / obsolete:** detail hydrate mocks — add `astral_job_id=None` kw so related_meteorite path does not TypeError.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_returns_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_soft_fails_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_object \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_soft_fail \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
