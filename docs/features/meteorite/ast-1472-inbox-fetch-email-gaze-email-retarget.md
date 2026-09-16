@@ -1,3 +1,70 @@
+<!-- linear-archive: AST-1472 archived 2026-09-09 -->
+
+## Linear archive (AST-1472)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1472/inbox-fetch-email-gaze-email-retarget-meteorite-component  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1457 — Meteorite component  
+**Blocked by / blocks / related:** parent: AST-1457
+
+### Description
+
+NOTE FROM SUSAN: THERE IS NO GAZE_EMAIL FUNCTIONALITY ANYMORE. DO NOT RESURRECT IT. REFER ONLY TO inbox fetch_email.
+
+## What this implements
+
+Inbox fetch_email: bind, fetch, scrape/normalize, call land_meteorite; inbox admin create + Land Meteorite → land_meteorite. After #2. (gaze_email / gazer retarget omitted per Susan.)
+
+## Citations
+
+pattern.batch.entity-claim-process-release, pattern.layers.import-discipline, pattern.ui.admin-endpoint; astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.dispatch.seed-auto-false.
+
+## Scope
+
+- [X] src/core/inbox.py (fetch_email → land_meteorite)
+- [X] src/core/dispatcher.py (fetch_email seed)
+- [X] src/ui/api/api_inbox.py
+- [ ] tests/component/core/test_inbox.py (Betty / qa-child)
+- [X] src/core/gaze_email.py — N/A do not resurrect (Susan)
+- [X] src/core/gazer.py — N/A do not edit (Susan)
+
+## Acceptance criteria
+
+- [X] 6. src/core/meteorite.py has no Gmail/mailbox imports; inbox fetch_email and Contact call land_meteorite. (inbox half this ticket; Contact = AST-1471)
+- [X] 7. Production Land Meteorite / inbox create go through land_meteorite, not direct create_meteorite_job HTML insert. (gaze_email half N/A retired — Susan)
+
+## Boundaries
+
+- [X] Does not implement land_meteorite core (#2) or Contact/API (#3). AST-1320 out of scope.
+
+## Notes for planning
+
+Estimate 5. Unmarked — after #2; does not block siblings.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent ftr/AST-1457-meteorite-component, child sub/AST-1457/AST-1472-inbox-fetch-email-gaze-email-retarget. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-25T16:24:31.394Z
+[code-rubric] PROCEED (Commit: 43cba473) fetch_email land retarget clean
+
+#### betty — 2026-08-25T16:21:25.513Z
+`origin/sub/AST-1457/AST-1472-inbox-fetch-email-gaze-email-retarget` @ `43cba47384e7c0eaefa5bea3b180c7e8833f8e99` · inbox fetch_email land tests
+
+#### joan — 2026-08-25T16:11:28.913Z
+[plan-rubric] PROCEED (Commit: 8871ff5) fetch_email land retarget
+
+#### katherine — 2026-08-25T16:09:04.061Z
+`origin/sub/AST-1457/AST-1472-inbox-fetch-email-gaze-email-retarget` @ `8871ff580eb049239185cab3f6b37f0eba922338` · plan ready
+
+---
+
 # AST-1472 — Inbox fetch_email → land_meteorite
 
 **Linear:** [AST-1472](https://linear.app/astralcareermatch/issue/AST-1472/inbox-fetch-email-gaze-email-retarget-meteorite-component)  

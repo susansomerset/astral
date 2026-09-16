@@ -1,3 +1,72 @@
+<!-- linear-archive: AST-1529 archived 2026-09-09 -->
+
+## Linear archive (AST-1529)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1529/stage-meteorite-catalog-config-literals-generalize-meteorite-ingress  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1527 — Generalize Meteorite Ingress Point  
+**Blocked by / blocks / related:** parent: AST-1527; blocks: AST-1530
+
+### Description
+
+## What this implements
+
+Owns the closed outcome vocabulary and Ruth catalog: `TASK_CONFIG["stage_meteorite"]`, stage config block (outcomes + source-ref prefixes), and `data/admin/agent_task.json` row. Retires live parse_modes / `METEORITE_EMAIL_PARSE_CONFIG` coupling so mailbox `meteorite_email` stays the poller only. Does not implement core stage orchestration or caller cutover (siblings).
+
+## Citations
+
+`pattern.config.config-block`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.seed.agent-tables-in-repo-json`, `astral.seed.archie-catalog-wins`, `astral.seed.define-approved`, `astral.standards.names-not-ticket-ids`
+
+## Scope
+
+**Scope: **`src/utils/config.py` — **modified** — add `stage_meteorite` TASK_CONFIG + stage config block (closed outcome literals, source-handle / source-ref prefix kinds); split mailbox `meteorite_email` from retired parse coupling (`METEORITE_EMAIL_PARSE_CONFIG` / shared task_key assert).
+`data/admin/agent_task.json` — **modified** — add `stage_meteorite` catalog row (prompts + schema lockstep with TASK_CONFIG); retire live `meteorite_email` parse prompts so parse and stage are not both live.
+`src/utils/config.py` — **new** TASK_CONFIG[`stage_meteorite`] response schema (outcome enum + job scrap fields); **new** stage config block for the six outcome literals and source-ref prefix map; **modified** / **retire **`METEORITE_EMAIL_PARSE_CONFIG` parse_modes coupling and the assert that mailbox task_key equals parse task_key; keep `METEORITE_EMAIL_MAILBOX_CONFIG.task_key` as `meteorite_email`.
+`data/admin/agent_task.json` — **new **`stage_meteorite` row (system/user prompts teaching the six outcomes); **modified** retire or empty parse-mode prompts on `meteorite_email` so only stage is the classify hop.
+
+## Acceptance criteria
+
+- [X] 7. `TASK_CONFIG` / `agent_task` expose `stage_meteorite` with the six outcome literals; live `meteorite_email` parse_modes classify is not also live; mailbox poller key remains `meteorite_email`.
+
+## Boundaries
+
+- [X] Does not implement core stage orchestration (sibling #2) or caller cutover (sibling #3).
+- [X] Does not rewrite `land_meteorite` or `qualify_meteorite`.
+
+## Notes for planning
+
+Citations above. Parent AST-1527. After this → #2 / #3.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1527-generalize-meteorite-ingress-point`, child `sub/AST-1527/AST-1529-stage-meteorite-catalog-config`. Created at dispatch-parent.
+
+### Comments
+
+#### betty — 2026-08-29T17:51:41.537Z
+`origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config` @ `202c45c6` · true merge-tests fixed
+
+#### chuckles — 2026-08-29T17:49:18.568Z
+[merge-child] blocked: missing test(AST-1529): — merge-tests(AST-1529) @ 9925c5d1 is a single-parent squash; needs a true two-parent `git merge` of origin/tests b641eb7b so test(AST-1529): appears in the sub log (see AST-1528 @ 93939313). @Betty White please replace that delivery with one true merge-tests(AST-1529) merge commit and push origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config.
+
+#### radia — 2026-08-29T17:47:33.234Z
+[code-rubric] PROCEED (Commit: 9925c5d) catalog config clean
+
+#### betty — 2026-08-29T17:43:15.109Z
+`origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config` @ `9925c5d159df706ef80b7b87dd5b5228a6937c44` · stage_meteorite tests ready
+
+#### joan — 2026-08-29T17:30:23.877Z
+[plan-rubric] PROCEED (Commit: ca0a28c2724652c4ba4108299f57387a84b5512a) catalog config ready
+
+#### ada — 2026-08-29T17:18:48.412Z
+`origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config` @ `ca0a28c2724652c4ba4108299f57387a84b5512a` · plan catalog ready
+
+---
+
 # AST-1529 — stage_meteorite catalog + config literals
 
 **Linear:** [AST-1529](https://linear.app/astralcareermatch/issue/AST-1529/stage-meteorite-catalog-config-literals-generalize-meteorite-ingress)  

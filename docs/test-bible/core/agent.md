@@ -197,7 +197,7 @@ Parse helpers: **`docs/test-bible/utils/rubric_feedback.md`**. FEEDBACK modal le
 | --- | --- | --- |
 | Early-return skip debug | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_debug_skip_empty_batch_id`, `test_debug_skip_empty_expected_codes` |
 | Pipeline trace on capture | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_debug_emits_pipeline_trace_on_capture_start` |
-| `do_task` skip when no candidate | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_do_task_debug_skip_when_candidate_id_missing` |
+| `do_task` skip when no candidate | `src/core/agent.py` | **AST-1639 revised:** `TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing` (blank id raises before send; old skip-feedback path obsolete) |
 
 **AST-820** narrowed run:
 
@@ -318,11 +318,10 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 ### AST-855 · AST-852
 
-**Scope:** Dispatch-chain hop success debug aligns Style D index/total when `_dispatch_chain_hop_total` is unset on ctx — fixes multi-hop BUILD_ARTIFACTS crash (`index 2/1`) on `_write_dispatch_hop_label_on_success`. Shared `_dispatch_chain_hop_debug_counts` helper with `_resume_hop_debug_index`.
+**Scope:** Dispatch-chain hop success increments `_dispatch_chain_hop_index` on ctx (fixes multi-hop BUILD_ARTIFACTS `index 2/1`). Style D helpers `_dispatch_chain_hop_debug_counts` / `_resume_hop_debug_index` are gone.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Hop debug index/total helper | `src/core/agent.py` | `TestAst855DispatchChainHopDebug::test_dispatch_chain_hop_debug_counts_expands_unset_total`, `::test_dispatch_chain_hop_debug_counts_preserves_explicit_total` |
 | Second-hop success path (`contemplate_job`) | `src/core/agent.py` | `TestAst855DispatchChainHopDebug::test_contemplate_job_hop_ok_debug_valid_index_total_on_second_hop` |
 
 **Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`** (full class).
@@ -356,7 +355,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 ### AST-1190 · AST-1164
 
-**`do_task`:** coerce blank provider `error=` to a non-empty string on the `provider call failed` log/return; **`debug=True`** detail when **`is_provider_empty_response`**. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+**`do_task`:** coerce blank provider `error=` to a non-empty string on the return; agent does **not** emit a second `logger.error` (provider `log_llm_batch_summary(..., error=)` is the hop error line). When `log_batch_id` is unset, warning `{task_key} skipped — provider failed`. **`debug=True`** detail when **`is_provider_empty_response`**. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -456,7 +455,7 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
 | Agent-row above floor wins | same | **`TestAst1391DeepseekBigOutputFloor::test_deepseek_big_agent_row_above_floor_wins`** |
 | Medium / Little unchanged | same | **`test_deepseek_medium_keeps_agent_row`**, **`test_deepseek_little_keeps_agent_row`** |
 | Anthropic Big not 384000 | same | **`test_anthropic_big_does_not_use_deepseek_floor`** |
-| `debug=True` max_tokens line | same | **`test_debug_true_max_tokens_line_shows_floor`** |
+| `debug=True` does not put `[DEBUG] do_task` on info | same | **`test_debug_true_max_tokens_line_shows_floor`** |
 | Craft thinking-off still holds; tokens now Big floor | same | **`TestAst1391DeepseekBigOutputFloor::test_craft_deepseek_big_thinking_off_uses_big_floor`**; **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false`** (revised assertion) |
 | Named 384000 + helper None on Little/Medium | `src/utils/config.py` | **`TestAst1391DeepseekBigMaxTokensFloor`** (`test_config.py`) |
 
@@ -477,15 +476,14 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
 
 **Parent:** [AST-1392](https://linear.app/astralcareermatch/issue/AST-1392). **Publish:** `origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text`.
 
-Workbench Test success path stringifies the extracted body via **`_caller_response_blob`** before **`_store_response_block`**: dict/list → compact JSON text; already-`str` unchanged; empty `{}` / `[]` store as `"{}"` / `"[]"` (not `""`). Envelope still extracts **`agent_payload`** when present. Style D found type/shape → recorded text when `debug=True`; quiet when `debug=False`. Does **not** own Admin HTTP/React (sibling #2) or `do_task` schema coerce. Data layer still raises on non-text.
+Workbench Test success path stringifies the extracted body via **`_caller_response_blob`** before **`_store_response_block`**: dict/list → compact JSON text; already-`str` unchanged; empty `{}` / `[]` store as `"{}"` / `"[]"` (not `""`). Envelope still extracts **`agent_payload`** when present. Does **not** own Admin HTTP/React (sibling #2) or `do_task` schema coerce. Data layer still raises on non-text.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Object payload JSON text + ledger COMPLETED | `src/core/agent.py` (`run_adhoc_workbench_test`) | **`TestAst1393SerializeAdhocSuccessBody::test_success_stores_serialized_text`** (`object-payload`) |
 | Empty dict/list, list payload, plain text, dict without payload key | same | **`test_success_stores_serialized_text`** (remaining ids) |
 | String payload regression | same | **`TestAst515AdhocWorkbenchLedger::test_success_completes_ledger_and_stores_blocks`**; **`test_success_stores_serialized_text`** (`str-payload`) |
-| Style D found→recorded (dict/list/str/none/other) | same | **`test_debug_true_style_d_found_to_recorded`** |
-| `debug=False` adds no serialize lines | same | **`test_debug_false_adds_no_serialize_lines`** |
+| Serialize still holds under `debug=True` / `debug=False` | same | **`test_debug_true_style_d_found_to_recorded`**, **`test_debug_false_adds_no_serialize_lines`** |
 | Failure path unchanged | same | **`TestAst515AdhocWorkbenchLedger::test_failure_marks_ledger_failed_and_stores_failure_response`** |
 
 **Broken / obsolete this pass:** none — existing string-payload AST-515 assertion (`_store_response_block` arg `[3] == "ok"`) still holds.
@@ -700,13 +698,13 @@ Same `_store_response_block` / `debug=True` `result` bind as **AST-1076** (intak
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
 
-After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_letter` / `propose_application_responses`, `do_task` pins the RESPONSE `agent_data_id` into `job_data.artifacts` **before** `run_next` (mid-chain + terminal). Failed hops do not pin. Terminal body-copy via `persist_job_artifact_from_parsed` removed for finalize hops. Sibling `resume_content` copy after the resume pin is **AST-1430**. Config map: **`docs/test-bible/utils/config.md`**. Tracker helper: **`docs/test-bible/core/tracker.md`**.
+Originally pinned RESPONSE `agent_data_id` for finalize + propose hops. **AST-1548 / AST-1554:** finalize hops write **body replicas** instead; only `propose_application_responses` → `proposed_answers` still pins. Failed hops do not pin/replica. Config maps: **`docs/test-bible/utils/config.md`**. Tracker helpers: **`docs/test-bible/core/tracker.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Mid-chain / terminal pin + no `persist_job_artifact_from_parsed` | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`** |
+| Finalize body replica + propose pin only | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`** |
 
-**Broken / obsolete:** terminal `persist_job_artifact_from_parsed` for finalize hops (still unused). Cover / `proposed_answers` stay pin-only. Resume sibling blob copy is **AST-1430**.
+**Broken / obsolete:** pin asserts for `finalize_job_resume` / `finalize_cover_letter` — superseded by AST-1548 body replica (see **AST-1554**).
 
 **Integration:** none — do not invent new integration coverage.
 
@@ -720,20 +718,27 @@ After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_lett
 
 **Parent:** [AST-1422](https://linear.app/astralcareermatch/issue/AST-1422/finalize-job-resume-isnt-getting-parsed-into-the-job-resume-renderer). **Publish:** `origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin`. Product fix: **AST-1428**.
 
-After a successful `finalize_job_resume` pin, `do_task` calls `persist_finalize_job_resume_content(index, parsed)` (best-effort; does not revive `persist_job_artifact_from_parsed`). Pin string stays. PUT keep-pin: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1430.
+Historical keep-pin + sibling-`resume_content` copy. **Broken / obsolete under AST-1548/AST-1554:** `test_finalize_copies_resume_content_keeps_pin` — replaced by body-on-`job_resume` nodes below.
+
+### AST-1554 · AST-1547 (gap — body replica tests)
+
+**Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). Product fix: **AST-1548**. **Publish:** `origin/sub/AST-1547/AST-1554-gap-job-resume-body-replica-tests`.
+
+After successful RESPONSE store, `do_task` calls `persist_finalize_job_resume_content` / `persist_finalize_cover_letter_content` for finalize hops (no `pin_job_artifact_agent_data_id` on those slots). PUT dual-write: **`docs/test-bible/ui/api/api_jobs.md`**. Hydrate / persist helpers: **`docs/test-bible/core/tracker.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Sibling copy after pin | `src/core/agent.py` | **`TestAst1430DoTaskResumeContentCopy::test_finalize_copies_resume_content_keeps_pin`** |
+| Resume + cover body replica, no pin | `src/core/agent.py` | **`TestAst1554DoTaskBodyReplica`** (+ revised **`TestAst1099DoTaskArtifactPin`**) |
 
-**Broken / obsolete:** none on the pin suite — `TestAst1099DoTaskArtifactPin` still asserts `persist_job_artifact_from_parsed` unused.
+**Broken / obsolete:** AST-1430 keep-pin copy node; AST-1099 finalize pin asserts.
 
 **Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_agent.py::TestAst1430DoTaskResumeContentCopy \
-  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin \
+  tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_dual_writes_job_resume_body \
   -q
 ```
 
@@ -983,14 +988,14 @@ Pre-validate soft-coerce on shared `do_task` path: `_coerce_schema_str_fields_fr
 
 **Parent:** [AST-1316](https://linear.app/astralcareermatch/issue/AST-1316/cant-find-agent-data-for-proposed-application-responses). **Sibling product:** AST-1354 (`get_entity_agent_story` → `agent.py`; metadata-only list; per-id soft-fail). **Publish:** `origin/sub/AST-1316/AST-1355-gap-agent-story-tests`.
 
-Retarget entity-story coverage from roster → agent; add dangling `propose_application_responses` TASK sibling → partial story / no `logger.exception` stack (**[bug-repro]**).
+Retarget entity-story coverage from roster → agent; add dangling `propose_application_responses` TASK sibling → partial story / no raise to the caller (**[bug-repro]**). Thrown resolve failures log `logger.exception` then continue.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Story ownership + enrich / AST-520 label | `src/core/agent.py` (`get_entity_agent_story`) | **`TestEntityAgentStory`** |
 | Duplicate block labels / scored filter | same + `_filter_response_block` | **`TestEntityAgentStoryBranches`**, **`TestFilterResponseBlock`** |
 | Soft-fail list / per-id resolve (AST-1274/1354) | same | **`TestAst1274AgentStorySoftFail`** |
-| Dangling TASK sibling → partial story, warning only | same | **`TestAst1354AgentStoryDanglingTaskSibling::test_partial_story_no_exception_stack`** (**[bug-repro]**) |
+| Dangling TASK sibling → partial story, exception log then continue | same | **`TestAst1354AgentStoryDanglingTaskSibling::test_partial_story_does_not_raise`** (**[bug-repro]**) |
 | Company `vector_grades` (AST-726) | same | **`TestEntityAgentStory::test_company_prefilter_vector_grades_from_company_data`** |
 
 **Broken / obsolete:** roster `TestEntityAgentStory*` / `TestAst1274AgentStorySoftFail` / `TestFilterResponseBlock` / story method on `TestAst726LatestOnlyRosterStory` — deleted; bible rows retargeted here + `docs/test-bible/core/roster.md` / `frontend/components.md`.
@@ -1011,13 +1016,13 @@ Retarget entity-story coverage from roster → agent; add dangling `propose_appl
 
 **Parent:** [AST-1442](https://linear.app/astralcareermatch/issue/AST-1442). **Publish:** `origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`.
 
-Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_prompt_blocks` **before** `send_to_anthropic` / `run_adhoc`. `_store_response_block` stays after return. Persist failure is swallowed. `store_agent_data=False` and bare `run_adhoc` write no `agent_data`. Latest-per-task stays RESPONSE-gated. Debug found/recorded for prompt persist happens before the provider await; quiet when `debug=False`.
+Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_prompt_blocks` **before** `send_to_anthropic` / `run_adhoc`. `_store_response_block` stays after return. Persist failure is swallowed (`logger.exception`, hop continues). `store_agent_data=False` and bare `run_adhoc` write no `agent_data`. Latest-per-task stays RESPONSE-gated.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | `do_task` prompt-before-await + RESPONSE after | `src/core/agent.py` | **`tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider`** |
 | Kill mid-call + later batch isolation | same | **`test_do_task_provider_raise_keeps_prompt_omits_response`**, **`test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts`** |
-| Storage-off / persist failure / debug | same | **`test_do_task_storage_off_skips_prompt_and_response`**, **`test_do_task_prompt_persist_failure_still_calls_provider`**, **`test_do_task_debug_emits_prompt_found_recorded_before_provider`**, **`test_do_task_debug_false_skips_persist_contract_lines`** |
+| Storage-off / persist failure | same | **`test_do_task_storage_off_skips_prompt_and_response`**, **`test_do_task_prompt_persist_failure_still_calls_provider`** |
 | Workbench Test sequencing; bare `run_adhoc` | same | **`test_workbench_stores_prompt_before_run_adhoc`**, **`test_workbench_raise_keeps_prompt_omits_response`**, **`test_bare_run_adhoc_does_not_store_agent_data`** |
 | Prompt-only batch is not latest story | `src/data/database.py` | **`test_prompt_only_batch_is_not_latest_ref`**; existing **`tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key`** |
 | Existing store-once + ledger | `src/core/agent.py` | **`TestDoTask::test_returns_api_failure_and_stores_agent_data`**, **`TestAst515AdhocWorkbenchLedger`**, **`TestDoTaskStorageFailures`** |
@@ -1038,12 +1043,12 @@ Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_pr
 
 **Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload`.
 
-Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per `batch_id`, newest first, includes `adhoc-*`); `GET /api/admin/adhoc/runs` `@require_admin`; Style D found→recorded on the list when `debug=True`; one leading `adhoc-` strip in `run_adhoc_workbench_test` so ledger stays `adhoc-<task_key>`. Load body is existing `GET /api/agent_data/<batch_id>` (unchanged). Picker chrome: sibling AST-1452. **Filter/cap (candidate + task_key + config limit):** superseded by **AST-1534** — unfiltered full-history list retired.
+Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per `batch_id`, newest first, includes `adhoc-*`); `GET /api/admin/adhoc/runs` `@require_admin`; one leading `adhoc-` strip in `run_adhoc_workbench_test` so ledger stays `adhoc-<task_key>`. Load body is existing `GET /api/agent_data/<batch_id>` (unchanged). Picker chrome: sibling AST-1452. **Filter/cap (candidate + task_key + config limit):** superseded by **AST-1534** — unfiltered full-history list retired.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | One row per batch; newest first; adhoc + production; no `block_data` | `src/data/database.py` (`list_agent_data_batches`) | **`TestAst1451ListAgentDataBatches`** |
-| Core list + debug gate | `src/core/agent.py` (`list_agent_data_runs`) | **`TestAst1451ListAgentDataRuns`** |
+| Core list returns data rows | `src/core/agent.py` (`list_agent_data_runs`) | **`TestAst1451ListAgentDataRuns`** |
 | Catalog key still `adhoc-<task_key>` | same (`run_adhoc_workbench_test`) | existing **`TestAst515AdhocWorkbenchLedger`** |
 | Prefixed workbench key does not double `adhoc-`; `TASK_CONFIG` uses stripped key | same | **`TestAst515AdhocWorkbenchLedger::test_prefixed_workbench_key_does_not_double_adhoc`** |
 | Admin list JSON + auth + `ui_llm_debug` | `src/ui/api/api_admin.py` (`adhoc_runs`) | **`TestAst1451AdhocRuns`** |
@@ -1172,4 +1177,211 @@ Backend scoped import list: `UI_CONFIG` cap (10) + picker visible rows (5); `lis
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1550 · AST-1541
+
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`.
+
+`get_entity_agent_story` attaches `task_name` from the live `agent_task` row when non-empty; omits the key when blank/missing (UI falls back to `task_key`). Additive — Agent Story tabs unchanged. Config hop walk + manifest sections: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Attach / omit `task_name` | `src/core/agent.py` (`get_entity_agent_story`) | **`TestAst1550AgentStoryTaskName`** |
+
+**Broken / obsolete:** none — additive field; existing **`TestEntityAgentStory`** still holds.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1576 · AST-1569
+
+**Publish:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data`.
+
+`do_task` persist_candidate_craft_hops: when `TASK_CONFIG[task_key]["artifact_key"]` is set, land via `save_candidate_data` (library structure + operative body); else `_persist_craft_dispatch_success`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1576.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Operative persist (not helper) | `src/core/agent.py` | **`TestAst1576CraftPersistOperative`** |
+| Source hook + rubric helper still live | same | revised **`TestAst1252PersistCandidateCraftHops`** |
+
+**Broken / obsolete:** none in agent besides source-hook expansion.
+
+**Integration:** none.
+
+
+---
+
+### AST-1592 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`.
+
+`do_task` finalize hops call `_prepare_job_replica_body` + `save_job_artifact` driven by `TASK_CONFIG.artifact_key` (**AST-1603**; body-replica map retired under **AST-1602**). Tracker generics: **`docs/test-bible/core/tracker.md`** § AST-1592 / AST-1603.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finalize resume/cover → catalog write | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`**, **`TestAst1554DoTaskBodyReplica`** (revised) |
+
+**Broken / obsolete this pass:** spies on `persist_finalize_job_resume_content` / `persist_finalize_cover_letter_content` — retargeted to `save_job_artifact` (+ prepare mock for resume match).
+
+
+### AST-1600 · AST-1588 (bug)
+
+**Publish:** `origin/sub/AST-1588/AST-1600-job-resume-cover-not-persisting`.
+
+Finalize body replica must land without `resp_id` (RESPONSE store failure must not skip catalog write). Tracker/data `candidate_id` land covered in **`docs/test-bible/core/tracker.md`** / **`docs/test-bible/data/database/artifacts.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Body replica lands when RESPONSE store fails | `src/core/agent.py` | **`[bug-repro]`** `TestAst1600DoTaskBodyReplicaLand::test_bug_repro_body_replica_lands_when_response_store_fails` |
+
+**Broken / obsolete this pass:** `TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails` (deleted — assumed store_failed skips replica).
+
+**Integration:** none.
+
+## QA test manifest (AST-1600)
+
+1. **[bug-repro]** agent land without resp_id: `tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand`
+2. **[bug-repro]** tracker cid prefer + pass-through: `tests/component/core/test_tracker.py::TestAst1600TrackerCandidateIdLand`
+3. **[bug-repro]** data job-column resolve: `tests/component/data/database/test_artifacts.py::TestAst1600JobArtifactCandidateIdResolve`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand \
+  tests/component/core/test_tracker.py::TestAst1600TrackerCandidateIdLand \
+  tests/component/data/database/test_artifacts.py::TestAst1600JobArtifactCandidateIdResolve \
+  -q
+```
+
+**Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix — not zero-arg harness / branch-lock gate.
+
+### AST-1603 · AST-1601
+
+**Parent:** [AST-1601 — Rip out job-specific artifact pin helpers; match candidate catalog pattern](https://linear.app/astralcareermatch/issue/AST-1601). **Publish:** `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key`.
+
+`do_task` job catalog land reads `TASK_CONFIG[task].artifact_key` (entity_type job) → `_prepare_job_replica_body` + `save_job_artifact`. `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` import/branch gone. Proposed_answers pin path unchanged. Tracker pin/prepare: **`docs/test-bible/core/tracker.md`** § AST-1603. Config authority: **`docs/test-bible/utils/config.md`** § AST-1602.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog land via artifact_key; no body-replica map | `src/core/agent.py` | **`TestAst1603DoTaskCatalogLandViaArtifactKey`** |
+| Revised prepare mock path (private) | same | **`TestAst1099DoTaskArtifactPin`**, **`TestAst1554DoTaskBodyReplica`**, **`TestAst1600DoTaskBodyReplicaLand`** |
+
+**Broken / obsolete this pass:** monkeypatch / import of public `prepare_job_replica_body`; any assert that `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` still drives land; `save_job_artifact` stubs with `_candidate_id_for_job → None` (AST-1600 requires cid — revised stubs in 1554/1556/1592).
+
+**Integration:** none — no existing scenario asserts body-replica map vs TASK_CONFIG.artifact_key land; do not invent new integration coverage.
+
+### AST-1613 · AST-1610 (bug) — docs-acceptance
+
+**Publish:** `origin/sub/AST-1610/AST-1613-fix-job-artifacts-prepare-empty`.
+
+Catalog-land coerce for text-format finalize `parsed` (string JSON → dict before prepare) is product on this ticket. **No new tests on AST-1613** — `[bug-repro]` string-JSON prepare/land coverage is sibling gap **AST-1614**. Tracker note: **`docs/test-bible/core/tracker.md`** § AST-1613.
+
+**Integration:** none.
+
+### AST-1614 · AST-1610 (gap)
+
+**Publish:** `origin/sub/AST-1610/AST-1614-gap-string-json-prepare-land-repro`.
+
+`do_task` finalize with string `parsed_response` (text-format) must coerce and call `save_job_artifact` via real `_prepare_job_replica_body` (no prepare mock). Tracker prepare: **`docs/test-bible/core/tracker.md`** § AST-1614.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| String parsed → save_job_artifact | `src/core/agent.py` | **`[bug-repro]`** `TestAst1614DoTaskStringParsedCatalogLand::test_bug_repro_finalize_string_parsed_lands_save_job_artifact` |
+| Tracker string prepare | `src/core/tracker.py` | **`TestAst1614StringJsonPrepare`** (see tracker.md) |
+
+**Broken / obsolete this pass:** none — additive; AST-1603 prepare-mock suites stay as dict-path coverage.
+
+**Integration:** none.
+
+## QA test manifest (AST-1614)
+
+1. **[bug-repro]** tracker string prepare: `tests/component/core/test_tracker.py::TestAst1614StringJsonPrepare`
+2. **[bug-repro]** agent string land: `tests/component/core/test_agent.py::TestAst1614DoTaskStringParsedCatalogLand`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1614StringJsonPrepare \
+  tests/component/core/test_agent.py::TestAst1614DoTaskStringParsedCatalogLand \
+  -q
+```
+
+**Pass criterion (test-fix):** [bug-repro] green with AST-1613 coerce on tip — not zero-arg harness / branch-lock gate.
+
+## QA test manifest
+
+1. Primary catalog land: `tests/component/core/test_agent.py::TestAst1603DoTaskCatalogLandViaArtifactKey`
+2. Revised finalize mid-chain / propose pin: `tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin`
+3. Revised body replica nodes: `tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica`
+4. Revised store-fail land: `tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand`
+5. Tracker pin keys + private prepare: `tests/component/core/test_tracker.py::TestAst1603TrackerPinKeysAndPrivatePrepare`
+6. Revised prepare coat-check helpers: `tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers`
+7. Revised catalog write/read citation: `tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation`
+8. Revised table-SoT saves (candidate_id stub): `tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_job_resume_body_writes_artifacts_table_not_job_data` + `test_save_cover_letter_writes_artifacts_table_not_job_data`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1603DoTaskCatalogLandViaArtifactKey \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica \
+  tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand \
+  tests/component/core/test_tracker.py::TestAst1603TrackerPinKeysAndPrivatePrepare \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_job_resume_body_writes_artifacts_table_not_job_data \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_cover_letter_writes_artifacts_table_not_job_data \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/agent.md` — *(filled after publish)*
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
+
+### AST-1639 · AST-1638 (candidate-id system-prompt prefix)
+
+**Publish:** `origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix`.
+
+Shared assembly prepends `[astral-<id>]` as the first bytes of the first system text block (no separator before body); `do_task` / `run_adhoc` / `preview_prompt` / stored SYSTEM rows share that shape; blank/missing candidate id fails closed before provider send. No DeepSeek `user_id` / Anthropic metadata isolation; no second prefix outside `agent.py`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper + assemble lead + cache/user clean | `src/core/agent.py` | `TestAst1639CandidateIdSystemPrefix` (helper / assemble / preview / fail-closed) |
+| Provider-agnostic wire prefix | `src/core/agent.py` | `TestAst1639CandidateIdSystemPrefix::test_do_task_anthropic_and_deepseek_both_get_prefix` |
+| Fail-closed do_task | `src/core/agent.py` | `TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing` |
+| Legacy assemble / preview / adhoc ctx | `src/core/agent.py` | Revised: `TestPromptHelpers::test_builds_context_and_assembles_blocks`, `TestAssembleBlocks`, `TestAgentDataHelpers::test_preview_prompt_resolves_blocks`, `TestRunAdhoc`, do_task ctx helpers (`_draft_job_resume_ctx`, `_rubric_evaluate_jd_ctx`, …) now carry top-level `astral_candidate_id` |
+
+**Broken / obsolete this pass:** `test_do_task_debug_skip_when_candidate_id_missing` (silent skip of vector-feedback capture when id missing) — replaced by fail-closed raise before send. All other do_task/assemble/preview/adhoc call sites that omitted top-level `astral_candidate_id` revised to supply one (product now requires it at assembly).
+
+**Integration:** none (no existing integration scenario asserts un-prefixed system text).
+
+## QA test manifest (AST-1639)
+
+1. New prefix suite: `tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix`
+2. Fail-closed revision: `tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing`
+3. Revised assemble / preview / adhoc smoke: `TestPromptHelpers::test_builds_context_and_assembles_blocks`, `TestAssembleBlocks::test_builds_cached_and_minimal_blocks`, `TestAgentDataHelpers::test_preview_prompt_resolves_blocks`, `TestRunAdhoc`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing \
+  tests/component/core/test_agent.py::TestPromptHelpers::test_builds_context_and_assembles_blocks \
+  tests/component/core/test_agent.py::TestAssembleBlocks::test_builds_cached_and_minimal_blocks \
+  tests/component/core/test_agent.py::TestAgentDataHelpers::test_preview_prompt_resolves_blocks \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix:docs/test-bible/core/agent.md | shasum`
 

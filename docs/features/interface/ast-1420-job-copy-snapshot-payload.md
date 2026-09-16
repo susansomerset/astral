@@ -1,3 +1,80 @@
+<!-- linear-archive: AST-1420 archived 2026-09-09 -->
+
+## Linear archive (AST-1420)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1420/job-copy-snapshot-payload-create-a-copy-button-on-the-job-modal  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1419 — Create a Copy button on the Job Modal  
+**Blocked by / blocks / related:** parent: AST-1419; blocks: AST-1421
+
+### Description
+
+## What this implements
+
+Assembles the diagnostic snapshot for one job: full stored record plus populated agent_data for every id on that record, all configured block types, following content pointers so pointer rows are not null in the snapshot. Serves it on an authenticated jobs route. Does not own the modal button.
+
+## Citations
+
+`pattern.layers.import-discipline`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.layers.ui-config-driven-business-logic`, `astral.layers.import-direction`, `astral.standards.no-hardcoded-sets`, `astral.standards.debug-contract-gated`, `astral.standards.data-raises-caller-logs`, `astral.config.config-source-of-truth`
+
+## Acceptance criteria
+
+- [ ] 2. Clicking Copy puts pretty-printed JSON of the full stored job record on the clipboard.
+- [X] 3. Every agent data id that appeared on the stored job is present in the snapshot as populated blocks covering all configured block types, not as a bare id.
+- [X] 4. For a hop whose agent_data row is a pointer (`ref_agent_data_id` set, local content null), the snapshot shows the referenced content, not null.
+- [X] 5. An unauthenticated request for the copy payload is rejected.
+
+## Boundaries
+
+- [X] Does not own the Copy button chrome on Job Detail or Recommended Job Report — that is AST-1421. Does not change how agent_data is stored. Does not copy timesheets, dispatch ledger, or the company record.
+
+## Notes for planning
+
+Citations as above. Block types from config. Backend debug contract when debug is on.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1419-create-a-copy-button-on-the-job-modal`, child `sub/AST-1419/AST-1420-job-copy-snapshot-payload`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Assembler (pins stay ids, hop union, pointer `block_data`, skip/error paths, debug): `tests/component/core/test_tracker.py::TestAst1420AssembleJobCopySnapshot`
+2. `GET /api/jobs/<id>/copy` (401 / 404 / 200 no-hydrate / 500 / debug query): `tests/component/ui/api/test_api_jobs.py::TestAst1420CopySnapshotRoute`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1420AssembleJobCopySnapshot \
+  tests/component/ui/api/test_api_jobs.py::TestAst1420CopySnapshotRoute \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+Bible shasums (`origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload`):
+
+* `docs/test-bible/core/tracker.md` `decb5688edf54b6741b05066bfb4f5dae4b3a5cd`
+* `docs/test-bible/ui/api/api_jobs.md` `a095137dbfbf1d26b0b68aa34d0be6d8035b8e85`
+
+### Comments
+
+#### radia — 2026-08-17T17:55:06.791Z
+[code-rubric] PROCEED (Commit: 65884db6) snapshot payload clean
+
+#### betty — 2026-08-17T17:49:48.551Z
+`origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload` @ `65884db6` · snapshot tests ready
+
+#### joan — 2026-08-17T17:35:54.004Z
+[plan-rubric] PROCEED (Commit: f35edb19) snapshot payload ready
+
+#### ada — 2026-08-17T17:31:17.098Z
+`origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload` @ `f35edb19` · snapshot payload planned
+
+---
+
 # AST-1420 — Job copy snapshot payload (Create a Copy button on the Job Modal)
 
 - **Linear:** [AST-1420](https://linear.app/astralcareermatch/issue/AST-1420/job-copy-snapshot-payload-create-a-copy-button-on-the-job-modal)

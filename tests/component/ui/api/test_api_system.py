@@ -363,6 +363,67 @@ class TestAst1375InflightHideStatesManifest:
         ]
 
 
+class TestAst1550ReportDiscussionSections:
+    """AST-1550: state_ui_manifest attaches jobs.recommended.report_discussion_sections."""
+
+    # Nine hop keys matching today's BUILD_ARTIFACTS daisy-chain (order from walk).
+    _NINE = [
+        "contemplate_job",
+        "draft_job_resume",
+        "check_job_resume",
+        "draft_cover_letter",
+        "check_cover_letter",
+        "draft_application_responses",
+        "check_application_responses",
+        "polish_application_package",
+        "propose_application_responses",
+    ]
+
+    def test_manifest_includes_nine_discussion_sections(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        names = {
+            "contemplate_job": "Contemplate Job",
+            "propose_application_responses": "",  # blank → fall back to task_key
+        }
+        monkeypatch.setattr(
+            system_mod,
+            "build_artifacts_discussion_hop_task_keys",
+            lambda: list(self._NINE),
+        )
+        monkeypatch.setattr(
+            system_mod,
+            "get_agent_task",
+            lambda tk: {"task_name": names.get(tk, f"Name {tk}")},
+        )
+        resp = system_client.get("/api/state_ui_manifest", headers=auth_headers)
+        assert resp.status_code == 200
+        sections = resp.get_json()["jobs"]["recommended"]["report_discussion_sections"]
+        assert len(sections) == 9
+        assert [s["section_id"] for s in sections] == self._NINE
+        assert sections[0]["nav_label"] == "Contemplate Job"
+        assert sections[-1]["nav_label"] == "propose_application_responses"
+        assert all(s["default_expanded"] is False for s in sections)
+        # Discussion also present on report_top_tabs (config list).
+        top = resp.get_json()["jobs"]["recommended"]["report_top_tabs"]
+        assert [t["tab_id"] for t in top][-1] == "discussion"
+
+    def test_manifest_degrades_discussion_on_walk_failure(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            system_mod,
+            "build_artifacts_discussion_hop_task_keys",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+        resp = system_client.get("/api/state_ui_manifest", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["jobs"]["recommended"]["report_discussion_sections"] == []
+        # Rest of manifest still present.
+        assert "report_top_tabs" in body["jobs"]["recommended"]
+
+
 class TestAst1351ExperienceJobUiConfig:
     """AST-1351: ui_config exposes experience job field spine + unsupported message."""
 

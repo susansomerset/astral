@@ -12,13 +12,13 @@
 
 **Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
 
-Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT `…/artifacts/proposed_answers` still writes a body dict onto that key. PUT `…/artifacts/job_resume` keep-pin rewrite is **AST-1430**.
+Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT `…/artifacts/proposed_answers` still writes a body dict onto that key. PUT `…/artifacts/job_resume` body dual-write is **AST-1548 / AST-1554** (was keep-pin under AST-1430).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | GET hydrate + PUT aliases | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi`** |
 
-**Broken / obsolete:** `test_put_job_resume_writes_body_dict` — AST-1430 (dict-onto-pin). Legacy `resume_content` / `application_responses` PUT routes retained.
+**Broken / obsolete:** `test_put_job_resume_writes_body_dict` (pre-AST-1430); `test_put_job_resume_writes_resume_content_keeps_pin` — AST-1554 (keep-pin).
 
 **Integration:** none.
 
@@ -32,19 +32,25 @@ Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT `…/artifa
 
 **Parent:** [AST-1422](https://linear.app/astralcareermatch/issue/AST-1422/finalize-job-resume-isnt-getting-parsed-into-the-job-resume-renderer). **Publish:** `origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin`. Product fix: **AST-1428**.
 
-`PUT /api/jobs/<id>/artifacts/job_resume` keeps `artifact_key: "job_resume"` but calls `save_job_artifact_resume_content` (sibling blob). Never `save_job_data` a dict onto `artifacts.job_resume`. Copy-after-pin: **`docs/test-bible/core/agent.md`** § AST-1430.
+**Broken / obsolete under AST-1548/AST-1554:** PUT keep-pin (`test_put_job_resume_writes_resume_content_keeps_pin`) — see AST-1554 dual-write node.
+
+### AST-1554 · AST-1547 (gap — PUT body dual-write)
+
+**Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). Product: **AST-1548**.
+
+`PUT /api/jobs/<id>/artifacts/job_resume` stays thin → `save_job_artifact_job_resume_body` (table SoT under **AST-1556**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| PUT keep-pin | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin`** |
+| PUT via tracker body helper | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper`** |
 
-**Broken / obsolete:** `test_put_job_resume_writes_body_dict` (dict onto pin).
+**Broken / obsolete:** dual-write / keep-pin PUT node names — AST-1556.
 
 **Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper \
   -q
 ```
 
@@ -230,3 +236,19 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** repro lines flip red→green after `make-fix`; regression line stays green — not zero-arg harness / branch-lock gate.
+
+
+---
+
+### AST-1592 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`.
+
+PUT job_resume / cover_letter / legacy resume_content call `save_job_artifact` with catalog keys (not type-specific helpers). Primary tracker coverage: **`docs/test-bible/core/tracker.md`** § AST-1592.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT job_resume → catalog write | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper`** (revised) |
+| PUT cover_letter → catalog write | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_put_cover_letter_persists_via_tracker`** (revised) |
+
+**Broken / obsolete this pass:** spies on `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` — retargeted to `save_job_artifact`.

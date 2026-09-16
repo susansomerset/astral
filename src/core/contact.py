@@ -12,12 +12,16 @@ AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
 AST-1471 / AST-1531: Contact scrap path → `contact_land_meteorite` → `stage_meteorite`.
+AST-1561: BOT_BLOCKED paste recovery via `apply_paste` (no re-classify).
 AST-1515: Contact-task markup parse/dispatch + same-event follow-up turn.
+AST-1585 / patt.artifact.read-operative — Estelle pin→body for pilot
+base_resume via get_operative_base_resume.
 """
 
 from __future__ import annotations
 
 import asyncio
+import copy
 import importlib
 import json
 import os
@@ -30,9 +34,11 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.core.candidate import (
     get_candidate,
     get_candidate_id_for_query,
+    get_operative_base_resume,
     initiate_prospect_candidate,
     save_candidate_data,
 )
+from src.data import database
 from src.data.contact_debug import (
     load_contact_debug_enabled,
     save_contact_debug_enabled,
@@ -559,6 +565,42 @@ def run_contact_skill(
     }
 
 
+def try_meteorite_apply_paste_from_slack(
+    *,
+    astral_candidate_id: Optional[str],
+    channel: str,
+    thread_ts: Optional[str],
+    message_ts: Optional[str],
+    text: str,
+    debug: bool = False,
+) -> dict:
+    """AST-1561: thread-first BOT_BLOCKED paste recovery before Estelle classify."""
+    if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
+        return {"applied": False}
+    if not (isinstance(text, str) and text.strip()):
+        return {"applied": False}
+
+    from src.core.meteorite import (
+        apply_paste,
+        find_meteorite_bot_blocked_paste_source,
+        find_meteorite_for_estelle_thread,
+    )
+
+    row = None
+    anchor = (thread_ts or message_ts or "").strip()
+    if anchor:
+        row = find_meteorite_for_estelle_thread(
+            candidate_id=astral_candidate_id, thread_ts=anchor
+        )
+    if row is None:
+        row = find_meteorite_bot_blocked_paste_source(candidate_id=astral_candidate_id)
+    if row is None:
+        return {"applied": False}
+
+    result = apply_paste(int(row["id"]), text, debug=debug)
+    return {"applied": True, "result": result}
+
+
 def contact_land_meteorite(
     astral_candidate_id: str,
     *,
@@ -862,6 +904,98 @@ def _resolve_contact_task_handler(handler: str):
         return None
 
 
+_ARTIFACT_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+    r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def _is_artifact_uuid(value: str) -> bool:
+    return bool(_ARTIFACT_UUID_RE.match((value or "").strip()))
+
+
+def resolve_pinned_base_resume(
+    astral_candidate_id: str,
+    artifact_uuid: str,
+    *,
+    debug: bool = False,
+) -> Optional[Any]:
+    """Pin→body for pilot base_resume; None on miss / wrong owner / non-pilot.
+
+    Calls candidate.get_operative_base_resume. No candidate_data blob fallback.
+    """
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+    cid = (astral_candidate_id or "").strip()
+    uid = (artifact_uuid or "").strip()
+    if not cid or not uid:
+        if debug:
+            log.debug_index(
+                func="contact.resolve_pinned_base_resume",
+                index=1,
+                total=2,
+                identifier=(cid or "?")[:80],
+                outcome="found",
+            )
+            log.debug_detail(f"artifact_uuid={uid!r}")
+            log.debug_index(
+                func="contact.resolve_pinned_base_resume",
+                index=2,
+                total=2,
+                identifier=(cid or "?")[:80],
+                outcome="recorded",
+            )
+            log.debug_detail("hit=False")
+        return None
+
+    row = database.get_artifact(uid)
+    hit = False
+    body: Optional[Any] = None
+    if row is not None and str(row.get("entity_id") or "").strip() == cid:
+        body = get_operative_base_resume(uid)
+        hit = body is not None
+
+    if debug:
+        log.debug_index(
+            func="contact.resolve_pinned_base_resume",
+            index=1,
+            total=2,
+            identifier=cid[:80],
+            outcome="found",
+        )
+        log.debug_detail(f"artifact_uuid={uid}")
+        log.debug_index(
+            func="contact.resolve_pinned_base_resume",
+            index=2,
+            total=2,
+            identifier=cid[:80],
+            outcome="recorded",
+        )
+        log.debug_detail(f"hit={hit}")
+    return body
+
+
+def _dispatch_recorded_debug(
+    log, *, index: int, total: int, key: str, row: Dict[str, Any], debug: bool
+) -> None:
+    """Style D recorded epilog for one contact-task span (handler or short-circuit)."""
+    if not debug:
+        return
+    log.debug_index(
+        func="contact.run_contact_task_dispatch",
+        index=index,
+        total=total,
+        identifier=key,
+        outcome="recorded",
+    )
+    if bool(row.get("ok")):
+        payload = json.dumps(row, default=str)
+        for line in truncate_debug_content(payload):
+            log.debug_detail(f"ok=True {line}")
+    else:
+        log.debug_detail(f"ok=False error={row.get('error')!r}")
+
+
 def run_contact_task_dispatch(
     *,
     astral_candidate_id: str,
@@ -893,30 +1027,52 @@ def run_contact_task_dispatch(
         if meta.get("requires_candidate") and not cid:
             row = {"ok": False, "error": "no_candidate", "task_key": key}
             results.append(row)
-            if debug:
-                log.debug_index(
-                    func="contact.run_contact_task_dispatch",
-                    index=index,
-                    total=total,
-                    identifier=key,
-                    outcome="recorded",
-                )
-                log.debug_detail(f"ok=False error=no_candidate")
+            _dispatch_recorded_debug(
+                log, index=index, total=total, key=key, row=row, debug=debug
+            )
             continue
+
+        # AST-1585: pin→body / refuse blob dual-read for get_candidate_data.
+        if key == "get_candidate_data":
+            param_n = (param or "").strip()
+            if _is_artifact_uuid(param_n):
+                body = resolve_pinned_base_resume(cid, param_n, debug=debug)
+                if body is not None:
+                    row = {
+                        "ok": True,
+                        "task_key": "get_candidate_data",
+                        "result": body,
+                    }
+                else:
+                    row = {
+                        "ok": False,
+                        "error": "not_found",
+                        "task_key": "get_candidate_data",
+                    }
+                results.append(row)
+                _dispatch_recorded_debug(
+                    log, index=index, total=total, key=key, row=row, debug=debug
+                )
+                continue
+            if param_n == "artifacts.base_resume":
+                row = {
+                    "ok": False,
+                    "error": "pin_required",
+                    "task_key": "get_candidate_data",
+                }
+                results.append(row)
+                _dispatch_recorded_debug(
+                    log, index=index, total=total, key=key, row=row, debug=debug
+                )
+                continue
 
         handler = _resolve_contact_task_handler(meta.get("handler") or "")
         if handler is None:
             row = {"ok": False, "error": "handler_unavailable", "task_key": key}
             results.append(row)
-            if debug:
-                log.debug_index(
-                    func="contact.run_contact_task_dispatch",
-                    index=index,
-                    total=total,
-                    identifier=key,
-                    outcome="recorded",
-                )
-                log.debug_detail("ok=False error=handler_unavailable")
+            _dispatch_recorded_debug(
+                log, index=index, total=total, key=key, row=row, debug=debug
+            )
             continue
 
         try:
@@ -935,21 +1091,9 @@ def run_contact_task_dispatch(
             row = {"ok": False, "error": str(exc), "task_key": key}
 
         results.append(row)
-        if debug:
-            log.debug_index(
-                func="contact.run_contact_task_dispatch",
-                index=index,
-                total=total,
-                identifier=key,
-                outcome="recorded",
-            )
-            ok = bool(row.get("ok"))
-            if ok:
-                payload = json.dumps(row, default=str)
-                for line in truncate_debug_content(payload):
-                    log.debug_detail(f"ok=True {line}")
-            else:
-                log.debug_detail(f"ok=False error={row.get('error')!r}")
+        _dispatch_recorded_debug(
+            log, index=index, total=total, key=key, row=row, debug=debug
+        )
 
     return results
 
@@ -962,6 +1106,7 @@ def run_contact_estelle_turn(
     message_ts: Optional[str] = None,
     astral_candidate_id: Optional[str] = None,
     candidate_state: Optional[str] = None,
+    base_resume_artifact_id: Optional[str] = None,
     debug: bool = False,
 ) -> dict:
     """One Contact Estelle conversational turn (AST-1073).
@@ -1082,13 +1227,26 @@ def run_contact_estelle_turn(
     lines.append(_trim(text if isinstance(text, str) else ""))
     live_content = "\n".join(lines)
 
-    # c. Candidate raft for tokens
+    # c. Candidate raft for tokens (AST-1585: strip blob base_resume; pin→body when supplied)
     candidate_data: dict = {}
     if isinstance(astral_candidate_id, str) and astral_candidate_id.strip():
         row = get_candidate(astral_candidate_id)
         if isinstance(row, dict):
             cd = row.get("candidate_data")
-            candidate_data = cd if isinstance(cd, dict) else {}
+            if isinstance(cd, dict):
+                candidate_data = copy.deepcopy(cd)
+            arts = candidate_data.get("artifacts")
+            if isinstance(arts, dict) and "base_resume" in arts:
+                arts = dict(arts)
+                del arts["base_resume"]
+                candidate_data["artifacts"] = arts
+            pin = (base_resume_artifact_id or "").strip()
+            if pin:
+                body = resolve_pinned_base_resume(
+                    astral_candidate_id, pin, debug=debug
+                )
+                if body is not None:
+                    candidate_data.setdefault("artifacts", {})["base_resume"] = body
 
     # d. do_task + envelope helper
     task_key = CONTACT_ESTELLE_CONFIG["task_key"]
@@ -1200,6 +1358,18 @@ def run_contact_estelle_turn(
             land_results.append({"ok": False, "error": "no_candidate"})
             continue
         try:
+            from src.core.meteorite import (
+                apply_paste,
+                find_meteorite_bot_blocked_paste_source,
+            )
+
+            paste_row = find_meteorite_bot_blocked_paste_source(
+                candidate_id=astral_candidate_id
+            )
+            if paste_row is not None and isinstance(text, str) and text.strip():
+                apply_out = apply_paste(int(paste_row["id"]), text, debug=debug)
+                land_results.append({"ok": True, "result": apply_out, "via": "apply_paste"})
+                continue
             if isinstance(item.get("scraps"), list) and item["scraps"]:
                 land_out = contact_land_meteorite(
                     astral_candidate_id,
@@ -1523,22 +1693,59 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
             },
             debug=debug,
         )
-    # AST-1073: one Estelle turn after accept + resolve + inbound cache append.
+    # AST-1561: paste recovery before Estelle turn (no re-classify).
     if result.get("accepted") and isinstance(channel, str) and channel:
-        try:
-            turn_out = run_contact_estelle_turn(
-                channel=channel,
-                text=text,
-                thread_ts=event.get("thread_ts"),
-                message_ts=msg_ts if isinstance(msg_ts, str) else None,
-                astral_candidate_id=result.get("astral_candidate_id"),
-                candidate_state=result.get("candidate_state"),
-                debug=debug,
-            )
-            result["estelle_turn"] = turn_out
-        except Exception as exc:
-            log.error("contact estelle turn failed: %s", exc, exc_info=True)
-            result["estelle_turn"] = {"ok": False, "error": str(exc)}
+        paste_out = try_meteorite_apply_paste_from_slack(
+            astral_candidate_id=result.get("astral_candidate_id"),
+            channel=channel,
+            thread_ts=event.get("thread_ts"),
+            message_ts=msg_ts if isinstance(msg_ts, str) else None,
+            text=text,
+            debug=debug,
+        )
+        result["meteorite_apply_paste"] = paste_out
+        if paste_out.get("applied") and paste_out.get("result", {}).get("ok"):
+            try:
+                ack = format_contact_reply_text(
+                    "Got it — pasted job description saved for review."
+                )
+                reply_thread_ts = event.get("thread_ts")
+                if not reply_thread_ts and isinstance(msg_ts, str):
+                    reply_thread_ts = msg_ts
+                result["estelle_turn"] = {
+                    "ok": True,
+                    "outcome": "paste_applied",
+                    "meteorite_apply_paste": paste_out,
+                    "slack_post": contact_post_message(
+                        channel=channel,
+                        text=ack,
+                        thread_ts=reply_thread_ts,
+                        debug=debug,
+                    ),
+                }
+            except Exception as exc:
+                log.error("contact paste ack failed: %s", exc, exc_info=True)
+                result["estelle_turn"] = {
+                    "ok": True,
+                    "outcome": "paste_applied",
+                    "meteorite_apply_paste": paste_out,
+                    "slack_post": {"ok": False, "error": str(exc)},
+                }
+        else:
+            try:
+                turn_out = run_contact_estelle_turn(
+                    channel=channel,
+                    text=text,
+                    thread_ts=event.get("thread_ts"),
+                    message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                    astral_candidate_id=result.get("astral_candidate_id"),
+                    candidate_state=result.get("candidate_state"),
+                    debug=debug,
+                )
+                result["estelle_turn"] = turn_out
+            except Exception as exc:
+                log.error("contact estelle turn failed: %s", exc, exc_info=True)
+                result["estelle_turn"] = {"ok": False, "error": str(exc)}
         # AST-1101: hear-ack when Estelle turn did not successfully post to Slack.
         turn_out = result.get("estelle_turn")
         slack_post = turn_out.get("slack_post") if isinstance(turn_out, dict) else None

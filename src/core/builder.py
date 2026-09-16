@@ -91,6 +91,7 @@ def _coerce_candidate_blob(raw: Dict[str, Any]) -> Dict[str, Any]:
         out["_first"] = raw.get("first") or ""
         out["_last"] = raw.get("last") or ""
         out["_full"] = raw.get("full") or ""
+        out["_astral_candidate_id"] = str(raw.get("astral_candidate_id") or "").strip()
         return out
     return raw
 
@@ -100,24 +101,37 @@ def _builder_job_identifier(job: Dict[str, Any]) -> str:
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
 
 
-def _resume_content_source_label(job_data: dict, candidate_data: dict) -> str:
-    """Read-only label for which blob supplies resume sections (no raises)."""
-    artifacts = (job_data or {}).get("artifacts") or {}
-    rc = artifacts.get("resume_content")
-    if _is_nonempty_resume_dict(rc):
-        return "job_data.artifacts.resume_content"
-    br = ((candidate_data or {}).get("artifacts") or {}).get("base_resume")
+def _resume_content_source_label(
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    astral_job_id: Optional[str] = None,
+) -> str:
+    """Read-only label for which source supplies resume sections (no raises). AST-1593."""
+    jid = (astral_job_id or "").strip()
+    if jid:
+        body = tracker_mod.get_job_current(jid, "job.artifacts.job_resume")
+        if _is_nonempty_resume_dict(body):
+            return "get_job_current(job.artifacts.job_resume)"
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if _is_nonempty_resume_dict(br):
-        return "candidate_data.artifacts.base_resume"
+        return "get_candidate_current(candidate.artifacts.base_resume)"
     return "missing"
 
 
-def _cover_letter_source_label(job_data: dict, candidate_data: dict) -> Optional[str]:
-    """Read-only label for cover letter provenance, or None when no cover."""
-    artifacts = (job_data or {}).get("artifacts") or {}
-    cl = artifacts.get("cover_letter")
-    if isinstance(cl, dict) and _cover_letter_nonempty(cl):
-        return "job_data.artifacts.cover_letter"
+def _cover_letter_source_label(
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    astral_job_id: Optional[str] = None,
+) -> Optional[str]:
+    """Read-only label for cover letter provenance, or None when no cover. AST-1593."""
+    jid = (astral_job_id or "").strip()
+    if jid:
+        raw = tracker_mod.get_job_current(jid, "job.artifacts.cover_letter")
+        if isinstance(raw, dict) and _cover_letter_nonempty(raw):
+            return "get_job_current(job.artifacts.cover_letter)"
     sample = ((candidate_data or {}).get("context") or {}).get("raw_sample")
     if isinstance(sample, str) and sample.strip():
         return "candidate_data.context.raw_sample"
@@ -130,11 +144,12 @@ def _accent_source_label(candidate_data: dict) -> str:
     ac = structure.get("accent_color")
     if isinstance(ac, str) and ac.strip():
         return "resume_structure.accent_color"
-    br = ((candidate_data or {}).get("artifacts") or {}).get("base_resume")
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if isinstance(br, dict):
         legacy = br.get("accent_color")
         if isinstance(legacy, str) and legacy.strip():
-            return "artifacts.base_resume.accent_color"
+            return "get_candidate_current.accent_color"
     return "BUILD_CONFIG.default_style"
 
 
@@ -214,12 +229,13 @@ def build_resume_from_job(
     if debug:
         _log.set_debug_flag(True)
     identifier = _builder_job_identifier(job)
+    jid = str(job.get("astral_job_id") or "").strip() or None
     job_data = job.get("job_data")
     if not isinstance(job_data, dict):
         job_data = {}
     structure = candidate_mod.resolve_resume_structure(cd)
     try:
-        render = _resolve_resume_sections(job_data, cd)
+        render = _resolve_resume_sections(job_data, cd, astral_job_id=jid)
     except ValueError as exc:
         _emit_builder_failure(
             func="builder.build_resume_from_job",
@@ -234,7 +250,7 @@ def build_resume_from_job(
         candidate_mod.debug_experience_jobs(_log, render)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
     style = _merge_effective_style(cd)
-    cover = _resolve_cover_letter(job_data, cd)
+    cover = _resolve_cover_letter(job_data, cd, astral_job_id=jid)
     markers = _apply_resume_text_markers(render)
     ordered_body = _structure_ordered_body_ids(structure)
     titles = candidate_mod.resume_section_titles(structure)
@@ -256,7 +272,7 @@ def build_resume_from_job(
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
         content_keys = _render_content_keys(markers)
-        cover_src = _cover_letter_source_label(job_data, cd)
+        cover_src = _cover_letter_source_label(job_data, cd, astral_job_id=jid)
         kw_count = (
             len(split_to_list(str(kw), ","))
             if isinstance(kw, str) and kw.strip()
@@ -269,7 +285,9 @@ def build_resume_from_job(
             identifier=identifier,
             outcome="success — resume html",
         )
-        _log.debug_detail(f"resume_source={_resume_content_source_label(job_data, cd)!r}")
+        _log.debug_detail(
+            f"resume_source={_resume_content_source_label(job_data, cd, astral_job_id=jid)!r}"
+        )
         _log.debug_detail(f"enabled_sections={enabled!r}")
         _log.debug_detail(f"body_section_ids={ordered_body!r}")
         _log.debug_detail(f"render_keys={content_keys!r}")
@@ -336,10 +354,11 @@ def build_cover_letter_from_job(
     if debug:
         _log.set_debug_flag(True)
     identifier = _builder_job_identifier(job)
+    jid = str(job.get("astral_job_id") or "").strip() or None
     job_data = job.get("job_data")
     if not isinstance(job_data, dict):
         job_data = {}
-    cover = _resolve_cover_letter(job_data, cd)
+    cover = _resolve_cover_letter(job_data, cd, astral_job_id=jid)
     if cover is None:
         msg = "No cover letter content for job"
         _emit_builder_failure(
@@ -366,7 +385,7 @@ def build_cover_letter_from_job(
         fields, signature_image_src=sig_src, document_title=doc_title
     )
     if debug:
-        cover_src = _cover_letter_source_label(job_data, cd)
+        cover_src = _cover_letter_source_label(job_data, cd, astral_job_id=jid)
         _log.debug_index(
             func="builder.build_cover_letter_from_job",
             index=1,
@@ -405,7 +424,19 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         raise ValueError(msg)
     cd = _coerce_candidate_blob(row)
     structure = candidate_mod.resolve_resume_structure(cd)
-    raw = (cd.get("artifacts") or {}).get("base_resume")
+    raw = candidate_mod.load_pilot_base_resume_for_candidate(candidate_id)
+    if debug:
+        _log.debug_index(
+            func="builder.build_base_resume",
+            index=1,
+            total=2,
+            identifier=identifier,
+            outcome="found",
+        )
+        _log.debug_detail(
+            f"found artifact_key=candidate.artifacts.base_resume "
+            f"current_read={'hit' if raw is not None else 'miss'}"
+        )
     # Same ingest as candidate PUT / Base Resume Content display (list or dict).
     if isinstance(raw, (list, dict)):
         content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
@@ -446,12 +477,12 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         content_keys = _render_content_keys(markers)
         _log.debug_index(
             func="builder.build_base_resume",
-            index=1,
-            total=1,
+            index=2,
+            total=2,
             identifier=identifier,
-            outcome="success — base resume html",
+            outcome="recorded — base resume html",
         )
-        _log.debug_detail("resume_source=candidate_data.artifacts.base_resume")
+        _log.debug_detail("resume_source=get_candidate_current(candidate.artifacts.base_resume)")
         _log.debug_detail(f"enabled_sections={enabled!r}")
         _log.debug_detail(f"body_section_ids={ordered_body!r}")
         _log.debug_detail(f"render_keys={content_keys!r}")
@@ -940,22 +971,21 @@ def _reject_unsupported_experience_shape(content: dict) -> None:
     raise ValueError(BUILD_CONFIG["unsupported_resume_structure_message"])
 
 
-def _resolve_resume_sections(job_data: dict, candidate_data: dict) -> dict:
-    """Prefer job resume_content; else pin job_resume; else base_resume."""
-    artifacts = job_data.get("artifacts") or {}
-    rc = artifacts.get("resume_content")
-    if _is_nonempty_resume_dict(rc):
-        return dict(rc)
-    # AST-1100/AST-1428: pin fallback unwraps agent_payload.resume; do not treat hop envelope as sections.
-    pin = artifacts.get("job_resume")
-    if isinstance(pin, str) and pin.strip():
-        body = tracker_mod.resolve_job_artifact_agent_data_body(pin)
-        unwrapped = tracker_mod._resume_payload_body(body)
-        if _is_nonempty_resume_dict(unwrapped):
-            return dict(unwrapped)
-    if isinstance(pin, dict) and _is_nonempty_resume_dict(pin):
-        return dict(pin)
-    br = (candidate_data.get("artifacts") or {}).get("base_resume")
+def _resolve_resume_sections(
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    astral_job_id: Optional[str] = None,
+) -> dict:
+    """Catalog current job_resume via get_job_current; else candidate base_resume. AST-1593."""
+    _ = job_data  # retained for call-site compatibility; not SoT for resume body
+    jid = (astral_job_id or "").strip()
+    if jid:
+        body = tracker_mod.get_job_current(jid, "job.artifacts.job_resume")
+        if _is_nonempty_resume_dict(body):
+            return dict(body)
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if _is_nonempty_resume_dict(br):
         return dict(br)
     raise ValueError("No resume_content on job and no base_resume on candidate")
@@ -976,19 +1006,19 @@ def _cover_letter_fields_for_read(cl: dict) -> dict:
     }
 
 
-def _resolve_cover_letter(job_data: dict, candidate_data: dict) -> Optional[dict]:
-    """Job cover_letter dict if any field non-empty; else pin resolve; else sample_cover."""
-    artifacts = job_data.get("artifacts") or {}
-    cl = artifacts.get("cover_letter")
-    if isinstance(cl, dict) and _cover_letter_nonempty(cl):
-        return _cover_letter_fields_for_read(cl)
-    # AST-1100: cover_letter may be a RESPONSE agent_data_id pin string.
-    if isinstance(cl, str) and cl.strip():
-        from src.core.tracker import resolve_job_artifact_agent_data_body
-
-        body = resolve_job_artifact_agent_data_body(cl)
-        if isinstance(body, dict) and _cover_letter_nonempty(body):
-            return _cover_letter_fields_for_read(body)
+def _resolve_cover_letter(
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    astral_job_id: Optional[str] = None,
+) -> Optional[dict]:
+    """Catalog current cover_letter via get_job_current; else sample_cover. AST-1593."""
+    _ = job_data  # retained for call-site compatibility; not SoT for cover body
+    jid = (astral_job_id or "").strip()
+    if jid:
+        raw = tracker_mod.get_job_current(jid, "job.artifacts.cover_letter")
+        if isinstance(raw, dict) and _cover_letter_nonempty(raw):
+            return _cover_letter_fields_for_read(raw)
     sample = (candidate_data.get("context") or {}).get("raw_sample")
     if isinstance(sample, str) and sample.strip():
         # v1: entire sample string is body; re_line/signature empty until UI captures structured cover.
@@ -1040,7 +1070,8 @@ def _merge_effective_style(candidate_data: dict) -> dict:
         colors["default_accent"] = ac.strip()
         colors["default_header"] = ac.strip()
     else:
-        br = (candidate_data.get("artifacts") or {}).get("base_resume")
+        cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+        br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
         if isinstance(br, dict):
             legacy = br.get("accent_color")
             if isinstance(legacy, str) and legacy.strip():
@@ -1109,12 +1140,17 @@ def _resume_site_markers(text: str) -> str:
 
 
 def _glue_word_cloud_bullet_separators(text: str) -> str:
-    """NBSP both sides of • for word_cloud HTML emit only (AST-1536)."""
+    """NBSP• then break after; inner spaces/hyphens non-breaking (AST-1536/1540/1552)."""
     if not text:
         return text
     emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
     glued = "\u00a0•\u00a0"
-    return text.replace(emit_sep, glued).replace("\u00a0• ", glued)
+    t = text.replace(emit_sep, glued).replace("\u00a0• ", glued)
+    t = t.replace(" ", "\u00a0")
+    t = t.replace("-", "\u2011")
+    # AST-1552: ordinary space after • (soft-wrap); keep NBSP before •
+    t = t.replace("\u00a0•\u00a0", "\u00a0• ")
+    return t
 
 
 def _emit_inline_emphasis_html(text: str) -> str:

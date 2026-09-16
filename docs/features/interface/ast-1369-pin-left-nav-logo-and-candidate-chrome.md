@@ -1,3 +1,62 @@
+<!-- linear-archive: AST-1369 archived 2026-08-31 -->
+
+## Linear archive (AST-1369)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1369/pin-left-nav-logo-and-candidate-chrome-freeze-the-astral-logo-and-the  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1361 — Freeze the Astral Logo and the candidate selection  
+**Blocked by / blocks / related:** parent: AST-1361
+
+### Description
+
+## What this implements
+
+Restructure the wide left-nav so logo + candidate selection stay pinned while nav groups (and footer content below them) scroll in a dedicated region. Preserve the existing responsive shell: wide native select, narrow drawer/menu, and AST-1286 open/close rules. Does not own nav config, candidate context APIs, or footer redesign.
+
+## Citations
+
+`astral.ui.frontend-file-placement`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.ui.naming-conventions`
+
+## Acceptance criteria
+
+- [X] On a wide viewport (≥1024px) with enough left-nav content to scroll, scrolling the left nav leaves the Astral logo fully visible at the top of the sidebar.
+- [X] Under the same conditions, the candidate selection control stays fully visible directly under the logo; the selected candidate label/value remains readable without scrolling to the top.
+- [X] Under the same conditions, the first scrollable nav content is the first nav group (or the loading/error message that replaces groups), not the logo or candidate control.
+- [X] On a narrow viewport, hamburger open/close, backdrop dismiss, close-on-navigate, and candidate menu behavior still match today’s responsive shell (no regression).
+- [X] Non-admin candidate lock and admin candidate switching still behave as today.
+
+## Boundaries
+
+- [X] Does not change candidate selection semantics, NAV_CONFIG, hamburger breakpoint, logo asset, or pin the admin deploy footer. Sibling slice: none (sole child).
+
+## Notes for planning
+
+Citations above. Shell/CSS vertical slice in NavigationShell + App.css.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1361-freeze-astral-logo-candidate-selection`, child `sub/AST-1361/<child-id>-pin-left-nav-logo-and-candidate-chrome`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-14T19:46:46.233Z
+[code-rubric] REVIEW (Commit: 4de41804) scroll pinning UAT
+
+#### betty — 2026-08-14T19:43:52.928Z
+`origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome` @ `4de418048dcf15d81bf3df5fbe99cf5dc23b298d` · pinned chrome tests
+
+#### joan — 2026-08-14T19:39:34.290Z
+[plan-rubric] PROCEED (Commit: e3a12a9) pinned chrome plan solid
+
+#### katherine — 2026-08-14T19:37:58.733Z
+`origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome` @ `e3a12a90578ac83a643ceae93a96d6b8a384df9c` · plan ready
+
+---
+
 # AST-1369 — Pin left-nav logo and candidate chrome (Freeze the Astral Logo and the candidate selection)
 
 **Linear:** [AST-1369](https://linear.app/astralcareermatch/issue/AST-1369/pin-left-nav-logo-and-candidate-chrome-freeze-the-astral-logo-and-the)  

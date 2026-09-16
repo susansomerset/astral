@@ -1,3 +1,60 @@
+<!-- linear-archive: AST-1451 archived 2026-09-09 -->
+
+## Linear archive (AST-1451)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1451/ad-hoc-import-list-and-load-payload-add-import-agent-data-to-agent-ad  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1439 — Add "import agent data" to Agent Ad Hoc  
+**Blocked by / blocks / related:** parent: AST-1439; blocks: AST-1452
+
+### Description
+
+## What this implements
+
+Own the read path: an authenticated admin list of `agent_data` runs (one row per batch: timestamp, `entity_id`, `task_key`, plus whatever identity Load needs — typically `batch_id`), including `adhoc-*` rows, newest first, no filter/cap. Load payload is that batch’s prompt blocks (and RESPONSE if present), via existing agent_data read helpers where they already return the blocks. When `debug=True`, list logs found → recorded per run. Does **not** own the picker chrome or editor mapping (#2). Does **not** change Test persist except as needed so a workbench task key of `adhoc-foo` still stores as `adhoc-foo` rather than `adhoc-adhoc-foo` (strip one leading `adhoc-` before applying the AST-515 prefix, or equivalent).
+
+## Citations
+
+`pattern.ui.admin-endpoint`, `pattern.layers.import-discipline`, `pattern.config.config-block`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.debug-contract-gated`, `astral.standards.database-header-inventory`, `astral.standards.data-raises-caller-logs`
+
+## Acceptance criteria
+
+- [X] 1. Agent Ad Hoc shows a selection list whose rows are stored `agent_data` batches. Each visible row has timestamp, `entity_id`, and `task_key`. A production hop and an earlier Ad Hoc Test (`adhoc-<task_key>`) both appear. Newest first.
+- [X] 2. After Load, editing User and running Test creates a **new** `agent_data` batch (new `batch_id`). The imported batch’s prompt and response blocks are bit-for-bit the same as before Test. The new ledger/task label is `adhoc-<task_key>` with a single `adhoc-` prefix even when the imported run was already `adhoc-<task_key>`.
+- [X] 3. When `debug=True` on the list path, logs show a per-run index header plus found → recorded detail; when `debug=False`, listing adds no new debug-contract lines.
+
+## Boundaries
+
+- [X] Does **not** own the picker chrome or editor mapping (sibling #2). Does **not** change Manage Tasks, production `do_task`, dispatch, Save As, or Execution History chrome. Does **not** edit, delete, or rewrite loaded `agent_data` rows.
+
+## Notes for planning
+
+Citations as above. List is the `agent_data` table with no candidate/date filter or cap. Reuse existing agent_data read helpers for block bodies. Confirm Chuckles estimate: 3.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1439-add-import-agent-data-to-agent-ad-hoc`, child `sub/AST-1439/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-19T20:10:35.641Z
+[code-rubric] PROCEED (Commit: b7d06892) Clean read-path list
+
+#### betty — 2026-08-19T16:56:11.145Z
+`origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload` @ `b7d06892` · list load prefix tests
+
+#### joan — 2026-08-19T16:41:03.221Z
+[plan-rubric] PROCEED (Commit: f0f511714d010d4615a3f9f34c70a128d4aba013) list and load payload
+
+#### ada — 2026-08-19T16:35:52.189Z
+`origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload` @ `f0f51171` · plan published
+
+---
+
 # AST-1451 — Ad Hoc import list and load payload
 
 - **Linear:** [AST-1451](https://linear.app/astralcareermatch/issue/AST-1451)

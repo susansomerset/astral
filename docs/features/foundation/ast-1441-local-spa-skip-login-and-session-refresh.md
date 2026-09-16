@@ -1,3 +1,91 @@
+<!-- linear-archive: AST-1441 archived 2026-09-09 -->
+
+## Linear archive (AST-1441)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1441/local-spa-skip-login-and-session-refresh-disable-authentication-on  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1438 — Disable authentication on localhost  
+**Blocked by / blocks / related:** parent: AST-1438
+
+### Description
+
+## What this implements
+
+After #1: when the public local-auth signal is on, the SPA does not wait for a Stytch session, does not show Login or Log-off for a missing session, does not run session extend/refresh, and uses `/api/me` as the local operator. Non-local Login / Log-off / extend behavior is unchanged.
+
+## Citations
+
+`pattern.auth.local-deploy-passthrough`, `astral.idioms.require-auth-on-protected-endpoints`.
+
+## Acceptance criteria
+
+1. With deploy env `local`, opening the app on localhost with no valid Stytch session reaches the app (not Login / Log-off).
+2. With deploy env `local`, the SPA does not call Stytch session authenticate, extend, or refresh.
+3. With deploy env `staging`, `production`, or unset: Login still shows when there is no session; session extend still runs when a Stytch session exists.
+
+## Boundaries
+
+Does not own Flask `@require_auth` internals, local-operator identity, or the public local-auth signal (sibling 1). Does not change Surfer / extension auth. Does not alter expired-session log-off or SPA-mounted revalidation on non-local deploys (AST-625, AST-1408, AST-1424 / AST-1433).
+
+## Notes for planning
+
+SPA consumer of `pattern.auth.local-deploy-passthrough`. After sibling 1.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh` @ `6fe15198` (`test(AST-1441)` `1b6ded60`).
+
+1. **Gaps (new):** fail-closed `fetchAuthPassthrough`; AuthContext `/api/me` without session + skip extend; RequireAuth skip Login/Log-off; Authenticate skip `authenticateByUrl` (§6c).
+   * `tests/component/frontend/lib/test_authPassthrough.test.ts`
+   * `tests/component/frontend/contexts/test_AuthContext.test.tsx`
+   * `tests/component/frontend/components/test_RequireAuth.test.tsx`
+   * `tests/component/frontend/pages/test_Authenticate.test.tsx`
+2. **Broken / obsolete:** existing AuthContext / RequireAuth / Authenticate suites — `stubAuthPublicFetches(false)` so the new passthrough fetch settles fail-closed. RequireAuth AST-1408 keep-mounted now `waitFor`. AdminRoute `useAuth` mocks include `localAuthPassthrough: false`.
+3. **Existing coverage:** non-local Login / extend still covered by the same files when passthrough is false.
+
+**Bible shasums** (`git show origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh:<path> | shasum`):
+
+* `docs/test-bible/frontend/lib.md` `7de7dd24be2f01b865fc3de179e225fd7b185f75`
+* `docs/test-bible/frontend/contexts.md` `ab5ee1fe57e4b3b4d3059cb7fb3eac10decba1ba`
+* `docs/test-bible/frontend/components.md` `fa34a0927675356da7eab9f4d56754622ec376cd`
+* `docs/test-bible/frontend/pages.md` `cf81fe0c29095c0434fcab7ba4f71781d480b0b7`
+
+**Narrowed run** (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_authPassthrough.test.ts \
+  ../../../tests/component/frontend/contexts/test_AuthContext.test.tsx \
+  ../../../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Comments
+
+#### radia — 2026-08-19T04:00:26.294Z
+[code-rubric] PROCEED (Commit: 6fe151986a633d9a322b1616a73adc383471a2d8) SPA skip login
+
+#### betty — 2026-08-19T03:48:52.792Z
+`origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh` @ `6fe15198` · SPA skip-login tests
+
+#### joan — 2026-08-19T03:23:29.045Z
+[plan-rubric] PROCEED (Commit: 9f9b1a69) SPA skip-login plan sound
+
+#### katherine — 2026-08-19T03:16:53.535Z
+`origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh` @ `9f9b1a69cd00bcf7f6e03e55f677efeff5433a13` · SPA skip-login plan
+
+---
+
 # Local SPA skip login and session refresh
 
 **Linear:** [AST-1441](https://linear.app/astralcareermatch/issue/AST-1441/local-spa-skip-login-and-session-refresh)

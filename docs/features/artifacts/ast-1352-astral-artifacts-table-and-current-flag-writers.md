@@ -1,3 +1,61 @@
+<!-- linear-archive: AST-1352 archived 2026-08-31 -->
+
+## Linear archive (AST-1352)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1352/astral-artifacts-table-and-current-flag-writers-create-a-table-called  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1340 — Create a table called astral_artifacts  
+**Blocked by / blocks / related:** parent: AST-1340; blocks: AST-1353
+
+### Description
+
+## What this implements
+
+Owns creating `astral_artifacts` (ensure/migrate), header inventory update, and data-layer save/read helpers that retire prior `current=1` and insert the new current row for a given entity + artifact type — matching agent-task edit versioning. Does **not** wire Save Base Resume (sibling).
+
+## Citations
+
+`pattern.layers.import-discipline`; proposed `pattern.data.versioned-current-row`; `astral.standards.database-header-inventory`; `astral.layers.import-direction`; `astral.standards.data-raises-caller-logs`
+
+## Acceptance criteria
+
+- [X] 1. Fresh and migrated databases expose an `astral_artifacts` table with entity identity, artifact type, artifact blob, current flag, UUID primary key, and created/updated timestamps, and the table is listed in the data-layer header inventory.
+- [X] 2. After a successful Save Base Resume for a candidate, exactly one `current = 1` row exists for that candidate + `artifact_type` `base_resume`, and its blob matches the saved `artifacts.base_resume` content. *(Satisfied jointly with sibling once Save is wired; this child delivers the table + writers that make that row possible.)*
+- [X] 3. A second successful Save for the same candidate retires the previous current row (`current = 0`) and inserts a new `current = 1` row; the retired row remains queryable in the table. *(Writer semantics owned here.)*
+
+## Boundaries
+
+- [X] Does **not** wire Save Base Resume / Generate / Regenerate / Print UI. Does **not** change `candidate_data.artifacts.base_resume` as the live editor source of truth. Sibling owns the Save call site.
+
+## Notes for planning
+
+Follow agent_task / rubric_vector `current=1` retire-and-insert. Flag proposed catalog pattern for Archie. Parent AST-1340.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+sub/AST-1340/AST-1352-astral-artifacts-table-writers
+
+### Comments
+
+#### radia — 2026-08-13T00:10:42.681Z
+[code-rubric] PROCEED (Commit: 74712e64) data-layer writers clean
+
+#### betty — 2026-08-13T00:07:50.349Z
+`origin/sub/AST-1340/AST-1352-astral-artifacts-table-writers` @ `74712e64` · artifacts writers covered
+
+#### joan — 2026-08-13T00:00:04.710Z
+[plan-rubric] PROCEED (Commit: d5137e65) data table + writers
+
+#### ada — 2026-08-12T23:58:20.075Z
+`origin/sub/AST-1340/AST-1352-astral-artifacts-table-writers` @ `d5137e65` · plan published
+
+---
+
 # AST-1352 — astral_artifacts table and current-flag writers
 
 **Linear:** [AST-1352](https://linear.app/astralcareermatch/issue/AST-1352)

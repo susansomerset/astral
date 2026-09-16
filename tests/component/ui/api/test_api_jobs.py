@@ -407,7 +407,8 @@ class TestJobsRoutes:
     def test_put_cover_letter_persists_via_tracker(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        captured: list[tuple[str, dict[str, str]]] = []
+        # AST-1592: PUT → save_job_artifact with catalog key.
+        captured: list[tuple] = []
         monkeypatch.setattr(
             jobs_mod,
             "get_job",
@@ -415,8 +416,8 @@ class TestJobsRoutes:
         )
         monkeypatch.setattr(
             jobs_mod,
-            "save_job_artifact_cover_letter",
-            lambda job_id, content: captured.append((job_id, content)),
+            "save_job_artifact",
+            lambda job_id, key, content, *a, **k: captured.append((job_id, key, content)),
         )
         resp = jobs_client.put(
             "/api/jobs/job-565/artifacts/cover_letter",
@@ -424,7 +425,9 @@ class TestJobsRoutes:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        assert captured == [("job-565", {"Subject": "Hi", "Letter": "Body"})]
+        assert captured == [
+            ("job-565", "job.artifacts.cover_letter", {"Subject": "Hi", "Letter": "Body"})
+        ]
 
     def test_put_application_responses_persists_via_save_job_data(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -582,29 +585,30 @@ class TestAst1100JobArtifactPinResolveApi:
         assert art["job_resume"] == {"professional_summary": "from-pin"}
         assert art["analysis_upshot"] == {"s": 1}
 
-    def test_put_job_resume_writes_resume_content_keeps_pin(
+    def test_put_job_resume_persists_via_tracker_body_helper(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1430 / AST-1428: editor save writes the sibling blob, never a dict onto the pin.
-        blob: list[tuple[str, dict]] = []
-        pin_writes: list[tuple[str, dict]] = []
+        # AST-1592: PUT stays thin → save_job_artifact(catalog key) (table SoT in tracker).
+        body_writes: list[tuple] = []
+        raw_saves: list[tuple[str, dict]] = []
         monkeypatch.setattr(
             jobs_mod,
             "get_job",
             lambda job_id: {
                 "astral_job_id": job_id,
-                "job_data": {"artifacts": {"job_resume": "pin-keep"}},
+                "job_data": {"artifacts": {}},
             },
         )
         monkeypatch.setattr(
             jobs_mod,
-            "save_job_artifact_resume_content",
-            lambda job_id, content: blob.append((job_id, content)),
+            "save_job_artifact",
+            lambda job_id, key, content, *a, **k: body_writes.append((job_id, key, content)),
         )
         monkeypatch.setattr(
             jobs_mod,
             "save_job_data",
-            lambda job_id, payload: pin_writes.append((job_id, payload)),
+            lambda job_id, payload: raw_saves.append((job_id, payload)),
+            raising=False,
         )
         resp = jobs_client.put(
             "/api/jobs/job-1100/artifacts/job_resume",
@@ -612,8 +616,10 @@ class TestAst1100JobArtifactPinResolveApi:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        assert blob == [("job-1100", {"professional_summary": "Edited"})]
-        assert pin_writes == []
+        assert body_writes == [
+            ("job-1100", "job.artifacts.job_resume", {"professional_summary": "Edited"})
+        ]
+        assert raw_saves == []
 
     def test_put_proposed_answers_writes_body_dict(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch

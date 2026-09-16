@@ -393,18 +393,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-779 · AST-770
 
-**Error toast diagnostics:** **`Toast.tsx`** — error variant defaults to **15s** dismiss, **click-to-copy** multi-line diagnostic bundle (route + optional candidate id from context; optional **`diagnostics`** from **`ApiError`**). Success/info unchanged (~3s, non-interactive). Helpers in **`toastDiagnostics.ts`**.
+**Error toast diagnostics:** **`Toast.tsx`** — error variant defaults to **15s** auto-dismiss; **click-to-copy** is limited to the message / “Click to copy” region (`.toast-copy-target.toast-error-clickable`); dedicated dismiss (`icon-control` ×, `aria-label="Dismiss"`) closes without clipboard write; status glyph is warning `\u26A0` (not ✗). Success/info unchanged (~3s, non-interactive). Helpers in **`toastDiagnostics.ts`**. Product split dismiss vs copy = **AST-1549**; tests/bible alignment = **AST-1553**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Toast UX + copy bundle | `src/ui/frontend/src/components/Toast.tsx`, `src/ui/frontend/src/lib/toastDiagnostics.ts`, `App.css` | `tests/component/frontend/components/test_Toast.test.tsx` — **AST-779** describe (15s error dismiss, 3s success, click-copy + copied feedback, `.toast-error-clickable` hint) |
+| Toast UX + copy bundle + dismiss | `src/ui/frontend/src/components/Toast.tsx`, `src/ui/frontend/src/lib/toastDiagnostics.ts`, `App.css` | `tests/component/frontend/components/test_Toast.test.tsx` — **AST-779** (15s error / 3s success, copy-target click-copy + copied feedback); **AST-1553** dismiss-without-copy; glyph `\u26A0` |
 | Representative ApiError wiring | `AdminAgentPrompts.tsx`, `CandidateProfile.tsx` | Existing page tests cover error toast text paths; **no new page manifest** — Toast auto-context satisfies AC 3–4 for pages passing `{ text, variant: "error" }` only |
 
-**AST-779** narrowed run (Vitest only):
+**AST-779** / **AST-1553** narrowed run (Vitest only):
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_Toast.test.tsx
+```
+
+### AST-1553 · AST-1543 (gap)
+
+**Gap sibling of AST-1549.** Retarget Toast click-copy / glyph assertions to AST-1549 hit targets; land dismiss-without-copy coverage. Product UI is AST-1549 — this ticket is tests/bible only.
+
+## QA test manifest
+
+1. **Bug-repro (must flip red→green with AST-1549 product):** `tests/component/frontend/components/test_Toast.test.tsx` — **`AST-1553: dismiss closes error toast without copying`** (Dismiss → no `clipboard.writeText`; `onDone` after 300ms)
+2. Retargeted click-copy: same file — **`AST-779: error toast is clickable and copies diagnostic bundle`** (`.toast-copy-target.toast-error-clickable`, not root)
+3. Glyph: variants smoke — error status `\u26A0`
+4. Duration contracts unchanged: **`AST-779: error toast defaults to 15000ms dismiss`**, **`AST-779: success toast still dismisses at 3000ms default`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx \
+  --testNamePattern="AST-1553|AST-779|shows success"
 ```
 
 ---
@@ -879,15 +896,38 @@ cd src/ui/frontend && npm run test:component -- \
 
 **AST-1350:** JAR **Print Resume** fetch-then-blob + toast exact API `error` (no `window.open` on failure). **AST-1489:** structure auto-persist before resume GET when candidate selected. Cover Letter print unchanged. Base Resume / Session Open HTML already toast API errors — **`test_ArtifactsBaseResumeContent`** / **`test_AdminSessionResumePaste`**. Core/API: **`docs/test-bible/core/builder.md`**.
 
+**AST-1546 (gap · AST-1542):** Blob Print Resume opens with `window.open(url, "_blank")` then `opener = null` (no features string — AST-1545 product). Success must **not** toast `Popup blocked — allow popups to open the HTML tab.` Cover Letter URL open keeps `"noopener,noreferrer"`.
+
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Fetch-then-blob success + unsupported toast | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **Print Resume fetch-then-blob…**, **AST-1350: Print Resume unsupported toast — no tab** |
-| Print without Save sections (bug-repro) | same | **`AST-1489:`** — structure PUT before resume GET |
+| Fetch-then-blob success + unsupported toast | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **AST-1546: Print Resume success — two-arg open…** (bug-repro), **AST-1350: Print Resume unsupported toast — no tab** |
+| Print without Save sections (bug-repro) | same | **`AST-1489:`** — structure PUT before resume GET (blob open two-arg) |
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
-  --testNamePattern="Print Resume|AST-1350"
+  --testNamePattern="AST-1546|Print Resume|AST-1350"
+```
+
+### AST-1546 · AST-1542 (gap)
+
+**Gap sibling of AST-1545.** Align four validate-then-blob success opens with AST-1545 shape (`window.open(url, "_blank")` + `opener = null`; no popup-blocked toast on success). Product UI is AST-1545 — this ticket is tests/bible only.
+
+## QA test manifest
+
+1. **Bug-repro (must flip red→green with AST-1545 product):** `test_JobAnalysisReportModal.test.tsx` — **`AST-1546: Print Resume success — two-arg open, opener null, no popup-blocked toast; Cover still noopener (AST-1350)`**
+2. Base Print success: `test_ArtifactsBaseResumeContent.test.tsx` — **`AST-1337: … success opens blob tab`** (two-arg + opener null + no blocked toast)
+3. Session Resume Open HTML success: `test_AdminSessionResumePaste.test.tsx`
+4. Session Cover Open HTML success: `test_AdminSessionCoverLetter.test.tsx` — Open HTML posts fields…
+5. JAR AST-1489 / AST-1490 Print Resume blob spies: two-arg open (Cover non-blob noopener unchanged)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx \
+  --testNamePattern="AST-1546|AST-1337: Print disabled|Open HTML posts|Open HTML posts fields"
 ```
 
 ### AST-1351 · AST-1345
@@ -1264,5 +1304,151 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+
+### AST-1551 · AST-1541
+
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report`. **Gap revise:** **AST-1612** — product pane filter on **AST-1609**.
+
+`JobDiscussionPane` — RESPONSE-only stack via `ReportSectionList` / `entity-story-content` (JSON pretty-print / raw text). Pane filters to sections with non-empty RESPONSE; empty `agentStory` → **0** headers (no always-on empty hop panels). `JobAnalysisReportModal` wires Discussion from `report_discussion_sections` + `agent_story` (no hardcode); header count follows the filtered pane, not raw catalog length. Fixture catalog keys lockstep with **AST-1550** `TestAst1550ReportDiscussionSections._NINE` (+ optional `anticipate_scan` when covering unique-parent). Config/manifest/`task_name`: sibling **AST-1550**. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pane RESPONSE-only / formatting / empty-story filter | `JobDiscussionPane.tsx` | **`test_JobDiscussionPane.test.tsx`** — **`JobDiscussionPane — AST-1551`** |
+| Modal Discussion tab + RESPONSE-only headers | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1551 Discussion tab`**; revised AST-948 top-tab assert |
+| Manifest fixture Discussion | `stateUiManifestFixture.ts` | consumed by JAR / pane tests |
+
+**Broken / obsolete:** AST-948 three-tab shell assert — Discussion added; tip Toast tests realigned to `origin/dev` (product already has AST-1549 dismiss). Pre-AST-1609 “nine collapsed empty panels” / “empty hops stay panels” asserts — revised (AST-1612). Empty-RESPONSE product gap (first blank RESPONSE hid later body) — shipped; coverage kept.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Pane: `tests/component/frontend/components/test_JobDiscussionPane.test.tsx`
+2. Modal Discussion: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1551|AST-948 horizontal shell"`
+3. Toast align (product on tip): `tests/component/frontend/components/test_Toast.test.tsx`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDiscussionPane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx \
+  --testNamePattern="AST-1551|AST-948 horizontal shell|Toast"
+```
+
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1612 · AST-1607
+
+**Parent:** [AST-1607](https://linear.app/astralcareermatch/issue/AST-1607/artifacts-discussion-is-incomplete). **Publish:** `origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`. Product: **AST-1609**.
+
+Test-gap: empty `agentStory` → 0 Discussion headers; `anticipate_scan` header when sections + story have RESPONSE; JAR partial story → header count = hops with RESPONSE (not catalog length). Hop-walk pytest: **`docs/test-bible/utils/config.md`** § AST-1612.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty story / anticipate_scan RESPONSE | `JobDiscussionPane.tsx` | **`test_JobDiscussionPane.test.tsx`** — hides all headers; shows anticipate_scan when RESPONSE |
+| JAR empty / partial story | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — AST-1551 Discussion tab (0 / 1 Expand) |
+
+**Broken / obsolete:** nine Expand buttons with empty/partial story.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDiscussionPane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1551|hides all headers|anticipate_scan"
+```
+
+**Pass criterion:** Vitest green against AST-1609 product; red on pre-filter pane (always-nine headers).
+
+---
+
+### AST-1577 · AST-1569
+
+**Publish:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`.
+
+`bodyShape === "resume_content"` is structure-dict mode (JAR keeps `useCandidateResumeStructure`). Primary: **`docs/test-bible/frontend/pages.md`** § AST-1577.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| bodyShape without legacy prop | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1577:`** |
+| JAR / legacy structure still holds | same | **`loads fixed tabs from structureSections without shapes fetch`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+---
+
+### AST-1585 · AST-1571
+
+**Publish:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`.
+
+JAR Artifacts pane **Source base resume** block: gap when no `job_data.base_resume_artifact_id`; fetch via operative API when pin present; error class on fail; never candidate detail blob for this panel. Helpers: **`docs/test-bible/frontend/lib.md`** § AST-1585. §6c routed-page N/A (component only).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Source base resume panel | `JobAnalysisReportModal.tsx` | **obsolete AST-1599** — panel removed; see § AST-1599 |
+
+**Broken / obsolete under AST-1599:** JAR Source base resume Vitest describe removed; Contact + operative API coverage below stays.
+
+**Integration:** none.
+
+## QA test manifest (AST-1585)
+
+1. Contact resolve/dispatch/raft: `tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume`
+2. Operative GET API: `tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi`
+3. Contact + operative API only (JAR panel / lib helpers retired under **AST-1599**)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume \
+  tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–2 — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1593 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`.
+
+ArtifactEditor job-mode load trusts hydrated leaf `job_resume` / `cover_letter`; does not promote `resume_content` sibling as SoT. Save still PUTs leaf URL. Builder: **`docs/test-bible/core/builder.md`** § AST-1593.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No resume_content fallback | `ArtifactEditor.tsx` | **`AST-1593: empty job_resume leaf does not fall back…`** |
+| Hydrated leaf load + save | same | **`AST-1593: job_resume load uses hydrated current leaf body`** |
+
+**Broken / obsolete this pass:** `AST-1480: job_resume pin overlays resume_content sibling bodies`.
+
+---
+
+### AST-1599 · AST-1588 (bug)
+
+**Publish:** `origin/sub/AST-1588/AST-1599-job-modal-hides-resume-cover`.
+
+Remove JAR Artifacts **Source base resume** provenance panel (and related fetch/state). Artifacts tab after finished build shows job_resume / cover_letter editors (or Generate when empty) — never pin-gap / operative JSON. [bug-repro] must flip red→green under `test-fix`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No Source base resume on populated Artifacts | `JobAnalysisReportModal.tsx` | **`[bug-repro]`** `JobAnalysisReportModal — AST-1599` · populated |
+| No Source base resume on empty Generate | same | **`[bug-repro]`** · empty Generate |
+
+**Broken / obsolete this pass:** `JobAnalysisReportModal — AST-1585 Source base resume` (deleted); lib `AST-1585 operative base_resume helpers` (deleted — exports removed with panel). Contact/API AST-1585 stays.
+
+**Integration:** none.
+
+## QA test manifest (AST-1599)
+
+1. **[bug-repro]** `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1599"`
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1599"
+```
+
+**Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix removes the panel — not zero-arg harness / branch-lock gate.

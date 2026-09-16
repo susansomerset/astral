@@ -247,16 +247,25 @@ class TestResolveTokens:
         candidate = {"profile": {"cover_letter_signature": "— Ada"}}
         assert cfg.resolve_tokens("{$COVER_LETTER_SIGNATURE}", candidate, "draft_cover_letter") == "— Ada"
 
-    def test_base_resume_token_emits_section_json_not_markdown(self) -> None:
+    def test_base_resume_token_emits_section_json_not_markdown(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import candidate as candidate_mod
         from src.core.candidate import default_resume_structure
 
         structure = default_resume_structure()
         summary_title = structure["sections"]["professional_summary"]["title"]
+        cid = "c-cfg607"
+        monkeypatch.setattr(
+            candidate_mod,
+            "load_pilot_base_resume_for_candidate",
+            lambda c: [{"label": summary_title, "content": "Token body"}]
+            if c == cid
+            else None,
+        )
         candidate = {
-            "artifacts": {
-                "resume_structure": structure,
-                "base_resume": [{"label": summary_title, "content": "Token body"}],
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": structure},
         }
         out = cfg.resolve_tokens("base={$BASE_RESUME}", candidate, "draft_job_resume")
         assert "###" not in out
@@ -272,7 +281,10 @@ class TestAst513JobTokens:
         tokens = cfg.get_tokens()
         for name in self._NAMES:
             assert name in tokens
-            assert cfg.TOKEN_SOURCES[name] == {"source": "job"}
+            assert cfg.TOKEN_SOURCES[name] == {
+                "source": "job",
+                "source_type": "special_case",
+            }
 
     def test_job_token_config_maps_analysis_phases(self) -> None:
         phases = cfg.JOB_TOKEN_CONFIG["analysis_phases"]
@@ -296,7 +308,10 @@ class TestAst513JobTokens:
         assert any("VISIBLE_JD" in rec.message and "job_context" in rec.message for rec in caplog.records)
 
     def test_resume_section_catalog_token_source(self) -> None:
-        assert cfg.TOKEN_SOURCES["RESUME_SECTION_CATALOG"] == {"source": "job"}
+        assert cfg.TOKEN_SOURCES["RESUME_SECTION_CATALOG"] == {
+            "source": "job",
+            "source_type": "special_case",
+        }
         assert "RESUME_SECTION_CATALOG" in cfg.get_tokens()
 
 
@@ -543,13 +558,23 @@ class TestBuildStateUiManifest:
         assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
-        # AST-948: report_fixed_tabs → report_top_tabs + report_summary_sections;
-        # phase/artifact rows keep keys but become section chrome labels.
+        # AST-948 / AST-1550: report_top_tabs + report_summary_sections;
+        # Discussion follows Artifacts (AST-1550).
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
         assert "report_fixed_tabs" not in rec
-        assert [t["tab_id"] for t in rec["report_top_tabs"]] == ["summary", "analysis", "artifacts"]
-        assert [t["nav_label"] for t in rec["report_top_tabs"]] == ["Summary", "Analysis", "Artifacts"]
+        assert [t["tab_id"] for t in rec["report_top_tabs"]] == [
+            "summary",
+            "analysis",
+            "artifacts",
+            "discussion",
+        ]
+        assert [t["nav_label"] for t in rec["report_top_tabs"]] == [
+            "Summary",
+            "Analysis",
+            "Artifacts",
+            "Discussion",
+        ]
         assert [s["section_id"] for s in rec["report_summary_sections"]] == [
             "job_summary",
             "company_upshot",
@@ -1481,9 +1506,11 @@ class TestAst504CompanySearchTermsConfig:
         assert entry["entity_type"] is None
 
     def test_company_search_terms_token_source(self) -> None:
+        # AST-1596: path contains artifacts. but stays data_field (not in ARTIFACT_CONFIG).
         assert cfg.TOKEN_SOURCES["COMPANY_SEARCH_TERMS"] == {
             "source": "candidate",
             "path": "artifacts.company_search_terms",
+            "source_type": "data_field",
         }
 
 
@@ -1640,7 +1667,10 @@ class TestAst575PronounTokens:
         tokens = cfg.get_tokens()
         for name in self._NAMES:
             assert name in tokens
-            assert cfg.TOKEN_SOURCES[name] == {"source": "pronoun"}
+            assert cfg.TOKEN_SOURCES[name] == {
+                "source": "pronoun",
+                "source_type": "special_case",
+            }
 
     def test_resolve_all_five_tokens_she_her(self) -> None:
         candidate = {"pronouns": "she/her"}
@@ -1697,7 +1727,11 @@ class TestAst510MiddleNameConfig:
         assert "MIDDLE_NAME" not in cfg.TOKEN_SOURCES
 
     def test_full_name_token_source(self) -> None:
-        assert cfg.TOKEN_SOURCES["FULL_NAME"] == {"source": "candidate", "path": "full"}
+        assert cfg.TOKEN_SOURCES["FULL_NAME"] == {
+            "source": "candidate",
+            "path": "full",
+            "source_type": "data_field",
+        }
 
 
 class TestAst1014CandidateLibraryConfig:
@@ -1866,7 +1900,10 @@ class TestAst723RubricVectorsToken:
     )
 
     def test_rubric_vectors_token_registered(self) -> None:
-        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {"source": "rubric"}
+        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {
+            "source": "rubric",
+            "source_type": "special_case",
+        }
 
     def test_legacy_per_artifact_rubric_tokens_removed(self) -> None:
         for name in self._LEGACY_RUBRIC_TOKENS:
@@ -1899,10 +1936,17 @@ class TestAst1405NamedRubricPromptTokens:
 
     def test_named_pins_registered_and_listed_in_pickers(self) -> None:
         for name, owner in self._NAMED_PINS.items():
-            assert cfg.TOKEN_SOURCES[name] == {"source": "rubric", "owner_task_key": owner}
+            assert cfg.TOKEN_SOURCES[name] == {
+                "source": "rubric",
+                "owner_task_key": owner,
+                "source_type": "special_case",
+            }
             assert name in cfg.get_tokens()
             assert name in cfg.get_manage_agents_tokens()
-        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {"source": "rubric"}
+        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {
+            "source": "rubric",
+            "source_type": "special_case",
+        }
         for name in self._FORBIDDEN:
             assert name not in cfg.TOKEN_SOURCES
             assert name not in cfg.get_tokens()
@@ -4022,7 +4066,7 @@ class TestAst1088GazeEmailConfig:
         g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
         assert g["task_key"] == "meteorite_email"
         assert g["account_address"] == "astral.career.match@gmail.com"
-        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+        assert "unbound_retention_days" not in g
         assert g["auto_mode"] is False
         assert g["min_count"] == 1
         assert g["batch_size"] == 1
@@ -4086,10 +4130,11 @@ class TestAst1090GazeEmailRunnerConfig:
     def test_runner_literals(self) -> None:
         g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
         assert set(g["subject_url_schemes"]) == {"http", "https"}
-        assert g["debug_func"] == "meteorite_email.run"
+        assert g["debug_func"] == "meteorite.check_inbox"
         assert "dispatch_ledger_candidate_id" not in g
         assert g["task_key"] == "meteorite_email"
-        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+        assert "unbound_retention_days" not in g
+        assert "debug_func_selected" not in g
 
 
 # Branches: selected-ids Style D func + skip outcome vocabulary (AST-1140 / AST-1467).
@@ -4106,7 +4151,7 @@ class TestAst1140GazeEmailSelectedConfig:
         assert g["selected_outcome_skipped_unbound"] == "skipped-unbound"
         assert g["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
         assert g["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
-        assert g["debug_func"] == "meteorite_email.run"
+        assert g["debug_func"] == "meteorite.check_inbox"
 
 
 # Branches: STAGE_METEORITE_CONFIG + stage_meteorite TASK_CONFIG; PARSE fold stub (AST-1529).
@@ -4270,11 +4315,25 @@ class TestAst1099JobArtifactAgentDataPinConfig:
     """AST-1099: task_key → artifact slot pin map + cancel clear keys include pin slots."""
 
     def test_pin_by_task_map(self) -> None:
+        # AST-1548: finalize hops moved to BODY_REPLICA; pin map is proposed_answers only.
         assert cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK == {
-            "finalize_job_resume": "job_resume",
-            "finalize_cover_letter": "cover_letter",
             "propose_application_responses": "proposed_answers",
         }
+
+    def test_body_replica_by_task_map(self) -> None:
+        # AST-1602: body-replica map retired; finalize hops bind via TASK_CONFIG.artifact_key.
+        assert not hasattr(cfg, "JOB_ARTIFACT_BODY_REPLICA_BY_TASK")
+        assert (
+            cfg.TASK_CONFIG["finalize_job_resume"]["artifact_key"]
+            == "job.artifacts.job_resume"
+        )
+        assert (
+            cfg.TASK_CONFIG["finalize_cover_letter"]["artifact_key"]
+            == "job.artifacts.cover_letter"
+        )
+        # Pin map stays proposed_answers-only — finalize tasks must not re-enter it.
+        assert "finalize_job_resume" not in cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK
+        assert "finalize_cover_letter" not in cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK
 
     def test_clear_keys_include_pin_slots(self) -> None:
         keys = cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
@@ -5003,17 +5062,28 @@ class TestAst1305ResumeStructureExtraDefault:
         assert cfg.RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
 
 
-@pytest.mark.skipif(
-    not hasattr(cfg, "INBOX_BIND_CONFIG"),
-    reason="AST-1313 INBOX_BIND_CONFIG not on this publish tip",
-)
-class TestAst1313InboxBindConfig:
-    def test_header_order_and_inbox_address_alias(self) -> None:
-        bind = cfg.INBOX_BIND_CONFIG
-        assert bind["header_order"] == ("from", "to")
-        assert bind["inbox_address"] == cfg.METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
-        assert isinstance(bind["inbox_address"], str)
-        assert "@" in bind["inbox_address"]
+class TestAst1558FetchEmailBindRetired:
+    def test_fetch_email_and_inbox_bind_config_retired(self) -> None:
+        assert not hasattr(cfg, "FETCH_EMAIL_CONFIG")
+        assert not hasattr(cfg, "INBOX_BIND_CONFIG")
+        assert "fetch_email" not in cfg.TASK_CONFIG
+        assert "dispatch_task-fetch-email" not in cfg.SEED_CONFIG
+
+class TestAst1559MonitoringConfig:
+    """AST-1559: already-ingested outcome + mailbox runner repoint."""
+
+    def test_monitoring_config_literals(self) -> None:
+        mon = cfg.METEORITE_MONITORING_CONFIG
+        assert mon["outcome_already_ingested"] == "already_ingested"
+        assert "inbox_classify_line" not in mon
+        assert "row_bot_blocked_line" not in mon
+        assert "row_landed_line" not in mon
+        assert "row_error_line" not in mon
+        assert "subject_max_len" not in mon
+
+    def test_mailbox_runner_debug_func_repointed(self) -> None:
+        g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
+        assert g["debug_func"] == "meteorite.check_inbox"
 
 
 class TestAst1365IdealDayLibraryToken:
@@ -5038,10 +5108,21 @@ class TestAst1365IdealDayLibraryToken:
             assert key in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
 
     def test_ideal_day_token_source(self) -> None:
-        assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
-            "source": "candidate",
-            "path": "context.ideal_day",
-        }
+        # AST-1661 tip: Ideal Day stays data_field until AST-1658 lands on this parent.
+        # (AST-1658 parallel epic registers IDEAL_DAY as artifact on its own tip.)
+        if "candidate.context.ideal_day" in cfg.ARTIFACT_CONFIG:
+            assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
+                "source": "candidate",
+                "path": "context.ideal_day",
+                "source_type": "artifact",
+                "artifact_key": "candidate.context.ideal_day",
+            }
+        else:
+            assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
+                "source": "candidate",
+                "path": "context.ideal_day",
+                "source_type": "data_field",
+            }
 
     def test_resolve_ideal_day_empty_and_set(self) -> None:
         empty = cfg.resolve_tokens(
@@ -5229,3 +5310,1001 @@ class TestAst1534AdhocImportConfigKeys:
     def test_adhoc_import_cap_and_visible_rows(self) -> None:
         assert cfg.UI_CONFIG["adhoc_import_runs_limit"] == 10
         assert cfg.UI_CONFIG["adhoc_import_picker_visible_rows"] == 5
+
+
+class TestAst1550DiscussionHopKeys:
+    """AST-1550: Discussion top tab + live run_next hop walk for section order."""
+
+    def test_top_tabs_discussion_after_artifacts(self) -> None:
+        tabs = cfg.JOBS_RECOMMENDED_REPORT_TOP_TABS
+        assert [t["tab_id"] for t in tabs] == [
+            "summary",
+            "analysis",
+            "artifacts",
+            "discussion",
+        ]
+        assert tabs[-1]["nav_label"] == "Discussion"
+
+    def test_hop_walk_follows_run_next(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Short chain: zero parents of first → start remains first_task_key (AST-1609).
+        first = (cfg.BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key")
+        assert first == "contemplate_job"
+        nxt = {
+            "contemplate_job": "draft_job_resume",
+            "draft_job_resume": "propose_application_responses",
+            "propose_application_responses": "",
+        }
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": nxt.get(tk, "")},
+        )
+        keys = cfg.build_artifacts_discussion_hop_task_keys()
+        assert keys == [
+            "contemplate_job",
+            "draft_job_resume",
+            "propose_application_responses",
+        ]
+
+    def test_hop_walk_unique_parent_includes_anticipate_scan(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-1612 / AST-1609: unique live run_next parent of first → walk starts there.
+        first = (cfg.BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key")
+        assert first == "contemplate_job"
+        assert "anticipate_scan" in cfg.TASK_CONFIG
+        nxt = {
+            "anticipate_scan": "contemplate_job",
+            "contemplate_job": "draft_job_resume",
+            "draft_job_resume": "",
+        }
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": nxt.get(tk, "")},
+        )
+        keys = cfg.build_artifacts_discussion_hop_task_keys()
+        assert keys[0] == "anticipate_scan"
+        assert keys[1] == "contemplate_job"
+        assert "draft_job_resume" in keys
+        assert len(keys) >= 2
+
+    def test_hop_walk_empty_first_returns_empty(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(cfg.BUILD_CONFIG, "resume_artifact_chain", {"first_task_key": ""})
+        assert cfg.build_artifacts_discussion_hop_task_keys() == []
+
+    def test_hop_walk_cycle_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.data.database.get_agent_task",
+            lambda tk: {"run_next": "contemplate_job"},
+        )
+        with pytest.raises(RuntimeError, match="cycle"):
+            cfg.build_artifacts_discussion_hop_task_keys()
+
+
+class TestAst1557MeteoriteStates:
+    """AST-1557: METEORITE_STATES staging registry + retention partitions (not JOB_STATES)."""
+
+    def test_seven_keys_and_new_entry(self) -> None:
+        assert set(cfg.METEORITE_STATES) == {
+            "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+        }
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] is None
+        assert all("prior_states" in entry for entry in cfg.METEORITE_STATES.values())
+
+    def test_distinct_from_job_states_meteorite_labels(self) -> None:
+        assert "METEORITE_NEW" not in cfg.METEORITE_STATES
+        assert "METEORITE_NEW" in cfg.JOB_STATES
+        assert "NEW" in cfg.METEORITE_STATES
+        assert "NEW" in cfg.JOB_STATES
+
+    def test_retention_partitions(self) -> None:
+        purge = set(cfg.METEORITE_STATES_RETENTION["purge_states"])
+        stale = set(cfg.METEORITE_STATES_RETENTION["stale_list_states"])
+        assert purge == {"LANDED"}
+        assert stale == {"ERROR", "BOT_BLOCKED", "ABANDONED"}
+        assert purge.isdisjoint(stale)
+        assert purge | stale <= set(cfg.METEORITE_STATES)
+
+    def test_priors_are_registry_keys(self) -> None:
+        keys = set(cfg.METEORITE_STATES)
+        for name, entry in cfg.METEORITE_STATES.items():
+            priors = entry["prior_states"]
+            if priors is None:
+                continue
+            for p in priors:
+                assert p in keys, f"{name} prior {p!r} not in METEORITE_STATES"
+
+
+class TestAst1560IngressDispatchConfig:
+    """AST-1560: METEORITE_INGRESS_DISPATCH_CONFIG + ingress seeds."""
+
+    def test_ingress_task_keys_and_triggers(self) -> None:
+        ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
+        assert ingress["stage_task_key"] == "stage_meteorite"
+        assert ingress["scrape_task_key"] == "scrape_meteorite"
+        assert ingress["land_task_key"] == "land_meteorite"
+        assert ingress["stage_task_key"] == cfg.STAGE_METEORITE_CONFIG["task_key"]
+        assert ingress["stage_trigger_state"] == "NEW"
+        assert ingress["scrape_trigger_state"] == "SCRAPE_LINK"
+        assert ingress["land_trigger_state"] == "READY"
+        for tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
+            assert ingress[tr] in cfg.METEORITE_STATES
+        assert set(ingress["scrape_page_status_states"].values()) <= {
+            "READY",
+            "BOT_BLOCKED",
+            "ERROR",
+        }
+
+    def test_seed_catalog_has_ingress_dispatch_rows(self) -> None:
+        assert "dispatch_task-meteorite-ingress" in cfg.SEED_CONFIG
+        sql = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress"]
+        blob = sql if isinstance(sql, str) else "\n".join(sql)
+        assert "stage_meteorite" in blob
+        assert "scrape_meteorite" in blob
+        assert "land_meteorite" in blob
+
+
+class TestAst1561BotBlockedNotifyConfig:
+    """AST-1561: METEORITE_BOT_BLOCKED_NOTIFY_CONFIG + dispatch seed."""
+
+    def test_notify_config_literals(self) -> None:
+        notify = cfg.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
+        assert notify["task_key"] == "meteorite_bot_blocked_notify"
+        assert notify["trigger_state"] == "BOT_BLOCKED"
+        assert notify["trigger_state"] in cfg.METEORITE_STATES
+        assert "{link}" in notify["dm_first_template"]
+        assert "{nag_count}" in notify["dm_nag_template"]
+        assert "{nag_limit}" in notify["dm_nag_template"]
+
+    def test_seed_catalog_has_notify_dispatch_row(self) -> None:
+        assert "dispatch_task-meteorite-bot-blocked-notify" in cfg.SEED_CONFIG
+        sql = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
+        blob = sql if isinstance(sql, str) else "\n".join(sql)
+        assert "meteorite_bot_blocked_notify" in blob
+        assert "BOT_BLOCKED" in blob
+
+
+class TestAst1562RetentionConfig:
+    """AST-1562: METEORITE_RETENTION_CONFIG + dispatch seed; mailbox literals retired."""
+
+    def test_retention_config_literals(self) -> None:
+        retention = cfg.METEORITE_RETENTION_CONFIG
+        assert retention["task_key"] == "meteorite_retention"
+        assert retention["landed_purge_days"] >= 1
+        assert retention["stale_list_days"] >= 1
+        assert retention["batch_size"] >= 1
+        assert "stale_list_line" not in retention
+        assert "debug_func" not in retention
+        assert set(cfg.METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
+        assert set(cfg.METEORITE_STATES_RETENTION["stale_list_states"]) == {
+            "ERROR",
+            "BOT_BLOCKED",
+            "ABANDONED",
+        }
+
+    def test_mailbox_config_retired_selected_and_unbound_literals(self) -> None:
+        m = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
+        assert m["debug_func"] == "meteorite.check_inbox"
+        for key in (
+            "unbound_retention_days",
+            "debug_func_selected",
+            "selected_outcome_skipped_unbound",
+            "selected_outcome_skipped_not_in_inbox",
+            "selected_outcome_skipped_unmatched",
+        ):
+            assert key not in m
+
+    def test_seed_catalog_has_retention_dispatch_row(self) -> None:
+        assert "dispatch_task-meteorite-retention" in cfg.SEED_CONFIG
+        sql = cfg.SEED_CONFIG["dispatch_task-meteorite-retention"]
+        blob = sql if isinstance(sql, str) else "\n".join(sql)
+        assert "meteorite_retention" in blob
+        assert "NULL" in blob.upper()
+
+
+class TestAst1576CraftResumeBaseArtifactKey:
+    """AST-1576: craft_resume_base.artifact_key + ARTIFACT_CONFIG SoT; wrapper gone."""
+
+    def test_craft_artifact_key_is_hierarchical_pilot(self) -> None:
+        assert not hasattr(cfg, "ARTIFACT_CATALOG")
+        # AST-1590 expands ARTIFACT_CONFIG with job keys — pilot membership stays required.
+        assert "candidate.artifacts.base_resume" in cfg.ARTIFACT_CONFIG
+        assert (
+            cfg.TASK_CONFIG["craft_resume_base"]["artifact_key"]
+            == "candidate.artifacts.base_resume"
+        )
+        assert cfg.TASK_CONFIG["craft_resume_base"]["artifact_key"] in cfg.ARTIFACT_CONFIG
+        assert "base_resume" not in cfg.ARTIFACT_CONFIG
+
+    def test_artifact_catalog_module_removed(self) -> None:
+        import importlib
+
+        with pytest.raises(ModuleNotFoundError):
+            importlib.import_module("src.utils.artifact_catalog")
+
+
+class TestAst1590JobArtifactCatalogKeys:
+    """AST-1590: job.artifacts.job_resume / cover_letter in ARTIFACT_CONFIG; bindings."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    _SIBLINGS = (
+        "notes",
+        "resume_content",
+        "proposed_answers",
+        "application_responses",
+        "job.artifacts.notes",
+        "job.artifacts.resume_content",
+        "job.artifacts.proposed_answers",
+        "job.artifacts.application_responses",
+    )
+
+    def test_artifact_config_has_pilot_and_job_keys(self) -> None:
+        # AST-1665 tip: writing_preferences + ideal_day (union); priorities /
+        # deal_breakers / bio_summary already registered. Backstory stays frozen.
+        assert set(cfg.ARTIFACT_CONFIG.keys()) == {
+            "candidate.artifacts.base_resume",
+            "job.artifacts.job_resume",
+            "job.artifacts.cover_letter",
+            "candidate.context.strengths",
+            "candidate.context.priorities",
+            "candidate.context.deal_breakers",
+            "candidate.context.bio_summary",
+            "candidate.context.ideal_day",
+            "candidate.context.writing_preferences",
+        }
+        for sibling in self._SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_job_resume_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["job.artifacts.job_resume"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "job"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "resume_content"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "tracker"
+
+    def test_cover_letter_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["job.artifacts.cover_letter"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "job"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "cover_letter"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "tracker"
+
+    def test_body_replica_and_editable_derived_from_catalog(self) -> None:
+        # AST-1602: editable leaves from TASK_CONFIG.artifact_key (body-replica gone).
+        assert not hasattr(cfg, "JOB_ARTIFACT_BODY_REPLICA_BY_TASK")
+        for task_key, catalog_key in (
+            ("finalize_job_resume", "job.artifacts.job_resume"),
+            ("finalize_cover_letter", "job.artifacts.cover_letter"),
+        ):
+            assert cfg.TASK_CONFIG[task_key]["artifact_key"] == catalog_key
+            assert catalog_key in cfg.ARTIFACT_CONFIG
+        assert cfg.JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
+        assert all(
+            cfg.ARTIFACT_CONFIG[cfg.TASK_CONFIG[task_key]["artifact_key"]]["entity_type"]
+            == cfg.JOB_ARTIFACT_ENTITY_TYPE
+            for task_key in ("finalize_job_resume", "finalize_cover_letter")
+        )
+
+    def test_jar_tabs_one_to_one_leaf_map(self) -> None:
+        by_id = {t["tab_id"]: t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id["artifact_resume"]["artifact_key"] == "job_resume"
+        assert by_id["artifact_resume"]["artifact_key"] == (
+            "job.artifacts.job_resume".rsplit(".", 1)[-1]
+        )
+        assert cfg.ARTIFACT_CONFIG["job.artifacts.job_resume"]["body_shape"] == "resume_content"
+        assert by_id["artifact_cover"]["artifact_key"] == "cover_letter"
+        assert by_id["artifact_cover"]["artifact_key"] == (
+            "job.artifacts.cover_letter".rsplit(".", 1)[-1]
+        )
+        assert by_id["artifact_cover"]["shapes_key"] == (
+            cfg.ARTIFACT_CONFIG["job.artifacts.cover_letter"]["body_shape"]
+        )
+        assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
+        assert "job.artifacts.proposed_answers" not in cfg.ARTIFACT_CONFIG
+
+
+# Branches: TOKEN_SOURCE_TYPES; every row typed; BASE_RESUME + STRENGTHS + PRIORITIES +
+# DEAL_BREAKERS + BIO_SUMMARY + WRITING_PREFERENCES artifact keys; COMPANY_SEARCH_TERMS data_field;
+# get_tokens names; by-type + artifact-key getters; assert-loop contract.
+def _assert_token_sources_typing(
+    token_sources: dict,
+    artifact_config: dict,
+    token_source_types: frozenset,
+) -> None:
+    """Mirror of src.utils.config AST-1596 / AST-1632 / AST-1648 / AST-1664 TOKEN_SOURCES asserts."""
+    for _token_name, _spec in token_sources.items():
+        assert isinstance(_spec, dict), _token_name
+        assert "source_type" in _spec, f"TOKEN_SOURCES[{_token_name!r}] missing source_type"
+        assert _spec["source_type"] in token_source_types, (
+            f"TOKEN_SOURCES[{_token_name!r}] invalid source_type={_spec['source_type']!r}"
+        )
+        if _spec["source_type"] == "artifact":
+            assert "artifact_key" in _spec, (
+                f"TOKEN_SOURCES[{_token_name!r}] artifact missing artifact_key"
+            )
+            assert _spec["artifact_key"] in artifact_config, (
+                f"TOKEN_SOURCES[{_token_name!r}] artifact_key "
+                f"{_spec['artifact_key']!r} not in ARTIFACT_CONFIG"
+            )
+        else:
+            assert "artifact_key" not in _spec, (
+                f"TOKEN_SOURCES[{_token_name!r}] non-artifact must not carry artifact_key"
+            )
+
+    assert token_sources["BASE_RESUME"]["source_type"] == "artifact"
+    assert token_sources["BASE_RESUME"]["artifact_key"] == "candidate.artifacts.base_resume"
+    # AST-1632: STRENGTHS joins the closed artifact-token set.
+    assert token_sources["STRENGTHS"]["source_type"] == "artifact"
+    assert token_sources["STRENGTHS"]["artifact_key"] == "candidate.context.strengths"
+    # AST-1651 / AST-1654 / AST-1648: priorities / deal_breakers / bio_summary on tip.
+    assert token_sources["PRIORITIES"]["source_type"] == "artifact"
+    assert token_sources["PRIORITIES"]["artifact_key"] == "candidate.context.priorities"
+    assert token_sources["DEAL_BREAKERS"]["source_type"] == "artifact"
+    assert token_sources["DEAL_BREAKERS"]["artifact_key"] == "candidate.context.deal_breakers"
+    assert token_sources["BIO_SUMMARY"]["source_type"] == "artifact"
+    assert token_sources["BIO_SUMMARY"]["artifact_key"] == "candidate.context.bio_summary"
+    # AST-1664: WRITING_PREFERENCES joins the closed artifact-token set.
+    assert token_sources["WRITING_PREFERENCES"]["source_type"] == "artifact"
+    assert (
+        token_sources["WRITING_PREFERENCES"]["artifact_key"]
+        == "candidate.context.writing_preferences"
+    )
+    # AST-1665 tip: Ideal Day also artifact-typed (parallel epic on ftr union).
+    assert token_sources["IDEAL_DAY"]["source_type"] == "artifact"
+    assert token_sources["IDEAL_DAY"]["artifact_key"] == "candidate.context.ideal_day"
+    _artifact_tokens = {
+        name for name, spec in token_sources.items() if spec["source_type"] == "artifact"
+    }
+    assert _artifact_tokens == {
+        "BASE_RESUME",
+        "STRENGTHS",
+        "PRIORITIES",
+        "DEAL_BREAKERS",
+        "BIO_SUMMARY",
+        "IDEAL_DAY",
+        "WRITING_PREFERENCES",
+    }
+
+
+class TestAst1596TokenCatalogSourceTypeTyping:
+    """AST-1596: TOKEN_SOURCES source_type + artifact_key; thin getters; import asserts."""
+
+    def test_token_source_types_constant(self) -> None:
+        assert cfg.TOKEN_SOURCE_TYPES == frozenset(
+            {"data_field", "artifact", "special_case"}
+        )
+
+    def test_live_catalog_passes_typing_asserts(self) -> None:
+        _assert_token_sources_typing(
+            cfg.TOKEN_SOURCES, cfg.ARTIFACT_CONFIG, cfg.TOKEN_SOURCE_TYPES
+        )
+        # AST-1665 tip: IDEAL_DAY + WRITING_PREFERENCES artifact (17 / 7 / 27).
+        by_type = {
+            st: cfg.get_tokens_by_source_type(st) for st in sorted(cfg.TOKEN_SOURCE_TYPES)
+        }
+        assert by_type["artifact"] == [
+            "BASE_RESUME",
+            "BIO_SUMMARY",
+            "DEAL_BREAKERS",
+            "IDEAL_DAY",
+            "PRIORITIES",
+            "STRENGTHS",
+            "WRITING_PREFERENCES",
+        ]
+        assert len(by_type["data_field"]) == 17
+        assert len(by_type["special_case"]) == 27
+        assert sum(len(v) for v in by_type.values()) == len(cfg.TOKEN_SOURCES)
+
+    def test_base_resume_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["BASE_RESUME"] == {
+            "source": "candidate",
+            "path": "artifacts.base_resume",
+            "serialize": "resume_sections_json",
+            "source_type": "artifact",
+            "artifact_key": "candidate.artifacts.base_resume",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("BASE_RESUME")
+            == "candidate.artifacts.base_resume"
+        )
+        assert "candidate.artifacts.base_resume" in cfg.ARTIFACT_CONFIG
+        # Path contains artifacts. but not an ARTIFACT_CONFIG row → data_field.
+        assert cfg.TOKEN_SOURCES["COMPANY_SEARCH_TERMS"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["COMPANY_SEARCH_TERMS"]
+
+    def test_get_tokens_names_unchanged(self) -> None:
+        assert cfg.get_tokens() == sorted(cfg.TOKEN_SOURCES.keys())
+        assert "BASE_RESUME" in cfg.get_tokens()
+        assert "STRENGTHS" in cfg.get_tokens()
+
+    def test_get_tokens_by_source_type_filters_and_rejects(self) -> None:
+        assert cfg.get_tokens_by_source_type("artifact") == [
+            "BASE_RESUME",
+            "BIO_SUMMARY",
+            "DEAL_BREAKERS",
+            "IDEAL_DAY",
+            "PRIORITIES",
+            "STRENGTHS",
+            "WRITING_PREFERENCES",
+        ]
+        data = cfg.get_tokens_by_source_type("data_field")
+        assert data == sorted(data)
+        assert "FIRST_NAME" in data
+        assert "COMPANY_SEARCH_TERMS" in data
+        assert "BASE_RESUME" not in data
+        assert "STRENGTHS" not in data
+        assert "BIO_SUMMARY" not in data
+        assert "WRITING_PREFERENCES" not in data
+        assert "IDEAL_DAY" not in data
+        assert "BACKSTORY" in data
+        special = cfg.get_tokens_by_source_type("special_case")
+        assert "THEY" in special and "VISIBLE_JD" in special and "RUBRIC_VECTORS" in special
+        with pytest.raises(ValueError, match="invalid source_type"):
+            cfg.get_tokens_by_source_type("blob")
+
+    def test_get_artifact_key_for_token_fail_fast(self) -> None:
+        with pytest.raises(ValueError, match="unknown token"):
+            cfg.get_artifact_key_for_token("NOT_A_TOKEN")
+        with pytest.raises(ValueError, match="not artifact-typed"):
+            cfg.get_artifact_key_for_token("FIRST_NAME")
+        with pytest.raises(ValueError, match="not artifact-typed"):
+            cfg.get_artifact_key_for_token("COMPANY_SEARCH_TERMS")
+
+    def test_typing_assert_rejects_half_typed_and_bad_artifact(self) -> None:
+        types = cfg.TOKEN_SOURCE_TYPES
+        arts = cfg.ARTIFACT_CONFIG
+        live = dict(cfg.TOKEN_SOURCES)
+
+        missing = dict(live)
+        missing["HALF"] = {"source": "candidate", "path": "x"}
+        with pytest.raises(AssertionError, match="missing source_type"):
+            _assert_token_sources_typing(missing, arts, types)
+
+        bad_type = dict(live)
+        bad_type["WEIRD"] = {"source": "candidate", "path": "x", "source_type": "blob"}
+        with pytest.raises(AssertionError, match="invalid source_type"):
+            _assert_token_sources_typing(bad_type, arts, types)
+
+        no_key = dict(live)
+        no_key["EXTRA_ART"] = {"source": "candidate", "path": "x", "source_type": "artifact"}
+        with pytest.raises(AssertionError, match="artifact missing artifact_key"):
+            _assert_token_sources_typing(no_key, arts, types)
+
+        bad_key = dict(live)
+        bad_key["EXTRA_ART"] = {
+            "source": "candidate",
+            "path": "x",
+            "source_type": "artifact",
+            "artifact_key": "not.a.real.key",
+        }
+        with pytest.raises(AssertionError, match="not in ARTIFACT_CONFIG"):
+            _assert_token_sources_typing(bad_key, arts, types)
+
+        stray_key = dict(live)
+        stray_key["FIRST_NAME"] = {
+            **live["FIRST_NAME"],
+            "artifact_key": "candidate.artifacts.base_resume",
+        }
+        with pytest.raises(AssertionError, match="non-artifact must not carry artifact_key"):
+            _assert_token_sources_typing(stray_key, arts, types)
+
+        # Closed artifact-token set breaks when an extra artifact is validly keyed.
+        second = dict(live)
+        second["EXTRA_ART"] = {
+            "source": "candidate",
+            "path": "x",
+            "source_type": "artifact",
+            "artifact_key": "candidate.artifacts.base_resume",
+        }
+        with pytest.raises(AssertionError):
+            _assert_token_sources_typing(second, arts, types)
+
+
+class TestAst1632CatalogPlainTextStrengthsToken:
+    """AST-1632: plain_text shape + strengths catalog key + STRENGTHS artifact token."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1664 tip: priorities / deal_breakers / bio_summary / writing_preferences
+    # registered; freeze remaining unmigrated leaves only.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_strengths_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.strengths"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_strengths_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["STRENGTHS"] == {
+            "source": "candidate",
+            "path": "context.strengths",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.strengths",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("STRENGTHS")
+            == "candidate.context.strengths"
+        )
+        # Sibling context tokens on AST-1664 tip: WRITING_PREFERENCES artifact;
+        # BACKSTORY / IDEAL_DAY stay data_field.
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"]
+            == "candidate.context.writing_preferences"
+        )
+        assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"]
+            == "candidate.context.ideal_day"
+        )
+
+
+@pytest.mark.skipif(
+    "candidate.context.bio_summary" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1648 product not on this tip (parallel epic; skip until bio_summary catalog lands)",
+)
+class TestAst1648CatalogBioSummaryTokenProfileNav:
+    """AST-1648: bio_summary catalog + BIO_SUMMARY artifact token + profile/nav."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1664 tip: priorities / deal_breakers / writing_preferences registered;
+    # freeze Backstory + Ideal Day.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_bio_summary_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.bio_summary"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_bio_summary_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["BIO_SUMMARY"] == {
+            "source": "candidate",
+            "path": "context.bio_summary",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.bio_summary",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("BIO_SUMMARY")
+            == "candidate.context.bio_summary"
+        )
+        # Sibling context tokens on AST-1664 tip: WRITING_PREFERENCES artifact;
+        # BACKSTORY / IDEAL_DAY stay data_field.
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"]
+            == "candidate.context.writing_preferences"
+        )
+        assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"]
+            == "candidate.context.ideal_day"
+        )
+
+    def test_profile_data_shapes_omits_bio_summary(self) -> None:
+        profile = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        assert not any(
+            s.get("label") == "Bio Summary"
+            or any(
+                f.get("key") == "context.bio_summary" for f in s.get("fields", [])
+            )
+            for s in profile
+        )
+
+    def test_candidate_nav_bio_summary_after_strengths(self) -> None:
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        labels = [i["label"] for i in cand["items"]]
+        paths = [i["path"] for i in cand["items"]]
+        assert labels.index("Strengths") < labels.index("Bio Summary")
+        assert labels.index("Bio Summary") < labels.index("Priorities")
+        assert paths[labels.index("Bio Summary")] == "/candidate/bio_summary"
+
+
+@pytest.mark.skipif(
+    "candidate.context.priorities" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1651 product not on this tip (parallel epic; skip until priorities catalog lands)",
+)
+class TestAst1651CatalogPlainTextPrioritiesToken:
+    """AST-1651: priorities catalog key + PRIORITIES artifact token (plain_text reuse)."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1664 tip: writing_preferences registered; freeze Backstory + Ideal Day.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_priorities_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.priorities"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_priorities_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["PRIORITIES"] == {
+            "source": "candidate",
+            "path": "context.priorities",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.priorities",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("PRIORITIES")
+            == "candidate.context.priorities"
+        )
+        # Sibling context tokens on AST-1664 tip: BIO_SUMMARY + WRITING_PREFERENCES.
+        assert cfg.TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["BIO_SUMMARY"]["artifact_key"]
+            == "candidate.context.bio_summary"
+        )
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"]
+            == "candidate.context.writing_preferences"
+        )
+
+
+@pytest.mark.skipif(
+    "candidate.context.deal_breakers" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1654 product not on this tip (parallel epic; skip until deal_breakers catalog lands)",
+)
+class TestAst1654CatalogPlainTextDealBreakersToken:
+    """AST-1654: deal_breakers catalog + DEAL_BREAKERS artifact token (plain_text reuse)."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1664 tip: priorities + writing_preferences registered; freeze Backstory +.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_deal_breakers_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.deal_breakers"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+        assert "candidate.context.deal_breakers" in cfg.ARTIFACT_CONFIG
+
+    def test_deal_breakers_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["DEAL_BREAKERS"] == {
+            "source": "candidate",
+            "path": "context.deal_breakers",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.deal_breakers",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("DEAL_BREAKERS")
+            == "candidate.context.deal_breakers"
+        )
+        # Sibling context tokens on AST-1664 tip: PRIORITIES + WRITING_PREFERENCES.
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["PRIORITIES"]["artifact_key"]
+            == "candidate.context.priorities"
+        )
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"]
+            == "candidate.context.writing_preferences"
+        )
+
+
+@pytest.mark.skipif(
+    "candidate.context.ideal_day" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1658 product not on this tip (parallel Ideal Day epic; skip until ideal_day catalog lands)",
+)
+class TestAst1658CatalogPlainTextIdealDayToken:
+    """AST-1658: ideal_day catalog + IDEAL_DAY artifact token (plain_text reuse)."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1665 tip: writing_preferences also registered; freeze Backstory only.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_ideal_day_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.ideal_day"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+        assert "candidate.context.ideal_day" in cfg.ARTIFACT_CONFIG
+
+    def test_ideal_day_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
+            "source": "candidate",
+            "path": "context.ideal_day",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.ideal_day",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("IDEAL_DAY")
+            == "candidate.context.ideal_day"
+        )
+        # Union tip: priorities / writing_preferences already artifact-typed.
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
+
+
+@pytest.mark.skipif(
+    "candidate.context.backstory" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1661 product not on this tip (parallel Backstory epic; skip until backstory catalog lands)",
+)
+class TestAst1661CatalogPlainTextBackstoryToken:
+    """AST-1661: backstory catalog + BACKSTORY artifact token (plain_text reuse)."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # Freeze remaining unmigrated context leaves on the Backstory tip.
+    _CTX_SIBLINGS = (
+        "candidate.context.ideal_day",
+        "candidate.context.writing_preferences",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_backstory_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.backstory"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+        assert "candidate.context.backstory" in cfg.ARTIFACT_CONFIG
+
+    def test_backstory_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["BACKSTORY"] == {
+            "source": "candidate",
+            "path": "context.backstory",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.backstory",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("BACKSTORY")
+            == "candidate.context.backstory"
+        )
+        # Pre-landed artifact tokens stay typed; Ideal Day / Writing Preferences
+        # stay data_field on the Backstory tip.
+        assert cfg.TOKEN_SOURCES["STRENGTHS"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["IDEAL_DAY"]
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "data_field"
+
+
+class TestAst1664CatalogPlainTextWritingPreferencesToken:
+    """AST-1664: writing_preferences catalog + WRITING_PREFERENCES artifact token."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # Freeze remaining unmigrated context leaves (parent AC8 / ticket AC4).
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_writing_preferences_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.writing_preferences"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+        assert "candidate.context.writing_preferences" in cfg.ARTIFACT_CONFIG
+
+    def test_writing_preferences_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"] == {
+            "source": "candidate",
+            "path": "context.writing_preferences",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.writing_preferences",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("WRITING_PREFERENCES")
+            == "candidate.context.writing_preferences"
+        )
+        # Pre-landed artifact tokens stay typed; Backstory / Ideal Day stay data_field.
+        assert cfg.TOKEN_SOURCES["STRENGTHS"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"]
+            == "candidate.context.ideal_day"
+        )
+
+
+class TestAst1621MeteoriteEntityTypeRegistry:
+    """AST-1621: meteorite in ENTITY_TYPES + dispatch registries + ingress seed entity_type."""
+
+    def test_entity_types_includes_meteorite(self) -> None:
+        assert "meteorite" in cfg.ENTITY_TYPES
+        assert cfg.ENTITY_TYPES == ["candidate", "company", "job", "meteorite"]
+
+    def test_dispatch_entity_state_registry_meteorite(self) -> None:
+        reg = cfg.dispatch_entity_state_registry("meteorite")
+        assert set(reg) == set(cfg.METEORITE_STATES)
+        # Staging keys — not JOB_STATES METEORITE_* labels.
+        assert "SCRAPE_LINK" in reg
+        assert "METEORITE_NEW" not in reg
+        with pytest.raises(KeyError, match="unknown dispatch entity_type"):
+            cfg.dispatch_entity_state_registry("not_a_type")
+
+    def test_dispatch_claim_states_meteorite(self) -> None:
+        # No *_RETRY companions on METEORITE_STATES today — primary only.
+        assert cfg.dispatch_claim_states("NEW", "meteorite") == ["NEW"]
+        assert cfg.dispatch_claim_states("SCRAPE_LINK", "meteorite") == ["SCRAPE_LINK"]
+        assert cfg.dispatch_claim_states("BOT_BLOCKED", "meteorite") == ["BOT_BLOCKED"]
+
+    def test_dispatch_sort_by_meteorite(self) -> None:
+        assert cfg._dispatch_sort_by_for("meteorite", "NEW") == "updated_at"
+        assert cfg._dispatch_sort_by_for("meteorite", "READY") == "updated_at"
+
+    def test_ingress_and_bot_blocked_seeds_entity_type_meteorite(self) -> None:
+        ingress = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress"]
+        ingress_blob = ingress if isinstance(ingress, str) else "\n".join(ingress)
+        assert ", 'stage_meteorite', 'meteorite', 'NEW'" in ingress_blob
+        assert ", 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK'" in ingress_blob
+        assert ", 'land_meteorite', 'meteorite', 'READY'" in ingress_blob
+        # Fail shape from AC3 — NULL still in entity_type column for these keys.
+        assert ", 'stage_meteorite', NULL," not in ingress_blob
+        assert ", 'scrape_meteorite', NULL," not in ingress_blob
+        assert ", 'land_meteorite', NULL," not in ingress_blob
+
+        notify = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
+        notify_blob = notify if isinstance(notify, str) else "\n".join(notify)
+        assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED'" in notify_blob
+        assert ", 'meteorite_bot_blocked_notify', NULL," not in notify_blob
+
+    def test_retention_seed_stays_null_entity_type(self) -> None:
+        # Boundary: retention remains non-claim (NULL entity_type + NULL trigger).
+        retention = cfg.SEED_CONFIG["dispatch_task-meteorite-retention"]
+        blob = retention if isinstance(retention, str) else "\n".join(retention)
+        assert ", 'meteorite_retention', NULL, NULL," in blob
+
+
+class TestAst1602RetireJobBodyReplicaConfigAuthority:
+    """AST-1602: finalize TASK_CONFIG.artifact_key SoT; body-replica map gone."""
+
+    def test_finalize_tasks_expose_catalog_artifact_keys(self) -> None:
+        assert (
+            cfg.TASK_CONFIG["finalize_job_resume"]["artifact_key"]
+            == "job.artifacts.job_resume"
+        )
+        assert (
+            cfg.TASK_CONFIG["finalize_cover_letter"]["artifact_key"]
+            == "job.artifacts.cover_letter"
+        )
+        assert cfg.TASK_CONFIG["finalize_job_resume"]["artifact_key"] in cfg.ARTIFACT_CONFIG
+        assert cfg.TASK_CONFIG["finalize_cover_letter"]["artifact_key"] in cfg.ARTIFACT_CONFIG
+
+    def test_body_replica_map_removed(self) -> None:
+        assert not hasattr(cfg, "JOB_ARTIFACT_BODY_REPLICA_BY_TASK")
+
+    def test_editable_leaves_from_finalize_artifact_keys(self) -> None:
+        assert cfg.JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
+        assert all(
+            cfg.ARTIFACT_CONFIG[cfg.TASK_CONFIG[task_key]["artifact_key"]]["entity_type"]
+            == cfg.JOB_ARTIFACT_ENTITY_TYPE
+            for task_key in ("finalize_job_resume", "finalize_cover_letter")
+        )
+
+    def test_proposed_answers_pin_map_unchanged(self) -> None:
+        assert cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK == {
+            "propose_application_responses": "proposed_answers",
+        }
+
+    def test_sibling_blobs_stay_out_of_artifact_config(self) -> None:
+        for sibling in (
+            "notes",
+            "resume_content",
+            "proposed_answers",
+            "application_responses",
+            "job.artifacts.notes",
+            "job.artifacts.resume_content",
+            "job.artifacts.proposed_answers",
+            "job.artifacts.application_responses",
+        ):
+            assert sibling not in cfg.ARTIFACT_CONFIG

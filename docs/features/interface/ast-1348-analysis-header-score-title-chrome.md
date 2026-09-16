@@ -1,3 +1,98 @@
+<!-- linear-archive: AST-1348 archived 2026-08-31 -->
+
+## Linear archive (AST-1348)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1348/analysis-header-score-title-chrome-add-rubric-score-to-analysis-header  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1346 — Add rubric score to analysis header  
+**Blocked by / blocks / related:** parent: AST-1346
+
+### Description
+
+## What this implements
+
+Owns rendering the `{Phase} - score: … out of … possible (… max total)` text on Analysis-tab section headers for JD / DO / GET / LIKE, reading stored trio when present and deriving from grades + job-carried rubric when absent; omits suffix when unscored. After #1. Does **not** own score-save writes or list phase-score columns.
+
+## Citations
+
+`pattern.layers.import-discipline`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`, AST-950 / AST-1321 Analysis header chrome.
+
+## Acceptance criteria
+
+- [X] On a job with graded JD Analysis including some X vectors, the JD Analysis section header shows `JD Analysis - score: {earned} out of {possible} possible ({max} max total)` where possible excludes X/no-signal vectors and max includes full phase rubric capacity.
+- [X] The same header shape appears for DO / GET / LIKE Analysis sections when those phases have grades.
+- [X] An older job that has grades + job-carried rubric but no stored trio still shows the correct three numbers in the header (derived at read time).
+- [X] A phase with no grades (or no scorable score) shows the phase label only — no fabricated score text.
+- [X] Recommended list phase-score columns and dispatch soft-fail behavior remain unchanged.
+
+## Boundaries
+
+- [X] Does **not** own score-save writes (sibling #1). Does **not** own list phase-score columns, Summary/Artifacts tabs, or grade-dot header chrome.
+
+## Notes for planning
+
+Parent AST-1346 definition is authoritative. After sibling #1. Analysis header chrome from AST-950 / AST-1321.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1346-add-rubric-score-to-analysis-header`, child `sub/AST-1346/AST-1348-analysis-header-score-title-chrome`. Created at dispatch-parent.
+
+## QA test manifest
+
+`origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome` @ `cf6cbb5ad886c7959d38896183d379e17d90384e` · merge-tests ← `origin/tests` `2092f7bf10d8ebeb249ad830748032aaaf0cffbd`
+
+1. **Existing coverage (bible-backed):** AST-950 Analysis tab / grade-confidence row; AST-1347 flatten lift (stored trio).
+2. **Broken / obsolete:** none.
+3. **Gaps (this pass):**
+   * `tests/component/ui/api/test_api_jobs.py::TestAst1348FlattenDeriveBreakdown`
+   * `tests/component/utils/test_config.py::TestAst1348PhaseScoreHeaderTitleConfig`
+   * `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — AST-1348 helpers
+   * `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — AST-1348 chrome
+   * fixture `phase_score_header_title_template`
+
+**Run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestAst1348FlattenDeriveBreakdown \
+  tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
+  tests/component/utils/test_config.py::TestAst1348PhaseScoreHeaderTitleConfig \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  -t "AST-1348|AST-950"
+```
+
+**Bible shasums:**
+
+* `docs/test-bible/ui/api/api_jobs.md` `393d876e90bc0848035a65e63908c6e0f94b9f30`
+* `docs/test-bible/utils/config.md` `1dfc05f15f8d8565bd6a9720258e3fbb54f43c00`
+* `docs/test-bible/frontend/components.md` `23723912d75785487c33e5401553adf5870571d0`
+* `docs/test-bible/frontend/lib.md` `620dcae380544135d35ff6ebb97b45ed82bf8cbd`
+
+— Betty
+
+### Comments
+
+#### radia — 2026-08-12T23:48:05.818Z
+[code-rubric] REVIEW (Commit: cf6cbb5a) product clean; branch hygiene discuss
+
+#### betty — 2026-08-12T23:45:21.366Z
+`origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome` @ `cf6cbb5a` · score title tests ready
+
+#### joan — 2026-08-12T23:39:21.722Z
+[plan-rubric] PROCEED (Commit: c5864e220195da5e9a343a6f803606000ada9803) Header chrome plan ready
+
+#### katherine — 2026-08-12T23:37:55.419Z
+`origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome` @ `c5864e220195da5e9a343a6f803606000ada9803` · plan ready for Joan
+
+---
+
 # Analysis header score title chrome
 
 **Linear:** [AST-1348](https://linear.app/astralcareermatch/issue/AST-1348/analysis-header-score-title-chrome-add-rubric-score-to-analysis)  

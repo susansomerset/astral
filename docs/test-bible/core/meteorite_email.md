@@ -2,7 +2,21 @@
 
 **Test module:** `tests/component/core/test_meteorite_email.py`
 
-> **AST-1467 / AST-1466:** `docs/test-bible/core/gaze_email.md` retired — folded here. Legacy `gaze_email` product identity is gone; candidate-bound mailbox + Land Meteorite selected-ids live under `meteorite_email` / `METEORITE_EMAIL_MAILBOX_CONFIG`. Inventory gate: `tests/component/core/test_ast1467_gaze_email_retire.py`.
+> **AST-1562:** `src/core/meteorite_email.py` **deleted** — `test_meteorite_email.py` skips when module absent; mailbox runner is `meteorite.check_inbox` only (**AST-1559**). Retention is `run_meteorite_retention` (**AST-1562**). Inventory: revised **`TestAst1467GazeEmailRetired`**.
+
+---
+
+### AST-1562 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
+
+**Module retired** — entire `test_meteorite_email.py` tree is historical; pytest skips via `find_spec("src.core.meteorite_email") is None`. Live mailbox + retention coverage: **`docs/test-bible/core/meteorite.md`** § AST-1559 / AST-1562.
+
+**Broken / obsolete:** all classes in this file (AST-1090 through AST-1531).
+
+**Integration:** none revised.
+
+---
 
 ## Coverage map
 
@@ -67,7 +81,7 @@ Candidate-bound `run_meteorite_email`: requires row `candidate_id`; filters From
 | Selected-ids config vocabulary | `src/utils/config.py` | **`TestAst1140GazeEmailSelectedConfig`** |
 | Candidate-bound runner + process_ helper (AST-1136 on tip) | `src/core/meteorite_email.py` | **`TestAst1136CandidateBoundMeteoriteEmail`**; revised **`TestAst1090RunMeteoriteEmail`** |
 
-**Broken / obsolete (Betty return pass — resolve `origin/dev` merge):** AST-1136 `_handle_bound` mocks must return 5-tuple `(processed, passed, failed, errors, outcome)` after AST-1140 helper change; sub tip must carry AST-1136 + AST-1140 test/bible surface from `origin/tests` / `origin/dev`.
+**Broken / obsolete (Betty return pass — resolve `origin/dev` merge):** AST-1136 `_handle_bound` mocks must return 5-tuple `(processed, passed, failed, errors, outcome)` after AST-1140 helper change; sub tip must carry AST-1136 + AST-1140 test/bible surface from `origin/tests` / `origin/dev`. **AST-1559:** remove spy on retired `create_meteorite_job_from_inbox_message` (**AST-1558**); dispatcher route is **`check_inbox**`.
 
 **Integration:** none — no existing scenario asserts Land Meteorite selected-ids; do not invent new coverage.
 

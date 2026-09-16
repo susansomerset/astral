@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1353 archived 2026-08-31 -->
+
+## Linear archive (AST-1353)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1353/save-base-resume-writes-base-resume-snapshot-create-a-table-called  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1340 — Create a table called astral_artifacts  
+**Blocked by / blocks / related:** parent: AST-1340
+
+### Description
+
+## What this implements
+
+Owns calling the sibling’s `astral_artifacts` writer from the existing successful Save Base Resume path so `artifacts.base_resume` is recorded with `current = 1` for the candidate. Does **not** add restore/Print UI or change Generate/Regenerate writers. After the table/writer sibling.
+
+## Citations
+
+`pattern.layers.import-discipline`; `astral.standards.in-scope-only`; `astral.layers.import-direction`
+
+## Acceptance criteria
+
+- [X] 2. After a successful Save Base Resume for a candidate, exactly one `current = 1` row exists for that candidate + `artifact_type` `base_resume`, and its blob matches the saved `artifacts.base_resume` content.
+- [X] 3. A second successful Save for the same candidate retires the previous current row (`current = 0`) and inserts a new `current = 1` row; the retired row remains queryable in the table.
+- [X] 4. Overwriting live `artifacts.base_resume` without going through Save Base Resume (e.g. Regenerate) does not by itself clear or replace the last `current = 1` `astral_artifacts` row from the prior Save.
+- [X] 5. No new Artifacts UI controls are required to demonstrate the above (DB / API-level verification is enough for UAT of this epic).
+
+## Boundaries
+
+- [X] Does **not** create the table or versioning helpers (sibling).
+- [X] Does **not** wire Print/Regenerate/Generate to read or restore from `astral_artifacts`.
+- [X] Does **not** backfill historical base_resume rows.
+
+## Notes for planning
+
+After sibling #1. Save path only. Parent AST-1340.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-13T00:22:46.671Z
+[code-rubric] PROCEED (Commit: de0e5598) Save snapshot wire clean
+
+#### betty — 2026-08-13T00:20:21.274Z
+`origin/sub/AST-1340/AST-1353-save-base-resume-snapshot` @ `de0e5598` · Save snapshot covered
+
+#### joan — 2026-08-13T00:15:29.579Z
+[plan-rubric] PROCEED (Commit: cced2c74) Save path snapshot wire
+
+#### katherine — 2026-08-13T00:13:57.997Z
+`origin/sub/AST-1340/AST-1353-save-base-resume-snapshot` @ `cced2c74f577a89538a814ebc831fd35b430c4e1` · Save path wired
+
+---
+
 # AST-1353 — Save Base Resume writes base_resume snapshot
 
 **Linear:** [AST-1353](https://linear.app/astralcareermatch/issue/AST-1353)

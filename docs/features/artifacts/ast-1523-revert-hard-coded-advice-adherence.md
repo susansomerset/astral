@@ -1,3 +1,73 @@
+<!-- linear-archive: AST-1523 archived 2026-09-09 -->
+
+## Linear archive (AST-1523)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1523/revert-hard-coded-advice-adherence-landing-advise-resume-needs-a-coded  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1460 — Advise resume needs a coded list for clear adherence  
+**Blocked by / blocks / related:** parent: AST-1460; blocks: AST-1524
+
+### Description
+
+## What this implements
+
+Owns undoing the AST-1460-family product/config/validate/persist landing on advise + draft (and coordinating Betty for bible/tests that assert the hard contract). Restores pre-epic deliverable expectations with freeform `notes` (rename from `deviations` if still listed in RESPONSE_SCHEMA / payload metadata — Archie's answer). Does **not** author the soft numbered-prose prompt rewrite (sibling child #2). Canceled children AST-1507 / AST-1508 / AST-1514 are superseded — do not revive them.
+
+## Citations
+
+`pattern.config.config-block`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.standards.in-scope-only`; `astral.agent.do-task-delegation`; `astral.git.engineer-test-tree-ban`; `astral.seed.agent-tables-in-repo-json`; `astral.seed.archie-catalog-wins`; `astral.seed.define-approved`.
+
+## Scope
+
+- [X] `src/utils/config.py` — strip `resume_advice_*` / `advice_adherence_*`; restore `notes` metadata + clear-keys
+- [X] `src/core/candidate.py` — remove coded-list / adherence normalize-validate
+- [X] `src/core/tracker.py` — remove resume_advice / advice_adherence persist; restore freeform `notes`
+- [X] `src/core/agent.py` — remove epic `do_task` hooks; restore notes persist-on-success
+- [X] `data/admin/agent_task.json` + UAT twin — pre-hard-contract advise/draft prompts with `"notes"`
+- [ ] `docs/test-bible/**` + `tests/**` for AST-1507/AST-1508 hard-contract coverage (Betty)
+
+## Acceptance criteria
+
+- [X] 1. After revert, a successful `advise_job_resume` hop no longer fails or rejects solely because RESUME BRIEF lacks machine-validated `[R#]` coded items / nested `resume_brief` schema checks introduced for this epic.
+- [X] 2. After revert, draft hop success no longer requires per-code `advice_adherence` objects; freeform `notes` (renamed from `deviations` if applicable) works again.
+- [X] 3. UAT fixture twin stays locked to the same `agent_task.json` advise/draft rows after each child.
+- [ ] 4. Component tests / bible entries that asserted the hard coded-advice / adherence contract are retired or aligned so CI matches the soft product. (Betty)
+
+## Boundaries
+
+- [X] Does not author soft numbered-prose prompt rewrite (sibling #2). Does not revive canceled AST-1507 / AST-1508 / AST-1514. No Approve Artifacts UI, Resume upshot, or `run_next` rewiring.
+
+## Notes for planning
+
+Archie: restore freeform `notes`; if `deviations` is explicitly listed in RESPONSE_SCHEMA for the task, rename it to `notes`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1460-advise-resume-coded-list`, child `sub/AST-1460/<child-id>-revert-hard-coded-advice-adherence`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-27T03:47:44.281Z
+[code-rubric] PROCEED (Commit: 5d7ec0d4) hard contract reverted cleanly
+
+#### betty — 2026-08-27T03:43:39.785Z
+origin/sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence @ `5d7ec0d4` · notes revert manifest
+
+#### ada — 2026-08-27T03:38:59.661Z
+`origin/sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence` @ `223786efb7eae3e5e47a2873f508a777b058f5ca` · hard contract reverted; Betty: retire AST-1507/1508/1514 hard-contract tests+bible (AC4)
+
+#### joan — 2026-08-27T03:33:26.231Z
+[plan-rubric] PROCEED (Commit: 238501d4) revert hard contract plan
+
+#### ada — 2026-08-27T03:21:18.181Z
+`origin/sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence` @ `238501d481a2043ed25363897c6f665e62f6c716` · hard-contract revert plan
+
+---
+
 # Revert hard coded-advice / adherence landing (Advise resume needs a coded list for clear adherence)
 
 **Linear:** [AST-1523](https://linear.app/astralcareermatch/issue/AST-1523/revert-hard-coded-advice-adherence-advise-resume-needs-a-coded-list)

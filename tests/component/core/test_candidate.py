@@ -11,7 +11,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.core import candidate as candidate_mod
+from tests.component.core.operative_fixture import register_operative_base
 from src.utils.config import (
+    ARTIFACT_CONFIG,
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
@@ -121,6 +123,33 @@ def _craft_resume_base_payload(
     return payload
 
 
+_PILOT_ARTIFACT_KEY = "candidate.artifacts.base_resume"
+
+
+def _resume_content_blob(**overrides: Any) -> dict[str, Any]:
+    """Shape-valid pilot body — required resume_content keys present (AST-1576)."""
+    body: dict[str, Any] = {
+        "candidate_name": "Ada Lovelace",
+        "candidate_title": "Engineer",
+        "candidate_contact_detail": "ada@example.com",
+        "professional_summary": "summary",
+        "core_competencies": "python",
+        "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
+    }
+    body.update(overrides)
+    return body
+
+
+def _spy_save_artifact(monkeypatch: pytest.MonkeyPatch) -> list:
+    calls: list = []
+    monkeypatch.setattr(
+        candidate_mod.database,
+        "save_artifact",
+        lambda *a, **k: calls.append((a, k)) or f"uuid-{len(calls)}",
+    )
+    return calls
+
+
 def _criterion(**overrides: Any) -> Dict[str, Any]:
     row = {"label": "fit", "content": _RUBRIC_CONTENT, "importance": 5}
     row.update(overrides)
@@ -226,6 +255,7 @@ class TestParseCandidateResume:
 
         monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        arts = _spy_save_artifact(monkeypatch)
         structure = _catalog_structure()
         parsed = _craft_resume_base_payload(structure, {"professional_summary": "ok"})
         monkeypatch.setattr(
@@ -237,7 +267,11 @@ class TestParseCandidateResume:
         assert out["success"] is True
         artifacts = store["candidate_data"]["artifacts"]
         assert artifacts["resume_structure"]["sections"]["professional_summary"]["title"] == "Custom Summary"
-        assert artifacts["base_resume"]["professional_summary"] == "ok"
+        # Operative path — pilot body is not library-merged into candidate_data.
+        assert "base_resume" not in artifacts
+        assert arts[0][0][0] == "candidate"
+        assert arts[0][0][2] == "base_resume"
+        assert arts[0][0][3]["professional_summary"] == "ok"
         # AST-970: parse no longer auto-hops to PROFILE_READY / any state
         transition.assert_not_called()
         assert store["state"] == "NEW_CANDIDATE"
@@ -658,9 +692,10 @@ class TestParseCandidateResumeExtended:
         }
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: dict(store))
         monkeypatch.setattr(candidate_mod.database, "save_candidate", lambda candidate_id, **kwargs: None)
+        _spy_save_artifact(monkeypatch)
         transition = MagicMock()
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
-        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": "ok"})
+        parsed = _craft_resume_base_payload(_catalog_structure())
         monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": parsed}))
         out = await candidate_mod.parse_candidate_resume("somerset")
         assert out["success"] is True
@@ -727,15 +762,17 @@ class TestRunCandidateArtifactGeneration:
         assert body["error"] == "do_task returned None"
 
     def test_returns_200_on_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        parsed = _craft_resume_base_payload(_catalog_structure())
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
         monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
         monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
-        monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": {"x": 1}, "timesheet": {"y": 2}})))
+        _spy_save_artifact(monkeypatch)
+        monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed, "timesheet": {"y": 2}})))
         monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=1.25))
         body, status = candidate_mod.run_candidate_artifact_generation("somerset", "craft_resume_base", None)
         assert status == 200
-        assert body["parsed_response"] == {"x": 1}
+        assert body["parsed_response"] == parsed
         assert body["timesheet"] == {"y": 2}
 
     def test_persists_artifacts_on_craft_resume_base_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -750,6 +787,7 @@ class TestRunCandidateArtifactGeneration:
             "save_candidate",
             lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
         )
+        arts = _spy_save_artifact(monkeypatch)
         monkeypatch.setattr(
             candidate_mod,
             "asyncio",
@@ -763,7 +801,8 @@ class TestRunCandidateArtifactGeneration:
         assert saves[0][1]["merge"] is True
         artifacts = saves[0][1]["candidate_data"]["artifacts"]
         assert "resume_structure" in artifacts
-        assert artifacts["base_resume"]["experience"] == [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        assert "base_resume" not in artifacts
+        assert arts[0][0][3]["experience"] == [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
 
     def test_does_not_persist_artifacts_on_other_task_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saves: list[tuple[Any, ...]] = []
@@ -946,13 +985,24 @@ class TestAst517ResumeStructure:
         assert out["sections"]["candidate_name"]["title"] == "Candidate Name"
 
     def test_resolve_shims_legacy_base_resume_accent(self) -> None:
+        cid = "c-resolve-accent"
+        register_operative_base(
+            cid, {"accent_color": _VALID_ACCENT.lower(), "professional_summary": "x"}
+        )
         out = candidate_mod.resolve_resume_structure(
-            {"artifacts": {"base_resume": {"accent_color": _VALID_ACCENT.lower(), "professional_summary": "x"}}}
+            {
+                "_astral_candidate_id": cid,
+                "artifacts": {},
+            }
         )
         assert out["accent_color"] == _VALID_ACCENT
 
     def test_resolve_ignores_invalid_legacy_accent(self) -> None:
-        out = candidate_mod.resolve_resume_structure({"artifacts": {"base_resume": {"accent_color": "not-hex"}}})
+        cid = "c-resolve-bad-accent"
+        register_operative_base(cid, {"accent_color": "not-hex"})
+        out = candidate_mod.resolve_resume_structure(
+            {"_astral_candidate_id": cid, "artifacts": {}}
+        )
         assert "accent_color" not in out
 
     def test_split_uses_default_when_structure_missing(self) -> None:
@@ -1227,14 +1277,17 @@ class TestAst607BaseResumeToken:
 
     def test_format_dict_keys_as_json_not_markdown(self) -> None:
         structure = candidate_mod.default_resume_structure()
+        cid = "c-ast607"
+        register_operative_base(
+            cid,
+            {
+                "professional_summary": "Summary body",
+                "accent_color": "#112233",
+            },
+        )
         cd = {
-            "artifacts": {
-                "resume_structure": structure,
-                "base_resume": {
-                    "professional_summary": "Summary body",
-                    "accent_color": "#112233",
-                },
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": structure},
         }
         out = candidate_mod.format_base_resume_for_token(cd)
         assert "###" not in out
@@ -1245,11 +1298,13 @@ class TestAst607BaseResumeToken:
     def test_format_legacy_label_list_maps_to_section_ids(self) -> None:
         structure = candidate_mod.default_resume_structure()
         summary_title = structure["sections"]["professional_summary"]["title"]
+        cid = "c-ast607b"
+        register_operative_base(
+            cid, [{"label": summary_title, "content": "Legacy summary"}]
+        )
         cd = {
-            "artifacts": {
-                "resume_structure": structure,
-                "base_resume": [{"label": summary_title, "content": "Legacy summary"}],
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": structure},
         }
         out = candidate_mod.format_base_resume_for_token(cd)
         assert "###" not in out
@@ -1260,14 +1315,16 @@ class TestAst594DraftJobResumePayload:
     """AST-594: normalize + section validation for draft_job_resume (whitelist = base_resume; AST-1270)."""
 
     def _base_cd(self, **sections: Any) -> dict[str, Any]:
-        # AST-1270: draft whitelist reads artifacts.base_resume keys (not resume_structure catalog).
+        # AST-1587: whitelist reads operative current-read, not library blob.
         base = {
             "professional_summary": "Summary",
             "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
             "candidate_contact_detail": "ada@example.com",
         }
         base.update(sections)
-        return {"artifacts": {"base_resume": base}}
+        cid = "c-ast594"
+        register_operative_base(cid, base)
+        return {"_astral_candidate_id": cid, "artifacts": {}}
 
     def test_validate_accepts_structure_keyed_subset(self) -> None:
         payload = {
@@ -2251,11 +2308,13 @@ class TestAst996ExperienceJobArray:
     def test_format_base_resume_token_includes_job_array_json(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
         structure = candidate_mod.default_resume_structure()
+        cid = "c-ast996-token"
+        register_operative_base(
+            cid, {"experience": jobs, "professional_summary": "Summary"}
+        )
         cd = {
-            "artifacts": {
-                "resume_structure": structure,
-                "base_resume": {"experience": jobs, "professional_summary": "Summary"},
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": structure},
         }
         out = candidate_mod.format_base_resume_for_token(cd)
         parsed = json.loads(out)
@@ -2322,6 +2381,7 @@ class TestAst996ExperienceJobArray:
             "save_candidate",
             lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
         )
+        arts = _spy_save_artifact(monkeypatch)
         monkeypatch.setattr(
             candidate_mod,
             "asyncio",
@@ -2332,7 +2392,8 @@ class TestAst996ExperienceJobArray:
         )
         assert status == 200
         artifacts = saves[0][1]["candidate_data"]["artifacts"]
-        assert artifacts["base_resume"]["experience"] == jobs
+        assert "base_resume" not in artifacts
+        assert arts[0][0][3]["experience"] == jobs
 
     @pytest.mark.asyncio
     async def test_parse_candidate_resume_debug_lists_jobs(
@@ -2351,6 +2412,7 @@ class TestAst996ExperienceJobArray:
             },
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        _spy_save_artifact(monkeypatch)
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", lambda *a, **k: None)
 
         async def _do_task(**kwargs: Any) -> dict[str, Any]:
@@ -2515,10 +2577,14 @@ class TestAst997JobTailoredExperience:
     """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
 
     def _base_cd(self, jobs: list[dict[str, str]], **extra_sections: Any) -> dict[str, Any]:
-        # AST-1270: whitelist = base_resume keys; include every section the payload may send.
         base: dict[str, Any] = {"experience": jobs, "professional_summary": "S"}
         base.update(extra_sections)
-        return {"artifacts": {"base_resume": base, "resume_structure": _three_section_structure()}}
+        cid = "c-ast997"
+        register_operative_base(cid, base)
+        return {
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": _three_section_structure()},
+        }
 
     def test_normalize_preserves_experience_job_array(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
@@ -3657,6 +3723,40 @@ class TestAst1085EvaluateJdEmbeddedMerge:
         assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
 
 
+@pytest.mark.skipif(
+    not hasattr(candidate_mod, "email_aliases_for_candidate"),
+    reason="AST-1559 email_aliases_for_candidate not on this publish tip",
+)
+class TestAst1559EmailAliasesForCandidate:
+    def _row(self, **kwargs) -> dict:
+        cd: dict = {"contact": {}}
+        if kwargs.get("contact_email"):
+            cd["contact"]["contact_email"] = kwargs["contact_email"]
+        if kwargs.get("reply_email"):
+            cd["contact"]["reply_email"] = kwargs["reply_email"]
+        if kwargs.get("extra_emails") is not None:
+            cd["contact"]["extra_emails"] = kwargs["extra_emails"]
+        if kwargs.get("profile_contact"):
+            cd["profile"] = {"contact_email": kwargs["profile_contact"]}
+        return {"astral_candidate_id": "c1", "candidate_data": cd}
+
+    def test_empty_and_missing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        assert candidate_mod.email_aliases_for_candidate("") == []
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda _c: None)
+        assert candidate_mod.email_aliases_for_candidate("missing") == []
+
+    def test_paths_dedupe_order(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = self._row(
+            contact_email="Ada Lovelace <ada@ex.com>",
+            reply_email="REPLY@EX.COM",
+            extra_emails=["bob@ex.com", "Ada Lovelace <ada@ex.com>"],
+            profile_contact="legacy@ex.com",
+        )
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda _c: row)
+        assert candidate_mod.email_aliases_for_candidate("c1") == [
+            "ada@ex.com", "REPLY@EX.COM", "legacy@ex.com", "bob@ex.com"
+        ]
+
 
 # AST-1092: extra_emails coerce + bind via email_list_paths (not websites).
 class TestAst1092ExtraBindingEmails:
@@ -4422,25 +4522,28 @@ class TestAst1270NestedDraftJobResumeContract:
         return out
 
     def _cd(self, *, with_structure: bool = False) -> dict[str, Any]:
-        arts: dict[str, Any] = {"base_resume": self._base_sections()}
+        cid = "c-ast1270"
+        register_operative_base(cid, self._base_sections())
+        arts: dict[str, Any] = {}
         if with_structure:
             arts["resume_structure"] = candidate_mod.default_resume_structure()
-        return {"artifacts": arts}
+        return {"_astral_candidate_id": cid, "artifacts": arts}
 
     def test_allowed_section_keys_intersect_known_ids(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
-        cd = {
-            "artifacts": {
-                "base_resume": {
-                    "professional_summary": "S",
-                    "experience": jobs,
-                    "highlights": "Won awards",
-                    "accent_color": "#fff",
-                    "sections": "reserved",
-                    "123bad": "x",
-                }
-            }
-        }
+        cid = "c-ast1270b"
+        register_operative_base(
+            cid,
+            {
+                "professional_summary": "S",
+                "experience": jobs,
+                "highlights": "Won awards",
+                "accent_color": "#fff",
+                "sections": "reserved",
+                "123bad": "x",
+            },
+        )
+        cd = {"_astral_candidate_id": cid, "artifacts": {}}
         assert candidate_mod.draft_job_resume_allowed_section_keys(cd) == [
             "experience",
             "highlights",
@@ -4609,14 +4712,15 @@ class TestAst1272DraftHopDebugWhitelistTrail:
     """AST-1272: Style D unwrap + whitelist/accept/reject trails when debug=True."""
 
     def _cd(self) -> dict[str, Any]:
-        return {
-            "artifacts": {
-                "base_resume": {
-                    "professional_summary": "base summary",
-                    "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
-                }
-            }
-        }
+        cid = "c-ast1272"
+        register_operative_base(
+            cid,
+            {
+                "professional_summary": "base summary",
+                "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
+            },
+        )
+        return {"_astral_candidate_id": cid, "artifacts": {}}
 
     def _patch_debug(self, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
         idx = MagicMock()
@@ -4693,7 +4797,12 @@ class TestAst1272DraftHopDebugWhitelistTrail:
         assert idx.call_args.kwargs["func"] == "candidate.validate_draft_job_resume_payload"
         assert idx.call_args.kwargs["outcome"] == "ok"
         msgs = self._detail_msgs(detail)
-        assert any("whitelist_source=base_resume" in m and "experience" in m for m in msgs)
+        assert any(
+            "whitelist_source=get_candidate_current" in m
+            and "candidate.artifacts.base_resume" in m
+            and "experience" in m
+            for m in msgs
+        )
         assert any("recorded accepted_keys=" in m and "experience" in m for m in msgs)
         assert any("recorded rejected_keys=[]" in m for m in msgs)
         assert any("recorded error=none" in m for m in msgs)
@@ -5086,11 +5195,11 @@ class TestAst1305HopsContentBlobsAndLegacyLabels:
         assert "highlights_2" in collided["sections"]
 
     def test_token_keeps_unmatched_labels_and_omits_prose_experience(self) -> None:
+        cid = "c-ast1305-token"
+        register_operative_base(cid, self._abrams_list())
         cd = {
-            "artifacts": {
-                "resume_structure": self._seven(),
-                "base_resume": self._abrams_list(),
-            }
+            "_astral_candidate_id": cid,
+            "artifacts": {"resume_structure": self._seven()},
         }
         parsed = json.loads(candidate_mod.format_base_resume_for_token(cd))
         assert parsed["highlights"] == "Won awards"
@@ -5120,15 +5229,16 @@ class TestAst1305HopsContentBlobsAndLegacyLabels:
 
     def test_draft_whitelist_includes_extras_rejects_invented(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
-        cd = {
-            "artifacts": {
-                "base_resume": {
-                    "professional_summary": "S",
-                    "highlights": "H",
-                    "experience": jobs,
-                }
-            }
-        }
+        cid = "c-ast1305-draft"
+        register_operative_base(
+            cid,
+            {
+                "professional_summary": "S",
+                "highlights": "H",
+                "experience": jobs,
+            },
+        )
+        cd = {"_astral_candidate_id": cid, "artifacts": {}}
         assert candidate_mod.draft_job_resume_allowed_section_keys(cd) == [
             "experience",
             "highlights",
@@ -5198,73 +5308,109 @@ class TestAst1322TitleKeyedBaseResumeDict:
 
             assert spec["format"] == RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
 
-# Branches: snapshot live blob; retire on second; missing candidate/base; craft path no astral write.
-class TestAst1353SnapshotSavedBaseResume:
-    def test_snapshots_live_base_resume_blob(self, seeded_db) -> None:
-        from src.core import candidate as candidate_mod
+# Branches: dual-dispatch; catalog fail-fast; retire+insert; hydrate overlay; snapshot gone.
+class TestAst1576SaveCandidateDataOperative:
+    """AST-1576: generic save_candidate_data(artifact_key, blob) + hydrate."""
+
+    def test_snapshot_helper_removed(self) -> None:
+        assert not hasattr(candidate_mod, "snapshot_saved_base_resume_artifact")
+
+    def test_persist_helper_rejects_craft_resume_base(self) -> None:
+        with pytest.raises(ValueError, match="unsupported craft task_key"):
+            candidate_mod._persist_craft_dispatch_success(
+                "c1", "craft_resume_base", {"professional_summary": "x"}
+            )
+
+    def test_unknown_blank_and_flat_key_fail_fast(self) -> None:
+        blob = _resume_content_blob()
+        with pytest.raises(ValueError, match="unknown catalog key") as exc:
+            candidate_mod.save_candidate_data("c1", "not_a_real_artifact", blob)
+        assert "not_a_real_artifact" in str(exc.value)
+        with pytest.raises(ValueError, match="artifact_key required"):
+            candidate_mod.save_candidate_data("c1", "   ", blob)
+        with pytest.raises(ValueError, match="unknown catalog key"):
+            candidate_mod.save_candidate_data("c1", "base_resume", blob)
+        with pytest.raises(ValueError, match="must be a dict or artifact_key"):
+            candidate_mod.save_candidate_data("c1", 12)  # type: ignore[arg-type]
+
+    def test_dict_path_does_not_call_save_artifact(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = _spy_save_artifact(monkeypatch)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        out = candidate_mod.save_candidate_data(
+            "c1", {"artifacts": {"base_resume": {"professional_summary": "blob"}}}
+        )
+        assert out is None
+        assert spy == []
+
+    def test_operative_save_writes_current_and_skips_library_blob(
+        self, seeded_db
+    ) -> None:
+        from src.utils.config import TASK_CONFIG
 
         db = seeded_db
-        db.save_candidate(
-            "cand-1",
-            candidate_data={"artifacts": {"base_resume": {"professional_summary": "live"}}},
-            merge=True,
-        )
-        uid = candidate_mod.snapshot_saved_base_resume_artifact("cand-1")
+        blob = _resume_content_blob(professional_summary="live")
+        uid = candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        assert uid
+        assert TASK_CONFIG["craft_resume_base"]["artifact_key"] == _PILOT_ARTIFACT_KEY
         row = db.get_current_artifact("candidate", "cand-1", "base_resume")
         assert row is not None
         assert row["artifact_uuid"] == uid
-        assert row["artifact_data"] == {"professional_summary": "live"}
+        assert row["artifact_data"]["professional_summary"] == "live"
         assert row["current"] == 1
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        assert "base_resume" not in (cd.get("artifacts") or {})
 
-    def test_second_snapshot_retires_prior(self, seeded_db) -> None:
-        from src.core import candidate as candidate_mod
-
+    def test_second_operative_save_retires_prior(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate(
-            "cand-1",
-            candidate_data={"artifacts": {"base_resume": {"v": 1}}},
-            merge=True,
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _PILOT_ARTIFACT_KEY, _resume_content_blob(professional_summary="v1")
         )
-        uid1 = candidate_mod.snapshot_saved_base_resume_artifact("cand-1")
-        db.save_candidate(
-            "cand-1",
-            candidate_data={"artifacts": {"base_resume": {"v": 2}}},
-            merge=True,
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _PILOT_ARTIFACT_KEY, _resume_content_blob(professional_summary="v2")
         )
-        uid2 = candidate_mod.snapshot_saved_base_resume_artifact("cand-1")
         assert uid1 != uid2
         current = db.get_current_artifact("candidate", "cand-1", "base_resume")
         assert current["artifact_uuid"] == uid2
-        assert current["artifact_data"] == {"v": 2}
+        assert current["artifact_data"]["professional_summary"] == "v2"
         history = db.list_artifacts(
             "candidate", "cand-1", "base_resume", current_only=False
         )
         assert len(history) == 2
         assert history[0]["current"] == 0
 
-    def test_missing_candidate_raises(self, sqlite_in_memory) -> None:
-        from src.core import candidate as candidate_mod
+    def test_empty_and_missing_required_body_rejected(self) -> None:
+        with pytest.raises(ValueError, match="artifact body required"):
+            candidate_mod.save_candidate_data("c1", _PILOT_ARTIFACT_KEY, None)
+        with pytest.raises(ValueError, match="non-empty dict"):
+            candidate_mod.save_candidate_data("c1", _PILOT_ARTIFACT_KEY, {})
+        with pytest.raises(ValueError, match="missing required key"):
+            candidate_mod.save_candidate_data(
+                "c1", _PILOT_ARTIFACT_KEY, {"professional_summary": "only"}
+            )
 
-        with pytest.raises(ValueError, match="Candidate not found"):
-            candidate_mod.snapshot_saved_base_resume_artifact("missing-id")
+    def test_hydrate_overlays_operative_current(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _PILOT_ARTIFACT_KEY, _resume_content_blob(professional_summary="op")
+        )
+        cd: dict[str, Any] = {"artifacts": {"base_resume": {"professional_summary": "stale"}}}
+        candidate_mod.hydrate_operative_base_resume_for_response("cand-1", cd)
+        assert cd["artifacts"]["base_resume"]["professional_summary"] == "op"
+        empty: dict[str, Any] = {}
+        candidate_mod.hydrate_operative_base_resume_for_response("missing-id", empty)
+        assert empty == {}
 
-    def test_missing_base_resume_raises(self, seeded_db) -> None:
-        from src.core import candidate as candidate_mod
+    def test_get_candidate_hydrates_operative(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="hydrated")
+        candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        row = candidate_mod.get_candidate("cand-1")
+        assert row["candidate_data"]["artifacts"]["base_resume"]["professional_summary"] == "hydrated"
 
-        with pytest.raises(ValueError, match="artifacts.base_resume missing"):
-            candidate_mod.snapshot_saved_base_resume_artifact("cand-1")
-
-    def test_craft_generation_does_not_call_save_artifact(
+    def test_craft_generation_calls_save_artifact(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.core import candidate as candidate_mod
-
-        astral_calls: list = []
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "save_artifact",
-            lambda *a, **k: astral_calls.append((a, k)) or "uuid",
-        )
+        astral_calls = _spy_save_artifact(monkeypatch)
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
@@ -5285,15 +5431,17 @@ class TestAst1353SnapshotSavedBaseResume:
         )
         assert status == 200
         assert body["success"] is True
-        assert astral_calls == []
+        assert astral_calls
+        assert astral_calls[0][0][2] == "base_resume"
 
 
 class TestAst1365IdealDayLibrary:
     """AST-1365: Ideal Day completeness gate + context save payload (library peer)."""
 
-    def test_save_candidate_data_merges_ideal_day_context(
+    def test_save_candidate_data_strips_ideal_day_from_library_merge(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-1665 tip (Ideal Day union): ideal_day is operative — dict-path strips it.
         save = MagicMock()
         monkeypatch.setattr(
             candidate_mod.database,
@@ -5303,14 +5451,11 @@ class TestAst1365IdealDayLibrary:
             },
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        candidate_mod.save_candidate_data(
+        out = candidate_mod.save_candidate_data(
             "c1", {"context": {"ideal_day": "deep focus mornings"}}
         )
-        assert save.call_args.kwargs["merge"] is True
-        assert (
-            save.call_args.kwargs["candidate_data"]["context"]["ideal_day"]
-            == "deep focus mornings"
-        )
+        assert out is None
+        save.assert_not_called()
 
     def test_check_context_complete_uses_config_completeness_keys(self) -> None:
         keys = CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]
@@ -5416,4 +5561,801 @@ class TestAst1474PageBreakPolicyNormalize:
         assert (
             structure["sections"]["publications"]["page_break_policy"]
             == RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+        )
+
+
+# Branches: pilot pin→body; retired pin; miss; wrong entity/type; no blob fallback.
+class TestAst1584GetOperativeBaseResume:
+    """AST-1584: candidate.get_operative_base_resume pin→body for pilot key."""
+
+    def test_pin_returns_pilot_body(self, seeded_db) -> None:
+        db = seeded_db
+        blob = _resume_content_blob(professional_summary="operative-pin")
+        uid = candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        body = candidate_mod.get_operative_base_resume(uid)
+        assert body == blob
+        assert body["professional_summary"] == "operative-pin"
+        # sanity: same pin still works after a newer current write
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _PILOT_ARTIFACT_KEY, _resume_content_blob(professional_summary="newer")
+        )
+        assert uid2 != uid
+        assert candidate_mod.get_operative_base_resume(uid)["professional_summary"] == "operative-pin"
+        assert candidate_mod.get_operative_base_resume(uid2)["professional_summary"] == "newer"
+        assert db.get_current_artifact("candidate", "cand-1", "base_resume")["artifact_uuid"] == uid2
+
+    def test_miss_wrong_entity_wrong_type_return_none(self, seeded_db) -> None:
+        db = seeded_db
+        assert candidate_mod.get_operative_base_resume("00000000-0000-0000-0000-000000000000") is None
+        job_uid = db.save_artifact(
+            "job", "job-1", "base_resume", _resume_content_blob(professional_summary="job")
+        )
+        assert candidate_mod.get_operative_base_resume(job_uid) is None
+        other_uid = db.save_artifact(
+            "candidate", "cand-1", "cover_letter", {"text": "not pilot"}
+        )
+        assert candidate_mod.get_operative_base_resume(other_uid) is None
+
+    def test_no_candidate_data_blob_fallback(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
+        db = seeded_db
+        # Library blob present — operative miss must not walk it
+        db.save_candidate(
+            "cand-1",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="blob-only")
+                }
+            },
+        )
+        calls: list = []
+        real_get = db.get_candidate
+
+        def _spy_get(cid: str):
+            calls.append(cid)
+            return real_get(cid)
+
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", _spy_get)
+        assert candidate_mod.get_operative_base_resume("missing-pin-uuid") is None
+        assert calls == []
+
+
+# Branches: current hit/miss; catalog fail-fast; hydrate strips stale blob on miss; no blob fallback.
+class TestAst1586GetCandidateCurrent:
+    """AST-1586: get_candidate_current + hydrate read-current for pilot key."""
+
+    def test_hit_returns_current_body(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="current-read")
+        candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        body = candidate_mod.get_candidate_current("cand-1", _PILOT_ARTIFACT_KEY)
+        assert body == blob
+        assert body["professional_summary"] == "current-read"
+
+    def test_miss_returns_none(self, seeded_db) -> None:
+        assert (
+            candidate_mod.get_candidate_current("cand-1", _PILOT_ARTIFACT_KEY) is None
+        )
+
+    def test_unknown_and_blank_keys_fail_fast(self) -> None:
+        with pytest.raises(ValueError, match="unknown catalog key"):
+            candidate_mod.get_candidate_current("c1", "not.in.catalog")
+        with pytest.raises(ValueError, match="artifact_key required"):
+            candidate_mod.get_candidate_current("c1", "   ")
+        with pytest.raises(ValueError, match="candidate_id required"):
+            candidate_mod.get_candidate_current("   ", _PILOT_ARTIFACT_KEY)
+
+    def test_non_candidate_scoped_key_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(
+            candidate_mod.ARTIFACT_CONFIG,
+            "job.artifacts.base_resume",
+            {
+                "entity_type": "job",
+                "candidate_scoped": False,
+                "body_shape": "resume_content",
+                "ingestion_owner": "tracker",
+            },
+        )
+        with pytest.raises(ValueError, match="not candidate-scoped"):
+            candidate_mod.get_candidate_current("c1", "job.artifacts.base_resume")
+
+    def test_no_candidate_data_blob_fallback(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="blob-only")
+                }
+            },
+        )
+        assert (
+            candidate_mod.get_candidate_current("cand-1", _PILOT_ARTIFACT_KEY) is None
+        )
+
+    def test_hydrate_strips_stale_blob_on_miss(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="stale"),
+                    "resume_structure": {"sections": {}},
+                }
+            },
+        )
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        candidate_mod.hydrate_operative_base_resume_for_response("cand-1", cd)
+        assert "base_resume" not in cd.get("artifacts", {})
+        assert "resume_structure" in cd["artifacts"]
+
+    def test_get_candidate_strips_stale_blob_on_miss(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={
+                "artifacts": {
+                    "base_resume": _resume_content_blob(professional_summary="stale"),
+                }
+            },
+        )
+        row = candidate_mod.get_candidate("cand-1")
+        arts = row["candidate_data"].get("artifacts") or {}
+        assert "base_resume" not in arts
+
+
+# Branches: operative current-read consumers; no blob fallback; builder Style D current_read.
+class TestAst1587BaseResumeConsumerRewires:
+    """AST-1587: builder/token/live helpers use get_candidate_current only."""
+
+    def test_format_base_resume_token_ignores_stale_blob_without_operative(
+        self,
+    ) -> None:
+        structure = candidate_mod.default_resume_structure()
+        cd = {
+            "_astral_candidate_id": "c1587",
+            "artifacts": {
+                "resume_structure": structure,
+                "base_resume": {"professional_summary": "stale blob"},
+            },
+        }
+        assert candidate_mod.format_base_resume_for_token(cd) == ""
+
+    def test_format_base_resume_token_reads_operative_current(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="operative-token")
+        candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        structure = candidate_mod.default_resume_structure()
+        cd = {
+            "_astral_candidate_id": "cand-1",
+            "artifacts": {"resume_structure": structure},
+        }
+        out = candidate_mod.format_base_resume_for_token(cd)
+        assert json.loads(out)["professional_summary"] == "operative-token"
+
+    def test_load_pilot_delegates_to_get_candidate_current(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="load-pilot")
+        candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        body = candidate_mod.load_pilot_base_resume_for_candidate("cand-1")
+        assert body["professional_summary"] == "load-pilot"
+
+    def test_build_base_resume_debug_emits_current_read_trail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import builder as builder_mod
+
+        register_operative_base(
+            "c1587d", _resume_content_blob(professional_summary="debug trail")
+        )
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "first": "Ada",
+                "last": "Lovelace",
+                "full": "Ada Lovelace",
+                "candidate_data": {
+                    "contact": {"contact_email": "ada@example.com"},
+                    "artifacts": {"resume_structure": candidate_mod.default_resume_structure()},
+                },
+            },
+        )
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(builder_mod._log, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(builder_mod._log, "debug_index", idx)
+        monkeypatch.setattr(builder_mod._log, "debug_detail", detail)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", MagicMock())
+        monkeypatch.setattr(builder_mod.candidate_mod, "debug_experience_jobs", MagicMock())
+        html = builder_mod.build_base_resume("c1587d", debug=True)
+        assert "debug trail" in html
+        base_calls = [
+            c
+            for c in idx.call_args_list
+            if c.kwargs.get("func") == "builder.build_base_resume"
+            and c.kwargs.get("total") == 2
+        ]
+        assert len(base_calls) == 2
+        assert base_calls[0].kwargs["index"] == 1
+        assert base_calls[0].kwargs["total"] == 2
+        msgs = [c.args[0] for c in detail.call_args_list]
+        assert any("current_read=hit" in m for m in msgs)
+        assert any(
+            "resume_source=get_candidate_current(candidate.artifacts.base_resume)" in m
+            for m in msgs
+        )
+
+
+_STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
+
+
+# Branches: plain_text validate; retire+insert; dict-path strip; hydrate hit/miss/non-str; get_candidate.
+class TestAst1633StrengthsOperativeSaveHydrate:
+    """AST-1633: Strengths plain_text operative save + hydrate + library gate."""
+
+    def test_plain_text_rejects_empty_and_non_str(self) -> None:
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _STRENGTHS_ARTIFACT_KEY, "")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _STRENGTHS_ARTIFACT_KEY, "   ")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _STRENGTHS_ARTIFACT_KEY, {"x": 1})
+
+    def test_operative_save_writes_current_and_skips_library_blob(self, seeded_db) -> None:
+        db = seeded_db
+        uid = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "systems thinker"
+        )
+        assert uid
+        row = db.get_current_artifact("candidate", "cand-1", "strengths")
+        assert row is not None
+        assert row["artifact_uuid"] == uid
+        assert row["artifact_data"] == "systems thinker"
+        assert row["current"] == 1
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        assert "strengths" not in (cd.get("context") or {})
+
+    def test_second_operative_save_retires_prior(self, seeded_db) -> None:
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "v1 strengths"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "v2 strengths"
+        )
+        assert uid1 != uid2
+        current = db.get_current_artifact("candidate", "cand-1", "strengths")
+        assert current["artifact_uuid"] == uid2
+        assert current["artifact_data"] == "v2 strengths"
+        history = db.list_artifacts(
+            "candidate", "cand-1", "strengths", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_dict_path_strips_strengths_keeps_siblings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        spy = _spy_save_artifact(monkeypatch)
+        candidate_mod.save_candidate_data(
+            "c1",
+            {"context": {"strengths": "drop-me", "backstory": "keep-me"}},
+        )
+        assert spy == []
+        ctx = save.call_args.kwargs["candidate_data"]["context"]
+        assert ctx == {"backstory": "keep-me"}
+        assert "strengths" not in ctx
+
+    def test_dict_path_strengths_only_skips_empty_library_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # After strip, blob is empty → save_candidate_data returns without DB write.
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        out = candidate_mod.save_candidate_data("c1", {"context": {"strengths": "only"}})
+        assert out is None
+        save.assert_not_called()
+
+    def test_hydrate_overlays_hit_leaves_legacy_on_miss(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "operative strengths"
+        )
+        cd: dict[str, Any] = {"context": {"strengths": "stale blob"}}
+        candidate_mod.hydrate_operative_strengths_for_response("cand-1", cd)
+        assert cd["context"]["strengths"] == "operative strengths"
+
+        legacy: dict[str, Any] = {"context": {"strengths": "legacy until re-save"}}
+        candidate_mod.hydrate_operative_strengths_for_response("missing-id", legacy)
+        assert legacy["context"]["strengths"] == "legacy until re-save"
+
+    def test_hydrate_ignores_non_dict_cd_and_non_str_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        candidate_mod.hydrate_operative_strengths_for_response("c1", "not-a-dict")  # type: ignore[arg-type]
+        monkeypatch.setattr(
+            candidate_mod, "get_candidate_current", lambda cid, key: {"not": "str"}
+        )
+        cd: dict[str, Any] = {"context": {"strengths": "keep"}}
+        candidate_mod.hydrate_operative_strengths_for_response("c1", cd)
+        assert cd["context"]["strengths"] == "keep"
+
+    def test_get_candidate_hydrates_strengths(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "from get_candidate"
+        )
+        row = candidate_mod.get_candidate("cand-1")
+        assert row["candidate_data"]["context"]["strengths"] == "from get_candidate"
+
+
+class TestAst1635IdenticalArtifactNoOp:
+    """AST-1635 [bug-repro]: identical body must not retire+insert a new version."""
+
+    def test_identical_strengths_save_keeps_current_uuid(self, seeded_db) -> None:
+        # Pre-fix: second identical save returns a new uuid and retires prior.
+        # Post-fix: uid2 == uid1; exactly one current=1 row.
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "alpha"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _STRENGTHS_ARTIFACT_KEY, "alpha"
+        )
+        assert uid2 == uid1
+        current = db.get_current_artifact("candidate", "cand-1", "strengths")
+        assert current is not None
+        assert current["artifact_uuid"] == uid1
+        assert current["artifact_data"] == "alpha"
+        assert current["current"] == 1
+        history = db.list_artifacts(
+            "candidate", "cand-1", "strengths", current_only=False
+        )
+        assert len(history) == 1
+        assert history[0]["current"] == 1
+
+
+
+_BIO_SUMMARY_ARTIFACT_KEY = "candidate.context.bio_summary"
+
+
+# Branches: plain_text validate; retire+insert; dict-path strip; hydrate hit/miss; get_candidate;
+# identical no-op (shared AST-1635).
+@pytest.mark.skipif(
+    "candidate.context.bio_summary" not in ARTIFACT_CONFIG,
+    reason="AST-1649 product not on this tip (parallel epic)",
+)
+class TestAst1649BioSummaryOperativeSaveHydrate:
+    """AST-1649: Bio Summary plain_text operative save + hydrate + library gate."""
+
+    def test_plain_text_rejects_empty_and_non_str(self) -> None:
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _BIO_SUMMARY_ARTIFACT_KEY, "")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _BIO_SUMMARY_ARTIFACT_KEY, "   ")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _BIO_SUMMARY_ARTIFACT_KEY, {"x": 1})
+
+    def test_operative_save_writes_current_and_skips_library_blob(self, seeded_db) -> None:
+        db = seeded_db
+        uid = candidate_mod.save_candidate_data(
+            "cand-1", _BIO_SUMMARY_ARTIFACT_KEY, "builder bio"
+        )
+        assert uid
+        row = db.get_current_artifact("candidate", "cand-1", "bio_summary")
+        assert row is not None
+        assert row["artifact_uuid"] == uid
+        assert row["artifact_data"] == "builder bio"
+        assert row["current"] == 1
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        assert "bio_summary" not in (cd.get("context") or {})
+
+    def test_second_operative_save_retires_prior(self, seeded_db) -> None:
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _BIO_SUMMARY_ARTIFACT_KEY, "v1 bio"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _BIO_SUMMARY_ARTIFACT_KEY, "v2 bio"
+        )
+        assert uid1 != uid2
+        current = db.get_current_artifact("candidate", "cand-1", "bio_summary")
+        assert current["artifact_uuid"] == uid2
+        assert current["artifact_data"] == "v2 bio"
+        history = db.list_artifacts(
+            "candidate", "cand-1", "bio_summary", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_identical_body_keeps_current_uuid(self, seeded_db) -> None:
+        # Shared AST-1635 identical no-op — rides catalog plain_text str-path.
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _BIO_SUMMARY_ARTIFACT_KEY, "same bio"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _BIO_SUMMARY_ARTIFACT_KEY, "same bio"
+        )
+        assert uid2 == uid1
+        history = db.list_artifacts(
+            "candidate", "cand-1", "bio_summary", current_only=False
+        )
+        assert len(history) == 1
+        assert history[0]["current"] == 1
+
+    def test_dict_path_strips_bio_summary_and_strengths_keeps_siblings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        spy = _spy_save_artifact(monkeypatch)
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "context": {
+                    "bio_summary": "drop-bio",
+                    "strengths": "drop-str",
+                    "backstory": "keep-me",
+                }
+            },
+        )
+        assert spy == []
+        ctx = save.call_args.kwargs["candidate_data"]["context"]
+        assert ctx == {"backstory": "keep-me"}
+        assert "bio_summary" not in ctx
+        assert "strengths" not in ctx
+
+    def test_dict_path_bio_summary_only_skips_empty_library_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        out = candidate_mod.save_candidate_data(
+            "c1", {"context": {"bio_summary": "only"}}
+        )
+        assert out is None
+        save.assert_not_called()
+
+    def test_hydrate_overlays_hit_leaves_legacy_on_miss(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _BIO_SUMMARY_ARTIFACT_KEY, "operative bio"
+        )
+        cd: dict[str, Any] = {"context": {"bio_summary": "stale blob"}}
+        candidate_mod.hydrate_operative_bio_summary_for_response("cand-1", cd)
+        assert cd["context"]["bio_summary"] == "operative bio"
+
+        legacy: dict[str, Any] = {"context": {"bio_summary": "legacy until re-save"}}
+        candidate_mod.hydrate_operative_bio_summary_for_response("missing-id", legacy)
+        assert legacy["context"]["bio_summary"] == "legacy until re-save"
+
+    def test_hydrate_ignores_non_dict_cd_and_non_str_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        candidate_mod.hydrate_operative_bio_summary_for_response(
+            "c1", "not-a-dict"
+        )  # type: ignore[arg-type]
+        monkeypatch.setattr(
+            candidate_mod, "get_candidate_current", lambda cid, key: {"not": "str"}
+        )
+        cd: dict[str, Any] = {"context": {"bio_summary": "keep"}}
+        candidate_mod.hydrate_operative_bio_summary_for_response("c1", cd)
+        assert cd["context"]["bio_summary"] == "keep"
+
+    def test_get_candidate_hydrates_bio_summary(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _BIO_SUMMARY_ARTIFACT_KEY, "from get_candidate"
+        )
+        row = candidate_mod.get_candidate("cand-1")
+        assert row["candidate_data"]["context"]["bio_summary"] == "from get_candidate"
+
+_DEAL_BREAKERS_ARTIFACT_KEY = "candidate.context.deal_breakers"
+
+
+# Branches: plain_text validate; retire+insert; dict-path strip; hydrate hit/miss; get_candidate;
+# identical no-op (shared AST-1635).
+class TestAst1655DealBreakersOperativeSaveHydrate:
+    """AST-1655: Deal Breakers plain_text operative save + hydrate + library gate."""
+
+    def test_plain_text_rejects_empty_and_non_str(self) -> None:
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _DEAL_BREAKERS_ARTIFACT_KEY, "")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _DEAL_BREAKERS_ARTIFACT_KEY, "   ")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _DEAL_BREAKERS_ARTIFACT_KEY, {"x": 1})
+
+    def test_operative_save_writes_current_and_skips_library_blob(self, seeded_db) -> None:
+        db = seeded_db
+        uid = candidate_mod.save_candidate_data(
+            "cand-1", _DEAL_BREAKERS_ARTIFACT_KEY, "no travel"
+        )
+        assert uid
+        row = db.get_current_artifact("candidate", "cand-1", "deal_breakers")
+        assert row is not None
+        assert row["artifact_uuid"] == uid
+        assert row["artifact_data"] == "no travel"
+        assert row["current"] == 1
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        assert "deal_breakers" not in (cd.get("context") or {})
+
+    def test_second_operative_save_retires_prior(self, seeded_db) -> None:
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _DEAL_BREAKERS_ARTIFACT_KEY, "v1 deal breakers"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _DEAL_BREAKERS_ARTIFACT_KEY, "v2 deal breakers"
+        )
+        assert uid1 != uid2
+        current = db.get_current_artifact("candidate", "cand-1", "deal_breakers")
+        assert current["artifact_uuid"] == uid2
+        assert current["artifact_data"] == "v2 deal breakers"
+        history = db.list_artifacts(
+            "candidate", "cand-1", "deal_breakers", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_identical_body_keeps_current_uuid(self, seeded_db) -> None:
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _DEAL_BREAKERS_ARTIFACT_KEY, "same deal breakers"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _DEAL_BREAKERS_ARTIFACT_KEY, "same deal breakers"
+        )
+        assert uid2 == uid1
+        history = db.list_artifacts(
+            "candidate", "cand-1", "deal_breakers", current_only=False
+        )
+        assert len(history) == 1
+        assert history[0]["current"] == 1
+
+    def test_dict_path_strips_deal_breakers_and_strengths_keeps_siblings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        spy = _spy_save_artifact(monkeypatch)
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "context": {
+                    "deal_breakers": "drop-db",
+                    "strengths": "drop-str",
+                    "backstory": "keep-me",
+                }
+            },
+        )
+        assert spy == []
+        ctx = save.call_args.kwargs["candidate_data"]["context"]
+        assert ctx == {"backstory": "keep-me"}
+        assert "deal_breakers" not in ctx
+        assert "strengths" not in ctx
+
+    def test_dict_path_deal_breakers_only_skips_empty_library_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        out = candidate_mod.save_candidate_data(
+            "c1", {"context": {"deal_breakers": "only"}}
+        )
+        assert out is None
+        save.assert_not_called()
+
+    def test_hydrate_overlays_hit_leaves_legacy_on_miss(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _DEAL_BREAKERS_ARTIFACT_KEY, "operative deal breakers"
+        )
+        cd: dict[str, Any] = {"context": {"deal_breakers": "stale blob"}}
+        candidate_mod.hydrate_operative_deal_breakers_for_response("cand-1", cd)
+        assert cd["context"]["deal_breakers"] == "operative deal breakers"
+
+        legacy: dict[str, Any] = {"context": {"deal_breakers": "legacy until re-save"}}
+        candidate_mod.hydrate_operative_deal_breakers_for_response("missing-id", legacy)
+        assert legacy["context"]["deal_breakers"] == "legacy until re-save"
+
+    def test_hydrate_ignores_non_dict_cd_and_non_str_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        candidate_mod.hydrate_operative_deal_breakers_for_response(
+            "c1", "not-a-dict"
+        )  # type: ignore[arg-type]
+        monkeypatch.setattr(
+            candidate_mod, "get_candidate_current", lambda cid, key: {"not": "str"}
+        )
+        cd: dict[str, Any] = {"context": {"deal_breakers": "keep"}}
+        candidate_mod.hydrate_operative_deal_breakers_for_response("c1", cd)
+        assert cd["context"]["deal_breakers"] == "keep"
+
+    def test_get_candidate_hydrates_deal_breakers(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _DEAL_BREAKERS_ARTIFACT_KEY, "from get_candidate"
+        )
+        row = candidate_mod.get_candidate("cand-1")
+        assert row["candidate_data"]["context"]["deal_breakers"] == "from get_candidate"
+
+
+_WRITING_PREFERENCES_ARTIFACT_KEY = "candidate.context.writing_preferences"
+
+
+# Branches: plain_text validate; retire+insert; dict-path strip; hydrate hit/miss; get_candidate;
+# identical no-op (shared AST-1635).
+@pytest.mark.skipif(
+    "candidate.context.writing_preferences" not in ARTIFACT_CONFIG,
+    reason="AST-1665 product not on this tip (parallel epic; skip until writing_preferences catalog lands)",
+)
+class TestAst1665WritingPreferencesOperativeSaveHydrate:
+    """AST-1665: Writing Preferences plain_text operative save + hydrate + library gate."""
+
+    def test_plain_text_rejects_empty_and_non_str(self) -> None:
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _WRITING_PREFERENCES_ARTIFACT_KEY, "")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data("c1", _WRITING_PREFERENCES_ARTIFACT_KEY, "   ")
+        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
+            candidate_mod.save_candidate_data(
+                "c1", _WRITING_PREFERENCES_ARTIFACT_KEY, {"x": 1}
+            )
+
+    def test_operative_save_writes_current_and_skips_library_blob(self, seeded_db) -> None:
+        db = seeded_db
+        uid = candidate_mod.save_candidate_data(
+            "cand-1", _WRITING_PREFERENCES_ARTIFACT_KEY, "NO EM DASHES"
+        )
+        assert uid
+        row = db.get_current_artifact("candidate", "cand-1", "writing_preferences")
+        assert row is not None
+        assert row["artifact_uuid"] == uid
+        assert row["artifact_data"] == "NO EM DASHES"
+        assert row["current"] == 1
+        cd = db.get_candidate("cand-1")["candidate_data"]
+        assert "writing_preferences" not in (cd.get("context") or {})
+
+    def test_second_operative_save_retires_prior(self, seeded_db) -> None:
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _WRITING_PREFERENCES_ARTIFACT_KEY, "v1 writing prefs"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _WRITING_PREFERENCES_ARTIFACT_KEY, "v2 writing prefs"
+        )
+        assert uid1 != uid2
+        current = db.get_current_artifact("candidate", "cand-1", "writing_preferences")
+        assert current["artifact_uuid"] == uid2
+        assert current["artifact_data"] == "v2 writing prefs"
+        history = db.list_artifacts(
+            "candidate", "cand-1", "writing_preferences", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_identical_body_keeps_current_uuid(self, seeded_db) -> None:
+        # Shared AST-1635 identical no-op — rides catalog plain_text str-path.
+        db = seeded_db
+        uid1 = candidate_mod.save_candidate_data(
+            "cand-1", _WRITING_PREFERENCES_ARTIFACT_KEY, "same writing prefs"
+        )
+        uid2 = candidate_mod.save_candidate_data(
+            "cand-1", _WRITING_PREFERENCES_ARTIFACT_KEY, "same writing prefs"
+        )
+        assert uid2 == uid1
+        history = db.list_artifacts(
+            "candidate", "cand-1", "writing_preferences", current_only=False
+        )
+        assert len(history) == 1
+        assert history[0]["current"] == 1
+
+    def test_dict_path_strips_writing_preferences_and_strengths_keeps_siblings(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        spy = _spy_save_artifact(monkeypatch)
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "context": {
+                    "writing_preferences": "drop-wp",
+                    "strengths": "drop-str",
+                    "backstory": "keep-me",
+                }
+            },
+        )
+        assert spy == []
+        ctx = save.call_args.kwargs["candidate_data"]["context"]
+        assert ctx == {"backstory": "keep-me"}
+        assert "writing_preferences" not in ctx
+        assert "strengths" not in ctx
+
+    def test_dict_path_writing_preferences_only_skips_empty_library_write(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        out = candidate_mod.save_candidate_data(
+            "c1", {"context": {"writing_preferences": "only"}}
+        )
+        assert out is None
+        save.assert_not_called()
+
+    def test_hydrate_overlays_hit_leaves_legacy_on_miss(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _WRITING_PREFERENCES_ARTIFACT_KEY, "operative writing prefs"
+        )
+        cd: dict[str, Any] = {"context": {"writing_preferences": "stale blob"}}
+        candidate_mod.hydrate_operative_writing_preferences_for_response("cand-1", cd)
+        assert cd["context"]["writing_preferences"] == "operative writing prefs"
+
+        legacy: dict[str, Any] = {
+            "context": {"writing_preferences": "legacy until re-save"}
+        }
+        candidate_mod.hydrate_operative_writing_preferences_for_response(
+            "missing-id", legacy
+        )
+        assert legacy["context"]["writing_preferences"] == "legacy until re-save"
+
+    def test_hydrate_ignores_non_dict_cd_and_non_str_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        candidate_mod.hydrate_operative_writing_preferences_for_response(
+            "c1", "not-a-dict"
+        )  # type: ignore[arg-type]
+        monkeypatch.setattr(
+            candidate_mod, "get_candidate_current", lambda cid, key: {"not": "str"}
+        )
+        cd: dict[str, Any] = {"context": {"writing_preferences": "keep"}}
+        candidate_mod.hydrate_operative_writing_preferences_for_response("c1", cd)
+        assert cd["context"]["writing_preferences"] == "keep"
+
+    def test_get_candidate_hydrates_writing_preferences(self, seeded_db) -> None:
+        candidate_mod.save_candidate_data(
+            "cand-1", _WRITING_PREFERENCES_ARTIFACT_KEY, "from get_candidate"
+        )
+        row = candidate_mod.get_candidate("cand-1")
+        assert (
+            row["candidate_data"]["context"]["writing_preferences"]
+            == "from get_candidate"
         )

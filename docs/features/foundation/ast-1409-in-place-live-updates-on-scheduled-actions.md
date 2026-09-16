@@ -1,3 +1,84 @@
+<!-- linear-archive: AST-1409 archived 2026-09-09 -->
+
+## Linear archive (AST-1409)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1409/in-place-live-updates-on-scheduled-actions-page-refreshes-and-modals  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1406 — Page refreshes and modals are closed (lost!)  
+**Blocked by / blocks / related:** parent: AST-1406; blocks: AST-1410
+
+### Description
+
+## What this implements
+
+After #1. Land proposed `pattern.ui.in-place-live-refresh` for Archie, using Performance Monitor’s silent refresh as the shape. Scheduled Actions AUTO, Dbg, Run/Stop, Avail, and last-run update in the current view without an F5 and without a loading-gate remount. An open add/edit overlay keeps its draft if the list refreshes underneath. Does not sweep other pages (that is #3).
+
+## Citations
+
+`pattern.ui.in-place-live-refresh` (this child introduces it), `pattern.ui.admin-endpoint`, `pattern.ui.shared-button-roles`, `astral.standards.dry-and-focused-functions`, `astral.layers.ui-config-driven-business-logic`.
+
+## Acceptance criteria
+
+- [X] 2. Toggling AUTO or Dbg on Scheduled Actions shows the new on/off state in the same row without an F5 and without a full-page loading replacement.
+- [X] 3. After a Scheduled Actions Run completes, Avail and last-run update in place without an F5.
+- [X] 4. A background poll that fires while an overlay is open does not close the overlay or wipe its draft.
+
+## Boundaries
+
+- [X] Does not sweep other pages (sibling #3). Does not invent a websocket. Does not change dispatch, scheduler, or task-run semantics — only how Scheduled Actions shows them. Does not change session-shell mount (sibling #1).
+
+## Notes for planning
+
+This child authors proposed `pattern.ui.in-place-live-refresh`. After #1.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1406-page-refreshes-and-modals-are-closed`, child `sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Hook: `tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx`
+2. Routed page (§6c): `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — `--testNamePattern="AST-1409"`
+
+Narrowed run (from `src/ui/frontend/`):
+
+```
+npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-1409|useInPlaceLiveRefresh"
+```
+
+Pass criterion: Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+Bible shasums (`origin/sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions`):
+
+* `docs/test-bible/frontend/hooks.md` `05dd3b6321956c68d781d37f67f2234205676aeb`
+* `docs/test-bible/frontend/pages.md` `9c4b3f54f555a4f690cedf279277c4a8fda1f292`
+
+### Comments
+
+#### hedy — 2026-08-17T05:40:49.424Z
+[check-linear] blocked: Radia discuss — `0cf26ca1` (`test(AST-1411): seven-segment Ad Hoc preview/test coverage`) is on `origin/sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions`. Same SHA is already on `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist` and `origin/ftr/AST-1403-update-adhoc-agent-to-mirror-new-task-structure`. Engineer cannot revert test-tree. @Chuckles Cursor drop `0cf26ca1` from this publish ref before merge-child so AST-1406 ftr does not ship AST-1411 tests. Stay Review Posted. §9a clean vs origin/dev and origin/ftr/AST-1406-page-refreshes-and-modals-are-closed. Tip `46858a9d`.
+
+#### radia — 2026-08-17T05:37:57.884Z
+[code-rubric] REVIEW (Commit: ff41b5e8) AST-1411 on publish ref
+
+#### betty — 2026-08-17T05:31:02.762Z
+`origin/sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions` @ `ff41b5e8` · silent list refresh
+
+#### joan — 2026-08-17T05:15:37.757Z
+[plan-rubric] PROCEED (Commit: d6bd96af) silent Scheduled Actions refresh
+
+#### hedy — 2026-08-17T05:09:29.712Z
+`origin/sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions` @ `d6bd96af` · plan ready
+
+---
+
 # In-place live updates on Scheduled Actions
 
 **Linear:** [AST-1409](https://linear.app/astralcareermatch/issue/AST-1409)

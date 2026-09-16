@@ -1,3 +1,110 @@
+<!-- linear-archive: AST-1335 archived 2026-08-31 -->
+
+## Linear archive (AST-1335)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1335/dirty-leave-save-then-navigate-helper-do-not-navigate-away-from-dirty  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1315 — Do not navigate away from dirty content  
+**Blocked by / blocks / related:** parent: AST-1315; blocks: AST-1336
+
+### Description
+
+## What this implements
+
+Shared in-app dirty-leave affordance: detect dirty, block pending navigation, themed confirm with Save as primary/default, on affirm run caller-provided save then continue, on cancel stay with draft intact, on save failure stay and surface error. Introduces proposed `pattern.ui.dirty-leave-save-then-navigate` (subject to Archie approval). Does **not** wire Profile itself (sibling).
+
+## Citations
+
+`pattern.ui.shared-button-roles`; proposed `pattern.ui.dirty-leave-save-then-navigate`; `astral.ui.frontend-file-placement`; `astral.ui.naming-conventions`; `astral.standards.dry-and-focused-functions`.
+
+## Acceptance criteria
+
+- [X] 1. With unsaved Profile edits, choosing another left-nav / in-app destination shows a themed save prompt (not a silent wipe); primary action is Save. *(via helper contract — Profile wiring is sibling)*
+- [X] 2. Choosing Cancel on that prompt leaves the operator on Profile with the draft intact (no navigation, no silent discard).
+- [X] 3. If that save fails, the operator remains on Profile with a visible error and is not taken to the other destination.
+- [X] 4. With no unsaved changes, leaving Profile does not show the save prompt.
+
+## Boundaries
+
+- [X] Does **not** wire Candidate Profile. Does **not** change Modal discard-on-close. Does **not** add autosave.
+
+## Notes for planning
+
+Reuse `useUserConfirm` / themed confirm. New pattern flag for Archie.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper` @ `0452b548` (`test(AST-1335): fix [qa-handoff] — App smoke exit 0`; prior `merge-tests` @ `0cb95e4b`)
+
+### Classification
+
+1. **Gaps:** dirty-leave hook suite (unchanged asserts).
+2. **\[qa-handoff\] fix:** `test_App.test.tsx` — no App mount (RR7+jsdom AbortSignal → Vitest exit 1); **source contract** for createBrowserRouter / RouterProvider / no BrowserRouter.
+3. §6c N/A. Integration: no drift.
+
+### Manifest (test-child)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useDirtyLeaveSaveThenNavigate.test.tsx \
+  ../../../tests/component/frontend/test_App.test.tsx
+```
+
+Expect **exit 0** — 5 tests, no unhandled rejection.
+
+**Bible:** `docs/test-bible/frontend/hooks.md` shasum `6f74e2b8ea7afbccf9319273701173cb055a6713`
+
+### Comments
+
+#### radia — 2026-08-12T13:47:15.378Z
+[code-rubric] PROCEED (Commit: 0452b548) dirty-leave helper clean
+
+#### betty — 2026-08-12T13:43:06.537Z
+[check-linear] Cleared [qa-handoff]: App smoke → source contract (exit 0). Manifest unchanged paths. `origin/sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper` @ `0452b548`. Reassigned Ada for test-child.
+
+#### ada — 2026-08-12T13:40:46.987Z
+[qa-handoff]
+
+@Betty White — manifest assertions all green, but `npm run test:component` exits **1** on an unhandled rejection Betty already classified as RR7+jsdom (not product).
+
+**Command:**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useDirtyLeaveSaveThenNavigate.test.tsx \
+  ../../../tests/component/frontend/test_App.test.tsx
+```
+
+**Result:** Test Files 2 passed / Tests 5 passed / Errors 1 / exit 1 @ `origin/sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper` `1a88f25a` (includes merge-tests `0cb95e4b`).
+
+**Error (from `test_App.test.tsx` — after "boots createBrowserRouter shell"):**
+```
+TypeError: RequestInit: Expected signal ("AbortSignal {}") to be an instance of AbortSignal.
+  at createClientSideRequest … react-router … startNavigation / navigate
+```
+
+**Why test/manifest, not product:** Hook suite is green. App shell assert (`Astral` + `.shell`) passes. Rejection is the Node 24 / jsdom AbortSignal mismatch on RR7 data-router navigation that bible already documents as blocking Recommended paint — not a defect in `App.tsx` / `createBrowserRouter`. Engineer cannot patch `tests/` or vitest config.
+
+**Ask:** Make the App smoke path not leave Vitest with an unhandled rejection (or otherwise keep exit 0 when assertions pass), then reassign Ada for test-child.
+
+#### betty — 2026-08-12T13:39:35.228Z
+`origin/sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper` @ `0cb95e4b` · dirty-leave helper tests
+
+#### joan — 2026-08-12T13:29:54.404Z
+[plan-rubric] PROCEED (Commit: 2e6037f73b8cb4bcf018976988dff25f274744b6) helper contract complete
+
+#### ada — 2026-08-12T13:28:05.308Z
+`origin/sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper` @ `2e6037f73b8cb4bcf018976988dff25f274744b6` · plan ready
+
+---
+
 # AST-1335 — Dirty-leave save-then-navigate helper
 
 **Linear:** [AST-1335](https://linear.app/astralcareermatch/issue/AST-1335)

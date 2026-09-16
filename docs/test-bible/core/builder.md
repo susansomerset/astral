@@ -757,3 +757,160 @@ Remove global `\u00a0•\u00a0` from `_resume_site_markers`; restore left-only `
 ```
 
 **Pass criterion:** item 1 red on pre-fix tree; all manifest lines green after `make-fix` + `test-fix` (red→green on **[bug-repro]**).
+
+---
+
+### AST-1540 · AST-1539 (word-cloud inner non-breaking at render)
+
+**Parent:** [AST-1539](https://linear.app/astralcareermatch/issue/AST-1539/word-cloud-items-with-inner-characters-must-be-non-breaking). **Publish:** `origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render`.
+
+Extend `_glue_word_cloud_bullet_separators`: after `\u00a0•\u00a0` glue, remaining ordinary `" "` → `\u00a0` and ASCII `"-"` → `\u2011` for `word_cloud` HTML emit only. `_resume_site_markers` / generation unchanged (left-only + digraphs). Format switch to `free_prose` must not inherit inner cloud NBSP / `\u2011`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inner space + hyphen on glue helper + session cloud emit | `src/core/builder.py` | **`TestAst1540WordCloudInnerNonBreaking`** |
+| Markers left-only + digraphs unchanged | same | **`TestAst1540WordCloudInnerNonBreaking::test_resume_site_markers_unchanged_left_only_and_digraphs`** + **`TestAst1528WordCloudNbspBulletGlue`** (session assert revised) |
+| Format switch: free_prose no inner cloud encoding | same | **`TestAst1540WordCloudInnerNonBreaking::test_free_prose_does_not_inherit_inner_cloud_encoding`** + **`TestAst1536BugReproWordCloudFormatSwitch`** |
+| Default-format competencies/prior UAT bullets | same | **`TestAst1029UatCompetenciesBulletsEmit`** (revised for inner NBSP/`\u2011`) |
+
+**Broken / obsolete (this pass):** `TestAst1528WordCloudNbspBulletGlue::test_session_word_cloud_emits_glued_separators` (`Stakeholder trust` → `Stakeholder\u00a0trust`); `TestAst1029UatCompetenciesBulletsEmit` expected HTML (spaces/hyphens inside default `word_cloud` items).
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Inner NBSP / non-breaking hyphen (helper + session emit + markers + free_prose): `tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking`
+2. Separator glue regression (revised): `tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue`
+3. Format-switch control: `tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch`
+4. Default word_cloud competencies/prior (revised): `tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit`
+5. Pipe→bullet emit: `tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+
+**AST-1540** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** record via `git show origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render:docs/test-bible/core/builder.md | shasum`.
+
+---
+
+### AST-1552 · AST-1539 (bug — word-cloud breaking space after bullet)
+
+**Parent:** [AST-1539](https://linear.app/astralcareermatch/issue/AST-1539/word-cloud-items-with-inner-characters-must-be-non-breaking). **Publish:** `origin/sub/AST-1539/AST-1552-word-cloud-breaking-space-after-bullet`.
+
+After AST-1540 blanket space→NBSP, restore `\u00a0•\u00a0` → `\u00a0• ` so Print/Open HTML can soft-wrap after the bullet. Keep NBSP before `•` and inner item `\u00a0` / `\u2011`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** post-bullet ordinary space + inner non-breaking | `src/core/builder.py` | **`TestAst1552BugReproWordCloudBreakingSpaceAfterBullet`** |
+| AST-1540 / 1528 / 1029 / 1536 / 1382 asserts locking full `\u00a0•\u00a0` | same | revised in this qa-fix pass |
+
+**Broken / obsolete (qa-fix):** asserts expecting `\u00a0•\u00a0` / zero ordinary spaces in cloud — revised to `\u00a0• ` + inner locks.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. **[bug-repro]** post-bullet breaking space: `tests/component/core/test_builder.py::TestAst1552BugReproWordCloudBreakingSpaceAfterBullet`
+2. Revised inner + separator locks: `TestAst1540WordCloudInnerNonBreaking`, `TestAst1528WordCloudNbspBulletGlue`, `TestAst1029UatCompetenciesBulletsEmit`, `TestAst1536BugReproWordCloudFormatSwitch::test_word_cloud_emit_still_glued_after_format_switch_content`, `TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+
+**AST-1552** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1552BugReproWordCloudBreakingSpaceAfterBullet \
+  tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes \
+  -q
+```
+
+**Pass criterion:** item 1 red on pre-fix tree; all manifest lines green after `make-fix` + `test-fix` (red→green on **[bug-repro]**).
+
+---
+
+### AST-1587 · AST-1570
+
+**Parent:** [AST-1570 — Implement patt.artifact.read-current](https://linear.app/astralcareermatch/issue/AST-1570/implement-pattartifactread-current). **Publish:** `origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires`.
+
+Builder live paths load pilot base_resume via `load_pilot_base_resume_for_candidate` / `get_candidate_current` only — `_resolve_resume_sections`, `build_base_resume`, `_accent_source_label`, `_resume_content_source_label` updated; `_coerce_candidate_blob` attaches `_astral_candidate_id`. Style D `current_read=hit|miss` on `build_base_resume` `debug=True`. Candidate helper rewires: **`docs/test-bible/core/candidate.md`** § AST-1587.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `build_base_resume` current-read + Style D | `src/core/builder.py` | **`TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail`** (in `test_candidate.py`) |
+| Job resume fallback + source labels (revised) | same | **`TestBuilderIdentifierHelpers`**, **`TestAst518BuilderResumeStructure`**, **`TestBuildBaseResume`**, **`TestBuildBaseResumeDebugPaths`**, **`TestBuildResumeFromJobDebugPaths`**, **`TestAst1350UnsupportedExperienceShape`** |
+| Operative test harness | `tests/component/core/operative_fixture.py`, `conftest.py` | `_install_candidate_for_base_resume` + autouse `load_pilot` stub |
+
+**Broken / obsolete this pass:** tests seeding `artifacts.base_resume` without operative current-read; minimal `resume_structure` fixtures that fail `normalize_resume_structure` (use `default_resume_structure()` + title override).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Style D current-read trail: `tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail`
+2. Full builder regression (operative rewires): `tests/component/core/test_builder.py`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail \
+  tests/component/core/test_builder.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/builder.md` — `e4123fd99fd3dc048b72c905534dc48c3bbc23bfaf15359a3ea14815e3136540`
+
+---
+
+### AST-1593 · AST-1588
+
+**Parent:** [AST-1588](https://linear.app/astralcareermatch/issue/AST-1588/support-jobartifactsjob-resume-and-jobartifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`.
+
+Builder live resume/cover resolve uses `tracker.get_job_current` by catalog key (`job.artifacts.job_resume` / `job.artifacts.cover_letter`); debug source labels name that path. Job-record `resume_content` / pin SoT retired. UI consumers: **`docs/test-bible/frontend/components.md`**, **`docs/test-bible/frontend/lib.md`**. Inventory table lives in the plan doc (AC7). JAR modal unchanged (leaf keys).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog current resolve + debug labels | `src/core/builder.py` | **`TestAst1593BuilderCatalogCurrentRead`** |
+| Revised blob→catalog seed for build_* suites | same | **`_seed_job_catalog_currents` / `_build_*_from_job` wrappers**; **`TestBuilderIdentifierHelpers`**, **`TestAst1100BuilderPinResolve`** (rewritten) |
+| Full builder regression | same | `tests/component/core/test_builder.py` |
+
+**Broken / obsolete this pass:** pin/`resume_content` blob SoT asserts in source labels + `TestAst1100BuilderPinResolve`; build_* tests that seeded only `job_data.artifacts.resume_content` without catalog current — revised via seed helper.
+
+**Integration:** none.
+
+## QA test manifest (AST-1593)
+
+1. Builder catalog resolve: `tests/component/core/test_builder.py::TestAst1593BuilderCatalogCurrentRead`
+2. Builder regression: `tests/component/core/test_builder.py`
+3. ArtifactEditor no sibling SoT: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1593"`
+4. recommendedJobReport SoT: `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — `--testNamePattern="AST-1593|printResumeVisible|materialsPreviewVisible"`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  --testNamePattern="AST-1593|printResumeVisible|materialsPreviewVisible"
+```
+
+**Pass criterion:** pytest + vitest green on lines 1–4 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasum:** `docs/test-bible/core/builder.md` (fill after publish)

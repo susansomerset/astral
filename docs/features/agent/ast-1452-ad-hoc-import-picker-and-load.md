@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1452 archived 2026-09-09 -->
+
+## Linear archive (AST-1452)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1452/ad-hoc-import-picker-and-load-add-import-agent-data-to-agent-ad-hoc  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1439 — Add "import agent data" to Agent Ad Hoc  
+**Blocked by / blocks / related:** parent: AST-1439
+
+### Description
+
+## What this implements
+
+After #1. Agent Ad Hoc grows the selection list and a Load button. Load fills the seven editors from the payload (TASK → User; missing slots empty), shows RESPONSE via existing `BatchAgentDataPanes` for that batch, restores `entity_id`, sets the workbench task key with a single `adhoc-` stripped, and does **not** run fetch-from-task over the imported text. Dirty-editor replace confirm matches fetch-from-task. Does **not** own the list query (#1). Does **not** change Save As, Preview modal, or production `do_task`.
+
+## Citations
+
+`pattern.ui.shared-button-roles`, `pattern.config.config-block`, `astral.ui.frontend-file-placement`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.dry-and-focused-functions`
+
+## Acceptance criteria
+
+- [X] 2. Load on a batch that has System + Cache A + User + Response fills those three editors, leaves Cache B–D and No Cache empty if those blocks were absent, and shows the stored Response in the existing agent_data panes for **that** batch. The source `agent_data` row contents are unchanged after Load.
+- [X] 3. After Load, editing User and running Test creates a **new** `agent_data` batch (new `batch_id`). The imported batch’s prompt and response blocks are bit-for-bit the same as before Test. The new ledger/task label is `adhoc-<task_key>` with a single `adhoc-` prefix even when the imported run was already `adhoc-<task_key>`.
+- [X] 4. Load of a run whose `task_key` is `evaluate_jd` (or `adhoc-evaluate_jd`) does not replace the imported editor text with catalog `agent_task` prompts for that key.
+- [X] 5. Load of a run that has an `entity_id` leaves that id selected for the next Preview/Test. Preview/Test still require an agent, same as today.
+- [X] 6. Load with dirty editors asks to replace (Yes / Cancel). Cancel leaves editors and panes as they were.
+
+## Boundaries
+
+- [X] Does **not** own the list query (sibling #1). Does **not** change Save As, Preview modal, or production `do_task`. Does **not** add filters, search, pagination, or a Response editor tab.
+
+## Notes for planning
+
+Citations as above. After sibling #1. Confirm Chuckles estimate: 3.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1439-add-import-agent-data-to-agent-ad-hoc`, child `sub/AST-1439/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### hedy — 2026-08-24T22:06:46.329Z
+origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load @ `c83d1c5e` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-08-24T22:04:06.965Z
+[code-rubric] PROCEED (Commit: bb58525) Ad hoc import picker clean
+
+#### betty — 2026-08-24T21:58:35.794Z
+origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load @ `bb58525c` · import picker Vitest manifest
+
+#### joan — 2026-08-19T20:23:10.615Z
+[plan-rubric] PROCEED (Commit: 590f37461b21e84ed5012792785cf6a98e5dfa66) picker and Load UI
+
+#### hedy — 2026-08-19T20:19:29.716Z
+`origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load` @ `590f37461b21e84ed5012792785cf6a98e5dfa66` · picker Load plan
+
+---
+
 # AST-1452 — Ad Hoc import picker and Load
 
 - **Linear:** [AST-1452](https://linear.app/astralcareermatch/issue/AST-1452)

@@ -1,3 +1,102 @@
+<!-- linear-archive: AST-1535 archived 2026-09-09 -->
+
+## Linear archive (AST-1535)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1535/compact-filtered-import-picker-ui-put-the-list-of-loadable-previous  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1532 — Put the list of loadable previous tasks to a 5 line scrollable selection box, filtered on the selected candidate and selected task_key in the dropdown.  
+**Blocked by / blocks / related:** parent: AST-1532
+
+### Description
+
+## What this implements
+
+Owns Agent Ad Hoc picker chrome only: pass `candidate_id` / `task_key` into the runs GET on candidate/task change, render a ~five-row scrollable selection surface over the capped list, keep existing Load / confirmLoad / row selection. After #1. Does not change API contracts beyond consuming sibling #1’s query params.
+
+## Citations
+
+`pattern.ui.shared-button-roles`; `astral.ui.frontend-file-placement`; `astral.ui.naming-conventions`; `astral.standards.no-hardcoded-sets` (read visible-row / height from config)
+
+## Scope
+
+- [X] `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` (refetch with filters; five-line scrollable picker; preserve Load wiring).
+
+## Acceptance criteria
+
+- [X] 2. The picker viewport shows about five rows at a time and scrolls within the capped set; the prompt editor tabs remain reachable without scrolling past a long unfiltered table.
+- [X] 3. Changing candidate or task key refreshes the picker to the new filter; empty candidate → empty picker; candidate + empty task key → last 10 runs for that candidate. (UI side of this AC.)
+- [X] 4. Load on a selected row still populates editors from `GET /api/agent_data/<batch_id>` with existing dirty-confirm and entity restore; Save As / Preview / Test contracts are unchanged.
+
+## Boundaries
+
+- [X] Does not own data/API filter, limit, or debug instrumentation — sibling Scoped adhoc runs list API.
+
+## Notes for planning
+
+Citations as above. Consume sibling #1 query params only.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish: **`origin/sub/AST-1532/AST-1535-compact-filtered-import-picker-ui` @ `e1cf0d18` (`merge-tests(AST-1535): origin/tests 079903f9`)
+**Tests SHA: **`origin/tests` `079903f9`
+
+### Classification
+
+1. **Existing (revised):** AST-1452 import list/Load suite — bare mount `/adhoc/runs` retired; `selectImportRow` waits for filtered list; mocks `startsWith` + `uiConfig` / empty `candidates`.
+2. **Broken / obsolete this pass:** AST-1452 exact `/api/admin/adhoc/runs` on mount; race before candidate hydrate — revised in place.
+3. **Gaps (new):** no-candidate skip; `task_key` query on refetch; ui_config → scroll `maxHeight`; Load regression under filtered list.
+
+### Manifest (test-child)
+
+1. Routed Agent Ad Hoc + filtered picker / Load (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx` — patterns `AST-1535` + `AST-1452`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  --testNamePattern="AST-1535|AST-1452"
+```
+
+**Pass criterion:** Vitest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+**Integration:** no existing scenario covers Agent Ad Hoc picker — none revised; do not invent.
+
+### Bible shasums (publish-ref)
+
+* `docs/test-bible/frontend/pages.md` `sha256:6e62739ea7eb9cf11f7f00c8e4e04f941df26dabec7400f92aa7d6ca23eab155`
+
+### Comments
+
+#### radia — 2026-08-29T22:19:31.346Z
+[code-rubric] PROCEED (Commit: e1cf0d18) Picker UI clean
+
+#### betty — 2026-08-29T22:16:46.076Z
+`origin/sub/AST-1532/AST-1535-compact-filtered-import-picker-ui` @ `e1cf0d18` · picker UI tests ready
+
+#### joan — 2026-08-29T22:10:49.515Z
+[plan-rubric] PROCEED (Commit: a80cf9275cc7a04a45131a2776c60f22e022e6ec) picker UI plan ready
+
+#### hedy — 2026-08-29T22:09:49.868Z
+[plan-discuss] round=1 reply
+Fixed Stage 2 + prose to fetch `/api/ui_config` (live Flask route); dropped stale `/api/system/ui_config`.
+
+`origin/sub/AST-1532/AST-1535-compact-filtered-import-picker-ui` @ `a80cf9275cc7a04a45131a2776c60f22e022e6ec` · ui_config URL fixed
+
+#### joan — 2026-08-29T22:08:37.788Z
+[plan-rubric] REVIEW (Commit: fdbed48252bc7fc41e4ede6e744fdf5a61b797e6) fix ui_config URL
+
+#### hedy — 2026-08-29T22:06:24.118Z
+`origin/sub/AST-1532/AST-1535-compact-filtered-import-picker-ui` @ `fdbed48252bc7fc41e4ede6e744fdf5a61b797e6` · plan ready
+
+---
+
 # AST-1535 — Compact filtered import picker UI
 
 - **Linear:** [AST-1535](https://linear.app/astralcareermatch/issue/AST-1535)

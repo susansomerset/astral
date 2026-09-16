@@ -8,7 +8,8 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
-- job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (gazed|meteorite; AST-1469), etc.
+- job       — Tracker: astral_job_id, company, candidate_id (required owning candidate; denormalized from company.candidate_id; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (gazed|meteorite; AST-1469), etc.
+- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
@@ -19,18 +20,21 @@ Tables used (inventory):
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); meteorite_email live Avail is core (AST-1135 / AST-1466), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
-- app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id).
+- app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id); nullable candidate_id (stamped when logging context has a candidate; NULL otherwise; AST-1598).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
   created_at, updated_at). Composite PRIMARY KEY (candidate_id, search_term). Source of truth for discovery terms (AST-524).
 - rubric_vector — Per-candidate rubric vector identity (rubric_vector_uuid TEXT PK, candidate_id,
   task_key TEXT, task_key_uuid TEXT, code, label, content, importance INTEGER, content_fingerprint TEXT,
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
-- artifacts — Versioned entity-scoped artifact blobs (artifact_uuid TEXT PK,
-  entity_type TEXT, entity_id TEXT, artifact_type TEXT, artifact_data TEXT, current INTEGER 0|1,
-  created_at, updated_at). Active row: current=1 for (entity_type, entity_id, artifact_type).
-  Versioning follows agent_task / rubric_vector current=1 retire-and-insert (AST-1340 / AST-1352;
-  table rename AST-1364).
+- artifact — Versioned entity-scoped artifact blobs (artifact_uuid TEXT PK,
+  candidate_id TEXT NOT NULL — owning candidate; when entity_type='candidate' equals
+  entity_id, otherwise separate from entity_id; entity_type TEXT, entity_id TEXT,
+  artifact_type TEXT, artifact_data BLOB (zlib-compressed JSON text like agent_data.block_data; legacy plain TEXT still readable), source_artifact_ids TEXT JSON array of
+  artifact_uuid strings default '[]' (AST-1591), current INTEGER 0|1, created_at,
+  updated_at). Active row: current=1 for (entity_type, entity_id, artifact_type).
+  Versioning follows agent_task / rubric_vector current=1 retire-and-insert
+  (AST-1340 / AST-1352; plural→singular rename + candidate_id AST-1597 / AST-1594).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
   candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
   batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
@@ -61,7 +65,7 @@ import uuid
 import zlib
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -83,6 +87,7 @@ from src.utils.config import (
     COMPANY_STATES,
     METEORITE_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
+    METEORITE_STATES,
     JOB_SOURCE_DEFAULT,
     validate_job_source,
     ENTITY_TYPES,
@@ -186,12 +191,13 @@ _company_search_terms_schema_ensured = False
 _company_search_terms_migration_swept = False
 _rubric_vector_schema_ensured = False
 _vector_feedback_schema_ensured = False
-_artifacts_schema_ensured = False
+_artifact_schema_ensured = False
 _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
 _agent_data_schema_ensured = False
 _scheduled_query_schema_ensured = False
+_meteorite_schema_ensured = False
 
 # ---- TODO:Cleanup ----
 # refactor callers of claim_company_batch to use set_company_batch.
@@ -1441,6 +1447,7 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS job (
             astral_job_id TEXT PRIMARY KEY,
             company TEXT NOT NULL,
+            candidate_id TEXT NOT NULL,
             company_job_id TEXT,
             job_title TEXT,
             job_link TEXT,
@@ -1462,6 +1469,7 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
         ("job_link", "TEXT"),
         ("latest_score", "REAL"),            # AST-350: latest numeric score for batch priority sorting
         ("source", "TEXT"),                  # AST-1469: gazed|meteorite provenance
+        ("candidate_id", "TEXT"),            # AST-1598: owning candidate (app-required; backfill below)
     ]:
         if col not in cols:
             try:
@@ -1470,6 +1478,21 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     raise
+    # AST-1598: denormalize ownership from company; blank rows stay blank until writers resolve.
+    # Skip when company table is absent (fresh DB / job ensure before company DDL) — Betty.
+    company_present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='company'"
+    ).fetchone()
+    if company_present:
+        conn.execute(
+            """UPDATE job
+               SET candidate_id = (
+                 SELECT company.candidate_id FROM company
+                 WHERE company.short_name = job.company
+               )
+               WHERE candidate_id IS NULL OR TRIM(candidate_id) = ''"""
+        )
+        conn.commit()
     # AST-1497: DDL-only — no source content backfill on ensure
     # AST-479: LIKE passes stay PASSED_LIKE for analysis_upshot queue; do not auto-promote to BUILD_ARTIFACTS.
     # AST-732: partial unique index on complete identity triples; NULL/empty company_job_id or job_title excluded.
@@ -1607,6 +1630,24 @@ def _is_job_identity_unique_violation(exc: sqlite3.IntegrityError) -> bool:
         and "job.company_job_id" in msg
     )
 
+def _resolve_job_candidate_id(
+    conn: sqlite3.Connection, company: str, candidate_id: Optional[str]
+) -> str:
+    """Resolve owning candidate for a job row (AST-1598). Explicit cid wins; else company.candidate_id."""
+    cid = (candidate_id or "").strip()
+    if cid:
+        return cid
+    row = conn.execute(
+        "SELECT candidate_id FROM company WHERE short_name = ?",
+        (company,),
+    ).fetchone()
+    looked = (row[0] if row else None) or ""
+    looked = looked.strip()
+    if not looked:
+        raise ValueError("candidate_id required")
+    return looked
+
+
 def save_job(
     astral_job_id: str,
     *,
@@ -1621,14 +1662,16 @@ def save_job(
     state_changed_at: Optional[str] = None,
     latest_score: Optional[float] = None,
     source: Optional[str] = None,
+    candidate_id: Optional[str] = None,
     ) -> bool:
     """Upsert a job row. Insert if new (company and state required); update provided fields if exists.
     job_data: merge=True deep-merges with existing; merge=False overwrites.
     state_history: always overwrites (caller manages append via get_job + append + save_job).
     latest_score: most recent numeric grade score (0-10); written through for batch priority sorting (AST-350).
     source: gazed|meteorite (AST-1469); INSERT defaults to JOB_SOURCE_DEFAULT when omitted.
+    candidate_id: owning candidate (AST-1598); INSERT resolves from company when omitted.
     Returns True on insert/update; False when new-row insert bounces on identity duplicate (complete triple).
-    Raises ValueError if inserting without company/state."""
+    Raises ValueError if inserting without company/state or unresolved candidate_id."""
     now = _utc_now()
 
     def _with_conn() -> bool:
@@ -1636,29 +1679,28 @@ def save_job(
         try:
             _ensure_job_schema(conn)
             existing = conn.execute(
-                "SELECT astral_job_id, job_data FROM job WHERE astral_job_id = ?",
+                "SELECT astral_job_id, job_data, company FROM job WHERE astral_job_id = ?",
                 (astral_job_id,),
             ).fetchone()
 
             if existing is None:
-                # INSERT: company and state required (NOT NULL in schema)
                 if not company:
                     raise ValueError("company required for new job")
                 if not state:
                     raise ValueError("state required for new job")
-                # AST-1469: omit source → gazed default; validate when caller supplies
                 insert_source = JOB_SOURCE_DEFAULT if source is None else source
                 validate_job_source(insert_source)
+                cid = _resolve_job_candidate_id(conn, company, candidate_id)
                 jdata_str = json.dumps(job_data) if job_data else "{}"
                 hist_str = json.dumps(state_history) if state_history else "[]"
                 try:
                     conn.execute(
                         """INSERT INTO job (
-                            astral_job_id, company, company_job_id, job_title, job_link, job_data,
+                            astral_job_id, company, candidate_id, company_job_id, job_title, job_link, job_data,
                             state, state_history, batch_id, batch_created_at,
                             created_at, updated_at, state_changed_at, source
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
-                        (astral_job_id, company, company_job_id, job_title, job_link, jdata_str,
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
+                        (astral_job_id, company, cid, company_job_id, job_title, job_link, jdata_str,
                          state, hist_str, now, now, state_changed_at or now, insert_source),
                     )
                 except sqlite3.IntegrityError as e:
@@ -1667,7 +1709,6 @@ def save_job(
                         return False
                     raise
             else:
-                # UPDATE: only set provided (non-None) fields
                 sets: List[str] = []
                 params: List[Any] = []
                 if source is not None:
@@ -1682,7 +1723,11 @@ def save_job(
                     if val is not None:
                         sets.append(f"{col} = ?")
                         params.append(val)
-                # job_data: merge or overwrite
+                if candidate_id is not None or company is not None:
+                    company_for_cid = company if company is not None else existing["company"]
+                    cid_arg = candidate_id if candidate_id is not None else None
+                    sets.append("candidate_id = ?")
+                    params.append(_resolve_job_candidate_id(conn, company_for_cid, cid_arg))
                 if job_data is not None:
                     if merge:
                         existing_data = json.loads(existing["job_data"]) if existing["job_data"] else {}
@@ -1692,7 +1737,6 @@ def save_job(
                     else:
                         sets.append("job_data = ?")
                         params.append(json.dumps(job_data))
-                # state_history: always overwrite (caller manages append)
                 if state_history is not None:
                     sets.append("state_history = ?")
                     params.append(json.dumps(state_history))
@@ -1711,6 +1755,7 @@ def save_job(
             conn.close()
 
     return _run_with_retry(_with_conn)
+
 
 def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
     """Select single job by astral_job_id. Returns dict with parsed job_data/state_history, or None."""
@@ -1819,14 +1864,11 @@ def job_link_exists_for_candidate(candidate_id: str, job_link: str) -> bool:
 
     def _do(c: sqlite3.Connection) -> bool:
         _ensure_job_schema(c)
-        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
-        _ensure_company_schema(c)
-        _ensure_company_candidate_fk(c)
         cursor = c.execute(
             """SELECT 1 FROM job
                WHERE job_link = ?
                  AND job_link IS NOT NULL AND TRIM(job_link) != ''
-                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND candidate_id = ?
                LIMIT 1""",
             (link, cid),
         )
@@ -1855,15 +1897,12 @@ def text_matches_known_company_job_id_for_candidate(
 
     def _do(c: sqlite3.Connection) -> Optional[str]:
         _ensure_job_schema(c)
-        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
-        _ensure_company_schema(c)
-        _ensure_company_candidate_fk(c)
         min_chars = int(METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"])
         cursor = c.execute(
             """SELECT company_job_id FROM job
                WHERE company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
                  AND LENGTH(TRIM(company_job_id)) >= ?
-                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND candidate_id = ?
                  AND ? LIKE '%' || company_job_id || '%'
                LIMIT 1""",
             (min_chars, cid, text),
@@ -1892,12 +1931,10 @@ def find_candidate_job_by_company_job_id(
 
     def _do(c: sqlite3.Connection) -> Optional[Dict[str, Any]]:
         _ensure_job_schema(c)
-        _ensure_company_schema(c)
-        _ensure_company_candidate_fk(c)
         row = c.execute(
             """SELECT * FROM job
                WHERE company_job_id = ?
-                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND candidate_id = ?
                LIMIT 1""",
             (cid_job, cid),
         ).fetchone()
@@ -1921,13 +1958,11 @@ def find_candidate_job_by_job_link(
 
     def _do(c: sqlite3.Connection) -> Optional[Dict[str, Any]]:
         _ensure_job_schema(c)
-        _ensure_company_schema(c)
-        _ensure_company_candidate_fk(c)
         row = c.execute(
             """SELECT * FROM job
                WHERE job_link = ?
                  AND job_link IS NOT NULL AND TRIM(job_link) != ''
-                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND candidate_id = ?
                LIMIT 1""",
             (link, cid),
         ).fetchone()
@@ -1972,10 +2007,13 @@ def claim_job_batch(
     ) -> int:
     """Claim up to limit unclaimed jobs in state. Sets batch_id, batch_created_at.
     Parameter order: batch_id first (caller owns it).
-    candidate_id: when provided, scopes claim to jobs whose company belongs to this candidate.
+    candidate_id: required; scopes claim via job.candidate_id (AST-1598).
     claim_cap: when set (dispatcher AST-502 exhaustion), SQLITE LIMIT uses this count instead of
     ``limit`` — claim exactly up to concurrent eligible rows; ``limit`` stays the API chunk width from dispatch_task.batch_size elsewhere.
     Returns count claimed."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
     now = _utc_now()
     claim_states = states if states is not None else [state]
     state_sql, state_params = _state_in_sql(claim_states)
@@ -1985,10 +2023,7 @@ def claim_job_batch(
         else f"ORDER BY {sort_by} ASC NULLS FIRST" if sort_by and sort_by in _JOB_BATCH_SORT_COLUMNS
         else "ORDER BY rowid"
     )
-    candidate_filter = (
-        " AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)"
-        if candidate_id else ""
-    )
+    candidate_filter = " AND candidate_id = ?"
     score_filter = " AND latest_score IS NOT NULL AND latest_score >= ?" if score_floor is not None else ""
 
     def _with_conn() -> int:
@@ -1996,9 +2031,7 @@ def claim_job_batch(
         try:
             _ensure_job_schema(conn)
             eff_limit = int(claim_cap) if claim_cap is not None else int(limit)
-            params = [batch_id, now, *state_params]
-            if candidate_id:
-                params.append(candidate_id)
+            params = [batch_id, now, *state_params, cid]
             if score_floor is not None:
                 params.append(float(score_floor))
             params.append(eff_limit)
@@ -2079,24 +2112,24 @@ def list_jobs(
     candidate_id: Optional[str] = None,
     order_by: str = "state_changed_at",
 ) -> List[Dict[str, Any]]:
-    """List jobs with optional state IN filter and candidate_id scope.
-    candidate_id scopes via subquery on the company table (same pattern as claim_job_batch).
+    """List jobs with optional state IN filter and required candidate_id scope (AST-1598).
+    Scopes via job.candidate_id (no company subquery). Raises if candidate_id omitted/blank.
     order_by: column name; falls back to rowid if not a known sortable column."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
     _SORTABLE = {"state_changed_at", "created_at", "updated_at", "job_title", "company", "state"}
 
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
             _ensure_job_schema(conn)
-            clauses: List[str] = []
-            params: List[Any] = []
+            clauses: List[str] = ["candidate_id = ?"]
+            params: List[Any] = [cid]
             if states:
                 clauses.append(f"state IN ({','.join('?' for _ in states)})")
                 params.extend(states)
-            if candidate_id:
-                clauses.append("company IN (SELECT short_name FROM company WHERE candidate_id = ?)")
-                params.append(candidate_id)
-            where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+            where = f" WHERE {' AND '.join(clauses)}"
             col = order_by if order_by in _SORTABLE else "rowid"
             rows = conn.execute(
                 f"SELECT * FROM job{where} ORDER BY {col} DESC NULLS LAST", params
@@ -2112,20 +2145,22 @@ def count_jobs(
     states: Optional[List[str]] = None,
     candidate_id: Optional[str] = None,
 ) -> int:
-    """COUNT(*) version of list_jobs — avoids fetching full rows just for length."""
+    """COUNT(*) version of list_jobs — avoids fetching full rows just for length.
+    candidate_id required (AST-1598); scopes via job.candidate_id."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+
     def _with_conn() -> int:
         conn = _get_connection()
         try:
             _ensure_job_schema(conn)
-            clauses: List[str] = []
-            params: List[Any] = []
+            clauses: List[str] = ["candidate_id = ?"]
+            params: List[Any] = [cid]
             if states:
                 clauses.append(f"state IN ({','.join('?' for _ in states)})")
                 params.extend(states)
-            if candidate_id:
-                clauses.append("company IN (SELECT short_name FROM company WHERE candidate_id = ?)")
-                params.append(candidate_id)
-            where = f" WHERE {' AND '.join(clauses)}" if clauses else ""
+            where = f" WHERE {' AND '.join(clauses)}"
             row = conn.execute(f"SELECT COUNT(*) FROM job{where}", params).fetchone()
             return row[0] if row else 0
         finally:
@@ -2179,7 +2214,7 @@ def count_jobs_below_dispatch_score_floor(candidate_id: str) -> int:
                 row = conn.execute(
                     """SELECT COUNT(*) FROM job WHERE state = ?
                        AND (latest_score IS NULL OR latest_score < ?)
-                       AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)""",
+                       AND candidate_id = ?""",
                     (st, float(fl), candidate_id),
                 ).fetchone()
                 total += int(row[0] or 0)
@@ -3500,6 +3535,367 @@ def clear_candidate_batch(batch_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
+# ---- meteorite staging (AST-1557) ----
+
+_UPDATE_METEORITE_ALLOWED = frozenset({
+    "state",
+    "content",
+    "classify_outcome",
+    "link",
+    "astral_job_id",
+    "estelle_thread_ts",
+    "estelle_notified_at",
+    "nag_count",
+    "error",
+    "source_ref",
+})
+
+
+def _ensure_meteorite_schema(conn: sqlite3.Connection) -> None:
+    """Create meteorite staging table if missing. Idempotent."""
+    global _meteorite_schema_ensured
+    if _meteorite_schema_ensured:
+        return
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='meteorite'"
+    )
+    if cursor.fetchone()[0] == 0:
+        conn.execute(
+            """
+            CREATE TABLE meteorite (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id TEXT NOT NULL,
+                source_kind TEXT NOT NULL,
+                source_id TEXT NOT NULL,
+                source_ref TEXT,
+                state TEXT NOT NULL,
+                content TEXT,
+                classify_outcome TEXT,
+                link TEXT,
+                astral_job_id TEXT,
+                estelle_thread_ts TEXT,
+                estelle_notified_at TIMESTAMP,
+                nag_count INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                batch_id TEXT,
+                batch_created_at TIMESTAMP,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL,
+                state_changed_at TIMESTAMP NOT NULL
+            )
+            """
+        )
+        conn.commit()
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meteorite_state_batch ON meteorite(state, batch_id)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_meteorite_source ON meteorite(source_kind, source_id)"
+    )
+    conn.commit()
+    _meteorite_schema_ensured = True
+
+
+def _meteorite_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    return _row_to_dict(row)
+
+
+def claim_meteorite_batch(
+    batch_id: str,
+    state: str,
+    limit: int,
+    *,
+    states: Optional[List[str]] = None,
+) -> int:
+    """Claim up to limit unclaimed meteorite rows in state. batch_id first."""
+    now = _utc_now()
+    claim_states = states if states is not None else [state]
+    state_sql, state_params = _state_in_sql(claim_states)
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            params = [batch_id, now, *state_params, int(limit)]
+            cur = conn.execute(
+                f"""UPDATE meteorite SET batch_id = ?, batch_created_at = ?
+                   WHERE id IN (
+                     SELECT id FROM meteorite
+                     WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                     ORDER BY rowid
+                     LIMIT ?
+                   )""",
+                tuple(params),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_meteorite_batch(batch_id: str) -> List[Dict[str, Any]]:
+    """Return meteorite rows for batch_id."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM meteorite WHERE batch_id = ?",
+                (batch_id,),
+            ).fetchall()
+            return [_meteorite_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def clear_meteorite_batch(batch_id: str) -> int:
+    """Release batch: null batch_id and batch_created_at. Returns count."""
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            cur = conn.execute(
+                "UPDATE meteorite SET batch_id = NULL, batch_created_at = NULL WHERE batch_id = ?",
+                (batch_id,),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+
+def count_meteorites_unclaimed_in_states(states: List[str]) -> int:
+    """Count unclaimed meteorite rows in the given state set (global pool).
+
+    Unclaimed = batch_id IS NULL OR batch_id = '' — same predicate as claim_meteorite_batch.
+    """
+    state_sql, state_params = _state_in_sql(states)
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            row = conn.execute(
+                f"""SELECT COUNT(*) FROM meteorite
+                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')""",
+                tuple(state_params),
+            ).fetchone()
+            return int(row[0])
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
+    """Insert N staging rows at state NEW in one transaction; return new ids."""
+    if not rows:
+        return []
+
+    def _with_conn() -> List[int]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            now = _utc_now()
+            ids: List[int] = []
+            for row in rows:
+                candidate_id = row["candidate_id"]
+                source_kind = row["source_kind"]
+                source_id = row["source_id"]
+                cur = conn.execute(
+                    """INSERT INTO meteorite (
+                        candidate_id, source_kind, source_id, source_ref, state,
+                        content, classify_outcome, link, nag_count,
+                        error, created_at, updated_at, state_changed_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)""",
+                    (
+                        candidate_id,
+                        source_kind,
+                        source_id,
+                        row.get("source_ref"),
+                        "NEW",
+                        row.get("content"),
+                        row.get("classify_outcome"),
+                        row.get("link"),
+                        row.get("error"),
+                        now,
+                        now,
+                        now,
+                    ),
+                )
+                ids.append(int(cur.lastrowid))
+            conn.commit()
+            return ids
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_meteorite(meteorite_id: int) -> Optional[Dict[str, Any]]:
+    """Return one meteorite row by id, or None."""
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            row = conn.execute(
+                "SELECT * FROM meteorite WHERE id = ?",
+                (int(meteorite_id),),
+            ).fetchone()
+            return _meteorite_row_to_dict(row) if row else None
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_meteorites_by_state(
+    state: str, *, limit: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """List meteorite rows in state (any claim); optional LIMIT."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            if limit is None:
+                rows = conn.execute(
+                    "SELECT * FROM meteorite WHERE state = ? ORDER BY rowid",
+                    (state,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM meteorite WHERE state = ? ORDER BY rowid LIMIT ?",
+                    (state, int(limit)),
+                ).fetchall()
+            return [_meteorite_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_meteorites_by_source(
+    source_kind: str, source_id: str
+) -> List[Dict[str, Any]]:
+    """List meteorite rows for a source (dedup on re-fetch)."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM meteorite WHERE source_kind = ? AND source_id = ? ORDER BY rowid",
+                (source_kind, source_id),
+            ).fetchall()
+            return [_meteorite_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def update_meteorite(meteorite_id: int, **fields: Any) -> None:
+    """Update whitelisted fields; state must be a METEORITE_STATES key (no prior check)."""
+    unknown = set(fields) - _UPDATE_METEORITE_ALLOWED
+    if unknown:
+        raise ValueError(f"unknown meteorite fields: {sorted(unknown)}")
+    if "state" in fields and fields["state"] not in METEORITE_STATES:
+        raise ValueError(f"unknown meteorite state: {fields['state']!r}")
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            now = _utc_now()
+            cols = [k for k in fields if k in _UPDATE_METEORITE_ALLOWED]
+            sets = [f"{c} = ?" for c in cols]
+            params: List[Any] = [fields[c] for c in cols]
+            sets.append("updated_at = ?")
+            params.append(now)
+            if "state" in fields:
+                sets.append("state_changed_at = ?")
+                params.append(now)
+            params.append(int(meteorite_id))
+            conn.execute(
+                f"UPDATE meteorite SET {', '.join(sets)} WHERE id = ?",
+                tuple(params),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
+
+
+
+def list_meteorites_for_retention(
+    *,
+    states: List[str],
+    older_than: str,
+    limit: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Rows in states with state_changed_at older than cutoff (caller owns day math)."""
+    state_sql, state_params = _state_in_sql(states)
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            params: List[Any] = [*state_params, older_than]
+            lim_sql = ""
+            if limit is not None:
+                lim_sql = " LIMIT ?"
+                params.append(int(limit))
+            rows = conn.execute(
+                f"""SELECT * FROM meteorite
+                   WHERE {state_sql} AND state_changed_at < ?
+                   ORDER BY state_changed_at ASC{lim_sql}""",
+                tuple(params),
+            ).fetchall()
+            return [_meteorite_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def delete_meteorites_by_ids(ids: List[int]) -> int:
+    """Delete meteorite rows by id list. Empty list → 0."""
+    if not ids:
+        return 0
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            placeholders = ",".join("?" for _ in ids)
+            cur = conn.execute(
+                f"DELETE FROM meteorite WHERE id IN ({placeholders})",
+                tuple(int(i) for i in ids),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def count_candidates_unclaimed_in_states(
     states: List[str], candidate_id: Optional[str] = None
 ) -> int:
@@ -3856,10 +4252,10 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
 
 
 
-def _ensure_artifacts_table(conn: sqlite3.Connection) -> None:
-    """Create or rename-to artifacts table (AST-1352; rename AST-1364)."""
-    global _artifacts_schema_ensured
-    if _artifacts_schema_ensured:
+def _ensure_artifact_table(conn: sqlite3.Connection) -> None:
+    """Create or copy-adopt singular artifact table (AST-1597; was artifacts)."""
+    global _artifact_schema_ensured
+    if _artifact_schema_ensured:
         return
 
     def _table_exists(name: str) -> bool:
@@ -3874,52 +4270,155 @@ def _ensure_artifacts_table(conn: sqlite3.Connection) -> None:
     def _column_names(table: str) -> set[str]:
         return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
 
+    def _drop_legacy_indexes() -> None:
+        conn.execute("DROP INDEX IF EXISTS idx_artifacts_entity_type_current")
+        conn.execute("DROP INDEX IF EXISTS idx_astral_artifacts_entity_type_current")
+        conn.execute("DROP INDEX IF EXISTS idx_artifact_entity_type_current")
+
     def _ensure_index() -> None:
+        _drop_legacy_indexes()
         conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_artifacts_entity_type_current "
-            "ON artifacts (entity_type, entity_id, artifact_type, current)"
+            "CREATE INDEX IF NOT EXISTS idx_artifact_entity_type_current "
+            "ON artifact (entity_type, entity_id, artifact_type, current)"
         )
 
-    if _table_exists("artifacts"):
-        cols = _column_names("artifacts")
+    def _create_artifact_ddl(table: str) -> None:
+        conn.execute(
+            f"""
+            CREATE TABLE {table} (
+                artifact_uuid TEXT PRIMARY KEY,
+                candidate_id TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                artifact_type TEXT NOT NULL,
+                artifact_data BLOB NOT NULL,
+                source_artifact_ids TEXT NOT NULL DEFAULT '[]',
+                current INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL
+            )
+            """
+        )
+
+    # Shared backfill CASE (plan Stage 1 step 4 / Stage 3) — src alias is the source table.
+    _CID_CASE = """
+            CASE
+              WHEN src.entity_type = 'candidate' THEN src.entity_id
+              WHEN src.entity_type = 'job' THEN (
+                SELECT company.candidate_id FROM job
+                JOIN company ON company.short_name = job.company
+                WHERE job.astral_job_id = src.entity_id
+              )
+              WHEN src.entity_type = 'company' THEN (
+                SELECT company.candidate_id FROM company
+                WHERE company.short_name = src.entity_id
+              )
+              ELSE NULL
+            END
+    """
+
+    def _copy_rows_with_candidate_id(source_table: str, dest_table: str) -> None:
+        # Skip orphans that cannot resolve a non-empty candidate_id (plan: no invented rows).
+        conn.execute(
+            f"""
+            INSERT INTO {dest_table} (
+                artifact_uuid, candidate_id, entity_type, entity_id, artifact_type,
+                artifact_data, source_artifact_ids, current, created_at, updated_at
+            )
+            SELECT
+                a.artifact_uuid,
+                b.candidate_id,
+                a.entity_type,
+                a.entity_id,
+                a.artifact_type,
+                a.artifact_data,
+                COALESCE(a.source_artifact_ids, '[]'),
+                a.current,
+                a.created_at,
+                a.updated_at
+            FROM {source_table} AS a
+            JOIN (
+                SELECT
+                    src.artifact_uuid AS artifact_uuid,
+                    {_CID_CASE} AS candidate_id
+                FROM {source_table} AS src
+            ) AS b ON b.artifact_uuid = a.artifact_uuid
+            WHERE b.candidate_id IS NOT NULL
+              AND TRIM(b.candidate_id) != ''
+              AND NOT EXISTS (
+                SELECT 1 FROM {dest_table} AS existing
+                WHERE existing.artifact_uuid = a.artifact_uuid
+              )
+            """
+        )
+
+    def _ensure_source_artifact_ids_column() -> None:
+        cols = _column_names("artifact")
+        if "source_artifact_ids" not in cols:
+            conn.execute(
+                "ALTER TABLE artifact ADD COLUMN source_artifact_ids "
+                "TEXT NOT NULL DEFAULT '[]'"
+            )
+
+    def _rebuild_artifact_adding_candidate_id() -> None:
+        # SQLite cannot ADD NOT NULL cleanly — copy into mig table then swap.
+        _create_artifact_ddl("artifact__cid_mig")
+        _copy_rows_with_candidate_id("artifact", "artifact__cid_mig")
+        conn.execute("DROP TABLE artifact")
+        conn.execute("ALTER TABLE artifact__cid_mig RENAME TO artifact")
+
+    if _table_exists("artifact"):
+        cols = _column_names("artifact")
         if "astral_artifact_uuid" in cols and "artifact_uuid" not in cols:
+            conn.execute(
+                "ALTER TABLE artifact RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
+            )
+            cols = _column_names("artifact")
+        # AST-1591 column before candidate_id rebuild so SELECT list is complete
+        _ensure_source_artifact_ids_column()
+        cols = _column_names("artifact")
+        if "candidate_id" not in cols:
+            _rebuild_artifact_adding_candidate_id()
+        _ensure_index()
+        conn.commit()
+        _artifact_schema_ensured = True
+        return
+
+    if _table_exists("artifacts"):
+        # Copy-adopt; leave plural table for Susan to DROP after verification (AST-1597).
+        _create_artifact_ddl("artifact")
+        # Prefer artifact_uuid; legacy astral_artifact_uuid on plural is rare post-AST-1364.
+        arts_cols = _column_names("artifacts")
+        if "astral_artifact_uuid" in arts_cols and "artifact_uuid" not in arts_cols:
             conn.execute(
                 "ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
             )
+        _copy_rows_with_candidate_id("artifacts", "artifact")
         _ensure_index()
         conn.commit()
-        _artifacts_schema_ensured = True
+        _artifact_schema_ensured = True
         return
 
     if _table_exists("astral_artifacts"):
-        # Pre-rename DBs from AST-1352 UAT — keep history rows
-        conn.execute("ALTER TABLE astral_artifacts RENAME TO artifacts")
-        cols = _column_names("artifacts")
+        conn.execute("ALTER TABLE astral_artifacts RENAME TO artifact")
+        cols = _column_names("artifact")
         if "astral_artifact_uuid" in cols and "artifact_uuid" not in cols:
             conn.execute(
-                "ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
+                "ALTER TABLE artifact RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
             )
-        conn.execute("DROP INDEX IF EXISTS idx_astral_artifacts_entity_type_current")
+        _ensure_source_artifact_ids_column()
+        cols = _column_names("artifact")
+        if "candidate_id" not in cols:
+            _rebuild_artifact_adding_candidate_id()
         _ensure_index()
         conn.commit()
-        _artifacts_schema_ensured = True
+        _artifact_schema_ensured = True
         return
 
-    conn.execute("""
-        CREATE TABLE artifacts (
-            artifact_uuid TEXT PRIMARY KEY,
-            entity_type TEXT NOT NULL,
-            entity_id TEXT NOT NULL,
-            artifact_type TEXT NOT NULL,
-            artifact_data TEXT NOT NULL,
-            current INTEGER NOT NULL DEFAULT 1,
-            created_at TIMESTAMP NOT NULL,
-            updated_at TIMESTAMP NOT NULL
-        )
-    """)
+    _create_artifact_ddl("artifact")
     _ensure_index()
     conn.commit()
-    _artifacts_schema_ensured = True
+    _artifact_schema_ensured = True
 
 
 def _normalize_artifact_identity(
@@ -3940,28 +4439,97 @@ def _normalize_artifact_identity(
     return et, eid, at
 
 
+def _resolve_artifact_candidate_id(
+    conn: sqlite3.Connection,
+    entity_type: str,
+    entity_id: str,
+    candidate_id: Optional[str],
+) -> str:
+    """Return non-empty owning candidate_id for an artifact write (AST-1597).
+
+    entity_type=candidate: omitted → entity_id; explicit must equal entity_id.
+    job/company: omitted → ownership lookup; unresolved → ValueError.
+    """
+    cid = (candidate_id or "").strip()
+    if entity_type == "candidate":
+        if cid and cid != entity_id:
+            raise ValueError(
+                "candidate_id must equal entity_id when entity_type='candidate'"
+            )
+        return entity_id
+    if cid:
+        return cid
+    if entity_type == "job":
+        # Prefer denormalized job.candidate_id (AST-1598/1600); fall back to company join.
+        row = conn.execute(
+            "SELECT candidate_id FROM job WHERE astral_job_id = ?",
+            (entity_id,),
+        ).fetchone()
+        resolved = (row[0] or "").strip() if row and row[0] is not None else ""
+        if not resolved:
+            row = conn.execute(
+                """SELECT company.candidate_id FROM job
+                     JOIN company ON company.short_name = job.company
+                    WHERE job.astral_job_id = ?""",
+                (entity_id,),
+            ).fetchone()
+            resolved = (row[0] or "").strip() if row and row[0] is not None else ""
+        if not resolved:
+            raise ValueError("candidate_id required")
+        return resolved
+    if entity_type == "company":
+        row = conn.execute(
+            "SELECT candidate_id FROM company WHERE short_name = ?",
+            (entity_id,),
+        ).fetchone()
+        resolved = (row[0] or "").strip() if row and row[0] is not None else ""
+        if not resolved:
+            raise ValueError("candidate_id required")
+        return resolved
+    raise ValueError("candidate_id required")
+
+
 def _artifact_row_dict(row: tuple) -> Dict[str, Any]:
-    """Map SELECT tuple → public dict; JSON-parse artifact_data when possible."""
-    raw = row[4]
+    """Map SELECT tuple → public dict; decompress + JSON-parse artifact_data when possible."""
+    # SELECT order: uuid, candidate_id, entity_type, entity_id, artifact_type,
+    # artifact_data, source_artifact_ids, current, created_at, updated_at
+    # AST-1605: zlib like agent_data; legacy plain TEXT still via _decompress_payload.
+    plain = _decompress_payload(row[5])
     try:
-        artifact_data = json.loads(raw)
+        artifact_data = json.loads(plain) if plain is not None else None
     except (TypeError, json.JSONDecodeError):
-        artifact_data = raw
+        artifact_data = plain
+    # AST-1591: source_artifact_ids TEXT JSON array → list[str]
+    raw_sources = row[6]
+    sources: List[str] = []
+    if raw_sources is None or raw_sources == "":
+        sources = []
+    elif isinstance(raw_sources, list):
+        sources = [str(x) for x in raw_sources]
+    elif isinstance(raw_sources, str):
+        try:
+            parsed = json.loads(raw_sources)
+            if isinstance(parsed, list):
+                sources = [str(x) for x in parsed]
+        except (TypeError, json.JSONDecodeError):
+            sources = []
     return {
         "artifact_uuid": row[0],
-        "entity_type": row[1],
-        "entity_id": row[2],
-        "artifact_type": row[3],
+        "candidate_id": row[1],
+        "entity_type": row[2],
+        "entity_id": row[3],
+        "artifact_type": row[4],
         "artifact_data": artifact_data,
-        "current": row[5],
-        "created_at": row[6],
-        "updated_at": row[7],
+        "source_artifact_ids": sources,
+        "current": row[7],
+        "created_at": row[8],
+        "updated_at": row[9],
     }
 
 
 _ARTIFACT_SELECT = (
-    "artifact_uuid, entity_type, entity_id, artifact_type, "
-    "artifact_data, current, created_at, updated_at"
+    "artifact_uuid, candidate_id, entity_type, entity_id, artifact_type, "
+    "artifact_data, source_artifact_ids, current, created_at, updated_at"
 )
 
 
@@ -3970,33 +4538,57 @@ def save_artifact(
     entity_id: str,
     artifact_type: str,
     artifact_data: Any,
+    source_artifact_ids: Optional[Sequence[str]] = None,
+    *,
+    candidate_id: Optional[str] = None,
 ) -> str:
-    """Retire prior current=1 row for the natural key; insert new current row. Returns UUID."""
+    """Blind retire-by-key + insert into artifact (patt.artifact.write-operative).
+
+    Sets prior current=1 row(s) for (entity_type, entity_id, artifact_type) to
+    current=0, then inserts a new UUID row with current=1 and required
+    candidate_id. Stores artifact_data zlib-compressed (AST-1605; like agent_data).
+    Never SELECT the prior uuid first; never UPDATE artifact_data
+    in place. Returns the new uuid.
+
+    Optional source_artifact_ids: JSON array of source artifact_uuid strings on the
+    new row (default empty). No existence validation (AST-1591 /
+    patt.artifacts.traceability table support).
+    """
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
     if artifact_data is None:
         raise ValueError("artifact_data required")
-    payload = artifact_data if isinstance(artifact_data, str) else json.dumps(artifact_data)
+    # AST-1605: same zlib path as agent_data.block_data (transparent to callers).
+    plain = artifact_data if isinstance(artifact_data, str) else json.dumps(artifact_data)
+    payload = _compress_payload(plain)
+    if source_artifact_ids is None:
+        sources: list[str] = []
+    elif isinstance(source_artifact_ids, (list, tuple)):
+        sources = [str(x).strip() for x in source_artifact_ids if str(x).strip()]
+    else:
+        raise ValueError("source_artifact_ids must be a list of strings or None")
+    sources_payload = json.dumps(sources)
     now = _utc_now()
     new_uuid = str(uuid.uuid4())
 
     def _with_conn() -> str:
         conn = _get_connection()
         try:
-            _ensure_artifacts_table(conn)
+            _ensure_artifact_table(conn)
+            resolved_cid = _resolve_artifact_candidate_id(conn, et, eid, candidate_id)
             # Retire any current row(s) for this entity + artifact type
             conn.execute(
-                """UPDATE artifacts
+                """UPDATE artifact
                       SET current = 0, updated_at = ?
                     WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
                       AND current = 1""",
                 (now, et, eid, at),
             )
             conn.execute(
-                """INSERT INTO artifacts (
-                       artifact_uuid, entity_type, entity_id, artifact_type,
-                       artifact_data, current, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
-                (new_uuid, et, eid, at, payload, now, now),
+                """INSERT INTO artifact (
+                       artifact_uuid, candidate_id, entity_type, entity_id, artifact_type,
+                       artifact_data, source_artifact_ids, current, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)""",
+                (new_uuid, resolved_cid, et, eid, at, payload, sources_payload, now, now),
             )
             conn.commit()
             return new_uuid
@@ -4006,23 +4598,80 @@ def save_artifact(
     return _run_with_retry(_with_conn)
 
 
+def retire_current_artifact(
+    entity_type: str, entity_id: str, artifact_type: str
+) -> bool:
+    """AST-1556: set current=0 for the natural key on artifact; no new row. True if retired."""
+    et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
+    now = _utc_now()
+
+    def _with_conn() -> bool:
+        conn = _get_connection()
+        try:
+            _ensure_artifact_table(conn)
+            cur = conn.execute(
+                """UPDATE artifact
+                      SET current = 0, updated_at = ?
+                    WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
+                      AND current = 1""",
+                (now, et, eid, at),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def get_current_artifact(
     entity_type: str, entity_id: str, artifact_type: str
 ) -> Optional[Dict[str, Any]]:
-    """Return the current=1 row for the natural key, or None."""
+    """Return the current=1 artifact row for the natural key, or None (patt.artifact.read-current).
+
+    Deserializes artifact_data via _artifact_row_dict. Empty on miss. Never reads
+    candidate_data / job_data blobs. No coat-check. No logging (callers log).
+    """
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
 
     def _with_conn() -> Optional[Dict[str, Any]]:
         conn = _get_connection()
         try:
-            _ensure_artifacts_table(conn)
+            _ensure_artifact_table(conn)
             row = conn.execute(
                 f"""SELECT {_ARTIFACT_SELECT}
-                      FROM artifacts
+                      FROM artifact
                      WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
                        AND current = 1
                      LIMIT 1""",
                 (et, eid, at),
+            ).fetchone()
+            return _artifact_row_dict(row) if row else None
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_artifact(artifact_uuid: str) -> Optional[Dict[str, Any]]:
+    """Return one artifact row by primary key, or None (patt.artifact.read-operative).
+
+    Deserializes artifact_data via _artifact_row_dict. No coat-check; no blob fallback.
+    """
+    uid = (artifact_uuid or "").strip()
+    if not uid:
+        raise ValueError("artifact_uuid required")
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_artifact_table(conn)
+            row = conn.execute(
+                f"""SELECT {_ARTIFACT_SELECT}
+                      FROM artifact
+                     WHERE artifact_uuid = ?
+                     LIMIT 1""",
+                (uid,),
             ).fetchone()
             return _artifact_row_dict(row) if row else None
         finally:
@@ -4038,16 +4687,16 @@ def list_artifacts(
     *,
     current_only: bool = False,
 ) -> List[Dict[str, Any]]:
-    """List version rows for the natural key; oldest created_at first."""
+    """List version rows for the natural key on artifact; oldest created_at first."""
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
 
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
-            _ensure_artifacts_table(conn)
+            _ensure_artifact_table(conn)
             sql = (
                 f"""SELECT {_ARTIFACT_SELECT}
-                      FROM artifacts
+                      FROM artifact
                      WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?"""
             )
             if current_only:
@@ -6731,6 +7380,7 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
                 logger_name TEXT,
                 message TEXT,
                 batch_id TEXT,
+                candidate_id TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
@@ -6740,6 +7390,7 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
         cols = list(conn.execute("PRAGMA table_info(app_log)").fetchall())
         id_col = next((r for r in cols if r[1] == "id"), None)
         id_type = (id_col[2] if id_col else "") or ""
+        col_names = {r[1] for r in cols}
         if id_type.upper() != "INTEGER":
             conn.execute("DROP TABLE IF EXISTS app_log_new")
             conn.execute("""
@@ -6749,16 +7400,33 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
                     logger_name TEXT,
                     message TEXT,
                     batch_id TEXT,
+                    candidate_id TEXT,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
-            conn.execute("""
-                INSERT INTO app_log_new (level, logger_name, message, batch_id, created_at)
-                SELECT level, logger_name, message, batch_id, created_at FROM app_log
-            """)
+            if "candidate_id" in col_names:
+                conn.execute("""
+                    INSERT INTO app_log_new (level, logger_name, message, batch_id, candidate_id, created_at)
+                    SELECT level, logger_name, message, batch_id, candidate_id, created_at FROM app_log
+                """)
+            else:
+                conn.execute("""
+                    INSERT INTO app_log_new (level, logger_name, message, batch_id, created_at)
+                    SELECT level, logger_name, message, batch_id, created_at FROM app_log
+                """)
             conn.execute("DROP TABLE app_log")
             conn.execute("ALTER TABLE app_log_new RENAME TO app_log")
             conn.commit()
+            cols = list(conn.execute("PRAGMA table_info(app_log)").fetchall())
+            col_names = {r[1] for r in cols}
+        # AST-1598: nullable candidate_id on existing INTEGER-PK tables
+        if "candidate_id" not in col_names:
+            try:
+                conn.execute("ALTER TABLE app_log ADD COLUMN candidate_id TEXT")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
     _app_log_schema_ensured = True
 
 
@@ -6767,16 +7435,18 @@ def add_log_entry(
     logger_name: str,
     message: str,
     batch_id: Optional[str] = None,
+    candidate_id: Optional[str] = None,
 ) -> bool:
-    """Append a log entry. Fast write path; caller ensures valid data."""
+    """Append a log entry. Fast write path; caller ensures valid data.
+    candidate_id optional/nullable (AST-1598) — NULL when unset."""
     conn = _get_connection()
     try:
         _ensure_app_log_schema(conn)
         # DB assigns integer id — do not mint client UUID
         conn.execute("""
-            INSERT INTO app_log (level, logger_name, message, batch_id)
-            VALUES (?, ?, ?, ?)
-        """, (level, logger_name, message, batch_id))
+            INSERT INTO app_log (level, logger_name, message, batch_id, candidate_id)
+            VALUES (?, ?, ?, ?, ?)
+        """, (level, logger_name, message, batch_id, candidate_id))
         conn.commit()
         return True
     except Exception:
@@ -6791,8 +7461,10 @@ def list_log_entries(
     level: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    candidate_id: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Query app_log with optional filters. Returns newest first."""
+    """Query app_log with optional filters. Returns newest first.
+    candidate_id filter when provided (AST-1598); omitted = no candidate filter."""
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -6811,6 +7483,10 @@ def list_log_entries(
             if date_to:
                 clauses.append("created_at <= ?")
                 params.append(f"{date_to}T23:59:59")
+            cid = (candidate_id or "").strip()
+            if cid:
+                clauses.append("candidate_id = ?")
+                params.append(cid)
             where = (" WHERE " + " AND ".join(clauses)) if clauses else ""
             rows = conn.execute(
                 f"SELECT * FROM app_log{where} ORDER BY created_at DESC", params
@@ -7177,14 +7853,22 @@ def save_dispatch_task(
     if not cid_raw:
         raise ValueError("candidate_id is required")
     cid_val: Optional[str] = cid_raw
+    # Caller override vs catalog fill (AST-1618) — capture before defaults overwrite.
+    caller_entity = str(entity_type).strip() if (entity_type and str(entity_type).strip()) else None
     try:
-        defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
+        # When caller supplies entity_type, omit request trigger from catalog defaults —
+        # trigger may be valid only for the chosen entity (not the catalog entity).
+        defaults = dispatch_task_admin_defaults(
+            tk,
+            trigger_state=None if caller_entity is not None else trigger_state,
+        )
     except KeyError as e:
         raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
     # late: avoid widening module-top config imports
     from src.utils.config import (
         METEORITE_EMAIL_MAILBOX_CONFIG,
         is_meteorite_email_mailbox_task_key,
+        _dispatch_sort_by_for,
     )
     if is_meteorite_email_mailbox_task_key(tk):
         # Poller row seed (AST-1466): MAILBOX_CONFIG wins over admin form meta.
@@ -7192,12 +7876,19 @@ def save_dispatch_task(
             entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
         if not (trigger_state and str(trigger_state).strip()):
             trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
+        sort_by = defaults["sort_by"]  # mailbox: always None — no entity/trigger sort helper
     else:
         if not (entity_type and str(entity_type).strip()):
             entity_type = defaults["entity_type"]
         if not (trigger_state and str(trigger_state).strip()):
             trigger_state = defaults["trigger_state"]
-    sort_by = defaults["sort_by"]
+        if caller_entity is not None:
+            try:
+                sort_by = _dispatch_sort_by_for(entity_type, trigger_state)
+            except KeyError as e:
+                raise ValueError(str(e)) from e
+        else:
+            sort_by = defaults["sort_by"]
     batch_call_mode = defaults["batch_call_mode"]
     now = _utc_now()
     def _with_conn() -> int:
@@ -7495,6 +8186,8 @@ def get_due_tasks() -> List[Dict[str, Any]]:
     Each returned dict includes 'available_count' from count_eligible_for_dispatch_task
     (WATCH respects freq_hrs / last_scan_at). Candidate-bound meteorite_email AUTO due is
     merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
+    Meteorite AUTO rows may have NULL candidate_id and still due when eligible count meets
+    min_count (global unclaimed pool).
     """
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
@@ -7512,7 +8205,9 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         et = task.get("entity_type")
         ts = task.get("trigger_state")
         cid = task.get("candidate_id")
-        if not et or not ts or not cid:
+        if not et or not ts:
+            continue
+        if not cid and et != "meteorite":
             continue
         avail = count_eligible_for_dispatch_task(task)
         if avail >= (task.get("min_count") or 1):  # match runner threshold (or 1) to avoid noisy zero-work runs
@@ -7662,12 +8357,16 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
+    entity_type=meteorite counts the global unclaimed meteorite pool via
+    count_meteorites_unclaimed_in_states and does not require candidate_id.
     meteorite_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
     """
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
     candidate_id = task.get("candidate_id")
-    if not entity_type or not state or not candidate_id:
+    if not entity_type or not state:
+        return 0
+    if entity_type != "meteorite" and not candidate_id:
         return 0
     if entity_type not in ENTITY_TYPES:
         return 0
@@ -7679,6 +8378,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
         )
     if not claim_states:
         return 0
+    if entity_type == "meteorite":
+        return count_meteorites_unclaimed_in_states(claim_states)
     task_key = task.get("task_key", "")
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
@@ -7736,7 +8437,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
                     f"""SELECT COUNT(*) FROM job
                        WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
                          AND latest_score IS NOT NULL AND latest_score >= ?
-                         AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)""",
+                         AND candidate_id = ?""",
                     (*state_params, float(floor), candidate_id),
                 ).fetchone()
                 return int(row[0])
@@ -7811,7 +8512,7 @@ def count_entities_in_state(
     entity_type: str, state: str, candidate_id: str, *, states: Optional[List[str]] = None,
 ) -> int:
     """Count available (unclaimed) jobs or companies in a given state for a candidate.
-    Unclaimed = batch_id IS NULL OR batch_id = '' (same as claim_*_batch). Jobs are scoped via company.candidate_id."""
+    Unclaimed = batch_id IS NULL OR batch_id = '' (same as claim_*_batch). Jobs scoped via job.candidate_id (AST-1598)."""
     claim_states = states if states is not None else [state]
     state_sql, state_params = _state_in_sql(claim_states)
 
@@ -7828,8 +8529,8 @@ def count_entities_in_state(
                 _ensure_job_schema(conn)
                 row = conn.execute(
                     f"""SELECT COUNT(*) FROM job
-                       WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '') AND company IN
-                       (SELECT short_name FROM company WHERE candidate_id = ?)""",
+                       WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                         AND candidate_id = ?""",
                     (*state_params, candidate_id),
                 ).fetchone()
             else:

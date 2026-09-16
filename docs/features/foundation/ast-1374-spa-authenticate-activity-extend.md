@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-1374 archived 2026-08-31 -->
+
+## Linear archive (AST-1374)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1374/spa-authenticate-duration-activity-session-extend-extend-stytch  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1372 — Extend Stytch sessions  
+**Blocked by / blocks / related:** parent: AST-1372
+
+### Description
+
+## What this implements
+
+Owns wiring login/authenticate handoff and in-app activity extension to the config-backed policy (Stytch authenticate with configured duration on cadence while a session exists); removes the hardcoded client session-duration constant. Does **not** own inventing the config keys or policy API (after sibling AUTH_CONFIG child). Must keep AST-624/625 log-off behavior intact when the session finally expires.
+
+## Citations
+
+`astral.standards.no-hardcoded-sets`; `astral.layers.ui-config-driven-business-logic`; `astral.standards.in-scope-only`
+
+## Acceptance criteria
+
+* Authenticate handoff (magic-link and Google OAuth) creates a Stytch session whose lifetime matches the configured duration — not a leftover hardcoded 60.
+* With a valid session and the SPA open, session expiry is reset on the configured extension cadence via Stytch session authenticate using that same duration.
+* If the user stops using the app long enough that no successful extend keeps the session alive, they see the existing log-off / timeout path rather than a silent broken shell.
+* No regression to login, Bearer API calls, admin gating, or first-time visitor Login vs log-off distinction.
+
+## Boundaries
+
+* Does **not** invent config keys or the policy API (sibling).
+* Does **not** redesign log-off screen; does not change Flask JWT validation or admin gating.
+
+## Notes for planning
+
+After AUTH_CONFIG sibling. Keep AST-624/625 log-off intact.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/ast-1372-extend-stytch-sessions`, child `sub/AST-1372/<this-id>-spa-authenticate-activity-extend`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Policy fetch: `tests/component/frontend/lib/test_authSessionPolicy.test.ts`
+2. Extend loop helper: `tests/component/frontend/lib/test_sessionExtend.test.ts`
+3. Handoff (configured duration + no fallback): `tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts`
+4. Authenticate page §6c: `tests/component/frontend/pages/test_Authenticate.test.tsx`
+5. AuthContext extend start: `tests/component/frontend/contexts/test_AuthContext.test.tsx`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_authSessionPolicy.test.ts \
+  ../../../tests/component/frontend/lib/test_sessionExtend.test.ts \
+  ../../../tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx \
+  ../../../tests/component/frontend/contexts/test_AuthContext.test.tsx
+```
+
+**Bible shasums** (`origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend`):
+
+* `docs/test-bible/frontend/lib.md` · `ee4daa3684208c12b66b4a937be9e21ea6744c0f`
+
+### Comments
+
+#### katherine — 2026-08-14T21:33:11.363Z
+`origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend` @ `04f3d5c9ade1d01037220cb5dc01b1c58095f158` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-08-14T21:32:05.151Z
+[code-rubric] PROCEED (Commit: adbbdade) SPA policy wiring clean
+
+#### betty — 2026-08-14T21:29:03.783Z
+`origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend` @ `adbbdade` · SPA session extend tests
+
+#### joan — 2026-08-14T21:21:41.572Z
+[plan-rubric] PROCEED (Commit: 6d2d3cbd) SPA policy wiring ready
+
+#### katherine — 2026-08-14T21:20:20.952Z
+`origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend` @ `6d2d3cbd9cf7b92a3cff6bb89c88f371e5b151d1` · plan ready for Joan
+
+---
+
 # SPA authenticate duration + activity session extend
 
 **Linear:** [AST-1374](https://linear.app/astralcareermatch/issue/AST-1374)

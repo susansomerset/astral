@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-1413 archived 2026-09-09 -->
+
+## Linear archive (AST-1413)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1413/ad-hoc-preview-modal-and-agent-data-panes-update-adhoc-agent-to-mirror  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1403 — Update Adhoc Agent to mirror new task structure  
+**Blocked by / blocks / related:** parent: AST-1403
+
+### Description
+
+## What this implements
+
+After #2. Preview Prompt opens the shared scrollable modal with seven-segment + live-content tabs (no inline preview at the bottom). After Test, the workbench shows the same agent_data tabbed panes as Execution History for that run (including timesheet/cost already shown there). Does **not** change how blocks are stored (#1) or which editors exist (#2).
+
+## Citations
+
+`pattern.ui.shared-button-roles`, `pattern.ui.icon-control`, `pattern.config.config-block`, `astral.ui.frontend-file-placement`, `astral.standards.dry-and-focused-functions`
+
+## Acceptance criteria
+
+- [X] 3. Preview Prompt opens a scrollable modal. The page body does not grow an inline resolved-preview block. The modal has tabs for System, Cache A–D, No Cache, User, and Live Content; resolved text matches what Test will send for those slots.
+- [X] 4. After a successful Test, the workbench shows agent_data tabs for that run (System, each stored Cache A–D, No Cache, Task, Response). Response is the stored Response block, not a separate dumped pane. Preview alone does not create or refresh those panes from a new batch.
+
+## Boundaries
+
+- [X] Does **not** change how blocks are stored (sibling #1) or which editors exist (sibling #2). Does **not** replace Execution History; it reuses the same agent_data tabbed panes on the workbench after Test.
+
+## Notes for planning
+
+After #2. Preview is the modal; post-Test inspection is the standard agent_data panes. Estimate: 2
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1403-update-adhoc-agent-to-mirror-new-task-structure`, child `sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes` @ `7290f7c486442935912b5d5a5f8c116ce3811f46`
+
+**Bible shasums** (on publish ref):
+
+* `docs/test-bible/frontend/pages.md` `6ea74a0d50ef3cd7609f416460337c66d05516be`
+
+1. Routed Agent Ad Hoc page (§6c) — Preview modal, post-Test panes, AST-1394 chrome retarget: `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+2. Execution History modal wrapper (extract regression): `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Comments
+
+#### radia — 2026-08-17T06:33:27.858Z
+[code-rubric] PROCEED (Commit: 7290f7c4) preview modal and panes
+
+#### betty — 2026-08-17T06:26:48.670Z
+`origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes` @ `7290f7c486442935912b5d5a5f8c116ce3811f46` · preview modal pane tests
+
+#### joan — 2026-08-17T06:10:20.452Z
+[plan-rubric] PROCEED (Commit: a65cf3e3) preview modal plus panes
+
+#### katherine — 2026-08-17T06:07:15.687Z
+`origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes` @ `a65cf3e34b3f5c26085176267399924a9945d2b1` · preview modal plus panes
+
+---
+
 # AST-1413 — Ad Hoc preview modal and agent_data panes
 
 - **Linear:** [AST-1413](https://linear.app/astralcareermatch/issue/AST-1413)

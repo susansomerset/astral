@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1524 archived 2026-09-09 -->
+
+## Linear archive (AST-1524)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1524/soft-numbered-prose-advise-draft-notes-prompts-advise-resume-needs-a  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1460 — Advise resume needs a coded list for clear adherence  
+**Blocked by / blocks / related:** parent: AST-1460
+
+### Description
+
+## What this implements
+
+Owns Manage Tasks prompt-only soft tightening after #1: Estelle numbers resume advice in prose; Judith's `notes` respond to that list. No new schema, no new validation, no new artifact keys. Does **not** re-touch core validate/persist beyond what #1 already restored.
+
+## Citations
+
+`astral.seed.agent-tables-in-repo-json`; `astral.seed.archie-catalog-wins`; `astral.seed.define-approved`; `astral.standards.in-scope-only`; `astral.dispatch.run-next-is-chain-authority`; `astral.git.engineer-test-tree-ban`.
+
+## Scope
+
+`data/admin/agent_task.json` (advise + draft user prompts only); `docs/uat-fixtures/AST-756/expected-agent_task.json` (same row twins).
+
+## Acceptance criteria
+
+- [X] 3. After soft-prompt child: Estelle's `advise_job_resume` user prompt asks for numbered prose resume advice (readable A/B/C-style list), without introducing new config schema or validation.
+- [X] 4. After soft-prompt child: Judith's `draft_job_resume` user prompt asks her to note, with her change notes, whether/how she incorporated each listed Estelle advice item — still freeform `notes`, no new adherence schema.
+- [X] 5. COVER LETTER DIRECTION and ASK CANDIDATE are not given a new coded-adherence contract.
+- [X] 6. UAT fixture twin stays locked to the same `agent_task.json` advise/draft rows after each child.
+
+## Boundaries
+
+- [X] Does not re-touch core validate/persist (sibling #1). No new schema / validation / artifact keys. Stack carefully on AST-1465 (Done) draft prompt glyph edits.
+
+## Notes for planning
+
+After #1. Soft tighten only — Archie: no new schema, no new validation.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1460-advise-resume-coded-list`, child `sub/AST-1460/<child-id>-soft-numbered-prose-advise-draft-notes`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-27T03:58:24.415Z
+[code-rubric] PROCEED (Commit: 2ceb2cff) soft prose prompts clean
+
+#### betty — 2026-08-27T03:56:01.167Z
+origin/sub/AST-1460/AST-1524-soft-numbered-prose-advise-draft-notes @ `2ceb2cff` · soft prose manifest
+
+#### joan — 2026-08-27T03:52:11.146Z
+[plan-rubric] PROCEED (Commit: ba19403c) soft prose prompts plan
+
+#### hedy — 2026-08-27T03:50:53.065Z
+`origin/sub/AST-1460/AST-1524-soft-numbered-prose-advise-draft-notes` @ `ba19403ccc9032e1bd757fc093b668659f94cd2e` · soft prose prompts plan
+
+---
+
 # Soft numbered-prose advise + draft notes prompts (Advise resume needs a coded list for clear adherence)
 
 **Linear:** [AST-1524](https://linear.app/astralcareermatch/issue/AST-1524/soft-numbered-prose-advise-draft-notes-prompts-advise-resume-needs-a-coded)

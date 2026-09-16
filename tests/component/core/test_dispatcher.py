@@ -38,9 +38,7 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
         "src.core.candidate.age_stale_candidate_states",
         MagicMock(return_value=0),
     )
-    # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
-    monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
-    # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
+    # AST-1022: tick AUTO-off skip path lists stage rows — keep unit ticks DB-free
     monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
 
 
@@ -91,6 +89,13 @@ def _stub_scheduler_boot_provisions(monkeypatch: pytest.MonkeyPatch) -> None:
                     "skipped_missing_config": 0,
                 }
             ),
+        )
+    # AST-1623: UPDATE-only ingress/notify entity_type correction on boot.
+    if hasattr(dispatcher_mod, "correct_meteorite_ingress_dispatch_entity_types"):
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "correct_meteorite_ingress_dispatch_entity_types",
+            MagicMock(return_value={"scanned": 0, "updated": 0, "task_keys": []}),
         )
 
 
@@ -181,11 +186,21 @@ class TestWarmThenGather:
         assert out == [{"total_processed": 1}, {"total_processed": 2}]
 
     @pytest.mark.asyncio
-    async def test_converts_gather_exceptions_to_error_summary(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_converts_gather_exceptions_to_error_summary(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.asyncio, "sleep", AsyncMock())
         one = AsyncMock(side_effect=[{"total_processed": 1}, RuntimeError("boom")])
-        out = await dispatcher_mod._warm_then_gather(one, ["a", "b"], dispatcher_mod._SUMMARY_ZERO)
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            out = await dispatcher_mod._warm_then_gather(one, ["a", "b"], dispatcher_mod._SUMMARY_ZERO)
         assert out[1]["total_errors"] == 1
+        assert any(
+            "b" in r.message
+            and "RuntimeError: boom" in r.message
+            and "Continuing to the next entity" in r.message
+            and r.exc_info is not None
+            for r in caplog.records
+        )
 
     @pytest.mark.asyncio
     async def test_skips_delay_when_cache_warm_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -211,10 +226,24 @@ def batch_id() -> str:
 
 class TestRunUnified:
     @pytest.mark.asyncio
-    async def test_skips_when_network_unreachable(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_skips_when_network_unreachable(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: False)
-        out = await dispatcher_mod._run_unified({"task_key": "evaluate_jd"}, {}, False)
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            out = await dispatcher_mod._run_unified(
+                {"task_key": "evaluate_jd", "candidate_id": "cand-1"},
+                {"astral_candidate_id": "cand-1"},
+                False,
+            )
         assert out == dispatcher_mod._SUMMARY_ZERO
+        assert any(
+            "cand-1" in r.message
+            and "evaluate_jd" in r.message
+            and "network unreachable" in r.message
+            and "The batch is not running" in r.message
+            for r in caplog.records
+        )
 
     @pytest.mark.asyncio
     async def test_claims_jobs_and_clears_batch(self, monkeypatch: pytest.MonkeyPatch, batch_id: str) -> None:
@@ -731,7 +760,9 @@ class TestRunUnified:
 
 
 class TestCircuitBreaker:
-    def test_disables_task_after_zero_progress_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_disables_task_after_zero_progress_runs(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(
             dispatcher_mod.database,
             "get_recent_ledger_summaries",
@@ -739,8 +770,17 @@ class TestCircuitBreaker:
         )
         update = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", update)
-        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9, False)
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9)
         update.assert_called_once_with(9, enabled=False)
+        assert any(
+            "cand-1" in r.message
+            and "evaluate_jd" in r.message
+            and "0 passed / 0 failed" in r.message
+            and "This task will not AUTO until re-enabled" in r.message
+            for r in caplog.records
+        )
+        assert not any("CIRCUIT BREAKER" in r.message for r in caplog.records)
 
     def test_ignores_short_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -750,7 +790,7 @@ class TestCircuitBreaker:
         )
         update = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", update)
-        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9, False)
+        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9)
         update.assert_not_called()
 
     def test_keeps_enabled_when_recent_runs_show_progress(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -765,7 +805,7 @@ class TestCircuitBreaker:
         )
         update = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", update)
-        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9, False)
+        dispatcher_mod._check_circuit_breaker("evaluate_jd", "cand-1", 9)
         update.assert_not_called()
 
 
@@ -823,7 +863,7 @@ class TestRegistryControls:
         assert dispatcher_mod.run_task(5) is True
         assert started
 
-    def test_drain_and_cancel_report_registry_state(self) -> None:
+    def test_drain_and_cancel_report_registry_state(self, caplog: pytest.LogCaptureFixture) -> None:
         assert dispatcher_mod.drain_task(1)["reason"] == "not_running"
         assert dispatcher_mod.cancel_task(1)["reason"] == "not_running"
         with dispatcher_mod._registry_lock:
@@ -832,7 +872,9 @@ class TestRegistryControls:
                 "candidate_id": "cand-1",
                 "drain": False,
             }
-        assert dispatcher_mod.drain_task(2)["draining"] is True
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            assert dispatcher_mod.drain_task(2)["draining"] is True
+        assert any("cand-1 | dispatch drain requested for evaluate_jd" in r.message for r in caplog.records)
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[3] = {
                 "task_key": "evaluate_jd",
@@ -890,7 +932,7 @@ class TestRegistryControls:
             }
         assert dispatcher_mod.cancel_task(6)["reason"] == "already_done"
 
-    def test_cancel_task_sends_cancellation(self) -> None:
+    def test_cancel_task_sends_cancellation(self, caplog: pytest.LogCaptureFixture) -> None:
         loop = MagicMock()
         asyncio_task = MagicMock()
         asyncio_task.done.return_value = False
@@ -901,9 +943,18 @@ class TestRegistryControls:
                 "loop": loop,
                 "asyncio_task": asyncio_task,
             }
-        out = dispatcher_mod.cancel_task(7)
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            out = dispatcher_mod.cancel_task(7)
         assert out["killed"] is True
         loop.call_soon_threadsafe.assert_called_once_with(asyncio_task.cancel)
+        assert any(
+            "cand-1" in r.message
+            and "evaluate_jd" in r.message
+            and "Cancel sent" in r.message
+            and "The running batch is being stopped" in r.message
+            for r in caplog.records
+        )
+        assert not any("cancel_task(" in r.message for r in caplog.records)
 
 
 class TestNowIso:
@@ -921,14 +972,26 @@ def test_current_agent_task_run_next_missing_agent_task_row(monkeypatch: pytest.
 
 class TestDispatchOne:
     @pytest.mark.asyncio
-    async def test_skips_without_candidate_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_skips_without_candidate_context(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda candidate_id: None)
-        await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        assert any("skipped — no candidate or API key" in r.message for r in caplog.records)
+        assert any("This task is not starting" in r.message for r in caplog.records)
+        assert not any(r.levelname == "ERROR" for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_skips_without_api_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_skips_without_api_key(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
-        await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one({"id": 1, "task_key": "evaluate_jd", "candidate_id": "cand-1"})
+        assert any("skipped — no candidate or API key" in r.message for r in caplog.records)
+        assert any("This task is not starting" in r.message for r in caplog.records)
+        assert not any(r.levelname == "ERROR" for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_run_next_chain_skips_dispatch_level_ledger(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1101,10 +1164,10 @@ class TestDispatchOne:
 
 
 class TestAst841DispatchTerminalLogging:
-    """AST-841: terminal ERROR/WARNING app_log lines align ledger status with log severities."""
+    """AST-841: terminal ERROR/INFO app_log lines align ledger status with log severities."""
 
     @pytest.mark.asyncio
-    async def test_interrupted_dispatch_emits_terminal_error_log(
+    async def test_interrupted_dispatch_emits_killed_warning(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         monkeypatch.setattr(
@@ -1125,15 +1188,56 @@ class TestAst841DispatchTerminalLogging:
         task = {"id": 41, "task_key": "inflow_discovery", "candidate_id": "cand-1", "auto_mode": 0}
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[41] = {"asyncio_task": None}
-        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
             await dispatcher_mod._dispatch_one(task)
         assert any(
-            "batch finished INTERRUPTED" in r.message and "inflow_discovery" in r.message
+            "Killed by admin" in r.message
+            and "inflow_discovery" in r.message
+            and "cand-1" in r.message
+            and "The batch is stopping" in r.message
             for r in caplog.records
         )
+        assert not any("KILLED by admin" in r.message for r in caplog.records)
+        assert not any("batch finished" in r.message for r in caplog.records)
+        assert not any("Truncating the batch" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_completed_with_errors_emits_terminal_warning_log(
+    async def test_failed_dispatch_emits_one_exception_with_facts(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_api_key": "key"},
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=RuntimeError("boom")))
+        task = {
+            "id": 43,
+            "task_key": "evaluate_jd",
+            "candidate_id": "cand-1",
+            "entity_type": "job",
+            "auto_mode": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[43] = {"asyncio_task": None}
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(task)
+        errors = [r for r in caplog.records if r.levelname == "ERROR"]
+        assert len(errors) == 1
+        msg = errors[0].message
+        assert "cand-1 | dispatch job evaluate_jd" in msg
+        assert "RuntimeError: boom" in msg
+        assert "Truncating the batch" in msg
+        assert errors[0].exc_info is not None
+        assert "batch finished" not in msg
+
+    @pytest.mark.asyncio
+    async def test_completed_with_errors_emits_terminal_info_log(
         self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         monkeypatch.setattr(
@@ -1157,51 +1261,120 @@ class TestAst841DispatchTerminalLogging:
             accumulated["total_processed"] = 5
 
         monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock(side_effect=_bump))
+        monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda task_key: "")
         task = {"id": 42, "task_key": "inflow_discovery", "candidate_id": "cand-1", "auto_mode": 0}
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[42] = {"asyncio_task": None}
-        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
             await dispatcher_mod._dispatch_one(task)
         assert any(
-            "batch finished COMPLETED with errors" in r.message
-            and "errors=2" in r.message
-            and "inflow_discovery" in r.message
+            r.levelname == "INFO"
+            and "task completed: inflow_discovery" in r.message
+            and "error:2" in r.message
+            and r.message.startswith("cand-1 | dispatch")
             for r in caplog.records
         )
+        assert any(
+            "starting inflow_discovery" in r.message and r.message.startswith("cand-1 | dispatch")
+            for r in caplog.records
+        )
+        assert not any("Dispatching " in r.message for r in caplog.records)
+        assert not any("batch finished COMPLETED with errors" in r.message for r in caplog.records)
+        assert not any("run_next:" in r.message for r in caplog.records)
+
+    def test_completed_pipe_appends_run_next_when_set(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda task_key: "evaluate_jd")
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            dispatcher_mod._log_dispatch_task_completed(
+                "cand-1", "job", "qualify_job_listings", 1, 0, 0, "batch-1"
+            )
+        assert any(
+            r.levelname == "INFO"
+            and r.name == "src.core.dispatcher"
+            and "task completed: qualify_job_listings" in r.message
+            and "run_next: evaluate_jd" in r.message
+            for r in caplog.records
+        )
+
+    def test_completed_pipe_omits_run_next_when_empty(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "_current_agent_task_run_next", lambda task_key: "")
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            dispatcher_mod._log_dispatch_task_completed(
+                "cand-1", "job", "qualify_job_listings", 1, 0, 0, "batch-1"
+            )
+        assert any("task completed: qualify_job_listings" in r.message for r in caplog.records)
+        assert not any("run_next:" in r.message for r in caplog.records)
 
 
 class TestRunDispatchLoop:
     @pytest.mark.asyncio
-    async def test_skips_when_queue_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_skips_when_queue_below_min_count(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 0)
         run = AsyncMock()
         monkeypatch.setattr(dispatcher_mod, "_run_task", run)
         accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
-        task = {"id": 1, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 1, "min_count": 2}
-        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        task = {
+            "id": 1,
+            "task_key": "evaluate_jd",
+            "candidate_id": "cand-1",
+            "entity_type": "job",
+            "trigger_state": "JD_READY",
+            "auto_mode": 1,
+            "min_count": 2,
+        }
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
         run.assert_not_awaited()
+        assert any(
+            "cand-1 | dispatch job skipped evaluate_jd" in r.message
+            and "0 available (min_count=2)" in r.message
+            for r in caplog.records
+        )
+        assert not any(r.levelname == "WARNING" and "skipped evaluate_jd" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_stops_after_drain_flag(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_stops_after_drain_flag(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
         monkeypatch.setattr(dispatcher_mod, "_run_task", AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}))
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[9] = {"drain": True}
         accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
-        task = {"id": 9, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 1, "min_count": 1}
-        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        task = {"id": 9, "task_key": "evaluate_jd", "candidate_id": "cand-1", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 1, "min_count": 1}
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
         assert accumulated["total_processed"] == 0
+        assert any("cand-1 | dispatch job drain stopping evaluate_jd after 0 run(s)" in r.message for r in caplog.records)
+        assert not any("drain flag set" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
-    async def test_stops_when_batch_processes_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_stops_when_batch_processes_zero(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
         monkeypatch.setattr(dispatcher_mod, "_run_task", AsyncMock(return_value=dispatcher_mod._SUMMARY_ZERO))
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
         accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
-        task = {"id": 10, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 0, "min_count": 1}
-        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        task = {
+            "id": 10,
+            "task_key": "evaluate_jd",
+            "candidate_id": "cand-1",
+            "entity_type": "job",
+            "trigger_state": "JD_READY",
+            "auto_mode": 0,
+            "min_count": 1,
+        }
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
         assert accumulated["total_processed"] == 0
+        assert any("cand-1 | dispatch job stopping evaluate_jd — 0 processed" in r.message for r in caplog.records)
+        assert not any("Loop mode" in r.message for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_honours_max_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1224,6 +1397,48 @@ class TestRunDispatchLoop:
         }
         await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
         assert accumulated["total_processed"] == 2
+
+    @pytest.mark.asyncio
+    async def test_sweep_ui_initiated_auto_is_one_batch(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
+        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {
+            "id": 11,
+            "task_key": "evaluate_jd",
+            "entity_type": "job",
+            "trigger_state": "JD_READY",
+            "auto_mode": 1,
+            "min_count": 1,
+            "max_runs": 10,
+            "_ui_initiated": True,
+        }
+        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        run.assert_awaited_once()
+        assert accumulated["total_processed"] == 1
+
+    @pytest.mark.asyncio
+    async def test_click_honours_max_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
+        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
+        monkeypatch.setattr(dispatcher_mod, "_run_task", run)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
+        task = {
+            "id": 11,
+            "task_key": "evaluate_jd",
+            "entity_type": "job",
+            "trigger_state": "JD_READY",
+            "auto_mode": 0,
+            "min_count": 1,
+            "max_runs": 3,
+            "_ui_initiated": True,
+        }
+        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        assert run.await_count == 3
+        assert accumulated["total_processed"] == 3
 
     @pytest.mark.asyncio
     async def test_stops_after_first_run_when_max_runs_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1249,7 +1464,9 @@ class TestRunDispatchLoop:
         assert run.await_count == 2
 
     @pytest.mark.asyncio
-    async def test_logs_stop_after_prior_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_logs_stop_after_prior_runs(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         counts = iter([5, 0])
         monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: next(counts))
         monkeypatch.setattr(
@@ -1259,9 +1476,23 @@ class TestRunDispatchLoop:
         )
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
         accumulated = dict(dispatcher_mod._SUMMARY_ZERO)
-        task = {"id": 14, "task_key": "evaluate_jd", "entity_type": "job", "trigger_state": "JD_READY", "auto_mode": 1, "min_count": 1, "max_runs": 0}
-        await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
+        task = {
+            "id": 14,
+            "task_key": "evaluate_jd",
+            "candidate_id": "cand-1",
+            "entity_type": "job",
+            "trigger_state": "JD_READY",
+            "auto_mode": 1,
+            "min_count": 1,
+            "max_runs": 0,
+        }
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            await dispatcher_mod._run_dispatch_loop({}, task, "evaluate_jd", "batch-1", accumulated, None)
         assert accumulated["total_processed"] == 1
+        assert any(
+            "cand-1 | dispatch job stopping evaluate_jd — 0 remaining after 1 run(s)" in r.message
+            for r in caplog.records
+        )
 
 
 class TestAst802InflowDiscoveryDebug:
@@ -1288,8 +1519,8 @@ class TestAst802InflowDiscoveryDebug:
         }
         await dispatcher_mod._run_dispatch_loop({}, task, "inflow_discovery", "batch-802", accumulated, None)
         run.assert_not_awaited()
-        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
-        assert any("eligibility:" in d for d in details)
+        joined = [" ".join(str(a) for a in c.args) for c in log.debug.call_args_list]
+        assert any("eligibility:" in d for d in joined)
 
 
 class TestAst814InflowDiscoveryDebug:
@@ -1319,23 +1550,26 @@ class TestAst814InflowDiscoveryDebug:
         }
         await dispatcher_mod._run_dispatch_loop({}, task, "inflow_discovery", "batch-814", accumulated, None)
         run.assert_not_awaited()
-        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
-        assert any("freq_hrs=168" in d for d in details)
-        assert not any("scan_interval_hours" in d for d in details)
+        joined = [" ".join(str(a) for a in c.args) for c in log.debug.call_args_list]
+        assert any("freq_hrs=168" in d for d in joined)
+        assert not any("scan_interval_hours" in d for d in joined)
 
 
 class TestTaskThreadTarget:
-    def test_cleans_registry_after_loop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_cleans_registry_after_loop(self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
         loop = MagicMock()
         loop.run_until_complete = MagicMock()
         loop.close = MagicMock()
         monkeypatch.setattr(dispatcher_mod.asyncio, "new_event_loop", lambda: loop)
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[15] = {}
-        dispatcher_mod._task_thread_target(15, {"task_key": "evaluate_jd"})
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            dispatcher_mod._task_thread_target(15, {"task_key": "evaluate_jd", "candidate_id": "cand-1"})
         assert 15 not in dispatcher_mod._task_registry
         loop.close.assert_called_once()
         loop.run_until_complete.assert_called_once()
+        assert any("cand-1 | dispatch thread exited for evaluate_jd" in r.message for r in caplog.records)
+        assert not any("thread exited and cleared from registry" in r.message for r in caplog.records)
 
     def test_skips_loop_assignment_without_registry_entry(self, monkeypatch: pytest.MonkeyPatch) -> None:
         loop = MagicMock()
@@ -1356,7 +1590,9 @@ class TestScheduler:
         dispatcher_mod.start_scheduler()
         created.assert_not_called()
 
-    def test_start_scheduler_marks_stale_ledgers(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_start_scheduler_marks_stale_ledgers(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         dispatcher_mod._tick_thread = None
         stale = MagicMock(return_value=2)
         monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", stale)
@@ -1376,9 +1612,15 @@ class TestScheduler:
                 return True
 
         monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
-        dispatcher_mod.start_scheduler()
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            dispatcher_mod.start_scheduler()
         stale.assert_called_once()
         assert started
+        assert any(
+            "2 stale RUNNING ledger row(s) marked INTERRUPTED on startup" in r.message
+            and "Those batches will show INTERRUPTED" in r.message
+            for r in caplog.records
+        )
 
     def test_start_scheduler_skips_stale_warning_when_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
         dispatcher_mod._tick_thread = None
@@ -1486,11 +1728,43 @@ class TestScheduler:
         clear.assert_called()
         assert len(wait_calls) == 2
 
-    def test_tick_loop_swallows_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_tick_loop_swallows_errors(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
         monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", MagicMock(side_effect=RuntimeError("tick")))
         _run_one_tick(monkeypatch)
-        with pytest.raises(StopIteration):
-            dispatcher_mod._tick_loop()
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            with pytest.raises(StopIteration):
+                dispatcher_mod._tick_loop()
+        assert any(
+            "Tick loop" in r.message
+            and "RuntimeError: tick" in r.message
+            and "The scheduler is still running; the next tick will retry" in r.message
+            and r.exc_info is not None
+            for r in caplog.records
+        )
+        assert not any("Tick loop error" in r.message for r in caplog.records)
+
+    def test_tick_loop_scheduled_query_error_continues(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "run_due_scheduled_queries",
+            MagicMock(side_effect=RuntimeError("sql")),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [])
+        _run_one_tick(monkeypatch)
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            with pytest.raises(StopIteration):
+                dispatcher_mod._tick_loop()
+        assert any(
+            "Scheduled query tick" in r.message
+            and "RuntimeError: sql" in r.message
+            and "due AUTO tasks will still spawn" in r.message
+            and r.exc_info is not None
+            for r in caplog.records
+        )
 
 
 class TestAst875SetCandidateDispatchTasksFromTemplate:
@@ -2309,14 +2583,14 @@ class TestAst1134MeteoriteEmailDispatchProvision:
     reason="AST-1022 product not on this publish tip",
 )
 class TestAst1022HonorAutoOffStageDispatch:
-    """AST-1022 → AST-1252: stage AUTO-off Style D uses craft_get_rubric stage key."""
+    """AST-1022 → AST-1252: stage AUTO-off debug uses craft_get_rubric stage key."""
 
     def test_stage_auto_mode_false_in_config(self) -> None:
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
         assert arts["auto_mode"] is False
         assert arts["task_key"] == "craft_get_rubric"
 
-    def test_debug_log_auto_off_stage_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_debug_log_auto_off_stage_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rows = [
             {
                 "id": 1,
@@ -2361,9 +2635,10 @@ class TestAst1022HonorAutoOffStageDispatch:
         monkeypatch.setattr(dispatcher_mod, "run_task", run)
         dispatcher_mod._debug_log_auto_off_stage_skips()
         run.assert_not_called()
-        log.set_debug_flag.assert_called_once_with(True)
-        assert log.debug_index.call_count == 1
-        assert log.debug_index.call_args.kwargs["identifier"] == "craft_get_rubric"
+        joined = [" ".join(str(a) for a in c.args) for c in log.debug.call_args_list]
+        assert any("Beginning AUTO-off skip loop" in m for m in joined)
+        assert any("craft_get_rubric" in m for m in joined)
+        assert any("End AUTO-off skip loop" in m for m in joined)
 
     def test_debug_log_skips_when_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rows = [
@@ -2387,7 +2662,7 @@ class TestAst1022HonorAutoOffStageDispatch:
         log = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "logger", log)
         dispatcher_mod._debug_log_auto_off_stage_skips()
-        log.set_debug_flag.assert_not_called()
+        log.debug.assert_not_called()
 
     def test_tick_loop_calls_auto_off_debug_helper_before_spawn(
         self, monkeypatch: pytest.MonkeyPatch
@@ -2451,7 +2726,7 @@ class TestAst1090GazeEmailDispatchOne:
     async def test_calls_runner_with_bound_ledger_cid(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.core import meteorite_email as ge_mod
+        from src.core import meteorite as meteorite_mod
 
         get_cand = MagicMock(side_effect=AssertionError("must not load candidate"))
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", get_cand)
@@ -2463,7 +2738,7 @@ class TestAst1090GazeEmailDispatchOne:
                 "total_errors": 0,
             }
         )
-        monkeypatch.setattr(ge_mod, "run_meteorite_email", runner)
+        monkeypatch.setattr(meteorite_mod, "check_inbox", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -2492,11 +2767,13 @@ class TestAst1090GazeEmailDispatchOne:
         assert save_ledger.call_args.args[2] == "cand-bound"
 
     @pytest.mark.asyncio
-    async def test_skips_unbound_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.core import meteorite_email as ge_mod
+    async def test_skips_unbound_candidate_id(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
 
         runner = AsyncMock()
-        monkeypatch.setattr(ge_mod, "run_meteorite_email", runner)
+        monkeypatch.setattr(meteorite_mod, "check_inbox", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -2510,9 +2787,196 @@ class TestAst1090GazeEmailDispatchOne:
         }
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[91] = {"asyncio_task": None}
-        await dispatcher_mod._dispatch_one(task)
+        with caplog.at_level("WARNING", logger="src.core.dispatcher"):
+            await dispatcher_mod._dispatch_one(task)
         runner.assert_not_awaited()
         save_ledger.assert_not_called()
+        assert any(
+            "mailbox requires bound candidate_id" in r.message
+            and "This task is not starting" in r.message
+            for r in caplog.records
+        )
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "_is_meteorite_ingress_transition_task_key"),
+    reason="AST-1560 meteorite ingress dispatch branch not on this publish tip",
+)
+class TestAst1560IngressTransitionDispatchOne:
+    """AST-1560: _dispatch_one routes stage/scrape/land transition runners."""
+
+    @pytest.mark.asyncio
+    async def test_routes_stage_runner_with_entity_batch_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_stage_meteorite", runner)
+        monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", AsyncMock())
+        monkeypatch.setattr(meteorite_mod, "run_land_meteorite", AsyncMock())
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 1)
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        tk = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]
+        task = {
+            "id": 1560,
+            "task_key": tk,
+            "candidate_id": None,
+            "auto_mode": 1,
+            "debug": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[1560] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        runner.assert_awaited_once()
+        assert runner.await_args.args[0]["entity_batch_id"]
+        assert runner.await_args.args[0]["entity_batch_id"].startswith(f"{tk}-")
+        save_ledger.assert_called_once()
+        assert save_ledger.call_args.args[1] == tk
+
+    @pytest.mark.asyncio
+    async def test_click_loops_to_max_runs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_land_meteorite", runner)
+        monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", AsyncMock())
+        monkeypatch.setattr(meteorite_mod, "run_stage_meteorite", AsyncMock())
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "count_eligible_for_dispatch_task", lambda task: 5)
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        tk = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]
+        task = {
+            "id": 15602,
+            "task_key": tk,
+            "candidate_id": "somerset",
+            "auto_mode": 0,
+            "debug": 0,
+            "max_runs": 2,
+            "_ui_initiated": True,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[15602] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        assert runner.await_count == 2
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "_is_meteorite_bot_blocked_notify_task_key"),
+    reason="AST-1561 bot_blocked notify dispatch branch not on this publish tip",
+)
+class TestAst1561BotBlockedNotifyDispatchOne:
+    """AST-1561: _dispatch_one routes notify runner with entity_batch_id."""
+
+    @pytest.mark.asyncio
+    async def test_routes_notify_runner_with_entity_batch_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_notify_meteorite_bot_blocked", runner)
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        loop = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
+        tk = dispatcher_mod.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
+        task = {
+            "id": 1561,
+            "task_key": tk,
+            "candidate_id": None,
+            "auto_mode": 1,
+            "debug": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[1561] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        runner.assert_awaited_once()
+        assert runner.await_args.args[0]["entity_batch_id"].startswith(f"{tk}-")
+        loop.assert_not_called()
+        save_ledger.assert_called_once()
+        assert save_ledger.call_args.args[1] == tk
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "_is_meteorite_retention_task_key"),
+    reason="AST-1562 retention dispatch branch not on this publish tip",
+)
+class TestAst1562RetentionDispatchOne:
+    """AST-1562: _dispatch_one routes retention runner with entity_batch_id."""
+
+    @pytest.mark.asyncio
+    async def test_routes_retention_runner_with_entity_batch_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 2,
+                "total_passed": 2,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_meteorite_retention", runner)
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        loop = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
+        tk = dispatcher_mod.METEORITE_RETENTION_CONFIG["task_key"]
+        task = {
+            "id": 1562,
+            "task_key": tk,
+            "candidate_id": None,
+            "auto_mode": 1,
+            "debug": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[1562] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        runner.assert_awaited_once()
+        assert runner.await_args.args[0]["entity_batch_id"].startswith(f"{tk}-")
+        loop.assert_not_called()
+        save_ledger.assert_called_once()
+        assert save_ledger.call_args.args[1] == tk
 
 
 @pytest.mark.skipif(
@@ -2568,7 +3032,7 @@ class TestAst1135GazeEmailDueTasks:
         assert due[0]["available_count"] == 3
 
     def test_freq_blocks_and_inbox_error_returns_empty(
-        self, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         tk = dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         rows = [
@@ -2594,7 +3058,16 @@ class TestAst1135GazeEmailDueTasks:
             MagicMock(side_effect=RuntimeError("gmail down")),
         )
         monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda t: True)
-        assert dispatcher_mod._meteorite_email_due_tasks() == []
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            assert dispatcher_mod._meteorite_email_due_tasks() == []
+        assert any(
+            "AUTO mailbox bind counts" in r.message
+            and "RuntimeError: gmail down" in r.message
+            and "AUTO mailbox will not start this tick" in r.message
+            and r.exc_info is not None
+            for r in caplog.records
+        )
+        assert not any("inbox bind counts failed" in r.message for r in caplog.records)
 
     def test_run_task_enriches_gaze_available_count(
         self, monkeypatch: pytest.MonkeyPatch
@@ -2626,4 +3099,172 @@ class TestAst1135GazeEmailDueTasks:
         monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
         assert dispatcher_mod.run_task(55, ui_initiated=True) is True
         assert captured[0]["available_count"] == 4
+
+    def test_run_task_mailbox_avail_failure_still_starts(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        tk = dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        task = {
+            "id": 56,
+            "task_key": tk,
+            "candidate_id": "cand-x",
+            "entity_type": None,
+            "trigger_state": None,
+            "auto_mode": 0,
+            "debug": 0,
+        }
+        monkeypatch.setattr(dispatcher_mod.database, "get_dispatch_task", lambda tid: dict(task))
+        monkeypatch.setattr(
+            "src.core.inbox.count_inbox_messages_bound_to_candidate",
+            MagicMock(side_effect=RuntimeError("bind down")),
+        )
+        captured: list[dict] = []
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                captured.append(args[1] if len(args) > 1 else {})
+
+            def start(self) -> None:
+                return None
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        with caplog.at_level("ERROR", logger="src.core.dispatcher"):
+            assert dispatcher_mod.run_task(56) is True
+        assert captured[0]["available_count"] == 0
+        assert any(
+            "cand-x" in r.message
+            and tk in r.message
+            and "RuntimeError: bind down" in r.message
+            and "The task is still starting; Avail is 0" in r.message
+            and r.exc_info is not None
+            for r in caplog.records
+        )
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "correct_meteorite_ingress_dispatch_entity_types"),
+    reason="AST-1623 meteorite entity_type correction not on this publish tip",
+)
+class TestAst1623MeteoriteLedgerAndBackfill:
+    """AST-1623: ingress/notify ledger entity_type=meteorite + NULL→meteorite correction."""
+
+    @pytest.mark.asyncio
+    async def test_ingress_ledger_entity_type_meteorite(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_stage_meteorite", runner)
+        monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", AsyncMock())
+        monkeypatch.setattr(meteorite_mod, "run_land_meteorite", AsyncMock())
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock())
+        tk = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]
+        task = {"id": 1623, "task_key": tk, "candidate_id": None, "auto_mode": 1, "debug": 0}
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[1623] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        assert save_ledger.call_args.kwargs.get("entity_type") == "meteorite"
+
+    @pytest.mark.asyncio
+    async def test_notify_ledger_entity_type_meteorite(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import meteorite as meteorite_mod
+
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 1,
+                "total_passed": 1,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(meteorite_mod, "run_notify_meteorite_bot_blocked", runner)
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", AsyncMock())
+        tk = dispatcher_mod.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
+        task = {"id": 16231, "task_key": tk, "candidate_id": None, "auto_mode": 1, "debug": 0}
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[16231] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        assert save_ledger.call_args.kwargs.get("entity_type") == "meteorite"
+
+    def test_correct_null_entity_type_ingress_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ingress = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG
+        notify_tk = dispatcher_mod.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
+        rows = [
+            {"id": 1, "task_key": ingress["stage_task_key"], "entity_type": None},
+            {"id": 2, "task_key": ingress["scrape_task_key"], "entity_type": ""},
+            {"id": 3, "task_key": ingress["land_task_key"], "entity_type": "meteorite"},
+            {"id": 4, "task_key": notify_tk, "entity_type": None},
+            {"id": 5, "task_key": "meteorite_retention", "entity_type": None},
+            {"id": 6, "task_key": "grade_do", "entity_type": None},
+        ]
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        updates: list[tuple[int, dict]] = []
+
+        def _upd(tid: int, **kwargs):
+            updates.append((int(tid), dict(kwargs)))
+
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", _upd)
+        out = dispatcher_mod.correct_meteorite_ingress_dispatch_entity_types()
+        assert out["scanned"] == 6
+        assert out["updated"] == 3
+        assert sorted(updates) == [
+            (1, {"entity_type": "meteorite"}),
+            (2, {"entity_type": "meteorite"}),
+            (4, {"entity_type": "meteorite"}),
+        ]
+        # Second call: already-corrected rows are no-ops.
+        rows[0]["entity_type"] = "meteorite"
+        rows[1]["entity_type"] = "meteorite"
+        rows[3]["entity_type"] = "meteorite"
+        updates.clear()
+        out2 = dispatcher_mod.correct_meteorite_ingress_dispatch_entity_types()
+        assert out2["updated"] == 0
+        assert updates == []
+
+    def test_start_scheduler_invokes_entity_type_correction(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        dispatcher_mod._tick_thread = None
+        monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0))
+        _stub_scheduler_boot_provisions(monkeypatch)
+        corr = MagicMock(return_value={"scanned": 2, "updated": 1, "task_keys": ["stage_meteorite"]})
+        monkeypatch.setattr(dispatcher_mod, "correct_meteorite_ingress_dispatch_entity_types", corr)
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon = daemon
+
+            def start(self) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        with caplog.at_level("INFO", logger="src.core.dispatcher"):
+            dispatcher_mod.start_scheduler()
+        corr.assert_called_once_with()
+        assert any(
+            "Corrected meteorite ingress/notify entity_type — scanned 2, updated 1" in r.message
+            for r in caplog.records
+        )
+        assert any("Scheduler started — tick every" in r.message and "max AUTO threads" in r.message for r in caplog.records)
 

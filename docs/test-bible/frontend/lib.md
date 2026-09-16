@@ -216,7 +216,7 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- |
 | Breakdown lookup + title format | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-1348 phase score header helpers`** |
 
-**Broken / obsolete:** none.
+**Broken / obsolete:** none — new helper.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
@@ -360,3 +360,32 @@ npm run test:component -- \
 
 - `docs/test-bible/frontend/lib.md` — `7be9f2eaeb94e425f4f8e6bd1dca957c1c3753c3`
 
+---
+
+### AST-1585 · AST-1571
+
+**Publish:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`.
+
+`jobBaseResumeArtifactId` + `fetchOperativeBaseResume` for JAR source panel. Modal wiring: **`docs/test-bible/frontend/components.md`** § AST-1585.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pin parse + fetch helper | `recommendedJobReport.tsx` | **obsolete AST-1599** — JAR helpers deleted with panel |
+
+**Broken / obsolete under AST-1599:** `recommendedJobReport — AST-1585 operative base_resume helpers` describe removed.
+
+**Integration:** none.
+
+---
+
+### AST-1593 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`.
+
+`printResumeVisible` / `materialsPreviewVisible` treat hydrated `job_resume` as SoT — `resume_content` is not required for job-resume visibility.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| print/materials SoT | `recommendedJobReport.tsx` | **`recommendedJobReport — AST-1593 catalog SoT`** + revised AST-581/948/1100 print helpers |
+
+**Broken / obsolete this pass:** asserts that `resume_content` alone makes print/materials visible.

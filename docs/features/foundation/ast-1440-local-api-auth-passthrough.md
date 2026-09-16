@@ -1,3 +1,129 @@
+<!-- linear-archive: AST-1440 archived 2026-09-09 -->
+
+## Linear archive (AST-1440)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1440/local-api-auth-passthrough-disable-authentication-on-localhost  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1438 — Disable authentication on localhost  
+**Blocked by / blocks / related:** parent: AST-1438; blocks: AST-1441
+
+### Description
+
+## What this implements
+
+When deploy env is `local`, protected API auth does not validate or refresh a Stytch token; it sets the synthetic always-admin local operator and answers a public non-secret "local auth is off" read the SPA can call before login. Documents the local exception in Code Rules auth and authors `pattern.auth.local-deploy-passthrough` for Archie approval. Does not own React Login, RequireAuth, or session extend (child 2).
+
+## Citations
+
+`pattern.auth.local-deploy-passthrough` (new), `pattern.config.config-block`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.config.config-source-of-truth`, `astral.config.secrets-and-env-specific-from-environ`, `astral.standards.no-hardcoded-sets`, `astral.layers.import-direction`.
+
+## Acceptance criteria
+
+- [X] 1. With deploy env `local`, opening the app on localhost with no valid Stytch session — protected APIs including `/api/me` and `/api/nav_config` return 200. Admin surfaces are available.
+- [X] 2. Those local requests do not log `Bearer token validation failed` or `Stytch session_not_found`.
+- [X] 3. With deploy env `staging`, `production`, or unset: missing/invalid Bearer still 401.
+- [X] 4. Every previously protected route still carries `@require_auth` (or `@require_admin`). Intentionally open routes stay open.
+
+## Boundaries
+
+- [X] Does not own React Login, RequireAuth, or session extend (sibling 2). Does not disable auth when deploy env is not `local`. Does not remove `@require_auth` / `@require_admin` from routes. Does not change `@require_ip` or Stytch Dashboard / live-project JWT validation / session duration.
+
+## Notes for planning
+
+Child 1 introduces `pattern.auth.local-deploy-passthrough` for Archie approval. Gate is `ASTRAL_DEPLOY_ENV=local`. Local operator is synthetic always-admin; identity literals in auth config.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1438/AST-1440-local-api-auth-passthrough` @ `8f046772` (`test(AST-1440)` `071d9ed6`). Return pass: integration 401 isolation uses `setenv(staging)` so `load_dotenv()` cannot restore worktree `.env` `local`.
+
+1. **Existing coverage / isolation:** UI autouse `delenv` (config already imported at collection). Integration autouse `setenv("ASTRAL_DEPLOY_ENV", "staging")` — not `delenv`.
+   * `tests/component/ui/test_auth.py::TestRequireAuth::test_missing_bearer_returns_401`
+   * `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_me_requires_bearer`
+   * `tests/integration/scenarios/test_candidate_nav_api.py::test_unauthenticated_nav_config_returns_401`
+2. **Broken / obsolete:** those 401 paths — harness isolation only; 401 assertion unchanged.
+3. **Gaps (new):** local decorator skip, operator helpers, public `/api/auth_passthrough`, local `/api/me` + `/api/nav_config`.
+   * `tests/component/ui/test_auth.py::TestAst1440LocalAuthPassthrough`
+   * `tests/component/utils/test_auth.py::TestAst1440LocalOperator`
+   * `tests/component/ui/api/test_api_system.py::TestAst1440AuthPassthroughRoute`
+
+**Bible shasums** (`git show origin/sub/AST-1438/AST-1440-local-api-auth-passthrough:<path> | shasum`):
+
+* `docs/test-bible/ui/auth.md` `ce36be494e00dea2c54fb1da0abea6bd3f90bc5f`
+* `docs/test-bible/utils/auth.md` `8ad421a5307231833f28a350eb075f47b10d36bf`
+* `docs/test-bible/ui/api/api_system.md` `144c8dce7e1e62fe96107af19bdc70ba302d0956`
+* `docs/test-bible/integration/README.md` `9fe27fabe79df380139515bc8dcefd9796962573`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/test_auth.py::TestAst1440LocalAuthPassthrough \
+  tests/component/ui/test_auth.py::TestRequireAuth::test_missing_bearer_returns_401 \
+  tests/component/utils/test_auth.py::TestAst1440LocalOperator \
+  tests/component/ui/api/test_api_system.py::TestAst1440AuthPassthroughRoute \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_me_requires_bearer \
+  -q
+```
+
+```bash
+./scripts/testing/run_integration_tests.sh \
+  tests/integration/scenarios/test_candidate_nav_api.py::test_unauthenticated_nav_config_returns_401 \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Comments
+
+#### radia — 2026-08-19T03:00:37.231Z
+[code-rubric] PROCEED (Commit: 8f04677299acd2d66b7177b27d7133ca7c6aadfe) local API passthrough
+
+#### betty — 2026-08-19T02:49:22.302Z
+[check-linear]
+- Tests updated for [qa-handoff]: `_integration_fail_closed_deploy_env` now `setenv("ASTRAL_DEPLOY_ENV", "staging")` so `config.py` `load_dotenv()` cannot restore `.env` `local`. Unauthenticated nav 401 assertion unchanged.
+- Manifest item 6 same path; fixture only.
+- `origin/sub/AST-1438/AST-1440-local-api-auth-passthrough` @ `8f046772` (`071d9ed6`)
+- Ada Lovelace for test-child
+
+#### ada — 2026-08-19T02:44:31.414Z
+[qa-handoff]
+
+Integration manifest item failed; component items were green.
+
+Command:
+```bash
+./scripts/testing/run_integration_tests.sh \
+  tests/integration/scenarios/test_candidate_nav_api.py::test_unauthenticated_nav_config_returns_401 \
+  -q
+```
+
+Failure: `assert 200 == 401` on unauthenticated `GET /api/nav_config`.
+
+Why test/harness, not product: `@require_auth` correctly passthrough-200s when `is_local_deploy_env()` is true. Worktree `.env` has `ASTRAL_DEPLOY_ENV=local`. `_integration_fail_closed_deploy_env` `monkeypatch.delenv("ASTRAL_DEPLOY_ENV")` runs first, then `integration_app` / `seeded_candidate` import `config.py`, which calls `load_dotenv()` and puts `local` back (dotenv fills missing keys; it would not override a still-set value). Component 401s pass because those modules import config at collection, then autouse `delenv` sticks with no later `load_dotenv`.
+
+Please isolate after config import, or `monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")` (non-empty, non-local) so `load_dotenv()` cannot restore `local`. Do not weaken the 401 assertion.
+
+@Betty White
+
+#### betty — 2026-08-19T02:42:02.853Z
+`origin/sub/AST-1438/AST-1440-local-api-auth-passthrough` @ `39f4b7c7` · passthrough tests landed
+
+#### joan — 2026-08-19T02:27:08.711Z
+[plan-rubric] PROCEED (Commit: a0891a19) Local API passthrough plan
+
+#### ada — 2026-08-19T02:16:59.386Z
+`origin/sub/AST-1438/AST-1440-local-api-auth-passthrough` @ `a0891a19` · local API passthrough
+
+---
+
 # Local API auth passthrough
 
 **Linear:** [AST-1440](https://linear.app/astralcareermatch/issue/AST-1440/local-api-auth-passthrough-disable-authentication-on-localhost)

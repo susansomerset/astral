@@ -7,6 +7,7 @@ Public API lives on `src.data.database`. Cluster files under this directory map 
 | `test_schema.py` | `table_columns`, `apply_config_table_upsert`, encryption helpers |
 | `test_companies.py` | `company` |
 | `test_jobs.py` | `job` |
+| `test_meteorites.py` | `meteorite` (AST-1557 staging spine) |
 | `test_candidates.py` | `candidate` |
 | `test_agents.py` | `agent` |
 | `test_agent_tasks.py` | `agent_task` |

@@ -1,3 +1,74 @@
+<!-- linear-archive: AST-1501 archived 2026-09-09 -->
+
+## Linear archive (AST-1501)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1501/gap-carve-out-seed-statutes-for-dispatch-task-operator-curation  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1456 — DO NOT OVERWRITE DISPATCH_TASK IN ANY ENVIRONMENT EVER  
+**Blocked by / blocks / related:** parent: AST-1456
+
+### Description
+
+## What this implements
+
+gap (canon): Carve out / update seed statutes so operator curation is the sole dispatch_task content writer — matches AST-1456 ban (no boot/catalog ensure of dispatch_task rows).
+
+## As-is
+
+astral.seed.archie-catalog-wins (and sibling seed statutes) still require or imply boot provision re-inserts deleted meteorite/dispatch_task catalog rows.
+
+## To-be
+
+Canon reflects AST-1456: all dispatch_task content is operator-curated; boot/catalog ensure banned; sibling seed statutes updated accordingly.
+
+## Scope
+
+## Component scope
+
+* `canon/statutes/` entries for `astral.seed.archie-catalog-wins` — modified: carve out dispatch_task boot/catalog ensure ban.
+* Sibling seed statutes as needed: `astral.seed.operator-rows-stay-deleted`, `astral.seed.other-via-coverage-join`, `astral.dispatch.seed-auto-false` — modified: align bright line / examples with the ban.
+* `canon/patterns/` only if an established pattern example cites meteorite/gaze provision as required — modified examples only.
+
+## Technical scope
+
+* Statute statement/examples for archie-catalog-wins — modified: dispatch_task no longer re-inserted from METEORITE_DISPATCH_TASKS (or equivalent) at boot.
+* operator-rows-stay-deleted / other-via-coverage-join / seed-auto-false — modified prose/examples so they do not require provision paths that AST-1496 removes.
+* No product code in this gap child — product ban is AST-1496.
+
+## Notes for planning
+
+Joan board: astral.seed.archie-catalog-wins — dispatch_task boot/catalog ensure banned; operator curation sole content writer — carve out AST-1456 policy (+ sibling seed statutes).
+
+## Proposed change (make-fix)
+
+- [X] Carve out `dispatch_task` in `astral.seed.archie-catalog-wins`
+- [X] Expand `astral.seed.operator-rows-stay-deleted` (all rows operator-owned)
+- [X] Reframe `astral.seed.other-via-coverage-join` (no dispatch_task provision auth)
+- [X] Update `astral.dispatch.seed-auto-false` for ban + CLICK catalogs
+- [X] `canon/patterns/` re-checked — no provision-as-required examples to edit
+
+### Comments
+
+#### radia — 2026-08-26T16:25:16.154Z
+[code-rubric] PROCEED (Commit: de9f11ae) dispatch_task seed carve-out OK
+
+#### joan — 2026-08-26T16:08:16.568Z
+[board-joan]  CANON: OK
+
+context_tokens≈8000
+
+#### betty — 2026-08-26T16:07:30.817Z
+[board-betty] TESTS: OK
+
+#### hedy — 2026-08-26T16:05:04.875Z
+`origin/sub/AST-1456/AST-1501-gap-seed-statute-carveout` @ `259b675129ac519b564671cb511d660bc113f58f` · statute carve-out planned
+
+---
+
 # AST-1501 — gap: seed statute carve-out for dispatch_task operator curation
 
 Sibling gap of AST-1496 under mini-epic AST-1456. Stub for plan-fix.

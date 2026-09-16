@@ -137,6 +137,7 @@ class TestAst1229SurferBatchEntity:
         cid = _seed_candidate(db, "cand-jobs")
         batch = surfer_mod.create_surfer_batch(cid, ["https://ex.com/j"])
         bid = batch["batch_id"]
+        db.save_company("acme", state="IMPORTED", candidate_id=cid)
         db.save_job("job-surf-1", company="acme", state="NEW")
         db.save_job("job-surf-2", company="acme", state="NEW")
         surfer_mod.add_surfer_batch_job(bid, "job-surf-1")
@@ -145,7 +146,7 @@ class TestAst1229SurferBatchEntity:
         surfer_mod.add_surfer_batch_job(bid, "job-surf-1")
         assert db.get_surfer_batch(bid)["job_ids"] == ["job-surf-1", "job-surf-2"]
 
-        claimed = db.claim_job_batch("dispatch-batch-1", "NEW", limit=10)
+        claimed = db.claim_job_batch("dispatch-batch-1", "NEW", limit=10, candidate_id=cid)
         assert claimed == 2
         assert db.get_job("job-surf-1")["batch_id"] == "dispatch-batch-1"
         # Surfer list does not depend on job.batch_id.

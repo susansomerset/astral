@@ -1652,3 +1652,298 @@ class TestAst1531ContactLandStageCutover:
         assert "blob" in (out.get("error") or "").lower()
         stage.assert_not_awaited()
 
+
+@pytest.mark.skipif(
+    not hasattr(contact_mod, "try_meteorite_apply_paste_from_slack"),
+    reason="AST-1561 contact paste routing not on this publish tip",
+)
+class TestAst1561ContactPasteRouting:
+    """AST-1561: Slack paste → apply_paste before Estelle classify."""
+
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def test_try_apply_paste_thread_match(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-slack-paste"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        row_id = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": cid,
+                    "source_kind": "email",
+                    "source_id": "m1",
+                    "link": "https://x/j",
+                }
+            ]
+        )[0]
+        db.update_meteorite(
+            row_id,
+            state="BOT_BLOCKED",
+            estelle_thread_ts="7777.8888",
+        )
+        out = contact_mod.try_meteorite_apply_paste_from_slack(
+            astral_candidate_id=cid,
+            channel="D1",
+            thread_ts="7777.8888",
+            message_ts=None,
+            text="Pasted JD " + ("y" * 40),
+        )
+        assert out["applied"] is True
+        assert out["result"]["ok"] is True
+        assert db.get_meteorite(row_id)["state"] == "READY"
+
+    def test_handle_slack_event_skips_estelle_turn_on_paste(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-slack-hook"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "H"})
+        row_id = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": cid,
+                    "source_kind": "paste",
+                    "source_id": "blob-hook",
+                }
+            ]
+        )[0]
+        db.update_meteorite(row_id, state="BOT_BLOCKED")
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": cid,
+                    "state": "PROSPECT",
+                    "created": False,
+                }
+            ),
+        )
+        turn = _stub_estelle_turn(monkeypatch)
+        monkeypatch.setattr(
+            contact_mod,
+            "contact_post_message",
+            MagicMock(return_value={"ok": True, "ts": "1.1"}),
+        )
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-paste-hook",
+                "event": {
+                    "type": "message",
+                    "user": "U1",
+                    "channel": "D1",
+                    "ts": "1.0",
+                    "text": "JD body " + ("z" * 40),
+                },
+            },
+            debug=False,
+        )
+        assert out["accepted"] is True
+        assert out["estelle_turn"]["outcome"] == "paste_applied"
+        turn.assert_not_called()
+        assert db.get_meteorite(row_id)["state"] == "READY"
+
+    def test_estelle_turn_land_calls_use_apply_paste(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-turn-paste"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        row_id = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": cid,
+                    "source_kind": "paste",
+                    "source_id": "blob-turn",
+                }
+            ]
+        )[0]
+        db.update_meteorite(row_id, state="BOT_BLOCKED")
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "load_slack_conversation_context",
+            MagicMock(return_value={"channel": "D1", "thread_ts": "", "messages": [], "source": "cache"}),
+        )
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(return_value=None))
+        monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
+        monkeypatch.setattr(contact_mod, "contact_post_message", MagicMock(return_value={"ok": True}))
+        monkeypatch.setattr(contact_mod, "format_contact_reply_text", lambda t: t)
+        land = MagicMock()
+        monkeypatch.setattr(contact_mod, "contact_land_meteorite", land)
+
+        async def _do_task(*_a, **_k):
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {
+                    "reply": "thanks",
+                    "land_calls": [{"text": "ignored"}],
+                },
+            }
+
+        import src.core.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="D1",
+            text="Turn paste " + ("q" * 40),
+            astral_candidate_id=cid,
+            debug=False,
+        )
+        assert out["ok"] is True
+        assert out["land_results"][0]["via"] == "apply_paste"
+        land.assert_not_called()
+        assert db.get_meteorite(row_id)["state"] == "READY"
+
+
+# Branches: resolve hit/miss/owner; dispatch UUID / pin_required; Estelle raft strip+inject.
+class TestAst1585ContactPinnedBaseResume:
+    """AST-1585: Contact pin→body + refuse blob dual-read for pilot base_resume."""
+
+    def test_resolve_hit_and_owner_gate(self, seeded_db) -> None:
+        db = seeded_db
+        blob = {"professional_summary": "pinned-v1", "candidate_name": "Ada"}
+        uid = db.save_artifact("candidate", "cand-1", "base_resume", blob)
+        assert contact_mod.resolve_pinned_base_resume("cand-1", uid) == blob
+        assert contact_mod.resolve_pinned_base_resume("other", uid) is None
+        assert contact_mod.resolve_pinned_base_resume("cand-1", "missing-uuid") is None
+        assert contact_mod.resolve_pinned_base_resume("", uid) is None
+        assert contact_mod.resolve_pinned_base_resume("cand-1", "") is None
+
+    def test_dispatch_uuid_short_circuit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        pin = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        body = {"professional_summary": "from-pin"}
+        spy = MagicMock(return_value=body)
+        monkeypatch.setattr(contact_mod, "resolve_pinned_base_resume", spy)
+        handler = MagicMock(return_value={"ok": True, "result": "blob"})
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: handler
+        )
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="cand-1",
+            markup_spans=[("get_candidate_data", pin)],
+        )
+        assert results == [
+            {"ok": True, "task_key": "get_candidate_data", "result": body}
+        ]
+        spy.assert_called_once_with("cand-1", pin, debug=False)
+        handler.assert_not_called()
+
+        spy.return_value = None
+        miss = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="cand-1",
+            markup_spans=[("get_candidate_data", pin)],
+        )
+        assert miss[0]["ok"] is False
+        assert miss[0]["error"] == "not_found"
+        handler.assert_not_called()
+
+    def test_dispatch_refuses_blob_dotted_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        handler = MagicMock(return_value={"ok": True, "result": "blob"})
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: handler
+        )
+        results = contact_mod.run_contact_task_dispatch(
+            astral_candidate_id="cand-1",
+            markup_spans=[("get_candidate_data", "artifacts.base_resume")],
+        )
+        assert results == [
+            {
+                "ok": False,
+                "error": "pin_required",
+                "task_key": "get_candidate_data",
+            }
+        ]
+        handler.assert_not_called()
+
+    def test_estelle_turn_strips_blob_and_injects_pin(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        pin = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        pinned = {"professional_summary": "operative"}
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "load_slack_conversation_context",
+            MagicMock(
+                return_value={
+                    "channel": "C1",
+                    "thread_ts": "",
+                    "messages": [],
+                    "source": "cache",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            contact_mod,
+            "get_candidate",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "cand-1",
+                    "candidate_data": {
+                        "artifacts": {
+                            "base_resume": {"professional_summary": "blob-stale"},
+                            "resume_structure": {"sections": {}},
+                        }
+                    },
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            contact_mod, "resolve_pinned_base_resume", MagicMock(return_value=pinned)
+        )
+        monkeypatch.setattr(contact_mod, "contact_skills", MagicMock(return_value={}))
+        monkeypatch.setattr(
+            contact_mod, "contact_post_message", MagicMock(return_value={"ok": True})
+        )
+        monkeypatch.setattr(contact_mod, "format_contact_reply_text", lambda text: text)
+        captured: dict = {}
+
+        async def _do_task(*_a, **kwargs):
+            captured["candidate_data"] = kwargs.get("candidate_data")
+            return {
+                "success": True,
+                "conversational_outcome": "success",
+                "agent_performance": {"status": "success"},
+                "parsed_response": {"reply": "Hi"},
+            }
+
+        import src.core.agent as agent_mod
+
+        monkeypatch.setattr(agent_mod, "do_task", _do_task)
+        out = contact_mod.run_contact_estelle_turn(
+            channel="C1",
+            text="hi",
+            astral_candidate_id="cand-1",
+            base_resume_artifact_id=pin,
+            debug=False,
+        )
+        assert out["ok"] is True
+        raft = captured["candidate_data"]
+        assert raft["artifacts"]["base_resume"] == pinned
+        assert raft["artifacts"]["base_resume"]["professional_summary"] != "blob-stale"
+        contact_mod.resolve_pinned_base_resume.assert_called_once_with(
+            "cand-1", pin, debug=False
+        )
+
+        # No pin: blob stripped, no inject
+        captured.clear()
+        monkeypatch.setattr(
+            contact_mod, "resolve_pinned_base_resume", MagicMock(return_value=pinned)
+        )
+        contact_mod.run_contact_estelle_turn(
+            channel="C1",
+            text="hi",
+            astral_candidate_id="cand-1",
+            debug=False,
+        )
+        raft2 = captured["candidate_data"]
+        assert "base_resume" not in (raft2.get("artifacts") or {})
+        contact_mod.resolve_pinned_base_resume.assert_not_called()
+

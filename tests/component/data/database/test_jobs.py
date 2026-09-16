@@ -15,7 +15,7 @@ class TestSaveJob:
 
     def test_insert_and_merge_update(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-1", company="acme", state="NEW", job_data={"title": "a"})
         db.save_job("job-1", job_data={"grade": 8}, merge=True)
         row = db.get_job("job-1")
@@ -25,7 +25,7 @@ class TestSaveJob:
 
     def test_overwrite_job_data(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-1", company="acme", state="NEW", job_data={"title": "a"})
         db.save_job("job-1", job_data={"title": "only"}, merge=False)
         row = db.get_job("job-1")
@@ -41,7 +41,7 @@ class TestGetJob:
 class TestRawJobListingIsDuplicate:
     def test_detects_existing_listing(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-1", company="acme", state="NEW", company_job_id="abc123")
         assert db.raw_job_listing_is_duplicate("acme", "prefix-abc123-suffix") is True
         assert db.raw_job_listing_is_duplicate("acme", "no-match") is False
@@ -51,7 +51,7 @@ class TestRawJobListingIsDuplicate:
 class TestAst732JobIdentityUniqueIndex:
     def test_ensure_job_schema_creates_partial_unique_index(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-idx", company="acme", state="NEW", job_title="Eng", company_job_id="x1")
         conn = db._get_connection()
         try:
@@ -70,7 +70,7 @@ class TestAst732JobIdentityUniqueIndex:
 
     def test_index_ensure_idempotent_on_second_open(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-a", company="acme", state="NEW", job_title="A", company_job_id="id-a")
         conn = db._get_connection()
         try:
@@ -87,7 +87,7 @@ class TestAst732JobIdentityUniqueIndex:
 class TestAst732SaveJobDuplicateBounce:
     def test_insert_duplicate_complete_triple_returns_false(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         assert db.save_job(
             "job-1", company="acme", state="NEW", job_title="Engineer", company_job_id="123"
         ) is True
@@ -99,13 +99,13 @@ class TestAst732SaveJobDuplicateBounce:
 
     def test_incomplete_identity_allows_multiple_inserts(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         assert db.save_job("job-1", company="acme", state="NEW", job_title="Same") is True
         assert db.save_job("job-2", company="acme", state="NEW", job_title="Same") is True
 
     def test_update_existing_row_still_returns_true(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-1", company="acme", state="NEW", job_title="Eng", company_job_id="99")
         assert db.save_job("job-1", state="RECOMMENDED") is True
         row = db.get_job("job-1")
@@ -117,7 +117,7 @@ class TestAst732SaveJobDuplicateBounce:
 class TestAst733JobIdentityHelpers:
     def test_get_job_id_by_identity_finds_canonical_excludes_self(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job(
             "canonical", company="acme", state="NEW", job_title="Eng", company_job_id="99"
         )
@@ -136,7 +136,7 @@ class TestAst733JobIdentityHelpers:
 
     def test_delete_job_removes_row(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-del", company="acme", state="NEW", job_title="X")
         assert db.delete_job("job-del") is True
         assert db.get_job("job-del") is None
@@ -237,7 +237,7 @@ class TestAst908BelowDispatchScoreFloorViews:
 class TestAst1061MeteoriteEmailDedupeHelpers:
     def test_text_matches_known_company_job_id(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job(
             "job-ext",
             company="acme",
@@ -250,7 +250,7 @@ class TestAst1061MeteoriteEmailDedupeHelpers:
 
     def test_job_link_exists(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         link = "https://jobs.example.com/posting/1"
         db.save_job("job-link", company="acme", state="NEW", job_link=link)
         assert db.job_link_exists(link) is True
@@ -347,3 +347,103 @@ class TestAst1146TextMatchesKnownCompanyJobIdMinLength:
             db.text_matches_known_company_job_id_for_candidate("cand-a", "anything 29 here")
             is None
         )
+
+
+# Branches: job.candidate_id ensure/backfill/guard; resolve on save; fail-loud list/claim/count;
+# scope via job.candidate_id (no company subquery).
+class TestAst1598JobCandidateId:
+    """AST-1598: required job.candidate_id + scoped helpers fail loud on omit."""
+
+    def test_inventory_lists_job_candidate_id(self, sqlite_in_memory) -> None:
+        doc = sqlite_in_memory.__doc__ or ""
+        assert "candidate_id (required owning candidate" in doc or (
+            "job" in doc and "candidate_id" in doc and "AST-1598" in doc
+        )
+        assert "denormalized from company.candidate_id" in doc
+
+    def test_ensure_adds_candidate_id_and_guards_without_company(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        # Fresh DB: job ensure must not require company table (Betty hold → aff5678f).
+        assert db.get_job("missing") is None
+        conn = db._get_connection()
+        try:
+            db._job_schema_ensured = False
+            db._ensure_job_schema(conn)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(job)").fetchall()}
+            assert "candidate_id" in cols
+        finally:
+            conn.close()
+
+    def test_ensure_backfills_from_company_when_present(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-bf")
+        # Pre-column row path: create job via save (stores cid), then simulate blank backfill.
+        assert db.save_job("job-bf", company="acme", state="NEW") is True
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE job SET candidate_id = '' WHERE astral_job_id = ?",
+                ("job-bf",),
+            )
+            conn.commit()
+            db._job_schema_ensured = False
+            db._ensure_job_schema(conn)
+            row = conn.execute(
+                "SELECT candidate_id FROM job WHERE astral_job_id = ?",
+                ("job-bf",),
+            ).fetchone()
+            assert row is not None
+            assert row[0] == "cand-bf"
+        finally:
+            conn.close()
+
+    def test_save_job_resolves_cid_from_company_and_returns_on_read(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-own")
+        assert db.save_job("job-1", company="acme", state="NEW") is True
+        row = db.get_job("job-1")
+        assert row is not None
+        assert row["candidate_id"] == "cand-own"
+
+    def test_save_job_explicit_cid_and_unresolved_raises(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-co")
+        assert (
+            db.save_job(
+                "job-x", company="acme", state="NEW", candidate_id="cand-explicit"
+            )
+            is True
+        )
+        assert db.get_job("job-x")["candidate_id"] == "cand-explicit"
+        db.save_company("orphan-co", state="IMPORTED")  # no candidate_id
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.save_job("job-orphan", company="orphan-co", state="NEW")
+
+    def test_list_claim_count_fail_loud_on_omit(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.list_jobs(states=["NEW"])
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.count_jobs(states=["NEW"])
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.claim_job_batch("batch-1", "NEW", limit=5)
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.list_jobs(candidate_id="   ")
+
+    def test_list_and_claim_scope_via_job_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("co-a", state="IMPORTED", candidate_id="cand-a")
+        db.save_company("co-b", state="IMPORTED", candidate_id="cand-b")
+        db.save_job("ja", company="co-a", state="NEW")
+        db.save_job("jb", company="co-b", state="NEW")
+        listed = db.list_jobs(candidate_id="cand-a", states=["NEW"])
+        assert {r["astral_job_id"] for r in listed} == {"ja"}
+        assert db.count_jobs(candidate_id="cand-a", states=["NEW"]) == 1
+        n = db.claim_job_batch("batch-a", "NEW", limit=10, candidate_id="cand-a")
+        assert n == 1
+        assert db.get_job("ja")["batch_id"] == "batch-a"
+        assert db.get_job("jb")["batch_id"] is None

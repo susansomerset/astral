@@ -1,3 +1,92 @@
+<!-- linear-archive: AST-1347 archived 2026-08-31 -->
+
+## Linear archive (AST-1347)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1347/persist-phase-score-breakdown-with-grades-add-rubric-score-to-analysis  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1346 — Add rubric score to analysis header  
+**Blocked by / blocks / related:** parent: AST-1346; blocks: AST-1348
+
+### Description
+
+## What this implements
+
+Owns computing earned / possible / max with existing contribution math (X/no-signal excluded from earned and possible; max = full rubric capacity) and writing that trio onto `job_data` beside phase grades at score-save time; ensures job detail/list payload can lift the fields. Does **not** own Analysis header title chrome (sibling #2). Does **not** change 0–10 `{prefix}_score` semantics.
+
+## Citations
+
+`pattern.config.config-block`, `astral.config.config-source-of-truth`, `astral.agent.grade-vector-validation`, `astral.layers.import-direction`, AST-1063 job-carried rubric law.
+
+## Acceptance criteria
+
+3. Earned / possible / max for a freshly graded job are present on `job_data` with that phase’s grades (not only the existing 0–10 score).
+4. Recommended list phase-score columns and dispatch soft-fail behavior remain unchanged.
+
+## Boundaries
+
+Does **not** own Analysis header title chrome (sibling #2). Does **not** change 0–10 `{prefix}_score` semantics. Does **not** redesign scoring formula, pass/fail, or list phase-score columns.
+
+## Notes for planning
+
+Parent AST-1346 definition is authoritative. Persist trio at score-save; lift on job payload. Job-carried rubric law from AST-1063.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1346-add-rubric-score-to-analysis-header`, child `sub/AST-1346/AST-1347-persist-phase-score-breakdown`. Created at dispatch-parent.
+
+## QA test manifest
+
+`origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown` @ `4e0bca036f3f7bdb8f1f45d2093ec57934e6f5a4` · merge-tests ← `origin/tests` `981dbead31bbd31f0967e2b0c3d6a8aa3eb25eae`
+
+1. **Existing coverage (bible-backed):** `TestRenderScore` / `TestRenderScoreBranches` / `TestAst1277DispatchScoreFloorVerdict`; `TestFlattenGrades::test_lifts_job_data_fields_and_latest_score`.
+2. **Broken / obsolete:** revised `TestEvaluateJdBatch::test_runs_debug_and_passing_job_path` / `test_logs_failed_vectors` — stub `_rubric_criteria_for_cfg` (table-backed); passing path asserts `jd_score_breakdown`.
+3. **Gaps (this pass):**
+   * `tests/component/core/test_consult.py::TestAst1347PhaseScoreBreakdown`
+   * `tests/component/utils/test_config.py::TestAst1347PhaseScoreBreakdownConfig`
+   * `tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown`
+
+**Run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1347PhaseScoreBreakdown \
+  tests/component/core/test_consult.py::TestRenderScore \
+  tests/component/core/test_consult.py::TestEvaluateJdBatch::test_runs_debug_and_passing_job_path \
+  tests/component/core/test_consult.py::TestEvaluateJdBatch::test_logs_failed_vectors \
+  tests/component/utils/test_config.py::TestAst1347PhaseScoreBreakdownConfig \
+  tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
+  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  -q
+```
+
+**Bible shasums** (`git show origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown:<path> | shasum`):
+
+* `docs/test-bible/core/consult.md` `51a01ee6ac03d76d37eaaac2c99d40aeb9b6e715`
+* `docs/test-bible/ui/api/api_jobs.md` `e13ee73bf1366a94b6215df327c5dde77af04a9d`
+* `docs/test-bible/utils/config.md` `9096399c62946431a6d0c44ccbf60654802fd5c5`
+
+— Betty
+
+### Comments
+
+#### radia — 2026-08-12T23:33:13.885Z
+[code-rubric] REVIEW (Commit: 4e0bca03) product clean; sibling tests bundled
+
+#### betty — 2026-08-12T23:29:23.005Z
+`origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown` @ `4e0bca03` · breakdown tests ready
+
+#### joan — 2026-08-12T23:22:03.125Z
+[plan-rubric] PROCEED (Commit: d405dad3852eadabb06f5ccb93f50743ea6d46b3) Breakdown persist plan solid
+
+#### ada — 2026-08-12T23:20:33.038Z
+`origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown` @ `d405dad3852eadabb06f5ccb93f50743ea6d46b3` · plan published
+
+---
+
 # Persist phase score breakdown with grades
 
 **Linear:** [AST-1347](https://linear.app/astralcareermatch/issue/AST-1347/persist-phase-score-breakdown-with-grades-add-rubric-score-to-analysis)  

@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1394 archived 2026-08-31 -->
+
+## Linear archive (AST-1394)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1394/show-ad-hoc-test-body-without-type-invalidation-ad-hoc-agent-is  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1392 — Ad hoc Agent is failing  
+**Blocked by / blocks / related:** parent: AST-1392
+
+### Description
+
+## What this implements
+
+After #1, the Admin Test response returns that same text, and the workbench displays it (pretty-printed when it is JSON). A successful provider reply must never be replaced with a type or schema error overlay. Does **not** own persist, debug contract, or production ingest.
+
+## Citations
+
+`pattern.ui.admin-endpoint`; `pattern.layers.import-discipline`; `astral.layers.import-direction`; `astral.standards.in-scope-only`.
+
+## Acceptance criteria
+
+- [X] An Agent Ad Hoc Test whose model returns a successful JSON envelope with an object payload (the `craft_company_search_terms` shape in the original brief) completes as success: the workbench shows the payload as JSON text, and no `_store_response_block failed` / `block_data must be a str` traceback appears for that run.
+- [X] A successful reply that is already plain text still displays and stores as that text — no extra JSON wrapping.
+- [X] A provider/API failure still surfaces as a failed Test (error shown; no fake success body).
+
+## Boundaries
+
+Does **not** own persist, debug contract, or production ingest (sibling #1). Does **not** change Preview, dispatch batch apply, or other Admin pages except Agent Ad Hoc Test display of the returned body. Does **not** invent a new envelope: when a payload key is present, display that payload body (JSON text if structured); when it is absent, display the raw reply text.
+
+## Notes for planning
+
+After sibling #1. Thin Admin Test surface returns the serialized body; React renders it. UI does not call data.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1392-ad-hoc-agent-is-failing`, child `sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Existing string/numeric HTTP + 500: `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test`
+2. Object/list/plain stringify + failure envelope: `tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText`
+3. Routed Agent Ad Hoc page (**§6c**) + object/plain/failure chrome: `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test \
+  tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums** (`origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation`):
+
+* `docs/test-bible/ui/api/api_admin.md` `8749badfc3db0fa7fe3c8b2a98ce8edf179a2631`
+* `docs/test-bible/frontend/pages.md` `947b561898651125cf3cfd397fa2a2ddb29d6839`
+
+### Comments
+
+#### radia — 2026-08-16T02:18:41.661Z
+[code-rubric] PROCEED (Commit: c4c22d2d) display overlay clean
+
+#### betty — 2026-08-16T02:12:51.710Z
+`origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation` @ `c4c22d2d` · display without type invalidation
+
+#### joan — 2026-08-16T02:02:14.697Z
+[plan-rubric] PROCEED (Commit: eed6751e) display without invalidation
+
+#### katherine — 2026-08-16T01:59:07.504Z
+`origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation` @ `eed6751e` · plan ready
+
+---
+
 # Show Ad Hoc Test body without type invalidation
 
 - **Linear:** [AST-1394](https://linear.app/astralcareermatch/issue/AST-1394)

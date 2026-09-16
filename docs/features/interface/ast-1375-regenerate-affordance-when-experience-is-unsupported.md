@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-1375 archived 2026-08-31 -->
+
+## Linear archive (AST-1375)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1375/regenerate-affordance-when-experience-is-unsupported-regenerate-resume  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1371 — Regenerate resume button does not appear for resumes with unsupported content  
+**Blocked by / blocks / related:** parent: AST-1371
+
+### Description
+
+## What this implements
+
+Owns making Regenerate (or Generate when empty) appear and work on Artifacts → Base Resume Content whenever the experience section shows the unsupported resume structure message, outside daisy-chain in-flight hide states — including any config/manifest generate-state escape hatch required so that message is never unactionable on this page. Does **not** migrate data, change the unsupported message literal, or reopen Print/no-emit core gates.
+
+## Citations
+
+`pattern.ui.shared-button-roles`, `pattern.config.config-block`, `astral.layers.ui-config-driven-business-logic`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only`
+
+## Acceptance criteria
+
+1. [x] With a selected candidate whose saved `artifacts.base_resume.experience` is a legacy string or other non-array shape, opening Artifacts → Base Resume Content shows the unsupported resume structure message on the experience section **and** shows Regenerate in the page header (Generate only if there is no base resume content to regenerate).
+2. [x] Clicking that Regenerate control starts Base Resume craft (`craft_resume_base`) with the same confirm-when-regenerating behavior as today for eligible candidates.
+3. [x] After craft succeeds with array-shaped experience, the unsupported message is gone and the experience job-array editor is usable without a reload trick.
+4. [x] Candidates in artifacts-chain in-flight states that already hide Generate/Regenerate keep that hide; Print and other emit paths still toast unsupported and open no HTML tab until experience is array-shaped.
+5. [x] Candidates with valid job-array experience keep current Generate/Regenerate visibility and editor behavior (no regression).
+
+## Boundaries
+
+- [X] Does **not** migrate data, change the unsupported message literal, or reopen Print/no-emit core gates.
+- [X] Does **not** force Generate/Regenerate during REQUESTED_ARTIFACTS / chain in-flight hide states (AST-1253).
+- [X] Does **not** redesign ArtifactEditor chrome or experience job-array happy-path editing.
+
+## Notes for planning
+
+Citations as above. Single-child epic under AST-1371.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Inflight hide membership + generate allowlist unchanged: `tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates`
+2. Manifest key on `GET /api/state_ui_manifest`: `tests/component/ui/api/test_api_system.py::TestAst1375InflightHideStatesManifest`
+3. ArtifactEditor escape / hide / craft / allowlist-only: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1375"`
+
+**AST-1375** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates \
+  tests/component/ui/api/test_api_system.py::TestAst1375InflightHideStatesManifest \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1375"
+```
+
+**Bible shasums** (`origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`):
+
+* `docs/test-bible/frontend/components.md` — `2000402346b89cd1544a7a10c3b141ae0bdb6591`
+* `docs/test-bible/utils/config.md` — `1614621439682a71a3bd1311e815f01fcc0da966`
+* `docs/test-bible/ui/api/api_system.md` — `39e6957b9f94d60b4823c5d615a6d7f9ace5cb49`
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Comments
+
+#### radia — 2026-08-14T21:28:55.877Z
+[code-rubric] PROCEED (Commit: 3d9486eb) manifest escape hatch clean
+
+#### betty — 2026-08-14T21:26:06.899Z
+`origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience` @ `3d9486eb` · regenerate affordance coverage
+
+#### joan — 2026-08-14T21:18:05.101Z
+[plan-rubric] PROCEED (Commit: 243b372d55) Config escape hatch ready
+
+#### katherine — 2026-08-14T21:15:00.892Z
+`origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience` @ `243b372d55` · plan ready
+
+---
+
 # Regenerate affordance when experience is unsupported (Regenerate resume button does not appear for resumes with unsupported content)
 
 **Linear:** [AST-1375](https://linear.app/astralcareermatch/issue/AST-1375/regenerate-affordance-when-experience-is-unsupported-regenerate-resume)

@@ -1,3 +1,91 @@
+<!-- linear-archive: AST-1476 archived 2026-09-09 -->
+
+## Linear archive (AST-1476)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1476/structure-editor-page-break-dropdown-on-base-and-job-create-and  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1462 — Create and position page break  
+**Blocked by / blocks / related:** parent: AST-1462
+
+### Description
+
+## What this implements
+
+Exposes the per-section page-break dropdown on Base Resume Content and JAR Job Resume structure headers; persists via existing structure Save (job uses base/`resume_structure` as defaults). Does **not** change builder emit or config token lists.
+
+## Citations
+
+`pattern.ui.admin-endpoint`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`.
+
+## Scope
+
+- [X] `src/ui/frontend/src/components/ArtifactEditor.tsx`
+- [X] conditional touch `ResumeStructureEditor.tsx`, `ArtifactsBaseResumeContent.tsx`, `JobAnalysisReportModal.tsx`
+- [X] `tests/component/frontend/components/test_ArtifactEditor.test.tsx` (+ JAR / Base page tests) — Betty manifest green
+
+## Acceptance criteria
+
+- [X] 4. **Persistence** — changing policies on Base Resume Content structure Save survives reload; JAR Job Resume shows the same structure policies (base as defaults) and print for that candidate/job reflects them without a separate job-only policy store.
+- [X] 5. **UI** — each structure section header on **Base Resume Content** and **JAR Job Resume** exposes the page-break dropdown; Save persists without requiring a separate body edit.
+- [X] 6. **Tests** — ArtifactEditor / JAR / Base structure-mode page-break tests pass on publish ref (Betty manifest).
+
+## Boundaries
+
+- [X] Does not change builder emit or config token lists — siblings #1 and #2.
+
+## Notes for planning
+
+Estimate 3. Unmarked — after #2 via bang chain.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1462-create-and-position-page-break`, child `sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. ArtifactEditor dropdown + content Save + Save sections: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1476"`
+2. JAR Job Resume Save sections → candidate: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1476"`
+3. Base Resume Content Save sections (§6c): `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1476|AST-1306"`
+4. Regression AST-1382 structure Save still bundles format: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1382"`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern="AST-1476|AST-1382|AST-1306"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums** (`origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`):
+
+* `docs/test-bible/frontend/components.md` — `00c7f33fb6772aaac057ee220a9742d083683f78`
+* `docs/test-bible/frontend/pages.md` — `4396fcc5c9d8a7bf92fbd20404d52ff419a874ae`
+
+### Comments
+
+#### katherine — 2026-08-25T16:58:42.531Z
+`origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job` @ `9b0f0121` · §9a clean
+
+#### radia — 2026-08-25T16:55:38.673Z
+[code-rubric] REVIEW (Commit: 9a1e1d11) sync regressed dev product
+
+#### betty — 2026-08-25T16:50:35.648Z
+`origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job` @ `1dc2a87e` · page-break dropdown tests
+
+#### joan — 2026-08-25T03:15:08.016Z
+[plan-rubric] PROCEED (Commit: 4fbd80d1) structure dropdown UI
+
+#### katherine — 2026-08-25T01:39:06.340Z
+`origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job` @ `4fbd80d1e387aa53f4b8b02b219df626307f5940` · plan ready
+
+---
+
 # AST-1476 — Structure editor page-break dropdown on base and job
 
 **Linear:** [AST-1476](https://linear.app/astralcareermatch/issue/AST-1476)

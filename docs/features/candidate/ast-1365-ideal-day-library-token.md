@@ -1,3 +1,82 @@
+<!-- linear-archive: AST-1365 archived 2026-08-31 -->
+
+## Linear archive (AST-1365)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1365/ideal-day-library-token-add-ideal-day-to-the-set-of-candidate-context  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1360 — Add "ideal_day" to the set of candidate context (strengths, priorities, etc.)  
+**Blocked by / blocks / related:** parent: AST-1360; blocks: AST-1368; blocks: AST-1367; blocks: AST-1366
+
+### Description
+
+## What this implements
+
+Add `ideal_day` to the candidate context library vocabulary, prompt token map, DATA_SHAPES / related config inventories, context completeness gate (with strengths / priorities / deal_breakers / backstory), and candidate data-model docs so the field is a first-class peer of strengths/priorities.
+
+## Citations
+
+`pattern.config.config-block`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`.
+
+## Acceptance criteria
+
+- [X] 1. A candidate can save non-empty Ideal Day prose under candidate context and read it back after reload.
+- [X] 2. Prompt token for Ideal Day resolves from `context.ideal_day` (empty string when unset).
+- [X] 3. Context completeness gate requires Ideal Day populated alongside strengths / priorities / deal_breakers / backstory.
+
+## Boundaries
+
+- [X] Does **not** own Candidate page UI (sibling Ideal Day Candidate edit surface), Topic Menu catalog (sibling Topic Menu informs), or craft prompt text (sibling Wire Ideal Day into JD / DO / LIKE craft prompts).
+
+## Notes for planning
+
+Parent AST-1360. Estimate: 2. Blocks siblings that need the library key + token.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1360-ideal-day-candidate-context`,
+child `sub/AST-1360/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Config vocabulary + token + resolve: `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken`
+2. Completeness gate (revised + Ideal Day gaps): `tests/component/core/test_candidate.py::TestCheckContextCompleteExtended`
+3. Save merge + config key contract: `tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary`
+4. Existing incomplete smoke: `tests/component/core/test_candidate.py::TestCheckContextComplete`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken \
+  tests/component/core/test_candidate.py::TestCheckContextComplete \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended \
+  tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1360/AST-1365-ideal-day-library-token`):
+
+* `docs/test-bible/core/candidate.md` `c13fdf601bb46b78510cadb50a856cf27f1ee171`
+* `docs/test-bible/utils/config.md` `c128c376fa0687f62377f3a0858a8f619cff4f3c`
+
+### Comments
+
+#### radia — 2026-08-14T18:52:41.870Z
+[code-rubric] PROCEED (Commit: 0437d9c8) config library token gate
+
+#### betty — 2026-08-14T18:49:50.818Z
+`origin/sub/AST-1360/AST-1365-ideal-day-library-token` @ `0437d9c8` · Ideal Day tests ready
+
+#### joan — 2026-08-14T18:43:31.289Z
+[plan-rubric] PROCEED (Commit: 30e71a61fc979894fd693df5692f865c18355c00) config gate token
+
+#### ada — 2026-08-14T18:41:34.423Z
+`origin/sub/AST-1360/AST-1365-ideal-day-library-token` @ `30e71a61fc979894fd693df5692f865c18355c00` · Ideal Day plan ready
+
+---
+
 # AST-1365 — Ideal Day library + token
 
 **Linear:** [AST-1365](https://linear.app/astralcareermatch/issue/AST-1365/ideal-day-library-token-add-ideal-day-to-the-set-of-candidate-context)

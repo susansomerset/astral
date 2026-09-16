@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-1481 archived 2026-09-09 -->
+
+## Linear archive (AST-1481)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1481/detail-deeplink-opens-existing-report-modal-candidate-single-page-job  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1463 — Candidate single page job report  
+**Blocked by / blocks / related:** parent: AST-1463; blocks: AST-1482
+
+### Description
+
+## What this implements
+
+Add `/jobs/detail/:jobId`, thin `JobsJobDetail` host that opens `JobAnalysisReportModal` (no duplicate report UI), candidate alignment from the job record, miss/error UI, and close → `/jobs/recommended`. Any job state the API returns is allowed. Does **not** own auth return-path (#2).
+
+## Citations
+
+`pattern.ui.shared-button-roles`, `pattern.ui.icon-control`, `pattern.config.config-block`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.config.config-source-of-truth`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets`
+
+## Scope
+
+`routes.tsx`; new `JobsJobDetail.tsx`; `CandidateContext.tsx`; `config.py` (detail path constant if used); `JobAnalysisReportModal.tsx` only if a minimal host-driven prop is required (prefer unchanged).
+
+## Acceptance criteria
+
+- [X] While authenticated, visiting `/jobs/detail/<astral_job_id>` for a loadable job opens the **existing** Recommended Job Report modal for that job (same tabs/header/actions as list entry).
+- [X] Hard refresh and paste-in-address-bar on that URL return `index.html` and reopen the modal for the same job (no `{"error":"Not found"}` document body).
+- [X] The deeplink works for jobs outside Recommended list scope when the modal can load them (e.g. skipped) — no client-side "recommended only" gate.
+- [X] Closing the modal from a deeplink lands the user on `/jobs/recommended`.
+- [X] Recommended list **row click still opens the same modal**; list layout and row actions unchanged.
+- [X] Admin with multiple candidates: opening a job deeplink selects the job's candidate so report API calls and copy/print use the correct profile.
+- [X] Unknown or inaccessible job id shows an explicit error with a path back to `/jobs/recommended`.
+
+## Boundaries
+
+- [X] Does **not** own auth return-path (#2). No second full-page report UI; no minimal-nav / RBAC shell.
+
+## Notes for planning
+
+Estimate 5. Bang ! — blocks #2.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1463-candidate-single-page-job-report`, child `sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-25T22:19:14.780Z
+[code-rubric] REVIEW (Commit: e17971ef) Candidate hydration race + effect deps
+
+#### betty — 2026-08-25T22:16:07.561Z
+origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal @ e17971ef · deeplink Vitest manifest
+
+#### joan — 2026-08-25T22:10:07.556Z
+[plan-rubric] PROCEED (Commit: be233e6a) deeplink modal host plan
+
+#### ada — 2026-08-25T22:07:26.019Z
+be233e6a8eb1198bfb2906aa3c43e4c6fd0b5989
+`origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal` @ `be233e6a8eb1198bfb2906aa3c43e4c6fd0b5989` · deeplink modal host plan
+
+---
+
 # AST-1481 — Detail deeplink opens existing report modal
 
 **Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463/candidate-single-page-job-report)  

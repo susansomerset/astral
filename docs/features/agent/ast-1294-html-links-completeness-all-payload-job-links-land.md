@@ -1,3 +1,142 @@
+<!-- linear-archive: AST-1294 archived 2026-09-09 -->
+
+## Linear archive (AST-1294)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1294/html-links-completeness-all-payload-job-links-land-only-32-of-34-jobs  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** susan  
+**Priority / estimate:** None / —  
+**Parent:** AST-1290 — Only 32 of 34 jobs were loaded by parse_meteorite_email  
+**Blocked by / blocks / related:** parent: AST-1290
+
+### Description
+
+## What this implements
+
+Own the end-to-end fix so `html_links` meteorite email parse cannot silently drop payload-enumerated job links before ingest. Product guarantee is a post-parse completeness reconcile on the gaze_email path (null titles OK). Observable outcome: the 34-link UAT class loads 34 jobs. Does **not** own Avail/dispatch (AST-1282), int→str coerce (AST-1289), or seed rename.
+
+## In scope
+
+- [X] `pattern.config.config-block` / `astral.config.config-source-of-truth` — reuse existing `METEORITE_EMAIL_INGEST_CONFIG` / `METEORITE_EMAIL_PARSE_CONFIG` (no new magic sets); Ruth payload excludes stay config-owned
+- [X] `astral.agent.do-task-delegation` — Ruth still via `do_task` / `_ruth_parse`; completeness is gaze_email post-parse, not a second LLM call
+- [X] `astral.standards.debug-contract-gated` — Style D found/recorded/missing link ids when Ruth’s `jobs` is incomplete vs payload links and `debug=True`
+- [X] `astral.standards.in-scope-only` / `astral.standards.dry-and-focused-functions` — one helper + `html_links` call site in `src/core/gaze_email.py` only
+
+## Considered but excluded
+
+* AST-1282 Avail / `min_count` / scheduler skip — separate Discussion on Astral Meteorite; not this failure mode
+* AST-1289 int→str soft-coerce — adjacent LLM-response family; different path (`src/core/agent.py`)
+* Seed rename (`parse_meteorite_email` → `meteorite_email`) / Admin picker contracts — AST-1212 / AST-1214
+* Ruth `agent_task` prompt rewrite / fixture sync — prompt alone insufficient per parent; product guarantee is reconcile; AST-1213 payload shape stays
+* `subject_url` / `subject_body` redesign — those shapes do not drive a multi-job list from the payload enumeration; reconcile is `html_links`-only
+* Re-widen Ruth excludes / Playwright exclude merge — would break AST-1213 click-tracking visibility
+* Playwright create/dedupe / archive rule redesign — only ensure omitted links still get an ingest attempt via completed `jobs`
+
+## Acceptance criteria
+
+1. [x] Replaying the UAT message shape (34 Dice `job-detail` links in the Ruth payload enumeration) yields 34 jobs in the parse result used for ingest — including `3628bf85-8915-4525-93ff-2f05e09f9e39` and `add50803-2af1-4f26-aba5-3997c9db8905`.
+2. [x] A successful parse no longer silently returns fewer jobs than payload job links for `html_links`; if the model omits links, the product still covers those links for ingest (stub/null title allowed).
+3. [x] With `debug=True`, an incomplete Ruth `jobs` list vs payload links is visible as found vs recorded (and missing link ids) under Style D; with `debug=False`, this path adds no new debug lines.
+4. [x] Existing null-title job rows still validate and ingest; required `job_link` remains required.
+5. [x] AST-1282 Avail/scheduler behavior and AST-1289 datatype coercion are unchanged by this epic.
+
+## Boundaries
+
+* Does **not** fix AST-1282 (Avail vs `min_count` / scheduler skip).
+* Does **not** absorb AST-1289 (int→str soft-coerce).
+* Does **not** rename seed keys or change Admin picker contracts.
+* Does **not** redesign `subject_url` / `subject_body` shapes unless a shared helper is the only safe place for completeness.
+* Must not break AST-1213 Ruth payload shape or re-widen Ruth excludes.
+
+## Notes for planning
+
+Single vertical slice: payload assembly (already AST-1213), Ruth result, completeness enforce, and Style D found/recorded ship together. Completeness set = `_ruth_live_parts` link enumeration; match with `normalize_link`; stub missing rows with `job_title: None`.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1290-only-32-of-34-jobs-were-loaded-by-parse_meteorite_email`, child `sub/AST-1290/AST-1294-html-links-completeness-all-payload-job-links-land`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-10T00:44:32.138Z
+[code-rubric] revision=2
+**Overall:** CLEAN
+64 statutes scored, 0 fix-now, 0 discuss.
+— Radia
+
+#### betty — 2026-08-10T00:37:41.287Z
+## QA test manifest — AST-1294
+
+**Publish:** `origin/sub/AST-1290/AST-1294-html-links-completeness-all-payload-job-links-land` @ `2321dfb9` (`merge-tests(AST-1294): origin/tests 4ccfaddb1f986cb5c8875105fd4181d10f3efa36`)
+
+### Existing coverage (bible-backed)
+
+None sufficient alone — new post-parse reconcile helper needs dedicated cases. Related payload assembly remains:
+
+1. `tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload` (revised — see broken list)
+
+### Broken / obsolete (revised this pass)
+
+2. `TestAst1213RuthLivePayload::test_html_links_live_content_shape` — empty Ruth `jobs` + payload links now stub-then-ingest; mock `_ingest_link` so the case stays on live_content shape
+3. `TestAst1213RuthLivePayload::test_debug_true_emits_ruth_payload_detail` — same ingest stub isolation
+
+### Gaps (new)
+
+4. `tests/component/core/test_gaze_email.py::TestAst1294HtmlLinksJobsComplete::test_uat_34_payload_stubs_two_missing_null_titles` — UAT 34→34 including `3628bf85-…` / `add50803-…` with null titles
+5. `…::test_normalize_link_avoids_duplicate_stub` — scheme/slash variants do not double-stub
+6. `…::test_preserves_ruth_extras_and_drops_junk_rows` — extras kept; non-dict / empty `job_link` dropped
+7. `…::test_debug_true_emits_found_recorded_missing_ids` — Style D found/recorded/missing path-tails when incomplete
+8. `…::test_debug_false_or_complete_skips_style_d` — silence when complete or `debug=False`
+9. `…::test_html_links_call_site_ingests_stubbed_links` — `_handle_bound` html_links path ingests stubbed payload links
+
+**Integration:** none revised (no existing scenarios assert this path).
+
+### Run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gaze_email.py::TestAst1294HtmlLinksJobsComplete \
+  tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload::test_html_links_live_content_shape \
+  tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload::test_debug_true_emits_ruth_payload_detail \
+  -q
+```
+
+### Bible
+
+`docs/test-bible/core/gaze_email.md` shasum on publish tip: `7334ef9e9aa877488ec04d4575f252c2caa4ba3b`
+
+— Betty
+
+#### joan — 2026-08-10T00:31:49.508Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1294
+**Overall:** APPROVED
+**Publish-ref tip:** `d54820e881a917d3bdf3003d612904a5b9a44f75` (`origin/sub/AST-1290/AST-1294-html-links-completeness-all-payload-job-links-land`)
+
+## Traceability
+AC1→S1; AC2→S1; AC3→S1; AC4→S1; AC5→S1
+
+No fix-now findings. Plan is a single-file `html_links` post-parse reconcile on the existing Ruth payload enumeration (`normalize_link` coverage + null-title stubs + Style D found/recorded/missing when incomplete), faithful to parent AST-1290 boundaries (no Avail/dispatch, no int→str coerce, no seed/prompt/payload reshape).
+
+— Joan
+context_tokens≈55000
+
+#### ada — 2026-08-10T00:29:35.883Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1290/AST-1294-html-links-completeness-all-payload-job-links-land/docs/features/agent/ast-1294-html-links-completeness-all-payload-job-links-land.md
+
+`origin/sub/AST-1290/AST-1294-html-links-completeness-all-payload-job-links-land` @ `d54820e8`
+
+**Scope:** Single-Component — one private helper + one `html_links` call site in `src/core/gaze_email.py`; no config/prompt/UI/data edits.
+
+**Conf:** high — payload `links` enumeration and ingest loop already exist; this is a deterministic set-diff + stub append with Style D found/recorded when incomplete.
+
+**Risk:** Medium — bad `normalize_link` matching could stub-duplicate or force ingest of non-job payload hrefs; mitigated by existing Ruth payload excludes and keeping Ruth rows + original payload hrefs on stubs.
+
+---
+
 # html_links completeness — all payload job links land
 
 - **Linear:** [AST-1294](https://linear.app/astralcareermatch/issue/AST-1294/html-links-completeness-all-payload-job-links-land-only-32-of-34-jobs)

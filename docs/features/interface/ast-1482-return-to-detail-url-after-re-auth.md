@@ -1,3 +1,72 @@
+<!-- linear-archive: AST-1482 archived 2026-09-09 -->
+
+## Linear archive (AST-1482)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1482/return-to-detail-url-after-re-auth-candidate-single-page-job-report  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1463 — Candidate single page job report  
+**Blocked by / blocks / related:** parent: AST-1463
+
+### Description
+
+## What this implements
+
+Capture the intended in-app path when auth is required; after successful authenticate, navigate back to that path (including `/jobs/detail/<id>`) instead of always `/`. Does **not** own the detail route or modal host (#1). after #1
+
+## Citations
+
+`astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.in-scope-only`, `astral.ui.frontend-file-placement`
+
+## Scope
+
+`RequireAuth.tsx` and/or `Login.tsx`; `Authenticate.tsx`; any small existing session/redirect helper touched for Stytch return URLs.
+
+## Acceptance criteria
+
+6. After session expiry on the deeplink (or opening it logged out), successful login returns to **that same** `/jobs/detail/<id>` URL and the modal opens again.
+
+## Boundaries
+
+Does **not** own the detail route or modal host (#1).
+
+## Notes for planning
+
+Estimate 3. after #1
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1463-candidate-single-page-job-report`, child `sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-25T22:38:26.883Z
+[code-rubric] PROCEED (Commit: 8eaaac7f) Auth return-path capture and restore
+
+#### betty — 2026-08-25T22:35:27.190Z
+origin/sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth @ 8eaaac7f · auth return-path Vitest
+
+#### joan — 2026-08-25T22:32:46.315Z
+[plan-rubric] PROCEED (Commit: f0538c4f) auth return-path plan
+
+#### katherine — 2026-08-25T22:31:44.825Z
+[plan-discuss] round=1 reply
+
+Stage 2 step 3: `useEffect` now early-returns on passthrough !== false, then `!isInitialized && !session` (mirror Loading…), then `blocked = logOffReason || !session` before `captureAuthReturnPath`. Covers server-rejection LogOffScreen while session may still exist.
+
+`origin/sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth` @ `f0538c4fb7d3c327e9d43511af14832455b18742`
+
+#### joan — 2026-08-25T22:30:41.707Z
+[plan-rubric] REVIEW (Commit: 494ae7e0) fix Stage 2 capture guard
+
+#### katherine — 2026-08-25T22:28:21.444Z
+`origin/sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth` @ `494ae7e07ae34496d093cc31eafc02564b33d5ad` · auth return-path plan
+
+---
+
 # AST-1482 — Return to detail URL after re-auth
 
 **Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463/candidate-single-page-job-report)  

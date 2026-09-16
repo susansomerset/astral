@@ -224,13 +224,13 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
 
-`resolve_job_artifact_agent_data_body` loads RESPONSE `block_data` by pin id (coat-check empty/missing). `hydrate_job_artifacts_for_display` shallow-copies artifacts and replaces pin-slot strings with resolved bodies (no `save_job_data`). Pin write = **AST-1099**.
+`resolve_job_artifact_agent_data_body` loads RESPONSE `block_data` by pin id (coat-check empty/missing). `hydrate_job_artifacts_for_display` shallow-copies artifacts; **AST-1548:** operator `job_resume` / `cover_letter` use job body only (no pin→`agent_data`); `proposed_answers` still pin-resolves. Pin write = **AST-1099** (propose only after AST-1548).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Resolve + hydrate overlay | `src/core/tracker.py` | **`TestAst1100ResolveHydrateJobArtifactPins`** |
 
-**Broken / obsolete:** none on tracker pin-write suites.
+**Broken / obsolete:** hydrate asserts that replace `job_resume`/`cover_letter` pin strings via resolve — AST-1554.
 
 **Integration:** none — do not invent new integration coverage.
 
@@ -246,13 +246,13 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 **Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1116-cover-letter-field-defs`.
 
-`hydrate_job_artifacts_for_display` normalizes `cover_letter` dict values via `normalize_cover_letter_artifact` (Subject/Letter/signature) after pin resolve — overlay only. Field defs: **`docs/test-bible/utils/config.md`**.
+`hydrate_job_artifacts_for_display` normalizes `cover_letter` **dict** values via `normalize_cover_letter_artifact` (Subject/Letter/signature) — overlay only. **AST-1548:** pin strings on cover are not resolved for operator hydrate. Field defs: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Hydrate cover normalize | `src/core/tracker.py` | **`TestAst1116HydrateCoverLetterNormalize`** (+ revised **`TestAst1100ResolveHydrateJobArtifactPins::test_hydrate_replaces_pin_strings_leaves_legacy_dicts`**) |
+| Hydrate cover normalize | `src/core/tracker.py` | **`TestAst1116HydrateCoverLetterNormalize`** (+ revised **`TestAst1100ResolveHydrateJobArtifactPins`**) |
 
-**Broken / obsolete:** AST-1100 hydrate assert that a partial `{"Subject": "keep"}` stays un-normalized — superseded by AST-1116 spine normalize.
+**Broken / obsolete:** AST-1100 hydrate assert that a partial `{"Subject": "keep"}` stays un-normalized — superseded by AST-1116 spine normalize; pin-resolve cover node — AST-1554.
 
 **Integration:** none.
 
@@ -269,20 +269,19 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 **Parent:** [AST-1491](https://linear.app/astralcareermatch/issue/AST-1491/cover-letter-content-does-not-appear-for-editing). **Publish:** `origin/sub/AST-1491/AST-1504-gap-cover-letter-hydrate-tests`. Product fix: **AST-1499**.
 
-Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap → Subject/Letter/signature, nonempty gate (no all-empty spine overwrite), pin leave-on-miss when resolve returns a nonempty **non-cover** body (must keep `"pin-cover"` — not empty spine). All three nodes red against pre-AST-1499 product; green after AST-1499 hydrate helper.
+Originally pin-resolve cover gaps. **AST-1548/1554:** same behaviors asserted on **job cover dicts**; pin strings stay unresolved on operator hydrate.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Nested unwrap / empty spine / pin miss | `src/core/tracker.py` | **`TestAst1504CoverLetterHydrateDisplayGaps`** (bug-repro) |
+| Nested unwrap / empty spine / pin leave | `src/core/tracker.py` | **`TestAst1504CoverLetterHydrateDisplayGaps`** |
 
-**Broken / obsolete:** prior `test_hydrate_leaves_pin_when_resolve_misses` with resolve `None` (already green pre-fix) — strengthened to nonempty non-cover body + assert pin preserved (Radia fix-now / Katherine `[qa-handoff]`).
+**Broken / obsolete:** resolve-on-hydrate cover pin nodes — flipped in AST-1554.
 
 **Integration:** none — do not invent.
 
 ## QA test manifest
 
-1. Bug-repro (nested unwrap + empty-spine gate + pin leave-on-miss): `tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps`
-   - Pin leave-on-miss red-first: `::test_hydrate_leaves_pin_when_resolve_misses` (resolve `{"unrelated": "meta"}` → keep `"pin-cover"`)
+1. Cover dict unwrap + empty-spine gate + pin leave: `tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -290,7 +289,51 @@ Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap
   -q
 ```
 
-**Pass criterion:** all three nodes red on pre-AST-1499 product; green after AST-1499 hydrate — `test-fix` / resolve verifies the flip. Not zero-arg harness / branch-lock gate.
+### AST-1554 · AST-1547 (gap — body replica persist + hydrate)
+
+**Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). Product: **AST-1548**.
+
+Historical dual-write into `job_data.artifacts`. **AST-1556:** SoT moves to `artifacts` table — helpers rewritten to assert `save_artifact` / no job_data body keys.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Persist table write + cover + coat-check | `src/core/tracker.py` | **`TestAst1554BodyReplicaPersistHelpers`** (+ hydrate suites above) |
+
+**Broken / obsolete:** dual-write `job_resume`+`resume_content` into `job_data` — AST-1556.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  -q
+```
+
+### AST-1556 · AST-1547 (bug-repro — artifacts table SoT)
+
+**Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). **Publish:** `origin/sub/AST-1547/AST-1556-job-artifacts-in-artifacts-table`.
+
+Editable `job_resume` / `cover_letter` persist via `database.save_artifact("job", …)`; hydrate overlays `get_current_artifact`; cancel retires table currents. Not `job_data.artifacts.*` as SoT.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Table save / hydrate / cancel-retire | `src/core/tracker.py` | **`TestAst1556JobArtifactsTableSoT`** (bug-repro) |
+
+**Broken / obsolete:** AST-1554 job_data dual-write asserts.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Bug-repro (table SoT save + hydrate overlay + cancel retire): `tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT`
+   - Primary red-first: `::test_save_job_resume_body_writes_artifacts_table_not_job_data`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  -q
+```
+
+**Pass criterion:** red on pre-AST-1556 product (job_data dual-write); green after make-fix table writers — `test-fix` verifies the flip.
 
 ---
 
@@ -443,3 +486,113 @@ Freeform **`notes`** extract/save/cancel clear (AST-1271 shape, renamed); epic *
   tests/component/core/test_tracker.py::TestAst1523EpicHelpersRemoved \
   -q
 ```
+
+
+---
+
+### AST-1592 · AST-1588
+
+**Parent:** [AST-1588 — Support job.artifacts.job_resume and job.artifacts.cover_letter as artifacts](https://linear.app/astralcareermatch/issue/AST-1588/support-jobartifactsjob-resume-and-jobartifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`.
+
+Tracker generic `save_job_artifact` / `get_job_current` (entity id + catalog key); `job.artifacts.job_resume` writes always auto-cite the owning candidate’s current `base_resume` `artifact_uuid` (or `[]`); cover/other keys pass `source_artifact_ids` through. Hydrate / has-body / from-parsed / agent finalize land via those generics. Type-specific public `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` / `persist_finalize_*` removed. API + agent: **`docs/test-bible/ui/api/api_jobs.md`**, **`docs/test-bible/core/agent.md`**. Builder/UI inventory → **AST-1593**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Public API + type-specific names gone | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_type_specific_public_saves_removed`** |
+| get_job_current hit/miss/key validation | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_get_job_current_hit_miss_and_key_validation`** |
+| job_resume cites base_resume (ignores caller sources) | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_cites_current_base_resume_uuid`** |
+| job_resume empty sources when no base | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_empty_sources_when_no_base_resume`** |
+| cover_letter passes caller sources | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation::test_cover_letter_passes_caller_sources`** |
+| Catalog write still table SoT (1554/1556 revised) | `src/core/tracker.py` | **`TestAst1554BodyReplicaPersistHelpers`**, **`TestAst1556JobArtifactsTableSoT`** |
+
+**Broken / obsolete this pass:** calls to deleted `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` / `persist_finalize_*` in AST-1554/1556 + cover normalize + from-parsed suites — revised to `save_job_artifact` / `_prepare_job_replica_body` (**AST-1603** privatized prepare). Hydrate overlay still asserts `get_current_artifact` via `get_job_current`.
+
+**Integration:** none — no existing scenario asserts job catalog write/citation.
+
+## QA test manifest (AST-1592)
+
+1. Tracker catalog + citation: `tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation`
+2. Revised table-SoT helpers: `tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers`
+3. Revised bug-repro SoT: `tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT`
+4. API PUT catalog keys: `tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper` + cover PUT in same module
+5. Agent finalize → save_job_artifact: `tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin` + `TestAst1554DoTaskBodyReplica`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_put_cover_letter_persists_via_tracker \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–5 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasum:** `docs/test-bible/core/tracker.md` (fill after publish)
+
+---
+
+### AST-1600 · AST-1588 (bug)
+
+**Publish:** `origin/sub/AST-1588/AST-1600-job-resume-cover-not-persisting`.
+
+`_candidate_id_for_job` prefers denormalized `job.candidate_id`; `save_job_artifact` passes `candidate_id=` into `database.save_artifact`. Agent land: **`docs/test-bible/core/agent.md`** § AST-1600.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prefer job.candidate_id | `src/core/tracker.py` | **`[bug-repro]`** `TestAst1600TrackerCandidateIdLand::test_bug_repro_candidate_id_for_job_prefers_job_column` |
+| Pass candidate_id into save_artifact | `src/core/tracker.py` | **`[bug-repro]`** `…::test_bug_repro_save_job_artifact_passes_candidate_id` |
+
+**Broken / obsolete this pass:** AST-1592 `save_artifact` mocks revised to accept `candidate_id=` (would TypeError once make-fix lands).
+
+**Integration:** none.
+
+### AST-1603 · AST-1601
+
+**Parent:** [AST-1601](https://linear.app/astralcareermatch/issue/AST-1601). **Publish:** `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key`.
+
+`prepare_job_replica_body` → private `_prepare_job_replica_body`. `_JOB_ARTIFACT_PIN_KEYS` = `("proposed_answers",)` only. Hydrate still overlays `job_resume` / `cover_letter` via `get_job_current`. Agent land: **`docs/test-bible/core/agent.md`** § AST-1603.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pin keys + private prepare + hydrate overlay | `src/core/tracker.py` | **`TestAst1603TrackerPinKeysAndPrivatePrepare`** |
+| Revised prepare coat-check calls | same | **`TestAst1554BodyReplicaPersistHelpers`** |
+| Revised public-API assert (prepare private) | same | **`TestAst1592TrackerCatalogWriteReadCitation::test_type_specific_public_saves_removed`** |
+
+**Broken / obsolete this pass:** public `prepare_job_replica_body` hasattr / call sites; pin-key lists including `job_resume` / `cover_letter`.
+
+**Integration:** none.
+
+### AST-1613 · AST-1610 (bug) — docs-acceptance
+
+**Publish:** `origin/sub/AST-1610/AST-1613-fix-job-artifacts-prepare-empty`.
+
+Product coerce (`_coerce_job_replica_parsed` + prepare/land string→dict) lands on this ticket. **No new tests on AST-1613** — string-JSON prepare/land `[bug-repro]` lives on sibling gap **AST-1614**. Existing AST-1603 suites still inject dict `parsed` / mock prepare and do not exercise the text-format path.
+
+**Integration:** none.
+
+### AST-1614 · AST-1610 (gap)
+
+**Publish:** `origin/sub/AST-1610/AST-1614-gap-string-json-prepare-land-repro`.
+
+String-JSON prepare/land repro for AST-1613 coerce. Agent land: **`docs/test-bible/core/agent.md`** § AST-1614.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finalize-shaped string → prepare body | `src/core/tracker.py` | **`[bug-repro]`** `TestAst1614StringJsonPrepare::test_bug_repro_prepare_lands_finalize_shaped_string_json` |
+| Non-JSON string still prepare_empty | same | **`TestAst1614StringJsonPrepare::test_bug_repro_prepare_empty_on_non_json_string`** |
+| Cover-letter string JSON path | same | **`TestAst1614StringJsonPrepare::test_bug_repro_prepare_lands_cover_letter_string_json`** |
+
+**Broken / obsolete this pass:** none — additive coverage; AST-1603 dict/mock suites unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/agent.md`** § AST-1614 (shared agent+tracker manifest).
+
+**Bible shasum (publish tip):** filled with agent.md after publish.
+

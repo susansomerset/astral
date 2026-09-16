@@ -306,3 +306,45 @@ Child #1: `CONTACT_TASK_CONFIG` block (six keys pre-registered), markup parse/st
   tests/component/core/test_contact.py::TestAst1531ContactLandStageCutover \
   -q
 ```
+
+---
+
+### AST-1561 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
+
+`try_meteorite_apply_paste_from_slack` (thread-first, then unprompted `paste` source_kind); `handle_slack_event` short-circuits Estelle turn on successful paste; `run_contact_estelle_turn` `land_calls` uses `apply_paste` when paste-source row exists. Meteorite helpers: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Slack paste routing | `src/core/contact.py` | **`TestAst1561ContactPasteRouting`** |
+
+**Broken / obsolete:** none — additive; existing Estelle turn stubs unchanged for non-paste paths.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+---
+
+### AST-1585 · AST-1571
+
+**Parent:** [AST-1571 — Implement patt.artifact.read-operative](https://linear.app/astralcareermatch/issue/AST-1571/implement-pattartifactread-operative). **Publish:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`.
+
+Contact `resolve_pinned_base_resume` (ownership + `get_operative_base_resume`); `run_contact_task_dispatch` UUID short-circuit / `pin_required` for `artifacts.base_resume`; Estelle raft strips blob `base_resume` and injects pin body when `base_resume_artifact_id` supplied. API + JAR: **`docs/test-bible/ui/api/api_candidate.md`**, **`docs/test-bible/frontend/lib.md`**, **`docs/test-bible/frontend/components.md`** § AST-1585. Helper SoT: **`docs/test-bible/core/candidate.md`** § AST-1584.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Resolve / dispatch / Estelle raft | `src/core/contact.py` | **`TestAst1585ContactPinnedBaseResume`** |
+
+**Broken / obsolete this pass:** none — additive short-circuits; other `get_candidate_data` params still hit tracker.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume \
+  tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi \
+  -q
+```
+

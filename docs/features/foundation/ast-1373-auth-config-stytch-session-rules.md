@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-1373 archived 2026-08-31 -->
+
+## Linear archive (AST-1373)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1373/auth-config-stytch-session-rules-spa-readable-policy-extend-stytch  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1372 — Extend Stytch sessions  
+**Blocked by / blocks / related:** parent: AST-1372; blocks: AST-1374
+
+### Description
+
+## What this implements
+
+Owns adding session duration and activity-extension cadence to `AUTH_CONFIG`, and exposing those non-secret values to the SPA (including a path usable before Bearer login for authenticate handoff). Does **not** own the React extend loop or authenticate call sites (sibling SPA child).
+
+## Citations
+
+`pattern.config.config-block`; `astral.config.config-source-of-truth`; `astral.config.secrets-and-env-specific-from-environ`; `astral.layers.ui-config-driven-business-logic`; `astral.idioms.require-auth-on-protected-endpoints`
+
+## Acceptance criteria
+
+- [X] `AUTH_CONFIG` (or a clearly named sub-block under it) holds session duration minutes and activity-extension interval; defaults are 20 and an interval shorter than 20 (brief example: 10).
+- [X] Changing only the config literals (no SPA constant edits) is enough for an engineer to retune duration/cadence for a later UAT pass.
+- [X] The SPA can obtain configured session duration and extension cadence from a config-backed API surface usable before Bearer login for authenticate handoff.
+
+## Boundaries
+
+- [X] Does **not** own the React extend loop or authenticate call sites (sibling).
+- [X] Does **not** change Stytch Dashboard settings, JWT validation, admin gating, or log-off UX redesign.
+
+## Notes for planning
+
+Citations as above. Session duration/cadence are non-secret literals — not env. Pre-login policy read must stay free of secrets if public.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/ast-1372-extend-stytch-sessions`, child `sub/AST-1372/<this-id>-auth-config-stytch-session-rules`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. AUTH_CONFIG literals + `get_auth_session_policy`: `tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy`
+2. Public `GET /api/auth_session_policy`: `tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy \
+  tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules`):
+
+* `docs/test-bible/utils/config.md` · `df6edc4c6293353f911f6ccd1282b64868ec7825`
+* `docs/test-bible/ui/api/api_system.md` · `12547b95bffda86fa08bd2b6135a55e53908a268`
+
+### Comments
+
+#### radia — 2026-08-14T21:14:04.381Z
+[code-rubric] PROCEED (Commit: f23fabf0) Session policy API clean
+
+#### betty — 2026-08-14T21:11:21.182Z
+`origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules` @ `f23fabf0` · session policy tests
+
+#### joan — 2026-08-14T21:06:45.515Z
+[plan-rubric] PROCEED (Commit: 2fa02d78) Config policy API ready
+
+#### ada — 2026-08-14T21:04:46.818Z
+`origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules` @ `2fa02d7869802800436a5ddbed3d0ade95d16160` · plan ready
+
+---
+
 # AUTH_CONFIG Stytch session rules + SPA-readable policy
 
 **Linear:** [AST-1373](https://linear.app/astralcareermatch/issue/AST-1373)

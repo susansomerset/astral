@@ -1581,3 +1581,179 @@ class TestAst1135DispatchTaskFreqAllows:
         old = (datetime.now(timezone.utc) - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
         assert db.dispatch_task_freq_allows({"freq_hrs": 24, "last_run_at": old}) is True
 
+
+class TestAst1618SaveDispatchTaskCallerEntity:
+    """AST-1618: save_dispatch_task honors caller entity_type for sort_by."""
+
+    def test_caller_entity_overrides_catalog_sort(self, sqlite_in_memory) -> None:
+        """Stage 1 Done-when: non-catalog entity + trigger valid for *that* entity.
+
+        save must not require the trigger to be valid for the task-key catalog entity
+        when deriving defaults before applying the caller override.
+        """
+        from src.utils.config import _dispatch_sort_by_for, dispatch_task_admin_defaults
+
+        db = sqlite_in_memory
+        catalog = dispatch_task_admin_defaults("grade_do")  # job / PASSED_JD / latest_score
+        assert catalog["entity_type"] == "job"
+        assert catalog["sort_by"] == "latest_score"
+        expected_sort = _dispatch_sort_by_for("company", "WATCH")
+        assert expected_sort != catalog["sort_by"]
+        tid = db.save_dispatch_task(
+            "c1618",
+            "grade_do",
+            min_count=1,
+            entity_type="company",
+            trigger_state="WATCH",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == "company"
+        assert row["trigger_state"] == "WATCH"
+        assert row["sort_by"] == expected_sort
+
+    def test_caller_entity_with_catalog_valid_trigger(self, sqlite_in_memory) -> None:
+        """Overlap path (NEW): entity sticks; sort matches chosen-entity helper."""
+        from src.utils.config import _dispatch_sort_by_for
+
+        db = sqlite_in_memory
+        expected_sort = _dispatch_sort_by_for("company", "NEW")
+        tid = db.save_dispatch_task(
+            "c1618n",
+            "grade_do",
+            min_count=1,
+            entity_type="company",
+            trigger_state="NEW",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == "company"
+        assert row["sort_by"] == expected_sort
+
+    def test_omit_entity_keeps_catalog_defaults(self, sqlite_in_memory) -> None:
+        from src.utils.config import dispatch_task_admin_defaults
+
+        db = sqlite_in_memory
+        catalog = dispatch_task_admin_defaults("grade_do", trigger_state="PASSED_JD")
+        tid = db.save_dispatch_task(
+            "c1618b",
+            "grade_do",
+            min_count=1,
+            trigger_state="PASSED_JD",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == catalog["entity_type"]
+        assert row["sort_by"] == catalog["sort_by"]
+
+    def test_mailbox_omit_entity_keeps_null_sort(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+
+        db = sqlite_in_memory
+        db.save_candidate("c1618m", state="ACTIVE_SEARCH", candidate_data={})
+        tid = db.save_dispatch_task(
+            "c1618m",
+            METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
+            min_count=1,
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] is None
+        assert row["sort_by"] is None
+
+    def test_mailbox_caller_entity_still_null_sort(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+
+        db = sqlite_in_memory
+        db.save_candidate("c1618m2", state="ACTIVE_SEARCH", candidate_data={})
+        tid = db.save_dispatch_task(
+            "c1618m2",
+            METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
+            min_count=1,
+            entity_type="company",  # sort helper skipped for mailbox
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["sort_by"] is None
+
+class TestAst1622MeteoriteCountEligibleDue:
+    """AST-1622: global meteorite pool count_eligible + AUTO-due without candidate_id."""
+
+    def test_count_meteorites_unclaimed_in_states(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        ids = db.insert_meteorite_rows(
+            [
+                {"candidate_id": "c1", "source_kind": "email", "source_id": "m1"},
+                {"candidate_id": "c1", "source_kind": "email", "source_id": "m2"},
+                {"candidate_id": "c2", "source_kind": "email", "source_id": "m3"},
+            ]
+        )
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 3
+        db.claim_meteorite_batch("batch-1622", "NEW", 1)
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 2
+        db.update_meteorite(ids[1], state="READY")
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 1
+        assert db.count_meteorites_unclaimed_in_states(["READY"]) == 1
+        with pytest.raises(ValueError):
+            db.count_meteorites_unclaimed_in_states([])
+
+    def test_count_eligible_null_candidate_meteorite(self, sqlite_in_memory) -> None:
+        # Staging rows still carry candidate_id; the dispatch_task shell is global (NULL cid).
+        db = sqlite_in_memory
+        db.insert_meteorite_rows(
+            [
+                {"candidate_id": "c-a", "source_kind": "email", "source_id": "g1"},
+                {"candidate_id": "c-b", "source_kind": "email", "source_id": "g2"},
+            ]
+        )
+        task = {
+            "entity_type": "meteorite",
+            "trigger_state": "NEW",
+            "candidate_id": None,
+            "task_key": "stage_meteorite",
+            "min_count": 1,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
+        # Non-null candidate_id on the task still counts the global pool.
+        task["candidate_id"] = "ignored"
+        assert db.count_eligible_for_dispatch_task(task) == 2
+
+    def test_count_eligible_job_still_requires_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        task = {
+            "entity_type": "job",
+            "trigger_state": "NEW",
+            "candidate_id": None,
+            "task_key": "evaluate_jd",
+            "min_count": 1,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
+    def test_get_due_includes_null_candidate_meteorite(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.insert_meteorite_rows(
+            [{"candidate_id": "c-due", "source_kind": "email", "source_id": "due1"}]
+        )
+        conn = db._get_connection()
+        try:
+            db._ensure_dispatch_task_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO dispatch_task (
+                    candidate_id, task_key, entity_type, trigger_state, sort_by,
+                    batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor
+                ) VALUES (
+                    NULL, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at',
+                    0, 0, 1, 10, 1, NULL
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        due = db.get_due_tasks()
+        keys = [t["task_key"] for t in due]
+        assert "stage_meteorite" in keys
+        row = next(t for t in due if t["task_key"] == "stage_meteorite")
+        assert row["candidate_id"] is None
+        assert row["available_count"] >= 1

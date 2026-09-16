@@ -40,6 +40,7 @@ import LikeJobCriteria from "./pages/ArtifactsLikeJobCriteria"
 import Profile from "./pages/CandidateProfile"
 import CandidateIntake from "./pages/CandidateIntake"
 import Strengths from "./pages/CandidateStrengths"
+import BioSummary from "./pages/CandidateBioSummary"
 import Priorities from "./pages/CandidatePriorities"
 import DealBreakers from "./pages/CandidateDealBreakers"
 import Backstory from "./pages/CandidateBackstory"
@@ -115,6 +116,7 @@ const routes: RouteObject[] = [
           { path: "candidate/surfer", element: <CandidateSurfer /> },
           { path: "candidate/intake", element: <CandidateIntake /> },
           { path: "candidate/strengths", element: <Strengths /> },
+          { path: "candidate/bio_summary", element: <BioSummary /> },
           { path: "candidate/priorities", element: <Priorities /> },
           { path: "candidate/deal_breakers", element: <DealBreakers /> },
           { path: "candidate/backstory", element: <Backstory /> },

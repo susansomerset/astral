@@ -26,11 +26,13 @@ from src.utils.config import (
     PREAMBLE_CONFIG,
     TOPIC_MENU_GEN_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
+    build_artifacts_discussion_hop_task_keys,
     build_state_ui_manifest,
     dispatch_hop_label,
     get_auth_session_policy,
     nav_admin_only_group_labels,
 )
+from src.data.database import get_agent_task
 from src.utils.logging import get_logger
 from src.core.deploy_status import get_deploy_status_payload
 
@@ -229,6 +231,25 @@ def state_ui_manifest():
         cand["artifacts_chain_task_keys"] = []
         cand["artifacts_chain_hop_labels"] = []
         cand["artifacts_chain_artifact_keys"] = []
+    # AST-1550: Discussion hop sections — soft-fail like artifacts_chain above.
+    try:
+        sections = []
+        for task_key in build_artifacts_discussion_hop_task_keys():
+            row = get_agent_task(task_key) or {}
+            name = (row.get("task_name") or "").strip()
+            sections.append({
+                "section_id": task_key,
+                "nav_label": name or task_key,
+                "default_expanded": False,
+            })
+        manifest.setdefault("jobs", {}).setdefault("recommended", {})[
+            "report_discussion_sections"
+        ] = sections
+    except Exception as exc:
+        _log.warning("discussion sections manifest walk failed: %s", exc)
+        manifest.setdefault("jobs", {}).setdefault("recommended", {})[
+            "report_discussion_sections"
+        ] = []
     return jsonify(manifest)
 
 

@@ -1,3 +1,82 @@
+<!-- linear-archive: AST-1337 archived 2026-08-31 -->
+
+## Linear archive (AST-1337)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1337/print-control-on-base-resume-content-add-a-print-button-to-base-resume  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1314 — Add a Print button to Base Resume Content  
+**Blocked by / blocks / related:** parent: AST-1314
+
+### Description
+
+## What this implements
+
+Wire a Print control on Artifacts → Base Resume Content for the selected candidate. On success, open print-ready HTML in a new tab using the same operator flow as Session Resume Paste Open HTML (validate response, then open tab; no blank tab on failure). Source is the candidate’s saved base resume content via the existing candidate-bound base HTML path — not Admin session paste and not job-tailored resume routes. Does **not** own emit pipeline changes beyond wiring, Session Resume Paste, or job Print controls.
+
+## Citations
+
+`pattern.ui.shared-button-roles`; `astral.idioms.require-auth-on-protected-endpoints`; `astral.ui.frontend-file-placement`; `astral.layers.ui-config-driven-business-logic`; `astral.standards.in-scope-only`
+
+## Acceptance criteria
+
+- [X] 1. On Base Resume Content with a selected candidate that has saved printable base resume content, Susan can activate Print and get a new tab of print-ready HTML for that candidate’s base resume (structure order, section titles/formats, accent as already emitted by the base-resume builder).
+- [X] 2. Susan can use the browser’s Print → PDF from that tab without needing a job id or leaving Artifacts for Session Resume Paste.
+- [X] 3. With no candidate selected, or when base resume content is missing/unusable, Print is unavailable or fails with a clear on-page error — and no blank HTML tab opens.
+- [X] 4. A failed HTML response never opens a success-looking blank/broken tab.
+- [X] 5. Job Print Resume / Print Cover Letter and Session Resume Paste behavior are unchanged.
+
+## Boundaries
+
+- [X] Does **not** own emit pipeline changes beyond wiring. Does **not** change Session Resume Paste or job Print Resume / Print Cover Letter. Does **not** print unsaved editor buffer. Does **not** own Highlights-required work (AST-1326).
+
+## Notes for planning
+
+Reuse `/candidate/resume/base` + `build_base_resume` (or equivalent authenticated candidate base HTML) with Session-style validate-then-open-tab UX. Print = `btn secondary`.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1314-add-a-print-button-to-base-resume-content`, child `sub/AST-1314/AST-1337-print-control-on-base-resume-content`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. **Gaps (new):** `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `AST-1337: Print disabled with no candidate; success opens blob tab (§6c)`; `AST-1337: Print error and empty HTML never open a tab` (§6c routed page).
+2. **Existing coverage:** prior Base Resume Content cases in the same file (structure / accent / AST-1306 / AST-1323 / AST-1325) — leave alone; Session Resume Paste / job Print suites out of boundaries.
+3. **Broken / obsolete:** none.
+4. **Integration:** no existing scenario asserts Base Resume Content Print — no drift; do not invent coverage.
+
+**Run (test-child):**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1337"
+```
+
+**Bible shasums** (`origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content` @ `63ba62d5`):
+
+* `docs/test-bible/frontend/pages.md` · `35d501e624da7d2bb22f8eee8e92fca3f5c7d44e`
+* `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` · `f797dd2257121e4757b8d33c55cd60b4cfc57643`
+
+### Comments
+
+#### radia — 2026-08-12T15:09:02.678Z
+[code-rubric] PROCEED (Commit: 63ba62d5) Print control clean
+
+#### betty — 2026-08-12T15:05:52.769Z
+`origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content` @ `63ba62d5` · Print §6c ready
+
+#### joan — 2026-08-12T14:59:16.220Z
+[plan-rubric] PROCEED (Commit: a4e72815) single-file Print wire
+
+#### katherine — 2026-08-12T14:56:35.366Z
+`origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content` @ `a4e72815be96abb568a17cc6efd7c0f35c273ee0` · plan ready
+
+---
+
 # AST-1337 — Print control on Base Resume Content
 
 **Linear:** [AST-1337](https://linear.app/astralcareermatch/issue/AST-1337)

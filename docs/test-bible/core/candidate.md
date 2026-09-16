@@ -893,6 +893,13 @@ Append-merge `EMBEDDED_EVALUATE_JD_CRITERIA` (QC then GC; AST-1084) into `evalua
 
 
 ---
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+`email_aliases_for_candidate` — **`TestAst1559EmailAliasesForCandidate`**.
+
+---
 
 ### AST-1092 · AST-1065 (UAT)
 
@@ -1356,8 +1363,10 @@ Core helper **`snapshot_saved_base_resume_artifact`** re-reads live `artifacts.b
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Snapshot live blob / retire / validation | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume`** |
-| Craft generate does not write artifacts store | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume::test_craft_generation_does_not_call_save_artifact`** |
+| Snapshot live blob / retire / validation | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume`** (**removed AST-1576**) |
+| Craft generate does not write artifacts store | `src/core/candidate.py` | **`test_craft_generation_does_not_call_save_artifact`** (**inverted AST-1576** — generate now writes via generic save) |
+
+**Superseded by AST-1576:** `snapshot_saved_base_resume_artifact` deleted; coverage in **`TestAst1576SaveCandidateDataOperative`**.
 
 **Broken / obsolete this pass:** none in core (API mock revisions live under **`api_candidate.md`**).
 
@@ -1726,3 +1735,312 @@ Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST
   tests/component/core/test_candidate.py::TestAst1513DuplicateRubricCodes \
   -q
 ```
+
+---
+
+### AST-1576 · AST-1569
+
+**Parent:** [AST-1569 — Implement patt.artifact.write-operative](https://linear.app/astralcareermatch/issue/AST-1569/implement-pattartifactwrite-operative). **Publish:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data`.
+
+Dual-dispatch `save_candidate_data(candidate_id, artifact_key, blob)` against `ARTIFACT_CONFIG`; hydrate GET via `get_current_artifact`; parse / UI generate land the pilot body operatively (no `candidate_data` blob mirror); `_persist_craft_dispatch_success` no longer handles `craft_resume_base`; `snapshot_saved_base_resume_artifact` gone. Agent persist + API PUT: **`docs/test-bible/core/agent.md`**, **`docs/test-bible/ui/api/api_candidate.md`**. Config key: **`docs/test-bible/utils/config.md`**. Catalog wrapper retired: **`docs/test-bible/utils/artifact_catalog.md`**. Data retire+insert: **`tests/component/data/database/test_artifacts.py::TestAst1352Artifacts`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dual-dispatch / fail-fast / retire / hydrate / generate write | `src/core/candidate.py` | **`TestAst1576SaveCandidateDataOperative`** |
+| Parse + generate land structure library + body operative | same | revised **`TestParseCandidateResume::test_persists_parsed_resume`**; **`TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success`**; **`TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array`** |
+| Snapshot class | same | **`TestAst1353SnapshotSavedBaseResume`** removed |
+
+**Broken / obsolete this pass:** snapshot helper tests; generate “does not call save_artifact”; parse/generate asserts of `artifacts.base_resume` on the library blob; dummy `{"x": 1}` generate success (empty operative body).
+
+**Integration:** none — artifact pipeline remains a should-have gap; no existing scenario asserted snapshot/catalog wrappers.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1576SaveCandidateDataOperative \
+  tests/component/core/test_candidate.py::TestParseCandidateResume::test_persists_parsed_resume \
+  tests/component/core/test_candidate.py::TestParseCandidateResumeExtended::test_never_auto_transitions_state \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array \
+  tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops \
+  tests/component/ui/api/test_api_candidate.py::TestAst1576PutBaseResumeOperativeApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
+  tests/component/data/database/test_artifacts.py::TestAst1352Artifacts \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1584 · AST-1571
+
+**Parent:** [AST-1571 — Implement patt.artifact.read-operative](https://linear.app/astralcareermatch/issue/AST-1571/implement-pattartifactread-operative). **Publish:** `origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability`.
+
+Public `get_operative_base_resume(artifact_uuid)` pin→body for pilot `candidate.artifacts.base_resume` via `database.get_artifact`; miss / wrong entity / wrong `artifact_type` → `None`; never walks `candidate_data` blob / coat-check. Data PK fetch: **`docs/test-bible/data/database/artifacts.md`** § AST-1584. UI/Contact wire is sibling **AST-1585**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pilot pin→body / retired pin / miss / wrong type / no blob fallback | `src/core/candidate.py` | **`TestAst1584GetOperativeBaseResume`** |
+
+**Broken / obsolete this pass:** none — additive helper; `TestAst1576SaveCandidateDataOperative` hydrate (read-current) unchanged.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact \
+  tests/component/core/test_candidate.py::TestAst1584GetOperativeBaseResume \
+  -q
+```
+
+**Pass criterion:** pytest green on both classes + docs-acceptance for `patt.artifact.traceability` draft (see artifacts bible § AST-1584; **AST-1628** singular id) — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1586 · AST-1570
+
+**Parent:** [AST-1570 — Implement patt.artifact.read-current](https://linear.app/astralcareermatch/issue/AST-1570/implement-pattartifactread-current). **Publish:** `origin/sub/AST-1570/AST-1586-current-read-helper-get-hydrate-pattern-revise`.
+
+`get_candidate_current(candidate_id, artifact_key)` current-read by catalog key via `database.get_current_artifact`; miss → `None` (no `candidate_data` blob fallback). `hydrate_operative_base_resume_for_response` strips stale `artifacts.base_resume` on miss. GET edit/live API surfaces table-only. Pattern draft tracker example-only: docs-acceptance on `canon/directives/draft/patt.artifact.read-current.md`. Read-operative pin path stays **AST-1584** / **AST-1585**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Current-read helper + hydrate strip on miss | `src/core/candidate.py` | **`TestAst1586GetCandidateCurrent`** |
+| GET detail / resume_structure table-only | `src/ui/api/api_candidate.py` | **`TestAst1586ReadCurrentGetApi`** |
+
+**Broken / obsolete this pass:** none — `TestAst1576SaveCandidateDataOperative` hydrate-on-hit paths unchanged; miss now strips stale blob (new coverage).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Current-read helper + hydrate: `tests/component/core/test_candidate.py::TestAst1586GetCandidateCurrent`
+2. GET edit/live API: `tests/component/ui/api/test_api_candidate.py::TestAst1586ReadCurrentGetApi`
+3. Pattern draft docs-acceptance (grep/read on publish tip): `canon/directives/draft/patt.artifact.read-current.md` — `scope` lists only `database.py` / `candidate.py` / `api_candidate.py`; Applications §4 cites `tracker.py` as example only; Implementation §1 names `get_candidate_current`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1586GetCandidateCurrent \
+  tests/component/ui/api/test_api_candidate.py::TestAst1586ReadCurrentGetApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines + docs-acceptance item 3 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — `b3455e7dc171c1f118fb6e085f46afddb29103f464f48bf6d2ef90b607250406`
+- `docs/test-bible/ui/api/api_candidate.md` — `2f7beabeffcbe194e1342fb85d4ffd7d3a13b7c1556b0d6a4a30b1fe0d7519ce`
+
+---
+
+### AST-1587 · AST-1570
+
+**Parent:** [AST-1570 — Implement patt.artifact.read-current](https://linear.app/astralcareermatch/issue/AST-1570/implement-pattartifactread-current). **Publish:** `origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires`.
+
+`candidate_id_for_current_read` + `load_pilot_base_resume_for_candidate` delegate to `get_candidate_current(candidate.artifacts.base_resume)`; no `artifacts.base_resume` blob fallback on miss. Rewired: `format_base_resume_for_token`, `resolve_resume_structure` (accent shim), `draft_job_resume_allowed_section_keys`, `pin_experience_job_facts_from_base`. Builder consumers + source labels in **`docs/test-bible/core/builder.md`** § AST-1587. `config.py` / `api_resume_html.py` audit-only (no product change).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Current-read consumers + token | `src/core/candidate.py` | **`TestAst1587BaseResumeConsumerRewires`** |
+| Token + draft whitelist + experience pin (revised) | same | **`TestAst607BaseResumeToken`**, **`TestAst594DraftJobResumePayload`**, **`TestAst997JobTailoredExperience`**, **`TestAst1270NestedDraftJobResumeContract`**, **`TestAst1272DraftHopDebugWhitelistTrail`**, **`TestAst1305HopsContentBlobsAndLegacyLabels`**, **`TestAst996ExperienceJobArray`** (token path) |
+| `{$BASE_RESUME}` resolve (revised) | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown`** |
+| Operative body registry (harness) | `tests/component/core/operative_fixture.py`, `conftest.py` | autouse patch on `load_pilot_base_resume_for_candidate` |
+
+**Broken / obsolete this pass:** tests that seeded `artifacts.base_resume` blobs without operative current-read — revised to `register_operative_base` / `save_candidate_data` operative pin. `build_base_resume` string `experience` ingest skips non-array before reject ( **`test_base_resume_string_experience_omitted_on_emit`** replaces raise assert).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Consumer rewires: `tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires`
+2. Revised candidate helpers: `TestAst607BaseResumeToken`, `TestAst594DraftJobResumePayload`, `TestAst997JobTailoredExperience`, `TestAst1270NestedDraftJobResumeContract`, `TestAst1272DraftHopDebugWhitelistTrail`, `TestAst1305HopsContentBlobsAndLegacyLabels`, `TestAst996ExperienceJobArray::test_format_base_resume_token_includes_job_array_json`
+3. Builder consumer rewires (full `test_builder.py` — operative install + source labels): see **`docs/test-bible/core/builder.md`** § AST-1587 manifest
+4. Config token: `tests/component/utils/test_config.py::TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown`
+5. Docs-acceptance: `config.py` `{$BASE_RESUME}` path unchanged (audit); `api_resume_html.py` thin builder caller (audit)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires \
+  tests/component/core/test_candidate.py::TestAst607BaseResumeToken \
+  tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract \
+  tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail \
+  tests/component/core/test_candidate.py::TestAst1305HopsContentBlobsAndLegacyLabels \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_format_base_resume_token_includes_job_array_json \
+  tests/component/core/test_builder.py \
+  tests/component/utils/test_config.py::TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines + docs-acceptance items 5 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — `898792225f7786c7dc9456ae0a5ee8d06d7465277c95d867f22a9e2abd73cf79`
+- `docs/test-bible/core/builder.md` — `e4123fd99fd3dc048b72c905534dc48c3bbc23bfaf15359a3ea14815e3136540`
+
+### AST-1633 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1633-operative-save-hydrate-blob-retirement`.
+
+Operative `plain_text` validate on str-path; Strengths `save_artifact` retire+insert; dict-path strips `context.strengths` (siblings keep library-merge); `hydrate_operative_strengths_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1632**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1633. No React / backfill.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text validate + save/retire + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1633StrengthsOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** none — Ideal Day / completeness tests still seed legacy `context.strengths` blobs without dict-path Strengths writes.
+
+**Integration:** none — no existing scenario asserts Strengths operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core Strengths operative: `tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate`
+2. API PUT/GET Strengths: `tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1635 · AST-1629 (bug — identical artifact no-op)
+
+**Parent:** [AST-1629](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1635-no-identical-artifact-version`.
+
+`[bug-repro]` — identical Strengths body must return the existing `artifact_uuid` (no retire+insert). Plan-fix patches AST-1633 feature doc. Changed-body second save (AST-1633) must still retire+insert.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Identical body no-op | `src/core/candidate.py` | **`[bug-repro]`** `TestAst1635IdenticalArtifactNoOp::test_identical_strengths_save_keeps_current_uuid` |
+
+**Broken / obsolete:** none — AST-1633 different-body retire cases stay.
+
+## QA test manifest
+
+1. **[bug-repro]** `tests/component/core/test_candidate.py::TestAst1635IdenticalArtifactNoOp::test_identical_strengths_save_keeps_current_uuid`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1635IdenticalArtifactNoOp::test_identical_strengths_save_keeps_current_uuid \
+  -q
+```
+
+**Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
+
+### AST-1649 · AST-1647
+
+**Parent:** [AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page](https://linear.app/astralcareermatch/issue/AST-1647). **Publish:** `origin/sub/AST-1647/AST-1649-operative-save-hydrate-blob-retirement`.
+
+Operative `plain_text` validate on str-path (reuse); Bio Summary `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.bio_summary` via `_CONTEXT_OPERATIVE_LEAVES` (with strengths; siblings keep library-merge); `hydrate_operative_bio_summary_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token/nav: sibling **AST-1648**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1649. No React / backfill.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text validate + save/retire + identical no-op + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1649BioSummaryOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** none — Strengths AST-1633 strip still covers strengths; frozenset extension only adds `bio_summary`.
+
+**Integration:** none — no existing scenario asserts Bio Summary operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core Bio Summary operative: `tests/component/core/test_candidate.py::TestAst1649BioSummaryOperativeSaveHydrate`
+2. API PUT/GET Bio Summary: `tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1649BioSummaryOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+### AST-1652 · AST-1641
+
+**Parent:** [AST-1641 — Migrate candidate_data.context.priorities to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1641). **Publish:** `origin/sub/AST-1641/AST-1652-operative-save-hydrate-blob-retirement`.
+
+Operative `plain_text` validate on str-path (reuse); Priorities `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.priorities` alongside `strengths` (siblings like `deal_breakers` keep library-merge); `hydrate_operative_priorities_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1651**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1652. No React / backfill (sibling AST-1653). Parallel **AST-1649** (`bio_summary`) skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text validate + save/retire + identical no-op + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1652PrioritiesOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** AST-1633 / AST-1649 dict-path / PUT sibling asserts that treated `priorities` as a library-merge leaf — revised to use `deal_breakers`.
+
+**Integration:** none — no existing scenario asserts Priorities operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core Priorities operative: `tests/component/core/test_candidate.py::TestAst1652PrioritiesOperativeSaveHydrate`
+2. API PUT/GET Priorities: `tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi`
+3. Regression Strengths strip/sibling (revised): `tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate::test_dict_path_strips_strengths_keeps_siblings`
+4. Regression Strengths API sibling (revised): `tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1652PrioritiesOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi \
+  tests/component/core/test_candidate.py::TestAst1633StrengthsOperativeSaveHydrate::test_dict_path_strips_strengths_keeps_siblings \
+  tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1665 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement`.
+
+Operative `plain_text` validate on str-path (reuse); Writing Preferences `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.writing_preferences` via `_CONTEXT_OPERATIVE_LEAVES` (siblings like `backstory` keep library-merge); `hydrate_operative_writing_preferences_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1664**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1665. No React / backfill (sibling AST-1666). Tip unions Ideal Day catalog — `TestAst1365IdealDayLibrary` strip revised; Priorities API sibling retargeted to `backstory`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text validate + save/retire + identical no-op + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1665WritingPreferencesOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** AST-1365 Ideal Day library-merge assert (Ideal Day operative on tip); AST-1652 Priorities PUT sibling still using `deal_breakers` as library leaf.
+
+**Integration:** none — no existing scenario asserts Writing Preferences operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core Writing Preferences operative: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate`
+2. API PUT/GET Writing Preferences: `tests/component/ui/api/test_api_candidate.py::TestAst1665WritingPreferencesOperativeApi`
+3. Revised Ideal Day library strip: `tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary::test_save_candidate_data_strips_ideal_day_from_library_merge`
+4. Revised Priorities API sibling: `tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi::test_put_strips_priorities_keeps_sibling_context`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1665WritingPreferencesOperativeApi \
+  tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary::test_save_candidate_data_strips_ideal_day_from_library_merge \
+  tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi::test_put_strips_priorities_keeps_sibling_context \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*

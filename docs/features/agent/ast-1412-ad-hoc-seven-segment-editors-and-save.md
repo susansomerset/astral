@@ -1,3 +1,89 @@
+<!-- linear-archive: AST-1412 archived 2026-09-09 -->
+
+## Linear archive (AST-1412)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1412/ad-hoc-seven-segment-editors-and-save-update-adhoc-agent-to-mirror-new  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1403 — Update Adhoc Agent to mirror new task structure  
+**Blocked by / blocks / related:** parent: AST-1403; blocks: AST-1413
+
+### Description
+
+## What this implements
+
+After #1. Agent Ad Hoc editors match Manage Tasks’ seven segments; fetch-from-task and Save As read/write all seven columns; overwrite/has-content treats any populated segment as content; Preview and Test requests send all seven fields. Does **not** own the preview modal chrome or the post-Test agent_data panes (#3).
+
+## Citations
+
+`pattern.ui.shared-button-roles`, `pattern.config.config-block`, `astral.layers.ui-config-driven-business-logic`, `astral.ui.frontend-file-placement`, `astral.standards.no-hardcoded-sets`
+
+## Acceptance criteria
+
+- [X] With a task that has distinct text in System and Cache A–D, loading it on Agent Ad Hoc shows each segment in the matching editor. Save As to that task (or another) and reload in Manage Tasks shows the same seven strings in the same slots.
+- [X] A task whose only cache content is in Cache B (Cache A empty) round-trips through Ad Hoc load → Save As without moving that text into Cache A.
+- [X] Empty System in the editors still sends the selected agent’s content at Preview and Test (production fallback); Save As with empty System leaves `system_prompt` empty on the row.
+
+## Boundaries
+
+- [X] Does **not** own the preview modal chrome or the post-Test agent_data panes (sibling #3). Does **not** own backend assemble/store (sibling #1). Does **not** change Manage Tasks.
+
+## Notes for planning
+
+After #1. Seven editors matching Manage Tasks; Save As maps System / Cache A–D / No Cache / User to the existing `agent_task` columns. Estimate: 3
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1403-update-adhoc-agent-to-mirror-new-task-structure`, child `sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save` @ `79ed28a22566689192785d782878c9f3e072e10f`
+
+**Bible shasums** (on publish ref):
+
+* `docs/test-bible/frontend/pages.md` `63f89f403f15d5917ac03d98372c4a4492e103ec`
+* `docs/test-bible/ui/api/api_admin.md` `bcbba9961fe6fb39a99c561d053a4ef6c3d1fce5`
+
+1. Routed Agent Ad Hoc page (§6c) — seven tabs, Cache-B isolation, Preview/Test/Save As seven keys, overwrite ●: `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+2. `_enrich_tasks` seven `*_len` (Cache-B-only): `tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
+
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens \
+  -q
+```
+
+**Pass criterion:** Vitest + `TestAst1412EnrichTaskLens` green — not zero-arg harness / branch-lock gate.
+
+### Comments
+
+#### chuckles — 2026-08-17T05:55:28.974Z
+[merge-child] blocked: validate-sub-log — git pull merge on sub (`c374594a Merge remote-tracking branch 'origin/ftr/AST-1403-update-adhoc-agent-to-mirror-new-task-structure'`). @Hedy Lamarr — rewrite that merge off the publish tip (`git fetch && git merge origin/ftr/AST-1403-update-adhoc-agent-to-mirror-new-task-structure -m "merge(AST-1412): origin/ftr/AST-1403-update-adhoc-agent-to-mirror-new-task-structure"`), force-with-lease push `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save` only, stay User Testing.
+
+#### hedy — 2026-08-17T05:54:01.411Z
+`origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save` @ `c374594a` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-08-17T05:47:57.154Z
+[code-rubric] PROCEED (Commit: 79ed28a2) seven-segment editors wired
+
+#### betty — 2026-08-17T05:41:59.090Z
+`origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save` @ `79ed28a22566689192785d782878c9f3e072e10f` · seven-segment editor tests
+
+#### joan — 2026-08-17T05:27:48.130Z
+[plan-rubric] PROCEED (Commit: 1bab7d00) seven-segment editor UI
+
+#### hedy — 2026-08-17T05:24:34.057Z
+`origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save` @ `1bab7d00` · seven-segment editor plan
+
+---
+
 # AST-1412 — Ad Hoc seven-segment editors and save
 
 - **Linear:** [AST-1412](https://linear.app/astralcareermatch/issue/AST-1412)

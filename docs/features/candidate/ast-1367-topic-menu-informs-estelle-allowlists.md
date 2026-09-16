@@ -1,3 +1,85 @@
+<!-- linear-archive: AST-1367 archived 2026-08-31 -->
+
+## Linear archive (AST-1367)
+
+**Archived:** 2026-08-31  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1367/topic-menu-informs-estelle-allowlists-add-ideal-day-to-the-set-of  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1360 — Add "ideal_day" to the set of candidate context (strengths, priorities, etc.)  
+**Blocked by / blocks / related:** parent: AST-1360
+
+### Description
+
+## What this implements
+
+Extend Topic Menu closed informs / deliverables catalog with `ideal_day` and align Estelle preamble confirm/generate packet + patch allowlists so Ideal Day can be summarized, revised, and targeted by topics.
+
+## Citations
+
+`pattern.config.config-block`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.agent.do-task-delegation`.
+
+## Acceptance criteria
+
+- [X] 5. Topic Menu closed informs catalog accepts `ideal_day`; a topic may list it; generation/confirm allowlists treat it consistently with other context informs targets.
+
+## Boundaries
+
+- [X] Does **not** own craft rubric prompt text. After Ideal Day library + token.
+
+## Notes for planning
+
+Parent AST-1360. Estimate: 2. After #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1360-ideal-day-candidate-context`,
+child `sub/AST-1360/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Config informs + GEN allowlists: `tests/component/utils/test_config.py::TestAst1074TopicMenuConfig` + `TestAst1367IdealDayTopicMenuInforms` + `TestAst1075TopicMenuGenConfig`
+2. validate_topic Ideal Day: `tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_accepts_ideal_day_inform` (+ existing happy/reject)
+3. Estelle seed prompts: `tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1074TopicMenuConfig \
+  tests/component/utils/test_config.py::TestAst1075TopicMenuGenConfig \
+  tests/component/utils/test_config.py::TestAst1367IdealDayTopicMenuInforms \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_happy_and_rejects \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_accepts_ideal_day_inform \
+  tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists`):
+
+* `docs/test-bible/utils/config.md` `67a31a6467e2e51a86ae41da4db7a76fea951f96`
+* `docs/test-bible/core/candidate.md` `783483698ce9dc7faa92fe5bc4d8a276d614919c`
+* `docs/test-bible/core/repo_admin_json.md` `9df5c0e1f9d4759df03f442dbda859132bffb5b3`
+
+### Comments
+
+#### katherine — 2026-08-14T19:09:42.903Z
+`origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists` @ `756188f0` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-08-14T19:08:28.439Z
+[code-rubric] PROCEED (Commit: cc543da3) Topic Menu informs allowlists
+
+#### betty — 2026-08-14T19:05:15.759Z
+`origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists` @ `cc543da3` · Ideal Day informs ready
+
+#### joan — 2026-08-14T18:57:54.855Z
+[plan-rubric] PROCEED (Commit: 8d0ac348894c317106e7c355bb6f626afe81174f) informs allowlists seed
+
+#### katherine — 2026-08-14T18:56:36.726Z
+`origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists` @ `8d0ac348894c317106e7c355bb6f626afe81174f` · plan ready
+
+---
+
 # AST-1367 — Topic Menu informs + Estelle allowlists
 
 **Linear:** [AST-1367](https://linear.app/astralcareermatch/issue/AST-1367/topic-menu-informs-estelle-allowlists-add-ideal-day-to-the-set-of)

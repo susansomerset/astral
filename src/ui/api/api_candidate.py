@@ -22,6 +22,13 @@ from src.core.candidate import (
     ingest_legacy_label_content_base_resume,
     get_candidate,
     get_pending_craft_generation,
+    hydrate_operative_base_resume_for_response,
+    hydrate_operative_bio_summary_for_response,
+    hydrate_operative_deal_breakers_for_response,
+    hydrate_operative_ideal_day_for_response,
+    hydrate_operative_strengths_for_response,
+    hydrate_operative_priorities_for_response,
+    hydrate_operative_writing_preferences_for_response,
     hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
     IllegalCandidateTransition,
@@ -34,10 +41,10 @@ from src.core.candidate import (
     run_candidate_artifact_generation,
     save_candidate_admin,
     save_candidate_data,
-    snapshot_saved_base_resume_artifact,
     start_requested_artifacts,
     transition_candidate_state,
 )
+from src.core.contact import resolve_pinned_base_resume
 from src.utils.config import (
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
@@ -56,8 +63,10 @@ from src.utils.config import (
     UI_CONFIG,
 )
 from src.utils.deploy_status import ui_llm_debug
+from src.utils.logging import get_logger
 
 candidate_bp = Blueprint("candidate", __name__, url_prefix="/api/candidates")
+logger = get_logger(__name__)
 
 _SENTINEL_CLEAR = ""
 
@@ -204,8 +213,32 @@ def get_candidate_detail(candidate_id):
     candidate["company_search_terms"] = company_search_terms_joined_text(candidate_id)
     cd = candidate.get("candidate_data") or {}
     hydrate_rubric_artifacts_for_response(candidate_id, cd)
+    hydrate_operative_base_resume_for_response(candidate_id, cd)
+    hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_priorities_for_response(candidate_id, cd)
+    hydrate_operative_deal_breakers_for_response(candidate_id, cd)
+    hydrate_operative_bio_summary_for_response(candidate_id, cd)
+    hydrate_operative_ideal_day_for_response(candidate_id, cd)
+    hydrate_operative_writing_preferences_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
+
+
+@candidate_bp.route("/<candidate_id>/operative/base_resume", methods=["GET"])
+@require_auth
+def get_operative_base_resume_api(candidate_id):
+    """AST-1585: pin→body for pilot base_resume (patt.artifact.read-operative)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    artifact_id = (request.args.get("artifact_id") or "").strip()
+    if not artifact_id:
+        return jsonify({"error": "artifact_id required"}), 400
+    body = resolve_pinned_base_resume(
+        candidate_id, artifact_id, debug=ui_llm_debug()
+    )
+    if body is None:
+        return jsonify({"error": "base_resume not found for pin"}), 404
+    return jsonify({"base_resume": body})
 
 
 @candidate_bp.route("", methods=["POST"])
@@ -242,6 +275,12 @@ def update_candidate_data(candidate_id):
     # AST-904: capture submitted rubric before apply deletes keys; re-stash on failure
     submitted_rubric = {}
     rubric_keys_to_clear = []
+    strengths_saved = False
+    priorities_saved = False
+    deal_breakers_saved = False
+    bio_summary_saved = False
+    ideal_day_saved = False
+    writing_preferences_saved = False
     try:
         state_override = body.pop("state", None)
         api_key = body.pop("api_key", None)
@@ -251,7 +290,31 @@ def update_candidate_data(candidate_id):
         ):
             return jsonify({"error": "Admin access required"}), 403
         base_resume_in_save = False
+        pilot_body = None
         if body:
+            # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1665: catalog context leaves → operative save; do not library-merge.
+            strengths_body = None
+            priorities_body = None
+            deal_breakers_body = None
+            bio_summary_body = None
+            ideal_day_body = None
+            writing_preferences_body = None
+            ctx = body.get("context")
+            if isinstance(ctx, dict):
+                if "strengths" in ctx:
+                    strengths_body = ctx.pop("strengths")
+                if "priorities" in ctx:
+                    priorities_body = ctx.pop("priorities")
+                if "deal_breakers" in ctx:
+                    deal_breakers_body = ctx.pop("deal_breakers")
+                if "bio_summary" in ctx:
+                    bio_summary_body = ctx.pop("bio_summary")
+                if "ideal_day" in ctx:
+                    ideal_day_body = ctx.pop("ideal_day")
+                if "writing_preferences" in ctx:
+                    writing_preferences_body = ctx.pop("writing_preferences")
+                if not ctx:
+                    body.pop("context", None)
             arts = body.get("artifacts")
             if isinstance(arts, dict):
                 apply_company_search_terms_save(candidate_id, arts)
@@ -286,6 +349,10 @@ def update_candidate_data(candidate_id):
                         arts["base_resume"], section_ids
                     )
                     base_resume_in_save = True
+                pilot_body = None
+                if base_resume_in_save:
+                    # Operative write — do not library-merge the pilot body.
+                    pilot_body = arts.pop("base_resume", None)
                 if not arts:
                     body.pop("artifacts", None)
                 else:
@@ -303,13 +370,60 @@ def update_candidate_data(candidate_id):
             if body:
                 # AST-1014 / AC8: gate library-write found/recorded lines on deploy debug.
                 save_candidate_data(candidate_id, body, replace=False, debug=ui_llm_debug())
-                # AST-1353: preserve intentional Save into artifacts (not craft paths)
-                if base_resume_in_save:
-                    snapshot_saved_base_resume_artifact(candidate_id)
+                # AST-1576: pilot body via generic operative save (no blob mirror / snapshot).
+                if base_resume_in_save and pilot_body is not None:
+                    save_candidate_data(
+                        candidate_id,
+                        TASK_CONFIG["craft_resume_base"]["artifact_key"],
+                        pilot_body,
+                    )
                 # Clear pending only after persist — keys captured before apply del
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
+            # Leaf-only PUT may leave body empty after pop — still operative-save.
+            if strengths_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.strengths",
+                    strengths_body,
+                )
+                strengths_saved = True
+            if priorities_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.priorities",
+                    priorities_body,
+                )
+                priorities_saved = True
+            if deal_breakers_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.deal_breakers",
+                    deal_breakers_body,
+                )
+                deal_breakers_saved = True
+            if bio_summary_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.bio_summary",
+                    bio_summary_body,
+                )
+                bio_summary_saved = True
+            if ideal_day_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.ideal_day",
+                    ideal_day_body,
+                )
+                ideal_day_saved = True
+            if writing_preferences_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.writing_preferences",
+                    writing_preferences_body,
+                )
+                writing_preferences_saved = True
         # AST-1287 / AST-1288: illegal hops return code=illegal_candidate_transition
         # with from_state/to_state; admin retry with confirm_state_override=true forces.
         # Same-state in the PUT body is skipped here (not a core no-op).
@@ -338,6 +452,12 @@ def update_candidate_data(candidate_id):
                 clear_candidate_api_key(candidate_id)
     except Exception as e:
         # Failed Save: keep submitted criteria recoverable via GET …/pending
+        logger.exception(
+            "%s | api update_candidate_data failed %s: %s — returning 400",
+            candidate_id,
+            type(e).__name__,
+            e,
+        )
         for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
             val = submitted_rubric.get(artifact_key)
             if isinstance(val, list) and val:
@@ -348,6 +468,27 @@ def update_candidate_data(candidate_id):
                     {"criteria": val},
                 )
         return jsonify({"error": str(e)}), 400
+    if strengths_saved or priorities_saved or deal_breakers_saved or bio_summary_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if ideal_day_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if writing_preferences_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
     updated = get_candidate(candidate_id)
     return jsonify(_sanitize_candidate(updated) if updated else {})
 
