@@ -183,3 +183,7 @@ AC5 → Stage 1 (`listing_href` on title `<a>` + CLIENT Apply `window.open` same
 - Self-assessment: Estimate 2 — agree; stages are minimal and specific.
 
 context_tokens≈52000
+
+## Radia review
+
+
