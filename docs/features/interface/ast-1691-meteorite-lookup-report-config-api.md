@@ -171,3 +171,47 @@ Confirm Chuckles estimate: 3 — agree
 | AC3 / Parent AC6 Meteorite on top tabs + config/manifest sections | Stage 2 + 3 |
 
 Parent AC1/3–5/7–9 → siblings AST-1690 / AST-1692 (out of scope).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1691
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1685/AST-1691-meteorite-lookup-report-config-api` @ `f8b6f15efd9a968f4f7db5491f9100a01c2eb690`
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| stat.logging.debug | C | 2 | Stage 4 `Response from get_meteorite_by_astral_job_id` logs only `{id, state}` — statute wants full callee response, no truncation |
+| stat.logging.error | A | | |
+
+### Traceability
+
+Child AC **2** (`related_meteorite` object or `null` on `GET /api/jobs/<id>`) → Stages **1+4**; child AC **3** (Meteorite on `JOBS_RECOMMENDED_REPORT_TOP_TABS` + config/manifest sections, parent AC6) → Stages **2+3**. Parent AC **1, 3–5, 7–9** → siblings AST-1690 / AST-1692 (plan marks N/A). No orphan stages; no unmapped child AC.
+
+### Findings
+
+#### discuss
+
+- **Location:** Stage 4 — `api_jobs.py` `detail()` debug pair around `get_meteorite_by_astral_job_id`
+- **Finding:** `Response from get_meteorite_by_astral_job_id` is projected to `{"id", "state"}` only. `stat.logging.debug` Resolution §3 and Don't examples require the full response string without truncation (relevant when `content` is large).
+- **Recommendation:** Log `row` (or `str(row)`) on the response line, or document an explicit Resolution path if redaction is intentional. Effort **2** — one debug call edit.
+
+#### acceptable
+
+- **Location:** Stage 4 — no `logger.info` on job detail GET
+- **Finding:** Parent Technical scope wording (“log once at completing route”) reads against `stat.logging.info.api`, but the plan correctly yields to the statute: idempotent GET returning current state is not progress.
+- **Recommendation:** None — plan’s Canon Scope call-out and Stage 4 decision note are sufficient.
+
+- **Location:** Scope / Files Changed
+- **Finding:** `GET /api/state_ui_manifest` gains `report_meteorite_sections` while `JOBS_RECOMMENDED_REPORT_TOP_TABS` always includes Meteorite; parent AC1 tab omission when no row is sibling AST-1692’s React filter, not this ticket’s config surface.
+- **Recommendation:** None for this child — UAT fitness sibling check and boundaries are explicit.
+
+### R6 (summary)
+
+Definition fidelity: plan implements only the database read helper, config tab/section defs, manifest attach, and `related_meteorite` projection — all four files match ticket `## Scope`; no retention or frontend creep. DRY: new helper mirrors existing `get_meteorite` / `_meteorite_row_to_dict` pattern; distinct from list-page `JOBS_RECOMMENDED_METEORITE_SECTION`. Self-assessment: estimate confirm **3 — agree** is proportionate. No `!!-NONE` conf gaps. Plan Discuss rounds: **0** completed (Plan Ready; one Hedy publish comment only).
+
+context_tokens≈32000
