@@ -187,3 +187,22 @@ context_tokens≈48000
 ---
 
 [plan-rubric] PROCEED (Commit: 8d4d98de29c06d61005e9572f9c30c0674f549c1) Contact orchestration plan sound
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve` |
+| Tip | `bf386176` |
+| Branch | `sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve` |
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `8f1fe6dc` | `CONTACT_CONFIG` known/unknown recognition reply text keys |
+| 2 | `141ab871` | unbound list, lookup-only resolve, recognition + contact listen info |
+| 3 | `bf386176` | admin GET `/unbound_slack_users` |
+
+**Betty note:** coverage for lookup-only resolve (no prospect), known/unknown recognition posts, unbound filter vs bound ids, and `@require_admin` unbound GET deferred to qa-child.
+
+**Joan discuss addressed in build:** after `run_contact_estelle_turn` returns on the known path, emit canonical `stat.logging.info.contact` listen info line (before hear-ack).
