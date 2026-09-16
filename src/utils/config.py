@@ -44,10 +44,10 @@ Config sections:
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
-  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
+  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529); electronic-contact response-key literal (AST-1688)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
-  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
+  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469); meteorite-row electronic-contact column literal (AST-1688)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
@@ -553,6 +553,8 @@ TASK_CONFIG = {
                     "company_job_id": {"type": "str", "required": False},
                     "jd_text": {"type": "str", "required": False},
                     "employer_name": {"type": "str", "required": False},
+                    # AST-1688: best electronic contact to send the resume (metadata-first; optional)
+                    "electronic_contact": {"type": "str", "required": False},
                 },
             },
         },
@@ -2522,6 +2524,8 @@ METEORITE_CONFIG = {
     "land_outcome_error": "error",
     "employer_name_job_data_key": "employer_name",
     "dedupe_match_order": ("company_job_id", "job_link"),
+    # AST-1688: meteorite-row column for best electronic resume contact (sibling AST-1689 writes it).
+    "electronic_contact_column": "electronic_contact",
     # min_company_job_id_match_chars assigned after METEORITE_EMAIL_INGEST_CONFIG (same int).
 }
 
@@ -2880,6 +2884,8 @@ STAGE_METEORITE_CONFIG = {
         "not_job_content",
         "not_original_posting",
     ),
+    # AST-1688: Ruth jobs[] JSON key for best electronic resume contact (lockstep with items_schema).
+    "electronic_contact_response_key": "electronic_contact",
 }
 assert STAGE_METEORITE_CONFIG["task_key"] == "stage_meteorite"
 assert METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"] == STAGE_METEORITE_CONFIG["task_key"]
@@ -2918,6 +2924,23 @@ assert list(TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"]
     STAGE_METEORITE_CONFIG["outcomes"]
 )
 assert "meteorite_email" not in TASK_CONFIG
+assert STAGE_METEORITE_CONFIG["electronic_contact_response_key"] == "electronic_contact"
+assert METEORITE_CONFIG["electronic_contact_column"] == STAGE_METEORITE_CONFIG[
+    "electronic_contact_response_key"
+]
+assert (
+    STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    in TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+)
+assert (
+    TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"][
+        STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    ]["required"]
+    is False
+)
+# Outcome vocabulary and text source-ref partition unchanged (AST-1529).
+assert "single_jd_no_link" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
+assert "multi_jd_inline" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
 
 # AST-1529: parse_modes Ruth classify RETIRED — live classify is stage_meteorite.
 # Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
