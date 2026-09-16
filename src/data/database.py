@@ -7772,6 +7772,32 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+
+    # AST-1675: company prefilter catalog retarget prefilter → prefilter_company
+    old_rows = conn.execute(
+        "SELECT id, candidate_id, trigger_state FROM dispatch_task "
+        "WHERE entity_type = 'company' AND task_key = 'prefilter'"
+    ).fetchall()
+    for did, cand_id, ts in old_rows:
+        existing = conn.execute(
+            "SELECT id FROM dispatch_task "
+            "WHERE candidate_id IS ? AND task_key = 'prefilter_company' "
+            "AND trigger_state IS ? AND id != ?",
+            (cand_id, ts, did),
+        ).fetchone()
+        if existing:
+            conn.execute("DELETE FROM dispatch_task WHERE id = ?", (did,))
+            continue
+        try:
+            conn.execute(
+                "UPDATE dispatch_task SET task_key = 'prefilter_company' WHERE id = ?",
+                (did,),
+            )
+        except sqlite3.IntegrityError:
+            conn.execute("DELETE FROM dispatch_task WHERE id = ?", (did,))
+    if old_rows:
+        conn.commit()
+
     _dispatch_task_schema_ensured = True
 
 
