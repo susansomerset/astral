@@ -5441,6 +5441,7 @@ class TestAst1365IdealDayLibrary:
     def test_save_candidate_data_merges_ideal_day_context(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-1661 tip: ideal_day stays library SoT (not in _CONTEXT_OPERATIVE_LEAVES).
         save = MagicMock()
         monkeypatch.setattr(
             candidate_mod.database,
@@ -5848,11 +5849,11 @@ class TestAst1633StrengthsOperativeSaveHydrate:
         spy = _spy_save_artifact(monkeypatch)
         candidate_mod.save_candidate_data(
             "c1",
-            {"context": {"strengths": "drop-me", "priorities": "keep-me"}},
+            {"context": {"strengths": "drop-me", "backstory": "keep-me"}},
         )
         assert spy == []
         ctx = save.call_args.kwargs["candidate_data"]["context"]
-        assert ctx == {"priorities": "keep-me"}
+        assert ctx == {"backstory": "keep-me"}
         assert "strengths" not in ctx
 
     def test_dict_path_strengths_only_skips_empty_library_write(
@@ -6013,13 +6014,13 @@ class TestAst1649BioSummaryOperativeSaveHydrate:
                 "context": {
                     "bio_summary": "drop-bio",
                     "strengths": "drop-str",
-                    "priorities": "keep-me",
+                    "backstory": "keep-me",
                 }
             },
         )
         assert spy == []
         ctx = save.call_args.kwargs["candidate_data"]["context"]
-        assert ctx == {"priorities": "keep-me"}
+        assert ctx == {"backstory": "keep-me"}
         assert "bio_summary" not in ctx
         assert "strengths" not in ctx
 
@@ -6151,13 +6152,13 @@ class TestAst1655DealBreakersOperativeSaveHydrate:
                 "context": {
                     "deal_breakers": "drop-db",
                     "strengths": "drop-str",
-                    "priorities": "keep-me",
+                    "backstory": "keep-me",
                 }
             },
         )
         assert spy == []
         ctx = save.call_args.kwargs["candidate_data"]["context"]
-        assert ctx == {"priorities": "keep-me"}
+        assert ctx == {"backstory": "keep-me"}
         assert "deal_breakers" not in ctx
         assert "strengths" not in ctx
 
@@ -6208,4 +6209,3 @@ class TestAst1655DealBreakersOperativeSaveHydrate:
         )
         row = candidate_mod.get_candidate("cand-1")
         assert row["candidate_data"]["context"]["deal_breakers"] == "from get_candidate"
-
