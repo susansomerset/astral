@@ -103,3 +103,49 @@ def list_workspace_posters() -> list[dict]:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1667
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1636/AST-1667-workspace-poster-pool-external` @ `45e6f058efec34bf61e3a377fa73c5f44628a1ac`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | B | | Loop/callee debug contract spelled out; outer `list_workspace_posters` response uses count while `_enrich_posters` logs full payload |
+| stat.logging.error | A | | Raises propagate; no log-and-re-raise; soft skips stay debug; handler logging deferred to sibling |
+
+## Traceability
+
+7 → Stage 1 (`list_workspace_posters` in `src/external/slack.py` only; `require_controlled_external_io`; no UI/API) · 8 → Stage 1 steps 4.4 & 7 (`is_bot` / `deleted` filtered in `_enrich_posters`) · 9 → Stage 1 steps 4.1–4.5 & 5 (message-author set via `conversations.list` + history/replies; forbids `conversations.members` and `users.list`-alone pool)
+
+## Findings
+
+### acceptable — Scope gate & partition
+**Location:** Plan `## Scope gate`, `## Files Changed`
+**Finding:** Single-file footprint matches ticket `## Scope` verbatim; siblings explicitly excluded.
+**Recommendation:** None — proceed as written.
+
+### acceptable — Parent technical scope fidelity
+**Location:** Stage 1 decisions (Slack method mix, pagination, soft-skip)
+**Finding:** Plan implements parent external slice: bot-token workspace poster discovery, bots/deleted excluded, no bind-pool channel id, no product-side caps on channels/messages/posters (Susan no-limits rule honored in step 5).
+**Recommendation:** None.
+
+### acceptable — stat.logging.debug outer response line
+**Location:** Stage 1 step 8 (`Response from list_workspace_posters: count=%s`)
+**Finding:** Slight variance from callee-out full-string idiom; mitigated because step 7 logs full `_enrich_posters` output and step 8 forbids gating/truncation elsewhere.
+**Recommendation:** At build, prefer full `out` on the outer response line too, or drop the redundant outer line — not blocking.
+
+## R6 checklist (summary)
+
+- Definition fidelity: pass — implements child slice only; no Contact/UI/config creep.
+- AC coverage: pass — child AC 7–9 mapped to Stage 1.
+- DRY / scope creep: pass — new helpers justified; no duplicate of sibling orchestration.
+- Self-assessment: pass — estimate 3 with detailed stage/decision markers is honest.
+
+context_tokens≈32000
+
