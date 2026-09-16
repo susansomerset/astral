@@ -214,8 +214,16 @@ def save_meteorite_job(
         match_source = (match.get("source") or "").strip() or JOB_SOURCE_DEFAULT
         match_id = match["astral_job_id"]
 
-        # Branch A — existing meteorite: never clobber
+        # Branch A — existing meteorite: never clobber (AST-1693: backfill empty job_link only)
         if match_source == JOB_SOURCE_METEORITE:
+            row_out = match
+            if (
+                link
+                and (link.startswith("http://") or link.startswith("https://"))
+                and not (match.get("job_link") or "").strip()
+            ):
+                database.save_job(match_id, job_link=link)
+                row_out = database.get_job(match_id) or match
             _debug(
                 METEORITE_CONFIG["land_outcome_duplicate_skip"],
                 match_id,
@@ -225,7 +233,7 @@ def save_meteorite_job(
             return {
                 "outcome": METEORITE_CONFIG["land_outcome_duplicate_skip"],
                 "astral_job_id": match_id,
-                "job": match,
+                "job": row_out,
                 "source": JOB_SOURCE_METEORITE,
             }
 
@@ -1208,6 +1216,17 @@ def _hop_blocks_for_batch(batch_rows: List[Dict[str, Any]]) -> Dict[str, Dict[st
             "content": last.get("block_data") or "",
         }
     return blocks
+
+
+def persist_http_job_link(astral_job_id: str, job_link: str) -> None:
+    """Write job.job_link when the URL is http(s); no-op for non-http breadcrumbs (AST-1693).
+
+    Link-only column update — does not call initialize_job or require job_title.
+    """
+    link = (job_link or "").strip()
+    if not (link.startswith("http://") or link.startswith("https://")):
+        return
+    save_job(astral_job_id, job_link=link)
 
 
 def initialize_job(
