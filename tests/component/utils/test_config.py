@@ -6301,3 +6301,13 @@ class TestAst1602RetireJobBodyReplicaConfigAuthority:
             "job.artifacts.application_responses",
         ):
             assert sibling not in cfg.ARTIFACT_CONFIG
+
+
+class TestAst1668RecognitionReplyConfig:
+    """AST-1668: CONTACT_CONFIG known/unknown recognition reply text."""
+
+    def test_recognition_reply_defaults(self) -> None:
+        known = cfg.CONTACT_CONFIG["known_recognition_reply_text"]
+        unknown = cfg.CONTACT_CONFIG["unknown_recognition_reply_text"]
+        assert isinstance(known, str) and known.strip() == "I know who that is"
+        assert isinstance(unknown, str) and unknown.strip() == "I don't recognize you"

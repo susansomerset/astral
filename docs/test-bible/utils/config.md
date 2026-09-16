@@ -1902,6 +1902,26 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
 ```
 
 
+### AST-1668 · AST-1636
+
+**Parent:** [AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve`.
+
+`CONTACT_CONFIG` known/unknown recognition reply text defaults. Core recognition + unbound: **`docs/test-bible/core/contact.md`** § AST-1668.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| known/unknown recognition reply text | `src/utils/config.py` | **`TestAst1668RecognitionReplyConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG keys.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig \
+  -q
+```
+
 ### AST-1206 · AST-1203
 
 **Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
