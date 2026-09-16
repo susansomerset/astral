@@ -3917,3 +3917,41 @@ Config-only: register `candidate.context.backstory` in `ARTIFACT_CONFIG` (`body_
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 
+
+### AST-1664 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token`.
+
+Config-only: register `candidate.context.writing_preferences` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (backstory / ideal_day stay out — priorities / deal_breakers / bio_summary already registered); flip `TOKEN_SOURCES["WRITING_PREFERENCES"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES", "DEAL_BREAKERS", "BIO_SUMMARY", "WRITING_PREFERENCES"}`. No UI / hydrate / API / blob retirement (siblings AST-1665 / AST-1666). Parallel Backstory epic (**AST-1661**) is not on this tip — `TestAst1661*` skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| writing_preferences catalog + plain_text reuse + sibling freeze + WRITING_PREFERENCES token | `src/utils/config.py` | **`TestAst1664CatalogPlainTextWritingPreferencesToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Strengths / Bio Summary / Priorities / Deal Breakers freeze lists drop writing_preferences | same | **`TestAst1632…`** / **`TestAst1648…`** / **`TestAst1651…`** / **`TestAst1654…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 closed set expecting `backstory` / missing `writing_preferences`; AST-1596 `_artifact_tokens` / counts with `BACKSTORY` not `WRITING_PREFERENCES`; AST-1632 / AST-1648 / AST-1651 / AST-1654 freeze lists still naming `writing_preferences`; AST-1661 asserting without skipif on tips that lack backstory.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Writing Preferences key or `WRITING_PREFERENCES` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Writing Preferences catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1664CatalogPlainTextWritingPreferencesToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Revised IDEAL_DAY token_source (data_field on this tip): `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1664CatalogPlainTextWritingPreferencesToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*

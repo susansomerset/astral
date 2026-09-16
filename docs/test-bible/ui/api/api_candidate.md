@@ -290,3 +290,35 @@ PUT `/data` pops `context.priorities` (with strengths in one combined pop) then 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1665 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement`.
+
+PUT `/data` pops `context.writing_preferences` then `save_candidate_data(candidate_id, "candidate.context.writing_preferences", body)`; sibling context keys still library-merge (`backstory`); GET detail hydrates Writing Preferences (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1665.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT operative + retire + sibling merge + GET hydrate + empty 400 | `src/ui/api/api_candidate.py` | **`TestAst1665WritingPreferencesOperativeApi`** |
+
+**Broken / obsolete:** AST-1652 Priorities PUT sibling asserting `deal_breakers` library-merge — revised to `backstory`.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Core: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate`
+2. API: `tests/component/ui/api/test_api_candidate.py::TestAst1665WritingPreferencesOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1665WritingPreferencesOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*

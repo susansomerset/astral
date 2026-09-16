@@ -2008,3 +2008,39 @@ Operative `plain_text` validate on str-path (reuse); Priorities `save_artifact` 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1665 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement`.
+
+Operative `plain_text` validate on str-path (reuse); Writing Preferences `save_artifact` retire+insert + identical no-op (AST-1635 shared); dict-path strips `context.writing_preferences` via `_CONTEXT_OPERATIVE_LEAVES` (siblings like `backstory` keep library-merge); `hydrate_operative_writing_preferences_for_response` overlays current / leaves legacy blob on miss; `get_candidate` hydrates. Catalog/token: sibling **AST-1664**. API PUT/GET: **`docs/test-bible/ui/api/api_candidate.md`** § AST-1665. No React / backfill (sibling AST-1666). Tip unions Ideal Day catalog — `TestAst1365IdealDayLibrary` strip revised; Priorities API sibling retargeted to `backstory`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text validate + save/retire + identical no-op + dict strip + hydrate + get_candidate | `src/core/candidate.py` | **`TestAst1665WritingPreferencesOperativeSaveHydrate`** |
+
+**Broken / obsolete this pass:** AST-1365 Ideal Day library-merge assert (Ideal Day operative on tip); AST-1652 Priorities PUT sibling still using `deal_breakers` as library leaf.
+
+**Integration:** none — no existing scenario asserts Writing Preferences operative save/hydrate; do not invent.
+
+## QA test manifest
+
+1. Core Writing Preferences operative: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate`
+2. API PUT/GET Writing Preferences: `tests/component/ui/api/test_api_candidate.py::TestAst1665WritingPreferencesOperativeApi`
+3. Revised Ideal Day library strip: `tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary::test_save_candidate_data_strips_ideal_day_from_library_merge`
+4. Revised Priorities API sibling: `tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi::test_put_strips_priorities_keeps_sibling_context`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1665WritingPreferencesOperativeApi \
+  tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary::test_save_candidate_data_strips_ideal_day_from_library_merge \
+  tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi::test_put_strips_priorities_keeps_sibling_context \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
