@@ -2194,8 +2194,6 @@ Operative `resume_structure` validate via `normalize_resume_structure` on str-pa
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-**Product bug (hold Code Complete):** leaf-only `base_resume` PUT pops ingested `resume_structure` then empties `body`, so pilot `save_candidate_data(..., candidate.artifacts.base_resume, …)` (nested under `if body:`) never runs — AC6 body land broken. Fix: move pilot operative save outside `if body:` (same pattern as structure / context leaves). Manifest lines 5–6 + `TestAst1679ResumeStructureOperativeApi::test_leaf_only_base_resume_put_still_saves_pilot_and_structure` are red until that lands.
-
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*

@@ -2715,7 +2715,8 @@ class TestAst1679ResumeStructureOperativeApi:
             "/api/candidates/c1679leaf/data",
             json={
                 "artifacts": {
-                    "base_resume": {"professional_summary": "keep-me", "orphan": "drop"}
+                    # 123bad is not a section id — stripped on ingest (unlike a mintable extra id).
+                    "base_resume": {"professional_summary": "keep-me", "123bad": "drop"}
                 }
             },
             headers=auth_headers,
