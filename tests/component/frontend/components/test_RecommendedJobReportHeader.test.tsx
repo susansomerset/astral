@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react"
+import { screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 import RecommendedJobReportHeader from "../../../../src/ui/frontend/src/components/RecommendedJobReportHeader"
@@ -76,5 +76,69 @@ describe("RecommendedJobReportHeader — AST-1421 snapshot Copy", () => {
       />,
     )
     expect(screen.getByRole("button", { name: /^Copy$/ })).toBeEnabled()
+  })
+})
+
+describe("RecommendedJobReportHeader — AST-1696 Copy Link", () => {
+  it("shows Copy Link alone when snapshot/email/LinkedIn are absent", () => {
+    renderWithProviders(
+      <RecommendedJobReportHeader
+        {...base}
+        applicationEmail={null}
+        linkedInUrl={null}
+        onCopyDetailLink={() => {}}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Copy Link" })).toHaveClass("btn", "secondary")
+    expect(screen.queryByRole("button", { name: /^Copy$/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Copy Application Email" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Copy LinkedIn Profile" })).not.toBeInTheDocument()
+  })
+
+  it("keeps diagnostic Copy, email, and LinkedIn beside Copy Link", async () => {
+    const onLink = vi.fn()
+    const onSnap = vi.fn()
+    const onEmail = vi.fn()
+    const onLi = vi.fn()
+    renderWithProviders(
+      <RecommendedJobReportHeader
+        {...base}
+        applicationEmail="ada@example.com"
+        linkedInUrl="https://linkedin.com/in/ada"
+        onCopyDetailLink={onLink}
+        onCopySnapshot={onSnap}
+        onCopyApplicationEmail={onEmail}
+        onCopyLinkedIn={onLi}
+      />,
+    )
+    const links = document.querySelector(".recommended-report-links") as HTMLElement
+    await userEvent.click(within(links).getByRole("button", { name: "Copy Link" }))
+    expect(onLink).toHaveBeenCalledTimes(1)
+    expect(within(links).getByRole("button", { name: /^Copy$/ })).toBeInTheDocument()
+    expect(within(links).getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
+    expect(within(links).getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
+  })
+
+  it("shows Copied on the link control when detailLinkCopied", () => {
+    const { rerender } = renderWithProviders(
+      <RecommendedJobReportHeader
+        {...base}
+        applicationEmail={null}
+        linkedInUrl={null}
+        onCopyDetailLink={() => {}}
+        detailLinkCopied
+      />,
+    )
+    expect(screen.getByRole("button", { name: /^Copied$/ })).toHaveClass("btn", "secondary")
+    rerender(
+      <RecommendedJobReportHeader
+        {...base}
+        applicationEmail={null}
+        linkedInUrl={null}
+        onCopyDetailLink={() => {}}
+        detailLinkCopied={false}
+      />,
+    )
+    expect(screen.getByRole("button", { name: "Copy Link" })).toBeInTheDocument()
   })
 })
