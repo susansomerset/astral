@@ -232,3 +232,87 @@ context_tokens≈58000
 | 2 | `a0ca31ec` | classify→row map, soft-fail persist, Style D returned/recorded |
 
 **Betty note:** consult/agent untouched; land does not write contact into job_data.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1689
+**Publish ref:** `39fa655a2189fea4675508a79c1100629c258301`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.info | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.warning | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: all six directives **A**; code review matches on every row.
+
+## Frame diff
+
+Propose `resolve-child` §10 ticks (left unchecked for engineer validation):
+
+- [ ] **AC3:** Text outcome (`single_jd_no_link` / `multi_jd_inline`) with Ruth `electronic_contact` → meteorite row column populated after fan-out
+- [ ] **AC4:** Link outcome → **BOT_BLOCKED** preserves stage-captured contact (state-only update)
+- [ ] **AC5:** Land path does not write contact into `job_data` / `save_meteorite_job`
+- [ ] **AC6:** Contact persist failure warns and continues; row stays **NEW** (not **ERROR** solely for contact)
+- [ ] **AC7:** Empty/omit contact still ingests successfully
+- [ ] **AC8:** `debug=True` emits returned-vs-recorded `logger.debug`; `debug=False` silent for those lines
+- [ ] **AC9:** No Recommended / JobDetail UI changes in this diff
+
+## Findings
+
+### discuss
+
+- **Location:** Publish ref commits `a96d4617` (AST-1690), `d177cd43` (AST-1691), `1a23a972` (AST-1694); files `tests/component/data/database/test_meteorites.py` (`TestAst1694*`, `TestAst1691*`), `tests/component/ui/api/test_api_jobs_ast1694_listing_href.py`, `tests/component/ui/api/test_api_system.py` (`TestAst1691ReportMeteoriteSections`), `tests/component/core/test_meteorite.py` (`TestAst1690*`)
+- **Finding:** Sibling-ticket test coverage landed on the AST-1689 sub tip without matching product on this branch (`get_meteorite_link_by_astral_job_id`, `get_meteorite_by_astral_job_id`, `listing_href`, `JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS` absent from `src/`). Betty’s narrowed manifest (AST-1689 nodes only) is green; broad file/collection runs on those classes will fail until product lands on AST-1690/1691/1694 subs.
+- **Recommendation:** Not an AST-1689 product defect — relocate or `skipif` sibling tests on their own publish refs before merge-child rollup; keep AST-1689 manifest as-is.
+
+- **Location:** `data/admin/agent_task.json` / `src/utils/config.py` / AST-1688 issue doc in three-dot diff vs `origin/dev`
+- **Finding:** AST-1688 product + docs still stacked ahead of `origin/dev` (sibling #1 not merged to dev yet); expected for bang-ordered subs on one epic ftr line.
+- **Recommendation:** None for this review; finish-up / merge order unchanged.
+
+- **Location:** Parent AC8 “Style D”; `ingest_candidate_email_message` `logger.debug("electronic_contact returned=%r recorded=%r …")` (not `debug_index`)
+- **Finding:** Same Joan/plan mapping as AST-1688 — parent wording says Style D; implementation follows `stat.logging.debug` (ungated call + `@_with_log_debug` ContextVar gate). Tests assert substring presence/absence correctly.
+- **Recommendation:** Accept under current canon; no change required on tip.
+
+### advisory
+
+- **Location:** `_soft_persist_meteorite_electronic_contact` exception path (`src/core/meteorite.py`)
+- **Finding:** On `update_meteorite` failure after insert, helper returns `None` — debug line may show `recorded=None` even though Stage 1 insert may have bound contact (Joan plan discuss item).
+- **Recommendation:** Optional polish at resolve-child; does not violate AC6/AC7.
+
+- **Location:** `TestAst1689ElectronicContactMapPersist`
+- **Finding:** AC3 exercised for `single_jd_no_link` only; `multi_jd_inline` and URL scrape branches share `_map_classify_jobs_to_meteorite_rows` but lack dedicated cases.
+- **Recommendation:** Manifest coverage is sufficient for this pass; add URL/`multi_jd_inline` cases only if Betty wants belt-and-suspenders.
+
+## What's solid
+
+- **Stage 1 (`database.py`):** `electronic_contact` on CREATE + idempotent ALTER; column in header inventory; `_UPDATE_METEORITE_ALLOWED` uses `METEORITE_CONFIG["electronic_contact_column"]` (no parallel spelling); `insert_meteorite_rows` column/`?`/bind tuple aligned (9 binds + `nag_count=0` + 4 trailing).
+- **Stage 2 (`meteorite.py`):** `_electronic_contact_from_job` normalizes strip/empty→`None`; both text and URL map loops set config column; post-insert soft-persist + ungated `logger.debug` returned/recorded; `run_scrape_meteorite` BOT_BLOCKED is state-only (comment + no contact clear); `run_land_meteorite` `job_data={jd_key: content}` only — contact stays on meteorite row, not job.
+- **Scope discipline:** `consult.py` / `agent.py` untouched (plan decision holds). No UI files. Config literals consumed from AST-1688, not redefined in AST-1689 product commits.
+- **Tests (manifest):** `TestAst1689ElectronicContactColumn` (schema/alter/insert/update allowlist) + `TestAst1689ElectronicContactMapPersist` (text ingest, empty contact, soft-fail warn, BOT_BLOCKED preserve, land job_data exclusion, debug gate) map cleanly to AC3–AC8.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1689): Radia review — clean`, post slim upshot, **Review Posted** → datt **PROCEED** to **User Testing** (no fix-now canon items).
+- Downstream: peel AST-1690/1691/1694 test commits off this sub or gate with `skipif` before ftr rollup; do not block AST-1689 UT on sibling test hygiene.
+- Epic follow-on: Reply-To not in today’s email blob (`From`/`To`/`Subject`/`Date` only) — same discuss as AST-1688; AC3 “Reply-To/From” satisfied via From until header ingest lands.
+
+---
+
+**Slim Linear upshot (Chuckles posts via `linear_proxy --as radia`):**
+
+```
+[code-rubric] PROCEED (Commit: 39fa655a) row map persist clean
+```
+
+context_tokens≈52000
