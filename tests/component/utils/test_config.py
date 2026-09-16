@@ -568,12 +568,14 @@ class TestBuildStateUiManifest:
             "analysis",
             "artifacts",
             "discussion",
+            "meteorite",
         ]
         assert [t["nav_label"] for t in rec["report_top_tabs"]] == [
             "Summary",
             "Analysis",
             "Artifacts",
             "Discussion",
+            "Meteorite",
         ]
         assert [s["section_id"] for s in rec["report_summary_sections"]] == [
             "job_summary",
@@ -5421,8 +5423,10 @@ class TestAst1550DiscussionHopKeys:
             "analysis",
             "artifacts",
             "discussion",
+            "meteorite",
         ]
-        assert tabs[-1]["nav_label"] == "Discussion"
+        assert tabs[-2]["nav_label"] == "Discussion"
+        assert tabs[-1]["nav_label"] == "Meteorite"
 
     def test_hop_walk_follows_run_next(
         self, monkeypatch: pytest.MonkeyPatch,
@@ -5481,6 +5485,25 @@ class TestAst1550DiscussionHopKeys:
         )
         with pytest.raises(RuntimeError, match="cycle"):
             cfg.build_artifacts_discussion_hop_task_keys()
+
+
+class TestAst1691MeteoriteReportConfig:
+    """AST-1691: Meteorite top tab + JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS."""
+
+    def test_meteorite_tab_after_discussion(self) -> None:
+        tabs = cfg.JOBS_RECOMMENDED_REPORT_TOP_TABS
+        assert tabs[-1] == {"tab_id": "meteorite", "nav_label": "Meteorite"}
+        assert tabs[-2]["tab_id"] == "discussion"
+
+    def test_meteorite_sections_order_and_expanded(self) -> None:
+        sections = cfg.JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS
+        assert [s["section_id"] for s in sections] == [
+            "meteorite_timestamps", "meteorite_link", "meteorite_ai", "meteorite_provenance",
+        ]
+        assert [s["nav_label"] for s in sections] == [
+            "Timestamps", "Link", "AI Content", "Provenance",
+        ]
+        assert [s["default_expanded"] for s in sections] == [True, True, True, False]
 
 
 class TestAst1557MeteoriteStates:
