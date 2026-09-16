@@ -126,3 +126,13 @@ AC7→Stage 1 (build_job_token_context RESUME_SECTION_CATALOG) + Stage 2 (_prepa
 
 context_tokens≈52000
 ```
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1677/AST-1680-job-drafting-interface-rewires` @ `7dbc595ad287f583409b9af3c4ba19f1463f6526`.
+
+**Stages delivered:**
+- Stage 1: consult hydrate before `RESUME_SECTION_CATALOG` — `1512385639586e6c9eb2713c19adb4f7b955d247`.
+- Stage 2: tracker hydrate before prepare/filter resolve sites — `7dbc595ad287f583409b9af3c4ba19f1463f6526`.
+
+**Betty:** at **Code Complete** — cover table-only structure (legacy blob empty/missing) still yields non-empty `RESUME_SECTION_CATALOG` from `build_job_token_context`; `_prepare_job_resume_content` / persist filter use hydrated enabled sections; no blob-only bypass when cid known; `TOKEN_SOURCES["RESUME_SECTION_CATALOG"]` stays `special_case`.
