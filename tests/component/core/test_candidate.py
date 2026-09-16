@@ -5438,10 +5438,10 @@ class TestAst1576SaveCandidateDataOperative:
 class TestAst1365IdealDayLibrary:
     """AST-1365: Ideal Day completeness gate + context save payload (library peer)."""
 
-    def test_save_candidate_data_strips_ideal_day_from_library_merge(
+    def test_save_candidate_data_merges_ideal_day_context(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-1659: ideal_day is operative — dict-path strips it (no durable library SoT).
+        # AST-1661 tip: ideal_day stays library SoT (not in _CONTEXT_OPERATIVE_LEAVES).
         save = MagicMock()
         monkeypatch.setattr(
             candidate_mod.database,
@@ -5451,11 +5451,14 @@ class TestAst1365IdealDayLibrary:
             },
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        out = candidate_mod.save_candidate_data(
+        candidate_mod.save_candidate_data(
             "c1", {"context": {"ideal_day": "deep focus mornings"}}
         )
-        assert out is None
-        save.assert_not_called()
+        assert save.call_args.kwargs["merge"] is True
+        assert (
+            save.call_args.kwargs["candidate_data"]["context"]["ideal_day"]
+            == "deep focus mornings"
+        )
 
     def test_check_context_complete_uses_config_completeness_keys(self) -> None:
         keys = CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]
@@ -6206,143 +6209,3 @@ class TestAst1655DealBreakersOperativeSaveHydrate:
         )
         row = candidate_mod.get_candidate("cand-1")
         assert row["candidate_data"]["context"]["deal_breakers"] == "from get_candidate"
-
-
-_IDEAL_DAY_ARTIFACT_KEY = "candidate.context.ideal_day"
-
-
-# Branches: plain_text validate; retire+insert; dict-path strip; hydrate hit/miss; get_candidate;
-# identical no-op (shared AST-1635).
-class TestAst1659IdealDayOperativeSaveHydrate:
-    """AST-1659: Ideal Day plain_text operative save + hydrate + library gate."""
-
-    def test_plain_text_rejects_empty_and_non_str(self) -> None:
-        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
-            candidate_mod.save_candidate_data("c1", _IDEAL_DAY_ARTIFACT_KEY, "")
-        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
-            candidate_mod.save_candidate_data("c1", _IDEAL_DAY_ARTIFACT_KEY, "   ")
-        with pytest.raises(ValueError, match="plain_text body must be a non-empty string"):
-            candidate_mod.save_candidate_data("c1", _IDEAL_DAY_ARTIFACT_KEY, {"x": 1})
-
-    def test_operative_save_writes_current_and_skips_library_blob(self, seeded_db) -> None:
-        db = seeded_db
-        uid = candidate_mod.save_candidate_data(
-            "cand-1", _IDEAL_DAY_ARTIFACT_KEY, "deep focus mornings"
-        )
-        assert uid
-        row = db.get_current_artifact("candidate", "cand-1", "ideal_day")
-        assert row is not None
-        assert row["artifact_uuid"] == uid
-        assert row["artifact_data"] == "deep focus mornings"
-        assert row["current"] == 1
-        cd = db.get_candidate("cand-1")["candidate_data"]
-        assert "ideal_day" not in (cd.get("context") or {})
-
-    def test_second_operative_save_retires_prior(self, seeded_db) -> None:
-        db = seeded_db
-        uid1 = candidate_mod.save_candidate_data(
-            "cand-1", _IDEAL_DAY_ARTIFACT_KEY, "v1 ideal day"
-        )
-        uid2 = candidate_mod.save_candidate_data(
-            "cand-1", _IDEAL_DAY_ARTIFACT_KEY, "v2 ideal day"
-        )
-        assert uid1 != uid2
-        current = db.get_current_artifact("candidate", "cand-1", "ideal_day")
-        assert current["artifact_uuid"] == uid2
-        assert current["artifact_data"] == "v2 ideal day"
-        history = db.list_artifacts(
-            "candidate", "cand-1", "ideal_day", current_only=False
-        )
-        assert len(history) == 2
-        assert history[0]["current"] == 0
-
-    def test_identical_body_keeps_current_uuid(self, seeded_db) -> None:
-        # Shared AST-1635 identical no-op — rides catalog plain_text str-path.
-        db = seeded_db
-        uid1 = candidate_mod.save_candidate_data(
-            "cand-1", _IDEAL_DAY_ARTIFACT_KEY, "same ideal day"
-        )
-        uid2 = candidate_mod.save_candidate_data(
-            "cand-1", _IDEAL_DAY_ARTIFACT_KEY, "same ideal day"
-        )
-        assert uid2 == uid1
-        history = db.list_artifacts(
-            "candidate", "cand-1", "ideal_day", current_only=False
-        )
-        assert len(history) == 1
-        assert history[0]["current"] == 1
-
-    def test_dict_path_strips_ideal_day_and_strengths_keeps_siblings(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        save = MagicMock()
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "get_candidate",
-            lambda candidate_id: {"candidate_data": {}},
-        )
-        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        spy = _spy_save_artifact(monkeypatch)
-        candidate_mod.save_candidate_data(
-            "c1",
-            {
-                "context": {
-                    "ideal_day": "drop-id",
-                    "strengths": "drop-str",
-                    "backstory": "keep-me",
-                }
-            },
-        )
-        assert spy == []
-        ctx = save.call_args.kwargs["candidate_data"]["context"]
-        assert ctx == {"backstory": "keep-me"}
-        assert "ideal_day" not in ctx
-        assert "strengths" not in ctx
-
-    def test_dict_path_ideal_day_only_skips_empty_library_write(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        save = MagicMock()
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "get_candidate",
-            lambda candidate_id: {"candidate_data": {}},
-        )
-        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        out = candidate_mod.save_candidate_data(
-            "c1", {"context": {"ideal_day": "only"}}
-        )
-        assert out is None
-        save.assert_not_called()
-
-    def test_hydrate_overlays_hit_leaves_legacy_on_miss(self, seeded_db) -> None:
-        candidate_mod.save_candidate_data(
-            "cand-1", _IDEAL_DAY_ARTIFACT_KEY, "operative ideal day"
-        )
-        cd: dict[str, Any] = {"context": {"ideal_day": "stale blob"}}
-        candidate_mod.hydrate_operative_ideal_day_for_response("cand-1", cd)
-        assert cd["context"]["ideal_day"] == "operative ideal day"
-
-        legacy: dict[str, Any] = {"context": {"ideal_day": "legacy until re-save"}}
-        candidate_mod.hydrate_operative_ideal_day_for_response("missing-id", legacy)
-        assert legacy["context"]["ideal_day"] == "legacy until re-save"
-
-    def test_hydrate_ignores_non_dict_cd_and_non_str_body(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        candidate_mod.hydrate_operative_ideal_day_for_response(
-            "c1", "not-a-dict"
-        )  # type: ignore[arg-type]
-        monkeypatch.setattr(
-            candidate_mod, "get_candidate_current", lambda cid, key: {"not": "str"}
-        )
-        cd: dict[str, Any] = {"context": {"ideal_day": "keep"}}
-        candidate_mod.hydrate_operative_ideal_day_for_response("c1", cd)
-        assert cd["context"]["ideal_day"] == "keep"
-
-    def test_get_candidate_hydrates_ideal_day(self, seeded_db) -> None:
-        candidate_mod.save_candidate_data(
-            "cand-1", _IDEAL_DAY_ARTIFACT_KEY, "from get_candidate"
-        )
-        row = candidate_mod.get_candidate("cand-1")
-        assert row["candidate_data"]["context"]["ideal_day"] == "from get_candidate"
