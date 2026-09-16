@@ -328,13 +328,13 @@ PUT `/data` pops `context.priorities` (with strengths in one combined pop) then 
 
 **Parent:** [AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1643). **Publish:** `origin/sub/AST-1643/AST-1659-operative-save-hydrate-blob-retirement`.
 
-PUT `/data` pops `context.ideal_day` then `save_candidate_data(candidate_id, "candidate.context.ideal_day", body)`; sibling context keys still library-merge (`priorities` on this tip); GET detail hydrates Ideal Day (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1659.
+PUT `/data` pops `context.ideal_day` then `save_candidate_data(candidate_id, "candidate.context.ideal_day", body)`; sibling context keys still library-merge (`backstory` after merge(dev) priorities epic); GET detail hydrates Ideal Day (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1659.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | PUT operative + retire + sibling merge + GET hydrate + empty 400 | `src/ui/api/api_candidate.py` | **`TestAst1659IdealDayOperativeApi`** |
 
-**Broken / obsolete:** AST-1633 / AST-1649 PUT sibling asserts that library-merged `deal_breakers` on this union tip — revised to `priorities`. Parallel **AST-1652** Priorities suite `skipif` when catalog key absent.
+**Broken / obsolete:** AST-1633 / AST-1649 / AST-1655 / AST-1659 PUT sibling asserts that library-merged `priorities` after merge(dev) — revised to `backstory`.
 
 **Integration:** none.
 
