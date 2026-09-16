@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.utils.config import METEORITE_STATES, METEORITE_STATES_RETENTION
+from src.utils.config import METEORITE_CONFIG, METEORITE_STATES, METEORITE_STATES_RETENTION
 
 
 class TestAst1557MeteoriteSchema:
@@ -227,3 +227,159 @@ class TestAst1557MeteoriteRetention:
         assert n == 1
         assert db.get_meteorite(mid) is None
         assert db.get_meteorite(fresh) is not None
+
+class TestAst1694GetMeteoriteLinkByAstralJobId:
+    """AST-1694: link-only reverse lookup (not full-row provenance)."""
+
+    def test_blank_id_returns_none(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.get_meteorite_link_by_astral_job_id(None) is None  # type: ignore[arg-type]
+        assert db.get_meteorite_link_by_astral_job_id("") is None
+        assert db.get_meteorite_link_by_astral_job_id("   ") is None
+
+    def test_hit_miss_blank_link_and_newest_wins(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.get_meteorite_link_by_astral_job_id("job-miss") is None
+        older = db.insert_meteorite_rows(
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "old-link"}]
+        )[0]
+        db.update_meteorite(
+            older, state="LANDED", astral_job_id="job-1694", link="https://old.example/j"
+        )
+        newer = db.insert_meteorite_rows(
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "new-link"}]
+        )[0]
+        db.update_meteorite(
+            newer, state="LANDED", astral_job_id="job-1694", link="https://new.example/j"
+        )
+        assert db.get_meteorite_link_by_astral_job_id("job-1694") == "https://new.example/j"
+        blank = db.insert_meteorite_rows(
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "blank-link"}]
+        )[0]
+        db.update_meteorite(blank, state="LANDED", astral_job_id="job-blank", link="  ")
+        assert db.get_meteorite_link_by_astral_job_id("job-blank") is None
+
+@pytest.mark.skipif(
+    "electronic_contact_column" not in METEORITE_CONFIG,
+    reason="AST-1689 electronic_contact column not on this publish tip",
+)
+class TestAst1689ElectronicContactColumn:
+    """AST-1689: meteorite electronic_contact column + allowlist + insert bind."""
+
+    def test_ensure_creates_electronic_contact_column(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db._meteorite_schema_ensured = False
+        conn = db._get_connection()
+        try:
+            db._ensure_meteorite_schema(conn)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(meteorite)").fetchall()}
+            col = METEORITE_CONFIG["electronic_contact_column"]
+            assert col == "electronic_contact"
+            assert col in cols
+            assert col in db._UPDATE_METEORITE_ALLOWED
+        finally:
+            conn.close()
+
+    def test_alter_adds_column_on_legacy_table(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        col = METEORITE_CONFIG["electronic_contact_column"]
+        conn = db._get_connection()
+        try:
+            conn.execute("DROP TABLE IF EXISTS meteorite")
+            # Minimal pre-AST-1689 shape (no electronic_contact).
+            conn.execute(
+                """
+                CREATE TABLE meteorite (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    candidate_id TEXT NOT NULL,
+                    source_kind TEXT NOT NULL,
+                    source_id TEXT NOT NULL,
+                    source_ref TEXT,
+                    state TEXT NOT NULL,
+                    content TEXT,
+                    classify_outcome TEXT,
+                    link TEXT,
+                    astral_job_id TEXT,
+                    estelle_thread_ts TEXT,
+                    estelle_notified_at TEXT,
+                    nag_count INTEGER DEFAULT 0,
+                    error TEXT,
+                    batch_id TEXT,
+                    batch_created_at TEXT,
+                    created_at TEXT,
+                    updated_at TEXT,
+                    state_changed_at TEXT
+                )
+                """
+            )
+            conn.commit()
+            db._meteorite_schema_ensured = False
+            db._ensure_meteorite_schema(conn)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(meteorite)").fetchall()}
+            assert col in cols
+        finally:
+            conn.close()
+
+    def test_insert_binds_contact_or_null(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        col = METEORITE_CONFIG["electronic_contact_column"]
+        ids = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": "c1689",
+                    "source_kind": "email",
+                    "source_id": "mid-contact",
+                    "content": "jd",
+                    col: "hiring@example.com",
+                },
+                {
+                    "candidate_id": "c1689",
+                    "source_kind": "email",
+                    "source_id": "mid-empty",
+                    "content": "jd2",
+                },
+            ]
+        )
+        assert db.get_meteorite(ids[0])[col] == "hiring@example.com"
+        assert db.get_meteorite(ids[1]).get(col) in (None, "")
+
+    def test_update_allowlist_accepts_contact(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        col = METEORITE_CONFIG["electronic_contact_column"]
+        mid = db.insert_meteorite_rows(
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "m"}]
+        )[0]
+        db.update_meteorite(mid, **{col: "ops@example.com"})
+        assert db.get_meteorite(mid)[col] == "ops@example.com"
+
+class TestAst1694GetMeteoriteLinkByAstralJobId:
+    """AST-1694: link-only reverse lookup (not full-row provenance)."""
+
+    def test_blank_id_returns_none(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.get_meteorite_link_by_astral_job_id(None) is None  # type: ignore[arg-type]
+        assert db.get_meteorite_link_by_astral_job_id("") is None
+        assert db.get_meteorite_link_by_astral_job_id("   ") is None
+
+    def test_hit_miss_blank_link_and_newest_wins(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.get_meteorite_link_by_astral_job_id("job-miss") is None
+        older = db.insert_meteorite_rows(
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "old-link"}]
+        )[0]
+        db.update_meteorite(
+            older, state="LANDED", astral_job_id="job-1694", link="https://old.example/j"
+        )
+        newer = db.insert_meteorite_rows(
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "new-link"}]
+        )[0]
+        db.update_meteorite(
+            newer, state="LANDED", astral_job_id="job-1694", link="https://new.example/j"
+        )
+        assert db.get_meteorite_link_by_astral_job_id("job-1694") == "https://new.example/j"
+        blank = db.insert_meteorite_rows(
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "blank-link"}]
+        )[0]
+        db.update_meteorite(blank, state="LANDED", astral_job_id="job-blank", link="  ")
+        assert db.get_meteorite_link_by_astral_job_id("job-blank") is None
+
