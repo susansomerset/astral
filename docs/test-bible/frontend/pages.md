@@ -2763,3 +2763,67 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1666 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up`.
+
+Writing Preferences page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { writing_preferences } }` GET/PUT (AST-1665 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1664** / **AST-1665**. Mirror AST-1634 / AST-1660.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Writing Preferences page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateWritingPreferences.tsx` | **`test_CandidateWritingPreferences.test.tsx`** — `AST-1666` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** none — page was a ContextTextPage caller without `bodyShape`; new Vitest covers the wire-up.
+
+**Integration:** none — no existing scenario asserts Writing Preferences ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Writing Preferences page (§6c): `tests/component/frontend/pages/test_CandidateWritingPreferences.test.tsx` — pattern **`AST-1666`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateWritingPreferences.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1666|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1663 · AST-1644
+
+**Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up`.
+
+Backstory page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { backstory } }` GET/PUT (AST-1662 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1661** / **AST-1662**. Mirror AST-1634 / AST-1660.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Backstory page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateBackstory.tsx` | **`test_CandidateBackstory.test.tsx`** — `AST-1663` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Backstory render-only case expanded under AST-1663 names (plain_text empty gate + bodyShape source assert).
+
+**Integration:** none — no existing scenario asserts Backstory ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Backstory page (§6c): `tests/component/frontend/pages/test_CandidateBackstory.test.tsx` — pattern **`AST-1663`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_CandidateBackstory.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1663|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
