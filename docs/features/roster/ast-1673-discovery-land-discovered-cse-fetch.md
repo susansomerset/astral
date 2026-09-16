@@ -288,3 +288,17 @@ context_tokens≈58000
 - **Recommendation:** Keep as planned.
 
 context_tokens≈65000
+
+## Build
+
+**Publish tip:** `origin/sub/AST-1670/AST-1673-discovery-land-discovered-cse-fetch` @ `c1a6bca0`
+
+| Stage | Commit |
+|-------|--------|
+| 1 — discovery land DISCOVERED | `423cfd05` |
+| 2 — CSE-only resolve + DISCOVERED routing | `806b9e90` |
+| 3 — consult route + claim eligibility | `c1a6bca0` |
+
+## Review
+
+(pending Radia)
