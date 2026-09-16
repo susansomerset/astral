@@ -378,6 +378,21 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-1672: company SA for AI website select on WEBSITE_REVIEW (agent identity stays find_company_website).
+    "resolve_website": {
+        "response_schema": {
+            "task_success": {"type": "bool", "required": True},
+            "website": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "context_format": "find_company_website_{index}",  # reuse existing prompt indexing
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "WEBSITE_REVIEW",
+        "agent_task": "find_company_website",
+        "pass_state": "WEBSITE_FOUND",
+        "fail_state": "NO_WEBSITE",
+    },
     "prefilter_company": {
         "response_format": "json",
         "output_type": "grades_encoded_prefilter_links",
@@ -2139,6 +2154,22 @@ INFLOW_CONFIG = {
     },
 }
 
+# AST-1672: lock DISCOVERED / CSE-only resolve / resolve_website SA cutover.
+assert "DISCOVERED" in COMPANY_STATES
+assert COMPANY_STATES["DISCOVERED"]["batch_criteria"]["sort_by"] == "updated_at"
+assert COMPANY_STATES["WEBSITE_REVIEW"]["batch_criteria"]["sort_by"] == "updated_at"
+assert INFLOW_CONFIG["discovery"]["land_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["vet"]["dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["resolve"]["dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["resolve"]["waiting_state"] == "WEBSITE_REVIEW"
+assert INFLOW_CONFIG["resolve"]["hit_list_data_key"] == "inflow_resolve_website_hits"
+assert "ai_task_key" not in INFLOW_CONFIG["resolve"]
+assert ROSTER_CONFIG["company_data_keys"]["inflow_resolve_website_hits"] == INFLOW_CONFIG["resolve"]["hit_list_data_key"]
+assert TASK_CONFIG["resolve_website"]["agent_task"] == "find_company_website"
+assert TASK_CONFIG["resolve_website"]["trigger_state"] == "WEBSITE_REVIEW"
+assert TASK_CONFIG["vet_inflow_discovery"]["trigger_state"] == "DISCOVERED"
+
 # AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
 # task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
 CANDIDATE_STAGE_DISPATCH = {
@@ -3407,6 +3438,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
+    "resolve_website",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3452,6 +3484,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
+    if task_key == "resolve_website":
+        return "WEBSITE_REVIEW"
     if task_key == "vet_inflow_discovery":
         return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "qualify_job_listings":
