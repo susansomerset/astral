@@ -114,3 +114,42 @@ All Files Changed / Stages stay inside that set. **Do not** edit `src/utils/conf
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+**Ticket:** AST-1693
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1686/AST-1693-persist-meteorite-http-job-link` @ `041ec97845380d67226737fd0d7d8f6352765756`
+
+## Canon scores
+
+patt.entity.batch-processing | A | | Stage 3 keeps mint/`entity_batch_id`/`finally: clear_meteorite_batch`; multi-state `claim_meteorite_batch` stays on existing land runner
+stat.logging.info.entity | B | | Entity info preserved on land outcomes; plan should pass captured `from_state` into `_meteorite_state_info` for BOT_BLOCKED→LANDED (not hardcoded READY)
+stat.logging.debug | A | | ContextVar-gated callee in/out; no new always-on info disguised as debug
+stat.logging.error | A | | Per-row `logger.exception` at handler; no duplicate error logs on link write
+stat.logging.warning | A | | `_warn_job` / `_row_miss` on soft misses; empty BOT_BLOCKED skip does not inflate fail counts
+
+## Traceability
+
+AC1 → Stages 1–3 (tracker duplicate-skip backfill, qualify bot `persist_http_job_link`, land `job_link` from http `row.link`); AC2 → Stage 3 (`claim_meteorite_batch` READY+BOT_BLOCKED, contentful `save_meteorite_job` → LANDED); AC3 → Stage 3 (empty BOT_BLOCKED `continue`; notify skips contentful rows). Parent AC4–AC7 N/A — out of child Scope.
+
+## Findings
+
+### acceptable
+- **Location:** Stage 3 — `_meteorite_state_info` call site
+- **Finding:** Plan introduces `from_state` per row but says only “keep” entity info lines; current code hardcodes `from_state="READY"`.
+- **Recommendation:** One-line plan tweak: pass the captured `from_state` into `_meteorite_state_info` on BOT_BLOCKED land. Implementer can infer; not blocking.
+
+### acceptable
+- **Location:** Stage 3 — Decision on `LANDED.prior_states`
+- **Finding:** BOT_BLOCKED→LANDED without `config.py` prior update is explicitly scoped out with documented rationale.
+- **Recommendation:** None for this child; registry honesty is a follow-up if Scope widens.
+
+## R6 checklist (summary)
+
+- Definition fidelity: plan matches parent child-1 slice; Files Changed ⊆ ticket Scope; no sibling API/React/config creep.
+- DRY / scope: thin `persist_http_job_link` helper avoids `initialize_job` misuse on bot branch; no parallel ingress runner.
+- Self-assessment: Estimate 5 — agree; stages are concrete with done-when gates.
+
+context_tokens≈42000
