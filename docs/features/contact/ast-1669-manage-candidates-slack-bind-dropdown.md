@@ -158,3 +158,64 @@ context_tokens≈54000
 |-------|--------|---------|
 | 1 | `d240d8ae` | Manage Candidates Slack bind dropdown on add/edit |
 
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1669
+**Publish ref:** `d51bda97f31e4bd56e777296069b76ebc306af9d` (`origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown`)
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | X | | |
+| stat.logging.error | X | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan and Radia both **X** on both directives; product commit touches only `AdminManageCandidates.tsx` (no `src/ui/api/**` handler changes).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — Three-dot diff vs `origin/dev` is epic-polluted
+**Location:** `git diff origin/dev...origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown`
+**Finding:** Three-dot diff includes sibling epic files (`contact.py`, `slack.py`, `api_contact.py`, `config.py`) from stacked AST-1636 children. **AST-1669 product commit `d240d8ae` is single-file:** `AdminManageCandidates.tsx` (+132/−15).
+**Recommendation:** Score footprint from ticket commits, not raw three-dot stat.
+
+### advisory — Illegal-state confirm + bind keys untested
+**Location:** `handleEditSave` confirm retry (`{ ...payload, confirm_state_override: true }`)
+**Finding:** Code preserves Slack bind keys in the confirm PUT via `payload` spread (plan step 5). No Vitest exercises that branch with a bind selection.
+**Recommendation:** Optional follow-up test — not blocking; primary bind paths are covered.
+
+## What's solid
+
+- **AC 5:** Add/edit modals show Slack username `<select>` from `GET /api/admin/contact/unbound_slack_users`; save stamps both `contact.slack_user_id` and `contact.slack_username` via existing POST/PUT paths.
+- **AC 6:** `loadUnboundSlackUsers()` runs on modal open and after successful bind; tests assert second GET and pool shrink.
+- **AC 7:** No `slack.com` / Slack Web API hosts in TSX; only admin GET consumed.
+- **Edit edge cases:** Synthetic prepend for current bind when absent from unbound pool; empty selection omits Slack keys (no accidental unbind).
+- **Scope:** No `api_candidate.py`, `contact.py`, or `CandidateProfile` changes — matches no-api plan decision.
+- **Tests:** Four `AST-1669` Vitest cases cover add bind, edit prepend/empty-omit, AC6 refresh, and admin-GET-only pool source.
+- **Estimate 2** fits one focused UI stage.
+
+## Notes — Canon Scope (Joan observation confirmed)
+
+Parent locked `stat.logging.info.api` / `stat.logging.error` anticipating optional API work. Plan’s no-`api_candidate.py` decision is correct (existing create/PUT already accept `contact` Slack keys; uniqueness server-side). Both directives are **X** for this diff — not mis-selected, not a scope gap requiring ESCALATE.
+
+## Recommended actions (Chuckles downstream — not Radia lane)
+
+- Append artifact to `docs/features/contact/ast-1669-manage-candidates-slack-bind-dropdown.md`, commit `docs(AST-1669): Radia review — clean`, push sub ref.
+- Post slim upshot via `linear_proxy --as radia save-comment`; move **Review Posted** → **User Testing** (PROCEED, no fix-now items).
+
+---
+
+**Slim Linear upshot (Chuckles posts):**
+
+```
+[code-rubric] PROCEED (Commit: d51bda97) Slack bind dropdown clean
+```
