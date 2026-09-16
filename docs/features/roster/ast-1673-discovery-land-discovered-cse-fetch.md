@@ -243,3 +243,48 @@ Changes:
 - **Recommendation:** None — dependency satisfied.
 
 context_tokens≈58000
+
+## Joan validate (round 2)
+
+[plan-rubric]
+**Ticket:** AST-1673
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1670/AST-1673-discovery-land-discovered-cse-fetch` @ `063072d84c3c3170ccc71ffccb164b8b07e9cc70`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.dispatcher | X | | no dispatch completion-line changes; claim gate only |
+| stat.logging.debug | B | | continues existing roster `debug_index`/`debug_detail` helpers (unconverted file) |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+3→S2.1–5e (delete `do_task` block) | 4→S2.5a–c (`save_company_data` + transition + entity info) | 5→S2.4 (`fail_state`/`NO_WEBSITE`, no AI) | 6→S3.2–3 (dispatcher + DB eligibility) | parent AC1→S1 (`land_state` write); parent AC2/6/7–9→N/A (AST-1672 config / AST-1674 apply / ops gate)
+
+## Findings
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Plan Discuss round 1 → Revision 1
+- **Finding:** Prior fix-now (consult `NO_WEBSITE` rollup vs `terminal_ok`) and discuss (entity info on persist) are addressed in Stage 3 step 1 `resolve_terminal_ok` and Stage 2 step 5c id-pipe `logger.info` (matches statute Do example shape).
+- **Recommendation:** None — proceed to build.
+
+- **Severity:** acceptable
+- **Location:** Stage 2 step 4 vs step 5c
+- **Finding:** Zero-hit `NO_WEBSITE` path has no planned entity info line; ≥1-hit path does. Asymmetric but consistent with warning-on-CSE-failure / debug-on-detail pattern; not blocking.
+- **Recommendation:** Optional at build: one info line on zero-hit terminal if operators want symmetric grep; warning/debug may suffice.
+
+- **Severity:** acceptable
+- **Location:** Stage 3 steps 3–4
+- **Finding:** Vet eligibility retarget remains slightly beyond Scope sentence but required for `DISCOVERED` land coherence.
+- **Recommendation:** Keep as planned.
+
+context_tokens≈65000
