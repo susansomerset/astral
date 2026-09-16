@@ -219,3 +219,56 @@ context_tokens≈48000
 - Stage 1: `candidate.context.writing_preferences` catalog + `WRITING_PREFERENCES` artifact token — `427a4977097662eaed9694a9a042f920418e9e73`.
 
 **Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Writing Preferences metadata, context sibling freeze (`backstory` / `ideal_day` absent), `TOKEN_SOURCES["WRITING_PREFERENCES"]` artifact_key linkage, `_artifact_tokens` includes `WRITING_PREFERENCES`.
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1664
+**Publish ref:** `99067f07bf82c51839191bf6045e3881aac46a1e`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | |
+| stat.logging.debug | X | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+- [ ] **Acceptance criteria (AC4):** Narrow sibling-freeze duty to `backstory` / `ideal_day` absent; `priorities`, `deal_breakers`, and `bio_summary` already register on the ftr tip via parallel epics — child Description AC4 still reads the define-time “no priorities/deal_breakers/…” wording Joan flagged at plan validate.
+
+## Findings
+
+### discuss
+
+- **Publish-ref diff breadth vs ticket scope.** `origin/dev...origin/sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token` is 8 files / ~941 lines: AST-1664 product work is confined to `src/utils/config.py` (+ plan doc), but `merge-tests(AST-1664)` also carries Betty commits for **AST-1659** (Ideal Day operative tests in `tests/component/core/test_candidate.py`, `tests/component/ui/api/test_api_candidate.py`, and bible) and **AST-1661** (Backstory catalog tests/bible). Expected `merge-tests` hygiene on a parallel epic, not AST-1664 product smuggling — but worth Chuckles noting at merge-child that the three-dot diff is wider than the child’s explicit scope gate.
+
+- **Stale child AC4 on Linear Description** (carried from Joan plan validate): plan + verify one-liners correctly interpret sibling-freeze as `backstory` / `ideal_day` only; Linear Description checklist text still lags.
+
+### advisory
+
+- **Incidental closed-set cleanup:** diff removes a duplicate `"candidate.context.deal_breakers"` entry in the `ARTIFACT_CONFIG` keys assert (present on `origin/dev`); correct, unrelated to Writing Preferences registration.
+
+## What's solid
+
+- `src/utils/config.py` delivers Stage 1 verbatim: `candidate.context.writing_preferences` catalog entry (`plain_text` / `ingestion_owner: candidate`), sibling-freeze loop drops `writing_preferences` while keeping `backstory` / `ideal_day` absent, `WRITING_PREFERENCES` flips to `source_type: artifact` with `artifact_key` + widened `_artifact_tokens` closed set; module docstring inventory updated; no `artifact_shapes` re-add; no `resolve_tokens` / operative / API / UI edits.
+- Mirrors AST-1632 / AST-1651 catalog-token path; `resolve_tokens` still resolves via retained `path` overlay (same as STRENGTHS / BIO_SUMMARY) until operative sibling lands.
+- Betty manifest (`TestAst1664CatalogPlainTextWritingPreferencesToken` + revised AST-1590 / AST-1596 / sibling-freeze classes) matches the config delta; integration correctly none.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-1664): Radia review — clean`, post slim upshot, → **Review Posted** → datt **PROCEED** path to User Testing (no fix-now canon items).
+- Archie (optional, non-blocking): amend child Description AC4 to match plan sibling-freeze interpretation.
+
+context_tokens≈55000
+```
