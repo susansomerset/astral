@@ -131,3 +131,59 @@ No other files. Do **not** edit `src/external/slack.py`, `src/core/candidate.py`
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1668
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve` @ `8d4d98de29c06d61005e9572f9c30c0674f549c1`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.contact | C | 2 | Stage 2 cites statute but stages no canonical `contact listen …` info line after a real Estelle turn on the known path |
+| stat.logging.info.api | A | | Stage 3 explicitly omits progress info on idempotent GET; matches `estelle_activity` precedent |
+| stat.logging.debug | B | | New helper uses statute `logger.debug` joints; rest of `contact.py` stays Style D — acceptable mix |
+| stat.logging.error | A | | Unbound API uses handler `logger.exception`; core propagates; recognition post failure matches existing Contact `logger.error`+`exc_info` pattern |
+
+## Traceability
+
+1 → Stage 2 step 3 (retire `initiate_prospect_candidate` on miss) · 2 → Stage 2 steps 3 + 5 (known resolve + `known_recognition_reply_text`) · 3 → Stage 2 steps 3 + 5 (unknown resolve, no PROSPECT, skip Estelle/hear-ack) · 4 → Stage 2 step 4 + Stage 3 (poster pool minus `get_candidate_id_for_query` hits) · 5 → Stage 2 step 4 filter (bind write is AST-1669; list omits bound ids by lookup) · 6 → Stage 3 (`@require_admin` GET `/unbound_slack_users`)
+
+## Findings
+
+### discuss — stat.logging.info.contact staging gap
+**Location:** Stage 2 step 5 (`handle_slack_event` recognition / Estelle branching)
+**Finding:** Plan correctly forbids a parallel recognition info dialect and skips Estelle on unknown users, but never stages the affirmative `logger.info` pipe line after `run_contact_estelle_turn` returns on the **known** path (`<candidate_id> | contact listen <event_type> <outcome>: action:…`). Codebase has no existing `contact listen` info line to “remain.”
+**Recommendation:** Add an explicit sub-step on the known branch (after a successful Estelle turn, before hear-ack): emit the canonical format from `stat.logging.info.contact` § Do. Do not log recognition posts at info. Not blocking if engineer adds during build — flag for Plan Discuss only if they treat “remains” as no-op.
+
+### acceptable — Scope & sibling boundaries
+**Location:** `## Scope gate`, `## Files Changed`
+**Finding:** Three-file footprint matches ticket partition; external helper is call-only; no frontend/candidate-table scanner creep.
+**Recommendation:** None.
+
+### acceptable — Resolve + recognition contract
+**Location:** Stage 2 steps 3 + 5
+**Finding:** Lookup-only miss path, config-driven known/unknown replies, recognition inserted before paste/Estelle block, unknown path skips paste/Estelle/hear-ack — satisfies child AC 1–3 and parent intent for retire-create-on-miss.
+**Recommendation:** None.
+
+### acceptable — Dependency on AST-1667
+**Location:** `## Scope gate` Depends on; Stage 2 step 4
+**Finding:** `list_workspace_posters()` is present on the epic worktree (`src/external/slack.py`); plan return-shape contract matches sibling.
+**Recommendation:** None.
+
+## R6 checklist (summary)
+
+- Definition fidelity: pass — implements child #2 slice; defers poster fetch and Manage Candidates UI to siblings.
+- AC coverage: pass — all six child AC bullets mapped in Execution contract.
+- DRY / scope creep: pass — reuses `get_candidate_id_for_query`, existing post/activity patterns.
+- Self-assessment: pass — estimate 5 with three staged commits and explicit decisions is honest.
+
+context_tokens≈48000
+
+---
+
+[plan-rubric] PROCEED (Commit: 8d4d98de29c06d61005e9572f9c30c0674f549c1) Contact orchestration plan sound
