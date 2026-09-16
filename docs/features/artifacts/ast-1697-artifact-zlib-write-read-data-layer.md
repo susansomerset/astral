@@ -95,3 +95,12 @@ AC1–5 → Stage 1 (write compress, read decompress via `_artifact_row_dict`, B
 
 context_tokens≈12000
 ```
+
+## Review (build stub)
+
+**Publish ref:** 
+**Plan path:** 
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 |  | Header inventory + BLOB DDL;  → ;  →  |
