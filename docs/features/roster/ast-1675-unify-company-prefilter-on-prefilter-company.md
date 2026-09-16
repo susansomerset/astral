@@ -209,3 +209,49 @@ context_tokens≈19500
 **Built @ `f6dbe417`** — `origin/sub/AST-1671/AST-1675-unify-company-prefilter-on-prefilter-company`
 
 Stages 1–5 landed: helpers/admin/consult on `prefilter_company`; dual-key shims deleted; schema-ensure retargets company `prefilter` → `prefilter_company`; one-release alias introduced in `c10754a5` then dropped in `f6dbe417`. Callables / `prefilter_company_notes` / `ROSTER_CONFIG["prefilter"]` unchanged. Somerset live UPDATE remains ops-after-deploy. Test path remains Betty `qa-child`.
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1675
+**Publish ref:** `e68aaa8e2ea407d07b37a3fa674d040eae0cbb91` (`origin/sub/AST-1671/AST-1675-unify-company-prefilter-on-prefilter-company`)
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan `A`; code review `A` on `patt.entity.batch-criteria`.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Location:** Branch history — commit `adc287cd` (`test(AST-1672): DISCOVERED resolve registry SSOT coverage`)
+- **Finding:** The AST-1675 publish ref carries sibling AST-1672 test/bible edits (`TestAst505InflowDiscoveryConfig`, new `TestAst1672DiscoveredResolveRegistrySsot`) without AST-1672 product code (`DISCOVERED` is absent from `src/utils/config.py` at tip). Manifest-green does not cover those nodes; a full `test_config.py` run would red until AST-1672 lands.
+- **Recommendation:** Chuckles strips or re-homes `adc287cd` before ftr rollup, or ensures AST-1672 product precedes/merges with this sub — not an AST-1675 canon fix, but branch hygiene before parent UAT.
+
+### advisory
+
+- **Location:** `tests/component/utils/test_config.py` — `TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults`
+- **Finding:** The `meteorite_email` mailbox-default assertion bundled in `adc287cd` matches current product (`entity_type`/`trigger_state` `None`) and is harmless; it is unrelated to the prefilter cutover.
+- **Recommendation:** No AST-1675 action; keep the correction when AST-1672 branch is reconciled.
+
+## What's solid
+
+- **Scope discipline:** Product diff stays inside the four planned files (`config.py`, `consult.py`, `api_admin.py`, `database.py`); callables, `prefilter_company_notes`, and `ROSTER_CONFIG["prefilter"]` block key untouched.
+- **Cutover completeness:** Dual-key shims removed; one-release alias introduced (`c10754a5`) and dropped (`f6dbe417`); lasting catalog identity is `prefilter_company` across helpers, consult route, admin live-content, and form meta.
+- **Batch-criteria:** Score-floor lookup uses identity row match on `dispatch_task` (`_dispatch_score_floor_for_task`); no new eligibility literals in consult/dispatcher paths — catalog-key normalization only.
+- **Schema ensure:** Idempotent company-only retarget with companion-row DELETE-on-collision and `craft_prefilter_rubric` guard; bind tuple counts match placeholders.
+- **Tests:** Manifest-aligned coverage (shim removal, lasting identity, consult bare-key reject, admin grouping/live-content, dispatcher union claim, schema retarget) matches the plan stages.
+```
