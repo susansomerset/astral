@@ -372,3 +372,7 @@ context_tokens≈38000
 2. Re-run AST-1662 manifest after merge resolution.
 3. Optional: parent AST-1644 comment on parallel-epic slot collision policy if strips become routine.
 ```
+
+## Resolution
+
+**2026-09-16** — Radia FIX-NOW (WP union): restored Writing Preferences catalog + operative from `origin/dev` alongside Backstory on this publish-ref. Tip now keeps all three context leaves: `ideal_day` + `backstory` + `writing_preferences` in `ARTIFACT_CONFIG` / `TOKEN_SOURCES` (artifact-typed) / `_CONTEXT_OPERATIVE_LEAVES` / hydrate / PUT intercept. Supersedes the earlier Betty-gate strip (`5b2facb4`) that would have regressed AST-1665 on merge to dev.
