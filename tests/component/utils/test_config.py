@@ -1534,7 +1534,9 @@ class TestAst505InflowDiscoveryConfig:
         assert d["dispatch_trigger_state"] == "ACTIVE_SEARCH"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
-        assert d["vet_dispatch_trigger_state"] == "NEW"
+        # AST-1672: land + vet claim cut over to DISCOVERED (not NEW).
+        assert d["vet_dispatch_trigger_state"] == "DISCOVERED"
+        assert d["land_state"] == "DISCOVERED"
 
     def test_vet_inflow_discovery_task(self) -> None:
         entry = cfg.TASK_CONFIG["vet_inflow_discovery"]
@@ -1543,26 +1545,34 @@ class TestAst505InflowDiscoveryConfig:
         assert entry["entity_type"] == "company"
         assert entry["requires_candidate_key"] is True
         assert entry["output_type"] == "grades_encoded_vet_meta"
+        # AST-1672: schedulable trigger is DISCOVERED.
+        assert entry["trigger_state"] == "DISCOVERED"
         items = entry["response_schema"]["results"]["items_schema"]
         assert items["grade"]["type"] == "str"
         assert items["website"]["type"] == "str"
         assert "action" not in items
 
     def test_new_company_state_and_transitions(self) -> None:
+        # AST-1672: NEW stays registered for legacy rows; inflow edges moved to DISCOVERED.
         assert "NEW" in cfg.COMPANY_STATES
+        assert "DISCOVERED" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert ("NEW", "WEBSITE_FOUND") in transitions
-        assert ("NEW", "NO_WEBSITE") in transitions
+        assert ("NEW", "WEBSITE_FOUND") not in transitions
+        assert ("NEW", "NO_WEBSITE") not in transitions
+        assert ("DISCOVERED", "WEBSITE_FOUND") in transitions
+        assert ("DISCOVERED", "NO_WEBSITE") in transitions
 
     def test_vet_failed_state_and_transition(self) -> None:
         assert "VET_FAILED" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert ("NEW", "VET_FAILED") in transitions
+        # AST-1672: vet fail edge is DISCOVERED → VET_FAILED (left NEW).
+        assert ("NEW", "VET_FAILED") not in transitions
+        assert ("DISCOVERED", "VET_FAILED") in transitions
 
     def test_inflow_config_vet_literals(self) -> None:
         v = cfg.INFLOW_CONFIG["vet"]
         assert v["task_key"] == "vet_inflow_discovery"
-        assert v["dispatch_trigger_state"] == "NEW"
+        assert v["dispatch_trigger_state"] == "DISCOVERED"
         assert v["pass_state"] == "WEBSITE_FOUND"
         assert v["fail_state"] == "VET_FAILED"
         assert v["blurb_data_key"] == "inflow_discovery_blurb"
@@ -1592,21 +1602,26 @@ class TestAst505InflowDiscoveryConfig:
     def test_vet_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
         assert d["entity_type"] == "company"
-        assert d["trigger_state"] == "NEW"
+        assert d["trigger_state"] == "DISCOVERED"
         assert d["batch_call_mode"] == 1
         assert "vet_inflow_discovery" in cfg.TASK_CONFIG
 
 
 class TestAst506InflowResolveConfig:
-    """AST-506: Phase 2 website resolution, empty-website claim filter, inflow_resolve_website dispatch."""
+    """AST-506/1672: CSE-only inflow_resolve_website on DISCOVERED (no inline AI key)."""
 
     def test_inflow_config_resolve_literals(self) -> None:
         r = cfg.INFLOW_CONFIG["resolve"]
         assert r["max_results"] == 20
         assert r["date_restrict_days"] is None
-        assert r["dispatch_trigger_state"] == "NEW"
+        assert r["dispatch_trigger_state"] == "DISCOVERED"
         assert r["task_key"] == "inflow_resolve_website"
-        assert r["ai_task_key"] == "find_company_website"
+        # AST-1672: fetch hop only — AI select is resolve_website SA.
+        assert "ai_task_key" not in r
+        assert r["waiting_state"] == "WEBSITE_REVIEW"
+        assert r["pass_state"] == "WEBSITE_REVIEW"
+        assert r["fail_state"] == "NO_WEBSITE"
+        assert r["hit_list_data_key"] == "inflow_resolve_website_hits"
 
     def test_inflow_resolve_website_dispatch_admin_defaults(self) -> None:
         from src.utils.config import (
@@ -1618,11 +1633,11 @@ class TestAst506InflowResolveConfig:
         # AST-960: inflow_resolve_website is inflow runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "inflow_resolve_website" not in cfg.TASK_CONFIG
         assert _dispatch_entity_type_for_task_key("inflow_resolve_website") == "company"
-        assert _dispatch_trigger_state_for_task_key("inflow_resolve_website") == "NEW"
+        assert _dispatch_trigger_state_for_task_key("inflow_resolve_website") == "DISCOVERED"
         assert _dispatch_batch_call_mode_for("inflow_resolve_website") == 0
         d = cfg.dispatch_task_admin_defaults("inflow_resolve_website")
         assert d["entity_type"] == "company"
-        assert d["trigger_state"] == "NEW"
+        assert d["trigger_state"] == "DISCOVERED"
         assert d["batch_call_mode"] == 0
 
 
@@ -4926,7 +4941,8 @@ class TestAst1214DispatchAdminDefaultsWidened:
             "gaze": ("company", "WATCH"),
             "recheck_no_openings": ("company", "NO_OPENINGS"),
             "prefilter": ("company", "HOMEPAGE_READY"),
-            "inflow_resolve_website": ("company", "NEW"),
+            # AST-1672: CSE fetch claims DISCOVERED (not NEW).
+            "inflow_resolve_website": ("company", "DISCOVERED"),
         }
         for tk, (et, ts) in expected.items():
             d = cfg.dispatch_task_admin_defaults(tk)
@@ -4939,7 +4955,13 @@ class TestAst1214DispatchAdminDefaultsWidened:
             "batch_call_mode": 0,
         }
         assert cfg.dispatch_task_admin_defaults("parse_meteorite_email") == mailbox
-        assert cfg.dispatch_task_admin_defaults("meteorite_email") == mailbox
+        # AST-1529+: live meteorite_email is mailbox poller — admin defaults leave entity_type unset.
+        assert cfg.dispatch_task_admin_defaults("meteorite_email") == {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
         with pytest.raises(KeyError, match="unknown task_key"):
             cfg.dispatch_task_admin_defaults("not_a_registered_task_key")
 
@@ -6318,3 +6340,67 @@ class TestAst1668RecognitionReplyConfig:
         unknown = cfg.CONTACT_CONFIG["unknown_recognition_reply_text"]
         assert isinstance(known, str) and known.strip() == "I know who that is"
         assert isinstance(unknown, str) and unknown.strip() == "I don't recognize you"
+
+
+# Branches: DISCOVERED land/vet; CSE-only resolve; resolve_website SA + WEBSITE_REVIEW edges (AST-1672).
+class TestAst1672DiscoveredResolveRegistrySsot:
+    """AST-1672: DISCOVERED + resolve registry SSOT (config-only; no runners)."""
+
+    def test_discovered_state_batch_criteria_and_transitions(self) -> None:
+        assert cfg.COMPANY_STATES["DISCOVERED"]["batch_criteria"]["sort_by"] == "updated_at"
+        assert cfg.COMPANY_STATES["WEBSITE_REVIEW"]["batch_criteria"]["sort_by"] == "updated_at"
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        for edge in (
+            ("DISCOVERED", "WEBSITE_FOUND"),
+            ("DISCOVERED", "VET_FAILED"),
+            ("DISCOVERED", "WEBSITE_REVIEW"),
+            ("DISCOVERED", "NO_WEBSITE"),
+            ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
+            ("WEBSITE_REVIEW", "NO_WEBSITE"),
+        ):
+            assert edge in transitions
+        for gone in (
+            ("NEW", "WEBSITE_FOUND"),
+            ("NEW", "NO_WEBSITE"),
+            ("NEW", "VET_FAILED"),
+        ):
+            assert gone not in transitions
+        # Non-inflow IMPORTED waiting edge stays.
+        assert ("IMPORTED", "WEBSITE_REVIEW") in transitions
+
+    def test_resolve_website_task_and_admin_defaults(self) -> None:
+        entry = cfg.TASK_CONFIG["resolve_website"]
+        assert entry["entity_type"] == "company"
+        assert entry["trigger_state"] == "WEBSITE_REVIEW"
+        assert entry["agent_task"] == "find_company_website"
+        assert entry["pass_state"] == "WEBSITE_FOUND"
+        assert entry["fail_state"] == "NO_WEBSITE"
+        assert entry["context_format"] == "find_company_website_{index}"
+        # Agent identity stays agent-only; SA is resolve_website.
+        assert cfg.TASK_CONFIG["find_company_website"]["trigger_state"] is None
+        assert "inflow_resolve_website" not in cfg.TASK_CONFIG
+        assert "resolve_website" in cfg._DISPATCH_COMPANY_ENTITY_TASK_KEYS
+        assert "resolve_website" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert cfg._dispatch_trigger_state_for_task_key("resolve_website") == "WEBSITE_REVIEW"
+        d = cfg.dispatch_task_admin_defaults("resolve_website")
+        assert d == {
+            "entity_type": "company",
+            "trigger_state": "WEBSITE_REVIEW",
+            "sort_by": "updated_at",
+            "batch_call_mode": 0,
+        }
+
+    def test_hit_list_key_and_cse_only_resolve_block(self) -> None:
+        r = cfg.INFLOW_CONFIG["resolve"]
+        assert r["hit_list_data_key"] == "inflow_resolve_website_hits"
+        assert cfg.ROSTER_CONFIG["company_data_keys"]["inflow_resolve_website_hits"] == r[
+            "hit_list_data_key"
+        ]
+        assert "ai_task_key" not in r
+        assert cfg.INFLOW_CONFIG["discovery"]["land_state"] == "DISCOVERED"
+        assert cfg.dispatch_task_admin_defaults("inflow_resolve_website")["trigger_state"] == (
+            "DISCOVERED"
+        )
+        assert cfg.dispatch_task_admin_defaults("vet_inflow_discovery")["trigger_state"] == (
+            "DISCOVERED"
+        )
