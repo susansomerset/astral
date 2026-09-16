@@ -138,3 +138,51 @@ AC6→S1§§1-2+verify; AC7→S1§§1-2+Files Changed — parent AC1–5/AC8 N/A
 - Plan Discuss rounds completed: **0**.
 
 context_tokens≈62000
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1666
+**Publish ref:** `87400633b8cf7a16e065c8985d50b236c3d0772d`
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss
+
+- **Publish-ref three-dot diff vs ticket scope gate.** `origin/dev...origin/sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up` is 15 files / ~1164 lines; AST-1666 engineer commit `b5d1172b` touches only `src/ui/frontend/src/pages/CandidateWritingPreferences.tsx` (+9/−1). The wider diff carries prerequisite **AST-1664** catalog + **AST-1665** operative/API work (and their Betty `merge-tests` commits) stacked beneath this UI child — expected on a `blockedBy` epic tip after `sync-child` / ftr merge, not Katherine scope creep. Chuckles should note at merge-child that the three-dot diff is wider than the one-file explicit gate.
+
+### advisory
+
+- **blockedBy prerequisites satisfied on tip:** `candidate.context.writing_preferences` catalog + `WRITING_PREFERENCES` artifact token (AST-1664) and PUT intercept / GET hydrate (AST-1665) are present on the publish ref; the UI wire-up correctly defers to those siblings with no client catalog fetch or API reimplementation.
+
+## What's solid
+
+- Stage 1 delivers the planned delta verbatim: `CandidateWritingPreferences.tsx` mirrors `CandidateStrengths.tsx` / `CandidateIdealDay.tsx` — adds hardcoded `bodyShape="plain_text"` alongside existing `title="Writing Preferences"` and `contextKey="writing_preferences"`; `ContextTextPage.tsx` and `ArtifactEditor.tsx` have zero product diff on this branch.
+- **patt.artifact.ui-consistency:** plain_text context leaf routes through shared `ContextTextPage`, not `ArtifactEditor` / `resume_content`.
+- **patt.artifact.read-current:** load uses existing `GET /api/candidates/${selectedId}` → `context.writing_preferences` (hydrated by AST-1665); no client blob invent or second fetch.
+- **patt.artifact.write-operative:** save uses existing `PUT { context: { writing_preferences: draft } }` contract (AST-1665 intercept); `plain_text` empty-save gate blocks whitespace-only PUT client-side.
+- Betty Vitest (`test_CandidateWritingPreferences.test.tsx`) covers render + hydrated load, save PUT + textarea reload, empty gate (Save disabled, no PUT), and source asserts for `bodyShape="plain_text"` / no `ArtifactEditor`; integration correctly none.
+
+## Recommended actions
+
+- Chuckles: append artifact, `docs(AST-1666): Radia review — clean`, post slim upshot, → **Review Posted** → datt **PROCEED** to User Testing (parent AST-1645 last child on this wave).
+
+context_tokens≈68000
