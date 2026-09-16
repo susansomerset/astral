@@ -255,3 +255,12 @@ Stages 1–5 landed: helpers/admin/consult on `prefilter_company`; dual-key shim
 - **Schema ensure:** Idempotent company-only retarget with companion-row DELETE-on-collision and `craft_prefilter_rubric` guard; bind tuple counts match placeholders.
 - **Tests:** Manifest-aligned coverage (shim removal, lasting identity, consult bare-key reject, admin grouping/live-content, dispatcher union claim, schema retarget) matches the plan stages.
 ```
+
+## Resolution
+
+**2026-09-16** — `resolve(AST-1675): — clean` @ tip after Radia intake `d85593f9`.
+
+- **fix-now:** none (Overall CLEAN).
+- **discuss:** Sibling `adc287cd` (AST-1672 test/bible on this publish tip without AST-1672 product) — Chuckles branch hygiene before ftr rollup; not an AST-1675 product change. Left as-is on this sub.
+- **advisory:** `TestAst1214` meteorite_email assertion unrelated to cutover — no AST-1675 action.
+- Product tip unchanged from Tests Passed / review tip (`e68aaa8e` product+tests; Radia docs `d85593f9`).
