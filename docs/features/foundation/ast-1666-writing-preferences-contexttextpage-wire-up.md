@@ -93,12 +93,12 @@ Confirm Chuckles estimate: 2 — agree
 
 ## Review (build stub)
 
-**Built:**  @ .
+**Built:** `origin/sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up` @ `b5d1172b63c456c409d0eb0a9c203b9da3d25ae3`.
 
 **Stages delivered:**
-- Stage 1: Writing Preferences  bodyShape — .
+- Stage 1: Writing Preferences `plain_text` bodyShape — `b5d1172b63c456c409d0eb0a9c203b9da3d25ae3`.
 
-**Betty:** at **Code Complete** — cover Writing Preferences ContextTextPage render + hydrated load, save PUT  + textarea reload,  empty-save gate (Save disabled, no PUT), and source assert for  / no ;  /  untouched.
+**Betty:** at **Code Complete** — cover Writing Preferences ContextTextPage render + hydrated load, save PUT `{ context: { writing_preferences } }` + textarea reload, `plain_text` empty-save gate (Save disabled, no PUT), and source assert for `bodyShape="plain_text"` / no `ArtifactEditor`; `ContextTextPage.tsx` / `ArtifactEditor.tsx` untouched.
 
 ## Joan validate
 
