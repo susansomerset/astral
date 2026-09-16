@@ -3460,6 +3460,14 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 
+### AST-1691 · AST-1685
+
+Meteorite top tab + sections. Primary: meteorites.md § AST-1691.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tabs/sections | `src/utils/config.py` | **`TestAst1691MeteoriteReportConfig`** |
+
 ### AST-1612 · AST-1607
 
 **Parent:** [AST-1607](https://linear.app/astralcareermatch/issue/AST-1607/artifacts-discussion-is-incomplete). **Publish:** `origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`. Product: **AST-1609** (`origin/sub/AST-1607/AST-1609-fix-artifacts-discussion-incomplete`).
@@ -4082,3 +4090,43 @@ Config-only: `BUILD_CONFIG["artifact_shapes"]["resume_structure"] = "structure_d
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+
+### AST-1688 · AST-1684
+
+**Parent:** [AST-1684 — Reply-to emails in meteorite when single_jd_no_link](https://linear.app/astralcareermatch/issue/AST-1684/reply-to-emails-in-meteorite-when-single-jd-no-link). **Publish:** `origin/sub/AST-1684/AST-1688-stage-meteorite-electronic-contact-schema-prompts`.
+
+Config-only (sibling **AST-1689** owns DB/map/persist): optional `electronic_contact` on `TASK_CONFIG["stage_meteorite"].response_schema.jobs.items_schema`; `STAGE_METEORITE_CONFIG["electronic_contact_response_key"]` + `METEORITE_CONFIG["electronic_contact_column"]` lockstep; outcome / `text_source_ref_outcomes` unchanged. Catalog prompts: **`docs/test-bible/core/repo_admin_json.md`** § AST-1688.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema field + config literals + validate omit/string | `src/utils/config.py` | **`TestAst1688StageMeteoriteElectronicContactConfig`** |
+| Prior stage shell (still green) | same | **`TestAst1529StageMeteoriteConfig`** |
+
+**Broken / obsolete this pass:** AST-756 `expected-agent_task.json` twin drifted on `stage_meteorite` prompts — synced in **`docs/test-bible/core/repo_admin_json.md`** § AST-1688 (fixture path is catalog-owned).
+
+**Integration:** no existing scenario asserts `electronic_contact` / stage_meteorite schema keys — none revised; do not invent.
+
+## QA test manifest
+
+1. Electronic-contact schema + literals: `tests/component/utils/test_config.py::TestAst1688StageMeteoriteElectronicContactConfig`
+2. Prior stage shell: `tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig`
+3. Catalog prompts + fixture twin: `tests/component/core/test_repo_admin_json.py::TestAst1688StageMeteoriteElectronicContactPrompts`
+4. Prior catalog + fixture lockstep: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+5. Whole-file fixture identity: `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1688StageMeteoriteElectronicContactConfig \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst1688StageMeteoriteElectronicContactPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+- `docs/test-bible/core/repo_admin_json.md` — *(filled after publish)*
