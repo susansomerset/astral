@@ -291,4 +291,6 @@ context_tokens≈38000
 - Stage 1: library gate + hydrate + entity log — `b3576294e1848cdbb49364b9788d082c89ff288f`.
 - Stage 2: PUT intercept + GET hydrate + api info — `bd8d2d5a0cfcc005b851f8509f90e0e129984d8f`.
 
+
+**Scope fix:** stripped Writing Preferences operative path from this publish-ref (Betty gate) — `writing_preferences` library-merges again; Backstory-only remains.
 **Betty:** at **Code Complete** — cover operative Backstory round-trip + retire prior current, identical-body no-op (shared AST-1635), dict-path strips `context.backstory` (and still strips strengths / bio_summary / ideal_day / writing_preferences), hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf, empty backstory → 400.
