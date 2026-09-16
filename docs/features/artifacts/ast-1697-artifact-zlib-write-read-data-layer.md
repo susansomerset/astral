@@ -61,3 +61,37 @@ No other files. Do not touch `tests/`, bible, canon drafts, or `docs/ASTRAL_CODE
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+```
+[plan-rubric] PROCEED (Commit: 69e16a48) single-file zlib contract
+**Ticket:** AST-1697
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1605/AST-1697-artifact-zlib-write-read-data-layer` @ `69e16a48078159259b3cc0ac1f58f11d9628c24d`
+
+## Canon scores
+
+astral.standards.data-raises-caller-logs | A
+astral.standards.database-header-inventory | A
+astral.layers.import-direction | A
+
+## Traceability
+
+AC1–5 → Stage 1 (write compress, read decompress via `_artifact_row_dict`, BLOB DDL, header inventory, grep gate); parent AC6 (`08a2b32b` ancestry) → N/A — Chuckles pre-dispatch per child Boundaries / plan UAT fitness.
+
+### discuss
+
+- **Location:** Canon Scope / `canon_clerk.py expand`
+- **Finding:** Ticket cites `astral.standards.*` and `astral.layers.import-direction`, but `canon_clerk.py expand` returns unknown for all three (not yet in `canon/directives/active/`). Statute text was read from harvested `canon/statutes/` on `origin/dev` per parent Architectural definition links.
+- **Recommendation:** Promote or alias these ids into the clerk active corpus before build freeze so Joan/Radia `expand` calls match the frozen list. Does not block this plan — text aligns with plan commitments.
+
+### acceptable
+
+- **Location:** Plan `## UAT fitness`
+- **Finding:** UAT fitness section present on a non-UAT-thin ticket; redundant but accurate and maps child AC faithfully.
+- **Recommendation:** None — harmless extra traceability for Chuckles/Radia.
+
+context_tokens≈12000
+```
