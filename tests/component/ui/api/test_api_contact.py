@@ -333,3 +333,62 @@ class TestAst1206ContactDebugApi:
             contact_client.get("/api/admin/contact/debug", headers=non_admin_headers).status_code
             == 403
         )
+
+
+# Branches: GET unbound_slack_users; 502; auth 401/403 (AST-1668).
+class TestAst1668UnboundSlackUsersApi:
+    def test_get_unbound_ok(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_api,
+            "list_unbound_slack_users",
+            MagicMock(
+                return_value=[{"slack_user_id": "U1", "username": "ada"}]
+            ),
+        )
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        info = MagicMock()
+        monkeypatch.setattr(contact_api.logger, "info", info)
+        resp = contact_client.get(
+            "/api/admin/contact/unbound_slack_users", headers=auth_headers
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == {
+            "users": [{"slack_user_id": "U1", "username": "ada"}]
+        }
+        # Idempotent GET — no progress info line.
+        info.assert_not_called()
+
+    def test_get_unbound_upstream_502(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_api,
+            "list_unbound_slack_users",
+            MagicMock(side_effect=RuntimeError("slack down")),
+        )
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        exc = MagicMock()
+        monkeypatch.setattr(contact_api.logger, "exception", exc)
+        resp = contact_client.get(
+            "/api/admin/contact/unbound_slack_users", headers=auth_headers
+        )
+        assert resp.status_code == 502
+        assert resp.get_json() == {"error": "slack down"}
+        exc.assert_called_once()
+
+    def test_unbound_requires_auth(self, contact_client: FlaskClient) -> None:
+        assert (
+            contact_client.get("/api/admin/contact/unbound_slack_users").status_code == 401
+        )
+
+    def test_unbound_non_admin_forbidden(
+        self, contact_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        assert (
+            contact_client.get(
+                "/api/admin/contact/unbound_slack_users", headers=non_admin_headers
+            ).status_code
+            == 403
+        )
