@@ -215,3 +215,11 @@ Child AC **2** (`related_meteorite` object or `null` on `GET /api/jobs/<id>`) �
 Definition fidelity: plan implements only the database read helper, config tab/section defs, manifest attach, and `related_meteorite` projection — all four files match ticket `## Scope`; no retention or frontend creep. DRY: new helper mirrors existing `get_meteorite` / `_meteorite_row_to_dict` pattern; distinct from list-page `JOBS_RECOMMENDED_METEORITE_SECTION`. Self-assessment: estimate confirm **3 — agree** is proportionate. No `!!-NONE` conf gaps. Plan Discuss rounds: **0** completed (Plan Ready; one Hedy publish comment only).
 
 context_tokens≈32000
+
+## Review
+
+**Publish ref:** `sub/AST-1685/AST-1691-meteorite-lookup-report-config-api`
+**Build tip:** `8d159e4ee7ecdc3b204d2581ea66110bd8f8670e`
+**Status:** Code Complete pending Betty
+
+Stages 1–4: `get_meteorite_by_astral_job_id`; Meteorite on `JOBS_RECOMMENDED_REPORT_TOP_TABS` + `JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS`; `report_meteorite_sections` on `state_ui_manifest`; `related_meteorite` on job detail GET (full-row debug per Joan discuss). Tests deferred to Betty.
