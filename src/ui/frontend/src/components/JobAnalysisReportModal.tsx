@@ -79,6 +79,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [snapshotCopied, setSnapshotCopied] = useState(false)
+  const [detailLinkCopied, setDetailLinkCopied] = useState(false)
   const [snapshotCopying, setSnapshotCopying] = useState(false)
   const [activeTopTab, setActiveTopTab] = useState("summary")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
@@ -272,6 +273,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setActiveTopTab("summary")
   }, [jobId])
   useEffect(() => { setSnapshotCopied(false) }, [jobId])
+  useEffect(() => { setDetailLinkCopied(false) }, [jobId])
 
   const topTabs = useMemo(() => {
     const rows = manifest?.jobs.recommended.report_top_tabs ?? []
@@ -627,6 +629,16 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     window.setTimeout(() => setSnapshotCopied(false), 2000)
   }
 
+  function handleCopyDetailLink() {
+    if (!jobId) return
+    const url =
+      `${window.location.origin}/jobs/detail/${encodeURIComponent(jobId)}`
+    navigator.clipboard.writeText(url).then(() => {
+      setDetailLinkCopied(true)
+      window.setTimeout(() => setDetailLinkCopied(false), 2000)
+    })
+  }
+
   function handleCopyApplicationEmail() {
     if (!applicationEmail) return
     const text = emailWithJobPlusTag(applicationEmail, emailPlusTag)
@@ -669,6 +681,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               copyFeedback={copyFeedback}
               onCopyApplicationEmail={handleCopyApplicationEmail}
               onCopyLinkedIn={handleCopyLinkedIn}
+              onCopyDetailLink={handleCopyDetailLink}
+              detailLinkCopied={detailLinkCopied}
               onCopySnapshot={handleCopySnapshot}
               snapshotCopied={snapshotCopied}
               snapshotCopying={snapshotCopying}
