@@ -5044,6 +5044,143 @@ class TestAst1673ConsultResolveFetchHop:
         assert resolve.await_count == 3
 
 
+class TestAst1674ResolveWebsiteApply:
+    """AST-1674: resolve_website AI apply on WEBSITE_REVIEW → WEBSITE_FOUND | NO_WEBSITE."""
+
+    def _review_entity(self, hits=None, **extra):
+        data = {"inflow_resolve_website_hits": hits if hits is not None else [
+            {"title": "Acme", "url": "https://acme.example", "snippet": "official"},
+        ]}
+        entity = _company(
+            state="WEBSITE_REVIEW",
+            company_website="",
+            company_data=data,
+        )
+        entity["company_name"] = "Acme Corp"
+        entity.update(extra)
+        return entity
+
+    @pytest.mark.asyncio
+    async def test_missing_hits_is_error_without_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cse = MagicMock()
+        monkeypatch.setattr(roster_mod, "search_google_cse", cse)
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        entity = _company(state="WEBSITE_REVIEW", company_website="", company_data={})
+        out = await roster_mod.resolve_website_company("acme", entity, {}, False)
+        assert out["success"] is False
+        assert "inflow_resolve_website_hits" in (out.get("error") or "")
+        transition.assert_not_called()
+        update.assert_not_called()
+        cse.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_success_sets_website_and_website_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {"task_success": True, "website": "https://acme.example"},
+            }
+        )
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        cse = MagicMock()
+        monkeypatch.setattr(roster_mod, "search_google_cse", cse)
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        entity = self._review_entity()
+        out = await roster_mod.resolve_website_company("acme", entity, {}, False)
+        assert out == {"success": True, "state": "WEBSITE_FOUND", "error": None}
+        update.assert_called_once_with("acme", company_website="https://acme.example")
+        transition.assert_called_once_with("acme", "WEBSITE_FOUND")
+        cse.assert_not_called()
+        assert do_task.await_args.kwargs["task_key"] == "find_company_website"
+        live = do_task.await_args.kwargs["live_content"]
+        assert live.splitlines()[0] == "0|acme|"
+        assert "1|Acme|https://acme.example|official" in live
+
+    @pytest.mark.asyncio
+    async def test_decline_or_empty_website_is_no_website(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        do_task = AsyncMock(
+            return_value={"success": True, "parsed_response": {"task_success": False, "website": ""}},
+        )
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        out = await roster_mod.resolve_website_company("acme", self._review_entity(), {}, False)
+        assert out == {"success": True, "state": "NO_WEBSITE", "error": None}
+        transition.assert_called_once_with("acme", "NO_WEBSITE")
+        update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_do_task_failure_leaves_website_review(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod, "do_task", AsyncMock(return_value={"success": False, "error": "llm down"}),
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.resolve_website_company("acme", self._review_entity(), {}, False)
+        assert out["success"] is False
+        assert out["error"] == "llm down"
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_routes_website_review(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        apply_hop = AsyncMock(return_value={"success": True, "state": "WEBSITE_FOUND", "error": None})
+        monkeypatch.setattr(roster_mod, "resolve_website_company", apply_hop)
+        entity = self._review_entity()
+        ok = await roster_mod.run_company_task(
+            "WEBSITE_REVIEW", entity, "batch-1674", {}, False, dispatch_task_key="resolve_website",
+        )
+        bad_key = await roster_mod.run_company_task(
+            "WEBSITE_REVIEW", entity, "batch-1674", {}, False, dispatch_task_key="inflow_resolve_website",
+        )
+        assert ok["total_passed"] == 1
+        apply_hop.assert_awaited_once()
+        assert bad_key["total_errors"] == 1
+
+    @pytest.mark.asyncio
+    async def test_consult_resolve_website_counts_terminals_and_errors(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import consult as consult_mod
+
+        apply_hop = AsyncMock(
+            side_effect=[
+                {"success": True, "state": "WEBSITE_FOUND", "error": None},
+                {"success": True, "state": "NO_WEBSITE", "error": None},
+                {"success": False, "state": None, "error": "missing hits"},
+            ],
+        )
+        monkeypatch.setattr(roster_mod, "resolve_website_company", apply_hop)
+        entities = [
+            {"short_name": "a", "company_state": "WEBSITE_REVIEW"},
+            {"short_name": "b", "company_state": "WEBSITE_REVIEW"},
+            {"short_name": "c", "company_state": "WEBSITE_REVIEW"},
+        ]
+        out = await consult_mod.run_consult_task(
+            "company",
+            "WEBSITE_REVIEW",
+            entities,
+            "batch-1674",
+            {"astral_candidate_id": "c1674"},
+            False,
+            dispatch_task_key="resolve_website",
+        )
+        assert out == {
+            "total_processed": 3,
+            "total_passed": 2,
+            "total_failed": 0,
+            "total_errors": 1,
+        }
+        assert apply_hop.await_count == 3
+
+
 class TestAst689ScrapeReadiness:
     """AST-689: careers-list scrape readiness gate before select_job_page extract."""
 

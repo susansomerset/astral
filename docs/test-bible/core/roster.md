@@ -758,3 +758,25 @@ Discovery lands **`DISCOVERED`**; CSE-only **`resolve_company_website`** (persis
   tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1673_inflow_resolve_on_new_skips_empty_website_filter \
   -q
 ```
+
+### AST-1674 · AST-1670
+
+**Parent:** [AST-1670 — Split inflow website resolve into CSE fetch + find_company_website dispatch](https://linear.app/astralcareermatch/issue/AST-1670). **Publish:** `origin/sub/AST-1670/AST-1674-resolve-website-company-dispatch-apply`.
+
+**`resolve_website`** AI apply: load persisted CSE hits, rebuild slug + 1-based live_content, **`do_task(find_company_website)`**, land **`WEBSITE_FOUND`** / **`NO_WEBSITE`**. CSE fetch / SSOT: siblings **AST-1673** / **AST-1672**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 6 | SA **`resolve_website`** on **`WEBSITE_REVIEW`**, agent **`find_company_website`** | `src/core/roster.py`, `src/core/consult.py` | **`TestAst1674ResolveWebsiteApply::{test_success_sets_website_and_website_found,test_run_company_task_routes_website_review,test_consult_resolve_website_counts_terminals_and_errors}`**; SSOT **`TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults`** |
+| 7 | Success writes website + **`WEBSITE_FOUND`**; decline/empty → **`NO_WEBSITE`** | `src/core/roster.py` | **`TestAst1674ResolveWebsiteApply::{test_success_sets_website_and_website_found,test_decline_or_empty_website_is_no_website,test_missing_hits_is_error_without_transition,test_do_task_failure_leaves_website_review}`** |
+
+**Broken / obsolete:** none — apply hop is new; CSE-only AST-506/1673 tests stay.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1674ResolveWebsiteApply \
+  tests/component/utils/test_config.py::TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults \
+  -q
+```
