@@ -383,18 +383,19 @@ def update_candidate_data(candidate_id):
             if body:
                 # AST-1014 / AC8: gate library-write found/recorded lines on deploy debug.
                 save_candidate_data(candidate_id, body, replace=False, debug=ui_llm_debug())
-                # AST-1576: pilot body via generic operative save (no blob mirror / snapshot).
-                if base_resume_in_save and pilot_body is not None:
-                    save_candidate_data(
-                        candidate_id,
-                        TASK_CONFIG["craft_resume_base"]["artifact_key"],
-                        pilot_body,
-                    )
                 # Clear pending only after persist — keys captured before apply del
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
             # Leaf-only PUT may leave body empty after pop — still operative-save.
+            # AST-1576 / AST-1679: pilot body outside nested if body: (leaf-only base_resume
+            # pops artifacts then empties body; must still land candidate.artifacts.base_resume).
+            if base_resume_in_save and pilot_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    TASK_CONFIG["craft_resume_base"]["artifact_key"],
+                    pilot_body,
+                )
             if strengths_body is not None:
                 save_candidate_data(
                     candidate_id,
