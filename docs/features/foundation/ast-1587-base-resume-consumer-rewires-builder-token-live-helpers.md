@@ -497,3 +497,25 @@ None (no fix-now, discuss, or advisory items on AST-1682 product diff).
 ```
 [code-rubric] PROCEED (Commit: f40d9e50) cid threading clean
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/453fe4582ab193dec91d2b46d54abdef/3a5bc345-4157-4c8a-9bbf-8a6d8ba90628/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/20dbf6d0-63e2-405e-8ee9-16eb5f97f29c/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/453fe4582ab193dec91d2b46d54abdef/06b74337-7b87-4cb7-beb2-417d52d4d298/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1681 (parent) | ftr/AST-1681-base-resume-does-not-read-current-artifact |
+| AST-1682 | sub/AST-1681/AST-1682-base-resume-token-reads-current |
+| AST-1683 | sub/AST-1681/AST-1683-cover-contact-base-resume-current-read |
+
+**Epic worktree:** `astral-AST-1681/` — one active sub checked out at a time.
