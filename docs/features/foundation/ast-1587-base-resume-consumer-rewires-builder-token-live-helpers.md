@@ -330,3 +330,107 @@ None (no fix-now, discuss, or advisory items requiring engineer action).
 - Betty harness: `operative_fixture` + autouse `load_pilot` stub preserves existing builder tests while proving current-read semantics.
 
 context_tokens≈52000
+
+## Bug: AST-1682 — {$BASE_RESUME} reads current base_resume artifact (blank token fix)
+
+Orphaned bug mini-parent: [AST-1681](https://linear.app/astralcareermatch/issue/AST-1681). Approved ancestor: this AST-1587 doc (Susan). Publish ref: `sub/AST-1681/AST-1682-base-resume-token-reads-current`.
+
+**Canon (from AST-1587 Citations; parent has no separate Canon Scope):** `patt.artifact.read-current` (pattern — token/prompt assembly must current-read when cid is known); `patt.artifact.write-operative` (id-only); `astral.standards.debug-contract-gated` (id-only); `astral.standards.in-scope-only` (id-only); `astral.layers.import-direction` (id-only).
+
+### As-is
+
+When a prompt containing `{$BASE_RESUME}` is resolved, the substituted value is empty even when the candidate has a current `candidate.artifacts.base_resume` operative artifact that should ground the token.
+
+### To-be
+
+`{$BASE_RESUME}` resolves to the section-id-keyed JSON body of the candidate’s current `candidate.artifacts.base_resume` operative artifact (AST-607 / AST-1587 contract), not blank, whenever that current row exists and the token view carries a candidate id (or an equivalent in-scope path can stamp that id before serialize).
+
+### Repro
+
+No SQL seed — persistence is file/JSON. Fixture-level:
+
+1. Ensure candidate `cand-1` has a non-empty current operative body for `candidate.artifacts.base_resume` (section-id-keyed dict as written by craft/save-operative).
+2. Build a **library-shaped** dict with no cid stamp — the shape Contact passes into `do_task` today:
+
+```python
+candidate_data = {
+    "contact": {"phone": "555"},
+    "context": {},
+    "artifacts": {},  # blob retired / stripped; do not rely on it
+}
+```
+
+3. Resolve a prompt that embeds the token **without** threading cid on the view:
+
+```python
+from src.utils.config import resolve_tokens
+# Mirrors Contact: candidate_data=…, no ctx.astral_candidate_id, index may be cand-1
+out = resolve_tokens("X{$BASE_RESUME}Y", candidate_data, "contact_estelle_turn")
+assert out == "XY"  # blank today
+```
+
+4. Same serialize with cid present must be non-empty JSON (control):
+
+```python
+from src.core.candidate import format_base_resume_for_token
+assert format_base_resume_for_token({**candidate_data, "_astral_candidate_id": "cand-1"}) != ""
+```
+
+5. Live path: `do_task(..., candidate_data=candidate_data, index="cand-1", ctx=None)` (Contact Estelle shape) with a prompt containing `{$BASE_RESUME}` — model input shows blank where resume JSON should be.
+
+### Root cause
+
+AST-1587 correctly rewired `format_base_resume_for_token` to **current-read only** via `candidate_id_for_current_read` → `get_candidate_current` (no `artifacts.base_resume` blob fallback). Blank is therefore expected when cid is missing — but several resolve paths still hand `resolve_tokens` a candidate-shaped dict **without** `_astral_candidate_id` / `astral_candidate_id` even though an astral candidate is in scope:
+
+1. **`is_candidate_token_view`** returns True for raw library `candidate_data` because it has a top-level `"contact"` key — so `_token_view_for_do_task` treats that blob as a finished token view and returns it unchanged (no cid).
+2. **Contact Estelle** (`src/core/contact.py`) calls `do_task(..., candidate_data=…, index=astral_candidate_id or channel)` **without** `ctx` / without stamping `_astral_candidate_id`. It may strip or pin `artifacts.base_resume`, but serialize ignores that blob anyway — so pin-into-blob cannot rescue `{$BASE_RESUME}` after AST-1587.
+3. Path-walk tokens (`{$FIRST_NAME}`, `{$STRENGTHS}` via `context.*` hydrate/legacy) can still look fine on the same turn, which makes the blank `{$BASE_RESUME}` look like a serialize bug rather than a missing-id bug.
+
+`config.py`’s `resume_sections_json` branch already calls `format_base_resume_for_token(candidate_data)` — the defect is upstream of that call (cid not on the dict), not a second blob walk in config.
+
+### Proposed change
+
+Scope = this child’s `## Scope` (copied from AST-1681 Component/Technical scope). Do **not** revive blob fallback. Do **not** own Contact pin resolve beyond threading cid for current-read.
+
+1. **`src/core/candidate.py` — tighten `is_candidate_token_view`**
+   - Require `"_astral_candidate_id" in obj` (key present; value may still be empty) so a raw library blob with only `contact` / `context` / `artifacts` is **not** classified as a token view.
+   - Leave `format_base_resume_for_token` / `candidate_id_for_current_read` / `load_pilot_base_resume_for_candidate` on the no-blob-fallback contract (miss or missing cid → `""`).
+
+2. **`src/core/agent.py` — `_token_view_for_do_task` / `do_task` (token-view builder)**
+   - Pass `index` into `_token_view_for_do_task`.
+   - Resolve walkable cd in this order:
+     1. `ctx.astral_candidate_id` → `get_candidate` → `build_candidate_token_view` (unchanged)
+     2. `ctx` is a candidate row → `build_candidate_token_view` (unchanged)
+     3. **New:** if `index` is non-empty and `get_candidate(index)` returns a row, use `build_candidate_token_view(row)` — covers callers that pass `index=<astral_candidate_id>` without `ctx` (Contact Estelle when a candidate is bound)
+     4. `is_candidate_token_view(candidate_data)` → `dict(candidate_data)` (now requires cid key)
+     5. Fallback `dict(candidate_data or ctx.candidate_data or {})` (unchanged)
+   - Keep the existing post-view stamp: when `ctx.astral_candidate_id` is set, set `cd["_astral_candidate_id"]`.
+   - Do **not** treat arbitrary batch/job indexes as candidates when `get_candidate` misses — fall through.
+
+3. **`src/utils/config.py` — audit only**
+   - Confirm `TOKEN_SOURCES["BASE_RESUME"]` with `serialize == "resume_sections_json"` remains the only resolve branch and still calls `format_base_resume_for_token(candidate_data)`.
+   - **Expected: no file change.** If a parallel `_walk_dot_path(..., "artifacts.base_resume")` for this token exists, route it through `format_base_resume_for_token` instead (do not add keys).
+
+4. **Contact pin block**
+   - Leave strip/pin-into-`artifacts.base_resume` logic untouched (Boundaries: not owning pin paths). Step 2 makes `index=astral_candidate_id` sufficient for current-read serialize.
+   - If make-fix finds a resolve site that has **neither** ctx cid, **nor** index-as-cid, **nor** a stamped view, stop with `[scope-gate]` naming that file — do not widen silently.
+
+5. **Verify**
+   - With current operative present + cid-bearing view (or Contact-shaped `index=cid`, `ctx=None`): `{$BASE_RESUME}` → non-empty section-id JSON.
+   - Missing current or missing cid (and index not a candidate id): still `""`.
+
+### Blast radius
+
+- **Contact Estelle turns** that embed `{$BASE_RESUME}` — primary live beneficiary; pin-into-blob no longer needed for this token once cid/index recovery works.
+- **Any `do_task` caller** that passes library `candidate_data` without ctx but uses `index=<astral_candidate_id>` — gains current-read serialize.
+- **Admin / `preview_task_prompt` / `build_candidate_token_view` paths** that already stamp `_astral_candidate_id` — should already current-read; regression-check only.
+- **Sibling artifact tokens** (`STRENGTHS`, etc.) stay on path-walk + hydrate; unchanged.
+- **AST-1587 builder HTML / live helpers** — unchanged unless they share `is_candidate_token_view` (tighten may push more callers through `get_candidate` when index/ctx provide an id — desired).
+
+### What must still hold
+
+- AST-1587 / this child’s AC2: missing operative current **or** missing candidate id → empty string; **no** `artifacts.base_resume` blob fallback.
+- AST-607 serialize contract: section-id-keyed JSON (via `ingest_legacy_label_content_base_resume` + `filter_base_resume_to_structure`), never markdown.
+- `TOKEN_SOURCES` / `ARTIFACT_CONFIG` membership unchanged.
+- Contact read-operative **pin** behavior for non-token consumers unchanged (this bug’s to-be is **current**, not pin).
+- Engineer must not create or edit `tests/` or `docs/test-bible/**`.
