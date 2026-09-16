@@ -146,3 +146,63 @@ Stage 1: `RecommendedJobReportHeader` — optional `onCopyDetailLink` / `detailL
 Stage 2: `JobAnalysisReportModal` — absolute `origin + /jobs/detail/<jobId>` clipboard write, 2s Copied feedback, reset on `jobId` change.
 
 Tests deferred to Betty (`qa-child`).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1696
+**Publish ref:** `0934b72c1a982c768deab14a95e7a38ca7290eca` (`origin/sub/AST-1687/AST-1696-copy-detail-deeplink-from-report-header`)
+**Corpus:** fc0c368e59
+**Overall:** CLEAN
+
+## Canon scores
+
+(empty frozen list — child `## Citations` is `none`; Joan and clerk roster agree no in-force directives govern this UI-only clipboard slice)
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored an empty list; diff introduces no new canon obligations.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+**Branch diff carries sibling epic work beyond AST-1696 product scope**
+**Location:** `git diff origin/dev...origin/sub/AST-1687/AST-1696-copy-detail-deeplink-from-report-header` (26 files; ~2k insertions)
+**Finding:** AST-1696 product changes are confined to `RecommendedJobReportHeader.tsx` and `JobAnalysisReportModal.tsx` (+ Betty’s AST-1696 component tests and bible block). The three-dot diff also includes merged sibling slices (e.g. AST-1692 Meteorite tab tests in `test_JobAnalysisReportModal.test.tsx`, core/meteorite/tracker/api_jobs work, etc.). Expected on a shared `sub/*` tip — not AST-1696 implementing out-of-scope product.
+**Recommendation:** Chuckles/issue doc should attribute sibling files to their tickets when appending review; no product fix for AST-1696.
+
+**Issue doc missing qa-child / test-child sections**
+**Location:** `docs/features/interface/ast-1696-copy-detail-deeplink-from-report-header.md` tail (ends at `## Review (build)`)
+**Finding:** Betty’s manifest is on tip in `docs/test-bible/frontend/components.md` and tests land in diff; Linear status is Tests Passed, but the issue doc has no `## QA` or test-run block yet.
+**Recommendation:** Chuckles append Betty/Katherine evidence on writeback — not blocking review.
+
+**`jobId` change resets `detailLinkCopied` without dedicated test**
+**Location:** `JobAnalysisReportModal.tsx` `useEffect(() => { setDetailLinkCopied(false) }, [jobId])`
+**Finding:** Plan Stage 2 step 2 implemented; manifest does not require an assertion.
+**Recommendation:** Optional hardening in a future pass; not blocking.
+
+## What's solid
+
+- Product diff matches plan Stages 1–2 verbatim: optional props, **Copy Link** `.btn secondary` before diagnostic Copy, links-row visibility when link-copy alone, absolute `origin + /jobs/detail/` + `encodeURIComponent(jobId)`, 2s **Copied** feedback, silent clipboard rejection (no `.catch`), props wired at header call site.
+- Do-not-touch list honored for AST-1696 scope: no `JobsJobDetail.tsx`, `routes.tsx`, `config.py`, or auth changes.
+- Betty manifest (`AST-1696` + `AST-1421` regression) aligns with bible: header alone/coexistence/Copied prop; JAR clipboard URL, label flip, coexistence with snapshot/email/LinkedIn; no integration invention.
+- Estimate 2 fits: ~29 lines product + focused component tests.
+
+## Recommended actions
+
+- Chuckles: append this verdict to issue doc, commit `docs(AST-1696): Radia review — clean`, post slim upshot, move to Review Posted.
+- datt: **PROCEED** → User Testing (no canon fix-now items; empty frozen list).
+
