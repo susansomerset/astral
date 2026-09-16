@@ -138,6 +138,12 @@ Confirm Chuckles estimate: 2 — agree
 
 Parent AC1–3 → AST-1693 (writers). Parent AC5–6 UI → AST-1695. Out of scope here.
 
+## Review
+
+- **Publish ref:** `origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get`
+- **Tip:** `fb82caa7dab42d839434002b9ed74a7ae361beb3`
+- **Stages:** 1 `get_meteorite_link_by_astral_job_id` · 2 `listing_href` on `GET /api/jobs/<id>`
+
 ## Joan validate
 
 [plan-rubric]
