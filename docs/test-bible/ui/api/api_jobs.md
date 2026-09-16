@@ -252,3 +252,25 @@ PUT job_resume / cover_letter / legacy resume_content call `save_job_artifact` w
 | PUT cover_letter → catalog write | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_put_cover_letter_persists_via_tracker`** (revised) |
 
 **Broken / obsolete this pass:** spies on `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` — retargeted to `save_job_artifact`.
+
+### AST-1694 · AST-1686
+
+**Parent:** [AST-1686](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get`.
+
+`GET /api/jobs/<id>` always includes `listing_href` (http(s) string or JSON `null`). Prefer http(s) `job.job_link`; else http(s) from `get_meteorite_link_by_astral_job_id`; soft-fail on lookup throw → `null`. Primary data helper: **`docs/test-bible/data/database/meteorites.md`** § AST-1694. Does **not** attach `related_meteorite` (AST-1691 / AST-1685).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prefer job_link / meteorite fallback / non-http null / soft-fail | `src/ui/api/api_jobs.py` | **`tests/component/ui/api/test_api_jobs_ast1694_listing_href.py::TestAst1694ListingHref`** |
+| Detail key + hydrate kwargs | same | **`TestAst1694DetailListingHrefKey`** (same module) |
+
+**Broken / obsolete:** shared `TestJobsRoutes` detail cases that omit `listing_href` / hydrate `astral_job_id` — covered by **`TestAst1694DetailListingHrefKey`**.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs_ast1694_listing_href.py \
+  tests/component/data/database/test_meteorites.py::TestAst1694GetMeteoriteLinkByAstralJobId \
+  -q
+```
