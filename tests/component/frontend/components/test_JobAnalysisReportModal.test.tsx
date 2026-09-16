@@ -51,6 +51,8 @@ function jobHandler(
         state: "RECOMMENDED",
         state_changed_at: "2026-01-03T00:00:00Z",
         job_link: "https://jobs.example/apply",
+        // AST-1695: title/Apply navigate via listing_href (not raw job_link)
+        listing_href: "https://jobs.example/apply",
         job_data: {
           job_description: "Full JD body text",
           analysis_upshot: fullUpshot(),
@@ -295,13 +297,13 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.queryByRole("button", { name: "Print Cover Letter" })).not.toBeInTheDocument()
   })
 
-  it("job title deeplink replaces Apply for CANDIDATE_REVIEW", async () => {
+  it("job title deeplink uses listing_href for CANDIDATE_REVIEW (Apply filtered from Artifacts)", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-ready", { state: "CANDIDATE_REVIEW" }))
     renderWithProviders(<JobAnalysisReportModal jobId="j-ready" onClose={() => {}} />)
     await waitForShell()
     expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute("href", "https://jobs.example/apply")
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
-    // Apply filtered from Artifacts strip — no primary actions left on CANDIDATE_REVIEW
+    // Apply filtered from Artifacts strip — navigable open is title link + CLIENT handler
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
@@ -1403,6 +1405,53 @@ describe("JobAnalysisReportModal — AST-1599 no Source base resume on Artifacts
       screen.queryByText("No pinned base resume for this build."),
     ).not.toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Generate Artifacts" })).toBeInTheDocument()
+  })
+})
+
+describe("JobAnalysisReportModal — AST-1695 listing_href title", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("title <a> uses listing_href; raw job_link alone is not navigable", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-a", {
+        job_link: "https://jobs.example/stale-column",
+        listing_href: "https://jobs.example/listing",
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-a" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute(
+      "href",
+      "https://jobs.example/listing",
+    )
+  })
+
+  it("null listing_href → plain title span even when job_link is http(s)", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-b", {
+        job_link: "https://jobs.example/apply",
+        listing_href: null,
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-b" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Analyst")
+  })
+
+  it("non-http listing_href → plain title span", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-c", {
+        listing_href: "not-a-url",
+        job_link: "https://jobs.example/apply",
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-c" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
   })
 })
 

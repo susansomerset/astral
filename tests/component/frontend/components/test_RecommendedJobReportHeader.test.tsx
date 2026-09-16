@@ -79,6 +79,33 @@ describe("RecommendedJobReportHeader — AST-1421 snapshot Copy", () => {
   })
 })
 
+describe("RecommendedJobReportHeader — AST-1695 listing title", () => {
+  it("http(s) jobLink → title is <a>; null → plain span", () => {
+    const { rerender } = renderWithProviders(
+      <RecommendedJobReportHeader
+        {...base}
+        jobLink="https://jobs.example/listing"
+        applicationEmail={null}
+        linkedInUrl={null}
+      />,
+    )
+    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute(
+      "href",
+      "https://jobs.example/listing",
+    )
+    rerender(
+      <RecommendedJobReportHeader
+        {...base}
+        jobLink={null}
+        applicationEmail={null}
+        linkedInUrl={null}
+      />,
+    )
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Analyst")
+  })
+})
+
 describe("RecommendedJobReportHeader — AST-1696 Copy Link", () => {
   it("shows Copy Link alone when snapshot/email/LinkedIn are absent", () => {
     renderWithProviders(

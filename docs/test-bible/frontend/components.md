@@ -1396,6 +1396,39 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1695 · AST-1686
+
+**Parent:** [AST-1686](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1695-job-ui-listing-href`.
+
+Recommended report title + CLIENT Apply path, and Job Detail listing control, navigate via AST-1694 `listing_href` (http(s) only). Raw `job_link` is not a fallback for `<a>` / `window.open`. Apply remains filtered from Artifacts strip (`artifactsTabPrimaryActions`); navigable surface is the title link. API writers: siblings **AST-1694** / **AST-1693**. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Title from `listing_href` | `JobAnalysisReportModal.tsx`, `RecommendedJobReportHeader.tsx` | **`JobAnalysisReportModal — AST-1695 listing_href title`**; **`RecommendedJobReportHeader — AST-1695 listing title`**; revised AST-948 sticky/deeplink fixtures (`listing_href` on job GET mock) |
+| Job Detail Link / Open listing | `JobDetailModal.tsx` | **`JobDetailModal — AST-1695 listing_href`** |
+
+**Broken / obsolete this pass:** AST-948 “job title deeplink replaces Apply” asserted `job_link` as title href — revised to `listing_href` (Apply still absent from Artifacts).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1695|job title deeplink|sticky header: deeplinked"`
+2. `tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx` — `--testNamePattern="AST-1695"`
+3. `tests/component/frontend/components/test_JobDetailModal.test.tsx` — `--testNamePattern="AST-1695"`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  --testNamePattern="AST-1695|job title deeplink|sticky header: deeplinked"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1577 · AST-1569
 
 **Publish:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`.
