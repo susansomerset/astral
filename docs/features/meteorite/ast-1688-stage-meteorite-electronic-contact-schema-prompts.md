@@ -136,3 +136,47 @@ Read CONTENT. Return JSON with outcome (exactly one closed outcome literal) and 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1688
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref tip:** `0b5620015d08c02ec1f13fac440c31051a7be8cd` (`sub/AST-1684/AST-1688-stage-meteorite-electronic-contact-schema-prompts`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | Stage captures `electronic_contact` in Ruth response; prompts forbid invention/re-derive; persist/map deferred to AST-1689 per Scope gate |
+| stat.logging.debug | X | | id-only on ticket; no logging code in Files Changed (`config.py`, `agent_task.json`) |
+| stat.logging.info | X | | id-only on ticket; no logging code in Files Changed |
+
+## Traceability
+
+AC1 → Stage 1 · AC2 → Stage 2 · parent AC3–9 N/A (AST-1689 / AST-1685 / out-of-scope per plan Scope gate + UAT fitness)
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 2 `## ELECTRONIC CONTACT` prompt text; Scope gate “Fetching new Gmail headers (e.g. Reply-To) in `gmail.py` — not in Scope”
+- **Finding:** Prompt names Reply-To as preferred metadata, but live email ingress (`strip_extract_email_html`) wraps **From/To/Subject/Date** only — Reply-To is not in today’s blob unless added elsewhere.
+- **Recommendation:** Acceptable for this child (AC1–AC2 only): metadata-first + forbid-invention still holds via From/To. Flag for epic follow-on if parent AC3 Reply-To cases must pass before header ingest lands; do not block AST-1688 on gmail work.
+
+### acceptable
+
+- **Location:** Stage 1 `METEORITE_CONFIG["electronic_contact_column"]` literal
+- **Finding:** Column name published here for AST-1689 lockstep even though DB wiring is sibling-owned — matches parent partition and plan sibling check.
+- **Recommendation:** None; correct bang-first handoff.
+
+## R6 checklist (summary)
+
+- Definition fidelity: child owns config literals + prompts only; no DB/map/persist/UI creep.
+- Scope gate: Files Changed = `config.py` + `agent_task.json` only; out-of-scope rows explicit.
+- DRY: reuses existing STAGE_METEORITE / METEORITE lockstep assert pattern; no parallel vocabulary.
+- Self-assessment: Estimate confirm line present; stages are concrete with done-when gates.
+- Plan Discuss rounds: 0 completed (Plan Ready first pass).
+
+context_tokens≈42000
