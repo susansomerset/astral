@@ -2183,6 +2183,8 @@ async def qualify_meteorite(
                 aid, link_source, title_source, company_job_id, job_title, job_link, len(jd_text),
             )
             _warn_job(aid, to_state, "bot_classification")
+            # AST-1693: keep apply URL even when JD is a bot wall (no initialize_job).
+            tracker.persist_http_job_link(aid, job_link)
             _transition_job_state_for_task(task_key, [aid], to_state)
             return to_state
 
