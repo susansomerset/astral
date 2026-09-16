@@ -181,3 +181,16 @@ Lift of the deleted AI block from pre-AST-1673 `resolve_company_website` plus tw
 context_tokens≈72000
 
 [plan-rubric] PROCEED (Commit: a080f3fe) AI apply hop wired clean
+
+## Build
+
+**Publish tip:** `origin/sub/AST-1670/AST-1674-resolve-website-company-dispatch-apply` @ `26d53545`
+
+| Stage | Commit |
+|-------|--------|
+| 1 — resolve_website_company apply runner | `26d53545` |
+| 2 — run_company_task + consult WEBSITE_REVIEW routing | `26d53545` |
+
+## Review
+
+(pending Radia)
