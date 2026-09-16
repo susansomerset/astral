@@ -282,3 +282,13 @@ AC4→Stage 1 (§§4–6) + Stage 2 (§§3–4) + verify; AC5→Stage 1 §5 + St
 
 context_tokens≈38000
 ```
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement` @ `bd8d2d5a0cfcc005b851f8509f90e0e129984d8f`.
+
+**Stages delivered:**
+- Stage 1: library gate + hydrate + entity log — `b3576294e1848cdbb49364b9788d082c89ff288f`.
+- Stage 2: PUT intercept + GET hydrate + api info — `bd8d2d5a0cfcc005b851f8509f90e0e129984d8f`.
+
+**Betty:** at **Code Complete** — cover operative Backstory round-trip + retire prior current, identical-body no-op (shared AST-1635), dict-path strips `context.backstory` (and still strips strengths / bio_summary / ideal_day / writing_preferences), hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf, empty backstory → 400.
