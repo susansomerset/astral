@@ -302,3 +302,74 @@ context_tokens≈65000
 ## Review
 
 (pending Radia)
+
+## Radia review
+
+**Ticket:** AST-1673
+**Publish ref:** bc596c4381f94461d035fb849a0689d3ae7ed89f
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.dispatcher | X | | claim-gate only; no dispatch completion-line changes |
+| stat.logging.debug | B | | roster continues `debug_index`/`debug_detail` on CSE paths (unconverted file) |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — matches Joan validate round 2 (post–Revision 1)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `src/core/roster.py` — `resolve_company_website` zero-hit branch (Stage 2 step 4)
+- **Finding:** Terminal `NO_WEBSITE` transition has no `stat.logging.info.entity` id-pipe line; ≥1-hit persist path does (step 5c).
+- **Recommendation:** Joan round 2 marked asymmetric but acceptable; optional symmetric info line at build if operators want grep parity — not blocking.
+
+### advisory
+
+- **Location:** `src/core/roster.py` — `run_company_task` DISCOVERED `terminal_ok` vs `src/core/consult.py` `resolve_terminal_ok`
+- **Finding:** Consult branch counts defensive early-skip `WEBSITE_FOUND` as `passed`; `run_company_task` `terminal_ok` omits it. Live dispatch routes `inflow_resolve_website` through the consult branch (not `run_company_task`), and `require_empty_website` on `DISCOVERED` makes the early skip rare.
+- **Recommendation:** Optional hardening: add `"WEBSITE_FOUND"` to `run_company_task` `terminal_ok` for parity with consult; not fix-now on this tip.
+
+### advisory
+
+- **Location:** Stage 3 steps 3–4 — `count_company_discovered_pending_inflow_vet`
+- **Finding:** Vet eligibility retarget is slightly beyond the ticket Scope sentence (resolve helpers only) but required so Stage 1 `DISCOVERED` land does not orphan vet Avail.
+- **Recommendation:** Keep as planned (Joan round 2 acceptable).
+
+### advisory
+
+- **Location:** `git diff origin/dev...origin/sub/AST-1670/AST-1673-discovery-land-discovered-cse-fetch`
+- **Finding:** Three-dot diff includes **AST-1672** artifacts (`src/utils/config.py`, `ast-1672` issue doc, config test/bible revisions) as epic ancestor work not yet on `origin/dev`. AST-1673 product scope (four Files Changed files) is honored on the tip.
+- **Recommendation:** None for this child; merge order with **AST-1672** remains an epic concern for Chuckles/merge-child.
+
+## What's solid
+
+- **Stage 1:** `record_inflow_discovery_hit` writes `state=INFLOW_CONFIG["discovery"]["land_state"]`; success strings and batch docstring say `DISCOVERED`.
+- **Stage 2:** `resolve_company_website` is CSE-only — no `do_task`; zero hits → `cfg["fail_state"]`; ≥1 hit → `save_company_data` under `hit_list_data_key` + transition to `WEBSITE_REVIEW`; entity id-pipe `logger.info` on persist path matches plan/statute shape; `run_company_task` routes vet/resolve on `DISCOVERED` with updated `terminal_ok`.
+- **Stage 3:** Explicit consult branch for `inflow_resolve_website` with `resolve_terminal_ok` counting `WEBSITE_REVIEW`, `NO_WEBSITE`, and defensive `WEBSITE_FOUND` as passed; dispatcher `require_empty_website` gated to resolve + `DISCOVERED` only; DB helpers renamed/retargeted with callers updated (`count_company_discovered_without_website`, `count_company_discovered_pending_inflow_vet`).
+- **Tests:** `TestAst506InflowResolve`, `TestAst1673ConsultResolveFetchHop`, `test_ast1673_inflow_resolve_on_new_skips_empty_website_filter`, and revised dispatch-task eligibility tests lock AC3–6 and Joan Revision 1 consult rollup fix.
+- **Estimate 3** fits: four scoped product files + targeted test/bible revisions.
+
+## Scope notes (not findings)
+
+- Publish tip is `bc596c43` (`merge-tests(AST-1673)` atop `ac4ca9b7`); issue doc Build table lists stage tip `c1a6bca0` — Chuckles may refresh when appending review.
+- Revision 1 fix-now (consult `NO_WEBSITE` rollup) and discuss (entity info on persist) are delivered on tip; no open plan-stage stragglers.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1673): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
