@@ -268,3 +268,81 @@ None (`fix-now` / `discuss`).
 **R6 notes (acceptable):** Plan extends proven Strengths/bio_summary mechanics (`_CONTEXT_OPERATIVE_LEAVES`, hydrate-on-miss preserves legacy blob, PUT pop→operative save, entity+api info, existing `logger.exception`) for `ideal_day` only; explicit scope gate limits to `candidate.py` + `api_candidate.py`; catalog prerequisite on AST-1658 documented with build-block stop; migration-window hydrate matches parent AC6/AC7 and `read-current` migration exception; no second validate path or config registration in this slice.
 
 context_tokens≈48000
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1659
+**Publish ref:** c5a6c1bf9a98a026ddedfb23aaa83960aeb7fb64
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** Three-dot diff vs `origin/dev` — `src/utils/config.py`, `docs/features/foundation/ast-1658-catalog-plain-text-ideal-day-token.md`
+- **Finding:** Diff includes AST-1658 catalog + token registration (sibling Ada) because the branch stacks `merge(ftr)` / `merge(dev)` ahead of land. AST-1659 `code()` commits touch only `src/core/candidate.py` and `src/ui/api/api_candidate.py`.
+- **Recommendation:** No AST-1659 product fix; Chuckles/merge-child ordering only. Prerequisite `candidate.context.ideal_day ∈ ARTIFACT_CONFIG` is satisfied on tip.
+
+- **Location:** `src/core/candidate.py` — `_CONTEXT_OPERATIVE_LEAVES`
+- **Finding:** Plan text froze `{strengths, bio_summary, ideal_day}`; publish tip after `merge(dev)` union is `{strengths, bio_summary, priorities, deal_breakers, ideal_day}`. Ideal Day addition is correct; extra leaves are dev union, not a second strip site.
+- **Recommendation:** Betty already retargeted sibling asserts to `backstory` as library-merge peer; no AST-1659 change needed.
+
+- **Location:** `src/ui/api/api_candidate.py` — success-path api info
+- **Finding:** `ideal_day_saved` emits its own `stat.logging.info.api` line per plan; strengths/priorities/deal_breakers/bio_summary share one combined block from merged dev tip. A PUT saving multiple operative leaves may emit multiple lines — plan-acceptable.
+- **Recommendation:** None on this ticket.
+
+- **Location:** `docs/test-bible/core/candidate.md` / `api_candidate.md` § AST-1659 bible shasum
+- **Finding:** Shasum lines still `*(filled after publish)*`.
+- **Recommendation:** Chuckles sync on writeback — not a code gate.
+
+- **Location:** Canon clerk / frozen list resolution
+- **Finding:** `patt.artifact.*` draft patterns and `astral.standards.in-scope-only` scored from repo files at epic worktree; `canon_clerk expand` does not serve those ids.
+- **Recommendation:** Corpus hygiene downstream; no scope gap on frozen list.
+
+## Notes
+
+- **Scope divergence (expected):** Product authorship is two files (`5e05726a` Stage 1 core, `d5dfc8c2` Stage 2 API). `tests/`, `docs/test-bible/**`, and stacked sibling `config.py` appear in the three-dot diff vs `origin/dev` — Betty `merge-tests` + epic union merges, not AST-1659 scope creep in `code()` commits.
+- **Estimate footprint:** Confirm **3** points still fits (core hydrate/gate + API intercept + manifest tests).
+
+## What's solid
+
+- Stage 1: `_IDEAL_DAY_ARTIFACT_KEY`, `_CONTEXT_OPERATIVE_LEAVES` widened with `ideal_day`, `hydrate_operative_ideal_day_for_response` (miss preserves legacy blob), `get_candidate` hydrate call, entity info on operative save — mirrors bio_summary pattern.
+- Stage 2: PUT pop `context.ideal_day` → str-path `save_candidate_data(..., "candidate.context.ideal_day", body)`; GET detail hydrate; `ideal_day_saved` api info; existing `logger.exception` handler unchanged for ValueError → 400.
+- `TestAst1659IdealDayOperativeSaveHydrate` + `TestAst1659IdealDayOperativeApi` cover round-trip, retire+insert, AST-1635 identical no-op, dict-path strip, hydrate hit/miss, empty → 400; AST-1365 library-merge test revised to strip semantics.
+- Blob retirement on write: operative leaves stripped from dict-path library merge; API intercept prevents durable `context.ideal_day` SoT.
+
+## Recommended actions
+
+(none downstream — artifact complete)
+
+context_tokens≈42000
