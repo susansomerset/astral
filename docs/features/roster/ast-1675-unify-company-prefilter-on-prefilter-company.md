@@ -167,3 +167,39 @@ Confirm Chuckles estimate: 5 — agree
 - **AC6** → Stage 1 alias introduce + Stage 3 wire + Stage 5 drop
 - **AC7** → Boundaries enforced every stage; Stage 5 grep
 - **AC8** → Ops gate note in Stage 4 + summary (no child does Somerset UPDATE)
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1675
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref tip:** 0416f88673605a0e7fcab8ba3d8773a5e6ee402e (`sub/AST-1671/AST-1675-unify-company-prefilter-on-prefilter-company`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+
+## Traceability
+
+AC1→S1,S3,S5 · AC2→S1,S5 · AC3→S2,S5 · AC4→S1,S3 · AC5→S4 · AC6→S1,S3,S5 · AC7→boundaries+S5 · AC8→S4,summary — all eight child ACs mapped; no orphan stages.
+
+## Findings
+
+### acceptable
+
+- **Location:** Linear assignee
+- **Finding:** Ticket status `Plan Ready` but assignee is Ada Lovelace, not Joan — Chuckles handoff gap; validation proceeded per spawn.
+- **Recommendation:** Chuckles restores implementer after posting upshot per §8.
+
+### acceptable
+
+- **Location:** Stage ordering (Stages 2–3 vs Stage 4)
+- **Finding:** Consult/admin normalize to `prefilter_company` for row lookup while live DB rows may still read `prefilter` until boot-time schema-ensure (Stage 4); safe only when Stages 1–4 publish atomically and `_ensure_dispatch_task_schema` runs before consult paths — plan’s “same commit window” / inseparable-cutover language covers this.
+- **Recommendation:** Engineer must not push Stages 1–3 without Stage 4 in the same publish; no plan edit required.
+
+context_tokens≈19500
+```
