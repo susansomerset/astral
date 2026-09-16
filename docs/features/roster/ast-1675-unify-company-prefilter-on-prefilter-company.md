@@ -264,3 +264,24 @@ Stages 1–5 landed: helpers/admin/consult on `prefilter_company`; dual-key shim
 - **discuss:** Sibling `adc287cd` (AST-1672 test/bible on this publish tip without AST-1672 product) — Chuckles branch hygiene before ftr rollup; not an AST-1675 product change. Left as-is on this sub.
 - **advisory:** `TestAst1214` meteorite_email assertion unrelated to cutover — no AST-1675 action.
 - Product tip unchanged from Tests Passed / review tip (`e68aaa8e` product+tests; Radia docs `d85593f9`).
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/d539aa64c29539c67f97f708d5ccf8f3/3f95b292-0af6-4d14-addc-ec7b6a346428/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/0ae9124d-1cee-4dc2-b496-154ef56fea02/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/d539aa64c29539c67f97f708d5ccf8f3/f1373e83-9152-4a14-a5bf-4844150dcd12/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1671 (parent) | ftr/AST-1671-unify-company-prefilter |
+| AST-1675 | sub/AST-1671/AST-1675-unify-company-prefilter-on-prefilter-company |
+
+**Epic worktree:** `astral-AST-1671/` — one active sub checked out at a time.
