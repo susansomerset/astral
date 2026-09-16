@@ -28,6 +28,7 @@ from src.core.tracker import (
     start_artifact_build,
     transition_job_state,
 )
+from src.data.database import get_meteorite_by_astral_job_id
 from src.utils.config import (
     APPLIED_JOB_STATES,
     IN_REVIEW_STATES,
@@ -218,6 +219,41 @@ def detail(astral_job_id):
             exc,
         )
         job["agent_story"] = []
+    # AST-1691: reverse-link meteorite provenance for Recommended report pane.
+    try:
+        logger.debug(
+            "Calling get_meteorite_by_astral_job_id: [astral_job_id=%s]",
+            astral_job_id,
+        )
+        row = get_meteorite_by_astral_job_id(astral_job_id)
+        # Full row — stat.logging.debug: no truncation of callee response.
+        logger.debug("Response from get_meteorite_by_astral_job_id: %s", row)
+        if row is None:
+            job["related_meteorite"] = None
+        else:
+            job["related_meteorite"] = {
+                "id": row.get("id"),
+                "created_at": row.get("created_at"),
+                "updated_at": row.get("updated_at"),
+                "state_changed_at": row.get("state_changed_at"),
+                "estelle_notified_at": row.get("estelle_notified_at"),
+                "link": row.get("link"),
+                "classify_outcome": row.get("classify_outcome"),
+                "content": row.get("content"),
+                "state": row.get("state"),
+                "source_kind": row.get("source_kind"),
+                "source_id": row.get("source_id"),
+                "error": row.get("error"),
+            }
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s related_meteorite lookup failed\n  %s: %s\n  Returning related_meteorite=null",
+            job.get("candidate_id") or "-",
+            f"/api/jobs/{astral_job_id}",
+            type(exc).__name__,
+            exc,
+        )
+        job["related_meteorite"] = None
     return jsonify(job)
 
 

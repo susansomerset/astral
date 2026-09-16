@@ -1511,14 +1511,39 @@ async def run_meteorite_retention(
     )
     logger.debug("Response from list_meteorites_for_retention landed: %s", landed_rows)
     if landed_rows:
-        ids = [int(r["id"]) for r in landed_rows]
-        logger.debug("Beginning landed purge loop on %s items", len(ids))
-        n = delete_meteorites_by_ids(ids)
-        summary["total_processed"] += n
-        summary["total_passed"] += n
-        for row_id in ids:
-            _meteorite_state_info(row_id, "purged", from_state="LANDED")
-        logger.debug("End landed purge loop after %s items", n)
+        # AST-1690: keep LANDED rows whose astral_job_id still hits a job row.
+        purge_ids: List[int] = []
+        skipped_count = 0
+        logger.debug(
+            "Beginning landed retention filter loop on %s items", len(landed_rows)
+        )
+        for row in landed_rows:
+            row_id = int(row["id"])
+            jid = str(row.get("astral_job_id") or "").strip()
+            if jid:
+                logger.debug("Calling get_job: [astral_job_id=%s]", jid)
+                job_row = get_job(jid)
+                logger.debug("Response from get_job: %s", job_row)
+                if job_row is not None:
+                    skipped_count += 1
+                    _meteorite_state_info(
+                        row_id, "retention_kept", from_state="LANDED"
+                    )
+                    continue
+            purge_ids.append(row_id)
+        logger.debug(
+            "End landed retention filter loop after %s purge ids (%s skipped)",
+            len(purge_ids),
+            skipped_count,
+        )
+        if purge_ids:
+            logger.debug("Beginning landed purge loop on %s items", len(purge_ids))
+            n = delete_meteorites_by_ids(purge_ids)
+            summary["total_processed"] += n
+            summary["total_passed"] += n
+            for row_id in purge_ids:
+                _meteorite_state_info(row_id, "purged", from_state="LANDED")
+            logger.debug("End landed purge loop after %s items", n)
 
     stale_states = list(METEORITE_STATES_RETENTION["stale_list_states"])
     logger.debug(
