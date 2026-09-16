@@ -435,6 +435,7 @@ def _job_context_for_call(
 def _token_view_for_do_task(
     ctx: Optional[Dict[str, Any]],
     candidate_data: Optional[Dict[str, Any]],
+    index: Optional[str] = None,
 ) -> dict:
     """Walkable resolve_tokens dict: name columns + library blobs (AST-1192 / AST-1014)."""
     # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
@@ -452,6 +453,12 @@ def _token_view_for_do_task(
             return build_candidate_token_view(row)
     if is_candidate_row_with_name_columns(ctx):
         return build_candidate_token_view(ctx)  # type: ignore[arg-type]
+    # Contact-style: index=<astral_candidate_id>, no ctx — load current-bearing view.
+    idx = str(index or "").strip()
+    if idx:
+        row = get_candidate(idx)
+        if row:
+            return build_candidate_token_view(row)
     if is_candidate_token_view(candidate_data):
         return dict(candidate_data)  # type: ignore[arg-type]
     return dict(candidate_data or (ctx or {}).get("candidate_data") or {})
@@ -1815,7 +1822,7 @@ async def do_task(
             "Add response_schema to TASK_CONFIG for this task."
         )
 
-    cd = _token_view_for_do_task(ctx, candidate_data)
+    cd = _token_view_for_do_task(ctx, candidate_data, index=index)
 
     # Dict truthiness is always true for the 8-key view; check identity material (AST-1192 resolve).
     if task_config.get("requires_candidate_key") and not _candidate_identity_material_present(cd):

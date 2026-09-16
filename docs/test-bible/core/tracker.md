@@ -596,3 +596,23 @@ See **`docs/test-bible/core/agent.md`** § AST-1614 (shared agent+tracker manife
 
 **Bible shasum (publish tip):** filled with agent.md after publish.
 
+### AST-1680 · AST-1677
+
+**Parent:** [AST-1677](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1680-job-drafting-interface-rewires`.
+
+Job-resume prepare/filter paths hydrate operative structure onto a working `cd` copy when `candidate_id_for_current_read` is known, then `resolve_resume_structure` / filter — table current wins when the library blob is empty/missing. Sites: `_prepare_job_resume_content`, `parsed_matches_resume_content_shape`, `parsed_matches_job_resume_content`, `job_has_persisted_resume_body`, `persist_job_artifact_from_parsed` resume branch. Consult catalog: **`docs/test-bible/core/consult.md`** § AST-1680.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| hydrate→prepare/filter (table-only + no-cid skip) | `src/core/tracker.py` | **`TestAst1680JobResumeHydrateBeforeResolve`** |
+
+**Broken / obsolete this pass:** none — AST-518 prepare still seeds a library blob without cid.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/consult.md`** § AST-1680 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
