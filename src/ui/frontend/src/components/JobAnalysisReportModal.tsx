@@ -42,6 +42,14 @@ function catalogFromPayload(data: { catalog?: unknown }): Catalog | null {
   return c
 }
 
+/** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
+function httpListingHref(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (s.startsWith("http://") || s.startsWith("https://")) return s
+  return null
+}
+
 interface JobDetail {
   astral_job_id: string
   job_title: string | null
@@ -49,6 +57,7 @@ interface JobDetail {
   state: string
   state_changed_at: string | null
   job_link?: string | null
+  listing_href?: string | null
   job_data?: Record<string, unknown>
   jd_grades?: unknown
   do_grades?: unknown
@@ -594,7 +603,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setError(null)
     try {
       if (action.method === "CLIENT") {
-        if (job.job_link) window.open(job.job_link, "_blank", "noopener,noreferrer")
+        const href = httpListingHref(job.listing_href)
+        if (href) window.open(href, "_blank", "noopener,noreferrer")
         return
       }
       const path = `/api/jobs/${encodeURIComponent(jobId)}/${action.path_suffix}`
@@ -661,7 +671,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           <div className="recommended-report-chrome">
             <RecommendedJobReportHeader
               jobTitle={jobTitleDisplay}
-              jobLink={job.job_link ?? null}
+              jobLink={httpListingHref(job.listing_href)}
               companyName={job.company}
               companyWebsite={companyWebsite}
               applicationEmail={applicationEmail}
