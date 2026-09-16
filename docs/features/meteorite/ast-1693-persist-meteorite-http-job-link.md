@@ -153,3 +153,18 @@ AC1 → Stages 1–3 (tracker duplicate-skip backfill, qualify bot `persist_http
 - Self-assessment: Estimate 5 — agree; stages are concrete with done-when gates.
 
 context_tokens≈42000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link`
+**Plan path:** `docs/features/meteorite/ast-1693-persist-meteorite-http-job-link.md`
+
+**Built tip:** `71f33b859504f492bbbac4614bcdc2534627a29d` (`71f33b85`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `e5da3d68` | `persist_http_job_link` + meteorite duplicate-skip backfill |
+| 2 | `96f98b52` | qualify bot-block writes http `job_link` before transition |
+| 3 | `71f33b85` | land READY+BOT_BLOCKED; contentful land; notify skips contentful |
+
+**Betty note:** land/qualify bot-blocked `job_link` contracts deferred to qa-child (engineer test-tree ban).
