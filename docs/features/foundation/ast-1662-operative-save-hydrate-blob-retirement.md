@@ -240,3 +240,45 @@ Confirm Chuckles estimate: 3 — agree
 - Parent/child AC6 / parent AC6–7 (no backfill; legacy until re-save) → Stage 1 §6 miss path
 - Sibling freeze (parent AC8 — no new non-Backstory keys from this epic) → scope gate; no `ARTIFACT_CONFIG` edits
 - Editor reload (parent AC6, Katherine AST-1663) → Stage 1 §§6–7 + Stage 2 §2 (UI sibling unchanged)
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1662
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `ff23384079fb204a3501a8dfa57d6710755c1565` (`origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement`)
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| astral.standards.in-scope-only | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC4→Stage 1 (§§4–6) + Stage 2 (§§3–4) + verify; AC5→Stage 1 §5 + Stage 2 §§3–4 (pop + operative save, no library SoT); AC6→Stage 1 §6 miss path (legacy blob untouched); parent AC6 editor reload→Stage 1 §§6–7 + Stage 2 §2 (hydrate only — Katherine AST-1663 owns UI); parent AC1–AC3, AC8–AC9→N/A (AST-1661 / AST-1663 siblings).
+
+## Findings
+
+### acceptable — prerequisite / merge hygiene
+
+- **Location:** Explicit scope gate — catalog prerequisite + ftr/dev sync conflict
+- **Finding:** Plan correctly blocks build without AST-1661 catalog on tip and documents Ideal Day (dev) + Backstory (ftr) `config.py` union on sync — not feature scope creep, but engineers must resolve merge conflicts without registering keys here.
+- **Recommendation:** Follow plan's `sync-child.sh` + union decision at build-child; stop per Stage blocked template if Betty test-tree files block pre-commit.
+
+### acceptable — migration-window hydrate
+
+- **Location:** Stage 1 §6 Decision
+- **Finding:** Miss path leaves legacy `context.backstory` blob in place — same Strengths / Ideal Day precedent; satisfies child AC6 (no backfill) without coat-check fetch.
+- **Recommendation:** None.
+
+context_tokens≈38000
+```
