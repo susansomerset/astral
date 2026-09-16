@@ -223,7 +223,7 @@ context_tokens≈22000
 
 ## Review (build stub)
 
-**Built:** `origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token` @ `(pending push)`.
+**Built:** `origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token` @ `7e34dc65ea1fdeea7ce5696daeda23bc76a527ca`.
 
 **Stages delivered:**
 - Stage 1: `candidate.context.backstory` catalog + `BACKSTORY` artifact token — reuse existing `plain_text`; freeze remaining unmigrated leaves (`ideal_day`, `writing_preferences`); keep pre-landed `priorities` / `deal_breakers` / `bio_summary` registered (dev sync after plan).
