@@ -8,11 +8,20 @@ import api from "../lib/api"
 import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { useStateUi } from "../contexts/StateUiContext"
 
+/** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
+function httpListingHref(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (s.startsWith("http://") || s.startsWith("https://")) return s
+  return null
+}
+
 interface JobDetail {
   astral_job_id: string
   job_title: string | null
   company: string
   job_link: string | null
+  listing_href?: string | null
   state: string
   state_changed_at: string | null
   created_at: string | null
@@ -273,6 +282,7 @@ function InfoTab({
   const legacyState = loadState === "ready" && manifest
     && !Object.prototype.hasOwnProperty.call(manifest.jobs.grade_field_by_job_state, job.state)
     && job.state !== manifest.jobs.detail.already_skipped_state
+  const listingHref = httpListingHref(job.listing_href)
 
   return (
     <div className="entity-summary">
@@ -317,19 +327,31 @@ function InfoTab({
             </div>
           )}
           {fieldsEditable && draft ? (
-            <div className="modal-detail-row">
-              <span className="modal-detail-label">Link</span>
-              <input
-                className="dep-input"
-                value={draft.job_link}
-                onChange={(e) => onDraftChange({ job_link: e.target.value })}
-              />
-            </div>
-          ) : (
-            job.job_link && (
+            <>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Link</span>
-                <span><a href={job.job_link} target="_blank" rel="noreferrer">{job.job_link}</a></span>
+                <input
+                  className="dep-input"
+                  value={draft.job_link}
+                  onChange={(e) => onDraftChange({ job_link: e.target.value })}
+                />
+              </div>
+              {listingHref && (
+                <div className="modal-detail-row">
+                  <span className="modal-detail-label">Open listing</span>
+                  <span>
+                    <a href={listingHref} target="_blank" rel="noopener noreferrer">{listingHref}</a>
+                  </span>
+                </div>
+              )}
+            </>
+          ) : (
+            listingHref && (
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Link</span>
+                <span>
+                  <a href={listingHref} target="_blank" rel="noopener noreferrer">{listingHref}</a>
+                </span>
               </div>
             )
           )}
