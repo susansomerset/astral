@@ -1677,15 +1677,15 @@ class TestAst1633StrengthsOperativeApi:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
         db.save_candidate("c1633c", state="NEW_CANDIDATE", candidate_data={})
-        # AST-1659 tip: deal_breakers is operative — use priorities as library sibling.
+        # Union tip: priorities/deal_breakers operative — use backstory as library sibling.
         resp = candidate_client.put(
             "/api/candidates/c1633c/data",
-            json={"context": {"strengths": "op", "priorities": "ship"}},
+            json={"context": {"strengths": "op", "backstory": "ship"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
         raw = db.get_candidate("c1633c")["candidate_data"]
-        assert raw.get("context", {}).get("priorities") == "ship"
+        assert raw.get("context", {}).get("backstory") == "ship"
         assert "strengths" not in (raw.get("context") or {})
         row = db.get_current_artifact("candidate", "c1633c", "strengths")
         assert row["artifact_data"] == "op"
@@ -1985,15 +1985,15 @@ class TestAst1649BioSummaryOperativeApi:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
         db.save_candidate("c1649c", state="NEW_CANDIDATE", candidate_data={})
-        # AST-1659 tip: deal_breakers is operative — use priorities as library sibling.
+        # Union tip: priorities/deal_breakers operative — use backstory as library sibling.
         resp = candidate_client.put(
             "/api/candidates/c1649c/data",
-            json={"context": {"bio_summary": "op", "priorities": "ship"}},
+            json={"context": {"bio_summary": "op", "backstory": "ship"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
         raw = db.get_candidate("c1649c")["candidate_data"]
-        assert raw.get("context", {}).get("priorities") == "ship"
+        assert raw.get("context", {}).get("backstory") == "ship"
         assert "bio_summary" not in (raw.get("context") or {})
         row = db.get_current_artifact("candidate", "c1649c", "bio_summary")
         assert row["artifact_data"] == "op"
@@ -2136,12 +2136,12 @@ class TestAst1655DealBreakersOperativeApi:
         db.save_candidate("c1655c", state="NEW_CANDIDATE", candidate_data={})
         resp = candidate_client.put(
             "/api/candidates/c1655c/data",
-            json={"context": {"deal_breakers": "op", "priorities": "ship"}},
+            json={"context": {"deal_breakers": "op", "backstory": "ship"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
         raw = db.get_candidate("c1655c")["candidate_data"]
-        assert raw.get("context", {}).get("priorities") == "ship"
+        assert raw.get("context", {}).get("backstory") == "ship"
         assert "deal_breakers" not in (raw.get("context") or {})
         row = db.get_current_artifact("candidate", "c1655c", "deal_breakers")
         assert row["artifact_data"] == "op"
@@ -2280,15 +2280,15 @@ class TestAst1659IdealDayOperativeApi:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
         db.save_candidate("c1659c", state="NEW_CANDIDATE", candidate_data={})
-        # priorities stays library-merge on this tip (not catalogued).
+        # priorities is operative after merge(dev) — use backstory as library sibling.
         resp = candidate_client.put(
             "/api/candidates/c1659c/data",
-            json={"context": {"ideal_day": "op", "priorities": "ship"}},
+            json={"context": {"ideal_day": "op", "backstory": "ship"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
         raw = db.get_candidate("c1659c")["candidate_data"]
-        assert raw.get("context", {}).get("priorities") == "ship"
+        assert raw.get("context", {}).get("backstory") == "ship"
         assert "ideal_day" not in (raw.get("context") or {})
         row = db.get_current_artifact("candidate", "c1659c", "ideal_day")
         assert row["artifact_data"] == "op"
