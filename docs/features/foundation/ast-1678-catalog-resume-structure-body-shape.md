@@ -273,3 +273,15 @@ context_tokens≈28000
 
 context_tokens≈38000
 ```
+
+## Resolution
+
+**Date:** 2026-09-16  
+**Tip:** `origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` @ `228b3fe9732c240855387f3ab4d60d92245ff8d9` (Betty clean republish after `[qa-handoff]`).
+
+| Finding | Action |
+|---------|--------|
+| **fix-now** — AST-1673/AST-1674 test commits on publish ref | Betty stripped them; tip tree is AST-1678 product (`fb8f265b`) + config test/bible (`70d1350a` / `5ba62d8b`) + Radia review docs only. `ac4ca9b7` / `5c9d57bd` not ancestors of tip. No product code change this resolve. |
+| **advisory** — canon_clerk expand | No change (out of ticket scope). |
+
+**§9a:** dry-run merge into `origin/dev` clean; dry-run into `origin/ftr/AST-1677-move-resume-structure-artifact-table` clean.
