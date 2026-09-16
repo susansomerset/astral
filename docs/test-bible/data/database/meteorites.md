@@ -109,3 +109,31 @@ Meteorite-table `electronic_contact` column (CREATE + ALTER ensure), `_UPDATE_ME
   -q
 ```
 
+### AST-1694 · AST-1686
+
+**Parent:** [AST-1686](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get`.
+
+`get_meteorite_link_by_astral_job_id(astral_job_id)` — link-column-only reverse read for listing-href fallback; blank/None → `None` without query; blank `link` cell → `None`; `ORDER BY id DESC LIMIT 1`. Does **not** return a full meteorite row (AST-1685 / AST-1691 provenance). API attach: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1694.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Link-only reverse lookup | `src/data/database.py` | **`TestAst1694GetMeteoriteLinkByAstralJobId`** |
+
+**Broken / obsolete:** none — additive helper.
+
+**Integration:** none revised; do not invent.
+
+## QA test manifest
+
+1. Data helper: `tests/component/data/database/test_meteorites.py::TestAst1694GetMeteoriteLinkByAstralJobId`
+2. Job detail `listing_href`: `tests/component/ui/api/test_api_jobs_ast1694_listing_href.py::TestAst1694ListingHref`
+3. Detail key / hydrate kwargs: `tests/component/ui/api/test_api_jobs_ast1694_listing_href.py::TestAst1694DetailListingHrefKey`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py::TestAst1694GetMeteoriteLinkByAstralJobId \
+  tests/component/ui/api/test_api_jobs_ast1694_listing_href.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
