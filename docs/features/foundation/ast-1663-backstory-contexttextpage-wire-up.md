@@ -164,7 +164,7 @@ context_tokens≈52000
 
 ## Frame diff
 
-- [ ] Publish ref carries only AST-1663-scoped commits — no AST-1667 test/bible land (`d191eaf1`) without `list_workspace_posters` product on tip
+- [x] Publish ref carries only AST-1663-scoped commits — no AST-1667 test/bible land (`d191eaf1`) without `list_workspace_posters` product on tip
 
 ## Findings
 
@@ -206,3 +206,11 @@ context_tokens≈52000
 1. `resolve-child` / Chuckles: strip AST-1667 commit `d191eaf1` + bible block from this ref before merge-child.
 2. Re-run AST-1663 vitest manifest (`test_CandidateBackstory` + `test_ContextTextPage` AST-1634 pattern) after cleanup.
 3. At ftr→dev merge, confirm AST-1666 `test_CandidateWritingPreferences.test.tsx` is preserved from dev.
+
+## Resolution
+
+**2026-09-16 — resolve-child (Katherine)**
+
+- **fix-now (AST-1667 orphan):** Betty cleared `[qa-handoff]` — rebuilt publish-ref without `d191eaf1` / `TestAst1667WorkspacePosterPool` / slack bible § AST-1667. Tip @ `da15ec86` (merge-tests `799170e3` → `1fb91c32` Backstory-only). Verified: orphan not ancestor of tip; AST-1663 vitest manifest green (6 passed / 8 skipped).
+- **discuss / advisory:** epic stacking + draft canon hygiene — Chuckles/corpus; no product delta this pass.
+- **Frame diff checkbox:** ticked after orphan strip verified on tip.
