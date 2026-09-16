@@ -90,3 +90,45 @@ Confirm Chuckles estimate: 2 — agree
 - Parent AC7 (no backfill; legacy until re-save) → existing ContextTextPage miss path + AST-1662 hydrate (no client clear)
 - Sibling freeze / other context pages → scope gate; no sibling page edits
 - Parent AC1–5 / AC8 → N/A (AST-1661 / AST-1662)
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1663
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `69d7bd5ddd493bd41e28a5a42168ac7767ff228a` (`origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up`)
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Traceability
+
+AC6→Stage 1 §§1–2 + verify (reload via PUT response + GET hydrate); AC7→Stage 1 §1 (`bodyShape="plain_text"`) + scope gate (ArtifactEditor untouched); parent AC7→ContextTextPage miss path + AST-1662 hydrate (no client clear); parent AC1–AC5, AC8→N/A (AST-1661 / AST-1662 siblings).
+
+## Findings
+
+### acceptable — current gap the plan closes
+
+- **Location:** `CandidateBackstory.tsx` (tip) vs Stage 1
+- **Finding:** Tip omits `bodyShape="plain_text"` while Strengths / Ideal Day already pass it; without it Backstory skips the client empty-save gate and fails ticket AC7 / parent AC9 until this stage lands.
+- **Recommendation:** None — Stage 1 is the correct minimal fix.
+
+### acceptable — build precondition
+
+- **Location:** Explicit scope gate / UAT fitness sibling check
+- **Finding:** Hand-verify depends on AST-1661 catalog + AST-1662 PUT/GET on tip via `sync-child` / ftr merge; plan blocks inventing catalog or API here.
+- **Recommendation:** Follow Stage blocked template if siblings absent at build-child.
+
+### acceptable — estimate vs diff size
+
+- **Location:** Estimate confirm (2 points)
+- **Finding:** Product diff is one prop on an existing page; 2 points reflects sibling-merge + round-trip hand-verify, not code volume — honest for this epic slice.
+- **Recommendation:** None.
+
+context_tokens≈52000
