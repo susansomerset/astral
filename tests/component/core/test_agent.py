@@ -9190,3 +9190,114 @@ class TestAst1639CandidateIdSystemPrefix:
         )
         with pytest.raises(ValueError, match="candidate id required"):
             agent_mod.preview_prompt("qualify_job_listings", {"profile": {}})
+
+
+# Branches: Contact-shaped do_task(index=cid, ctx=None) → {$BASE_RESUME} current-read.
+class TestAst1683ContactBaseResumeCurrentRead:
+    """AST-1683 bug-repro for AST-1682: index-as-cid recovers current-read for {$BASE_RESUME}.
+
+    Contact Estelle calls do_task with library candidate_data (no _astral_candidate_id)
+    and index=<astral_candidate_id>, ctx omitted. Pre-fix token view keeps the raw blob
+    (is_candidate_token_view True on contact key) → blank BASE_RESUME. Post-fix index
+    recovery via get_candidate(index) stamps cid → current-read JSON.
+    """
+
+    _CID = "cand-1683"
+    _SUMMARY = "contact-shaped-operative-summary"
+
+    def _row(self) -> dict:
+        return {
+            "astral_candidate_id": self._CID,
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "pronouns": "she/her",
+            "candidate_data": {
+                "contact": {"phone": "555"},
+                "context": {},
+                "artifacts": {},
+            },
+        }
+
+    @pytest.mark.asyncio
+    async def test_do_task_index_cid_ctx_none_resolves_base_resume(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        from tests.component.core.operative_fixture import register_operative_base
+
+        register_operative_base(
+            self._CID,
+            {"professional_summary": self._SUMMARY},
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            lambda cid: self._row() if cid == self._CID else None,
+        )
+        agent_row, task_row = _agent_rows(brain_setting="Big")
+        task_row = dict(task_row)
+        task_row["user_prompt"] = "X{$BASE_RESUME}Y"
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row)
+        )
+        # Isolate BASE_RESUME cid-threading from AST-1639 assemble fail-closed (Contact omits ctx).
+        monkeypatch.setattr(
+            agent_mod,
+            "_system_text_with_candidate_prefix",
+            lambda system_content, candidate_id: f"[astral-{candidate_id or 'harness'}]{system_content}",
+        )
+
+        captured: Dict[str, Any] = {}
+        real_resolve = agent_mod.resolve_tokens
+
+        def capture_resolve(
+            prompt: str,
+            cd: Any,
+            tk: str,
+            cc: Any = None,
+            job_context: Any = None,
+            **kwargs: Any,
+        ) -> str:
+            out = real_resolve(prompt, cd, tk, cc, job_context, **kwargs)
+            if "{$BASE_RESUME}" in (prompt or ""):
+                captured["cd"] = dict(cd) if isinstance(cd, dict) else cd
+                captured["resolved"] = out
+            return out
+
+        monkeypatch.setattr(agent_mod, "resolve_tokens", capture_resolve)
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"reply": "ok"},
+                },
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+
+        # Contact Estelle shape: library blob, no stamped cid, index=cid, ctx omitted.
+        library_blob = {
+            "contact": {"phone": "555"},
+            "context": {},
+            "artifacts": {},
+        }
+        out = await agent_mod.do_task(
+            "contact_estelle_turn",
+            index=self._CID,
+            candidate_data=library_blob,
+            ctx=None,
+            store_agent_data=False,
+        )
+        assert out["success"] is True
+        resolved = captured.get("resolved")
+        assert resolved is not None
+        # Pre-fix: "XY" (blank token). Post AST-1682 cid threading: section-id JSON.
+        assert self._SUMMARY in resolved
+        assert resolved != "XY"
