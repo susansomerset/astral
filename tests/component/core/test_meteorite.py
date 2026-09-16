@@ -1841,3 +1841,4 @@ class TestAst1693NotifySkipsContentful:
         row = db.get_meteorite(row_id)
         assert row["state"] == "BOT_BLOCKED" and not row.get("estelle_notified_at")
         post.assert_not_called()
+
