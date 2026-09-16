@@ -1677,15 +1677,15 @@ class TestAst1633StrengthsOperativeApi:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
         db.save_candidate("c1633c", state="NEW_CANDIDATE", candidate_data={})
-        # AST-1652: priorities is operative — use deal_breakers as library sibling.
+        # AST-1659 tip: deal_breakers is operative — use priorities as library sibling.
         resp = candidate_client.put(
             "/api/candidates/c1633c/data",
-            json={"context": {"strengths": "op", "deal_breakers": "ship"}},
+            json={"context": {"strengths": "op", "priorities": "ship"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
         raw = db.get_candidate("c1633c")["candidate_data"]
-        assert raw.get("context", {}).get("deal_breakers") == "ship"
+        assert raw.get("context", {}).get("priorities") == "ship"
         assert "strengths" not in (raw.get("context") or {})
         row = db.get_current_artifact("candidate", "c1633c", "strengths")
         assert row["artifact_data"] == "op"
@@ -1748,6 +1748,10 @@ _PRIORITIES_ARTIFACT_KEY = "candidate.context.priorities"
 
 
 # Branches: PUT pop+operative; retire; sibling library-merge; GET hydrate; empty → 400.
+@pytest.mark.skipif(
+    "candidate.context.priorities" not in ARTIFACT_CONFIG,
+    reason="AST-1652 product not on this tip (parallel epic; skip until priorities catalog lands)",
+)
 class TestAst1652PrioritiesOperativeApi:
     """AST-1652: PUT intercept Priorities + GET hydrate overlay."""
 
@@ -1981,14 +1985,15 @@ class TestAst1649BioSummaryOperativeApi:
         self._patch_put_extras(monkeypatch)
         db = sqlite_in_memory
         db.save_candidate("c1649c", state="NEW_CANDIDATE", candidate_data={})
+        # AST-1659 tip: deal_breakers is operative — use priorities as library sibling.
         resp = candidate_client.put(
             "/api/candidates/c1649c/data",
-            json={"context": {"bio_summary": "op", "deal_breakers": "ship"}},
+            json={"context": {"bio_summary": "op", "priorities": "ship"}},
             headers=auth_headers,
         )
         assert resp.status_code == 200, resp.get_json()
         raw = db.get_candidate("c1649c")["candidate_data"]
-        assert raw.get("context", {}).get("deal_breakers") == "ship"
+        assert raw.get("context", {}).get("priorities") == "ship"
         assert "bio_summary" not in (raw.get("context") or {})
         row = db.get_current_artifact("candidate", "c1649c", "bio_summary")
         assert row["artifact_data"] == "op"
@@ -2194,3 +2199,153 @@ class TestAst1655DealBreakersOperativeApi:
         assert "plain_text" in resp.get_json()["error"]
         assert db.get_current_artifact("candidate", "c1655e", "deal_breakers") is None
 
+
+_IDEAL_DAY_ARTIFACT_KEY = "candidate.context.ideal_day"
+
+
+# Branches: PUT pop+operative; retire; sibling library-merge; GET hydrate; empty → 400.
+class TestAst1659IdealDayOperativeApi:
+    """AST-1659: PUT intercept Ideal Day + GET hydrate overlay."""
+
+    @staticmethod
+    def _patch_put_extras(monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+
+    def test_put_ideal_day_writes_current_artifact(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate("c1659", state="NEW_CANDIDATE", candidate_data={})
+        resp = candidate_client.put(
+            "/api/candidates/c1659/data",
+            json={"context": {"ideal_day": "alpha ideal day"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.get_json()
+        row = db.get_current_artifact("candidate", "c1659", "ideal_day")
+        assert row is not None
+        assert row["current"] == 1
+        assert row["artifact_data"] == "alpha ideal day"
+        raw = db.get_candidate("c1659")["candidate_data"]
+        assert "ideal_day" not in (raw.get("context") or {})
+        assert resp.get_json()["candidate_data"]["context"]["ideal_day"] == "alpha ideal day"
+
+    def test_second_put_retires_prior(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate("c1659b", state="NEW_CANDIDATE", candidate_data={})
+        r1 = candidate_client.put(
+            "/api/candidates/c1659b/data",
+            json={"context": {"ideal_day": "v1"}},
+            headers=auth_headers,
+        )
+        assert r1.status_code == 200, r1.get_json()
+        uid1 = db.get_current_artifact("candidate", "c1659b", "ideal_day")[
+            "artifact_uuid"
+        ]
+        r2 = candidate_client.put(
+            "/api/candidates/c1659b/data",
+            json={"context": {"ideal_day": "v2"}},
+            headers=auth_headers,
+        )
+        assert r2.status_code == 200, r2.get_json()
+        current = db.get_current_artifact("candidate", "c1659b", "ideal_day")
+        assert current["artifact_uuid"] != uid1
+        assert current["artifact_data"] == "v2"
+        history = db.list_artifacts(
+            "candidate", "c1659b", "ideal_day", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_put_strips_ideal_day_keeps_sibling_context(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate("c1659c", state="NEW_CANDIDATE", candidate_data={})
+        # priorities stays library-merge on this tip (not catalogued).
+        resp = candidate_client.put(
+            "/api/candidates/c1659c/data",
+            json={"context": {"ideal_day": "op", "priorities": "ship"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200, resp.get_json()
+        raw = db.get_candidate("c1659c")["candidate_data"]
+        assert raw.get("context", {}).get("priorities") == "ship"
+        assert "ideal_day" not in (raw.get("context") or {})
+        row = db.get_current_artifact("candidate", "c1659c", "ideal_day")
+        assert row["artifact_data"] == "op"
+
+    def test_get_detail_hydrates_ideal_day_leaves_legacy_on_miss(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as core_candidate
+
+        monkeypatch.setattr(
+            candidate_mod, "company_search_terms_joined_text", lambda cid: ""
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "hydrate_rubric_artifacts_for_response",
+            lambda cid, cd: None,
+        )
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c1659d",
+            state="NEW_CANDIDATE",
+            candidate_data={"context": {"ideal_day": "legacy blob"}},
+        )
+        miss = candidate_client.get("/api/candidates/c1659d", headers=auth_headers)
+        assert miss.status_code == 200
+        assert (
+            miss.get_json()["candidate_data"]["context"]["ideal_day"] == "legacy blob"
+        )
+
+        core_candidate.save_candidate_data(
+            "c1659d", _IDEAL_DAY_ARTIFACT_KEY, "table current"
+        )
+        hit = candidate_client.get("/api/candidates/c1659d", headers=auth_headers)
+        assert hit.status_code == 200
+        assert (
+            hit.get_json()["candidate_data"]["context"]["ideal_day"] == "table current"
+        )
+
+    def test_put_empty_ideal_day_returns_400(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put_extras(monkeypatch)
+        db = sqlite_in_memory
+        db.save_candidate("c1659e", state="NEW_CANDIDATE", candidate_data={})
+        resp = candidate_client.put(
+            "/api/candidates/c1659e/data",
+            json={"context": {"ideal_day": "   "}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "plain_text" in resp.get_json()["error"]
+        assert db.get_current_artifact("candidate", "c1659e", "ideal_day") is None
