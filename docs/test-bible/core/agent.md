@@ -1407,7 +1407,7 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/agent.md` — *(filled after publish)*
 
-### AST-1683 · AST-1681 (Contact-shaped BASE_RESUME current-read — test gap for AST-1682)
+### AST-1683 · AST-1682 · AST-1681 (Contact-shaped BASE_RESUME current-read — test gap for AST-1682)
 
 **Parent:** [AST-1681](https://linear.app/astralcareermatch/issue/AST-1681). **Sibling product fix:** AST-1682. **Publish:** `origin/sub/AST-1681/AST-1683-cover-contact-base-resume-current-read`.
 
