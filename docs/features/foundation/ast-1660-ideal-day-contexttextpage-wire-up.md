@@ -128,3 +128,69 @@ context_tokens≈55000
 - Stage 1: Wire Ideal Day `plain_text` bodyShape — `92566d3989ca778187855da1579c4bf681b922cb`.
 
 **Notes:** Product diff is only `CandidateIdealDay.tsx` (`bodyShape="plain_text"`). `ContextTextPage.tsx` / `ArtifactEditor.tsx` untouched. Stacked `origin/ftr/AST-1643-migrate-ideal-day-artifact-table` (sync `--ftr AST-1643` misses the slug-named ref) so AST-1658 + AST-1659 are on tip for hand-verify.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1660
+**Publish ref:** a801c3f04cb9c6e9e91473598456819ad96789ad
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+### Column diff vs plan stage
+
+(aligned)
+
+### Frame diff
+
+(none)
+
+### Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+(none)
+
+#### advisory
+
+- **Location:** Three-dot diff vs `origin/dev` — stacked sibling product (`config.py`, `candidate.py`, `api_candidate.py`, …) and sibling issue docs
+- **Finding:** Epic union via `merge(ftr)` / prior child tips brings AST-1658 catalog + AST-1659 operative paths into the diff vs `origin/dev`. AST-1660 `code()` commit touches only `CandidateIdealDay.tsx`.
+- **Recommendation:** No AST-1660 product fix; prerequisite satisfied on tip for UAT hand-verify.
+
+- **Location:** `docs/test-bible/frontend/pages.md` § AST-1660 bible shasum
+- **Finding:** Shasum line still `*(filled after publish)*`.
+- **Recommendation:** Chuckles sync on writeback — not a code gate.
+
+- **Location:** Canon clerk / frozen list resolution
+- **Finding:** `patt.artifact.ui-consistency` is draft; scored from `canon/directives/draft/patt.artifact.ui-consistency.md` at epic worktree, not `canon_clerk expand` payload.
+- **Recommendation:** Corpus hygiene downstream; no scope gap on frozen list.
+
+### Notes
+
+- **Scope divergence (expected):** Product authorship is one file (`92566d39`). `tests/component/frontend/pages/test_CandidateIdealDay.test.tsx`, `docs/test-bible/frontend/pages.md`, and stacked sibling `src/` / `tests/` / `docs/` changes are Betty `merge-tests` + epic union — not AST-1660 scope creep in `code()` commits.
+- **Estimate footprint:** Confirm **2** points still fits (single-page `bodyShape` wire-up + manifest tests).
+
+### What's solid
+
+- Stage 1 delivered verbatim: `CandidateIdealDay.tsx` mirrors `CandidateStrengths.tsx` twin shape — `title="Ideal Day"`, `contextKey="ideal_day"`, hardcoded `bodyShape="plain_text"`; no `artifactKey`, no config import, no `ArtifactEditor`.
+- `ContextTextPage.tsx` and `ArtifactEditor.tsx` have zero diff vs `origin/dev` on this branch; load/save rides existing `GET/PUT { context: { ideal_day } }` with AST-1659 server hydrate/intercept.
+- `test_CandidateIdealDay.test.tsx` covers render + hydrated load, save PUT + textarea reload (operative-shaped PUT response), `plain_text` empty-save gate (Save disabled, no PUT), and source assert for `bodyShape` / no `ArtifactEditor`.
+
+### Recommended actions
+
+(none downstream — artifact complete)
+
+context_tokens≈35000
+
