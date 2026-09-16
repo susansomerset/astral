@@ -92,3 +92,47 @@ function handleCopyDetailLink() {
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1696
+**Overall:** APPROVED
+**Corpus:** fc0c368e59
+**Publish-ref:** `2c1923c2aee9bfb779fa4a0584abdc5ed8287fbd` (`origin/sub/AST-1687/AST-1696-copy-detail-deeplink-from-report-header`)
+
+## Canon scores
+
+(none — parent Architectural definition and child Citations declare no in-force directives apply; clerk index has 12 active ids, all logging/entity/dispatch — none govern this UI-only clipboard slice)
+
+## Traceability
+
+1 → Stage 1 (Copy Link control) + Stage 2 (`handleCopyDetailLink` absolute URL + `navigator.clipboard.writeText`) · 2 → Stage 1 (`detailLinkCopied` label) + Stage 2 (2s reset + `jobId` effect) · 3 → UAT fitness sibling check (existing AST-1463/AST-1481 `JobsJobDetail` host; no new stage) · 4 → Stage 1 step 5 + Stage 2 step 5 (do-not-touch diagnostic/email/LinkedIn/print) · 5 → Files Changed + do-not-touch list (no `routes.tsx`, `config.py`, or `JobsJobDetail.tsx`)
+
+## Findings
+
+### discuss — No `## Self-assessment` section
+
+**Location:** Plan doc tail  
+**Finding:** Only `## Estimate` confirm present; no confidence axes block.  
+**Recommendation:** Optional template polish; staged scope is small and estimate (2) is honest — not blocking.
+
+### acceptable — Empty frozen canon list is intentional
+
+**Location:** Child `## Citations`; parent Architectural definition  
+**Finding:** Parent explicitly states no in-force directives constrain this UI-only clipboard affordance; child mirrors with `Citations: none`. Clerk roster confirms UI placement/import/config statutes are draft, not active — parent's determination is correct.  
+**Recommendation:** No Canon Scope amendment needed.
+
+### acceptable — DRY / pattern reuse
+
+**Location:** Stage 2 handler; existing `handleCopySnapshot` / `snapshotCopied` in `JobAnalysisReportModal.tsx`  
+**Finding:** Plan mirrors established snapshot-copy state machine (2s Copied feedback, reset on `jobId` change, silent clipboard failure) without duplicating new abstractions.  
+**Recommendation:** None.
+
+### acceptable — Path alignment without config touch
+
+**Location:** Stage 2 step 3  
+**Finding:** Literal `/jobs/detail/` + `encodeURIComponent(jobId)` matches `routes.tsx` / `JOBS_DETAIL_ROUTE_PREFIX` SYNC comment; plan correctly avoids `config.py` per parent Technical scope.  
+**Recommendation:** None.
+
+context_tokens≈28000
