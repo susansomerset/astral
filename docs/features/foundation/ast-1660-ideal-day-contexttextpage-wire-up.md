@@ -90,3 +90,32 @@ Confirm Chuckles estimate: 2 — agree
 - Parent AC7 (no backfill; legacy until re-save) → existing ContextTextPage miss path + AST-1659 hydrate (no client clear)
 - Sibling freeze / other context pages → scope gate; no sibling page edits
 - Parent AC1–5 / AC8 → N/A (AST-1658 / AST-1659)
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1660
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref tip:** `57067c0cdfeec052faa38f8ef2e24ab5e2184030` (`origin/sub/AST-1643/AST-1660-ideal-day-contexttextpage-wire-up`)
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+### Traceability
+
+AC6 (editor reload)→Stage 1 §§1–2 + verify; AC7 (ContextTextPage path; no ArtifactEditor)→Stage 1 §§1–2 + Files Changed; parent AC7 (no backfill)→AST-1659 hydrate miss path via existing GET load; parent AC1–5 / AC8→N/A (AST-1658 / AST-1659).
+
+### Findings
+
+None (`fix-now` / `discuss`).
+
+**R6 notes (acceptable):** Tip `CandidateIdealDay.tsx` is the one-liner missing `bodyShape="plain_text"` while Strengths / Bio Summary / Priorities / Deal Breakers already pass it; plan adds only that prop, mirrors the established twin shape, keeps load/save on `GET/PUT { context: { ideal_day } }` with server-side hydrate/intercept (AST-1659), documents sibling merge precondition without re-scoping config or API, and explicitly forbids `ContextTextPage` / `ArtifactEditor` edits.
+
+context_tokens≈55000
+
