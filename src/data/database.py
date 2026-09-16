@@ -9,7 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company, candidate_id (required owning candidate; denormalized from company.candidate_id; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (gazed|meteorite; AST-1469), etc.
-- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
+- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at; listing-href fallback reverse lookup via `get_meteorite_link_by_astral_job_id(astral_job_id)` (AST-1694 — link column only; not AST-1685 provenance).
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
@@ -3755,6 +3755,36 @@ def get_meteorite(meteorite_id: int) -> Optional[Dict[str, Any]]:
                 (int(meteorite_id),),
             ).fetchone()
             return _meteorite_row_to_dict(row) if row else None
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_meteorite_link_by_astral_job_id(astral_job_id: str) -> Optional[str]:
+    """Return meteorite.link for astral_job_id, or None. Read-only; no create/update."""
+    if astral_job_id is None or str(astral_job_id).strip() == "":
+        return None
+    jid = str(astral_job_id).strip()
+
+    def _with_conn() -> Optional[str]:
+        conn = _get_connection()
+        try:
+            _ensure_meteorite_schema(conn)
+            row = conn.execute(
+                """SELECT link FROM meteorite
+                   WHERE astral_job_id = ?
+                   ORDER BY id DESC
+                   LIMIT 1""",
+                (jid,),
+            ).fetchone()
+            if row is None:
+                return None
+            link = row[0] if not hasattr(row, "keys") else row["link"]
+            if link is None:
+                return None
+            s = str(link).strip()
+            return s or None
         finally:
             conn.close()
 

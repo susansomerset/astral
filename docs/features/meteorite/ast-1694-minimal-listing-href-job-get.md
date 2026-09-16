@@ -137,3 +137,114 @@ Confirm Chuckles estimate: 2 — agree
 | AC5 no full `related_meteorite` payload in this epic | Stage 1 name/return + Stage 2 (key only `listing_href`) |
 
 Parent AC1–3 → AST-1693 (writers). Parent AC5–6 UI → AST-1695. Out of scope here.
+
+## Review
+
+- **Publish ref:** `origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get`
+- **Tip:** `a45cff73dab42d839434002b9ed74a7ae361beb3`
+- **Stages:** 1 `get_meteorite_link_by_astral_job_id` · 2 `listing_href` on `GET /api/jobs/<id>`
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1694
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1686/AST-1694-minimal-listing-href-job-get` @ `d4a1a8bdce9640a28818f340ce2161a767fe7cf4`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | B | | |
+
+## Traceability
+
+AC4→S1+S2 (`listing_href` http(s)/null, job_link then meteorite); AC5→S1+S2 (link-only helper, no `related_meteorite`); parent AC1–3→N/A (AST-1693 writers); parent AC5–6→N/A (AST-1695 React).
+
+## Findings
+
+### acceptable — `stat.logging.error` exception next-step wording (Stage 2)
+
+**Location:** Stage 2 `logger.exception` body  
+**Finding:** After `_http_listing_url(job.get("job_link"))` is already `None`, the caught-path next-step line says “Continuing with listing_href from job.job_link only” even though `job_link` was already exhausted; the real soft-fail is `listing_href = null`. Live facts and `exc_info` are present; this is wording variance only.  
+**Recommendation:** At build, tighten the next-step line to “Continuing without meteorite fallback; listing_href=null” (or equivalent). Not blocking.
+
+### Identity / gate checks
+
+- Status `Plan Ready`, assignee Joan — OK.
+- No `[plan-discuss]` rounds in thread (0/2).
+- Canon list present (3 ids); no empty-list ESCALATE.
+- Explicit scope gate: Files Changed and Stages stay inside `database.py` + `api_jobs.py` only.
+- `listing_href` field name locked; no frontend/writer scope creep.
+- Parent “log once at completing route” correctly yields to `stat.logging.info.api` (idempotent GET → no info); documented in Stage 2 decisions.
+- Sibling partition: AST-1693 writes `job_link`; AST-1695 consumes `listing_href`; AST-1685 full provenance explicitly excluded (helper name + return shape).
+- DRY: link-only `get_meteorite_link_by_astral_job_id` vs AST-1691 full-row helper — justified by AC5.
+- Direct `src.data.database` import from `api_jobs` matches existing precedent (`api_system.py`, `api_admin.py`); `astral.layers.import-direction` not on frozen list — not scored.
+
+context_tokens≈32000
+
+```
+
+
+## Radia review
+
+**Ticket:** AST-1694  
+**Publish ref:** `a45cff7321086246b1a1ac4c0e7efe3f29749da7` (`origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get`)  
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | B | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `stat.logging.info.api` A, `stat.logging.debug` A, `stat.logging.error` B; code matches those grades.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — `stat.logging.error` exception next-step wording
+
+**Location:** `src/ui/api/api_jobs.py` — `detail()` `logger.exception` body (~lines 247–254 on publish tip)  
+**Finding:** On meteorite lookup failure, the next-step line still reads “Continuing with listing_href from job.job_link only” even when `_http_listing_url(job.get("job_link"))` was already `None` (empty, non-http breadcrumb, etc.). Live facts (`candidate_id`, route, `exc_info`) are present; this is product-consequence wording variance only — same item Joan flagged at plan stage.  
+**Recommendation:** At `resolve-child` (optional): tighten to “Continuing without meteorite fallback; listing_href=null”. Not blocking.
+
+### discuss — sibling test nodes merged without sibling product code
+
+**Location:** `tests/component/ui/api/test_api_jobs.py` (`TestJobsRoutes` — `related_meteorite` / `get_meteorite_by_astral_job_id` patches); `tests/component/data/database/test_meteorites.py` (`TestAst1691GetMeteoriteByAstralJobId`)  
+**Finding:** `merge-tests(AST-1694)` brought AST-1691 test revisions onto this sub tip, but `src/ui/api/api_jobs.py` and `src/data/database.py` on the tip implement only AST-1694 (`listing_href`, `get_meteorite_link_by_astral_job_id`). Shared `test_api_jobs.py` now asserts `related_meteorite` on every detail response; `TestAst1691*` calls `get_meteorite_by_astral_job_id`, which is not defined in product code here. Betty’s AST-1694 manifest (`test_api_jobs_ast1694_listing_href.py` + `TestAst1694GetMeteoriteLinkByAstralJobId`) is correctly narrow, so **Tests Passed** is consistent — but a full `test_api_jobs.py` or `test_meteorites.py` module run on this ref would fail.  
+**Recommendation:** Chuckles/downstream: strip or gate AST-1691 nodes from this sub until AST-1691 product lands, or land AST-1691 product before merge to `ftr`. Not an AST-1694 canon defect; product scope for this ticket stays inside `database.py` + `api_jobs.py`.
+
+### advisory — issue doc tip SHA stale
+
+**Location:** `docs/features/meteorite/ast-1694-minimal-listing-href-job-get.md` § Review  
+**Finding:** Doc lists tip `a45cff73`; publish tip under review is `a45cff73` (`merge-tests`).  
+**Recommendation:** Chuckles updates tip line when appending this review.
+
+## What's solid
+
+- **Stage 1:** `get_meteorite_link_by_astral_job_id` matches plan — blank-id short-circuit, `ORDER BY id DESC LIMIT 1`, link-only return, header inventory note, no data-layer logging, no http(s) filter in data.
+- **Stage 2:** `listing_href` always attached on successful detail; http(s)-only via `_http_listing_url`; prefers `job.job_link` and skips DB when http(s); no `related_meteorite` / provenance payload (AC5); no `logger.info` on idempotent GET.
+- **Logging:** Callee in/out `logger.debug` for meteorite fallback only; single handler `logger.exception` on throw; data layer silent.
+- **Tests:** Dedicated `test_api_jobs_ast1694_listing_href.py` covers prefer/skip, fallback, non-http null, soft-fail, and always-present key; data helper covered in `TestAst1694GetMeteoriteLinkByAstralJobId`.
+- **Estimate footprint:** Confirmed 2 — two product files, focused diff.
+
+## Recommended actions (downstream only — not executed here)
+
+1. Chuckles: append this artifact to the issue doc, push `docs(AST-1694): Radia review — clean`, post slim upshot, move to Review Posted.
+2. Optional `resolve-child`: tighten exception next-step wording (advisory).
+3. Discuss: reconcile merged AST-1691 test nodes on this sub ref before broader test runs or `ftr` merge.
+
+context_tokens≈38000
+
