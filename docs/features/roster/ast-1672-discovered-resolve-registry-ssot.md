@@ -192,3 +192,17 @@ Confirm Chuckles estimate: 5 — revise to 3 because this is a single-file confi
 - **Recommendation:** Consistent with inflow cutover intent; legacy `NEW` rows are out of this child's scope and should be handled operationally or in AST-1673 if any remain.
 
 context_tokens≈42000
+
+## Build
+
+**Publish tip:** `origin/sub/AST-1670/AST-1672-discovered-resolve-registry-ssot` @ `37818321`
+
+| Stage | Commit |
+|-------|--------|
+| 1 — DISCOVERED + transitions | `b7fd948f` |
+| 2 — INFLOW land/vet + CSE-only resolve | `64b88ca6` |
+| 3 — resolve_website SA + asserts | `37818321` |
+
+## Review
+
+(pending Radia)
