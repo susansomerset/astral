@@ -180,3 +180,17 @@ AC1 → Stage 1 · AC2 → Stage 2 · parent AC3–9 N/A (AST-1689 / AST-1685 / 
 - Plan Discuss rounds: 0 completed (Plan Ready first pass).
 
 context_tokens≈42000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1684/AST-1688-stage-meteorite-electronic-contact-schema-prompts`
+**Plan path:** `docs/features/meteorite/ast-1688-stage-meteorite-electronic-contact-schema-prompts.md`
+
+**Built tip:** `04aba196e1f3fac4df537e0d13ce40786931e5db` (`04aba196`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `fc3de690` | `electronic_contact` on `stage_meteorite` items_schema; STAGE/METEORITE config literals + asserts |
+| 2 | `04aba196` | `agent_task` stage_meteorite metadata-first electronic_contact prompts (surgical; no catalog-wide rewrite) |
+
+**Betty note:** AST-756 / uat-fixtures twin intentionally out of Scope — sync at qa-child if component tests require it.
