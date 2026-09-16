@@ -2623,7 +2623,9 @@ async def do_task(
                     parsed_for_persist
                 )
                 save_candidate_data(
-                    str(index), {"artifacts": {"resume_structure": structure}}
+                    str(index),
+                    "candidate.artifacts.resume_structure",
+                    structure,
                 )
                 save_candidate_data(str(index), artifact_key, content)
             else:

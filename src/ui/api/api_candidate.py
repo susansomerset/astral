@@ -27,6 +27,7 @@ from src.core.candidate import (
     hydrate_operative_deal_breakers_for_response,
     hydrate_operative_ideal_day_for_response,
     hydrate_operative_backstory_for_response,
+    hydrate_operative_resume_structure_for_response,
     hydrate_operative_strengths_for_response,
     hydrate_operative_priorities_for_response,
     hydrate_operative_writing_preferences_for_response,
@@ -215,6 +216,7 @@ def get_candidate_detail(candidate_id):
     cd = candidate.get("candidate_data") or {}
     hydrate_rubric_artifacts_for_response(candidate_id, cd)
     hydrate_operative_base_resume_for_response(candidate_id, cd)
+    hydrate_operative_resume_structure_for_response(candidate_id, cd)
     hydrate_operative_strengths_for_response(candidate_id, cd)
     hydrate_operative_priorities_for_response(candidate_id, cd)
     hydrate_operative_deal_breakers_for_response(candidate_id, cd)
@@ -284,6 +286,7 @@ def update_candidate_data(candidate_id):
     ideal_day_saved = False
     backstory_saved = False
     writing_preferences_saved = False
+    resume_structure_saved = False
     try:
         state_override = body.pop("state", None)
         api_key = body.pop("api_key", None)
@@ -294,6 +297,7 @@ def update_candidate_data(candidate_id):
             return jsonify({"error": "Admin access required"}), 403
         base_resume_in_save = False
         pilot_body = None
+        resume_structure_body = None
         if body:
             # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1662 / AST-1665: catalog context leaves → operative save; do not library-merge.
             strengths_body = None
@@ -359,6 +363,9 @@ def update_candidate_data(candidate_id):
                 if base_resume_in_save:
                     # Operative write — do not library-merge the pilot body.
                     pilot_body = arts.pop("base_resume", None)
+                # AST-1679: catalog owns resume_structure — pop after normalize/ingest for operative save.
+                if "resume_structure" in arts and isinstance(arts["resume_structure"], dict):
+                    resume_structure_body = arts.pop("resume_structure")
                 if not arts:
                     body.pop("artifacts", None)
                 else:
@@ -437,6 +444,13 @@ def update_candidate_data(candidate_id):
                     writing_preferences_body,
                 )
                 writing_preferences_saved = True
+            if resume_structure_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.artifacts.resume_structure",
+                    resume_structure_body,
+                )
+                resume_structure_saved = True
         # AST-1287 / AST-1288: illegal hops return code=illegal_candidate_transition
         # with from_state/to_state; admin retry with confirm_state_override=true forces.
         # Same-state in the PUT body is skipped here (not a core no-op).
@@ -503,6 +517,13 @@ def update_candidate_data(candidate_id):
             200,
         )
     if writing_preferences_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if resume_structure_saved:
         logger.info(
             "%s | api %s completed: PUT %s",
             candidate_id,
