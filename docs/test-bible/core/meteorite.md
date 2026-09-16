@@ -313,6 +313,40 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + warnin
 
 ---
 
+### AST-1690 · AST-1685
+
+**Parent:** [AST-1685 — View related meteorite record data on recommended job modal](https://linear.app/astralcareermatch/issue/AST-1685/view-related-meteorite-record-data-on-recommended-job-modal). **Publish:** `origin/sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites`.
+
+`run_meteorite_retention` LANDED purge: skip rows whose non-blank `astral_job_id` still resolves via `get_job`; null/blank/orphan-job rows stay age-purge eligible (AC7/AC8). No `database.py` / `config.py` change on this child. Prior retention shell: **AST-1562** above. Siblings AST-1691 / AST-1692 own report API/UI.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job-linked LANDED retention skip | `src/core/meteorite.py` | **`TestAst1690RetentionJobLinkedSkip`** |
+| Prior retention shell (null-link purge + stale + fresh) | same | **`TestAst1562RunMeteoriteRetention`** |
+
+**Broken / obsolete this pass:** none — AST-1562 null-`astral_job_id` purge still matches AC8; additive skip only.
+
+**Integration:** no existing scenario asserts meteorite retention / `run_meteorite_retention` — none revised; do not invent.
+
+## QA test manifest
+
+1. Job-linked skip + orphan/blank/mixed: `tests/component/core/test_meteorite.py::TestAst1690RetentionJobLinkedSkip`
+2. Prior retention shell: `tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1690RetentionJobLinkedSkip \
+  tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/meteorite.md` — *(filled after publish)*
+
+---
+
 ### AST-1561 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
@@ -388,3 +422,52 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + warnin
   tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
   -q
 ```
+
+---
+
+### AST-1693 · AST-1686
+
+**Parent:** [AST-1686 — Hyperlink to job with meteorite http link](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link`.
+
+`run_land_meteorite` claims READY + BOT_BLOCKED; contentful BOT_BLOCKED → `save_meteorite_job` with http(s) `row.link` → LANDED; empty BOT_BLOCKED left for AST-1561. `run_notify_meteorite_bot_blocked` skips contentful rows (land owns AC2). Tracker duplicate-skip / `persist_http_job_link` / qualify bot write: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Contentful BOT_BLOCKED land + http job_link | `src/core/meteorite.py` | **`TestAst1693RunLandBotBlocked`** |
+| Empty BOT_BLOCKED left for Estelle | same | **`TestAst1693RunLandBotBlocked::test_empty_bot_blocked_left_for_estelle`** |
+| Notify skips contentful | same | **`TestAst1693NotifySkipsContentful`** |
+| Prior READY land / empty READY ERROR | same | **`TestAst1560RunLandMeteorite`** |
+| Prior empty-content notify | same | **`TestAst1561RunNotifyBotBlocked`** |
+
+**Broken / obsolete this pass:** none — AST-1560 READY path and AST-1561 empty-content notify still hold; additive claim/skip only.
+
+**Integration:** no existing scenario asserts `run_land_meteorite` BOT_BLOCKED claim or notify contentful skip — none revised; do not invent.
+
+## QA test manifest
+
+1. Land BOT_BLOCKED contentful + empty: `tests/component/core/test_meteorite.py::TestAst1693RunLandBotBlocked`
+2. Notify skip contentful: `tests/component/core/test_meteorite.py::TestAst1693NotifySkipsContentful`
+3. Prior READY land: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
+4. Prior empty notify: `tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked`
+5. Tracker persist + dup backfill: `tests/component/core/test_tracker.py::TestAst1693PersistHttpJobLink` + `TestAst1693SaveMeteoriteDuplicateLinkBackfill`
+6. Qualify bot persist: `tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply::test_challenge_input_jd_transitions_bot_blocked`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1693RunLandBotBlocked \
+  tests/component/core/test_meteorite.py::TestAst1693NotifySkipsContentful \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked \
+  tests/component/core/test_tracker.py::TestAst1693PersistHttpJobLink \
+  tests/component/core/test_tracker.py::TestAst1693SaveMeteoriteDuplicateLinkBackfill \
+  tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply::test_challenge_input_jd_transitions_bot_blocked \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/meteorite.md` — *(filled after publish)*
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
+- `docs/test-bible/core/consult.md` — *(filled after publish)*
+
