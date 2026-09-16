@@ -207,3 +207,69 @@ context_tokens≈28000
 - Stage 1: `BUILD_CONFIG["artifact_shapes"]["resume_structure"]` sentinel (`structure_dict`) + `ARTIFACT_CONFIG["candidate.artifacts.resume_structure"]` registration; closed-set / per-entry asserts; `job.artifacts.resume_structure` fence; Persistence comment update.
 
 **Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set includes `candidate.artifacts.resume_structure`; body_shape is `resume_structure` (not resume_content/plain_text/cover_letter) and in artifact_shapes; `job.artifacts.resume_structure` absent; shape sentinel `structure_dict`.
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1678
+**Publish ref:** fb99d85089595bdfc720a0ee8aa66702b9cbe2b6
+**Corpus:** fc0c368e59 · ticket ids not in `canon_clerk` active roster (bodies resolved from `canon/statutes/` + `canon/directives/draft/` per Joan)
+**Overall:** FIX-NOW
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| astral.standards.in-scope-only | D | 2 | `tests/component/core/*`, `test_dispatch_tasks.py`, `docs/test-bible/core/roster.md` carry AST-1673/AST-1674 commits |
+
+## Column diff vs plan stage
+
+- `astral.standards.in-scope-only`: Joan **A** → Radia **D** — plan fenced single-file catalog slice; publish ref includes two AST-1670-child test commits (~340 lines) not on this ticket's QA manifest
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+- **Location:** `origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` commits `ac4ca9b7`, `5c9d57bd`
+- **Finding:** AST-1670 sibling work (`test(AST-1673)`, `test(AST-1674)`) landed on the AST-1678 publish ref before the catalog code commit. Touches `tests/component/core/test_roster.py`, `test_dispatcher.py`, `tests/component/data/database/test_dispatch_tasks.py`, and `docs/test-bible/core/roster.md` (AST-1673/1674 sections). None of this is in AST-1678's QA manifest or plan scope gate.
+- **Recommendation:** Revert or strip those two commits from the sub branch; land AST-1673/1674 on their own `origin/sub/AST-1670/...` refs. Replay only AST-1678 commits (`fb8f265b` catalog code, `5ba62d8b` tests, docs/bible for config).
+
+### advisory
+
+- **Location:** `canon/canon_clerk.py expand`
+- **Finding:** All four frozen ids fail clerk expand (`unknown directive id`). Joan and this review resolved from statute/draft paths — scores are reproducible at `fc0c368e59` but not via the supported expand path until clerk migration lands.
+- **Recommendation:** No AST-1678 product change; track clerk roster migration separately (out of ticket scope).
+
+## What's solid
+
+- **Product slice is clean:** `src/utils/config.py` is the only `src/` file in the diff; matches Stage 1 plan exactly.
+- `BUILD_CONFIG["artifact_shapes"]["resume_structure"] = "structure_dict"` with AST-1678 comments.
+- `ARTIFACT_CONFIG["candidate.artifacts.resume_structure"]` metadata matches pilot pattern (`entity_type`, `candidate_scoped`, `body_shape: resume_structure`, `ingestion_owner: candidate`).
+- Closed key-set assert, `_rs` per-entry asserts, `job.artifacts.resume_structure` sibling fence, Persistence comment update — all per plan.
+- `TestAst1678CatalogResumeStructureBodyShape` covers shape sentinel, catalog metadata, and job-side absence.
+- Betty manifest tip-drift revisions in `test_config.py` (BACKSTORY/IDEAL_DAY artifact tokens, empty `_CTX_SIBLINGS`) align with merged tip and manifest lines 3–4.
+
+## Recommended actions (for Chuckles / resolve-child — not Radia)
+
+1. **Branch hygiene:** Remove `ac4ca9b7` + `5c9d57bd` from `sub/AST-1677/AST-1678-catalog-resume-structure-body-shape`; republish tip.
+2. **Re-run manifest** after cleanup to confirm green on AST-1678 lines only.
+3. **Proceed on catalog substance** once branch contains only AST-1678 product + config test/bible rows — no resolve-child product edits expected for the config slice itself.
+
+---
+
+**Slim Linear upshot (Chuckles posts via `linear_proxy --as radia`):**
+
+```
+[code-rubric] REVIEW (Commit: fb99d850) AST-1670 tests on branch
+```
+
+context_tokens≈38000
+```
