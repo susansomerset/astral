@@ -31,6 +31,7 @@ from src.core.dispatcher import (
     list_dispatch_tasks, save_dispatch_task, update_dispatch_task,
     count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
+    meteorite_mailbox_trigger_allows,
 )
 from src.core.candidate import (
     build_candidate_token_view,
@@ -936,7 +937,10 @@ def list_dtasks():
         cid = row.get("candidate_id", "")
         if _inbox_avail_task_key((row.get("task_key") or "").strip()):
             cid_s = str(cid or "").strip()
-            row["available_count"] = int(bound_counts.get(cid_s, 0)) if cid_s else 0
+            if cid_s and meteorite_mailbox_trigger_allows(row):
+                row["available_count"] = int(bound_counts.get(cid_s, 0))
+            else:
+                row["available_count"] = 0
         else:
             try:
                 # Meteorite claim pool is global — count without requiring candidate_id (AST-1623).
@@ -1158,14 +1162,18 @@ def _dispatch_task_key_trigger_error(
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    # Mailbox identities (meteorite fold) — null/empty trigger only.
+    # meteorite_email is candidate-bound: empty trigger = no state gate; otherwise CANDIDATE_STATES.
     if is_meteorite_email_mailbox_task_key(tk):
         ts = (trigger_state or "").strip()
-        if ts:
-            return (
-                f"task_key {tk!r} is a mailbox poller; trigger_state must be null/empty "
-                f"(got {trigger_state!r})"
-            )
+        if not ts:
+            return None
+        registry = dispatch_entity_state_registry("candidate")
+        registry_ts = ts
+        parsed = parse_dispatch_hop_label(ts)
+        if parsed:
+            registry_ts = parsed[0]
+        if registry_ts not in registry:
+            return f"task_key {tk!r} (candidate) is not valid for trigger_state {ts!r}"
         return None
     # Optional override from admin form; else catalog entity for task_key.
     if entity_type is not None and str(entity_type).strip():
@@ -1261,16 +1269,20 @@ def update_dtask(task_id):
         updates["batch_call_mode"] = defaults["batch_call_mode"]
     if entity_in_body:
         updates["entity_type"] = effective_entity_type
-    if (
-        ("task_key" in data or "trigger_state" in data or entity_in_body)
-        and not is_meteorite_email_mailbox_task_key(effective_task_key)
-    ):
-        try:
-            updates["sort_by"] = _dispatch_sort_by_for(
-                effective_entity_type, effective_trigger_state,
-            )
-        except KeyError as exc:
-            return jsonify({"error": str(exc)}), 400
+    if "task_key" in data or "trigger_state" in data or entity_in_body:
+        mailbox = is_meteorite_email_mailbox_task_key(effective_task_key)
+        ts_for_sort = str(effective_trigger_state or "").strip()
+        if mailbox and not ts_for_sort:
+            if "trigger_state" in data:
+                updates["sort_by"] = None
+        else:
+            et_sort = (effective_entity_type or "candidate") if mailbox else effective_entity_type
+            try:
+                updates["sort_by"] = _dispatch_sort_by_for(
+                    et_sort, effective_trigger_state,
+                )
+            except KeyError as exc:
+                return jsonify({"error": str(exc)}), 400
     trigger_state = data.get("trigger_state", row.get("trigger_state"))
     is_scored = dispatch_claim_uses_score_floor(trigger_state)
     for k in allowed:
