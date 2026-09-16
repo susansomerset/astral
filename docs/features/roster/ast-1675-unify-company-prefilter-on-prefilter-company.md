@@ -203,3 +203,9 @@ AC1→S1,S3,S5 · AC2→S1,S5 · AC3→S2,S5 · AC4→S1,S3 · AC5→S4 · AC6�
 
 context_tokens≈19500
 ```
+
+## Review (build)
+
+**Built @ `f6dbe417`** — `origin/sub/AST-1671/AST-1675-unify-company-prefilter-on-prefilter-company`
+
+Stages 1–5 landed: helpers/admin/consult on `prefilter_company`; dual-key shims deleted; schema-ensure retargets company `prefilter` → `prefilter_company`; one-release alias introduced in `c10754a5` then dropped in `f6dbe417`. Callables / `prefilter_company_notes` / `ROSTER_CONFIG["prefilter"]` unchanged. Somerset live UPDATE remains ops-after-deploy. Test path remains Betty `qa-child`.
