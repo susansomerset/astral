@@ -44,9 +44,21 @@ Ticket **## Scope** names: `src/core/roster.py`, `src/core/consult.py`, `src/cor
 5. **≥1 hit:**  
    a. `save_company_data(short_name, {cfg["hit_list_data_key"]: hits})` where `hits` is the list of CSE hit dicts returned by `search_google_cse` (keys as today: `title`, `url`, `snippet`, etc. — JSON-serializable as stored).  
    b. `transition_company_state(short_name, cfg["pass_state"])` (`WEBSITE_REVIEW`).  
-   c. Return `{"success": True, "state": cfg["pass_state"], "error": None}`.  
-   d. **Delete** the entire live_content / `do_task(cfg["ai_task_key"])` / parse-website / `update_company` / `WEBSITE_FOUND` block (lines that currently follow the zero-hit branch through end of function).
-6. Debug path after ≥1 hit: `debug_index` outcome must **not** reference `cfg["ai_task_key"]` (key removed by AST-1672). Use e.g. `outcome=f"persist {len(hits)} CSE hit(s) -> {cfg['pass_state']}"` and optionally `debug_detail` the hit count / first few URLs (ContextVar-gated via existing debug helpers).
+   c. Emit one always-on entity info line (`stat.logging.info.entity`) after the persist + transition — not gated on `debug`, no CSE hit dump on this line:
+
+```python
+logger.info(
+    "%s | company %s: %s (batch: %s)",
+    short_name,
+    "inflow_resolve_website",
+    f"{len(hits)} hits -> {cfg['pass_state']}",
+    (entity.get("batch_id") or "-"),
+)
+```
+
+   d. Return `{"success": True, "state": cfg["pass_state"], "error": None}`.  
+   e. **Delete** the entire live_content / `do_task(cfg["ai_task_key"])` / parse-website / `update_company` / `WEBSITE_FOUND` block (lines that currently follow the zero-hit branch through end of function).
+6. Debug path after ≥1 hit: `debug_index` outcome must **not** reference `cfg["ai_task_key"]` (key removed by AST-1672). Use e.g. `outcome=f"persist {len(hits)} CSE hit(s) -> {cfg['pass_state']}"` and optionally `debug_detail` the hit count / first few URLs (ContextVar-gated via existing debug helpers). Keep CSE hit dumps on debug only — not on the entity info line in step 5c.
 7. In `run_company_task`, **replace** the `if input_state == "NEW":` inflow block with `if input_state == "DISCOVERED":` that keeps the same `dispatch_task_key` branch structure:
    - `tk == INFLOW_CONFIG["vet"]["task_key"]` → `vet_inflow_discovery_company(...)`
    - `tk == INFLOW_CONFIG["resolve"]["task_key"]` → `resolve_company_website(...)`
@@ -77,6 +89,13 @@ terminal_ok = (
 
 ```python
 if task_key == INFLOW_CONFIG["resolve"]["task_key"]:  # inflow_resolve_website
+    # Align with run_company_task terminal_ok: zero-hit NO_WEBSITE is a completed
+    # terminal fetch outcome (pass count), not a batch failure.
+    resolve_terminal_ok = (
+        INFLOW_CONFIG["resolve"]["pass_state"],   # WEBSITE_REVIEW
+        INFLOW_CONFIG["resolve"]["fail_state"],   # NO_WEBSITE
+        "WEBSITE_FOUND",  # defensive early skip when website already set
+    )
     passed = failed = errors = 0
     for entity in entities:
         r = await roster.resolve_company_website(
@@ -84,17 +103,10 @@ if task_key == INFLOW_CONFIG["resolve"]["task_key"]:  # inflow_resolve_website
         )
         if r.get("error"):
             errors += 1
-        elif r.get("state") == INFLOW_CONFIG["resolve"]["pass_state"]:
+        elif r.get("state") in resolve_terminal_ok:
             passed += 1
-        elif r.get("state") == INFLOW_CONFIG["resolve"]["fail_state"]:
-            # zero-hit terminal is a completed fail outcome for summary counts
-            failed += 1
         else:
-            # early skip WEBSITE_FOUND / unexpected
-            if r.get("success"):
-                passed += 1
-            else:
-                errors += 1
+            failed += 1
     total = len(entities)
     return {
         "total_processed": total,
@@ -107,6 +119,8 @@ if task_key == INFLOW_CONFIG["resolve"]["task_key"]:  # inflow_resolve_website
    Import `INFLOW_CONFIG` at the top of that block if not already imported in-function (mirror how discovery uses it later in the same function).
 
 ⚠️ **Decision:** Per-entity loop matches `batch_call_mode=0` warm_then_gather (dispatcher already passes `[e]`). Same function as `run_company_task` calls — no separate batch helper required in Files Changed.
+
+⚠️ **Decision (Joan fix-now):** Consult rollup must match Stage 2 `terminal_ok` — `fail_state` (`NO_WEBSITE`) increments `passed`, not `failed`. Parent AC5 is a terminal fetch outcome; dispatch fail counts are reserved for CSE hard-errors (`error` set).
 
 2. In `src/core/dispatcher.py` company claim path, change:
 
@@ -167,6 +181,14 @@ require_empty_website=(
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Revisions
+
+Revision 1 — 2026-09-16  
+Driven by: Joan `[plan-rubric]` REVISE — fix-now consult `NO_WEBSITE` rollup vs `terminal_ok`; discuss entity info on persist/transition  
+Changes:
+- Stage 3 step 1: consult branch counts `pass_state`, `fail_state`, and defensive `WEBSITE_FOUND` as `passed` (shared `resolve_terminal_ok`); CSE `error` → `errors` only.
+- Stage 2 step 5c: add `stat.logging.info.entity` id-pipe line on successful hit persist → `WEBSITE_REVIEW` (hit count + target state + batch); CSE dumps stay debug-only.
 
 ## Joan validate
 
