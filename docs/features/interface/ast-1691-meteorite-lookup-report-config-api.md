@@ -223,3 +223,65 @@ context_tokens≈32000
 **Status:** Code Complete pending Betty
 
 Stages 1–4: `get_meteorite_by_astral_job_id`; Meteorite on `JOBS_RECOMMENDED_REPORT_TOP_TABS` + `JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS`; `report_meteorite_sections` on `state_ui_manifest`; `related_meteorite` on job detail GET (full-row debug per Joan discuss). Tests deferred to Betty.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1691
+**Publish ref:** 9b9af8252ce5a347c294b3ef33fc57567c889efd
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+### Column diff vs plan stage
+
+- `stat.logging.debug` — Joan **C/2** (plan projected `{id, state}` only); code **A** (`logger.debug("Response from get_meteorite_by_astral_job_id: %s", row)` logs full callee dict, no truncation)
+
+### Frame diff
+
+(none)
+
+### Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+(none)
+
+#### advisory
+
+- **Severity:** advisory  
+- **Location:** `origin/sub/AST-1685/AST-1691-meteorite-lookup-report-config-api` tip (`merge-tests` `9b9af825`)  
+- **Finding:** Branch carries sibling merge-tests baggage beyond AST-1691’s four-file product scope: AST-1688/1689/1690/1693 core tests + bible blocks; `TestAst1694GetMeteoriteLinkByAstralJobId` calls `get_meteorite_link_by_astral_job_id` (not in `database.py` at tip); `test_api_jobs_ast1694_listing_href.py` asserts `listing_href` / `_http_listing_url` (not in `api_jobs.py` at tip). Betty’s AST-1691 manifest excludes those classes — manifest green does not prove full-file suite green.  
+- **Recommendation:** No AST-1691 product fix. Chuckles/merge-child: keep sibling tests aligned with landed product on epic rollup, or gate AST-1694 tests with `skipif` until AST-1694 product lands.
+
+- **Severity:** advisory  
+- **Location:** `src/ui/api/api_system.py` — `state_ui_manifest()`  
+- **Finding:** No debug joints on the static `report_meteorite_sections` attach (pure config copy per plan). Acceptable — no callee walk; unlike Discussion’s live hop.  
+- **Recommendation:** None.
+
+### Notes
+
+- **Canon Scope:** `astral.standards.in-scope-only` plainly governs branch composition but is **not** on the frozen list. AST-1691 product edits stay inside the ticket’s four files; sibling test/bible noise is merge hygiene, not a scored violation of the three logging statutes.
+- **Plan fidelity:** Stage 1 `get_meteorite_by_astral_job_id` mirrors `get_meteorite` (`_run_with_retry`, blank guard, `ORDER BY id DESC LIMIT 1`, header inventory). Stage 2 Meteorite tab after Discussion + four section defs. Stage 3 manifest attach. Stage 4 `related_meteorite` always present (projected flat object or `null`, soft-fail on throw). Boundaries held — no `meteorite.py`, no frontend.
+- **Estimate footprint:** Confirm estimate **3** still fits (~77 lines product across four scope files + manifest-aligned tests).
+- **Database:** `get_meteorite_by_astral_job_id` — one `?`, bind `(jid,)`; no logging in data layer per plan.
+
+### What's solid
+
+- AC2 field set matches plan projection (`id`, timestamps, `link`, `classify_outcome`, `content`, `state`, `source_*`, plus `estelle_notified_at` / `error`; `batch_id` excluded from API surface — asserted in tests).
+- AC6: `JOBS_RECOMMENDED_REPORT_TOP_TABS` ends with Meteorite; `report_meteorite_sections` flows config → manifest (not TSX-only).
+- Joan’s plan discuss item (full-row debug) addressed in build tip `8d159e4e` before merge-tests.
+- Manifest tests cover `TestAst1691GetMeteoriteByAstralJobId`, `TestAst1691MeteoriteReportConfig`, manifest attach, and detail object/null/soft-fail paths.
+
+Overall: APPROVE
