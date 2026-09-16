@@ -1,5 +1,5 @@
 ---
-id: patt.artifacts.traceability
+id: patt.artifact.traceability
 kind: pattern
 scope: [src/data/database.py, src/core/candidate.py, src/core/contact.py]
 point: >
@@ -62,6 +62,25 @@ themselves.
    current rows.
 6. **Non-goal here** — No schema, no API field, no Contact/UI wire in AST-1584 /
    AST-1585.
+
+# Examples
+
+**Live today** — `database.save_artifact(..., source_artifact_ids=...)` persists a JSON array of seed `artifact_uuid` strings on the new row (job_resume→base_resume citation via `tracker.save_job_artifact`). **Still draft / illustrative** — versioned `agent_id` + versioned `agent_task_id` lineage and full token-catalog harvest are **not** product-wired; do not invent those columns as live APIs.
+
+```python
+# Live: optional seed pins on the new artifact row (list[str] artifact_uuid)
+new_uuid = database.save_artifact(
+    entity_type,
+    entity_id,
+    artifact_type,
+    body,
+    source_artifact_ids=seed_uuids,  # e.g. [current base_resume uuid]; default []
+)
+# Job wrapper: tracker.save_job_artifact(...) auto-cites current base_resume for
+# job.artifacts.job_resume; other keys pass source_artifact_ids through.
+```
+
+do not treat versioned agent / agent_task columns as shipped in this draft’s examples — omit agent/task fences; state the gap in prose only (above).
 
 # OPEN QUESTIONS / DECISIONS
 

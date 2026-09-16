@@ -56,7 +56,11 @@ def _llm_failure_envelope(**extra: Any) -> Dict[str, Any]:
 
 
 def _rubric_evaluate_jd_ctx() -> Dict[str, Any]:
-    return {"candidate_data": {}, "batch_entities": _batch_entities("job-1")}
+    return {
+        "astral_candidate_id": "somerset",
+        "candidate_data": {},
+        "batch_entities": _batch_entities("job-1"),
+    }
 
 
 def _patch_normalize_rubric_response(
@@ -127,6 +131,7 @@ _DRAFT_EXPERIENCE_JOBS = [
 def _draft_job_resume_ctx() -> dict[str, Any]:
     """Truthy candidate_data with base_resume keys so draft whitelist validation runs (AST-1270)."""
     return {
+        "astral_candidate_id": "somerset",
         "candidate_data": {
             "artifacts": {
                 "base_resume": {
@@ -344,6 +349,7 @@ def _ast603_prefilter_ctx() -> Dict[str, Any]:
         },
     ]
     return {
+        "astral_candidate_id": "somerset",
         "candidate_data": {"artifacts": {"company_prefilter": criteria}},
         "batch_entities": [{"astral_job_id": "co-acme"}],
         "vector_labels": {
@@ -550,7 +556,7 @@ class TestAst698DoTaskDebugRawResponse:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             debug=True,
         )
         assert out["success"] is True
@@ -574,7 +580,7 @@ class TestAst698DoTaskDebugRawResponse:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             debug=True,
         )
         assert out["success"] is True
@@ -598,7 +604,7 @@ class TestAst698DoTaskDebugRawResponse:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             debug=False,
         )
         assert out["success"] is True
@@ -632,8 +638,9 @@ class TestPromptHelpers:
             live_content="live",
             model_code="claude",
             skip_cache=True,
+            candidate_id="somerset",
         )
-        assert system_blocks[0]["text"] == "system"
+        assert system_blocks[0]["text"] == "[astral-somerset]system"
         assert "cache_control" not in system_blocks[0]
         assert any("CONTENT" in block["text"] for block in user_blocks)
         assert runtime
@@ -707,7 +714,10 @@ class TestAgentDataHelpers:
                 {"user_prompt": "user", "cache_prompt": "cache", "nocache_prompt": "nocache"},
             ),
         )
-        blocks = agent_mod.preview_prompt("qualify_job_listings", {"profile": {}})
+        blocks = agent_mod.preview_prompt(
+            "qualify_job_listings",
+            {"profile": {}, "_astral_candidate_id": "somerset"},
+        )
         assert blocks["system"]
         assert blocks["user"]
         assert blocks["cache"] == "cache"
@@ -865,7 +875,7 @@ class TestAst631AgentContentTokens:
     _PLAIN_BODY = "Hi, you're Grace. No tokens here."
 
     def _cd(self) -> dict:
-        return {"profile": {"first": "Ada"}}
+        return {"profile": {"first": "Ada"}, "_astral_candidate_id": "somerset"}
 
     def test_resolved_agent_content_substitutes_candidate_tokens(self) -> None:
         out = agent_mod.resolved_agent_content(
@@ -1395,7 +1405,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "craft_company_search_terms",
             index="somerset",
-            ctx={"candidate_data": {"astral_candidate_id": "somerset"}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "somerset"}},
         )
         assert out["success"] is True
         assert stub_agent_storage["save"].call_count >= 1
@@ -1491,7 +1501,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_size": 2, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_size": 2, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         assert out["parsed_response"]["jobs"][0]["astral_job_id"] == "job-1"
@@ -1530,6 +1540,7 @@ class TestDoTask:
             "evaluate_jd",
             index="job-1",
             ctx={
+                "astral_candidate_id": "somerset",
                 "candidate_data": {},
                 "batch_entities": _batch_entities("job-1"),
                 "vector_labels": {"DT": "Domain & Technology Fit", "GC": "Gut Check"},
@@ -1564,7 +1575,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1", "job-2")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1", "job-2")},
         )
         assert out["success"] is False
         assert "bare text" in (out["error"] or "").lower()
@@ -1594,7 +1605,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is False
         err = (out["error"] or "").lower()
@@ -1625,7 +1636,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "grade_do",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1", "job-2")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1", "job-2")},
         )
         assert out["success"] is False
         assert "bare text" in (out["error"] or "").lower()
@@ -1655,7 +1666,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "grade_do",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is False
         err = (out["error"] or "").lower()
@@ -1719,7 +1730,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         assert send.await_count == 2
@@ -1749,7 +1760,7 @@ class TestDoTask:
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert not any("run_next chain entry" in rec.message for rec in caplog.records)
 
@@ -1780,7 +1791,7 @@ class TestDoTask:
         await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert send.await_count == 2
         assert not any("run_next hop:" in rec.message for rec in caplog.records)
@@ -1801,7 +1812,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             chain_context={
                 "CALLER_SYSTEM": "",
                 "CALLER_RESPONSE": "x",
@@ -1848,7 +1859,7 @@ class TestDoTask:
         await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             debug=True,
         )
         assert inner_debug == [True]
@@ -1875,7 +1886,7 @@ class TestDoTask:
         out = await agent_mod.do_task(
             "qualify_job_listings",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         assert "skipped successor missing_task" in caplog.text
@@ -1911,7 +1922,7 @@ class TestAst492BrainSettingDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         assert send.await_args is not None
@@ -1941,7 +1952,7 @@ class TestAst492BrainSettingDoTask:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         send_anth.assert_not_called()
@@ -1963,7 +1974,7 @@ class TestAst492BrainSettingDoTask:
             await agent_mod.do_task(
                 "evaluate_jd",
                 index="job-1",
-                ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+                ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             )
 
     @pytest.mark.asyncio
@@ -1974,7 +1985,7 @@ class TestAst492BrainSettingDoTask:
             await agent_mod.do_task(
                 "evaluate_jd",
                 index="job-1",
-                ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+                ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             )
 
 
@@ -2049,6 +2060,7 @@ class TestAst469ResolveRunNextLive:
             live_content="<root> enumerated parent </root>",
             index="co-ast469",
             ctx={
+                "astral_candidate_id": "somerset",
                 "candidate_data": {"k": "stub"},
                 "resolve_run_next_live": resolver,
             },
@@ -2093,7 +2105,7 @@ class TestAst692JobsiteScrapeIssueAgent:
             "select_job_page",
             live_content="<root>shell page</root>",
             index="co-692",
-            ctx={"candidate_data": {}, "resolve_run_next_live": lambda _p: ("<div/>", "visible")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "resolve_run_next_live": lambda _p: ("<div/>", "visible")},
             store_agent_data=False,
         )
 
@@ -2133,7 +2145,7 @@ class TestAst834SelectJobPageEmptyRunNext:
             "select_job_page",
             live_content="<root> enumerated parent </root>",
             index="co-ast834",
-            ctx={"candidate_data": {}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}},
             store_agent_data=False,
         )
 
@@ -2156,6 +2168,7 @@ class TestRunAdhoc:
             "usr",
             model_code="deepseek-v4-flash",
             tier_meta={"thinking": False, "vendor_model": "deepseek-v4-flash"},
+            candidate_id="somerset",
         )
         assert out["parsed_response"] == "ds-ok"
         send_deep.assert_awaited()
@@ -2174,6 +2187,7 @@ class TestRunAdhoc:
             nocache_content="nocache",
             live_content="live",
             model_code="claude-haiku-4-5",
+            candidate_id="somerset",
         )
         assert out["runtime_prompt"]
 
@@ -2321,6 +2335,7 @@ class TestAssembleBlocks:
             live_content=None,
             model_code="claude-haiku-4-5",
             skip_cache=False,
+            candidate_id="somerset",
         )
         assert system_blocks[0]["cache_control"]["type"] == "ephemeral"
         assert len(user_blocks) == 1
@@ -2415,7 +2430,7 @@ class TestDoTaskStorageFailures:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             debug=True,
         )
         assert out["success"] is True
@@ -2453,7 +2468,7 @@ class TestDoTaskStorageFailures:
             out = await agent_mod.do_task(
                 "evaluate_jd",
                 index="job-1",
-                ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+                ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             )
             assert out["error"] == "schema failed"
 
@@ -2472,7 +2487,7 @@ class TestDoTaskStorageFailures:
             out = await agent_mod.do_task(
                 "evaluate_jd",
                 index="job-1",
-                ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+                ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             )
             assert out["error"] == "confidence failed"
 
@@ -2501,7 +2516,7 @@ class TestDoTaskRemainingPaths:
         await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","batch_entities": _batch_entities("job-1")},
         )
         assert "no candidate_data" in caplog.text
         assert "still going out" in caplog.text
@@ -2530,7 +2545,7 @@ class TestDoTaskRemainingPaths:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {"profile": {}}, "batch_size": 1, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"profile": {}}, "batch_size": 1, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         assert out["agent_ref"]["entity_cost"] == 1.0
@@ -2719,7 +2734,7 @@ class TestDoTaskValidationStoreErrors:
             out = await agent_mod.do_task(
                 "evaluate_jd",
                 index="job-1",
-                ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+                ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             )
             assert out["error"] == "schema failed"
 
@@ -2747,7 +2762,7 @@ class TestAgentPayloadListUnwrap:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
 
@@ -2803,7 +2818,7 @@ class TestDoTaskFinalBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             store_agent_data=False,
         )
         assert out["success"] is True
@@ -2829,7 +2844,7 @@ class TestDoTaskFinalBranches:
         out = await agent_mod.do_task(
             "draft_cover_letter",
             index="job-1",
-            ctx={"candidate_data": {"profile": {}}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"profile": {}}},
         )
         assert out["success"] is True
 
@@ -2998,7 +3013,7 @@ class TestDoTaskStoreExceptions:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert "confidence" in out["error"]
 
@@ -3121,7 +3136,7 @@ class TestDoTaskStoreExceptions:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         assert not any(c.kwargs.get("block_type") == "RESPONSE" for c in saves.call_args_list)
@@ -3150,7 +3165,7 @@ class TestDoTaskStoreExceptions:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index=None,
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
 
@@ -3501,7 +3516,7 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
 
@@ -3957,7 +3972,7 @@ class TestDoTaskEncodedPostDecodeFallthrough:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
 
@@ -4181,7 +4196,7 @@ class TestAst597MidChainResumeHydrationAndTransitions:
         out = await agent_mod.do_task(
             "anticipate_scan",
             index="job-597",
-            ctx={"candidate_data": {"artifacts": {}}, "batch_entities": _batch_entities("job-597")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"artifacts": {}}, "batch_entities": _batch_entities("job-597")},
         )
         assert out["success"] is True
         transition.assert_not_called()
@@ -4427,7 +4442,7 @@ class TestAst769GeneralCallerHydration:
             "parse_job_list",
             live_content="<jobs/>",
             index="co-769",
-            ctx={"candidate_data": {}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}},
             chain_context={"JOB_LIST_VISIBLE": "Role listing plain text"},
         )
 
@@ -4517,7 +4532,7 @@ class TestAst769GeneralCallerHydration:
         out = await agent_mod.do_task(
             "draft_cover_letter",
             index="job-cl-769",
-            ctx={"candidate_data": {"profile": {}}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"profile": {}}},
         )
 
         assert out["success"] is True
@@ -4552,7 +4567,7 @@ class TestAst769GeneralCallerHydration:
             "parse_job_list",
             live_content="<jobs/>",
             index="co-miss",
-            ctx={"candidate_data": {}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}},
         )
 
         assert out["success"] is False
@@ -4628,7 +4643,7 @@ class TestAst769GeneralCallerHydration:
             "parse_job_list",
             live_content="<jobs/>",
             index="co-dbg",
-            ctx={"candidate_data": {}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}},
             debug=True,
         )
         assert out["success"] is True
@@ -4665,7 +4680,7 @@ class TestRunCoverLetterArtifactChainForJob:
         do_task = AsyncMock(return_value={"success": True})
         monkeypatch.setattr(agent_mod, "do_task", do_task)
 
-        await agent_mod.run_cover_letter_artifact_chain_for_job("j-cl", ctx={"job": job})
+        await agent_mod.run_cover_letter_artifact_chain_for_job("j-cl", ctx={ "astral_candidate_id": "somerset","job": job})
 
         do_task.assert_awaited_once()
         assert do_task.await_args.args[0] == "draft_cover_letter"
@@ -4685,7 +4700,7 @@ class TestRunCoverLetterArtifactChainForJob:
         monkeypatch.setattr(consult_mod, "_prep_live_content", prep)
         monkeypatch.setattr(agent_mod, "do_task", AsyncMock(return_value={"success": True}))
 
-        await agent_mod.run_cover_letter_artifact_chain_for_job("j-cl", ctx={"job": job})
+        await agent_mod.run_cover_letter_artifact_chain_for_job("j-cl", ctx={ "astral_candidate_id": "somerset","job": job})
 
         get_co.assert_called_once_with("co-1")
         assert prep.await_args[0][1] == get_co.return_value
@@ -4700,7 +4715,7 @@ class TestRunCoverLetterArtifactChainForJob:
             lambda jid: (_ for _ in ()).throw(AssertionError("get_job should not run")),
         )
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value=""))
-        out = await agent_mod.run_cover_letter_artifact_chain_for_job("j-cl", ctx={"job": job})
+        out = await agent_mod.run_cover_letter_artifact_chain_for_job("j-cl", ctx={ "astral_candidate_id": "somerset","job": job})
         assert out["success"] is False
         assert "live_content" in (out.get("error") or "").lower()
 
@@ -4715,7 +4730,7 @@ class TestRunCoverLetterArtifactChainForJob:
 
         await agent_mod.run_cover_letter_artifact_chain_for_job(
             "j-remote",
-            ctx={"noise": True},
+            ctx={ "astral_candidate_id": "somerset","noise": True},
         )
 
         assert do_task.await_args.kwargs["index"] == "j-remote"
@@ -4738,7 +4753,7 @@ class TestRunCoverLetterArtifactChainForJob:
         vl = {"custom": True}
         await agent_mod.run_cover_letter_artifact_chain_for_job(
             "jl",
-            ctx={"job": job, "vector_labels": vl},
+            ctx={ "astral_candidate_id": "somerset","job": job, "vector_labels": vl},
         )
 
         assert do_task.await_args.kwargs["ctx"]["vector_labels"] is vl
@@ -4847,7 +4862,7 @@ class TestAst531RunNextHopLedger:
             out = await agent_mod.do_task(
                 "craft_company_search_terms",
                 index="c1",
-                ctx={"candidate_data": {"artifacts": {}}},
+                ctx={ "astral_candidate_id": "somerset","candidate_data": {"artifacts": {}}},
             )
             assert out["success"] is True
             assert saves == []
@@ -5381,42 +5396,30 @@ class TestAst820VectorFeedbackDebugTrace:
         assert len(rows) > 0
 
     @pytest.mark.asyncio
-    async def test_do_task_debug_skip_when_candidate_id_missing(
+    async def test_do_task_fail_closed_when_candidate_id_missing(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
         stub_agent_storage: Dict[str, MagicMock],
-        caplog: pytest.LogCaptureFixture,
     ) -> None:
-        capture = MagicMock()
-        monkeypatch.setattr(agent_mod, "_capture_rubric_vector_feedback", capture)
+        """AST-1639: blank/missing ctx astral_candidate_id fails before provider send."""
+        send = AsyncMock()
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
         _patch_strict_batch_anthropic(monkeypatch)
-        monkeypatch.setattr(
-            agent_mod,
-            "send_to_anthropic",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {
-                        "agent_performance": {
-                            "status": "success",
-                            "vector_reviews": ["G1RACOVK"],
-                        },
-                        "agent_payload": "0|CRA2",
-                    },
-                    "api_response": _api_response("envelope"),
-                    "timesheet": {},
-                }
-            ),
-        )
-        await agent_mod.do_task(
-            "evaluate_jd",
-            index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
-            debug=True,
-        )
-        capture.assert_not_called()
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        with pytest.raises(ValueError, match="candidate id required"):
+            await agent_mod.do_task(
+                "evaluate_jd",
+                index="job-1",
+                # Explicit empty id — do not inject somerset (fail-closed AC).
+                ctx={
+                    "astral_candidate_id": "",
+                    "candidate_data": {},
+                    "batch_entities": _batch_entities("job-1"),
+                },
+                debug=True,
+            )
+        send.assert_not_called()
 
 
 class TestAst848DispatchChainDoTask:
@@ -5424,6 +5427,7 @@ class TestAst848DispatchChainDoTask:
 
     def _dispatch_chain_ctx(self, *, graduate: bool) -> Dict[str, Any]:
         return {
+            "astral_candidate_id": "somerset",
             "candidate_data": {"artifacts": {}},
             "batch_entities": _batch_entities("job-848"),
             "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
@@ -5562,13 +5566,13 @@ class TestAst848DispatchChainDoTask:
         assert agent_mod._should_write_dispatch_hop_label(
             entity_type="job",
             index="job-1",
-            ctx={"dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+            ctx={ "astral_candidate_id": "somerset","dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE},
             trigger_state=cfg.BUILD_ARTIFACTS_BASE_STATE,
         )
         assert not agent_mod._should_write_dispatch_hop_label(
             entity_type="job",
             index="job-1",
-            ctx={},
+            ctx={ "astral_candidate_id": "somerset",},
             trigger_state="UNKNOWN",
         )
 
@@ -5606,6 +5610,7 @@ class TestAst855DispatchChainHopDebug:
             ),
         )
         ctx = {
+            "astral_candidate_id": "somerset",
             "candidate_data": {"artifacts": {}},
             "batch_entities": _batch_entities("job-855"),
             "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
@@ -5984,6 +5989,7 @@ class TestAst1191ArtifactHopFailureRelease:
 
     def _dispatch_ctx(self) -> Dict[str, Any]:
         return {
+            "astral_candidate_id": "somerset",
             "candidate_data": {"artifacts": {}},
             "batch_entities": _batch_entities("job-1191"),
             "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
@@ -6046,7 +6052,7 @@ class TestAst1191ArtifactHopFailureRelease:
         out = agent_mod._apply_dispatch_chain_hop_failure(
             entity_type="job",
             index="job-1191",
-            ctx={},
+            ctx={ "astral_candidate_id": "somerset",},
             task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
             error="Provider call failed",
             debug=False,
@@ -6062,7 +6068,7 @@ class TestAst1191ArtifactHopFailureRelease:
         out = agent_mod._apply_dispatch_chain_hop_failure(
             entity_type="candidate",
             index="cand-1191",
-            ctx={},
+            ctx={ "astral_candidate_id": "somerset",},
             task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
             error="Provider call failed",
             debug=False,
@@ -6329,7 +6335,7 @@ class TestAst903CraftRubricMaxTokensFloor:
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="karfo",
-            ctx={"candidate_data": {"astral_candidate_id": "karfo"}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "karfo"}},
         )
         assert out["success"] is True
         assert send.await_args is not None
@@ -6357,7 +6363,7 @@ class TestAst903CraftRubricMaxTokensFloor:
         out = await agent_mod.do_task(
             "craft_company_search_terms",
             index="somerset",
-            ctx={"candidate_data": {"astral_candidate_id": "somerset"}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "somerset"}},
         )
         assert out["success"] is True
         assert send.await_args.kwargs.get("max_tokens") == 100
@@ -6415,7 +6421,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="abrams",
-            ctx={"candidate_data": {"astral_candidate_id": "abrams"}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "abrams"}},
         )
         assert out["success"] is True
         assert send.await_args is not None
@@ -6461,7 +6467,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         tier = send.await_args.kwargs.get("tier_meta") or {}
@@ -6508,7 +6514,7 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="abrams",
-            ctx={"candidate_data": {"astral_candidate_id": "abrams"}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "abrams"}},
         )
         assert out["success"] is False
         assert out.get("failure_class") == "max_tokens"
@@ -6618,7 +6624,7 @@ class TestAst981StandaloneTableAuditRetired:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         assert stub_agent_storage["save"].called
@@ -6652,7 +6658,7 @@ class TestAst984EntityColumnRetired:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         resp_saves = [
@@ -6688,7 +6694,7 @@ class TestAst984EntityColumnRetired:
         out = await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
         )
         assert out["success"] is True
         prompt_saves = [
@@ -6943,7 +6949,7 @@ class TestAst1072ConversationalEnvelope:
         )
         monkeypatch.setattr(agent_mod, "send_to_deepseek", send_ds)
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        out = await agent_mod.do_task(self._TASK, index="turn-1", ctx={}, debug=False)
+        out = await agent_mod.do_task(self._TASK, index="turn-1", ctx={ "astral_candidate_id": "somerset",}, debug=False)
         assert out["success"] is True
         assert out["conversational_outcome"] == "concern"
         assert out["agent_performance"]["admin_aside"] == "User sounding frustrated"
@@ -6985,7 +6991,7 @@ class TestAst1072ConversationalEnvelope:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        out = await agent_mod.do_task(self._TASK, index="turn-dbg", ctx={}, debug=True)
+        out = await agent_mod.do_task(self._TASK, index="turn-dbg", ctx={ "astral_candidate_id": "somerset",}, debug=True)
         assert out["success"] is True
         assert out.get("conversational_outcome") == "concern"
         assert out["agent_performance"]["admin_aside"] == "note"
@@ -7018,7 +7024,7 @@ class TestAst1072ConversationalEnvelope:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
-        out = await agent_mod.do_task(self._TASK, index="turn-fail", ctx={}, debug=False)
+        out = await agent_mod.do_task(self._TASK, index="turn-fail", ctx={ "astral_candidate_id": "somerset",}, debug=False)
         assert out["success"] is False
         assert "Agent failure" in str(out.get("error") or "")
 
@@ -7050,7 +7056,7 @@ class TestAst1099DoTaskArtifactPin:
     """AST-1099/1548: do_task body-replica for finalize hops; pin only proposed_answers."""
 
     def _pin_ctx(self) -> Dict[str, Any]:
-        return {"candidate_data": {"artifacts": {}}}
+        return { "astral_candidate_id": "somerset","candidate_data": {"artifacts": {}}}
 
     def _ok_cover(self) -> Dict[str, Any]:
         return {
@@ -7258,7 +7264,7 @@ class TestAst1600DoTaskBodyReplicaLand:
     """AST-1600: finalize body replica lands even when RESPONSE store fails (no resp_id gate)."""
 
     def _pin_ctx(self) -> Dict[str, Any]:
-        return {"candidate_data": {"artifacts": {}}}
+        return { "astral_candidate_id": "somerset","candidate_data": {"artifacts": {}}}
 
     def _ok_cover(self) -> Dict[str, Any]:
         return {
@@ -7318,7 +7324,7 @@ class TestAst1554DoTaskBodyReplica:
     """AST-1554 / AST-1548: finalize_job_resume body replica; no pin on operator slot."""
 
     def _pin_ctx(self) -> Dict[str, Any]:
-        return {"candidate_data": {"artifacts": {}}}
+        return { "astral_candidate_id": "somerset","candidate_data": {"artifacts": {}}}
 
     def _ok_resume(self) -> Dict[str, Any]:
         return {
@@ -7481,7 +7487,7 @@ class TestAst1603DoTaskCatalogLandViaArtifactKey:
         out = await agent_mod.do_task(
             "finalize_job_resume",
             index="job-1603",
-            ctx={"candidate_data": {"artifacts": {}}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"artifacts": {}}},
         )
         assert out["success"] is True
         pin.assert_not_called()
@@ -7542,7 +7548,7 @@ class TestAst1614DoTaskStringParsedCatalogLand:
         out = await agent_mod.do_task(
             "finalize_job_resume",
             index="job-1614",
-            ctx={"candidate_data": {"artifacts": {}}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"artifacts": {}}},
         )
         assert out["success"] is True
         pin.assert_not_called()
@@ -7940,7 +7946,7 @@ class TestAst1576CraftPersistOperative:
         out = await agent_mod.do_task(
             "craft_resume_base",
             index="cand-1576",
-            ctx={"persist_candidate_craft_hops": True},
+            ctx={ "astral_candidate_id": "somerset","persist_candidate_craft_hops": True},
         )
         assert out.get("success") is True, out.get("error")
         helper.assert_not_called()
@@ -8002,6 +8008,7 @@ class TestAst1264CandidateCraftSuccession:
             "craft_do_rubric",
             index="somerset",
             ctx={
+                "astral_candidate_id": "somerset",
                 "persist_candidate_craft_hops": True,
                 "candidate_data": {"astral_candidate_id": "somerset"},
             },
@@ -8043,6 +8050,7 @@ class TestAst1264CandidateCraftSuccession:
             "craft_do_rubric",
             index="somerset",
             ctx={
+                "astral_candidate_id": "somerset",
                 "persist_candidate_craft_hops": True,
                 "candidate_data": {"astral_candidate_id": "somerset"},
             },
@@ -8115,6 +8123,7 @@ class TestAst1264CandidateCraftSuccession:
             "craft_get_rubric",
             index="somerset",
             ctx={
+                "astral_candidate_id": "somerset",
                 "persist_candidate_craft_hops": True,
                 "candidate_data": {"astral_candidate_id": "somerset"},
             },
@@ -8234,7 +8243,7 @@ class TestAst1523AdviseFreeformSuccess:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        out = await agent_mod.do_task("advise_job_resume", index="job-1523", ctx={})
+        out = await agent_mod.do_task("advise_job_resume", index="job-1523", ctx={ "astral_candidate_id": "somerset",})
         assert out["success"] is True
 
 
@@ -8289,7 +8298,7 @@ class TestAst1514DoTaskResumeBriefJsonPersist:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        out = await agent_mod.do_task("advise_job_resume", index="job-1514", ctx={})
+        out = await agent_mod.do_task("advise_job_resume", index="job-1514", ctx={ "astral_candidate_id": "somerset",})
         assert out["success"] is True
         persist.assert_called_once()
         assert persist.call_args.args[0] == "job-1514"
@@ -8319,7 +8328,7 @@ class TestAst1514DoTaskResumeBriefJsonPersist:
             ),
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
-        out = await agent_mod.do_task("advise_job_resume", index="job-1514", ctx={})
+        out = await agent_mod.do_task("advise_job_resume", index="job-1514", ctx={ "astral_candidate_id": "somerset",})
         assert out["success"] is True
         persist.assert_called_once()
         assert persist.call_args.args[1] == _AST1514_PAYLOAD_DICT
@@ -8707,6 +8716,7 @@ class TestAst1389RequestedArtifactsHopLabels:
             entity_type="candidate",
             index="cand-1389",
             ctx={
+                "astral_candidate_id": "somerset",
                 "persist_candidate_craft_hops": True,
                 "dispatch_trigger_state": trigger,
             },
@@ -8754,7 +8764,7 @@ class TestAst1391DeepseekBigOutputFloor:
         return await agent_mod.do_task(
             "evaluate_jd",
             index="job-1",
-            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {}, "batch_entities": _batch_entities("job-1")},
             debug=debug,
         )
 
@@ -8905,7 +8915,7 @@ class TestAst1391DeepseekBigOutputFloor:
         out = await agent_mod.do_task(
             "craft_get_rubric",
             index="abrams",
-            ctx={"candidate_data": {"astral_candidate_id": "abrams"}},
+            ctx={ "astral_candidate_id": "somerset","candidate_data": {"astral_candidate_id": "abrams"}},
         )
         assert out["success"] is True
         tier = send.await_args.kwargs.get("tier_meta") or {}
@@ -9033,3 +9043,113 @@ class TestAst1393SerializeAdhocSuccessBody:
         assert self._stored_text(store) == json.dumps(
             {"search_terms": "x"}, ensure_ascii=False, default=str
         )
+
+
+class TestAst1639CandidateIdSystemPrefix:
+    """AST-1639: leading [astral-<id>] on first system block; fail-closed; preview parity."""
+
+    def test_helper_prefixes_without_separator(self) -> None:
+        assert agent_mod._system_text_with_candidate_prefix("BODY", "somerset") == "[astral-somerset]BODY"
+        assert agent_mod._system_text_with_candidate_prefix("", "somerset") == "[astral-somerset]"
+
+    def test_helper_rejects_blank_or_whitespace_id(self) -> None:
+        for bad in (None, "", "  ", "\t"):
+            with pytest.raises(ValueError, match="candidate id required"):
+                agent_mod._system_text_with_candidate_prefix("BODY", bad)  # type: ignore[arg-type]
+
+    def test_assemble_first_system_block_leads_with_prefix(self) -> None:
+        system_blocks, user_blocks, runtime, _, _ = agent_mod._assemble_blocks_seven_segment(
+            system_content="shared-sys",
+            user_content="user",
+            caches_resolved_four=("cache-a", "cache-b", None, None),
+            nocache_content="nocache",
+            live_content="live",
+            model_code="claude-haiku-4-5",
+            skip_cache=False,
+            candidate_id="somerset",
+        )
+        assert system_blocks[0]["text"].startswith("[astral-somerset]")
+        assert system_blocks[0]["text"] == "[astral-somerset]shared-sys"
+        # Prefix stays off cache / user segments.
+        assert system_blocks[1]["text"] == "cache-a"
+        assert system_blocks[2]["text"] == "cache-b"
+        assert all("[astral-" not in b["text"] for b in user_blocks)
+        assert runtime[0]["system_prompt"]["content"] == "[astral-somerset]shared-sys"
+
+    def test_preview_prompt_system_matches_wire_prefix(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: (
+                {"content": "agent-body", "model_code": "claude"},
+                {"user_prompt": "user", "cache_prompt": "cache", "nocache_prompt": "nocache", "system_prompt": "sys-body"},
+            ),
+        )
+        cd = {"profile": {}, "_astral_candidate_id": "somerset"}
+        blocks = agent_mod.preview_prompt("qualify_job_listings", cd)
+        assert blocks["system"].startswith("[astral-somerset]")
+        # Same helper shape as assembly (body after ] with no separator).
+        assert blocks["system"].startswith("[astral-somerset]sys-body") or blocks["system"].startswith(
+            "[astral-somerset]agent-body"
+        )
+
+    @pytest.mark.asyncio
+    async def test_do_task_anthropic_and_deepseek_both_get_prefix(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        captured: Dict[str, Any] = {}
+
+        async def _capture_anth(*_a, system_blocks=None, **_k):
+            captured["anthropic"] = system_blocks
+            return _strict_batch_llm_ok()
+
+        async def _capture_ds(*_a, system_blocks=None, **_k):
+            captured["deepseek"] = system_blocks
+            return _strict_batch_llm_ok()
+
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", _capture_anth)
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", _capture_ds)
+
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx=_rubric_evaluate_jd_ctx(),
+            store_agent_data=False,
+        )
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx=_rubric_evaluate_jd_ctx(),
+            store_agent_data=False,
+        )
+        for key in ("anthropic", "deepseek"):
+            first = captured[key][0]["text"]
+            assert first.startswith("[astral-somerset]"), key
+
+    @pytest.mark.asyncio
+    async def test_run_adhoc_fail_closed_without_candidate_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        send = AsyncMock()
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        with pytest.raises(ValueError, match="candidate id required"):
+            await agent_mod.run_adhoc("sys", "usr", model_code="claude-haiku-4-5", candidate_id="")
+        send.assert_not_called()
+
+    def test_preview_fail_closed_without_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: (
+                {"content": "agent", "model_code": "claude"},
+                {"user_prompt": "u", "cache_prompt": "", "nocache_prompt": "", "system_prompt": "s"},
+            ),
+        )
+        with pytest.raises(ValueError, match="candidate id required"):
+            agent_mod.preview_prompt("qualify_job_listings", {"profile": {}})

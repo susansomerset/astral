@@ -2555,12 +2555,12 @@ cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/tes
 
 **Parent:** [AST-1569 — Implement patt.artifact.write-operative](https://linear.app/astralcareermatch/issue/AST-1569/implement-pattartifactwrite-operative). **Publish:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`.
 
-Base Resume Content passes `bodyShape="resume_content"` (drops `useCandidateResumeStructure` on this page only); Save still PUTs leaf `artifacts.base_resume`. Draft `patt.artifacts.ui-consistency` with no write-operative cross-link. Editor prop: **`docs/test-bible/frontend/components.md`** § AST-1577.
+Base Resume Content passes `bodyShape="resume_content"` (drops `useCandidateResumeStructure` on this page only); Save still PUTs leaf `artifacts.base_resume`. Draft `patt.artifact.ui-consistency` with no write-operative cross-link. Editor prop: **`docs/test-bible/frontend/components.md`** § AST-1577. (**AST-1628** retargeted plural → singular draft path/id.)
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Routed page (**§6c**) bodyShape + leaf Save | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
-| Draft pattern (no write-operative link) | `canon/directives/draft/patt.artifacts.ui-consistency.md` | same **`AST-1577: page and draft follow ui-consistency`** |
+| Draft pattern (no write-operative link) | `canon/directives/draft/patt.artifact.ui-consistency.md` | same **`AST-1577: page and draft follow ui-consistency`** |
 
 **Broken / obsolete:** none — existing structure/print/accent cases still render via `bodyShape`.
 
@@ -2606,3 +2606,224 @@ npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1634 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1634-strengths-contexttextpage-plain-text-path`.
+
+Strengths page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { strengths } }` GET/PUT (AST-1633 operative intercept); empty/whitespace Save disabled + client toast; `ArtifactEditor` untouched; sibling context pages omit `bodyShape`. Catalog/API: siblings **AST-1632** / **AST-1633**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Strengths page (§6c) — load / save reload / empty gate | `CandidateStrengths.tsx` | **`test_CandidateStrengths.test.tsx`** — `AST-1634` |
+| Shared plain_text empty gate + legacy callers | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** none — prior Strengths render case expanded under AST-1634 names.
+
+**Integration:** none — no existing scenario asserts Strengths ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Strengths page (§6c): `tests/component/frontend/pages/test_CandidateStrengths.test.tsx` — pattern **`AST-1634`**
+2. Shared ContextTextPage plain_text gate: `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateStrengths.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1650 · AST-1647
+
+**Parent:** [AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page](https://linear.app/astralcareermatch/issue/AST-1647). **Publish:** `origin/sub/AST-1647/AST-1650-bio-summary-page-route`.
+
+Thin `CandidateBioSummary.tsx` (`contextKey="bio_summary"`, `bodyShape="plain_text"`) + route `candidate/bio_summary`. Reuses `ContextTextPage` (no edits this ticket — shared gate covered by **AST-1634**). Nav/catalog: **AST-1648**. Operative PUT/GET: **AST-1649**. `ArtifactEditor` untouched.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Bio Summary page (§6c) — load / save reload / empty gate | `CandidateBioSummary.tsx` | **`test_CandidateBioSummary.test.tsx`** — `AST-1650` |
+
+**Broken / obsolete this pass:** none — profile Bio Summary section already removed in config (**AST-1648**); page-level profile Vitest mocks are local fixtures, not live `DATA_SHAPES`.
+
+**Integration:** none — no existing scenario asserts Bio Summary route / ContextTextPage wrapper; do not invent.
+
+## QA test manifest
+
+1. Routed Bio Summary page (§6c): `tests/component/frontend/pages/test_CandidateBioSummary.test.tsx` — pattern **`AST-1650`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateBioSummary.test.tsx \
+  --testNamePattern="AST-1650"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1656 · AST-1642
+
+**Parent:** [AST-1642 — Migrate candidate_data.context.deal_breakers to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1642). **Publish:** `origin/sub/AST-1642/AST-1656-deal-breakers-contexttextpage-wire-up`.
+
+Deal Breakers page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { deal_breakers } }` GET/PUT (AST-1655 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1654** / **AST-1655**. Mirror AST-1634.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Deal Breakers page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateDealBreakers.tsx` | **`test_CandidateDealBreakers.test.tsx`** — `AST-1656` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Deal Breakers render-only case expanded under AST-1656 names.
+
+**Integration:** none — no existing scenario asserts Deal Breakers ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Deal Breakers page (§6c): `tests/component/frontend/pages/test_CandidateDealBreakers.test.tsx` — pattern **`AST-1656`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateDealBreakers.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1656|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1653 · AST-1641
+
+**Parent:** [AST-1641 — Migrate candidate_data.context.priorities to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1641). **Publish:** `origin/sub/AST-1641/AST-1653-priorities-contexttextpage-wire-up`.
+
+Priorities page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { priorities } }` GET/PUT (AST-1652 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1651** / **AST-1652**. Mirror AST-1634 / AST-1656.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Priorities page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidatePriorities.tsx` | **`test_CandidatePriorities.test.tsx`** — `AST-1653` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Priorities render-only case expanded under AST-1653 names.
+
+**Integration:** none — no existing scenario asserts Priorities ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Priorities page (§6c): `tests/component/frontend/pages/test_CandidatePriorities.test.tsx` — pattern **`AST-1653`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidatePriorities.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1653|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1660 · AST-1643
+
+**Parent:** [AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1643). **Publish:** `origin/sub/AST-1643/AST-1660-ideal-day-contexttextpage-wire-up`.
+
+Ideal Day page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { ideal_day } }` GET/PUT (AST-1659 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1658** / **AST-1659**. Mirror AST-1634 / AST-1656.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Ideal Day page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateIdealDay.tsx` | **`test_CandidateIdealDay.test.tsx`** — `AST-1660` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Ideal Day AST-1366 render/save cases expanded under AST-1660 names (plain_text empty gate + bodyShape source assert).
+
+**Integration:** none — no existing scenario asserts Ideal Day ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Ideal Day page (§6c): `tests/component/frontend/pages/test_CandidateIdealDay.test.tsx` — pattern **`AST-1660`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateIdealDay.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1660|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1666 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up`.
+
+Writing Preferences page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { writing_preferences } }` GET/PUT (AST-1665 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1664** / **AST-1665**. Mirror AST-1634 / AST-1660.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Writing Preferences page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateWritingPreferences.tsx` | **`test_CandidateWritingPreferences.test.tsx`** — `AST-1666` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** none — page was a ContextTextPage caller without `bodyShape`; new Vitest covers the wire-up.
+
+**Integration:** none — no existing scenario asserts Writing Preferences ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Writing Preferences page (§6c): `tests/component/frontend/pages/test_CandidateWritingPreferences.test.tsx` — pattern **`AST-1666`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateWritingPreferences.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1666|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1663 · AST-1644
+
+**Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up`.
+
+Backstory page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { backstory } }` GET/PUT (AST-1662 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1661** / **AST-1662**. Mirror AST-1634 / AST-1660.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Backstory page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateBackstory.tsx` | **`test_CandidateBackstory.test.tsx`** — `AST-1663` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Backstory render-only case expanded under AST-1663 names (plain_text empty gate + bodyShape source assert).
+
+**Integration:** none — no existing scenario asserts Backstory ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Backstory page (§6c): `tests/component/frontend/pages/test_CandidateBackstory.test.tsx` — pattern **`AST-1663`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_CandidateBackstory.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1663|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*

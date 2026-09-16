@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -5132,6 +5132,7 @@ NAV_CONFIG = [
             {"label": "Profile", "path": "/candidate/profile"},
             {"label": "Surfer", "path": "/candidate/surfer"},
             {"label": "Strengths", "path": "/candidate/strengths"},
+            {"label": "Bio Summary", "path": "/candidate/bio_summary"},
             {"label": "Priorities", "path": "/candidate/priorities"},
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
@@ -5254,12 +5255,6 @@ DATA_SHAPES = {
                             {"value": "e/eir", "label": "e/eir"},
                         ]},
                         {"key": "contact.reason_codes", "label": "Reason Codes", "type": "textarea"},
-                    ],
-                },
-                {
-                    "label": "Bio Summary",
-                    "fields": [
-                        {"key": "context.bio_summary", "label": "Bio Summary", "type": "textarea"},
                     ],
                 },
                 {
@@ -5636,6 +5631,9 @@ BUILD_CONFIG = {
             "Letter": {"type": "str", "required": True},
             "signature": {"type": "str", "required": False},
         },
+        # AST-1632: raw string body — value is NOT a field-keyed schema (unlike resume_content / cover_letter).
+        # Operative validation (sibling) gates on body_shape == "plain_text", not shape.items().
+        "plain_text": "raw_string",
     },
     # AST-1350: Print / Open HTML when experience is non-array — exact operator toast.
     "unsupported_resume_structure_message": (
@@ -5719,12 +5717,75 @@ ARTIFACT_CONFIG = {
         "body_shape": "cover_letter",
         "ingestion_owner": "tracker",
     },
+    "candidate.context.strengths": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Strengths (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.priorities": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Priorities (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+"candidate.context.deal_breakers": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Deal Breakers (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.bio_summary": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Reuse BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string) — do not invent a second shape.
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Bio Summary (UI/API operative save — sibling AST-1649).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.backstory": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Backstory (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.ideal_day": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Reuse BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string) — do not invent a second shape.
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Ideal Day (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.writing_preferences": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Writing Preferences (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
 }
 
 assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.artifacts.base_resume",
     "job.artifacts.job_resume",
     "job.artifacts.cover_letter",
+    "candidate.context.strengths",
+    "candidate.context.priorities",
+    "candidate.context.deal_breakers",
+    "candidate.context.bio_summary",
+    "candidate.context.backstory",
+    "candidate.context.ideal_day",
+    "candidate.context.writing_preferences",
 }
 # Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2).
 for _sibling in (
@@ -5738,6 +5799,13 @@ for _sibling in (
     "job.artifacts.application_responses",
 ):
     assert _sibling not in ARTIFACT_CONFIG
+
+# Sibling context leaves stay out of the catalog until their own epics.
+# Backstory + Ideal Day registered above — no longer asserted absent.
+# priorities / deal_breakers / bio_summary already registered by prior epics — do not re-freeze them.
+for _ctx_sibling in (
+):
+    assert _ctx_sibling not in ARTIFACT_CONFIG
 
 _br = ARTIFACT_CONFIG["candidate.artifacts.base_resume"]
 assert _br["entity_type"] == "candidate"
@@ -5780,6 +5848,111 @@ assert _cl["body_shape"] == "cover_letter"
 assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert _cl["ingestion_owner"] == "tracker"
 assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_st = ARTIFACT_CONFIG["candidate.context.strengths"]
+assert _st["entity_type"] == "candidate"
+assert _st["entity_type"] in ENTITY_TYPES
+assert _st["candidate_scoped"] is True
+assert isinstance(_st["candidate_scoped"], bool)
+assert _st["body_shape"] == "plain_text"
+assert _st["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _st["ingestion_owner"] == "candidate"
+assert set(_st.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_pr = ARTIFACT_CONFIG["candidate.context.priorities"]
+assert _pr["entity_type"] == "candidate"
+assert _pr["entity_type"] in ENTITY_TYPES
+assert _pr["candidate_scoped"] is True
+assert isinstance(_pr["candidate_scoped"], bool)
+assert _pr["body_shape"] == "plain_text"
+assert _pr["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _pr["ingestion_owner"] == "candidate"
+
+_db = ARTIFACT_CONFIG["candidate.context.deal_breakers"]
+assert _db["entity_type"] == "candidate"
+assert _db["entity_type"] in ENTITY_TYPES
+assert _db["candidate_scoped"] is True
+assert isinstance(_db["candidate_scoped"], bool)
+assert _db["body_shape"] == "plain_text"
+assert _db["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _db["ingestion_owner"] == "candidate"
+assert set(_pr.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_bs = ARTIFACT_CONFIG["candidate.context.bio_summary"]
+assert _bs["entity_type"] == "candidate"
+assert _bs["entity_type"] in ENTITY_TYPES
+assert _bs["candidate_scoped"] is True
+assert isinstance(_bs["candidate_scoped"], bool)
+assert _bs["body_shape"] == "plain_text"
+assert _bs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _bs["ingestion_owner"] == "candidate"
+assert set(_bs.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_bk = ARTIFACT_CONFIG["candidate.context.backstory"]
+assert _bk["entity_type"] == "candidate"
+assert _bk["entity_type"] in ENTITY_TYPES
+assert _bk["candidate_scoped"] is True
+assert isinstance(_bk["candidate_scoped"], bool)
+assert _bk["body_shape"] == "plain_text"
+assert _bk["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _bk["ingestion_owner"] == "candidate"
+assert set(_bk.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+_wp = ARTIFACT_CONFIG["candidate.context.writing_preferences"]
+assert _wp["entity_type"] == "candidate"
+assert _wp["entity_type"] in ENTITY_TYPES
+assert _wp["candidate_scoped"] is True
+assert isinstance(_wp["candidate_scoped"], bool)
+assert _wp["body_shape"] == "plain_text"
+assert _wp["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _wp["ingestion_owner"] == "candidate"
+assert set(_wp.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_id = ARTIFACT_CONFIG["candidate.context.ideal_day"]
+assert _id["entity_type"] == "candidate"
+assert _id["entity_type"] in ENTITY_TYPES
+assert _id["candidate_scoped"] is True
+assert isinstance(_id["candidate_scoped"], bool)
+assert _id["body_shape"] == "plain_text"
+assert _id["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _id["ingestion_owner"] == "candidate"
+assert set(_id.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
@@ -6276,12 +6449,42 @@ TOKEN_SOURCES = {
     "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.raw_resume", "source_type": "data_field"},
     "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.raw_profile", "source_type": "data_field"},
     "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.raw_sample", "source_type": "data_field"},
-    "STRENGTHS":            {"source": "candidate", "path": "context.strengths", "source_type": "data_field"},
-    "PRIORITIES":           {"source": "candidate", "path": "context.priorities", "source_type": "data_field"},
-    "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers", "source_type": "data_field"},
-    "BACKSTORY":            {"source": "candidate", "path": "context.backstory", "source_type": "data_field"},
-    "IDEAL_DAY":            {"source": "candidate", "path": "context.ideal_day", "source_type": "data_field"},
-    "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences", "source_type": "data_field"},
+    "STRENGTHS": {
+        "source": "candidate",
+        "path": "context.strengths",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.strengths",
+    },
+    "PRIORITIES": {
+        "source": "candidate",
+        "path": "context.priorities",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.priorities",
+    },
+    "DEAL_BREAKERS": {
+        "source": "candidate",
+        "path": "context.deal_breakers",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.deal_breakers",
+    },
+    "BACKSTORY": {
+        "source": "candidate",
+        "path": "context.backstory",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.backstory",
+    },
+    "IDEAL_DAY": {
+        "source": "candidate",
+        "path": "context.ideal_day",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.ideal_day",
+    },
+    "WRITING_PREFERENCES": {
+        "source": "candidate",
+        "path": "context.writing_preferences",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.writing_preferences",
+    },
     "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns", "source_type": "data_field"},
     "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes", "source_type": "data_field"},
     "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "contact.cover_letter_signature", "source_type": "data_field"},
@@ -6299,7 +6502,12 @@ TOKEN_SOURCES = {
         "source_type": "artifact",
         "artifact_key": "candidate.artifacts.base_resume",
     },
-    "BIO_SUMMARY":          {"source": "candidate", "path": "context.bio_summary", "source_type": "data_field"},
+    "BIO_SUMMARY": {
+        "source": "candidate",
+        "path": "context.bio_summary",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.bio_summary",
+    },
     # Resolved from company_search_terms table via agent overlay (AST-525); path kept for registry.
     "COMPANY_SEARCH_TERMS": {"source": "candidate", "path": "artifacts.company_search_terms", "source_type": "data_field"},
     # Resolved from rubric_vector rows for active task owner (AST-723).
@@ -6360,10 +6568,34 @@ for _token_name, _spec in TOKEN_SOURCES.items():
 
 assert TOKEN_SOURCES["BASE_RESUME"]["source_type"] == "artifact"
 assert TOKEN_SOURCES["BASE_RESUME"]["artifact_key"] == "candidate.artifacts.base_resume"
+assert TOKEN_SOURCES["STRENGTHS"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["STRENGTHS"]["artifact_key"] == "candidate.context.strengths"
+assert TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["PRIORITIES"]["artifact_key"] == "candidate.context.priorities"
+assert TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["DEAL_BREAKERS"]["artifact_key"] == "candidate.context.deal_breakers"
+assert TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["BIO_SUMMARY"]["artifact_key"] == "candidate.context.bio_summary"
+assert TOKEN_SOURCES["BACKSTORY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["BACKSTORY"]["artifact_key"] == "candidate.context.backstory"
+assert TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"] == "candidate.context.writing_preferences"
+assert TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"] == "candidate.context.ideal_day"
 _artifact_tokens = {
     name for name, spec in TOKEN_SOURCES.items() if spec["source_type"] == "artifact"
 }
-assert _artifact_tokens == {"BASE_RESUME"}
+assert _artifact_tokens == {
+    "BASE_RESUME",
+    "STRENGTHS",
+    "PRIORITIES",
+    "DEAL_BREAKERS",
+    "BIO_SUMMARY",
+    "BACKSTORY",
+    "IDEAL_DAY",
+    "BACKSTORY",
+    "WRITING_PREFERENCES",
+}
 
 # AST-513: phase token → persisted job_data grades_key + rubric artifact key.
 JOB_TOKEN_CONFIG = {

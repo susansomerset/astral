@@ -3698,3 +3698,260 @@ Register `meteorite` in `ENTITY_TYPES`; wire `dispatch_entity_state_registry` / 
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 
+### AST-1632 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1632-catalog-plain-text-strengths-token`.
+
+Config-only: `BUILD_CONFIG["artifact_shapes"]["plain_text"] = "raw_string"`; register `candidate.context.strengths` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, `ingestion_owner: candidate`); context sibling freeze (priorities / deal_breakers / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["STRENGTHS"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}`. No UI / hydrate / API / blob retirement (siblings).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text shape + strengths catalog + sibling freeze + STRENGTHS token | `src/utils/config.py` | **`TestAst1632CatalogPlainTextStrengthsToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts; `test_base_resume_artifact_linkage`) |
+
+**Broken / obsolete this pass:** AST-1590 three-key singleton; AST-1596 sole-`BASE_RESUME` artifact set / `data_field==23` / `get_tokens_by_source_type("artifact") == ["BASE_RESUME"]`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Strengths key, `plain_text` shape, or `STRENGTHS` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Strengths catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1648 · AST-1647
+
+**Parent:** [AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page](https://linear.app/astralcareermatch/issue/AST-1647). **Publish:** `origin/sub/AST-1647/AST-1648-catalog-bio-summary-token-profile-nav`.
+
+Config-only: register `candidate.context.bio_summary` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (priorities / deal_breakers / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["BIO_SUMMARY"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY"}`; delete profile `DATA_SHAPES` Bio Summary section; add Candidate `NAV_CONFIG` leaf `/candidate/bio_summary`. No hydrate / API / React (siblings AST-1649 / AST-1650).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| bio_summary catalog + plain_text reuse + sibling freeze + BIO_SUMMARY token + profile omit + nav | `src/utils/config.py` | **`TestAst1648CatalogBioSummaryTokenProfileNav`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+
+**Broken / obsolete this pass:** AST-1590 four-key singleton (missing bio_summary); AST-1596 `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}` / `data_field==22` / `get_tokens_by_source_type("artifact") == ["BASE_RESUME", "STRENGTHS"]`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Bio Summary key, `BIO_SUMMARY` artifact typing, profile Bio Summary section, or Candidate Bio Summary nav; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Bio Summary catalog + token + profile/nav: `tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1654 · AST-1642
+
+**Parent:** [AST-1642 — Migrate candidate_data.context.deal_breakers to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1642). **Publish:** `origin/sub/AST-1642/AST-1654-catalog-plain-text-deal-breakers-token`.
+
+Config-only: register `candidate.context.deal_breakers` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (priorities / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["DEAL_BREAKERS"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "DEAL_BREAKERS"}`. No UI / hydrate / API / blob retirement (siblings). Mirror AST-1632. Parallel epics (**AST-1648** bio_summary / **AST-1651** priorities) are not on this tip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| deal_breakers catalog + plain_text reuse + sibling freeze + DEAL_BREAKERS token | `src/utils/config.py` | **`TestAst1654CatalogPlainTextDealBreakersToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Strengths / Bio Summary freeze lists drop deal_breakers | same | **`TestAst1632…`** / **`TestAst1648…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 closed set expecting `bio_summary` or `priorities` instead of `deal_breakers`; AST-1596 `_artifact_tokens` / getters naming `BIO_SUMMARY` or `PRIORITIES` instead of `DEAL_BREAKERS`; AST-1632 / AST-1648 freeze lists still asserting `deal_breakers` absent; AST-1648 asserting `DEAL_BREAKERS` `data_field`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Deal Breakers key or `DEAL_BREAKERS` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Deal Breakers catalog + plain_text reuse + token: `tests/component/utils/test_config.py::TestAst1654CatalogPlainTextDealBreakersToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1654CatalogPlainTextDealBreakersToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+
+### AST-1651 · AST-1641
+
+**Parent:** [AST-1641 — Migrate candidate_data.context.priorities to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1641). **Publish:** `origin/sub/AST-1641/AST-1651-catalog-plain-text-priorities-token`.
+
+Config-only: register `candidate.context.priorities` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (deal_breakers / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["PRIORITIES"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES"}`. No UI / hydrate / API / blob retirement (siblings AST-1652 / AST-1653). Parallel epic **AST-1648** (`bio_summary`) is not on this tip — `TestAst1648*` skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| priorities catalog + plain_text reuse + sibling freeze + PRIORITIES token | `src/utils/config.py` | **`TestAst1651CatalogPlainTextPrioritiesToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+
+**Broken / obsolete this pass:** AST-1590 five-key set expecting `bio_summary` (parallel tip) / missing `priorities`; AST-1596 `_artifact_tokens` / counts expecting `BIO_SUMMARY` not `PRIORITIES`; AST-1632 / AST-1648 `PRIORITIES` still-`data_field` asserts; AST-1632 / AST-1648 freeze lists still naming `priorities`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Priorities key or `PRIORITIES` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Priorities catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1651CatalogPlainTextPrioritiesToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1651CatalogPlainTextPrioritiesToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1658 · AST-1643
+
+**Parent:** [AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1643). **Publish:** `origin/sub/AST-1643/AST-1658-catalog-plain-text-ideal-day-token`.
+
+Config-only: register `candidate.context.ideal_day` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (priorities / deal_breakers / backstory / writing_preferences stay out); flip `TOKEN_SOURCES["IDEAL_DAY"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY", "IDEAL_DAY"}`. No UI / hydrate / API / blob retirement (siblings AST-1659 / AST-1660). Tip lineage includes bio_summary (AST-1648); parallel priorities / deal_breakers epics are not on this tip — `TestAst1651*` / `TestAst1654*` skipif when those keys are absent.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| ideal_day catalog + plain_text reuse + sibling freeze + IDEAL_DAY token | `src/utils/config.py` | **`TestAst1658CatalogPlainTextIdealDayToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Revised IDEAL_DAY token_source (was data_field) | same | **`TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`** |
+| Strengths / Bio Summary freeze lists drop ideal_day | same | **`TestAst1632…`** / **`TestAst1648…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 five-key set missing `ideal_day` / expecting `deal_breakers`; AST-1596 `_artifact_tokens` / counts without `IDEAL_DAY` (or naming `DEAL_BREAKERS` from parallel tip); AST-1365 `IDEAL_DAY` still-`data_field` equality; AST-1632 / AST-1648 freeze lists still naming `ideal_day`; AST-1632 / AST-1648 asserting `DEAL_BREAKERS` artifact on this tip.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Ideal Day key or `IDEAL_DAY` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Ideal Day catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1658CatalogPlainTextIdealDayToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Revised IDEAL_DAY token_source: `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1658CatalogPlainTextIdealDayToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1661 · AST-1644
+
+**Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token`.
+
+Config-only: register `candidate.context.backstory` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (ideal_day / writing_preferences stay out — priorities / deal_breakers / bio_summary already registered); flip `TOKEN_SOURCES["BACKSTORY"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES", "DEAL_BREAKERS", "BIO_SUMMARY", "BACKSTORY"}`. No UI / hydrate / API / blob retirement (siblings AST-1662 / AST-1663). Parallel Ideal Day epic (**AST-1658**) is not on this tip — `TestAst1658*` skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| backstory catalog + plain_text reuse + sibling freeze + BACKSTORY token | `src/utils/config.py` | **`TestAst1661CatalogPlainTextBackstoryToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Strengths / Bio Summary / Priorities / Deal Breakers freeze lists drop backstory | same | **`TestAst1632…`** / **`TestAst1648…`** / **`TestAst1651…`** / **`TestAst1654…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 closed set expecting `ideal_day` / missing `backstory`; AST-1596 `_artifact_tokens` / counts with `IDEAL_DAY` not `BACKSTORY` (or missing priorities / deal_breakers); AST-1632 / AST-1648 / AST-1651 / AST-1654 freeze lists still naming `backstory`; AST-1654 / AST-1658 asserting `BACKSTORY` `data_field`; AST-1365 Ideal Day token equality still requiring artifact on this tip.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Backstory key or `BACKSTORY` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Backstory catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1661CatalogPlainTextBackstoryToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Revised IDEAL_DAY token_source (data_field on this tip): `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1661CatalogPlainTextBackstoryToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1664 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token`.
+
+Config-only: register `candidate.context.writing_preferences` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (backstory / ideal_day stay out — priorities / deal_breakers / bio_summary already registered); flip `TOKEN_SOURCES["WRITING_PREFERENCES"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES", "DEAL_BREAKERS", "BIO_SUMMARY", "WRITING_PREFERENCES"}`. No UI / hydrate / API / blob retirement (siblings AST-1665 / AST-1666). Parallel Backstory epic (**AST-1661**) is not on this tip — `TestAst1661*` skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| writing_preferences catalog + plain_text reuse + sibling freeze + WRITING_PREFERENCES token | `src/utils/config.py` | **`TestAst1664CatalogPlainTextWritingPreferencesToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Strengths / Bio Summary / Priorities / Deal Breakers freeze lists drop writing_preferences | same | **`TestAst1632…`** / **`TestAst1648…`** / **`TestAst1651…`** / **`TestAst1654…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 closed set expecting `backstory` / missing `writing_preferences`; AST-1596 `_artifact_tokens` / counts with `BACKSTORY` not `WRITING_PREFERENCES`; AST-1632 / AST-1648 / AST-1651 / AST-1654 freeze lists still naming `writing_preferences`; AST-1661 asserting without skipif on tips that lack backstory.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Writing Preferences key or `WRITING_PREFERENCES` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Writing Preferences catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1664CatalogPlainTextWritingPreferencesToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Revised IDEAL_DAY token_source (data_field on this tip): `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1664CatalogPlainTextWritingPreferencesToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+

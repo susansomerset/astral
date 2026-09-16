@@ -911,10 +911,10 @@ describe("ArtifactsBaseResumeContent", () => {
     expect(page).toMatch(/bodyShape="resume_content"/)
     expect(page).not.toMatch(/useCandidateResumeStructure/)
     const draft = readFileSync(
-      resolve(root, "canon/directives/draft/patt.artifacts.ui-consistency.md"),
+      resolve(root, "canon/directives/draft/patt.artifact.ui-consistency.md"),
       "utf8",
     )
-    expect(draft).toMatch(/^id: patt\.artifacts\.ui-consistency$/m)
+    expect(draft).toMatch(/^id: patt\.artifact\.ui-consistency$/m)
     expect(draft).not.toMatch(/write-operative/)
   })
 })

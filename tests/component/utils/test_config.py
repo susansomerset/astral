@@ -5107,11 +5107,21 @@ class TestAst1365IdealDayLibraryToken:
             assert key in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
 
     def test_ideal_day_token_source(self) -> None:
-        assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
-            "source": "candidate",
-            "path": "context.ideal_day",
-            "source_type": "data_field",
-        }
+        # AST-1661 tip: Ideal Day stays data_field until AST-1658 lands on this parent.
+        # (AST-1658 parallel epic registers IDEAL_DAY as artifact on its own tip.)
+        if "candidate.context.ideal_day" in cfg.ARTIFACT_CONFIG:
+            assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
+                "source": "candidate",
+                "path": "context.ideal_day",
+                "source_type": "artifact",
+                "artifact_key": "candidate.context.ideal_day",
+            }
+        else:
+            assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
+                "source": "candidate",
+                "path": "context.ideal_day",
+                "source_type": "data_field",
+            }
 
     def test_resolve_ideal_day_empty_and_set(self) -> None:
         empty = cfg.resolve_tokens(
@@ -5531,10 +5541,17 @@ class TestAst1590JobArtifactCatalogKeys:
     )
 
     def test_artifact_config_has_pilot_and_job_keys(self) -> None:
+        # AST-1664 adds candidate.context.writing_preferences; tip already has
+        # priorities / deal_breakers / bio_summary. Backstory / Ideal Day stay frozen.
         assert set(cfg.ARTIFACT_CONFIG.keys()) == {
             "candidate.artifacts.base_resume",
             "job.artifacts.job_resume",
             "job.artifacts.cover_letter",
+            "candidate.context.strengths",
+            "candidate.context.priorities",
+            "candidate.context.deal_breakers",
+            "candidate.context.bio_summary",
+            "candidate.context.writing_preferences",
         }
         for sibling in self._SIBLINGS:
             assert sibling not in cfg.ARTIFACT_CONFIG
@@ -5593,15 +5610,15 @@ class TestAst1590JobArtifactCatalogKeys:
         assert "job.artifacts.proposed_answers" not in cfg.ARTIFACT_CONFIG
 
 
-# Branches: TOKEN_SOURCE_TYPES; every row typed; BASE_RESUME sole artifact + key;
-# COMPANY_SEARCH_TERMS data_field; get_tokens names; by-type + artifact-key getters;
-# assert-loop contract (missing/invalid/bad key / stray artifact_key).
+# Branches: TOKEN_SOURCE_TYPES; every row typed; BASE_RESUME + STRENGTHS + PRIORITIES +
+# DEAL_BREAKERS + BIO_SUMMARY + WRITING_PREFERENCES artifact keys; COMPANY_SEARCH_TERMS data_field;
+# get_tokens names; by-type + artifact-key getters; assert-loop contract.
 def _assert_token_sources_typing(
     token_sources: dict,
     artifact_config: dict,
     token_source_types: frozenset,
 ) -> None:
-    """Mirror of src.utils.config AST-1596 import-time TOKEN_SOURCES asserts."""
+    """Mirror of src.utils.config AST-1596 / AST-1632 / AST-1648 / AST-1664 TOKEN_SOURCES asserts."""
     for _token_name, _spec in token_sources.items():
         assert isinstance(_spec, dict), _token_name
         assert "source_type" in _spec, f"TOKEN_SOURCES[{_token_name!r}] missing source_type"
@@ -5623,10 +5640,33 @@ def _assert_token_sources_typing(
 
     assert token_sources["BASE_RESUME"]["source_type"] == "artifact"
     assert token_sources["BASE_RESUME"]["artifact_key"] == "candidate.artifacts.base_resume"
+    # AST-1632: STRENGTHS joins the closed artifact-token set.
+    assert token_sources["STRENGTHS"]["source_type"] == "artifact"
+    assert token_sources["STRENGTHS"]["artifact_key"] == "candidate.context.strengths"
+    # AST-1651 / AST-1654 / AST-1648: priorities / deal_breakers / bio_summary on tip.
+    assert token_sources["PRIORITIES"]["source_type"] == "artifact"
+    assert token_sources["PRIORITIES"]["artifact_key"] == "candidate.context.priorities"
+    assert token_sources["DEAL_BREAKERS"]["source_type"] == "artifact"
+    assert token_sources["DEAL_BREAKERS"]["artifact_key"] == "candidate.context.deal_breakers"
+    assert token_sources["BIO_SUMMARY"]["source_type"] == "artifact"
+    assert token_sources["BIO_SUMMARY"]["artifact_key"] == "candidate.context.bio_summary"
+    # AST-1664: WRITING_PREFERENCES joins the closed artifact-token set.
+    assert token_sources["WRITING_PREFERENCES"]["source_type"] == "artifact"
+    assert (
+        token_sources["WRITING_PREFERENCES"]["artifact_key"]
+        == "candidate.context.writing_preferences"
+    )
     _artifact_tokens = {
         name for name, spec in token_sources.items() if spec["source_type"] == "artifact"
     }
-    assert _artifact_tokens == {"BASE_RESUME"}
+    assert _artifact_tokens == {
+        "BASE_RESUME",
+        "STRENGTHS",
+        "PRIORITIES",
+        "DEAL_BREAKERS",
+        "BIO_SUMMARY",
+        "WRITING_PREFERENCES",
+    }
 
 
 class TestAst1596TokenCatalogSourceTypeTyping:
@@ -5641,16 +5681,23 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         _assert_token_sources_typing(
             cfg.TOKEN_SOURCES, cfg.ARTIFACT_CONFIG, cfg.TOKEN_SOURCE_TYPES
         )
-        # Classification counts from plan (23 data_field / 1 artifact / 27 special_case).
+        # AST-1664: WRITING_PREFERENCES flips data_field → artifact (18 / 6 / 27).
         by_type = {
             st: cfg.get_tokens_by_source_type(st) for st in sorted(cfg.TOKEN_SOURCE_TYPES)
         }
-        assert by_type["artifact"] == ["BASE_RESUME"]
-        assert len(by_type["data_field"]) == 23
+        assert by_type["artifact"] == [
+            "BASE_RESUME",
+            "BIO_SUMMARY",
+            "DEAL_BREAKERS",
+            "PRIORITIES",
+            "STRENGTHS",
+            "WRITING_PREFERENCES",
+        ]
+        assert len(by_type["data_field"]) == 18
         assert len(by_type["special_case"]) == 27
         assert sum(len(v) for v in by_type.values()) == len(cfg.TOKEN_SOURCES)
 
-    def test_base_resume_sole_artifact_linkage(self) -> None:
+    def test_base_resume_artifact_linkage(self) -> None:
         assert cfg.TOKEN_SOURCES["BASE_RESUME"] == {
             "source": "candidate",
             "path": "artifacts.base_resume",
@@ -5670,14 +5717,27 @@ class TestAst1596TokenCatalogSourceTypeTyping:
     def test_get_tokens_names_unchanged(self) -> None:
         assert cfg.get_tokens() == sorted(cfg.TOKEN_SOURCES.keys())
         assert "BASE_RESUME" in cfg.get_tokens()
+        assert "STRENGTHS" in cfg.get_tokens()
 
     def test_get_tokens_by_source_type_filters_and_rejects(self) -> None:
-        assert cfg.get_tokens_by_source_type("artifact") == ["BASE_RESUME"]
+        assert cfg.get_tokens_by_source_type("artifact") == [
+            "BASE_RESUME",
+            "BIO_SUMMARY",
+            "DEAL_BREAKERS",
+            "PRIORITIES",
+            "STRENGTHS",
+            "WRITING_PREFERENCES",
+        ]
         data = cfg.get_tokens_by_source_type("data_field")
         assert data == sorted(data)
         assert "FIRST_NAME" in data
         assert "COMPANY_SEARCH_TERMS" in data
         assert "BASE_RESUME" not in data
+        assert "STRENGTHS" not in data
+        assert "BIO_SUMMARY" not in data
+        assert "WRITING_PREFERENCES" not in data
+        assert "BACKSTORY" in data
+        assert "IDEAL_DAY" in data
         special = cfg.get_tokens_by_source_type("special_case")
         assert "THEY" in special and "VISIBLE_JD" in special and "RUBRIC_VECTORS" in special
         with pytest.raises(ValueError, match="invalid source_type"):
@@ -5729,7 +5789,7 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         with pytest.raises(AssertionError, match="non-artifact must not carry artifact_key"):
             _assert_token_sources_typing(stray_key, arts, types)
 
-        # Sole-artifact set breaks when a second artifact is validly keyed.
+        # Closed artifact-token set breaks when an extra artifact is validly keyed.
         second = dict(live)
         second["EXTRA_ART"] = {
             "source": "candidate",
@@ -5739,6 +5799,413 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         }
         with pytest.raises(AssertionError):
             _assert_token_sources_typing(second, arts, types)
+
+
+class TestAst1632CatalogPlainTextStrengthsToken:
+    """AST-1632: plain_text shape + strengths catalog key + STRENGTHS artifact token."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1664 tip: priorities / deal_breakers / bio_summary / writing_preferences
+    # registered; freeze remaining unmigrated leaves only.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+        "candidate.context.ideal_day",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_strengths_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.strengths"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_strengths_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["STRENGTHS"] == {
+            "source": "candidate",
+            "path": "context.strengths",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.strengths",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("STRENGTHS")
+            == "candidate.context.strengths"
+        )
+        # Sibling context tokens on AST-1664 tip: WRITING_PREFERENCES artifact;
+        # BACKSTORY / IDEAL_DAY stay data_field.
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"]
+            == "candidate.context.writing_preferences"
+        )
+        assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["IDEAL_DAY"]
+
+
+@pytest.mark.skipif(
+    "candidate.context.bio_summary" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1648 product not on this tip (parallel epic; skip until bio_summary catalog lands)",
+)
+class TestAst1648CatalogBioSummaryTokenProfileNav:
+    """AST-1648: bio_summary catalog + BIO_SUMMARY artifact token + profile/nav."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1664 tip: priorities / deal_breakers / writing_preferences registered;
+    # freeze Backstory + Ideal Day.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+        "candidate.context.ideal_day",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_bio_summary_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.bio_summary"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_bio_summary_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["BIO_SUMMARY"] == {
+            "source": "candidate",
+            "path": "context.bio_summary",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.bio_summary",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("BIO_SUMMARY")
+            == "candidate.context.bio_summary"
+        )
+        # Sibling context tokens on AST-1664 tip: WRITING_PREFERENCES artifact;
+        # BACKSTORY / IDEAL_DAY stay data_field.
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"]
+            == "candidate.context.writing_preferences"
+        )
+        assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["IDEAL_DAY"]
+
+    def test_profile_data_shapes_omits_bio_summary(self) -> None:
+        profile = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        assert not any(
+            s.get("label") == "Bio Summary"
+            or any(
+                f.get("key") == "context.bio_summary" for f in s.get("fields", [])
+            )
+            for s in profile
+        )
+
+    def test_candidate_nav_bio_summary_after_strengths(self) -> None:
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        labels = [i["label"] for i in cand["items"]]
+        paths = [i["path"] for i in cand["items"]]
+        assert labels.index("Strengths") < labels.index("Bio Summary")
+        assert labels.index("Bio Summary") < labels.index("Priorities")
+        assert paths[labels.index("Bio Summary")] == "/candidate/bio_summary"
+
+
+@pytest.mark.skipif(
+    "candidate.context.priorities" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1651 product not on this tip (parallel epic; skip until priorities catalog lands)",
+)
+class TestAst1651CatalogPlainTextPrioritiesToken:
+    """AST-1651: priorities catalog key + PRIORITIES artifact token (plain_text reuse)."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1664 tip: writing_preferences registered; freeze Backstory + Ideal Day.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+        "candidate.context.ideal_day",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_priorities_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.priorities"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+
+    def test_priorities_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["PRIORITIES"] == {
+            "source": "candidate",
+            "path": "context.priorities",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.priorities",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("PRIORITIES")
+            == "candidate.context.priorities"
+        )
+        # Sibling context tokens on AST-1664 tip: BIO_SUMMARY + WRITING_PREFERENCES.
+        assert cfg.TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["BIO_SUMMARY"]["artifact_key"]
+            == "candidate.context.bio_summary"
+        )
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"]
+            == "candidate.context.writing_preferences"
+        )
+
+
+@pytest.mark.skipif(
+    "candidate.context.deal_breakers" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1654 product not on this tip (parallel epic; skip until deal_breakers catalog lands)",
+)
+class TestAst1654CatalogPlainTextDealBreakersToken:
+    """AST-1654: deal_breakers catalog + DEAL_BREAKERS artifact token (plain_text reuse)."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # AST-1664 tip: priorities + writing_preferences registered; freeze Backstory +.
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+        "candidate.context.ideal_day",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_deal_breakers_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.deal_breakers"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+        assert "candidate.context.deal_breakers" in cfg.ARTIFACT_CONFIG
+
+    def test_deal_breakers_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["DEAL_BREAKERS"] == {
+            "source": "candidate",
+            "path": "context.deal_breakers",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.deal_breakers",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("DEAL_BREAKERS")
+            == "candidate.context.deal_breakers"
+        )
+        # Sibling context tokens on AST-1664 tip: PRIORITIES + WRITING_PREFERENCES.
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["PRIORITIES"]["artifact_key"]
+            == "candidate.context.priorities"
+        )
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        assert (
+            cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"]
+            == "candidate.context.writing_preferences"
+        )
+
+
+@pytest.mark.skipif(
+    "candidate.context.ideal_day" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1658 product not on this tip (parallel Ideal Day epic; skip until ideal_day catalog lands)",
+)
+class TestAst1658CatalogPlainTextIdealDayToken:
+    """AST-1658: ideal_day catalog + IDEAL_DAY artifact token (plain_text reuse)."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # Freeze unmigrated context leaves on the Ideal Day tip (parent AC8 / ticket AC4).
+    _CTX_SIBLINGS = (
+        "candidate.context.priorities",
+        "candidate.context.deal_breakers",
+        "candidate.context.backstory",
+        "candidate.context.writing_preferences",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_ideal_day_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.ideal_day"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+        assert "candidate.context.ideal_day" in cfg.ARTIFACT_CONFIG
+
+    def test_ideal_day_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
+            "source": "candidate",
+            "path": "context.ideal_day",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.ideal_day",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("IDEAL_DAY")
+            == "candidate.context.ideal_day"
+        )
+        # Sibling context tokens stay data_field (Boundaries — Ideal Day only).
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["PRIORITIES"]
+        assert cfg.TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "data_field"
+        assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "data_field"
+
+
+@pytest.mark.skipif(
+    "candidate.context.backstory" not in cfg.ARTIFACT_CONFIG,
+    reason="AST-1661 product not on this tip (parallel Backstory epic; skip until backstory catalog lands)",
+)
+class TestAst1661CatalogPlainTextBackstoryToken:
+    """AST-1661: backstory catalog + BACKSTORY artifact token (plain_text reuse)."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # Freeze remaining unmigrated context leaves on the Backstory tip.
+    _CTX_SIBLINGS = (
+        "candidate.context.ideal_day",
+        "candidate.context.writing_preferences",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_backstory_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.backstory"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+        assert "candidate.context.backstory" in cfg.ARTIFACT_CONFIG
+
+    def test_backstory_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["BACKSTORY"] == {
+            "source": "candidate",
+            "path": "context.backstory",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.backstory",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("BACKSTORY")
+            == "candidate.context.backstory"
+        )
+        # Pre-landed artifact tokens stay typed; Ideal Day / Writing Preferences
+        # stay data_field on the Backstory tip.
+        assert cfg.TOKEN_SOURCES["STRENGTHS"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["IDEAL_DAY"]
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "data_field"
+
+
+class TestAst1664CatalogPlainTextWritingPreferencesToken:
+    """AST-1664: writing_preferences catalog + WRITING_PREFERENCES artifact token."""
+
+    _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
+    # Freeze remaining unmigrated context leaves (parent AC8 / ticket AC4).
+    _CTX_SIBLINGS = (
+        "candidate.context.backstory",
+        "candidate.context.ideal_day",
+    )
+
+    def test_plain_text_shape_raw_string_sentinel(self) -> None:
+        # Reuse AST-1632 sentinel — do not invent a second shape.
+        assert "plain_text" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert cfg.BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+
+    def test_writing_preferences_catalog_metadata(self) -> None:
+        entry = cfg.ARTIFACT_CONFIG["candidate.context.writing_preferences"]
+        assert set(entry.keys()) == self._META
+        assert entry["entity_type"] == "candidate"
+        assert entry["entity_type"] in cfg.ENTITY_TYPES
+        assert entry["candidate_scoped"] is True
+        assert entry["body_shape"] == "plain_text"
+        assert entry["body_shape"] in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert entry["ingestion_owner"] == "candidate"
+
+    def test_context_sibling_freeze(self) -> None:
+        for sibling in self._CTX_SIBLINGS:
+            assert sibling not in cfg.ARTIFACT_CONFIG
+        assert "candidate.context.writing_preferences" in cfg.ARTIFACT_CONFIG
+
+    def test_writing_preferences_token_artifact_linkage(self) -> None:
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"] == {
+            "source": "candidate",
+            "path": "context.writing_preferences",
+            "source_type": "artifact",
+            "artifact_key": "candidate.context.writing_preferences",
+        }
+        assert (
+            cfg.get_artifact_key_for_token("WRITING_PREFERENCES")
+            == "candidate.context.writing_preferences"
+        )
+        # Pre-landed artifact tokens stay typed; Backstory / Ideal Day stay data_field.
+        assert cfg.TOKEN_SOURCES["STRENGTHS"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
+        assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["IDEAL_DAY"]
 
 
 class TestAst1621MeteoriteEntityTypeRegistry:

@@ -1118,6 +1118,17 @@ def _build_context(task_key: str, task_config: Dict[str, Any], index: Optional[s
         return fmt.replace("{index}", index)
 
 
+def _system_text_with_candidate_prefix(system_content: str, candidate_id: Optional[str]) -> str:
+    """Leading cache-isolation marker: first system bytes are ``[astral-<id>]`` then body."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError(
+            "candidate id required for agent system prompt "
+            "(no omit / no sentinel — every agent call must carry an Astral candidate id)"
+        )
+    return f"[astral-{cid}]{system_content}"
+
+
 def _assemble_blocks_seven_segment(
     *,
     system_content: str,
@@ -1127,6 +1138,7 @@ def _assemble_blocks_seven_segment(
     live_content: Optional[str],
     model_code: str,
     skip_cache: bool = False,
+    candidate_id: Optional[str] = None,
 ) -> tuple:
     """Build Anthropic payloads: ≤5 cached ``system`` blocks (system + non-empty cache A–D raw text)
     plus user-role blocks for nocache + live + stamped user."""
@@ -1139,11 +1151,13 @@ def _assemble_blocks_seven_segment(
             "size": len(text), "cache": cached, "model": model_code, "content": text,
         }})
 
-    system_block: Dict[str, Any] = {"type": "text", "text": system_content}
+    # Per-candidate divergence at byte zero — before shared system / cache A–D text.
+    system_for_wire = _system_text_with_candidate_prefix(system_content, candidate_id)
+    system_block: Dict[str, Any] = {"type": "text", "text": system_for_wire}
     if not skip_cache:
         system_block["cache_control"] = {"type": "ephemeral"}
     system_blocks.append(system_block)
-    _track("system_prompt", system_content, not skip_cache)
+    _track("system_prompt", system_for_wire, not skip_cache)
 
     slot_labels = ("cache_a", "cache_b", "cache_c", "cache_d")
     for lbl, ct in zip(slot_labels, caches_resolved_four):
@@ -1184,6 +1198,7 @@ def _assemble_blocks(
     live_content: Optional[str],
     model_code: str,
     skip_cache: bool = False,
+    candidate_id: Optional[str] = None,
 ) -> tuple:
     """Legacy entry: maps single ``cache_content`` blob to slot A — see AST-454/455."""
     return _assemble_blocks_seven_segment(
@@ -1194,6 +1209,7 @@ def _assemble_blocks(
         live_content=live_content,
         model_code=model_code,
         skip_cache=skip_cache,
+        candidate_id=candidate_id,
     )
 
 
@@ -2057,6 +2073,7 @@ async def do_task(
         live_content=live_content,
         model_code=assemble_model_tag,
         skip_cache=skip_cache,
+        candidate_id=candidate_id,
     )
 
     prompt_blocks: List[Dict[str, str]] = []
@@ -2067,7 +2084,8 @@ async def do_task(
                 entity_type=entity_type,
                 task_key=task_key,
                 batch_id=batch_id,
-                system_content=system_content,
+                # Same prefix as wire first system block (helper once on unresolved body).
+                system_content=_system_text_with_candidate_prefix(system_content, candidate_id),
                 caches_resolved_four=(rca or "", rcb or "", rcc or "", rcd or ""),
                 nocache_content=nocache_content,
                 user_content=user_content,
@@ -2823,6 +2841,9 @@ def preview_prompt(
     cd = candidate_data or {}
     _cc = _chain_context(agent_row, cd, task_key, job_context, chain_context)
     system_out = resolved_task_system(agent_row, agent_task_row, cd, task_key, _cc, job_context)
+    # Opaque Astral candidate id only — same stamp do_task / candidate preview use.
+    cid = cd.get("_astral_candidate_id") or cd.get("astral_candidate_id") or ""
+    system_out = _system_text_with_candidate_prefix(system_out, cid)
     user_out = getTimestampPrefix() + resolve_tokens(agent_task_row.get("user_prompt") or "", cd, task_key, _cc, job_context)
     ca = resolve_tokens(agent_task_row.get("cache_prompt") or "", cd, task_key, _cc, job_context)
     cb = resolve_tokens(agent_task_row.get("cache_prompt_b") or "", cd, task_key, _cc, job_context)
@@ -2982,7 +3003,8 @@ async def run_adhoc_workbench_test(
                 entity_type=entity_type,
                 task_key=workbench_task_key,
                 batch_id=batch_id,
-                system_content=system_content,
+                # Match run_adhoc wire prefix (assembly prefixes the unresolved body again).
+                system_content=_system_text_with_candidate_prefix(system_content, candidate_id),
                 caches_resolved_four=(
                     cache_content or "",
                     cache_content_b or "",
@@ -3167,6 +3189,7 @@ async def run_adhoc(
         live_content=live_content,
         model_code=model_code,
         skip_cache=False,
+        candidate_id=candidate_id,
     )
 
     if tier_meta is not None:

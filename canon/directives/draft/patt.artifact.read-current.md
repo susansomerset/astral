@@ -37,6 +37,26 @@ A **current read** returns the **`current=1`** artifact row for a catalog key an
 5. **Batch/consult** — Pre-dispatch assembly calls read-current for latest operator bodies when the step needs current content, not a historical pin.
 6. **On miss** — Return empty contract; queue ingestion state per no-coat-check — no lazy blob fetch.
 
+# Examples
+
+Data-layer current row:
+
+```python
+row = database.get_current_artifact(entity_type, entity_id, artifact_type)
+# row is None on miss; else row["artifact_data"] is the deserialized body
+```
+
+Entity wrapper (`src/core/candidate.py`) — resolves `ARTIFACT_CONFIG`, requires `candidate_scoped`, leaf `artifact_type` from the key, delegates to `get_current_artifact`:
+
+```python
+body = get_candidate_current(candidate_id, "candidate.artifacts.base_resume")
+# None on miss; never reads candidate_data blobs
+```
+
+API GET hydrate for the pilot overlays via `hydrate_operative_base_resume_for_response(candidate_id, cd)` in `src/ui/api/api_candidate.py` / `src/core/candidate.py` — editors open on that current body, not a stale blob copy. Job current-read twin: `tracker.get_job_current(astral_job_id, artifact_key)` (mention only).
+
+do not hydrate catalog keys from `candidate_data` / `job_data` blob dotted paths for edit or live display.
+
 # OPEN QUESTIONS / DECISIONS
 
 1. Cache invalidation events on write-operative — component-owned; default invalidate candidate scope for touched keys.

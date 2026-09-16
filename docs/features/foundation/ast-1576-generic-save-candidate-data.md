@@ -4,7 +4,7 @@
 **Parent:** [AST-1569](https://linear.app/astralcareermatch/issue/AST-1569/implement-pattartifactwrite-operative) — Implement patt.artifact.write-operative
 **Publish ref:** `sub/AST-1569/AST-1576-generic-save-candidate-data`
 
-Ship write-operative for the pilot catalog key `candidate.artifacts.base_resume`: blind `database.save_artifact` (already retire+insert), entity-owned `save_candidate_data(candidate_id, artifact_key, blob)` against `ARTIFACT_CONFIG`, `TASK_CONFIG["craft_resume_base"]["artifact_key"]`, rewire agent / parse / UI save to that generic path, delete `artifact_catalog`. Does **not** own React editor or `patt.artifacts.ui-consistency` (sibling AST-1577).
+Ship write-operative for the pilot catalog key `candidate.artifacts.base_resume`: blind `database.save_artifact` (already retire+insert), entity-owned `save_candidate_data(candidate_id, artifact_key, blob)` against `ARTIFACT_CONFIG`, `TASK_CONFIG["craft_resume_base"]["artifact_key"]`, rewire agent / parse / UI save to that generic path, delete `artifact_catalog`. Does **not** own React editor or `patt.artifact.ui-consistency` (sibling AST-1577).
 
 ## Explicit scope gate
 
@@ -20,7 +20,7 @@ Ticket **## Scope** names exactly:
 
 Every row in **Files Changed** is one of those product paths (plus this plan doc). Every Stage step is the kind of change Scope describes for that file.
 
-**Out of this ticket (do not touch):** React `ArtifactEditor` / `ArtifactsBaseResumeContent`; `canon/directives/draft/patt.artifacts.ui-consistency.md`; new `ARTIFACT_CONFIG` keys; coat-check; grade pin writers; job finalize / `job_resume` writers; inventing a one-off API `artifact_id` field or ban.
+**Out of this ticket (do not touch):** React `ArtifactEditor` / `ArtifactsBaseResumeContent`; `canon/directives/draft/patt.artifact.ui-consistency.md`; new `ARTIFACT_CONFIG` keys; coat-check; grade pin writers; job finalize / `job_resume` writers; inventing a one-off API `artifact_id` field or ban.
 
 ## Files Changed (planned)
 
@@ -331,7 +331,7 @@ Stages 1–6 land as specced: `save_artifact` docstring lock; `craft_resume_base
 | Plan doc | `docs/features/foundation/ast-1576-generic-save-candidate-data.md` | Present |
 | Betty tests | `tests/component/core/test_candidate.py`, `test_agent.py`, `test_api_candidate.py`, `test_config.py`; deleted `test_artifact_catalog.py` | In-scope via merge-tests |
 | Betty bible | `docs/test-bible/core/candidate.md`, `agent.md`, `ui/api/api_candidate.md`, `utils/config.md`, `utils/artifact_catalog.md` | In-scope via merge-tests |
-| Sibling OOS | AST-1577 React/editor, `patt.artifacts.ui-consistency` | Not touched ✓ |
+| Sibling OOS | AST-1577 React/editor, `patt.artifact.ui-consistency` | Not touched ✓ |
 
 ## Notes
 
