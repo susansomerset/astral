@@ -3,7 +3,8 @@ Contact: Slack foundation + CONTACT_CONFIG skills ACL (Astral Contact / AST-1066
 
 AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 (`handle_slack_event`). AST-1071: ACL-gated entity-save skill runners.
-AST-1068: `resolve_slack_user` + PROSPECT create-on-miss (wired on accept).
+AST-1068 / AST-1668: `resolve_slack_user` lookup-only (no create-on-miss);
+unbound Slack poster pool + known/unknown recognition replies on accept.
 AST-1070: Slack-sourced conversation context load / process-local cache / append.
 AST-1067: Manage Slack listen hydrate/set + non-prod reply prefix / post helper.
 AST-1206: Manage Slack debug get/set.
@@ -35,7 +36,6 @@ from src.core.candidate import (
     get_candidate,
     get_candidate_id_for_query,
     get_operative_base_resume,
-    initiate_prospect_candidate,
     save_candidate_data,
 )
 from src.data import database
@@ -50,6 +50,7 @@ from src.data.contact_listen import (
 from src.external.slack import (
     fetch_conversation_history,
     fetch_user_profile,
+    list_workspace_posters,
     parse_url_verification,
     post_message,
     verify_slack_signature,
@@ -713,7 +714,7 @@ def resolve_slack_user(
     estelle_in_play: bool,
     debug: bool = False,
 ) -> dict:
-    """Lookup Slack user → astral candidate; create PROSPECT only when estelle_in_play."""
+    """Lookup Slack user → astral candidate; never creates PROSPECT (AST-1668)."""
     if debug:
         logger.set_debug_flag(True)
 
@@ -782,59 +783,13 @@ def resolve_slack_user(
             "slack_display_name": display,
         }
 
-    if not estelle_in_play:
-        if debug:
-            logger.debug_index(
-                func="contact.resolve_slack_user",
-                index=1,
-                total=1,
-                identifier=sid[:80],
-                outcome="found|none",
-            )
-            logger.debug_detail(f"slack_user_id={sid}")
-        return {
-            "astral_candidate_id": None,
-            "state": None,
-            "created": False,
-            "slack_username": "",
-            "slack_display_name": "",
-        }
-
-    profile = fetch_user_profile(sid)
-    new_id = (
-        CONTACT_CONFIG["prospect_candidate_id_template"]
-        .format(slack_user_id=sid)
-        .strip()
-        .lower()
-    )
-    first = str(profile.get("first") or "").strip()
-    last = str(profile.get("last") or "").strip()
-    display = str(profile.get("display_name") or "").strip()
-    username = str(profile.get("username") or "").strip()
-    if not first and not last and display:
-        first = display
-    candidate_data = {
-        "contact": {
-            "slack_user_id": sid,
-            "slack_username": username,
-        },
-    }
-    try:
-        initiate_prospect_candidate(new_id, candidate_data, first=first, last=last)
-    except ValueError:
-        # Race: another accept already created — re-lookup.
-        cid = get_candidate_id_for_query(sid, debug=debug)
-        if cid is None:
-            raise
-        row = get_candidate(cid)
-        uname, _ = _identity_from_contact(row)
-        return {
-            "astral_candidate_id": cid,
-            "state": (row or {}).get("state"),
-            "created": False,
-            "slack_username": uname or username,
-            "slack_display_name": display,
-        }
+    # Miss: lookup-only — never mint PROSPECT (estelle_in_play only gates profile fetch).
+    username = ""
+    display = ""
+    if estelle_in_play:
+        profile = fetch_user_profile(sid)
+        username = str(profile.get("username") or "").strip()
+        display = str(profile.get("display_name") or "").strip()
 
     if debug:
         logger.debug_index(
@@ -842,20 +797,50 @@ def resolve_slack_user(
             index=1,
             total=1,
             identifier=sid[:80],
-            outcome="recorded|created",
+            outcome="found|none",
         )
         logger.debug_detail(f"slack_user_id={sid}")
-        logger.debug_detail(f"candidate_id={new_id}")
-        logger.debug_detail("state=PROSPECT")
-        logger.debug_detail(f"slack_username={username!r}")
-
+        if estelle_in_play:
+            logger.debug_detail(f"slack_username={username!r}")
     return {
-        "astral_candidate_id": new_id,
-        "state": "PROSPECT",
-        "created": True,
+        "astral_candidate_id": None,
+        "state": None,
+        "created": False,
         "slack_username": username,
         "slack_display_name": display,
     }
+
+
+def list_unbound_slack_users(*, debug: bool = False) -> list[dict]:
+    """Workspace posters whose Slack id is not bound on any non-deleted candidate."""
+    log = get_logger(__name__)
+    if debug:
+        log.set_debug_flag(True)
+
+    log.debug("Calling list_workspace_posters: []")
+    posters = list_workspace_posters()
+    log.debug("Response from list_workspace_posters: %s", posters)
+
+    out: List[dict] = []
+    log.debug("Beginning unbound filter loop on %s items", len(posters))
+    for poster in posters:
+        if not isinstance(poster, dict):
+            continue
+        sid = poster.get("slack_user_id")
+        if not isinstance(sid, str) or not sid.strip():
+            continue
+        sid = sid.strip()
+        if get_candidate_id_for_query(sid, debug=debug) is not None:
+            continue
+        uname = poster.get("username")
+        out.append(
+            {
+                "slack_user_id": sid,
+                "username": uname.strip() if isinstance(uname, str) else "",
+            }
+        )
+    log.debug("End unbound filter loop after %s items", len(out))
+    return out
 
 
 _CONTACT_TASK_MARKUP_RE = re.compile(
@@ -1693,103 +1678,163 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
             },
             debug=debug,
         )
-    # AST-1561: paste recovery before Estelle turn (no re-classify).
+    # AST-1668: known/unknown recognition, then Estelle only when bound.
     if result.get("accepted") and isinstance(channel, str) and channel:
-        paste_out = try_meteorite_apply_paste_from_slack(
-            astral_candidate_id=result.get("astral_candidate_id"),
-            channel=channel,
-            thread_ts=event.get("thread_ts"),
-            message_ts=msg_ts if isinstance(msg_ts, str) else None,
-            text=text,
-            debug=debug,
+        user_ok = isinstance(user, str) and bool(user.strip())
+        resolve_ok = user_ok and not result.get("resolve_error")
+        known = isinstance(result.get("astral_candidate_id"), str) and bool(
+            result.get("astral_candidate_id")
         )
-        result["meteorite_apply_paste"] = paste_out
-        if paste_out.get("applied") and paste_out.get("result", {}).get("ok"):
+        if resolve_ok:
+            text_key = (
+                "known_recognition_reply_text"
+                if known
+                else "unknown_recognition_reply_text"
+            )
             try:
-                ack = format_contact_reply_text(
-                    "Got it — pasted job description saved for review."
-                )
+                outbound = format_contact_reply_text(str(CONTACT_CONFIG[text_key]))
                 reply_thread_ts = event.get("thread_ts")
                 if not reply_thread_ts and isinstance(msg_ts, str):
                     reply_thread_ts = msg_ts
-                result["estelle_turn"] = {
-                    "ok": True,
-                    "outcome": "paste_applied",
-                    "meteorite_apply_paste": paste_out,
-                    "slack_post": contact_post_message(
-                        channel=channel,
-                        text=ack,
-                        thread_ts=reply_thread_ts,
-                        debug=debug,
-                    ),
-                }
-            except Exception as exc:
-                log.error("contact paste ack failed: %s", exc, exc_info=True)
-                result["estelle_turn"] = {
-                    "ok": True,
-                    "outcome": "paste_applied",
-                    "meteorite_apply_paste": paste_out,
-                    "slack_post": {"ok": False, "error": str(exc)},
-                }
-        else:
-            try:
-                turn_out = run_contact_estelle_turn(
-                    channel=channel,
-                    text=text,
-                    thread_ts=event.get("thread_ts"),
-                    message_ts=msg_ts if isinstance(msg_ts, str) else None,
-                    astral_candidate_id=result.get("astral_candidate_id"),
-                    candidate_state=result.get("candidate_state"),
-                    debug=debug,
-                )
-                result["estelle_turn"] = turn_out
-            except Exception as exc:
-                log.error("contact estelle turn failed: %s", exc, exc_info=True)
-                result["estelle_turn"] = {"ok": False, "error": str(exc)}
-        # AST-1101: hear-ack when Estelle turn did not successfully post to Slack.
-        turn_out = result.get("estelle_turn")
-        slack_post = turn_out.get("slack_post") if isinstance(turn_out, dict) else None
-        posted = isinstance(slack_post, dict) and slack_post.get("ok") is True
-        if not posted:
-            try:
-                outbound = format_contact_reply_text(
-                    str(CONTACT_CONFIG["hear_ack_reply_text"])
-                )
-                reply_thread_ts = event.get("thread_ts")
-                if not reply_thread_ts and isinstance(msg_ts, str):
-                    reply_thread_ts = msg_ts
-                result["hear_ack_post"] = contact_post_message(
+                result["recognition_post"] = contact_post_message(
                     channel=channel,
                     text=outbound,
                     thread_ts=reply_thread_ts,
                     debug=debug,
                 )
-                if debug:
-                    preview = (
-                        outbound
-                        if len(outbound) <= _TEXT_DEBUG_MAX
-                        else outbound[:_TEXT_DEBUG_MAX] + "…"
-                    )
-                    log.debug_index(
-                        func="contact.handle_slack_event",
-                        index=1,
-                        total=1,
-                        identifier=event_id,
-                        outcome="hear_ack_posted",
-                    )
-                    log.debug_detail(f"hear_ack outbound={preview!r}")
             except Exception as exc:
-                log.error("contact hear_ack post failed: %s", exc, exc_info=True)
-                result["hear_ack_post"] = {"ok": False, "error": str(exc)}
-                if debug:
-                    log.debug_index(
-                        func="contact.handle_slack_event",
-                        index=1,
-                        total=1,
-                        identifier=event_id,
-                        outcome="hear_ack_failed",
+                log.error(
+                    "contact recognition post failed: %s", exc, exc_info=True
+                )
+                result["recognition_post"] = {"ok": False, "error": str(exc)}
+
+        # Unknown bound miss: recognition only — do not run Estelle as if bound.
+        if resolve_ok and not known:
+            result["estelle_turn"] = {
+                "ok": True,
+                "outcome": "unrecognized",
+                "skipped": True,
+            }
+        else:
+            # AST-1561: paste recovery before Estelle turn (no re-classify).
+            paste_out = try_meteorite_apply_paste_from_slack(
+                astral_candidate_id=result.get("astral_candidate_id"),
+                channel=channel,
+                thread_ts=event.get("thread_ts"),
+                message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                text=text,
+                debug=debug,
+            )
+            result["meteorite_apply_paste"] = paste_out
+            if paste_out.get("applied") and paste_out.get("result", {}).get("ok"):
+                try:
+                    ack = format_contact_reply_text(
+                        "Got it — pasted job description saved for review."
                     )
-                    log.debug_detail(f"hear_ack error={exc!r}")
+                    reply_thread_ts = event.get("thread_ts")
+                    if not reply_thread_ts and isinstance(msg_ts, str):
+                        reply_thread_ts = msg_ts
+                    result["estelle_turn"] = {
+                        "ok": True,
+                        "outcome": "paste_applied",
+                        "meteorite_apply_paste": paste_out,
+                        "slack_post": contact_post_message(
+                            channel=channel,
+                            text=ack,
+                            thread_ts=reply_thread_ts,
+                            debug=debug,
+                        ),
+                    }
+                except Exception as exc:
+                    log.error("contact paste ack failed: %s", exc, exc_info=True)
+                    result["estelle_turn"] = {
+                        "ok": True,
+                        "outcome": "paste_applied",
+                        "meteorite_apply_paste": paste_out,
+                        "slack_post": {"ok": False, "error": str(exc)},
+                    }
+            else:
+                try:
+                    turn_out = run_contact_estelle_turn(
+                        channel=channel,
+                        text=text,
+                        thread_ts=event.get("thread_ts"),
+                        message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                        astral_candidate_id=result.get("astral_candidate_id"),
+                        candidate_state=result.get("candidate_state"),
+                        debug=debug,
+                    )
+                    result["estelle_turn"] = turn_out
+                    # Canonical Contact listen info after Estelle returns (Joan / AST-1668).
+                    skill_results = turn_out.get("skill_results") or []
+                    skill_keys = [
+                        r["skill_key"]
+                        for r in skill_results
+                        if isinstance(r, dict)
+                        and isinstance(r.get("skill_key"), str)
+                        and r["skill_key"].strip()
+                    ]
+                    admin_aside = turn_out.get("admin_aside")
+                    log.info(
+                        "%s | contact listen %s %s: action:%s (channel: %s) aside: %s",
+                        result.get("astral_candidate_id") or "-",
+                        etype,
+                        turn_out.get("outcome") or "-",
+                        ",".join(skill_keys) if skill_keys else "-",
+                        channel,
+                        (
+                            admin_aside.strip()
+                            if isinstance(admin_aside, str) and admin_aside.strip()
+                            else "-"
+                        ),
+                    )
+                except Exception as exc:
+                    log.error("contact estelle turn failed: %s", exc, exc_info=True)
+                    result["estelle_turn"] = {"ok": False, "error": str(exc)}
+            # AST-1101: hear-ack when Estelle turn did not successfully post to Slack.
+            turn_out = result.get("estelle_turn")
+            slack_post = turn_out.get("slack_post") if isinstance(turn_out, dict) else None
+            posted = isinstance(slack_post, dict) and slack_post.get("ok") is True
+            if not posted:
+                try:
+                    outbound = format_contact_reply_text(
+                        str(CONTACT_CONFIG["hear_ack_reply_text"])
+                    )
+                    reply_thread_ts = event.get("thread_ts")
+                    if not reply_thread_ts and isinstance(msg_ts, str):
+                        reply_thread_ts = msg_ts
+                    result["hear_ack_post"] = contact_post_message(
+                        channel=channel,
+                        text=outbound,
+                        thread_ts=reply_thread_ts,
+                        debug=debug,
+                    )
+                    if debug:
+                        preview = (
+                            outbound
+                            if len(outbound) <= _TEXT_DEBUG_MAX
+                            else outbound[:_TEXT_DEBUG_MAX] + "…"
+                        )
+                        log.debug_index(
+                            func="contact.handle_slack_event",
+                            index=1,
+                            total=1,
+                            identifier=event_id,
+                            outcome="hear_ack_posted",
+                        )
+                        log.debug_detail(f"hear_ack outbound={preview!r}")
+                except Exception as exc:
+                    log.error("contact hear_ack post failed: %s", exc, exc_info=True)
+                    result["hear_ack_post"] = {"ok": False, "error": str(exc)}
+                    if debug:
+                        log.debug_index(
+                            func="contact.handle_slack_event",
+                            index=1,
+                            total=1,
+                            identifier=event_id,
+                            outcome="hear_ack_failed",
+                        )
+                        log.debug_detail(f"hear_ack error={exc!r}")
     if debug:
         log.debug_index(
             func="contact.handle_slack_event",
