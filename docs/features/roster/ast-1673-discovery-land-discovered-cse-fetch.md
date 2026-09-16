@@ -168,3 +168,56 @@ require_empty_website=(
 
 Confirm Chuckles estimate: 3 — agree
 
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1673
+**Overall:** REVISE
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1670/AST-1673-discovery-land-discovered-cse-fetch` @ `8e0365a3472bd862068ff36c330ac08593fc0ed7`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| stat.logging.info.entity | C | 1 | Stage 2 step 5 persist/transition has no id-pipe `logger.info` on the new primary success path |
+| stat.logging.info.dispatcher | X | | no dispatch completion-line changes; claim gate only |
+| stat.logging.debug | B | | continues existing roster `debug_index`/`debug_detail` helpers (unconverted file) |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+3→S2.1–5 (delete `do_task` block) | 4→S2.5a–b (`save_company_data` + `WEBSITE_REVIEW`) | 5→S2.4 (`fail_state`/`NO_WEBSITE`, no AI) | 6→S3.2–3 (dispatcher + DB eligibility) | parent AC1→S1 (`land_state` write); parent AC2/6/7–9→N/A (AST-1672 config / AST-1674 apply / ops gate)
+
+## Findings
+
+### fix-now
+
+- **Severity:** fix-now
+- **Location:** Stage 3 step 1 (`run_consult_task` `inflow_resolve_website` branch)
+- **Finding:** Proposed rollup counts `NO_WEBSITE` (`fail_state`) as `failed += 1`, but Stage 2 step 8 `run_company_task` `terminal_ok` treats `INFLOW_CONFIG["resolve"]["fail_state"]` as a completed pass (`total_passed: 1`). Dispatcher always calls `run_consult_task` (not `run_company_task` directly), so zero-hit companies would surface as dispatch **fail** counts despite `success: True` — contradicting parent AC5 intent (terminal fetch outcome, not batch failure).
+- **Recommendation:** Align consult counting with `terminal_ok`: treat `pass_state`, `fail_state`, and defensive `WEBSITE_FOUND` early-skip as `passed` (or share one `terminal_ok` tuple in both paths). Remove the comment that zero-hit is a “failed outcome for summary counts.”
+
+### discuss
+
+- **Severity:** discuss
+- **Location:** Stage 2 step 5
+- **Finding:** `stat.logging.info.entity` — persist + `WEBSITE_REVIEW` transition is new expected progress with no planned id-pipe info line (`<id> | company <event>: <detail> (batch: …)`). Parent Architectural definition cites this statute for fetch outcomes.
+- **Recommendation:** Add one entity info line on successful persist/transition (hit count + target state); keep CSE hit dumps on debug only.
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Stage 3 steps 3–4 (vet eligibility rename)
+- **Finding:** Vet `count_company_*` retarget is slightly beyond the ticket Scope sentence (resolve helpers only) but necessary so Stage 1 `DISCOVERED` land does not orphan vet Avail.
+- **Recommendation:** Keep as planned; same-file NEW→DISCOVERED cutover is coherent.
+
+- **Severity:** acceptable
+- **Location:** Dependency / tip
+- **Finding:** AST-1672 SSOT is ancestor of this publish ref (`DISCOVERED`, `land_state`, `hit_list_data_key`, no `ai_task_key`).
+- **Recommendation:** None — dependency satisfied.
+
+context_tokens≈58000
