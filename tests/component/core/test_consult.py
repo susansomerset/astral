@@ -6455,3 +6455,60 @@ class TestAst1530InvokeStageMeteorite:
         assert out["success"] is False
         assert out["error"] == "invalid stage outcome"
         assert out["outcome"] == "html_links"
+
+@_SKIP_RESUME_SECTION_CATALOG
+class TestAst1680JobDraftingHydrateCatalog:
+    """AST-1680: hydrate→resolve so RESUME_SECTION_CATALOG uses table current (no blob-only bypass)."""
+
+    def _table_structure(self):
+        from src.core import candidate as candidate_mod
+
+        structure = candidate_mod.default_resume_structure()
+        structure["sections"]["professional_summary"]["title"] = "Table Summary"
+        # technical_skills is optional — safe disable signal (highlights is required).
+        structure["sections"]["technical_skills"]["enabled"] = False
+        return structure
+
+    def test_catalog_from_table_current_when_blob_empty(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as candidate_mod
+
+        table = self._table_structure()
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate_current",
+            lambda cid, key: table
+            if cid == "c1680" and key == "candidate.artifacts.resume_structure"
+            else None,
+        )
+        # Empty/missing library blob — table current must still drive catalog.
+        # Deep-copy artifacts so hydrate's shallow working copy cannot mutate the caller.
+        cd = {"artifacts": {}}
+        job = {"astral_job_id": "job-1680", "job_data": {"job_description": "jd"}}
+        ctx = consult_mod.build_job_token_context(job, cd, candidate_id="c1680")
+        assert "professional_summary: Table Summary" in ctx["RESUME_SECTION_CATALOG"]
+        assert "technical_skills:" not in ctx["RESUME_SECTION_CATALOG"]
+
+    def test_without_candidate_id_skips_hydrate_uses_blob_or_default(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as candidate_mod
+
+        spy = MagicMock(wraps=candidate_mod.hydrate_operative_resume_structure_for_response)
+        monkeypatch.setattr(
+            candidate_mod, "hydrate_operative_resume_structure_for_response", spy
+        )
+        structure = candidate_mod.default_resume_structure()
+        structure["sections"]["professional_summary"]["title"] = "Blob Summary"
+        cd = {"artifacts": {"resume_structure": structure}}
+        job = {"astral_job_id": "job-1680b", "job_data": {"job_description": "jd"}}
+        ctx = consult_mod.build_job_token_context(job, cd)
+        spy.assert_not_called()
+        assert "professional_summary: Blob Summary" in ctx["RESUME_SECTION_CATALOG"]
+
+    def test_resume_section_catalog_token_stays_special_case(self) -> None:
+        assert cfg.TOKEN_SOURCES.get("RESUME_SECTION_CATALOG", {}).get("source_type") == (
+            "special_case"
+        )
+
