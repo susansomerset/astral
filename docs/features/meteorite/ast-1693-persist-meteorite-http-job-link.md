@@ -168,3 +168,64 @@ context_tokens≈42000
 | 3 | `71f33b85` | land READY+BOT_BLOCKED; contentful land; notify skips contentful |
 
 **Betty note:** land/qualify bot-blocked `job_link` contracts deferred to qa-child (engineer test-tree ban).
+
+## Radia review
+
+**Ticket:** AST-1693  
+**Publish ref:** `38b4f96761dea922b7e161e80950a749ffdc957d` (`origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link`)  
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+| stat.logging.warning | A | | |
+
+## Column diff vs plan stage
+
+| id | Joan (plan) | Radia (code) | note |
+|----|-------------|--------------|------|
+| stat.logging.info.entity | B | A | Implementer passes captured `from_state` into `_meteorite_state_info` (`from_state=from_state or "READY"`) — Joan’s plan-stage gap closed |
+
+All other ids aligned (Joan A/A/A/A).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — `LANDED.prior_states` registry honesty deferred
+
+**Location:** `src/core/meteorite.py` — `run_land_meteorite` BOT_BLOCKED→LANDED path  
+**Finding:** Plan explicitly scopes `config.py` out and documents one-hop `update_meteorite(..., state="LANDED")` without widening `LANDED.prior_states`. Rationale is recorded in the issue doc.  
+**Recommendation:** Follow-up only if Archie widens Scope to `config.py`; not blocking this child.
+
+### discuss — sibling test/doc nodes on publish ref via `merge-tests`
+
+**Location:** Diff includes `docs/features/meteorite/ast-1694-…`, `test_api_jobs_ast1694_listing_href.py`, AST-1691 `test_api_jobs.py` nodes, `test_meteorites.py` AST-1689/1691 classes, etc.  
+**Finding:** Product `src/**` changes on this ref are confined to `consult.py`, `meteorite.py`, `tracker.py` — correct AST-1693 scope. `merge-tests` folded sibling bible/test commits onto the sub tip. Betty’s AST-1693 manifest is correctly narrow (meteorite/tracker/consult nodes in `docs/test-bible/core/meteorite.md`), so **Tests Passed** is consistent. Full-module runs of merged sibling test files may fail until those siblings’ product code lands on the same ref.  
+**Recommendation:** Chuckles/downstream: keep AST-1693 manifest narrow at merge to `ftr`; reconcile sibling test nodes when siblings merge.
+
+## What's solid
+
+- **Stage 1 (tracker):** `persist_http_job_link` — http(s)-only, no `initialize_job`, non-http no-op. `save_meteorite_job` duplicate-skip backfills empty `job_link` only; never clobbers populated link; returns refreshed row.
+- **Stage 2 (consult):** Bot branch calls `tracker.persist_http_job_link(aid, job_link)` after `_warn_job`, before `_transition_job_state_for_task`; `initialize_job` not called on bot path. Existing bot debug line includes `link=%r`.
+- **Stage 3 (meteorite):** `claim_meteorite_batch` with `states=["READY", "BOT_BLOCKED"]`; contentful BOT_BLOCKED lands with http `job_link`; empty BOT_BLOCKED `continue` without ERROR/fail inflation; notify skips contentful rows (no DM, state unchanged). `finally: clear_meteorite_batch` preserved.
+- **Batch pattern:** Claim → `get_meteorite_batch(batch_id)` → process → `clear_meteorite_batch` in `finally`; no re-query bypass.
+- **Entity info:** `_meteorite_state_info(row_id, "LANDED", from_state=from_state or "READY")` — BOT_BLOCKED→LANDED logs correct transition.
+- **Logging:** Only new `logger.debug` lines (land skip, notify skip); no new `logger.info`; per-row `logger.exception` unchanged; `_warn_job` / `_row_miss` on soft misses.
+- **Tests:** Manifest coverage for land contentful/empty, notify skip, `persist_http_job_link`, duplicate backfill/no-clobber, qualify bot `persist_http_job_link` call — matches plan stages and AC1–AC3.
+- **Estimate footprint:** Confirmed 5 — three core files, focused behavioral change, proportionate test surface.
+
+## Recommended actions (downstream only — not executed here)
+
+1. Chuckles: append artifact to issue doc, push `docs(AST-1693): Radia review — clean`, post slim upshot, move to **Review Posted**.
+2. At `ftr` merge: watch for sibling test nodes merged ahead of product (discuss item above).
+
+context_tokens≈42000
