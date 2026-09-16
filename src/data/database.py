@@ -8216,10 +8216,10 @@ def get_due_tasks() -> List[Dict[str, Any]]:
     return due
 
 
-def count_company_new_without_website(candidate_id: str) -> int:
-    """Unclaimed NEW companies with empty company_website (Phase 2 inflow_resolve_website).
+def count_company_discovered_without_website(candidate_id: str) -> int:
+    """Unclaimed DISCOVERED companies with empty company_website (inflow_resolve_website).
 
-    Excludes discovery-path rows that carry inflow_discovery_blurb (AST-776 vet dispatch)."""
+    Excludes discovery-path rows that carry inflow_discovery_blurb (AST-776 vet partition)."""
     if not candidate_id or not str(candidate_id).strip():
         return 0
 
@@ -8229,7 +8229,7 @@ def count_company_new_without_website(candidate_id: str) -> int:
             _ensure_company_schema(conn)
             row = conn.execute(
                 """SELECT COUNT(*) FROM company
-                   WHERE state = 'NEW' AND candidate_id = ?
+                   WHERE state = 'DISCOVERED' AND candidate_id = ?
                      AND (batch_id IS NULL OR batch_id = '')
                      AND (company_website IS NULL OR TRIM(company_website) = '')
                      AND (
@@ -8245,8 +8245,8 @@ def count_company_new_without_website(candidate_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
-def count_company_new_pending_inflow_vet(candidate_id: str) -> int:
-    """Unclaimed NEW companies with discovery blurb pending vet_inflow_discovery (AST-776)."""
+def count_company_discovered_pending_inflow_vet(candidate_id: str) -> int:
+    """Unclaimed DISCOVERED companies with discovery blurb pending vet_inflow_discovery."""
     if not candidate_id or not str(candidate_id).strip():
         return 0
 
@@ -8256,7 +8256,7 @@ def count_company_new_pending_inflow_vet(candidate_id: str) -> int:
             _ensure_company_schema(conn)
             row = conn.execute(
                 """SELECT COUNT(*) FROM company
-                   WHERE state = 'NEW' AND candidate_id = ?
+                   WHERE state = 'DISCOVERED' AND candidate_id = ?
                      AND (batch_id IS NULL OR batch_id = '')
                      AND (company_website IS NULL OR TRIM(company_website) = '')
                      AND json_extract(company_data, '$.inflow_discovery_blurb') IS NOT NULL
@@ -8392,9 +8392,9 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
         return count_candidates_unclaimed_in_states(claim_states, candidate_id=candidate_id)
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
-            return count_company_new_pending_inflow_vet(candidate_id)
+            return count_company_discovered_pending_inflow_vet(candidate_id)
         if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
-            return count_company_new_without_website(candidate_id)
+            return count_company_discovered_without_website(candidate_id)
         if (task_key or "").strip() == "fetch_website":
             return count_companies_eligible_for_fetch_website(candidate_id, claim_states)
         floor_raw = task.get("score_floor")

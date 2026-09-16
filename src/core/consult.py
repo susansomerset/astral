@@ -2675,6 +2675,32 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
+        from src.utils.config import INFLOW_CONFIG
+        if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
+            # Align with run_company_task terminal_ok: NO_WEBSITE is a completed terminal.
+            resolve_terminal_ok = (
+                INFLOW_CONFIG["resolve"]["pass_state"],
+                INFLOW_CONFIG["resolve"]["fail_state"],
+                "WEBSITE_FOUND",
+            )
+            passed = failed = errors = 0
+            for entity in entities:
+                r = await roster.resolve_company_website(
+                    entity.get("short_name", ""), entity, ctx=ctx, debug=debug,
+                )
+                if r.get("error"):
+                    errors += 1
+                elif r.get("state") in resolve_terminal_ok:
+                    passed += 1
+                else:
+                    failed += 1
+            total = len(entities)
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+            }
         if task_key in ("prefilter", "prefilter_company"):
             r = await roster.prefilter_company_batch(batch_id, entities, ctx=ctx, debug=debug)
             total = r.get("total", len(entities))
