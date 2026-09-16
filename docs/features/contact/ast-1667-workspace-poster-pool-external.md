@@ -164,3 +164,61 @@ context_tokens≈32000
 
 **Betty note:** component coverage for poster pool (history/replies authors, soft-skip, bots/deleted filter, gate) deferred to qa-child.
 
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1667
+**Publish ref:** `2a813ef9c003d7452687df8bfe19b939446bc0dd` (`origin/sub/AST-1636/AST-1667-workspace-poster-pool-external`)
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+- `stat.logging.debug`: Joan **B** → Radia **A** — build logs full `out` on outer `Response from list_workspace_posters` (Joan’s callee-out note addressed).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — Branch diff carries sibling test/bible union
+**Location:** `merge-tests(AST-1667)` tip vs `origin/dev`
+**Finding:** Three-dot diff includes AST-1659/AST-1662 candidate/API test suites and bible sections from `origin/tests` union, not AST-1667 product work. **Product `src/` footprint is clean** — only `src/external/slack.py` changed.
+**Recommendation:** Note in issue doc for downstream; no product fix required. Expected Betty merge-tests workflow.
+
+### advisory — Bible shasum placeholder
+**Location:** `docs/test-bible/external/slack.md` § AST-1667
+**Finding:** Publish-tip bible entry still shows `*(filled after publish)*` while Linear manifest cites `5fba8ad2…`.
+**Recommendation:** Chuckles/test-child housekeeping on doc pushback — not a canon or plan blocker.
+
+## What's solid
+
+- `list_workspace_posters()` matches Stage 1 plan: `conversations.list` → history/replies message authors → `users.list` enrichment; bots/deleted dropped; sorted stable output; `require_controlled_external_io` gate; soft-skip set matches plan; hard `ok:false` raises without logging.
+- No `conversations.members`; lurker in `users.list` who never posted correctly excluded (AC 9).
+- `TestAst1667WorkspacePosterPool` covers gate, author pool + thread replies, soft-skip, bots/deleted filter, and hard-failure raises — aligns with Betty manifest and bible intent.
+- `stat.logging.error`: raises propagate; no `logger.exception` / log-and-re-raise in new external helpers; soft-skips stay at `debug`.
+- Estimate 3 fits the single-file external helper + focused component suite.
+
+## Recommended actions (Chuckles downstream — not Radia lane)
+
+- Append this artifact to `docs/features/contact/ast-1667-workspace-poster-pool-external.md`, commit `docs(AST-1667): Radia review — clean`, push sub ref.
+- Post slim upshot via `linear_proxy --as radia save-comment`; move **Review Posted** → **User Testing** (PROCEED, no fix-now items).
+
+---
+
+**Slim Linear upshot (Chuckles posts):**
+
+```
+[code-rubric] PROCEED (Commit: 2a813ef9) poster pool clean
+```
+
+context_tokens≈52000
+
