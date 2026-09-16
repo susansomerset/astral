@@ -127,3 +127,74 @@ context_tokens≈28000
 **Publish ref:** `sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites`
 **Build tip:** `4dccbcbb03751d6234b993fe51412f5942a21cb0`
 **Status:** Code Complete pending Betty
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1690
+**Publish ref:** 43652226c0e9afd1b3c03ba7c303384d4ddb871a
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.entity | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+- `stat.logging.debug` — Joan **C/1** (plan omitted callee-out on orphan `get_job`); code **A** (`logger.debug("Response from get_job: %s", job_row)` on every non-blank `jid` path, including `None`)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Severity:** advisory  
+- **Location:** `origin/sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites` tip composition (`067646aa`, `merge-tests` `43652226`)  
+- **Finding:** Publish tip carries sibling scope beyond AST-1690’s plan gate: `get_meteorite_by_astral_job_id` in `src/data/database.py` (AST-1691), AST-1688 prompt/config tests + fixture, AST-1693 bible block. AST-1690 retention code uses `get_job` only; the helper is unused here.  
+- **Recommendation:** No product fix for AST-1690. Chuckles/merge-child can treat as epic worktree hygiene; bible § AST-1690 correctly documents “no database.py on this child” for the retention skip itself.
+
+- **Severity:** advisory  
+- **Location:** `src/core/meteorite.py` — `_meteorite_state_info(..., "retention_kept", from_state="LANDED")`  
+- **Finding:** `retention_kept` is a retention-outcome pseudo-state (same pattern as existing `purged`), not a DB state transition. Consistent with Joan’s plan acceptable note.  
+- **Recommendation:** None.
+
+## Notes
+
+- **Canon Scope:** `astral.standards.in-scope-only` plainly governs branch composition but is **not** on the frozen list (Joan flagged at plan). Not scored; no compliant-path failure for the three frozen logging statutes. AST-1690 product change stays inside `src/core/meteorite.py` as planned.
+- **Plan fidelity:** Stage 1 partition loop, `get_job` filter, entity info on skip, purge accounting, and no new try/except match the approved plan and AC7–AC9. Tests `TestAst1690RetentionJobLinkedSkip` cover keep / orphan / blank / mixed; manifest aligns with `docs/test-bible/core/meteorite.md` § AST-1690.
+- **Estimate footprint:** Confirm estimate **2** still fits AST-1690’s own commits (~41 lines product + ~89 lines tests); tip bloat is merge-tests sibling content, not retention scope creep.
+- **Database (merge artifact):** `get_meteorite_by_astral_job_id` — one `?`, one bind `(jid,)`; header inventory line updated. AST-1691-owned; SQL shape OK if reviewed on that ticket.
+
+## What's solid
+
+- Retention skip logic is minimal and correct: non-blank `astral_job_id` + live job → keep; null/blank/orphan → purge-eligible.
+- Debug joints follow `stat.logging.debug`: filter loop begin/end, Calling/Response for every `get_job` invocation, nested purge loop begin/end.
+- Component tests map cleanly to AC7/AC8 and preserve AST-1562 regression shell.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+- Append this artifact to `docs/features/interface/ast-1690-retention-skip-for-job-linked-meteorites.md` under `## Review`.
+- Commit + push `docs(AST-1690): Radia review — clean` on `origin/sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites`.
+- Post slim upshot via `linear_proxy.py --as radia save-comment`.
+- Move AST-1690 → **Review Posted**; datt **§3h** → **User Testing** (PROCEED, no fix-now).
+
+context_tokens≈52000
+
+---
+
