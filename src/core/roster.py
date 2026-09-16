@@ -750,6 +750,106 @@ async def resolve_company_website(
     return {"success": True, "state": cfg["pass_state"], "error": None}
 
 
+async def resolve_website_company(
+    short_name: str,
+    entity: Dict[str, Any],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """resolve_website AI apply — load persisted CSE hits → find_company_website → WEBSITE_FOUND | NO_WEBSITE."""
+    hit_key = INFLOW_CONFIG["resolve"]["hit_list_data_key"]
+    sa_cfg = TASK_CONFIG["resolve_website"]
+    agent_task_key = sa_cfg["agent_task"]  # find_company_website — agent identity, not SA key
+    pass_state = sa_cfg["pass_state"]
+    fail_state = sa_cfg["fail_state"]
+    log = logger
+    log.set_debug_flag(debug)
+
+    hits = (entity.get("company_data") or {}).get(hit_key)
+    if not isinstance(hits, list) or not hits:
+        logger.warning("[%s] resolve_website_company: missing or empty %s", short_name, hit_key)
+        return {"success": False, "state": None, "error": f"missing or empty {hit_key}"}
+
+    # Same live_content shape as pre-split resolve: row 0 = slug; hits 1..N (1-based).
+    lines = [f"0|{short_name}|"]
+    for i, hit in enumerate(hits):
+        snip = (hit.get("snippet") or "")[:500]
+        lines.append(f"{i + 1}|{hit.get('title', '')}|{hit.get('url', '')}|{snip}")
+    live_content = "\n".join(lines)
+
+    if debug:
+        log.debug_index(
+            func="roster.resolve_website_company",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"vet {agent_task_key} {len(hits)} hit(s)",
+        )
+        log.debug_detail_block(live_content)
+
+    api_result = await do_task(
+        task_key=agent_task_key,
+        live_content=live_content,
+        index=short_name,
+        ctx=ctx,
+        debug=debug,
+    )
+    if not api_result.get("success"):
+        if debug:
+            log.debug_index(
+                func="roster.resolve_website_company",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="find_company_website task failed",
+            )
+            log.debug_detail(f"error={api_result.get('error')!r}")
+        return {"success": False, "state": None, "error": api_result.get("error") or "task failed"}
+
+    parsed = api_result.get("parsed_response") or {}
+    website = (parsed.get("website") or "").strip()
+    if not parsed.get("task_success") or not website:
+        if debug:
+            log.debug_index(
+                func="roster.resolve_website_company",
+                index=1,
+                total=1,
+                identifier=short_name,
+                outcome="NO_WEBSITE — task_success false or empty website",
+            )
+            log.debug_detail(
+                f"task_success={parsed.get('task_success')!r} website={website!r}"
+            )
+        transition_company_state(short_name, fail_state)
+        logger.info(
+            "%s | company %s: %s (batch: %s)",
+            short_name,
+            "resolve_website",
+            f"-> {fail_state}",
+            (entity.get("batch_id") or "-"),
+        )
+        return {"success": True, "state": fail_state, "error": None}
+
+    update_company(short_name, company_website=website)
+    transition_company_state(short_name, pass_state)
+    logger.info(
+        "%s | company %s: %s (batch: %s)",
+        short_name,
+        "resolve_website",
+        f"website={website!r} -> {pass_state}",
+        (entity.get("batch_id") or "-"),
+    )
+    if debug:
+        log.debug_index(
+            func="roster.resolve_website_company",
+            index=1,
+            total=1,
+            identifier=short_name,
+            outcome=f"recorded WEBSITE_FOUND website={website!r}",
+        )
+    return {"success": True, "state": pass_state, "error": None}
+
+
 async def run_inflow_discovery_batch(
     candidate: Dict[str, Any],
     batch_id: str,
@@ -925,6 +1025,24 @@ async def run_company_task(
                 INFLOW_CONFIG["vet"]["fail_state"],
                 INFLOW_CONFIG["resolve"]["pass_state"],
                 INFLOW_CONFIG["resolve"]["fail_state"],
+            )
+            if r.get("state") in terminal_ok:
+                return {**zero, "total_passed": 1}
+            return {**zero, "total_failed": 1}
+
+        elif input_state == "WEBSITE_REVIEW":
+            tk = (dispatch_task_key or "").strip()
+            if tk != "resolve_website":
+                logger.warning(
+                    "run_company_task: WEBSITE_REVIEW expects resolve_website, got %s", tk
+                )
+                return {**zero, "total_errors": 1}
+            r = await resolve_website_company(short_name, entity, ctx=ctx, debug=debug)
+            if r.get("error"):
+                return {**zero, "total_errors": 1}
+            terminal_ok = (
+                TASK_CONFIG["resolve_website"]["pass_state"],
+                TASK_CONFIG["resolve_website"]["fail_state"],
             )
             if r.get("state") in terminal_ok:
                 return {**zero, "total_passed": 1}
