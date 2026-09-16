@@ -1289,7 +1289,7 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
 
 @_with_log_debug
 async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: READY → LANDED + job create (AST-1560)."""
+    """Dispatch runner: READY|BOT_BLOCKED(+content) → LANDED + job create (AST-1560 / AST-1693)."""
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
     batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
@@ -1301,13 +1301,19 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
         METEORITE_CONFIG["land_outcome_duplicate_skip"],
         METEORITE_CONFIG["land_outcome_superseded"],
     )
+    land_states = ["READY", "BOT_BLOCKED"]
 
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["land_trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, states=%s, limit=%s]",
+        batch_id, land_states, batch_size,
     )
-    claim_meteorite_batch(batch_id, cfg["land_trigger_state"], limit=batch_size)
+    claim_meteorite_batch(
+        batch_id,
+        cfg["land_trigger_state"],
+        limit=batch_size,
+        states=land_states,
+    )
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1321,7 +1327,15 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
             cid = str(row.get("candidate_id") or "")
             try:
                 content = (row.get("content") or "").strip()
+                from_state = (row.get("state") or "").strip()
                 if not content:
+                    # Empty BOT_BLOCKED stays for Estelle paste (AST-1561); READY → ERROR.
+                    if from_state == "BOT_BLOCKED":
+                        logger.debug(
+                            "land skip empty BOT_BLOCKED meteorite %s for AST-1561",
+                            row_id,
+                        )
+                        continue
                     update_meteorite(row_id, state="ERROR", error="missing content")
                     _row_miss(row_id, cid, "missing content", "This row is ERROR")
                     summary["total_failed"] += 1
@@ -1353,7 +1367,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                 if save.get("outcome") in ok_outcomes:
                     job_id = str(save.get("astral_job_id") or "")
                     update_meteorite(row_id, state="LANDED", astral_job_id=job_id)
-                    _meteorite_state_info(row_id, "LANDED", from_state="READY")
+                    _meteorite_state_info(row_id, "LANDED", from_state=from_state or "READY")
                     _entity_info(job_id, "job", save.get("outcome"), ensured["short_name"])
                     summary["total_passed"] += 1
                     continue
@@ -1407,6 +1421,14 @@ async def run_notify_meteorite_bot_blocked(
             cid = str(row.get("candidate_id") or "")
             nag_count = int(row.get("nag_count") or 0)
             try:
+                # AST-1693: contentful BOT_BLOCKED belongs to land, not Estelle DM.
+                if (row.get("content") or "").strip():
+                    logger.debug(
+                        "notify skip contentful BOT_BLOCKED meteorite %s for land",
+                        row_id,
+                    )
+                    continue
+
                 if nag_count >= nag_limit:
                     update_meteorite(
                         row_id, state="ABANDONED", error="nag limit exceeded"
