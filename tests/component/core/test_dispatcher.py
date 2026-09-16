@@ -562,7 +562,7 @@ class TestRunUnified:
         task = {
             "entity_type": "company",
             "trigger_state": "HOMEPAGE_READY",
-            "task_key": "prefilter",
+            "task_key": "prefilter_company",
             "batch_call_mode": 1,
             "batch_size": 10,
         }
