@@ -90,3 +90,42 @@ Confirm Chuckles estimate: 2 — agree
 - Parent AC7 (no backfill; legacy until re-save) → existing ContextTextPage miss path + AST-1665 hydrate (no client clear)
 - Sibling freeze / other context pages → scope gate; no sibling page edits
 - Parent AC1–5 / AC8 → N/A (AST-1664 / AST-1665)
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1666
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up` @ `0e7876182bfe0081e9d8851f55b924fd03101b8b`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Traceability
+
+AC6→S1§§1-2+verify; AC7→S1§§1-2+Files Changed — parent AC1–5/AC8 N/A (AST-1664/AST-1665); parent AC7 no-backfill via ContextTextPage miss path + AST-1665 hydrate (no client clear).
+
+## Findings
+
+### discuss
+
+- **Location:** Linear assignee at fetch
+- **Finding:** Assignee is Katherine Johnson, not Joan — validate-plan §1 expects Joan assigned before this pass.
+- **Recommendation:** Chuckles assign Joan before status flip; restore Katherine after writeback per §8. Substance review completed below.
+
+### R6 — Definition fidelity (checklist)
+
+- Single-file scope (`CandidateWritingPreferences.tsx`); explicit scope gate; build precondition on AST-1664 + AST-1665 (both satisfied on tip).
+- Correct delta vs tip: add `bodyShape="plain_text"` to mirror `CandidateStrengths.tsx` / `CandidateIdealDay.tsx`; keeps `contextKey="writing_preferences"` and existing PUT `{ context: { writing_preferences } }` contract AST-1665 intercepts.
+- UAT fitness names AC6/AC7 (parent AC6/AC9), correct outcome vs stacktrace-only fix, rejects ArtifactEditor / `ContextTextPage` edits / parallel `artifacts` payload / client catalog fetch.
+- `ContextTextPage` on tip already supports `bodyShape` empty-save gate and context-leaf PUT — plan does not over-scope.
+- Self-assessment `Confirm Chuckles estimate: 2 — agree` is defensible (thin change + hand-verify + sibling compile check).
+- Plan Discuss rounds completed: **0**.
+
+context_tokens≈62000
