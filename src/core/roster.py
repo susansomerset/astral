@@ -367,7 +367,7 @@ def record_inflow_discovery_hit(
     index: int = 0,
     search_term: str = "",
 ) -> Tuple[bool, str]:
-    """Record one CSE hit as a NEW company row with discovery blurb stored."""
+    """Record one CSE hit as a company in discovery land_state (DISCOVERED) with blurb stored."""
     url = (hit.get("url") or "").strip()
     if not url:
         return False, "skipped empty url"
@@ -391,7 +391,7 @@ def record_inflow_discovery_hit(
     term = (search_term or "").strip() or None
     save_company(
         short_name=slug,
-        state="NEW",
+        state=INFLOW_CONFIG["discovery"]["land_state"],
         company_website="",
         candidate_id=candidate_id,
         company_name=slug,
@@ -405,8 +405,8 @@ def record_inflow_discovery_hit(
         },
     )
     if term:
-        return True, f"recorded NEW slug={slug} term={term!r}"
-    return True, f"recorded NEW slug={slug}"
+        return True, f"recorded DISCOVERED slug={slug} term={term!r}"
+    return True, f"recorded DISCOVERED slug={slug}"
 
 
 def _ingest_failure_reason(
@@ -796,7 +796,7 @@ async def run_inflow_discovery_batch(
     ctx: Optional[Dict[str, Any]],
     debug: bool,
 ) -> Dict[str, Any]:
-    """Phase 1: CSE per stale table term, record deduped hits as NEW (AST-775)."""
+    """Phase 1: CSE per stale table term, record deduped hits as DISCOVERED (land_state)."""
     zero = {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     candidate_id = (candidate.get("astral_candidate_id") or candidate.get("candidate_id") or "").strip()
     cfg = INFLOW_CONFIG["discovery"]
