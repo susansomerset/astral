@@ -2827,3 +2827,35 @@ cd src/ui/frontend && npx vitest run \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+---
+
+### AST-1669 · AST-1636
+
+**Parent:** [AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown`.
+
+Manage Candidates add/edit Slack username `<select>` from `GET /api/admin/contact/unbound_slack_users`; stamps both `contact.slack_user_id` + `contact.slack_username` on save; edit prepends current bind; empty selection omits Slack keys; no Slack Web API from React. Unbound API: **`docs/test-bible/ui/api/api_contact.md`** § AST-1668. Poster pool: **`docs/test-bible/external/slack.md`** § AST-1667.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Manage Candidates page (§6c) — dropdown + bind stamp + omit-on-empty | `AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — **`AST-1669`** |
+| Unbound GET mock on existing suites | same | revised **`mockApi`** / suite mocks stub `/api/admin/contact/unbound_slack_users` |
+
+**Broken / obsolete this pass:** existing Add/Edit opens would `Unhandled api` unbound GET — revised mocks return `{ users: [] }` by default.
+
+**Integration:** none — no existing scenario asserts Manage Candidates Slack bind; do not invent.
+
+## QA test manifest
+
+1. Routed Manage Candidates Slack bind (§6c): `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — pattern **`AST-1669`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  --testNamePattern='AST-1669'
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
