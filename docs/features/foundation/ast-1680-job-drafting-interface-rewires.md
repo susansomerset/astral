@@ -136,3 +136,61 @@ context_tokens≈52000
 - Stage 2: tracker hydrate before prepare/filter resolve sites — `7dbc595ad287f583409b9af3c4ba19f1463f6526`.
 
 **Betty:** at **Code Complete** — cover table-only structure (legacy blob empty/missing) still yields non-empty `RESUME_SECTION_CATALOG` from `build_job_token_context`; `_prepare_job_resume_content` / persist filter use hydrated enabled sections; no blob-only bypass when cid known; `TOKEN_SOURCES["RESUME_SECTION_CATALOG"]` stays `special_case`.
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1680
+**Publish ref:** 44af3439cbf491c3c4d7881af4068880bcaa27be
+**Corpus:** fc0c368e59 · `patt.artifact.read-current` not in `canon_clerk` active roster (resolved from `canon/directives/draft/patt.artifact.read-current.md` + statute paths)
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.read-current | A | | |
+| astral.standards.in-scope-only | A | | |
+| astral.config.config-source-of-truth | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** `origin/dev...publish-ref` cumulative diff
+- **Finding:** Three-dot diff includes AST-1678/AST-1679 ancestor commits (`config.py`, `candidate.py`, `api_candidate.py`, etc.). AST-1680 code commits (`15123856`, `7dbc595a`) touch only `src/core/consult.py` and `src/core/tracker.py`.
+- **Recommendation:** Expected epic branch union; no AST-1680 action.
+
+- **Location:** `tests/component/core/test_tracker.py::TestAst1680JobResumeHydrateBeforeResolve`
+- **Finding:** Betty gates `_prepare_job_resume_content` and `parsed_matches_resume_content_shape`; `parsed_matches_job_resume_content`, `job_has_persisted_resume_body`, and `persist_job_artifact_from_parsed` receive the same hydrate→resolve pattern but lack dedicated AST-1680 table-only tests.
+- **Recommendation:** Acceptable for this ticket — pattern is identical and idempotent with `get_candidate` hydrate; optional hardening in a future test pass if desired (not fix-now).
+
+- **Location:** `canon/canon_clerk.py expand`
+- **Finding:** `patt.artifact.read-current` fails clerk expand; scoring used draft pattern body.
+- **Recommendation:** Infrastructure track only — out of AST-1680 scope.
+
+## What's solid
+
+- **Consult (AC7 / Stage 1):** `build_job_token_context` imports `hydrate_operative_resume_structure_for_response`, hydrates working `cd` copy when `cid` is truthy, then assembles `RESUME_SECTION_CATALOG` via existing `resolve_resume_structure` + `enabled_resume_structure_sections` loop. Caller dict not mutated beyond pre-existing shallow copy.
+- **Tracker (AC7 / Stage 2):** Hydrate→resolve at all five planned sites: `_prepare_job_resume_content` (with `cd` retargeted for `draft_job_resume_allowed_section_keys` and `artifacts` reads per Joan follow-through), `parsed_matches_resume_content_shape`, `parsed_matches_job_resume_content`, `job_has_persisted_resume_body`, `persist_job_artifact_from_parsed` resume branch.
+- **No blob-only bypass:** `TestAst1680JobDraftingHydrateCatalog::test_catalog_from_table_current_when_blob_empty` and `TestAst1680JobResumeHydrateBeforeResolve::test_prepare_uses_table_current_when_blob_empty` prove table current drives catalog/filter when library blob is empty.
+- **Legacy path preserved:** Without `candidate_id` / `_astral_candidate_id`, hydrate is skipped and blob/default resolve still works (`test_without_candidate_id_skips_hydrate_*`, `test_prepare_without_cid_skips_hydrate`).
+- **Config SoT:** `TOKEN_SOURCES["RESUME_SECTION_CATALOG"]` remains `special_case` (`test_resume_section_catalog_token_stays_special_case`); no new inline section sets or magic literals.
+- **Scope:** No edits to `candidate.py`, `config.py`, API, or React on AST-1680 commits.
+
+## Recommended actions (for Chuckles — not Radia)
+
+1. Post slim upshot and advance to **Review Posted** — operative prerequisite (AST-1679 hydrate helper) is on branch ancestor; drafting rewire slice is complete.
+2. No `resolve-child` product work indicated from canon pass.
+
+context_tokens≈35000
+```
