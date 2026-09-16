@@ -210,3 +210,12 @@ AC1→S1§3-4; AC2→S1§2-3,6; AC3→S1§7-8; AC4→S1§5 — parent AC4–9 N/
 
 context_tokens≈48000
 ```
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token` @ `427a4977097662eaed9694a9a042f920418e9e73`.
+
+**Stages delivered:**
+- Stage 1: `candidate.context.writing_preferences` catalog + `WRITING_PREFERENCES` artifact token — `427a4977097662eaed9694a9a042f920418e9e73`.
+
+**Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set + Writing Preferences metadata, context sibling freeze (`backstory` / `ideal_day` absent), `TOKEN_SOURCES["WRITING_PREFERENCES"]` artifact_key linkage, `_artifact_tokens` includes `WRITING_PREFERENCES`.
