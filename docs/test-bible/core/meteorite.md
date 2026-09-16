@@ -475,10 +475,8 @@ Classify→row map copies Ruth `electronic_contact` onto fan-out dicts; soft-fai
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Map + soft-fail + BOT_BLOCKED preserve + land fence + debug | `src/core/meteorite.py` | **`TestAst1689ElectronicContactMapPersist`** |
-| Prior scrape/land runners (still green) | same | **`TestAst1560RunScrapeMeteorite`**, **`TestAst1560RunLandMeteorite`** |
-| Prior inbox fan-out | same | **`TestAst1559CheckInbox`** |
 
-**Broken / obsolete this pass:** none — additive on AST-1559/1560 paths.
+**Broken / obsolete this pass (return):** AST-1689 manifest no longer includes **`TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring`** / **`TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich`** — those assert retired `log.info` strings (`meteorite scrape blocked` / `meteorite land id=`); live paths use `_row_miss` warning + `_meteorite_state_info` entity pipe. Not AST-1689 AC locks (Hedy `[qa-handoff]`).
 
 **Integration:** none revised; do not invent.
 
@@ -486,15 +484,11 @@ Classify→row map copies Ruth `electronic_contact` onto fan-out dicts; soft-fai
 
 1. Column: `tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn`
 2. Map/persist: `tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist`
-3. Prior scrape blocked: `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring`
-4. Prior land: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn \
   tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist \
-  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring \
-  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich \
   -q
 ```
 
