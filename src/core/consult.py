@@ -45,7 +45,6 @@ from src.utils.config import (
     STAGE_METEORITE_CONFIG,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
-    dispatch_row_task_key,
     effective_dispatch_score_floor,
     grade_value,
     importance_multiplier,
@@ -218,7 +217,7 @@ def _dispatch_score_floor_for_task(
 ) -> float:
     """Resolve effective score_floor from the candidate's matching dispatch_task row."""
     cid = (candidate_id or "").strip()
-    dispatch_tk = dispatch_row_task_key((task_key or "").strip())
+    dispatch_tk = (task_key or "").strip()
     if not cid or not dispatch_tk:
         return effective_dispatch_score_floor(None)
     ts = (trigger_state or "").strip() or None
@@ -2675,7 +2674,7 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
-        if task_key in ("prefilter", "prefilter_company"):
+        if task_key == "prefilter_company":
             r = await roster.prefilter_company_batch(batch_id, entities, ctx=ctx, debug=debug)
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)

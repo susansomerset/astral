@@ -21,6 +21,8 @@ Bio summary (candidate.context.bio_summary) uses the same operative save +
 get_candidate_current hydrate path (AST-1649).
 Ideal Day (candidate.context.ideal_day) uses the same operative save +
 get_candidate_current hydrate path (AST-1659).
+Backstory (candidate.context.backstory) uses the same operative save +
+get_candidate_current hydrate path (AST-1662).
 Writing Preferences (candidate.context.writing_preferences) uses the same
 operative save + get_candidate_current hydrate path (AST-1665).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
@@ -853,6 +855,14 @@ def save_candidate_data(
                 new_uuid,
                 "-",
             )
+        elif artifact_key == _BACKSTORY_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "backstory artifact saved",
+                new_uuid,
+                "-",
+            )
         elif artifact_key == _WRITING_PREFERENCES_ARTIFACT_KEY:
             logger.info(
                 "%s | candidate %s: %s (batch: %s)",
@@ -1567,8 +1577,9 @@ def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> N
 _STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
 _BIO_SUMMARY_ARTIFACT_KEY = "candidate.context.bio_summary"
 _IDEAL_DAY_ARTIFACT_KEY = "candidate.context.ideal_day"
+_BACKSTORY_ARTIFACT_KEY = "candidate.context.backstory"
 _WRITING_PREFERENCES_ARTIFACT_KEY = "candidate.context.writing_preferences"
-# Catalog-owned context leaves — never durable library-merge SoT (AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1665).
+# Catalog-owned context leaves — never durable library-merge SoT (AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1662 / AST-1665).
 _CONTEXT_OPERATIVE_LEAVES = frozenset(
     {
         "strengths",
@@ -1576,6 +1587,7 @@ _CONTEXT_OPERATIVE_LEAVES = frozenset(
         "priorities",
         "deal_breakers",
         "ideal_day",
+        "backstory",
         "writing_preferences",
     }
 )
@@ -1683,6 +1695,26 @@ def hydrate_operative_ideal_day_for_response(candidate_id: str, cd: dict) -> Non
         ctx = {}
         cd["context"] = ctx
     ctx["ideal_day"] = body
+
+
+def hydrate_operative_backstory_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Backstory into candidate_data.context (display only).
+
+    Miss → leave legacy context.backstory blob untouched (parent AC6 / ticket AC6 migration window).
+    Hit → write current string onto context.backstory for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _BACKSTORY_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["backstory"] = body
 
 
 def hydrate_operative_writing_preferences_for_response(candidate_id: str, cd: dict) -> None:
@@ -1800,6 +1832,7 @@ def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
     hydrate_operative_deal_breakers_for_response(candidate_id, cd)
     hydrate_operative_bio_summary_for_response(candidate_id, cd)
     hydrate_operative_ideal_day_for_response(candidate_id, cd)
+    hydrate_operative_backstory_for_response(candidate_id, cd)
     hydrate_operative_writing_preferences_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return candidate

@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1664)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -1798,6 +1798,9 @@ CONTACT_CONFIG = {
     "non_production_reply_prefix_template": "[{environment}] ",
     # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
     "hear_ack_reply_text": "Heard you — Estelle is listening.",
+    # AST-1668: recognition replies after resolve (known bind vs unbound Slack user).
+    "known_recognition_reply_text": "I know who that is",
+    "unknown_recognition_reply_text": "I don't recognize you",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
@@ -1857,6 +1860,8 @@ assert isinstance(CONTACT_CONFIG["debug_state_filename"], str) and CONTACT_CONFI
 assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["known_recognition_reply_text"], str) and CONTACT_CONFIG["known_recognition_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
@@ -3384,13 +3389,13 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
+    "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
     "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
+    "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
 })
 
@@ -3399,29 +3404,8 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
     return (task_key or "").strip()
 
 
-def dispatch_task_grouping_catalog_key(task_key: str) -> str:
-    """Agent_task row key for admin grouping metadata when dispatch key differs from consult key."""
-    tk = (task_key or "").strip()
-    if tk == "prefilter":
-        return ROSTER_CONFIG["prefilter"]["task_key"]
-    return tk
-
-
-def dispatch_row_task_key(task_key: str) -> str:
-    """Map consult/catalog task_key to dispatch_task.task_key when they differ.
-
-    ROSTER_CONFIG['prefilter']['task_key'] (`prefilter_company`) and the bare
-    dispatch key `prefilter` both resolve to `prefilter` (AST-823 migrated rows).
-    All other keys (including meteorite_grade_* aliases) are identity.
-    """
-    tk = (task_key or "").strip()
-    if tk == "prefilter" or tk == ROSTER_CONFIG["prefilter"]["task_key"]:
-        return "prefilter"
-    return tk
-
-
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
-    if task_key == "prefilter":
+    if task_key == "prefilter_company":
         return ROSTER_CONFIG["prefilter"]["input_state"]
     if task_key == "parse_job_list":
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
@@ -3491,7 +3475,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 
 
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
-    if task_key == "prefilter" or task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
+    if task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
     if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"
@@ -5743,6 +5727,14 @@ ARTIFACT_CONFIG = {
         # Candidate owns first-row ingestion for Bio Summary (UI/API operative save — sibling AST-1649).
         "ingestion_owner": "candidate",
     },
+    "candidate.context.backstory": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Backstory (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
     "candidate.context.ideal_day": {
         "entity_type": "candidate",
         "candidate_scoped": True,
@@ -5769,6 +5761,7 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.context.priorities",
     "candidate.context.deal_breakers",
     "candidate.context.bio_summary",
+    "candidate.context.backstory",
     "candidate.context.ideal_day",
     "candidate.context.writing_preferences",
 }
@@ -5785,11 +5778,10 @@ for _sibling in (
 ):
     assert _sibling not in ARTIFACT_CONFIG
 
-# Sibling context leaves stay out of the catalog until their own epics (parent AC8 / AST-1664).
-# Writing Preferences registered above — no longer asserted absent.
-# Priorities / Deal Breakers / Bio Summary registered by their own epics — not in this loop.
+# Sibling context leaves stay out of the catalog until their own epics.
+# Backstory + Ideal Day registered above — no longer asserted absent.
+# priorities / deal_breakers / bio_summary already registered by prior epics — do not re-freeze them.
 for _ctx_sibling in (
-    "candidate.context.backstory",
 ):
     assert _ctx_sibling not in ARTIFACT_CONFIG
 
@@ -5898,22 +5890,21 @@ assert set(_bs.keys()) == {
     "ingestion_owner",
 }
 
-_id = ARTIFACT_CONFIG["candidate.context.ideal_day"]
-assert _id["entity_type"] == "candidate"
-assert _id["entity_type"] in ENTITY_TYPES
-assert _id["candidate_scoped"] is True
-assert isinstance(_id["candidate_scoped"], bool)
-assert _id["body_shape"] == "plain_text"
-assert _id["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+_bk = ARTIFACT_CONFIG["candidate.context.backstory"]
+assert _bk["entity_type"] == "candidate"
+assert _bk["entity_type"] in ENTITY_TYPES
+assert _bk["candidate_scoped"] is True
+assert isinstance(_bk["candidate_scoped"], bool)
+assert _bk["body_shape"] == "plain_text"
+assert _bk["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
-assert _id["ingestion_owner"] == "candidate"
-assert set(_id.keys()) == {
+assert _bk["ingestion_owner"] == "candidate"
+assert set(_bk.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
     "ingestion_owner",
 }
-
 _wp = ARTIFACT_CONFIG["candidate.context.writing_preferences"]
 assert _wp["entity_type"] == "candidate"
 assert _wp["entity_type"] in ENTITY_TYPES
@@ -5924,6 +5915,22 @@ assert _wp["body_shape"] in BUILD_CONFIG["artifact_shapes"]
 assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
 assert _wp["ingestion_owner"] == "candidate"
 assert set(_wp.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_id = ARTIFACT_CONFIG["candidate.context.ideal_day"]
+assert _id["entity_type"] == "candidate"
+assert _id["entity_type"] in ENTITY_TYPES
+assert _id["candidate_scoped"] is True
+assert isinstance(_id["candidate_scoped"], bool)
+assert _id["body_shape"] == "plain_text"
+assert _id["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _id["ingestion_owner"] == "candidate"
+assert set(_id.keys()) == {
     "entity_type",
     "candidate_scoped",
     "body_shape",
@@ -6438,7 +6445,12 @@ TOKEN_SOURCES = {
         "source_type": "artifact",
         "artifact_key": "candidate.context.deal_breakers",
     },
-    "BACKSTORY":            {"source": "candidate", "path": "context.backstory", "source_type": "data_field"},
+    "BACKSTORY": {
+        "source": "candidate",
+        "path": "context.backstory",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.backstory",
+    },
     "IDEAL_DAY": {
         "source": "candidate",
         "path": "context.ideal_day",
@@ -6542,10 +6554,12 @@ assert TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "artifact"
 assert TOKEN_SOURCES["DEAL_BREAKERS"]["artifact_key"] == "candidate.context.deal_breakers"
 assert TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
 assert TOKEN_SOURCES["BIO_SUMMARY"]["artifact_key"] == "candidate.context.bio_summary"
-assert TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
-assert TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"] == "candidate.context.ideal_day"
+assert TOKEN_SOURCES["BACKSTORY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["BACKSTORY"]["artifact_key"] == "candidate.context.backstory"
 assert TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
 assert TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"] == "candidate.context.writing_preferences"
+assert TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"] == "candidate.context.ideal_day"
 _artifact_tokens = {
     name for name, spec in TOKEN_SOURCES.items() if spec["source_type"] == "artifact"
 }
@@ -6555,7 +6569,9 @@ assert _artifact_tokens == {
     "PRIORITIES",
     "DEAL_BREAKERS",
     "BIO_SUMMARY",
+    "BACKSTORY",
     "IDEAL_DAY",
+    "BACKSTORY",
     "WRITING_PREFERENCES",
 }
 

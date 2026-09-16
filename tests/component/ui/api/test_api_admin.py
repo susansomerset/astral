@@ -553,7 +553,7 @@ class TestAst739DispatchTaskKeysGrouping:
         assert keys["orphan_only"]["task_name"] == ""
 
 
-# AST-825: prefilter dispatch key resolves grouping via prefilter_company agent_task catalog.
+# AST-1675 / AST-825: lasting catalog key prefilter_company carries agent_task grouping meta.
 class TestAst825PrefilterDispatchTaskKeysGrouping:
     def test_dispatch_task_keys_prefilter_grouping_from_prefilter_company_catalog(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
@@ -572,13 +572,14 @@ class TestAst825PrefilterDispatchTaskKeysGrouping:
             else None,
         )
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
-        pf = keys["prefilter"]
+        pf = keys["prefilter_company"]
         assert pf["task_group_name"] == "Company Roster"
         assert pf["task_group_order"] == "3000"
         assert pf["task_seq"] == 5.0
         assert pf["task_name"] == "Prefilter Company"
         assert pf["entity_type"] == "company"
         assert pf["trigger_state"] == "HOMEPAGE_READY"
+        assert "prefilter" not in keys
 
 
 # AST-749: retired consult_* absent from task_keys even when list_dispatch_tasks returns legacy rows.
@@ -1356,7 +1357,7 @@ class TestAdhocHelpers:
 
     def test_build_adhoc_live_content_company_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: {"entity_type": "company"})
-        assert admin_mod._build_adhoc_live_content("prefilter", "missing") == ""
+        assert admin_mod._build_adhoc_live_content("prefilter_company", "missing") == ""
         monkeypatch.setattr(
             admin_mod.database,
             "get_company",
@@ -1369,7 +1370,7 @@ class TestAdhocHelpers:
                 }
             },
         )
-        assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter", "acme")
+        assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter_company", "acme")
         # locate + select share nav_links preview; parse uses job_page_dom (AST-721).
         locate_s = admin_mod._build_adhoc_live_content("locate_job_page", "acme")
         sel_s = admin_mod._build_adhoc_live_content("select_job_page", "acme")
@@ -1808,13 +1809,13 @@ class TestApiAdminBranchGaps:
             "get_company",
             lambda short_name: {"company_data": {"homepage_text": "", "website_content": "", "nav_links": []}},
         )
-        assert admin_mod._build_adhoc_live_content("prefilter", "acme") == ""
+        assert admin_mod._build_adhoc_live_content("prefilter_company", "acme") == ""
         monkeypatch.setattr(
             admin_mod.database,
             "get_company",
             lambda short_name: {"company_data": {"homepage_text": "home", "nav_links": ["a"]}},
         )
-        assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter", "acme")
+        assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter_company", "acme")
         assert admin_mod._build_adhoc_live_content("select_job_page", "acme") != ""
         monkeypatch.setattr(
             admin_mod.database,
@@ -1830,7 +1831,8 @@ class TestApiAdminBranchGaps:
         )
         monkeypatch.setattr(admin_mod.database, "get_company", lambda short_name: {"job_site": "site"})
         assert admin_mod._build_adhoc_live_content("qualify_job_listings", "", ["j1"]) != ""
-        assert admin_mod._build_adhoc_live_content("validate_title", "", ["j1"]) == ""
+        # Retired validate_title has no dedicated live-content branch — single-entity JD/raw path.
+        assert "raw" in admin_mod._build_adhoc_live_content("validate_title", "j1")
         monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
         assert admin_mod._build_adhoc_live_content("qualify_job_listings", "", ["missing"]) == ""
         monkeypatch.setitem(admin_mod.TASK_CONFIG, "evaluate_jd", {**admin_mod.TASK_CONFIG["evaluate_jd"], "requires_company": True})
@@ -2897,12 +2899,13 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         assert keys["fetch_jd"]["entity_type"] == "job"
         assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
 
-    def test_mailbox_trigger_null_only_and_unsupported_craft_wording(self) -> None:
+    def test_mailbox_trigger_null_or_candidate_state_and_unsupported_craft_wording(self) -> None:
         for tk in ("parse_meteorite_email", "meteorite_email"):
             assert admin_mod._dispatch_task_key_trigger_error(tk, None) is None
             assert admin_mod._dispatch_task_key_trigger_error(tk, "") is None
-            bad = admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH")
-            assert bad is not None and "mailbox poller" in bad
+            assert admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH") is None
+            bad = admin_mod._dispatch_task_key_trigger_error(tk, "METEORITE_NEW")
+            assert bad is not None and "not valid" in bad
         # Registered TASK_CONFIG without entity helper → unsupported, not Unknown.
         craft_err = admin_mod._dispatch_task_key_trigger_error("craft_do_rubric", "NEW")
         assert craft_err is not None and "unsupported entity_type" in craft_err

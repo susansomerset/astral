@@ -638,10 +638,11 @@ class TestAst471DispatchConfigHelpers:
         assert cfg.resolve_dispatch_task_config_key("grade_do") == "grade_do"
         assert cfg.resolve_dispatch_task_config_key("  grade_like  ") == "grade_like"
 
-    def test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company(self) -> None:
-        assert cfg.dispatch_task_grouping_catalog_key("prefilter") == "prefilter_company"
-        assert cfg.dispatch_task_grouping_catalog_key("fetch_website") == "fetch_website"
-        assert cfg.dispatch_task_grouping_catalog_key("  prefilter  ") == "prefilter_company"
+    def test_dispatch_dual_key_shims_removed(self) -> None:
+        # AST-1675: dual-key shims deleted — lasting catalog identity is prefilter_company.
+        assert not hasattr(cfg, "dispatch_task_grouping_catalog_key")
+        assert not hasattr(cfg, "dispatch_row_task_key")
+        assert not hasattr(cfg, "alias_company_prefilter_catalog_key")
 
     def test_retired_consult_dispatch_keys_rejected(self) -> None:
         assert cfg.dispatch_task_key_retired_message("consult_do") == (
@@ -1065,11 +1066,20 @@ class TestAst1277ScoreFloorHelpers:
         assert cfg.effective_dispatch_score_floor(0.0) == 0.0
         assert cfg.effective_dispatch_score_floor(6) == 6.0
 
-    def test_dispatch_row_task_key_prefilter_and_identity(self) -> None:
-        assert cfg.dispatch_row_task_key("prefilter_company") == "prefilter"
-        assert cfg.dispatch_row_task_key("prefilter") == "prefilter"
-        assert cfg.dispatch_row_task_key("grade_do") == "grade_do"
-        assert cfg.dispatch_row_task_key("meteorite_grade_do") == "meteorite_grade_do"
+    def test_prefilter_company_is_lasting_catalog_identity(self) -> None:
+        # AST-1675 / AST-1277: score-floor + claim lookup use identity keys (no shim rename).
+        from src.utils.config import (
+            _dispatch_batch_call_mode_for,
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert "prefilter_company" in cfg.TASK_CONFIG
+        assert "prefilter" not in cfg.TASK_CONFIG
+        assert _dispatch_batch_call_mode_for("prefilter_company") == 1
+        assert _dispatch_trigger_state_for_task_key("prefilter_company") == "HOMEPAGE_READY"
+        assert _dispatch_entity_type_for_task_key("prefilter_company") == "company"
+        assert _dispatch_batch_call_mode_for("prefilter") == 0
 
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
 class TestAst641DispatchClaimStates:
@@ -1233,15 +1243,19 @@ class TestAst702PrefilterBatchConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: prefilter is roster runtime (not TASK_CONFIG). AST-1214: defaults via helpers.
+        # AST-1675: lasting catalog identity is prefilter_company (ROSTER_CONFIG["prefilter"] block key stays).
         assert "prefilter" not in cfg.TASK_CONFIG
-        assert _dispatch_batch_call_mode_for("prefilter") == 1
-        assert _dispatch_trigger_state_for_task_key("prefilter") == "HOMEPAGE_READY"
-        assert _dispatch_entity_type_for_task_key("prefilter") == "company"
-        d = cfg.dispatch_task_admin_defaults("prefilter")
+        assert "prefilter_company" in cfg.TASK_CONFIG
+        assert _dispatch_batch_call_mode_for("prefilter_company") == 1
+        assert _dispatch_trigger_state_for_task_key("prefilter_company") == "HOMEPAGE_READY"
+        assert _dispatch_entity_type_for_task_key("prefilter_company") == "company"
+        d = cfg.dispatch_task_admin_defaults("prefilter_company")
         assert d["entity_type"] == "company"
         assert d["trigger_state"] == "HOMEPAGE_READY"
         assert d["batch_call_mode"] == 1
+        # Bare leftover catalog input is rejected after alias drop.
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("prefilter")
 
 
 class TestAst707EmbeddedPrefilterConfig:
@@ -1534,7 +1548,9 @@ class TestAst505InflowDiscoveryConfig:
         assert d["dispatch_trigger_state"] == "ACTIVE_SEARCH"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
-        assert d["vet_dispatch_trigger_state"] == "NEW"
+        # AST-1672: land + vet claim cut over to DISCOVERED (not NEW).
+        assert d["vet_dispatch_trigger_state"] == "DISCOVERED"
+        assert d["land_state"] == "DISCOVERED"
 
     def test_vet_inflow_discovery_task(self) -> None:
         entry = cfg.TASK_CONFIG["vet_inflow_discovery"]
@@ -1543,26 +1559,34 @@ class TestAst505InflowDiscoveryConfig:
         assert entry["entity_type"] == "company"
         assert entry["requires_candidate_key"] is True
         assert entry["output_type"] == "grades_encoded_vet_meta"
+        # AST-1672: schedulable trigger is DISCOVERED.
+        assert entry["trigger_state"] == "DISCOVERED"
         items = entry["response_schema"]["results"]["items_schema"]
         assert items["grade"]["type"] == "str"
         assert items["website"]["type"] == "str"
         assert "action" not in items
 
     def test_new_company_state_and_transitions(self) -> None:
+        # AST-1672: NEW stays registered for legacy rows; inflow edges moved to DISCOVERED.
         assert "NEW" in cfg.COMPANY_STATES
+        assert "DISCOVERED" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert ("NEW", "WEBSITE_FOUND") in transitions
-        assert ("NEW", "NO_WEBSITE") in transitions
+        assert ("NEW", "WEBSITE_FOUND") not in transitions
+        assert ("NEW", "NO_WEBSITE") not in transitions
+        assert ("DISCOVERED", "WEBSITE_FOUND") in transitions
+        assert ("DISCOVERED", "NO_WEBSITE") in transitions
 
     def test_vet_failed_state_and_transition(self) -> None:
         assert "VET_FAILED" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
-        assert ("NEW", "VET_FAILED") in transitions
+        # AST-1672: vet fail edge is DISCOVERED → VET_FAILED (left NEW).
+        assert ("NEW", "VET_FAILED") not in transitions
+        assert ("DISCOVERED", "VET_FAILED") in transitions
 
     def test_inflow_config_vet_literals(self) -> None:
         v = cfg.INFLOW_CONFIG["vet"]
         assert v["task_key"] == "vet_inflow_discovery"
-        assert v["dispatch_trigger_state"] == "NEW"
+        assert v["dispatch_trigger_state"] == "DISCOVERED"
         assert v["pass_state"] == "WEBSITE_FOUND"
         assert v["fail_state"] == "VET_FAILED"
         assert v["blurb_data_key"] == "inflow_discovery_blurb"
@@ -1592,21 +1616,26 @@ class TestAst505InflowDiscoveryConfig:
     def test_vet_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
         assert d["entity_type"] == "company"
-        assert d["trigger_state"] == "NEW"
+        assert d["trigger_state"] == "DISCOVERED"
         assert d["batch_call_mode"] == 1
         assert "vet_inflow_discovery" in cfg.TASK_CONFIG
 
 
 class TestAst506InflowResolveConfig:
-    """AST-506: Phase 2 website resolution, empty-website claim filter, inflow_resolve_website dispatch."""
+    """AST-506/1672: CSE-only inflow_resolve_website on DISCOVERED (no inline AI key)."""
 
     def test_inflow_config_resolve_literals(self) -> None:
         r = cfg.INFLOW_CONFIG["resolve"]
         assert r["max_results"] == 20
         assert r["date_restrict_days"] is None
-        assert r["dispatch_trigger_state"] == "NEW"
+        assert r["dispatch_trigger_state"] == "DISCOVERED"
         assert r["task_key"] == "inflow_resolve_website"
-        assert r["ai_task_key"] == "find_company_website"
+        # AST-1672: fetch hop only — AI select is resolve_website SA.
+        assert "ai_task_key" not in r
+        assert r["waiting_state"] == "WEBSITE_REVIEW"
+        assert r["pass_state"] == "WEBSITE_REVIEW"
+        assert r["fail_state"] == "NO_WEBSITE"
+        assert r["hit_list_data_key"] == "inflow_resolve_website_hits"
 
     def test_inflow_resolve_website_dispatch_admin_defaults(self) -> None:
         from src.utils.config import (
@@ -1618,11 +1647,11 @@ class TestAst506InflowResolveConfig:
         # AST-960: inflow_resolve_website is inflow runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "inflow_resolve_website" not in cfg.TASK_CONFIG
         assert _dispatch_entity_type_for_task_key("inflow_resolve_website") == "company"
-        assert _dispatch_trigger_state_for_task_key("inflow_resolve_website") == "NEW"
+        assert _dispatch_trigger_state_for_task_key("inflow_resolve_website") == "DISCOVERED"
         assert _dispatch_batch_call_mode_for("inflow_resolve_website") == 0
         d = cfg.dispatch_task_admin_defaults("inflow_resolve_website")
         assert d["entity_type"] == "company"
-        assert d["trigger_state"] == "NEW"
+        assert d["trigger_state"] == "DISCOVERED"
         assert d["batch_call_mode"] == 0
 
 
@@ -4809,8 +4838,7 @@ class TestAst1222MeteoriteAliasDispatchAndSeed:
         assert "task_key = 'meteorite_grade_get'" in sql
 
     def test_grouping_catalog_key_stays_on_alias(self) -> None:
-        assert cfg.dispatch_task_grouping_catalog_key("meteorite_grade_do") == "meteorite_grade_do"
-        assert cfg.dispatch_task_grouping_catalog_key("meteorite_grade_get") == "meteorite_grade_get"
+        # AST-1675: grouping shim deleted — meteorite aliases are identity catalog keys.
         assert "meteorite_grade_do" in cfg.get_task_keys()
         assert "meteorite_grade_get" in cfg.get_task_keys()
         # Classic Gaze still masters (not aliases).
@@ -4925,7 +4953,9 @@ class TestAst1214DispatchAdminDefaultsWidened:
             "inflow_discovery": ("candidate", "ACTIVE_SEARCH"),
             "gaze": ("company", "WATCH"),
             "recheck_no_openings": ("company", "NO_OPENINGS"),
-            "prefilter": ("company", "HOMEPAGE_READY"),
+            # AST-1675: lasting company-prefilter catalog key (was bare prefilter).
+            "prefilter_company": ("company", "HOMEPAGE_READY"),
+            # This tip still claims NEW; AST-1672 retargets to DISCOVERED on its own sub.
             "inflow_resolve_website": ("company", "NEW"),
         }
         for tk, (et, ts) in expected.items():
@@ -4939,7 +4969,13 @@ class TestAst1214DispatchAdminDefaultsWidened:
             "batch_call_mode": 0,
         }
         assert cfg.dispatch_task_admin_defaults("parse_meteorite_email") == mailbox
-        assert cfg.dispatch_task_admin_defaults("meteorite_email") == mailbox
+        # AST-1529+: live meteorite_email is mailbox poller — admin defaults leave entity_type unset.
+        assert cfg.dispatch_task_admin_defaults("meteorite_email") == {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
         with pytest.raises(KeyError, match="unknown task_key"):
             cfg.dispatch_task_admin_defaults("not_a_registered_task_key")
 
@@ -5542,8 +5578,8 @@ class TestAst1590JobArtifactCatalogKeys:
     )
 
     def test_artifact_config_has_pilot_and_job_keys(self) -> None:
-        # AST-1665 tip: writing_preferences + ideal_day (union); priorities /
-        # deal_breakers / bio_summary already registered. Backstory stays frozen.
+        # AST-1664 adds candidate.context.writing_preferences; tip already has
+        # priorities / deal_breakers / bio_summary. Backstory / Ideal Day stay frozen.
         assert set(cfg.ARTIFACT_CONFIG.keys()) == {
             "candidate.artifacts.base_resume",
             "job.artifacts.job_resume",
@@ -5552,7 +5588,6 @@ class TestAst1590JobArtifactCatalogKeys:
             "candidate.context.priorities",
             "candidate.context.deal_breakers",
             "candidate.context.bio_summary",
-            "candidate.context.ideal_day",
             "candidate.context.writing_preferences",
         }
         for sibling in self._SIBLINGS:
@@ -5658,9 +5693,6 @@ def _assert_token_sources_typing(
         token_sources["WRITING_PREFERENCES"]["artifact_key"]
         == "candidate.context.writing_preferences"
     )
-    # AST-1665 tip: Ideal Day also artifact-typed (parallel epic on ftr union).
-    assert token_sources["IDEAL_DAY"]["source_type"] == "artifact"
-    assert token_sources["IDEAL_DAY"]["artifact_key"] == "candidate.context.ideal_day"
     _artifact_tokens = {
         name for name, spec in token_sources.items() if spec["source_type"] == "artifact"
     }
@@ -5670,7 +5702,6 @@ def _assert_token_sources_typing(
         "PRIORITIES",
         "DEAL_BREAKERS",
         "BIO_SUMMARY",
-        "IDEAL_DAY",
         "WRITING_PREFERENCES",
     }
 
@@ -5687,7 +5718,7 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         _assert_token_sources_typing(
             cfg.TOKEN_SOURCES, cfg.ARTIFACT_CONFIG, cfg.TOKEN_SOURCE_TYPES
         )
-        # AST-1665 tip: IDEAL_DAY + WRITING_PREFERENCES artifact (17 / 7 / 27).
+        # AST-1664: WRITING_PREFERENCES flips data_field → artifact (18 / 6 / 27).
         by_type = {
             st: cfg.get_tokens_by_source_type(st) for st in sorted(cfg.TOKEN_SOURCE_TYPES)
         }
@@ -5695,12 +5726,11 @@ class TestAst1596TokenCatalogSourceTypeTyping:
             "BASE_RESUME",
             "BIO_SUMMARY",
             "DEAL_BREAKERS",
-            "IDEAL_DAY",
             "PRIORITIES",
             "STRENGTHS",
             "WRITING_PREFERENCES",
         ]
-        assert len(by_type["data_field"]) == 17
+        assert len(by_type["data_field"]) == 18
         assert len(by_type["special_case"]) == 27
         assert sum(len(v) for v in by_type.values()) == len(cfg.TOKEN_SOURCES)
 
@@ -5731,7 +5761,6 @@ class TestAst1596TokenCatalogSourceTypeTyping:
             "BASE_RESUME",
             "BIO_SUMMARY",
             "DEAL_BREAKERS",
-            "IDEAL_DAY",
             "PRIORITIES",
             "STRENGTHS",
             "WRITING_PREFERENCES",
@@ -5744,8 +5773,8 @@ class TestAst1596TokenCatalogSourceTypeTyping:
         assert "STRENGTHS" not in data
         assert "BIO_SUMMARY" not in data
         assert "WRITING_PREFERENCES" not in data
-        assert "IDEAL_DAY" not in data
         assert "BACKSTORY" in data
+        assert "IDEAL_DAY" in data
         special = cfg.get_tokens_by_source_type("special_case")
         assert "THEY" in special and "VISIBLE_JD" in special and "RUBRIC_VECTORS" in special
         with pytest.raises(ValueError, match="invalid source_type"):
@@ -5817,6 +5846,7 @@ class TestAst1632CatalogPlainTextStrengthsToken:
     # registered; freeze remaining unmigrated leaves only.
     _CTX_SIBLINGS = (
         "candidate.context.backstory",
+        "candidate.context.ideal_day",
     )
 
     def test_plain_text_shape_raw_string_sentinel(self) -> None:
@@ -5857,11 +5887,8 @@ class TestAst1632CatalogPlainTextStrengthsToken:
         )
         assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
         assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
-        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
-        assert (
-            cfg.TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"]
-            == "candidate.context.ideal_day"
-        )
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["IDEAL_DAY"]
 
 
 @pytest.mark.skipif(
@@ -5876,6 +5903,7 @@ class TestAst1648CatalogBioSummaryTokenProfileNav:
     # freeze Backstory + Ideal Day.
     _CTX_SIBLINGS = (
         "candidate.context.backstory",
+        "candidate.context.ideal_day",
     )
 
     def test_plain_text_shape_raw_string_sentinel(self) -> None:
@@ -5917,11 +5945,8 @@ class TestAst1648CatalogBioSummaryTokenProfileNav:
         )
         assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
         assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
-        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
-        assert (
-            cfg.TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"]
-            == "candidate.context.ideal_day"
-        )
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["IDEAL_DAY"]
 
     def test_profile_data_shapes_omits_bio_summary(self) -> None:
         profile = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
@@ -5953,6 +5978,7 @@ class TestAst1651CatalogPlainTextPrioritiesToken:
     # AST-1664 tip: writing_preferences registered; freeze Backstory + Ideal Day.
     _CTX_SIBLINGS = (
         "candidate.context.backstory",
+        "candidate.context.ideal_day",
     )
 
     def test_plain_text_shape_raw_string_sentinel(self) -> None:
@@ -6009,6 +6035,7 @@ class TestAst1654CatalogPlainTextDealBreakersToken:
     # AST-1664 tip: priorities + writing_preferences registered; freeze Backstory +.
     _CTX_SIBLINGS = (
         "candidate.context.backstory",
+        "candidate.context.ideal_day",
     )
 
     def test_plain_text_shape_raw_string_sentinel(self) -> None:
@@ -6063,9 +6090,12 @@ class TestAst1658CatalogPlainTextIdealDayToken:
     """AST-1658: ideal_day catalog + IDEAL_DAY artifact token (plain_text reuse)."""
 
     _META = {"entity_type", "candidate_scoped", "body_shape", "ingestion_owner"}
-    # AST-1665 tip: writing_preferences also registered; freeze Backstory only.
+    # Freeze unmigrated context leaves on the Ideal Day tip (parent AC8 / ticket AC4).
     _CTX_SIBLINGS = (
+        "candidate.context.priorities",
+        "candidate.context.deal_breakers",
         "candidate.context.backstory",
+        "candidate.context.writing_preferences",
     )
 
     def test_plain_text_shape_raw_string_sentinel(self) -> None:
@@ -6099,11 +6129,12 @@ class TestAst1658CatalogPlainTextIdealDayToken:
             cfg.get_artifact_key_for_token("IDEAL_DAY")
             == "candidate.context.ideal_day"
         )
-        # Union tip: priorities / writing_preferences already artifact-typed.
-        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
-        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+        # Sibling context tokens stay data_field (Boundaries — Ideal Day only).
+        assert cfg.TOKEN_SOURCES["PRIORITIES"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["PRIORITIES"]
+        assert cfg.TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "data_field"
         assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
-        assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
+        assert cfg.TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "data_field"
 
 
 @pytest.mark.skipif(
@@ -6169,6 +6200,7 @@ class TestAst1664CatalogPlainTextWritingPreferencesToken:
     # Freeze remaining unmigrated context leaves (parent AC8 / ticket AC4).
     _CTX_SIBLINGS = (
         "candidate.context.backstory",
+        "candidate.context.ideal_day",
     )
 
     def test_plain_text_shape_raw_string_sentinel(self) -> None:
@@ -6209,11 +6241,8 @@ class TestAst1664CatalogPlainTextWritingPreferencesToken:
         assert cfg.TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
         assert cfg.TOKEN_SOURCES["BACKSTORY"]["source_type"] == "data_field"
         assert "artifact_key" not in cfg.TOKEN_SOURCES["BACKSTORY"]
-        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
-        assert (
-            cfg.TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"]
-            == "candidate.context.ideal_day"
-        )
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "data_field"
+        assert "artifact_key" not in cfg.TOKEN_SOURCES["IDEAL_DAY"]
 
 
 class TestAst1621MeteoriteEntityTypeRegistry:
@@ -6308,3 +6337,77 @@ class TestAst1602RetireJobBodyReplicaConfigAuthority:
             "job.artifacts.application_responses",
         ):
             assert sibling not in cfg.ARTIFACT_CONFIG
+
+
+class TestAst1668RecognitionReplyConfig:
+    """AST-1668: CONTACT_CONFIG known/unknown recognition reply text."""
+
+    def test_recognition_reply_defaults(self) -> None:
+        known = cfg.CONTACT_CONFIG["known_recognition_reply_text"]
+        unknown = cfg.CONTACT_CONFIG["unknown_recognition_reply_text"]
+        assert isinstance(known, str) and known.strip() == "I know who that is"
+        assert isinstance(unknown, str) and unknown.strip() == "I don't recognize you"
+
+
+# Branches: DISCOVERED land/vet; CSE-only resolve; resolve_website SA + WEBSITE_REVIEW edges (AST-1672).
+class TestAst1672DiscoveredResolveRegistrySsot:
+    """AST-1672: DISCOVERED + resolve registry SSOT (config-only; no runners)."""
+
+    def test_discovered_state_batch_criteria_and_transitions(self) -> None:
+        assert cfg.COMPANY_STATES["DISCOVERED"]["batch_criteria"]["sort_by"] == "updated_at"
+        assert cfg.COMPANY_STATES["WEBSITE_REVIEW"]["batch_criteria"]["sort_by"] == "updated_at"
+        transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
+        for edge in (
+            ("DISCOVERED", "WEBSITE_FOUND"),
+            ("DISCOVERED", "VET_FAILED"),
+            ("DISCOVERED", "WEBSITE_REVIEW"),
+            ("DISCOVERED", "NO_WEBSITE"),
+            ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
+            ("WEBSITE_REVIEW", "NO_WEBSITE"),
+        ):
+            assert edge in transitions
+        for gone in (
+            ("NEW", "WEBSITE_FOUND"),
+            ("NEW", "NO_WEBSITE"),
+            ("NEW", "VET_FAILED"),
+        ):
+            assert gone not in transitions
+        # Non-inflow IMPORTED waiting edge stays.
+        assert ("IMPORTED", "WEBSITE_REVIEW") in transitions
+
+    def test_resolve_website_task_and_admin_defaults(self) -> None:
+        entry = cfg.TASK_CONFIG["resolve_website"]
+        assert entry["entity_type"] == "company"
+        assert entry["trigger_state"] == "WEBSITE_REVIEW"
+        assert entry["agent_task"] == "find_company_website"
+        assert entry["pass_state"] == "WEBSITE_FOUND"
+        assert entry["fail_state"] == "NO_WEBSITE"
+        assert entry["context_format"] == "find_company_website_{index}"
+        # Agent identity stays agent-only; SA is resolve_website.
+        assert cfg.TASK_CONFIG["find_company_website"]["trigger_state"] is None
+        assert "inflow_resolve_website" not in cfg.TASK_CONFIG
+        assert "resolve_website" in cfg._DISPATCH_COMPANY_ENTITY_TASK_KEYS
+        assert "resolve_website" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert cfg._dispatch_trigger_state_for_task_key("resolve_website") == "WEBSITE_REVIEW"
+        d = cfg.dispatch_task_admin_defaults("resolve_website")
+        assert d == {
+            "entity_type": "company",
+            "trigger_state": "WEBSITE_REVIEW",
+            "sort_by": "updated_at",
+            "batch_call_mode": 0,
+        }
+
+    def test_hit_list_key_and_cse_only_resolve_block(self) -> None:
+        r = cfg.INFLOW_CONFIG["resolve"]
+        assert r["hit_list_data_key"] == "inflow_resolve_website_hits"
+        assert cfg.ROSTER_CONFIG["company_data_keys"]["inflow_resolve_website_hits"] == r[
+            "hit_list_data_key"
+        ]
+        assert "ai_task_key" not in r
+        assert cfg.INFLOW_CONFIG["discovery"]["land_state"] == "DISCOVERED"
+        assert cfg.dispatch_task_admin_defaults("inflow_resolve_website")["trigger_state"] == (
+            "DISCOVERED"
+        )
+        assert cfg.dispatch_task_admin_defaults("vet_inflow_discovery")["trigger_state"] == (
+            "DISCOVERED"
+        )

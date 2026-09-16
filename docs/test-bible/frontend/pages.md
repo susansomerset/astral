@@ -2795,3 +2795,67 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1663 · AST-1644
+
+**Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up`.
+
+Backstory page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { backstory } }` GET/PUT (AST-1662 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1661** / **AST-1662**. Mirror AST-1634 / AST-1660.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Backstory page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateBackstory.tsx` | **`test_CandidateBackstory.test.tsx`** — `AST-1663` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Backstory render-only case expanded under AST-1663 names (plain_text empty gate + bodyShape source assert).
+
+**Integration:** none — no existing scenario asserts Backstory ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Backstory page (§6c): `tests/component/frontend/pages/test_CandidateBackstory.test.tsx` — pattern **`AST-1663`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_CandidateBackstory.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1663|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+---
+
+### AST-1669 · AST-1636
+
+**Parent:** [AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown`.
+
+Manage Candidates add/edit Slack username `<select>` from `GET /api/admin/contact/unbound_slack_users`; stamps both `contact.slack_user_id` + `contact.slack_username` on save; edit prepends current bind; empty selection omits Slack keys; no Slack Web API from React. Unbound API: **`docs/test-bible/ui/api/api_contact.md`** § AST-1668. Poster pool: **`docs/test-bible/external/slack.md`** § AST-1667.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Manage Candidates page (§6c) — dropdown + bind stamp + omit-on-empty | `AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — **`AST-1669`** |
+| Unbound GET mock on existing suites | same | revised **`mockApi`** / suite mocks stub `/api/admin/contact/unbound_slack_users` |
+
+**Broken / obsolete this pass:** existing Add/Edit opens would `Unhandled api` unbound GET — revised mocks return `{ users: [] }` by default.
+
+**Integration:** none — no existing scenario asserts Manage Candidates Slack bind; do not invent.
+
+## QA test manifest
+
+1. Routed Manage Candidates Slack bind (§6c): `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — pattern **`AST-1669`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  --testNamePattern='AST-1669'
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*

@@ -90,3 +90,23 @@ Admin Manage Slack debug foundation: `GET`/`PUT /api/admin/contact/debug` (`@req
   tests/component/ui/api/test_api_contact.py::TestAst1206ContactDebugApi \
   -q
 ```
+
+### AST-1668 · AST-1636
+
+**Parent:** [AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve`.
+
+Admin GET `/api/admin/contact/unbound_slack_users` (`@require_admin`) → `{users: [...]}`; no progress info on idempotent GET. Core: **`docs/test-bible/core/contact.md`** § AST-1668.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| GET users + 502 + auth 401/403 | `src/ui/api/api_contact.py` | **`TestAst1668UnboundSlackUsersApi`** |
+
+**Broken / obsolete:** none — additive route on `contact_bp`.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_contact.py::TestAst1668UnboundSlackUsersApi \
+  -q
+```
