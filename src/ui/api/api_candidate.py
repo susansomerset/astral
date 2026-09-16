@@ -24,9 +24,10 @@ from src.core.candidate import (
     get_pending_craft_generation,
     hydrate_operative_base_resume_for_response,
     hydrate_operative_bio_summary_for_response,
+    hydrate_operative_deal_breakers_for_response,
+    hydrate_operative_ideal_day_for_response,
     hydrate_operative_strengths_for_response,
     hydrate_operative_priorities_for_response,
-    hydrate_operative_deal_breakers_for_response,
     hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
     IllegalCandidateTransition,
@@ -216,6 +217,7 @@ def get_candidate_detail(candidate_id):
     hydrate_operative_priorities_for_response(candidate_id, cd)
     hydrate_operative_deal_breakers_for_response(candidate_id, cd)
     hydrate_operative_bio_summary_for_response(candidate_id, cd)
+    hydrate_operative_ideal_day_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
 
@@ -275,6 +277,7 @@ def update_candidate_data(candidate_id):
     priorities_saved = False
     deal_breakers_saved = False
     bio_summary_saved = False
+    ideal_day_saved = False
     try:
         state_override = body.pop("state", None)
         api_key = body.pop("api_key", None)
@@ -286,11 +289,12 @@ def update_candidate_data(candidate_id):
         base_resume_in_save = False
         pilot_body = None
         if body:
-            # AST-1633 / AST-1649 / AST-1652 / AST-1655: catalog context leaves → operative; no library-merge.
+            # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659: catalog context leaves → operative save; do not library-merge.
             strengths_body = None
             priorities_body = None
             deal_breakers_body = None
             bio_summary_body = None
+            ideal_day_body = None
             ctx = body.get("context")
             if isinstance(ctx, dict):
                 if "strengths" in ctx:
@@ -301,6 +305,8 @@ def update_candidate_data(candidate_id):
                     deal_breakers_body = ctx.pop("deal_breakers")
                 if "bio_summary" in ctx:
                     bio_summary_body = ctx.pop("bio_summary")
+                if "ideal_day" in ctx:
+                    ideal_day_body = ctx.pop("ideal_day")
                 if not ctx:
                     body.pop("context", None)
             arts = body.get("artifacts")
@@ -398,6 +404,13 @@ def update_candidate_data(candidate_id):
                     bio_summary_body,
                 )
                 bio_summary_saved = True
+            if ideal_day_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.ideal_day",
+                    ideal_day_body,
+                )
+                ideal_day_saved = True
         # AST-1287 / AST-1288: illegal hops return code=illegal_candidate_transition
         # with from_state/to_state; admin retry with confirm_state_override=true forces.
         # Same-state in the PUT body is skipped here (not a core no-op).
@@ -443,6 +456,13 @@ def update_candidate_data(candidate_id):
                 )
         return jsonify({"error": str(e)}), 400
     if strengths_saved or priorities_saved or deal_breakers_saved or bio_summary_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if ideal_day_saved:
         logger.info(
             "%s | api %s completed: PUT %s",
             candidate_id,
