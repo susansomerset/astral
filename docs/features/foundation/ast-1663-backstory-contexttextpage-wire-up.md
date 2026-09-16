@@ -135,9 +135,9 @@ context_tokens≈52000
 
 ## Review (build stub)
 
-**Built:** `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up` @ `(filled after commit)`.
+**Built:** `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up` @ `6d60fd477a9dd95d8ae944396eb0f3e7e291c0d0`.
 
 **Stages delivered:**
-- Stage 1: Wire Backstory `plain_text` bodyShape — `(filled after commit)`.
+- Stage 1: Wire Backstory `plain_text` bodyShape — `6d60fd477a9dd95d8ae944396eb0f3e7e291c0d0`.
 
 **Betty:** at **Code Complete** — cover Backstory ContextTextPage render + hydrated load, save PUT `{ context: { backstory } }` + textarea reload, `plain_text` empty-save gate (Save disabled, no PUT), and source assert for `bodyShape="plain_text"` / no `ArtifactEditor`; `ContextTextPage.tsx` / `ArtifactEditor.tsx` untouched.
