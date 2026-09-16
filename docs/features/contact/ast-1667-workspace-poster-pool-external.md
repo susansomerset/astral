@@ -149,3 +149,18 @@ Confirm Chuckles estimate: 3 — agree
 
 context_tokens≈32000
 
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1636/AST-1667-workspace-poster-pool-external` |
+| Tip | `eb152ca2` |
+| Branch | `sub/AST-1636/AST-1667-workspace-poster-pool-external` |
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `eb152ca2` | `list_workspace_posters` + helpers in `src/external/slack.py` |
+
+**Betty note:** component coverage for poster pool (history/replies authors, soft-skip, bots/deleted filter, gate) deferred to qa-child.
+
