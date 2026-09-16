@@ -176,3 +176,47 @@ Confirm Chuckles estimate: 1 — agree
 | `astral.standards.no-hardcoded-sets` | statute — closed key/shape membership via asserts |
 | `stat.logging.info` | id-only — no new logging surface this ticket |
 | `stat.logging.debug` | id-only — no new logging surface this ticket |
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1661
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `8397ea1cb326687928c93e7cb4c1b30d79d3a40c` (`origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token`)
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.manage-catalog | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| stat.logging.info | X | | id-only — config-only slice; no new info surfaces planned |
+| stat.logging.debug | X | | id-only — config-only slice; no new debug surfaces planned |
+
+## Traceability
+
+AC1→Stage 1 (catalog key + closed-set assert); AC2→Stage 1 (reuse `plain_text`, no new shape); AC3→Stage 1 (TOKEN_SOURCES flip + per-token asserts); AC4→Stage 1 step 4 (freeze loop — priorities/ideal_day/writing_preferences absent; backstory present); parent AC4–AC7, AC9→N/A (AST-1662/AST-1663 siblings); parent AC8→Stage 1 step 4 (with documented deal_breakers/bio_summary carve-out).
+
+## Findings
+
+### acceptable — procedural
+
+- **Location:** Linear assignee
+- **Finding:** Ticket is `Plan Ready` with assignee Ada Lovelace, not Joan. Chuckles should assign Joan before spawn in the normal path; validation proceeded per explicit spawn.
+- **Recommendation:** Chuckles restores implementer after posting upshot per §8.
+
+### discuss — ticket AC4 wording vs tree reality
+
+- **Location:** Ticket Description AC4 vs Stage 1 step 4 Decision
+- **Finding:** Child AC4 prose still forbids `deal_breakers` in `ARTIFACT_CONFIG`, but the tree already registers `candidate.context.deal_breakers` and `candidate.context.bio_summary` (AST-1654 / AST-1648). Plan correctly hand-verifies priorities/ideal_day/writing_preferences absent and does not unregister migrated siblings.
+- **Recommendation:** Optional Description cleanup at Discussion — plan already documents the carve-out; no plan revision required.
+
+### acceptable — epic sequencing
+
+- **Location:** Stage 1 / UAT fitness sibling check
+- **Finding:** BACKSTORY flips to `artifact` before AST-1662 wires hydrate — same catalog-first split as AST-1632/AST-1654 precedent; plan explicitly defers operative/hydrate to sibling #2.
+- **Recommendation:** None — mirror pattern is intentional.
+
+context_tokens≈22000
