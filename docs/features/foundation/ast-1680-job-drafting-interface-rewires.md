@@ -92,3 +92,37 @@ Do **not** add hydrate to unrelated tracker paths (cover letter, job current-rea
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1680
+**Overall:** APPROVED
+**Corpus:** fc0c368e59 · ticket ids partially outside clerk roster (draft pattern + statute paths resolved from worktree)
+**Publish ref:** sub/AST-1677/AST-1680-job-drafting-interface-rewires @ 3a5df9b00a7192d4dcfaa125840e50edc1501596
+
+## Canon scores
+
+patt.artifact.read-current | A | | Stage 1–2 hydrate→resolve at consult + tracker consumers; get_candidate_current via AST-1679 helper; no blob-only bypass when cid known
+astral.standards.in-scope-only | A | | consult.py + tracker.py only; explicit fence; import/call hydrate only, no candidate.py edits
+astral.config.config-source-of-truth | A | | TOKEN_SOURCES unchanged; structure via config-backed resolve/enabled sections; no scattered literals
+
+## Traceability
+
+AC7→Stage 1 (build_job_token_context RESUME_SECTION_CATALOG) + Stage 2 (_prepare_job_resume_content, parsed_matches_*, job_has_persisted_resume_body, persist_job_artifact_from_parsed) | Parent functional scope §6 + parent AC7; parent AC1–6 N/A (AST-1678/1679); parent AC8–9 N/A
+
+## Findings
+
+### acceptable — _prepare_job_resume_content follow-through
+- **Location:** Stage 2 §1 snippet vs prose
+- **Finding:** Snippet hydrates `cd` before `resolve_resume_structure` but does not show retargeting `draft_job_resume_allowed_section_keys(candidate_data)` → `(cd)` or `artifacts` reads to `cd`.
+- **Recommendation:** No plan revision required — prose explicitly requires `cd` for remainder of function; engineer must apply beyond the snippet.
+
+### acceptable — canon infrastructure
+- **Location:** canon_clerk roster
+- **Finding:** `patt.artifact.read-current` not in active clerk roster; logging/statute paths resolved from worktree.
+- **Recommendation:** No plan change.
+
+context_tokens≈52000
+```
