@@ -3389,13 +3389,13 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
+    "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
     "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
+    "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
 })
 
@@ -3404,29 +3404,8 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
     return (task_key or "").strip()
 
 
-def dispatch_task_grouping_catalog_key(task_key: str) -> str:
-    """Agent_task row key for admin grouping metadata when dispatch key differs from consult key."""
-    tk = (task_key or "").strip()
-    if tk == "prefilter":
-        return ROSTER_CONFIG["prefilter"]["task_key"]
-    return tk
-
-
-def dispatch_row_task_key(task_key: str) -> str:
-    """Map consult/catalog task_key to dispatch_task.task_key when they differ.
-
-    ROSTER_CONFIG['prefilter']['task_key'] (`prefilter_company`) and the bare
-    dispatch key `prefilter` both resolve to `prefilter` (AST-823 migrated rows).
-    All other keys (including meteorite_grade_* aliases) are identity.
-    """
-    tk = (task_key or "").strip()
-    if tk == "prefilter" or tk == ROSTER_CONFIG["prefilter"]["task_key"]:
-        return "prefilter"
-    return tk
-
-
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
-    if task_key == "prefilter":
+    if task_key == "prefilter_company":
         return ROSTER_CONFIG["prefilter"]["input_state"]
     if task_key == "parse_job_list":
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
@@ -3496,7 +3475,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 
 
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
-    if task_key == "prefilter" or task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
+    if task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
     if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"

@@ -72,7 +72,6 @@ from src.utils.config import (
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
-    dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     _dispatch_entity_type_for_task_key,
@@ -976,18 +975,18 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
     """Scheduled Actions form defaults: TASK_CONFIG / mailbox keys use dispatch_task_admin_defaults
-    when defaults resolve; grouping fields from agent_task via dispatch_task_grouping_catalog_key;
+    when defaults resolve; grouping fields from agent_task (identity catalog key);
     entity/trigger keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
-    grouping_key = dispatch_task_grouping_catalog_key(task_key)
-    cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
+    grouping_key = catalog_key
+    cfg = TASK_CONFIG.get(catalog_key) or {}
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
     trigger_state = (ts or "") if ts is not None else ""
     # Prefer derived admin defaults (TASK_CONFIG + meteorite mailbox fold).
-    if task_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(task_key):
+    if catalog_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(catalog_key):
         try:
-            derived = dispatch_task_admin_defaults(task_key)
+            derived = dispatch_task_admin_defaults(catalog_key)
             entity_type = derived["entity_type"] or ""
             trigger_state = (
                 (derived["trigger_state"] or "")
@@ -999,18 +998,18 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     # Helper-resolvable agent_task-only hops fill empty entity/trigger.
     if not entity_type:
         try:
-            entity_type = _dispatch_entity_type_for_task_key(task_key) or ""
+            entity_type = _dispatch_entity_type_for_task_key(catalog_key) or ""
         except KeyError:
             pass
     if not trigger_state:
         try:
-            trigger_state = _dispatch_trigger_state_for_task_key(task_key) or ""
+            trigger_state = _dispatch_trigger_state_for_task_key(catalog_key) or ""
         except KeyError:
             pass
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
-        "is_scored": dispatch_task_key_is_scored(task_key),
+        "is_scored": dispatch_task_key_is_scored(catalog_key),
         **_catalog_task_grouping_meta(grouping_key),
     }
 
@@ -1095,7 +1094,8 @@ def create_dtask():
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
-    retired = dispatch_task_key_retired_message(data.get("task_key", ""))
+    task_key = (data.get("task_key") or "").strip()
+    retired = dispatch_task_key_retired_message(task_key)
     if retired:
         return jsonify({"error": retired}), 400
     # Absent / JSON null → catalog defaults in save; non-empty must be ENTITY_TYPES.
@@ -1115,7 +1115,7 @@ def create_dtask():
         if err:
             return jsonify({"error": err}), 400
     tk_err = _dispatch_task_key_trigger_error(
-        data.get("task_key", ""),
+        task_key,
         data.get("trigger_state"),
         entity_type=submitted_entity,
     )
@@ -1124,7 +1124,7 @@ def create_dtask():
     try:
         task_id = save_dispatch_task(
             candidate_id=data["candidate_id"],
-            task_key=data["task_key"],
+            task_key=task_key,
             min_count=int(data["min_count"]),
             auto_mode=bool(data.get("auto_mode", False)),
             entity_type=submitted_entity,
@@ -1138,7 +1138,7 @@ def create_dtask():
             return jsonify({
                 "error": (
                     f"Dispatch row already exists for candidate '{data['candidate_id']}', "
-                    f"task_key '{data['task_key']}', trigger_state '{data['trigger_state']}'"
+                    f"task_key '{task_key}', trigger_state '{data['trigger_state']}'"
                 )
             }), 409
         return jsonify({"error": str(e)}), 500
@@ -1328,7 +1328,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         if not company:
             return ""
         cdata = company.get("company_data", {}) or {}
-        if task_key == "prefilter":
+        if task_key == "prefilter_company":
             homepage = cdata.get("homepage_text") or cdata.get("website_content") or ""
             nav_links = cdata.get("nav_links") or []
             parts = []
