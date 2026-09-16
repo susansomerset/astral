@@ -198,3 +198,12 @@ AC1→Stage 1 §2-4,8 verify; AC2→Stage 1 §2,6,8 verify; AC3→Stage 1 §4-5,
 
 context_tokens≈28000
 ```
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` @ `fb8f265bc7b03e828dff1c9a76093b7e281b4a86`.
+
+**Stages delivered:**
+- Stage 1: `BUILD_CONFIG["artifact_shapes"]["resume_structure"]` sentinel (`structure_dict`) + `ARTIFACT_CONFIG["candidate.artifacts.resume_structure"]` registration; closed-set / per-entry asserts; `job.artifacts.resume_structure` fence; Persistence comment update.
+
+**Betty:** at **Code Complete** — cover ARTIFACT_CONFIG closed set includes `candidate.artifacts.resume_structure`; body_shape is `resume_structure` (not resume_content/plain_text/cover_letter) and in artifact_shapes; `job.artifacts.resume_structure` absent; shape sentinel `structure_dict`.
