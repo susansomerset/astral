@@ -592,3 +592,27 @@ Live `stage_meteorite` Ruth row (six outcome literals in `cache_prompt`; seq `2.
   tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
   -q
 ```
+
+
+### AST-1688 · AST-1684
+
+**Parent:** [AST-1684](https://linear.app/astralcareermatch/issue/AST-1684/reply-to-emails-in-meteorite-when-single-jd-no-link). **Publish:** `origin/sub/AST-1684/AST-1688-stage-meteorite-electronic-contact-schema-prompts`.
+
+`stage_meteorite` `cache_prompt` gains `## ELECTRONIC CONTACT (resume send)` (metadata-first; never invent); `user_prompt` names optional `electronic_contact`. AST-756 fixture whole-file twin synced. Config SSOT: **`docs/test-bible/utils/config.md`** § AST-1688.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Metadata-first prompts + fixture lockstep | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1688StageMeteoriteElectronicContactPrompts`** |
+| Prior stage Ruth shell | same | **`TestAst1529StageMeteoriteCatalogRow`** |
+
+**Broken / obsolete this pass:** fixture twin asserting pre-AST-1688 `stage_meteorite` prompts (byte lock) — synced.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1688StageMeteoriteElectronicContactPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
