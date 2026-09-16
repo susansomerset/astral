@@ -355,3 +355,89 @@ PUT `/data` pops `context.ideal_day` then `save_candidate_data(candidate_id, "ca
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1662 · AST-1644
+
+**Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement`.
+
+PUT `/data` pops `context.backstory` then `save_candidate_data(candidate_id, "candidate.context.backstory", body)`; sibling context keys still library-merge (`hopes`); GET detail hydrates Backstory (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1662.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT operative + retire + sibling merge + GET hydrate + empty 400 | `src/ui/api/api_candidate.py` | **`TestAst1662BackstoryOperativeApi`** |
+
+**Broken / obsolete:** AST-1633 / AST-1649 / AST-1655 / AST-1652 / AST-1659 PUT sibling asserts that library-merged `backstory` — revised to `hopes`.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Core: `tests/component/core/test_candidate.py::TestAst1662BackstoryOperativeSaveHydrate`
+2. API: `tests/component/ui/api/test_api_candidate.py::TestAst1662BackstoryOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1662BackstoryOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1662BackstoryOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1665 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement`.
+
+PUT `/data` pops `context.writing_preferences` then `save_candidate_data(candidate_id, "candidate.context.writing_preferences", body)`; sibling context keys still library-merge (`backstory`); GET detail hydrates Writing Preferences (miss leaves legacy blob). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1665.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT operative + retire + sibling merge + GET hydrate + empty 400 | `src/ui/api/api_candidate.py` | **`TestAst1665WritingPreferencesOperativeApi`** |
+
+**Broken / obsolete:** AST-1652 Priorities PUT sibling asserting `deal_breakers` library-merge — revised to `backstory`.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Core: `tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate`
+2. API: `tests/component/ui/api/test_api_candidate.py::TestAst1665WritingPreferencesOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1665WritingPreferencesOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1665WritingPreferencesOperativeApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
+
+### AST-1679 · AST-1677
+
+**Parent:** [AST-1677](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
+
+PUT `/data` pops `artifacts.resume_structure` after normalize/ingest then `save_candidate_data(..., "candidate.artifacts.resume_structure", body)`; GET detail hydrates via `get_candidate` (miss leaves legacy blob). Leaf-only `base_resume` PUT must still operative-save pilot body **and** ingested structure (AC6). Primary core: **`docs/test-bible/core/candidate.md`** § AST-1679.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT operative + retire + GET hydrate + leaf-only base_resume gate | `src/ui/api/api_candidate.py` | **`TestAst1679ResumeStructureOperativeApi`** |
+| Revised PUT structure asserts (operative, not library) | same | revised **`TestAst519ResumeStructureApi`**, **`TestAst1305LegacyLabelIngestApi`** |
+
+**Broken / obsolete:** AST-519 / AST-1305 asserts that expected `resume_structure` in the library blob or assumed pilot was `operative[0]` — retargeted to catalog key / pilot hit filter.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/ui/api/api_candidate.md` — *(filled after publish)*
