@@ -119,3 +119,12 @@ None (`fix-now` / `discuss`).
 
 context_tokens≈55000
 
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1643/AST-1660-ideal-day-contexttextpage-wire-up` @ `92566d3989ca778187855da1579c4bf681b922cb`.
+
+**Stages delivered:**
+- Stage 1: Wire Ideal Day `plain_text` bodyShape — `92566d3989ca778187855da1579c4bf681b922cb`.
+
+**Notes:** Product diff is only `CandidateIdealDay.tsx` (`bodyShape="plain_text"`). `ContextTextPage.tsx` / `ArtifactEditor.tsx` untouched. Stacked `origin/ftr/AST-1643-migrate-ideal-day-artifact-table` (sync `--ftr AST-1643` misses the slug-named ref) so AST-1658 + AST-1659 are on tip for hand-verify.
