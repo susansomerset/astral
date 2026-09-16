@@ -3404,14 +3404,6 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
     return (task_key or "").strip()
 
 
-def alias_company_prefilter_catalog_key(task_key: str) -> str:
-    """AST-1675 one-release: leftover catalog input `prefilter` → `prefilter_company`."""
-    tk = (task_key or "").strip()
-    if tk == "prefilter":
-        return "prefilter_company"
-    return tk
-
-
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     if task_key == "prefilter_company":
         return ROSTER_CONFIG["prefilter"]["input_state"]
@@ -3586,8 +3578,7 @@ def dispatch_task_admin_defaults(
     Optional ``trigger_state`` overrides derivation when the key has no default
     trigger rule (e.g. mid-chain hops with TASK_CONFIG.trigger_state None).
     """
-    # AST-1675 one-release: leftover bare `prefilter` catalog input.
-    tk = alias_company_prefilter_catalog_key(task_key)
+    tk = (task_key or "").strip()
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         raise KeyError(retired)

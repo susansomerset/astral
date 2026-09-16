@@ -72,7 +72,6 @@ from src.utils.config import (
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
-    alias_company_prefilter_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     _dispatch_entity_type_for_task_key,
@@ -978,8 +977,7 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     """Scheduled Actions form defaults: TASK_CONFIG / mailbox keys use dispatch_task_admin_defaults
     when defaults resolve; grouping fields from agent_task (identity catalog key);
     entity/trigger keyed by dispatch task_key."""
-    # AST-1675 one-release: leftover bare `prefilter` → lasting catalog key.
-    catalog_key = alias_company_prefilter_catalog_key(task_key)
+    catalog_key = (task_key or "").strip()
     grouping_key = catalog_key
     cfg = TASK_CONFIG.get(catalog_key) or {}
     entity_type = cfg.get("entity_type") or ""
@@ -1096,8 +1094,7 @@ def create_dtask():
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
-    # AST-1675 one-release: persist normalized catalog key, not leftover bare `prefilter`.
-    task_key = alias_company_prefilter_catalog_key(data.get("task_key", ""))
+    task_key = (data.get("task_key") or "").strip()
     retired = dispatch_task_key_retired_message(task_key)
     if retired:
         return jsonify({"error": retired}), 400
@@ -1227,8 +1224,6 @@ def update_dtask(task_id):
         effective_task_key = effective_task_key.strip()
     else:
         effective_task_key = str(effective_task_key or "").strip()
-    # AST-1675 one-release: persist normalized catalog key on task_key edits.
-    effective_task_key = alias_company_prefilter_catalog_key(effective_task_key)
     effective_trigger_state = data.get("trigger_state", row.get("trigger_state"))
     if entity_in_body:
         submitted_et = str(data.get("entity_type") or "").strip()
@@ -1325,8 +1320,6 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
     Returns empty string if entity not found or task doesn't use live_content."""
     from src.utils.formatting import enumerate_array
 
-    # AST-1675 one-release: leftover bare `prefilter` → lasting catalog key.
-    task_key = alias_company_prefilter_catalog_key(task_key)
     cfg = get_dispatch_task_by_key(task_key) or {}
     entity_type = cfg.get("entity_type")
 
