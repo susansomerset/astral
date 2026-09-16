@@ -98,9 +98,9 @@ context_tokens≈12000
 
 ## Review (build stub)
 
-**Publish ref:** 
-**Plan path:** 
+**Publish ref:** `origin/sub/AST-1605/AST-1697-artifact-zlib-write-read-data-layer`
+**Plan path:** `docs/features/artifacts/ast-1697-artifact-zlib-write-read-data-layer.md`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 |  | Header inventory + BLOB DDL;  → ;  →  |
+| 1 | `fa1807e6` | Header inventory + BLOB DDL; save_artifact compress; _artifact_row_dict decompress |
