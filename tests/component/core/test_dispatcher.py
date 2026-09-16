@@ -419,8 +419,9 @@ class TestRunUnified:
     async def test_ast506_inflow_resolve_claims_empty_website_only(
         self, monkeypatch: pytest.MonkeyPatch, batch_id: str
     ) -> None:
+        # AST-1673: empty-website filter only when resolve claims DISCOVERED.
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
-        claim = MagicMock(return_value=(batch_id, [{"short_name": "no_site", "state": "NEW"}]))
+        claim = MagicMock(return_value=(batch_id, [{"short_name": "no_site", "state": "DISCOVERED"}]))
         clear = MagicMock()
         monkeypatch.setattr("src.core.roster.get_new_company_batch", claim)
         monkeypatch.setattr("src.core.roster.clear_company_batch", clear)
@@ -428,13 +429,37 @@ class TestRunUnified:
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
         task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "inflow_resolve_website",
             "batch_call_mode": 0,
         }
         await dispatcher_mod._run_unified(task, {"astral_candidate_id": "c506"}, False)
         claim.assert_called_once()
         assert claim.call_args.kwargs["require_empty_website"] is True
+
+    @pytest.mark.asyncio
+    async def test_ast1673_inflow_resolve_on_new_skips_empty_website_filter(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        # AC6: require_empty_website never applied when claiming NEW for resolve.
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claim = MagicMock(return_value=(batch_id, []))
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.roster.get_new_company_batch", claim)
+        monkeypatch.setattr("src.core.roster.clear_company_batch", clear)
+        monkeypatch.setattr(
+            "src.core.consult.run_consult_task",
+            AsyncMock(return_value={"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}),
+        )
+        task = {
+            "entity_type": "company",
+            "trigger_state": "NEW",
+            "task_key": "inflow_resolve_website",
+            "batch_call_mode": 0,
+        }
+        await dispatcher_mod._run_unified(task, {"astral_candidate_id": "c1673"}, False)
+        claim.assert_called_once()
+        assert claim.call_args.kwargs.get("require_empty_website") is False
 
     @pytest.mark.asyncio
     async def test_ast508_prefilter_passed_dispatch_passes_score_floor(
@@ -584,7 +609,7 @@ class TestRunUnified:
         task = {
             "entity_type": "company",
             "trigger_state": "HOMEPAGE_READY",
-            "task_key": "prefilter",
+            "task_key": "prefilter_company",
             "batch_call_mode": 1,
             "batch_size": 10,
         }

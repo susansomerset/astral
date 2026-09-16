@@ -468,3 +468,30 @@ Board REVISE on AST-1432: pool-2 on a bound row was wrong; two-candidate bound A
 **Bible shasum (publish tip):**
 - `docs/test-bible/data/database/dispatch_tasks.md` — *(filled after publish)*
 
+
+### AST-1675 · AST-1671
+
+**Scope:** Idempotent schema-ensure retargets company `dispatch_task.task_key` **`prefilter` → `prefilter_company`**; collision deletes leftover when companion exists; **`craft_prefilter_rubric`** untouched. Supersedes AST-823 reverse retarget and AST-702 HOMEPAGE_READY content migration on this tip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retarget + dual trigger preserve + collision + rubric guard | `src/data/database.py` | **`TestAst1675PrefilterCatalogRetarget`** (aliases: TestAst702/703/823 class names) |
+
+**Broken / obsolete this pass:** AST-702 HOMEPAGE_READY rewrite; AST-823 `prefilter_company`→`prefilter`; AST-703 dual rows still keyed `prefilter`.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Schema retarget suite: `tests/component/data/database/test_dispatch_tasks.py::TestAst1675PrefilterCatalogRetarget`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1675PrefilterCatalogRetarget \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest line — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/data/database/dispatch_tasks.md` — *(filled after publish)*

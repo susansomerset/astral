@@ -725,3 +725,36 @@ Consult / dispatcher / config: **`docs/test-bible/core/consult.md`** · **`docs/
 | Dedupe/normalize retired | `src/core/roster.py` | `TestAst726LatestOnlyRosterStory`, `TestAst727NormalizeAgentResponsesForBackfill` |
 
 **AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md` + agent story nodes in **`docs/test-bible/core/agent.md`**.
+
+### AST-1673 · AST-1670
+
+**Parent:** [AST-1670 — Split inflow website resolve into CSE fetch + find_company_website dispatch](https://linear.app/astralcareermatch/issue/AST-1670). **Publish:** `origin/sub/AST-1670/AST-1673-discovery-land-discovered-cse-fetch`.
+
+Discovery lands **`DISCOVERED`**; CSE-only **`resolve_company_website`** (persist hits → **`WEBSITE_REVIEW`** / zero → **`NO_WEBSITE`**, no **`do_task`**); claim/eligibility empty-website only on resolve/**`DISCOVERED`**. Config SSOT: **`docs/test-bible/utils/config.md`** § AST-1672. AI apply: sibling **AST-1674**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| land | Discovery record **`DISCOVERED`** | `src/core/roster.py` | **`TestAst775InflowDiscoveryRecordNew::test_record_hit_creates_new_with_blurb_and_notes`** |
+| 3 | CSE fetch has no **`do_task`** | same | **`TestAst506InflowResolve::{test_resolve_hits_persist_website_review,test_resolve_empty_hits_no_website}`** |
+| 4 | ≥1 hit → **`WEBSITE_REVIEW`** + hit list | same | **`TestAst506InflowResolve::test_resolve_hits_persist_website_review`** |
+| 5 | Zero hits → **`NO_WEBSITE`**, no AI | same | **`TestAst506InflowResolve::test_resolve_empty_hits_no_website`** |
+| 6 | Empty-website filter only resolve/**`DISCOVERED`** | `src/core/dispatcher.py`, `src/data/database.py` | **`TestRunUnified::{test_ast506_inflow_resolve_claims_empty_website_only,test_ast1673_inflow_resolve_on_new_skips_empty_website_filter}`**; **`TestAst506InflowResolveEligible`**; **`TestAst776InflowVetEligible`** |
+| — | Consult fetch-hop rollup (**`NO_WEBSITE`** = passed) | `src/core/consult.py` | **`TestAst1673ConsultResolveFetchHop`** |
+| — | **`run_company_task`** on **`DISCOVERED`** | `src/core/roster.py` | **`TestAst776VetInflowDiscoveryCompany`** routing tests; **`TestAst506InflowResolve::test_run_company_task_discovered_resolve_terminals`** |
+
+**Broken / obsolete (Betty revision this pass):** AST-775 **`recorded NEW`** / state **`NEW`**; AST-506 resolve **`do_task`/`WEBSITE_FOUND`** success + AI-decline paths; AST-776 **`run_company_task`** on **`NEW`**; DB **`count_company_new_*`** + claim **`NEW`**; dispatcher resolve trigger **`NEW`**.
+
+**Integration:** none — revise existing component only; do not invent new integration scenarios.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew::test_record_hit_creates_new_with_blurb_and_notes \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst506InflowResolve \
+  tests/component/core/test_roster.py::TestAst1673ConsultResolveFetchHop \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst506InflowResolveEligible \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast506_inflow_resolve_claims_empty_website_only \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1673_inflow_resolve_on_new_skips_empty_website_filter \
+  -q
+```

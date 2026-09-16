@@ -638,10 +638,11 @@ class TestAst471DispatchConfigHelpers:
         assert cfg.resolve_dispatch_task_config_key("grade_do") == "grade_do"
         assert cfg.resolve_dispatch_task_config_key("  grade_like  ") == "grade_like"
 
-    def test_dispatch_task_grouping_catalog_key_prefilter_maps_to_company(self) -> None:
-        assert cfg.dispatch_task_grouping_catalog_key("prefilter") == "prefilter_company"
-        assert cfg.dispatch_task_grouping_catalog_key("fetch_website") == "fetch_website"
-        assert cfg.dispatch_task_grouping_catalog_key("  prefilter  ") == "prefilter_company"
+    def test_dispatch_dual_key_shims_removed(self) -> None:
+        # AST-1675: dual-key shims deleted — lasting catalog identity is prefilter_company.
+        assert not hasattr(cfg, "dispatch_task_grouping_catalog_key")
+        assert not hasattr(cfg, "dispatch_row_task_key")
+        assert not hasattr(cfg, "alias_company_prefilter_catalog_key")
 
     def test_retired_consult_dispatch_keys_rejected(self) -> None:
         assert cfg.dispatch_task_key_retired_message("consult_do") == (
@@ -1065,11 +1066,20 @@ class TestAst1277ScoreFloorHelpers:
         assert cfg.effective_dispatch_score_floor(0.0) == 0.0
         assert cfg.effective_dispatch_score_floor(6) == 6.0
 
-    def test_dispatch_row_task_key_prefilter_and_identity(self) -> None:
-        assert cfg.dispatch_row_task_key("prefilter_company") == "prefilter"
-        assert cfg.dispatch_row_task_key("prefilter") == "prefilter"
-        assert cfg.dispatch_row_task_key("grade_do") == "grade_do"
-        assert cfg.dispatch_row_task_key("meteorite_grade_do") == "meteorite_grade_do"
+    def test_prefilter_company_is_lasting_catalog_identity(self) -> None:
+        # AST-1675 / AST-1277: score-floor + claim lookup use identity keys (no shim rename).
+        from src.utils.config import (
+            _dispatch_batch_call_mode_for,
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert "prefilter_company" in cfg.TASK_CONFIG
+        assert "prefilter" not in cfg.TASK_CONFIG
+        assert _dispatch_batch_call_mode_for("prefilter_company") == 1
+        assert _dispatch_trigger_state_for_task_key("prefilter_company") == "HOMEPAGE_READY"
+        assert _dispatch_entity_type_for_task_key("prefilter_company") == "company"
+        assert _dispatch_batch_call_mode_for("prefilter") == 0
 
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
 class TestAst641DispatchClaimStates:
@@ -1233,15 +1243,19 @@ class TestAst702PrefilterBatchConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: prefilter is roster runtime (not TASK_CONFIG). AST-1214: defaults via helpers.
+        # AST-1675: lasting catalog identity is prefilter_company (ROSTER_CONFIG["prefilter"] block key stays).
         assert "prefilter" not in cfg.TASK_CONFIG
-        assert _dispatch_batch_call_mode_for("prefilter") == 1
-        assert _dispatch_trigger_state_for_task_key("prefilter") == "HOMEPAGE_READY"
-        assert _dispatch_entity_type_for_task_key("prefilter") == "company"
-        d = cfg.dispatch_task_admin_defaults("prefilter")
+        assert "prefilter_company" in cfg.TASK_CONFIG
+        assert _dispatch_batch_call_mode_for("prefilter_company") == 1
+        assert _dispatch_trigger_state_for_task_key("prefilter_company") == "HOMEPAGE_READY"
+        assert _dispatch_entity_type_for_task_key("prefilter_company") == "company"
+        d = cfg.dispatch_task_admin_defaults("prefilter_company")
         assert d["entity_type"] == "company"
         assert d["trigger_state"] == "HOMEPAGE_READY"
         assert d["batch_call_mode"] == 1
+        # Bare leftover catalog input is rejected after alias drop.
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("prefilter")
 
 
 class TestAst707EmbeddedPrefilterConfig:
@@ -4824,8 +4838,7 @@ class TestAst1222MeteoriteAliasDispatchAndSeed:
         assert "task_key = 'meteorite_grade_get'" in sql
 
     def test_grouping_catalog_key_stays_on_alias(self) -> None:
-        assert cfg.dispatch_task_grouping_catalog_key("meteorite_grade_do") == "meteorite_grade_do"
-        assert cfg.dispatch_task_grouping_catalog_key("meteorite_grade_get") == "meteorite_grade_get"
+        # AST-1675: grouping shim deleted — meteorite aliases are identity catalog keys.
         assert "meteorite_grade_do" in cfg.get_task_keys()
         assert "meteorite_grade_get" in cfg.get_task_keys()
         # Classic Gaze still masters (not aliases).
@@ -4940,9 +4953,10 @@ class TestAst1214DispatchAdminDefaultsWidened:
             "inflow_discovery": ("candidate", "ACTIVE_SEARCH"),
             "gaze": ("company", "WATCH"),
             "recheck_no_openings": ("company", "NO_OPENINGS"),
-            "prefilter": ("company", "HOMEPAGE_READY"),
-            # AST-1672: CSE fetch claims DISCOVERED (not NEW).
-            "inflow_resolve_website": ("company", "DISCOVERED"),
+            # AST-1675: lasting company-prefilter catalog key (was bare prefilter).
+            "prefilter_company": ("company", "HOMEPAGE_READY"),
+            # This tip still claims NEW; AST-1672 retargets to DISCOVERED on its own sub.
+            "inflow_resolve_website": ("company", "NEW"),
         }
         for tk, (et, ts) in expected.items():
             d = cfg.dispatch_task_admin_defaults(tk)

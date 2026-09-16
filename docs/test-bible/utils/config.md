@@ -4001,3 +4001,38 @@ Config-only: register `candidate.context.writing_preferences` in `ARTIFACT_CONFI
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 
+
+### AST-1675 · AST-1671
+
+**Scope:** Company prefilter lasting catalog identity is **`prefilter_company`**. Dual-key shims **`dispatch_row_task_key`** / **`dispatch_task_grouping_catalog_key`** deleted; one-release alias dropped. **`ROSTER_CONFIG["prefilter"]`** hop-policy block key unchanged. Callables / **`prefilter_company_notes`** unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shims gone | `src/utils/config.py` | **`TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed`** |
+| Frozensets + helpers + admin defaults | same | **`TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity`**; revised **`TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults`**; revised **`TestAst1214DispatchAdminDefaultsWidened`** (`prefilter_company`) |
+| Meteorite grouping identity | same | revised **`TestAst1222MeteoriteAliasDispatchAndSeed::test_grouping_catalog_key_stays_on_alias`** |
+
+**Broken / obsolete this pass:** shim tests expecting `dispatch_row_task_key` / `dispatch_task_grouping_catalog_key`; Ast702/Ast1214 bare-`prefilter` helper membership.
+
+**Integration:** none — no existing scenario asserts catalog-key dual identity; do not invent.
+
+## QA test manifest
+
+1. Shim deletion: `tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed`
+2. Lasting catalog helpers: `tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity`
+3. Batch mode + defaults + bare reject: `tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults`
+4. Admin defaults matrix: `tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed \
+  tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
