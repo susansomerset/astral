@@ -226,6 +226,16 @@ Confirm Chuckles estimate: 3 — agree
 - Editor reload (parent AC6 for UI) → Stage 1 §§6–7 + Stage 2 §2 (Katherine UI unchanged this ticket)
 - Sibling freeze / catalog ownership → Ada AST-1664 on ftr (merged); this ticket does not touch `ARTIFACT_CONFIG`
 
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement` @ `1781c083a2f7c94477051d0d168127945ff30341`.
+
+**Stages delivered:**
+- Stage 1: Writing Preferences hydrate + library gate + entity log — `774d2e777e8a421cdbcc31c87e478c91de9ec7e2`.
+- Stage 2: PUT intercept + GET hydrate + api info — `1781c083a2f7c94477051d0d168127945ff30341`.
+
+**Betty:** at **Code Complete** — cover operative `plain_text` validation reuse for Writing Preferences (non-empty string), `save_artifact` round-trip + retire prior current, identical-body no-op (AST-1635 shared), dict-path strips `context.writing_preferences` via `_CONTEXT_OPERATIVE_LEAVES`, hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf; Strengths / Ideal Day paths unchanged.
+
 ## Joan validate
 
 [plan-rubric]
