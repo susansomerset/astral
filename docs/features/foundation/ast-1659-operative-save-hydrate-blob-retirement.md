@@ -227,6 +227,16 @@ Confirm Chuckles estimate: 3 — agree
 - Sibling freeze (parent AC8) → scope gate; no other `ARTIFACT_CONFIG` keys
 - Editor reload (parent AC6, Katherine AST-1660) → Stage 1 §§6–7 + Stage 2 §2 (UI sibling unchanged)
 
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1643/AST-1659-operative-save-hydrate-blob-retirement` @ `d5dfc8c274727f0306e3efe1fbd61f38f7ae4c53`.
+
+**Stages delivered:**
+- Stage 1: library gate + hydrate + entity log — `5e05726a44723116c6be044633971c285335dd3a`.
+- Stage 2: PUT intercept + GET hydrate + api info — `d5dfc8c274727f0306e3efe1fbd61f38f7ae4c53`.
+
+**Betty:** at **Code Complete** — cover operative Ideal Day round-trip + retire prior current, identical-body no-op (shared AST-1635), dict-path strips `context.ideal_day` (and still strips strengths / bio_summary / deal_breakers), hydrate overlays current / leaves legacy on miss, PUT pop+operative path, GET hydrate leaf, empty ideal_day → 400.
+
 ## Joan validate
 
 [plan-rubric]
