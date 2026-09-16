@@ -206,3 +206,71 @@ context_tokens≈42000
 ## Review
 
 (pending Radia)
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1672
+**Publish ref:** 7552edb90696076dc3f63592e035c54c3b97104f
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | A | | |
+| stat.logging.debug | X | | config-only; no new `logger.debug` call sites |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** Joan plan validate § Findings / discuss
+- **Finding:** `astral.config.config-source-of-truth` plainly governs a config-only SSOT ticket but is absent from the frozen two-id list. Diff behavior is compliant (all literals and registries land in `src/utils/config.py` only).
+- **Recommendation:** Archie may amend parent Canon Scope at Discussion for comparability with sibling passes; not a code fix on this tip.
+
+### advisory
+
+- **Location:** Stage 2 ⚠️ Decision — remove `INFLOW_CONFIG["resolve"]["ai_task_key"]`
+- **Finding:** Deleting `ai_task_key` will `KeyError` today's `roster.resolve_company_website` until **AST-1673** rewrites the CSE hop.
+- **Recommendation:** Accepted epic sequencing per plan; merge **AST-1673** promptly after this child lands.
+
+### advisory
+
+- **Location:** `tests/component/utils/test_config.py` — `TestAst1214DispatchAdminDefaultsWidened::test_dispatch_task_admin_defaults_widened`
+- **Finding:** Betty bundled a `meteorite_email` admin-defaults revision (`entity_type: None` after AST-1529+) unrelated to DISCOVERED/resolve cutover but correct on publish tip.
+- **Recommendation:** No action; bible documents the bundle.
+
+## What's solid
+
+- All three plan stages delivered in `src/utils/config.py`: `DISCOVERED` + `WEBSITE_REVIEW` `batch_criteria.sort_by`; vet/CSE triggers cut to `DISCOVERED`; CSE-only `INFLOW_CONFIG["resolve"]` (waiting `WEBSITE_REVIEW`, hit-list key, no `ai_task_key`); `resolve_website` TASK_CONFIG + `_DISPATCH_COMPANY_ENTITY_TASK_KEYS` + explicit `_dispatch_trigger_state_for_task_key` branch; import-time assert block matches Stage 3 step 6 verbatim.
+- Transition reshape matches plan: `NEW → WEBSITE_FOUND|NO_WEBSITE|VET_FAILED` removed; `DISCOVERED` / `WEBSITE_REVIEW` edges added; `("IMPORTED", "WEBSITE_REVIEW")` preserved.
+- `_dispatch_sort_by_for("company", …)` reads `COMPANY_STATES[trigger_state].batch_criteria.sort_by` — admin defaults for `resolve_website` and `inflow_resolve_website` derive `sort_by: updated_at` from state criteria, not caller literals.
+- Betty manifest is tight: revised `TestAst505InflowDiscoveryConfig` / `TestAst506InflowResolveConfig` / `TestAst1214DispatchAdminDefaultsWidened` plus new `TestAst1672DiscoveredResolveRegistrySsot` lock every plan AC row; bible AST-1672 section matches.
+- Product diff scope honors explicit gate: only `src/utils/config.py` (+ expected test/bible/doc pipeline artifacts). Estimate **3** fits.
+
+## Scope notes (not findings)
+
+- Plan text cites `SYSTEM_CONFIG["company_state_transitions"]`; live registry is `ASTRAL_CONFIG["company_state_transitions"]` — naming drift only, transitions land in the correct registry.
+- Publish tip is `7552edb9` (`merge-tests(AST-1672)` atop test commit `adc287cd`); issue doc Build table still lists stage tip `37818321` — Chuckles may refresh Build publish line when appending review.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1672): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
+
+---
+context_tokens≈38000
+
+```
+[code-rubric] PROCEED (Commit: 7552edb9) DISCOVERED resolve SSOT clean
+```
