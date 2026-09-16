@@ -330,3 +330,13 @@ AC3→Stage 1 §§3-4 + Stage 2 §§5-6; AC4→Stage 1 §§6-7 + Stage 2 §§3-4
 - **Recommendation:** No plan change; scores based on resolved directive text.
 
 context_tokens≈42000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement` @ `ce12e7ee5df425086d20caa9e8f65dbacf4c32d3`.
+
+**Stages delivered:**
+- Stage 1: resume_structure validate + hydrate + library gate + craft/parse land — `e846f7c3ca0f9858376f51b0c953d3d998e466e5`.
+- Stage 2: agent craft-persist + API PUT intercept + GET hydrate + api info — `ce12e7ee5df425086d20caa9e8f65dbacf4c32d3`.
+
+**Betty:** at **Code Complete** — cover operative `resume_structure` validate via `normalize_resume_structure`, `save_artifact` round-trip + retire prior current, identical-body no-op (AST-1635 shared), dict-path strips `artifacts.resume_structure` via `_ARTIFACTS_OPERATIVE_LEAVES`, hydrate overlays current / leaves legacy on miss (not base_resume strip-on-miss), PUT pop after normalize/ingest + operative path (incl. base_resume-ingest-updated structure), GET detail + `/resume_structure` via `get_candidate` hydrate, craft/parse + agent craft-persist structure operative / body base_resume; no backfill.
