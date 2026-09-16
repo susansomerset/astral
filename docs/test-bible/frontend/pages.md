@@ -2700,3 +2700,34 @@ cd src/ui/frontend && npm run test:component -- \
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
 
+### AST-1653 · AST-1641
+
+**Parent:** [AST-1641 — Migrate candidate_data.context.priorities to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1641). **Publish:** `origin/sub/AST-1641/AST-1653-priorities-contexttextpage-wire-up`.
+
+Priorities page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { priorities } }` GET/PUT (AST-1652 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1651** / **AST-1652**. Mirror AST-1634 / AST-1656.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Priorities page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidatePriorities.tsx` | **`test_CandidatePriorities.test.tsx`** — `AST-1653` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Priorities render-only case expanded under AST-1653 names.
+
+**Integration:** none — no existing scenario asserts Priorities ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Priorities page (§6c): `tests/component/frontend/pages/test_CandidatePriorities.test.tsx` — pattern **`AST-1653`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidatePriorities.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1653|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
