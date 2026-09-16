@@ -13,6 +13,8 @@ get_candidate_current(candidate_id, artifact_key) current-read by catalog key
 (AST-1586 / patt.artifact.read-current).
 Strengths (candidate.context.strengths) uses the same operative save +
 get_candidate_current hydrate path (AST-1633).
+Priorities (candidate.context.priorities) uses the same operative save +
+get_candidate_current hydrate path (AST-1652).
 Deal Breakers (candidate.context.deal_breakers) uses the same operative save +
 get_candidate_current hydrate path (AST-1655).
 Bio summary (candidate.context.bio_summary) uses the same operative save +
@@ -817,6 +819,14 @@ def save_candidate_data(
                 new_uuid,
                 "-",
             )
+        elif artifact_key == _PRIORITIES_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "priorities artifact saved",
+                new_uuid,
+                "-",
+            )
         elif artifact_key == _DEAL_BREAKERS_ARTIFACT_KEY:
             logger.info(
                 "%s | candidate %s: %s (batch: %s)",
@@ -913,7 +923,7 @@ def save_candidate_data(
         _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
         blob_merge["contact"] = proposed
 
-    # AST-1633 / AST-1649 / AST-1655 / AST-1659: catalog owns these context leaves — never library-merge SoT.
+    # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659: catalog owns these context leaves — never library-merge SoT.
     ctx = blob_merge.get("context")
     if isinstance(ctx, dict):
         cleaned = {k: v for k, v in ctx.items() if k not in _CONTEXT_OPERATIVE_LEAVES}
@@ -1545,12 +1555,11 @@ def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> N
 
 
 _STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
-_DEAL_BREAKERS_ARTIFACT_KEY = "candidate.context.deal_breakers"
 _BIO_SUMMARY_ARTIFACT_KEY = "candidate.context.bio_summary"
 _IDEAL_DAY_ARTIFACT_KEY = "candidate.context.ideal_day"
-# Catalog-owned context leaves — never durable library-merge SoT (AST-1633 / AST-1649 / AST-1655 / AST-1659).
+# Catalog-owned context leaves — never durable library-merge SoT (AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659).
 _CONTEXT_OPERATIVE_LEAVES = frozenset(
-    {"strengths", "bio_summary", "deal_breakers", "ideal_day"}
+    {"strengths", "bio_summary", "priorities", "deal_breakers", "ideal_day"}
 )
 
 
@@ -1574,6 +1583,30 @@ def hydrate_operative_strengths_for_response(candidate_id: str, cd: dict) -> Non
     ctx["strengths"] = body
 
 
+_PRIORITIES_ARTIFACT_KEY = "candidate.context.priorities"
+_DEAL_BREAKERS_ARTIFACT_KEY = "candidate.context.deal_breakers"
+
+
+def hydrate_operative_priorities_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Priorities into candidate_data.context (display only).
+
+    Miss → leave legacy context.priorities blob untouched (parent AC7 / ticket AC6 migration window).
+    Hit → write current string onto context.priorities for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _PRIORITIES_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["priorities"] = body
+
+
 def hydrate_operative_deal_breakers_for_response(candidate_id: str, cd: dict) -> None:
     """Overlay operative current Deal Breakers into candidate_data.context (display only).
 
@@ -1592,7 +1625,6 @@ def hydrate_operative_deal_breakers_for_response(candidate_id: str, cd: dict) ->
         ctx = {}
         cd["context"] = ctx
     ctx["deal_breakers"] = body
-
 
 
 def hydrate_operative_bio_summary_for_response(candidate_id: str, cd: dict) -> None:
@@ -1726,6 +1758,7 @@ def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
         cd = {}
     hydrate_operative_base_resume_for_response(candidate_id, cd)
     hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_priorities_for_response(candidate_id, cd)
     hydrate_operative_deal_breakers_for_response(candidate_id, cd)
     hydrate_operative_bio_summary_for_response(candidate_id, cd)
     hydrate_operative_ideal_day_for_response(candidate_id, cd)
