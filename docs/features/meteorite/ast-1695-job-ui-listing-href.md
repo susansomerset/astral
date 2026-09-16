@@ -186,4 +186,77 @@ context_tokens≈52000
 
 ## Radia review
 
+[code-rubric]
 
+**Ticket:** AST-1695  
+**Publish ref:** `eaafa9ed2a08b74da37048f02b029f1032fdfc28` (`origin/sub/AST-1686/AST-1695-job-ui-listing-href`)  
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`  
+**Overall:** CLEAN
+
+## Canon scores
+
+(empty frozen Canon Scope — no directives to score; presentational / client-open only per issue doc and Joan validate)
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (Joan: empty Canon Scope — aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — sibling product code on publish ref (epic sync, not AST-1695 scope)
+
+**Location:** `git diff origin/dev...origin/sub/AST-1686/AST-1695-job-ui-listing-href` — `src/core/consult.py`, `src/core/meteorite.py`, `src/core/tracker.py`, `src/data/database.py`, `src/ui/api/api_jobs.py`  
+**Finding:** AST-1695 scope gate names only the three frontend components. This sub tip also carries merged sibling product work (AST-1693 writers, AST-1694 `listing_href` API) from `sync(ftr)` / epic integration. That is expected for UAT of `listing_href` on detail, but it is not AST-1695’s deliverable — attribute those files to their sibling tickets at `ftr` merge, not this child.  
+**Recommendation:** Chuckles/downstream: partition sibling attribution in issue docs; AST-1695 review verdict applies to the three frontend files only.
+
+### discuss — sibling test/doc nodes via `merge-tests`
+
+**Location:** Diff includes AST-1692 Meteorite tab tests, AST-1696 Copy Link tests, AST-1691 `related_meteorite` API tests, sibling bible nodes, etc.  
+**Finding:** Betty’s AST-1695 manifest (`docs/test-bible/frontend/components.md` § AST-1695) is correctly narrow (three component test files, `AST-1695` name pattern). **Tests Passed** is consistent. Full-module runs of merged sibling test suites may fail or assert product not on this ref until siblings land together on `ftr`.  
+**Recommendation:** Keep manifest narrow at merge; reconcile sibling test nodes when siblings merge.
+
+### advisory — duplicate `httpListingHref` helper
+
+**Location:** `JobAnalysisReportModal.tsx`, `JobDetailModal.tsx`  
+**Finding:** Same four-line helper copied per explicit scope gate (no shared util). Joan flagged acceptable at plan.  
+**Recommendation:** None for this child; extract only if a third consumer appears.
+
+### advisory — CLIENT `window.open` path not spy-tested
+
+**Location:** `JobAnalysisReportModal.tsx` `runPrimaryAction` CLIENT branch; tests cover title `<a>` from `listing_href`  
+**Finding:** Code correctly opens `httpListingHref(job.listing_href)` only (no `job_link` fallback). AST-1695 tests exercise title deeplink and null/non-http cases; no dedicated `window.open` spy when a CLIENT primary action is visible (many fixtures filter Apply from Artifacts). Low risk given mirrored `httpListingHref` and title coverage.  
+**Recommendation:** Optional `resolve-child` or Betty follow-up if a state still surfaces Apply as CLIENT — not blocking.
+
+### advisory — issue doc tip SHA stale
+
+**Location:** `docs/features/meteorite/ast-1695-job-ui-listing-href.md` § Review  
+**Finding:** Doc lists tip `92b13d28`; publish tip under review is `eaafa9ed` (`merge-tests`).  
+**Recommendation:** Chuckles updates tip line when appending this review.
+
+## What's solid
+
+- **Stage 1:** `listing_href` on `JobDetail` type; `httpListingHref` helper; CLIENT branch opens filtered `listing_href` only; `RecommendedJobReportHeader` receives `httpListingHref(job.listing_href)`; prop comment documents AST-1694 contract; no `job_link` navigation fallback.
+- **Stage 2:** `listingHref` from `listing_href`; read-only Link row only when http(s); editable mode keeps `job_link` input + optional **Open listing** row; no raw `job_link` `<a>` wrap.
+- **Joan plan gap closed:** read-only Job Detail `<a>` now uses `rel="noopener noreferrer"` (was `noreferrer` only at plan).
+- **AC7 / no second resolve:** no meteorite client fetch or `related_meteorite` logic in the three scoped components.
+- **Dependency:** `listing_href` attach on `GET /api/jobs/<id>` present on tip (`api_jobs.py`) — AST-1694 dependency satisfied for UAT.
+- **Tests:** AST-1695 nodes cover title prefer `listing_href` over stale `job_link`, null/non-http → plain title, Job Detail read-only BOT_BLOCKED, editable Open listing, header unit test; revised AST-948 fixtures use `listing_href`.
+- **Estimate footprint:** Confirmed 2 — ~57 lines across three component files; proportionate.
+
+## Recommended actions (downstream only — not executed here)
+
+1. Chuckles: append artifact to issue doc, push `docs(AST-1695): Radia review — clean`, post slim upshot, move to **Review Posted**.
+2. At `ftr` merge: attribute sibling `src/**` changes to AST-1693/AST-1694, not AST-1695.
+3. Optional: CLIENT `window.open` spy test if a manifest state still exposes Apply (advisory).
+
+context_tokens≈36000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: eaafa9ed) listing_href UI clean
+```
