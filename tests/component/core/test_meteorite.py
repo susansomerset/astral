@@ -790,6 +790,7 @@ def _insert_meteorite_row(db, cid: str, **fields: object) -> int:
             "estelle_thread_ts",
             "nag_count",
             "estelle_notified_at",
+            "astral_job_id",  # AST-1690 retention skip fixtures
         )
         if k in fields and fields[k] is not None
     }
@@ -1280,6 +1281,94 @@ class TestAst1562RunMeteoriteRetention:
         out = await meteorite_mod.run_meteorite_retention({}, debug=False)
         assert out["total_processed"] == 0
         assert db.get_meteorite(row_id) is not None
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "run_meteorite_retention"),
+    reason="AST-1562 retention runner not on this publish tip",
+)
+class TestAst1690RetentionJobLinkedSkip:
+    """AST-1690: keep age-eligible LANDED when astral_job_id still hits a job."""
+
+    def _old_iso(self) -> str:
+        return (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+
+    @pytest.mark.asyncio
+    async def test_keeps_old_landed_when_job_exists(self, sqlite_in_memory) -> None:
+        # AC7 — job-linked LANDED past landed_purge_days must survive one retention run.
+        db = sqlite_in_memory
+        cid = "cand-ret-keep"
+        jid = "job-ret-keep-1"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Keep"})
+        db.save_company("co-ret-keep", state="IGNORE", candidate_id=cid)
+        db.save_job(jid, company="co-ret-keep", state="RECOMMENDED")
+        row_id = _insert_meteorite_row(
+            db, cid, state="LANDED", astral_job_id=jid
+        )
+        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
+        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        assert db.get_meteorite(row_id) is not None
+        assert out["total_processed"] == 0
+        assert out["total_passed"] == 0
+
+    @pytest.mark.asyncio
+    async def test_purges_old_landed_when_job_missing(self, sqlite_in_memory) -> None:
+        # AC8 — orphan astral_job_id (no job row) stays age-purge eligible.
+        db = sqlite_in_memory
+        cid = "cand-ret-orphan"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Orphan"})
+        row_id = _insert_meteorite_row(
+            db, cid, state="LANDED", astral_job_id="job-ret-missing-xyz"
+        )
+        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
+        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        assert db.get_meteorite(row_id) is None
+        assert out["total_processed"] >= 1
+        assert out["total_passed"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_purges_old_landed_blank_astral_job_id(
+        self, sqlite_in_memory
+    ) -> None:
+        # AC8 — whitespace-only astral_job_id strips to empty → purge like null.
+        db = sqlite_in_memory
+        cid = "cand-ret-blank"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Blank"})
+        row_id = _insert_meteorite_row(
+            db, cid, state="LANDED", astral_job_id="   "
+        )
+        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
+        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        assert db.get_meteorite(row_id) is None
+        assert out["total_processed"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_mixed_batch_keeps_linked_purges_unlinked(
+        self, sqlite_in_memory
+    ) -> None:
+        # One run: linked keep + null-link purge (partition loop).
+        db = sqlite_in_memory
+        cid = "cand-ret-mix"
+        jid = "job-ret-mix-1"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Mix"})
+        db.save_company("co-ret-mix", state="IGNORE", candidate_id=cid)
+        db.save_job(jid, company="co-ret-mix", state="RECOMMENDED")
+        keep_id = _insert_meteorite_row(
+            db, cid, state="LANDED", astral_job_id=jid, source_id="mid-keep"
+        )
+        purge_id = _insert_meteorite_row(
+            db, cid, state="LANDED", source_id="mid-purge"
+        )
+        old = self._old_iso()
+        _backdate_meteorite_state_changed(db, keep_id, old)
+        _backdate_meteorite_state_changed(db, purge_id, old)
+        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        assert db.get_meteorite(keep_id) is not None
+        assert db.get_meteorite(purge_id) is None
+        assert out["total_processed"] >= 1
+        assert out["total_passed"] >= 1
 
 
 def _check_inbox_msg(
