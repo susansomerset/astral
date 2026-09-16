@@ -137,3 +137,48 @@ Confirm Chuckles estimate: 2 — agree
 | AC5 no full `related_meteorite` payload in this epic | Stage 1 name/return + Stage 2 (key only `listing_href`) |
 
 Parent AC1–3 → AST-1693 (writers). Parent AC5–6 UI → AST-1695. Out of scope here.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1694
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1686/AST-1694-minimal-listing-href-job-get` @ `d4a1a8bdce9640a28818f340ce2161a767fe7cf4`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | B | | |
+
+## Traceability
+
+AC4→S1+S2 (`listing_href` http(s)/null, job_link then meteorite); AC5→S1+S2 (link-only helper, no `related_meteorite`); parent AC1–3→N/A (AST-1693 writers); parent AC5–6→N/A (AST-1695 React).
+
+## Findings
+
+### acceptable — `stat.logging.error` exception next-step wording (Stage 2)
+
+**Location:** Stage 2 `logger.exception` body  
+**Finding:** After `_http_listing_url(job.get("job_link"))` is already `None`, the caught-path next-step line says “Continuing with listing_href from job.job_link only” even though `job_link` was already exhausted; the real soft-fail is `listing_href = null`. Live facts and `exc_info` are present; this is wording variance only.  
+**Recommendation:** At build, tighten the next-step line to “Continuing without meteorite fallback; listing_href=null” (or equivalent). Not blocking.
+
+### Identity / gate checks
+
+- Status `Plan Ready`, assignee Joan — OK.
+- No `[plan-discuss]` rounds in thread (0/2).
+- Canon list present (3 ids); no empty-list ESCALATE.
+- Explicit scope gate: Files Changed and Stages stay inside `database.py` + `api_jobs.py` only.
+- `listing_href` field name locked; no frontend/writer scope creep.
+- Parent “log once at completing route” correctly yields to `stat.logging.info.api` (idempotent GET → no info); documented in Stage 2 decisions.
+- Sibling partition: AST-1693 writes `job_link`; AST-1695 consumes `listing_href`; AST-1685 full provenance explicitly excluded (helper name + return shape).
+- DRY: link-only `get_meteorite_link_by_astral_job_id` vs AST-1691 full-row helper — justified by AC5.
+- Direct `src.data.database` import from `api_jobs` matches existing precedent (`api_system.py`, `api_admin.py`); `astral.layers.import-direction` not on frozen list — not scored.
+
+context_tokens≈32000
+
+```
+
