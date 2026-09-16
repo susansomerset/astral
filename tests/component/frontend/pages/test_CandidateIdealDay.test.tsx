@@ -13,7 +13,7 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
 
 const mockedApi = vi.mocked(api)
 
-describe("CandidateIdealDay — AST-1366 Ideal Day edit surface", () => {
+describe("CandidateIdealDay — AST-1660 plain_text ContextTextPage", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
@@ -32,16 +32,13 @@ describe("CandidateIdealDay — AST-1366 Ideal Day edit surface", () => {
       }
       if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
         const body = JSON.parse(String(init.body || "{}"))
-        return {
-          ok: true,
-          json: async () => ({ candidate_data: body }),
-        } as Response
+        return { ok: true, json: async () => ({ candidate_data: body }) } as Response
       }
       throw new Error(`unexpected api call: ${url}`)
     })
   })
 
-  it("renders Ideal Day context editor (§6c routed page)", async () => {
+  it("AST-1660: renders Ideal Day editor (§6c routed page)", async () => {
     renderWithProviders(<CandidateIdealDay />)
     await waitFor(() =>
       expect(screen.getByRole("heading", { name: "Ideal Day" })).toBeInTheDocument(),
@@ -49,7 +46,7 @@ describe("CandidateIdealDay — AST-1366 Ideal Day edit surface", () => {
     expect(screen.getByRole("textbox")).toHaveValue("deep focus mornings")
   })
 
-  it("saves context.ideal_day via PUT /data merge", async () => {
+  it("AST-1660: save PUT context.ideal_day and reloads same text", async () => {
     const puts: unknown[] = []
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
@@ -67,7 +64,12 @@ describe("CandidateIdealDay — AST-1366 Ideal Day edit surface", () => {
       if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
         const body = JSON.parse(String(init.body || "{}"))
         puts.push(body)
-        return { ok: true, json: async () => ({ candidate_data: body }) } as Response
+        return {
+          ok: true,
+          json: async () => ({
+            candidate_data: { context: { ideal_day: body.context.ideal_day } },
+          }),
+        } as Response
       }
       throw new Error(`unexpected api call: ${url}`)
     })
@@ -81,5 +83,32 @@ describe("CandidateIdealDay — AST-1366 Ideal Day edit surface", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Ideal Day saved")).toBeInTheDocument())
     expect(puts).toEqual([{ context: { ideal_day: "quiet maker mornings" } }])
+    expect(screen.getByRole("textbox")).toHaveValue("quiet maker mornings")
+  })
+
+  it("AST-1660: empty draft disables Save (plain_text bodyShape)", async () => {
+    renderWithProviders(<CandidateIdealDay />)
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Ideal Day" })).toBeInTheDocument(),
+    )
+    await userEvent.clear(screen.getByRole("textbox"))
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled()
+    expect(
+      mockedApi.mock.calls.every(
+        ([url, init]) => !(url.includes("/data") && init?.method === "PUT"),
+      ),
+    ).toBe(true)
+  })
+
+  it("AST-1660: page hardcodes bodyShape plain_text; ArtifactEditor untouched", async () => {
+    const { readFileSync } = await import("node:fs")
+    const { resolve } = await import("node:path")
+    const src = readFileSync(
+      resolve(__dirname, "../../../../src/ui/frontend/src/pages/CandidateIdealDay.tsx"),
+      "utf8",
+    )
+    expect(src).toMatch(/bodyShape="plain_text"/)
+    expect(src).toMatch(/contextKey="ideal_day"/)
+    expect(src).not.toMatch(/ArtifactEditor/)
   })
 })

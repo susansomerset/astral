@@ -2725,3 +2725,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1660 · AST-1643
+
+**Parent:** [AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1643). **Publish:** `origin/sub/AST-1643/AST-1660-ideal-day-contexttextpage-wire-up`.
+
+Ideal Day page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { ideal_day } }` GET/PUT (AST-1659 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1658** / **AST-1659**. Mirror AST-1634 / AST-1656.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Ideal Day page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateIdealDay.tsx` | **`test_CandidateIdealDay.test.tsx`** — `AST-1660` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Ideal Day AST-1366 render/save cases expanded under AST-1660 names (plain_text empty gate + bodyShape source assert).
+
+**Integration:** none — no existing scenario asserts Ideal Day ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Ideal Day page (§6c): `tests/component/frontend/pages/test_CandidateIdealDay.test.tsx` — pattern **`AST-1660`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateIdealDay.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1660|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
