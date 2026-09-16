@@ -194,3 +194,67 @@ context_tokens≈72000
 ## Review
 
 (pending Radia)
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1674
+**Publish ref:** 6fce7db43587ce2ac2cd46d372f8b91a072a6e0e
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.debug | B | | roster continues `debug_index`/`debug_detail_block` on apply hop (unconverted file) |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory
+
+- **Location:** Stage 1 steps 4 / 8 — missing hits or hard `do_task` failure
+- **Finding:** Both paths return `error` with **no** state transition (stays `WEBSITE_REVIEW`) and no entity id-pipe info line — only `logger.warning` on empty hit list.
+- **Recommendation:** Joan marked acceptable (mirrors `vet_inflow_discovery` soft-fail / retryable `total_errors`); ops rely on warning + dispatch error rollup. Optional symmetric entity info on hard failure is downstream polish, not fix-now.
+
+- **Location:** Stage 1 step 12 — hit list retention
+- **Finding:** `inflow_resolve_website_hits` is not cleared after successful apply.
+- **Recommendation:** Plan explicitly out of scope; no action on this tip.
+
+- **Location:** `git diff origin/dev...origin/sub/AST-1670/AST-1674-resolve-website-company-dispatch-apply`
+- **Finding:** Three-dot diff includes **AST-1672** / **AST-1673** ancestor artifacts (`config.py`, dispatcher/database eligibility, CSE fetch hop) not yet on `origin/dev`. AST-1674 product commit `26d53545` touches **only** `src/core/roster.py` + `src/core/consult.py`.
+- **Recommendation:** None for this child; epic merge order remains Chuckles/merge-child concern.
+
+## What's solid
+
+- **`resolve_website_company`** (Stage 1): loads hits from `entity["company_data"][hit_list_data_key]`; rebuilds pre-split `0|slug|` + `1|title|url|snippet` live_content; calls `do_task(task_key=find_company_website)` (not SA key); success → `update_company` + `WEBSITE_FOUND`; AI decline/empty → `NO_WEBSITE`; missing hits / hard task fail → `error`, no transition; no CSE call.
+- **Entity logging:** id-pipe `logger.info` on both terminal apply outcomes (`-> NO_WEBSITE`, `website=… -> WEBSITE_FOUND`) matches plan/statute shape; CSE/live_content dumps stay on debug helpers only.
+- **Stage 2 routing:** `run_company_task` `WEBSITE_REVIEW` block requires `dispatch_task_key=resolve_website`, rolls up `pass_state`/`fail_state` as passed; consult explicit `resolve_website` loop mirrors CSE branch shape and counts terminals vs errors correctly.
+- **Tests:** `TestAst1674ResolveWebsiteApply` locks live_content shape, `find_company_website` task_key, missing-hits/no-transition, decline/success terminals, `run_company_task` + consult rollups; bible § AST-1674 manifest aligns.
+- **Estimate 2** fits: lift of deleted AI block + two routing branches on SSOT/hit-persist already on tip.
+
+## Scope notes (not findings)
+
+- Publish tip is `6fce7db4` (`merge-tests(AST-1674)` atop `5c9d57bd`); issue doc Build table lists `26d53545` — Chuckles may refresh when appending review.
+- `stat.logging.info.dispatcher` is absent from this ticket's frozen list (correct — no dispatcher completion-line changes).
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1674): Radia review — clean`, post slim upshot, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round needed).
+
+---
+context_tokens≈52000
