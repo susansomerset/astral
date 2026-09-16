@@ -141,3 +141,68 @@ context_tokens≈52000
 - Stage 1: Wire Backstory `plain_text` bodyShape — `6d60fd477a9dd95d8ae944396eb0f3e7e291c0d0`.
 
 **Betty:** at **Code Complete** — cover Backstory ContextTextPage render + hydrated load, save PUT `{ context: { backstory } }` + textarea reload, `plain_text` empty-save gate (Save disabled, no PUT), and source assert for `bodyShape="plain_text"` / no `ArtifactEditor`; `ContextTextPage.tsx` / `ArtifactEditor.tsx` untouched.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1663
+**Publish ref:** `7ff7a9df0a7db46ba48de966f75c61327653168e` (`origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up`)
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`
+**Overall:** FIX-NOW
+
+## Canon scores
+
+| Id | Grade | Effort | One-line |
+|----|-------|--------|----------|
+| patt.artifact.ui-consistency | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.write-operative | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+- [ ] Publish ref carries only AST-1663-scoped commits — no AST-1667 test/bible land (`d191eaf1`) without `list_workspace_posters` product on tip
+
+## Findings
+
+### fix-now
+
+- **Location:** `tests/component/external/test_slack.py` (`TestAst1667WorkspacePosterPool`); `docs/test-bible/external/slack.md` § AST-1667; commit `d191eaf1`
+- **Finding:** Cross-ticket scope — AST-1667 (parent AST-1636) test + bible work is on the AST-1663 publish ref, but `list_workspace_posters` is **absent** from `src/external/slack.py` on tip. Running `TestAst1667WorkspacePosterPool` would fail with `AttributeError`; not in AST-1663 manifest but is a branch landmine for full-suite / merge hygiene.
+- **Recommendation:** Drop `d191eaf1` from this ref (land on `origin/sub/AST-1636/AST-1667-*`); keep AST-1663 manifest-only test delta.
+
+### discuss
+
+- **Location:** Three-dot diff stat (18 files, ~1413 lines) vs explicit one-file scope gate
+- **Finding:** Wider diff carries expected epic stacking: AST-1661 catalog + AST-1662 operative/API (`af87b3a8` resolve restored writing_preferences ∪ backstory ∪ ideal_day catalog + operative paths on tip), Betty `merge-tests`, prerequisite plan docs. Engineer product commit `6d60fd47` touches **only** `CandidateBackstory.tsx` (+ plan stub) — matches Stage 1 gate.
+- **Recommendation:** Chuckles notes at merge-child; not Katherine replan.
+
+- **Location:** `tests/component/frontend/pages/test_CandidateWritingPreferences.test.tsx` (present on `origin/dev`, absent on tip)
+- **Finding:** Tip vs dev shows deletion of AST-1666 frontend test file dev already carries; not introduced by `6d60fd47`. `CandidateWritingPreferences.tsx` on tip already has `bodyShape="plain_text"`. Merge to dev should retain dev's WP test — branch lag, not AST-1663 product defect.
+- **Recommendation:** Verify clean ftr→dev merge keeps AST-1666 test coverage.
+
+### advisory
+
+- **Location:** `canon/canon_clerk.py expand` for `patt.artifact.ui-consistency` (draft corpus)
+- **Finding:** Draft id not in `directives/active` @ `fc0c368e`; scored from `canon/directives/draft/patt.artifact.ui-consistency.md`. Joan corpus SHA matches.
+- **Recommendation:** Corpus hygiene only.
+
+- **Location:** Prerequisites on tip post-`af87b3a8`
+- **Finding:** `ARTIFACT_CONFIG` closed set unions `backstory` + `ideal_day` + `writing_preferences`; AST-1662 operative/hydrate/PUT paths present for backstory — build precondition satisfied for hand-verify.
+- **Recommendation:** None.
+
+## What's solid
+
+- `CandidateBackstory.tsx` matches plan Stage 1 exactly: `ContextTextPage` with `title="Backstory"`, `contextKey="backstory"`, `bodyShape="plain_text"` — twin of `CandidateStrengths.tsx` / `CandidateIdealDay.tsx`.
+- Sole frontend product file vs `origin/dev`; `ContextTextPage.tsx` and `ArtifactEditor.tsx` have zero diff vs dev.
+- Load/save rides existing contract: GET `context.backstory` (AST-1662 hydrate), PUT `{ context: { backstory: draft } }` (operative intercept); no client catalog fetch, no `artifactKey` prop, no `ArtifactEditor` routing.
+- `test_CandidateBackstory.test.tsx` AST-1663 cases cover render, PUT reload, `plain_text` empty-save gate (Save disabled, no PUT), and source assert for `bodyShape="plain_text"` — aligned with `docs/test-bible/frontend/pages.md` § AST-1663 manifest.
+
+## Recommended actions (downstream — not executed here)
+
+1. `resolve-child` / Chuckles: strip AST-1667 commit `d191eaf1` + bible block from this ref before merge-child.
+2. Re-run AST-1663 vitest manifest (`test_CandidateBackstory` + `test_ContextTextPage` AST-1634 pattern) after cleanup.
+3. At ftr→dev merge, confirm AST-1666 `test_CandidateWritingPreferences.test.tsx` is preserved from dev.
