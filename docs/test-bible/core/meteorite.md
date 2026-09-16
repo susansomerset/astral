@@ -434,7 +434,7 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + always
 | Prior READY land / empty READY ERROR | same | **`TestAst1560RunLandMeteorite`** |
 | Prior empty-content notify | same | **`TestAst1561RunNotifyBotBlocked`** |
 
-**Broken / obsolete this pass:** none — AST-1560 READY path and AST-1561 empty-content notify still hold; additive claim/skip only.
+**Broken / obsolete this pass:** `TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich` — dropped AST-1689 `"meteorite land id="` log assert (entity-info is `_entity_info` format); behavior asserts unchanged. AST-1561 empty-content notify still holds.
 
 **Integration:** no existing scenario asserts `run_land_meteorite` BOT_BLOCKED claim or notify contentful skip — none revised; do not invent.
 
