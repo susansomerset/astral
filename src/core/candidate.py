@@ -25,6 +25,8 @@ Backstory (candidate.context.backstory) uses the same operative save +
 get_candidate_current hydrate path (AST-1662).
 Writing Preferences (candidate.context.writing_preferences) uses the same
 operative save + get_candidate_current hydrate path (AST-1665).
+Resume structure (candidate.artifacts.resume_structure) uses the same
+operative save + get_candidate_current hydrate path (AST-1679).
 All writes go through database.save_candidate (upsert) or save_artifact (operative);
 state transition logic lives here.
 
@@ -39,7 +41,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.data import database
 from src.core.agent import (
@@ -783,12 +785,14 @@ def save_candidate_data(
     blob: Any = None,
     replace: bool = False,
     *,
+    source_artifact_ids: Optional[Sequence[str]] = None,
     debug: bool = False,
 ) -> Optional[str]:
     """Library merge (dict) or operative artifact write (artifact_key str) — AST-1576.
 
     Dict path: merge/replace library blobs + optional name columns (AST-1014); returns None.
     Str path: ARTIFACT_CONFIG → validate body_shape → save_artifact; returns new uuid.
+    Optional source_artifact_ids applies on the str path only (generative seed pins).
     """
     # Operative write-operative path (pilot: candidate.artifacts.base_resume).
     if isinstance(data_or_artifact_key, str):
@@ -811,6 +815,11 @@ def save_candidate_data(
             # AST-1633: raw string body (BUILD_CONFIG sentinel "raw_string" — validate type here).
             if not isinstance(blob, str) or not blob.strip():
                 raise ValueError("plain_text body must be a non-empty string")
+        elif entry["body_shape"] == "resume_structure":
+            # AST-1679: structure dict — BUILD_CONFIG sentinel "structure_dict"; validate via normalize.
+            if not isinstance(blob, dict) or not blob:
+                raise ValueError("resume_structure body must be a non-empty dict")
+            blob = normalize_resume_structure(blob)
         artifact_type = artifact_key.rsplit(".", 1)[-1]
         # AST-1635: identical-to-current → return existing pin; no retire+insert.
         current_row = database.get_current_artifact(
@@ -819,7 +828,11 @@ def save_candidate_data(
         if current_row is not None and current_row.get("artifact_data") == blob:
             return current_row.get("artifact_uuid")
         new_uuid = database.save_artifact(
-            entry["entity_type"], candidate_id, artifact_type, blob
+            entry["entity_type"],
+            candidate_id,
+            artifact_type,
+            blob,
+            source_artifact_ids=source_artifact_ids,
         )
         if artifact_key == _STRENGTHS_ARTIFACT_KEY:
             logger.info(
@@ -874,6 +887,14 @@ def save_candidate_data(
                 "%s | candidate %s: %s (batch: %s)",
                 candidate_id,
                 "writing_preferences artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _RESUME_STRUCTURE_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "resume_structure artifact saved",
                 new_uuid,
                 "-",
             )
@@ -957,6 +978,17 @@ def save_candidate_data(
             blob_merge["context"] = cleaned
         else:
             blob_merge.pop("context", None)
+
+    # AST-1679: catalog owns artifacts.resume_structure — never library-merge that leaf.
+    arts = blob_merge.get("artifacts")
+    if isinstance(arts, dict):
+        cleaned_arts = {
+            k: v for k, v in arts.items() if k not in _ARTIFACTS_OPERATIVE_LEAVES
+        }
+        if cleaned_arts:
+            blob_merge["artifacts"] = cleaned_arts
+        else:
+            blob_merge.pop("artifacts", None)
 
     steps = []
     if col_kwargs:
@@ -1563,6 +1595,36 @@ def get_candidate_current(candidate_id: str, artifact_key: str) -> Optional[Any]
     return row.get("artifact_data")
 
 
+def get_candidate_current_artifact_uuid(
+    candidate_id: str, artifact_key: str
+) -> Optional[str]:
+    """Current-read ``artifact_uuid`` for a catalog key (patt.artifact.read-current).
+
+    Same ARTIFACT_CONFIG / candidate_scoped / entity resolve as
+    ``get_candidate_current``, but returns ``artifact_uuid`` (or None on miss)
+    instead of ``artifact_data``. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    uuid = row.get("artifact_uuid")
+    if not isinstance(uuid, str) or not uuid.strip():
+        return None
+    return uuid
+
+
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
     """Overlay operative current base_resume into candidate_data (display only)."""
     if not isinstance(cd, dict):
@@ -1580,11 +1642,32 @@ def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> N
     arts["base_resume"] = body
 
 
+def hydrate_operative_resume_structure_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current resume_structure into candidate_data.artifacts (display only).
+
+    Miss → leave legacy artifacts.resume_structure blob untouched (parent AC7 migration window).
+    Hit → write current dict onto artifacts.resume_structure for the editor / resolve contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, dict):
+        return
+    arts = cd.get("artifacts")
+    if not isinstance(arts, dict):
+        arts = {}
+        cd["artifacts"] = arts
+    arts["resume_structure"] = body
+
+
 _STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
 _BIO_SUMMARY_ARTIFACT_KEY = "candidate.context.bio_summary"
 _IDEAL_DAY_ARTIFACT_KEY = "candidate.context.ideal_day"
 _BACKSTORY_ARTIFACT_KEY = "candidate.context.backstory"
 _WRITING_PREFERENCES_ARTIFACT_KEY = "candidate.context.writing_preferences"
+_RESUME_STRUCTURE_ARTIFACT_KEY = "candidate.artifacts.resume_structure"
 # Catalog-owned context leaves — never durable library-merge SoT (AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1662 / AST-1665).
 _CONTEXT_OPERATIVE_LEAVES = frozenset(
     {
@@ -1597,6 +1680,8 @@ _CONTEXT_OPERATIVE_LEAVES = frozenset(
         "writing_preferences",
     }
 )
+# Catalog-owned artifacts leaf — never durable library-merge SoT (AST-1679).
+_ARTIFACTS_OPERATIVE_LEAVES = frozenset({"resume_structure"})
 
 
 def hydrate_operative_strengths_for_response(candidate_id: str, cd: dict) -> None:
@@ -1833,6 +1918,7 @@ def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
     if not isinstance(cd, dict):
         cd = {}
     hydrate_operative_base_resume_for_response(candidate_id, cd)
+    hydrate_operative_resume_structure_for_response(candidate_id, cd)
     hydrate_operative_strengths_for_response(candidate_id, cd)
     hydrate_operative_priorities_for_response(candidate_id, cd)
     hydrate_operative_deal_breakers_for_response(candidate_id, cd)
@@ -3348,7 +3434,7 @@ async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> D
         return {"success": False, "error": "parse_resume returned None parsed_response"}
 
     structure, content = split_craft_resume_base_payload(parsed)
-    save_candidate_data(candidate_id, {"artifacts": {"resume_structure": structure}})
+    save_candidate_data(candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY, structure)
     save_candidate_data(
         candidate_id,
         TASK_CONFIG["craft_resume_base"]["artifact_key"],
@@ -3958,7 +4044,7 @@ def run_candidate_artifact_generation(
         if task_key == "craft_resume_base" and parsed_response is not None:
             structure, content = split_craft_resume_base_payload(parsed_response)
             save_candidate_data(
-                candidate_id, {"artifacts": {"resume_structure": structure}}
+                candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY, structure
             )
             save_candidate_data(
                 candidate_id,
