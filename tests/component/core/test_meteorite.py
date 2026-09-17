@@ -19,7 +19,7 @@ from src.utils.config import (
 )
 
 
-# Branches: empty id; insert once; idempotent no-op.
+# Branches: empty id; insert once; idempotent no-op; Style D debug on/off.
 class TestAst1041EnsureMeteoriteCompany:
     def test_empty_candidate_id_raises(self, sqlite_in_memory) -> None:
         with pytest.raises(ValueError, match="candidate_id is required"):
@@ -441,6 +441,8 @@ class TestAst1470LandMeteorite:
         monkeypatch.setattr(
             "src.core.consult.enrich_meteorite_land_packet", _enrich
         )
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
         await meteorite_mod.land_meteorite(cid, text="d" * 50, debug=True)
         assert any(
             c.kwargs.get("func") == "tracker.save_meteorite_job"
@@ -796,6 +798,8 @@ class TestAst1517CreateContactMeteorite:
         db = sqlite_in_memory
         cid = "cand-1517-dbg"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
         out = await meteorite_mod.create_contact_meteorite(
             cid, "plain pasted jd\n" + ("x" * 40), debug=True
         )
@@ -924,6 +928,8 @@ class TestAst1530StageMeteorite:
                 "batch_id": "b-dbg",
             }
 
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
         monkeypatch.setattr(
             "src.core.consult.invoke_stage_meteorite", _invoke
         )
@@ -1276,6 +1282,8 @@ class TestAst1560RunScrapeMeteorite:
         async def _fetch(_link, debug=False):
             return ("blocked page", _link)
 
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
         monkeypatch.setattr(meteorite_mod, "_land_fetch_link_text", _fetch)
         monkeypatch.setattr("src.core.gazer._classify_jd", lambda _t: "bot")
         out = await meteorite_mod.run_scrape_meteorite(
@@ -1364,6 +1372,8 @@ class TestAst1560RunLandMeteorite:
         monkeypatch.setattr(
             "src.core.consult.enrich_meteorite_land_packet", enrich
         )
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
         out = await meteorite_mod.run_land_meteorite(
             _ingress_task(
                 batch_id="land-batch-1",
@@ -1377,6 +1387,7 @@ class TestAst1560RunLandMeteorite:
         assert captured.get("job_link") is None
         assert captured.get("company_job_id") is None
         enrich.assert_not_awaited()
+        assert any("meteorite land id=" in c.args[0] for c in log.info.call_args_list)
 
     @pytest.mark.asyncio
     async def test_missing_content_errors(self, sqlite_in_memory) -> None:
@@ -1593,6 +1604,8 @@ class TestAst1562RunMeteoriteRetention:
             "%Y-%m-%dT%H:%M:%SZ"
         )
         _backdate_meteorite_state_changed(db, row_id, old)
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
         out = await meteorite_mod.run_meteorite_retention({}, debug=False)
         assert out["total_processed"] >= 1
         assert out["total_passed"] >= 1
