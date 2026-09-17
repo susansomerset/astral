@@ -201,3 +201,51 @@ Schema rebuild + writer contract + operator SQL with no boot side effects matche
 - Do not edit `tracker.py`, `meteorite.py`, `consult.py`, `gazer.py`, or UI in this ticket.
 - Do not add auto parent UPDATE on ensure/boot/SEED.
 - When a step is ambiguous or the tree has drifted — stop and comment on **parent** AST-1640 with the Stage blocked template; do not improvise.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1701
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `68114dd221cdc0a0b6525959a53a126558ba781b`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | X | | No dispatch_task claim shape or criteria literals — plan is config + job DDL/writers + operator SQL only |
+| stat.logging.debug | A | | Stage 1 forbids debug/print in pure formatters; Stage 2 keeps `src/data/` free of debug noise per statute |
+
+## Traceability
+
+AC1 → Stages 2–3 (nullable `company_id` + required parent columns on `save_job`; DDL-only ensure; Susan-runnable `data/sql/ast_1701_job_source_entity_backfill.sql`; no `SEED_CONFIG`/boot parent UPDATE). AC2 → Stages 1–2 (`SOURCE_ENTITY_TYPES` retires `gazed` as write authority; prefer-repurpose physical `job.source`; single SoT). Stages 1–3 → parent Functional scope items 1–2, 3, 7 (child partition); parent AC3–9 N/A — siblings #2–#4.
+
+## Findings
+
+### acceptable
+
+- **Location:** Linear assignee
+- **Finding:** Ticket assignee is Ada Lovelace, not Joan — Chuckles spawn overrides for this pass; restore implementer per §8 after upshot.
+- **Recommendation:** None for plan content.
+
+### discuss
+
+- **Location:** Canon Scope / Citations
+- **Finding:** `patt.entity.batch-criteria` is on the frozen list but grades **X** for this footprint — pattern governs `dispatch_task`-sourced claim criteria, not job schema/config SSOT. Likely forward-looking for sibling #4 track routing or inherited from parent partition; mis-selection observation only.
+- **Recommendation:** Archie may drop or retain at Discussion; no plan change required for #1.
+
+- **Location:** Stage 2 / `save_job` INSERT (step 5)
+- **Finding:** INSERT hard-requires non-empty `source_entity_id`, while pre-#2 `tracker.py` callers still pass `company=` only (gazed create at ~L113). `company=` alias fills `company_id`, not parent id. On `ftr` after #1 merges and before #2, gazed inserts likely fail validation even though resolver step 4 has a company lookup fallback.
+- **Recommendation:** Consider INSERT bridge: when `source_entity_type` is `company` (default) and `source_entity_id` is omitted, default `source_entity_id` from `company_id` — keeps epic ordering safe without widening scope into tracker edits. Meteorite-parent writes still correctly wait for #2.
+
+- **Location:** Stage 3 / SQL step 2b
+- **Finding:** Placeholder-only rows with no meteorite link defer to a diagnostic SELECT comment rather than inventing ids — honest operator step, but Susan must run verification queries; edge-case volume unknown until backfill.
+- **Recommendation:** Implementer records row counts in stage comment; no plan rewrite unless backfill rehearsal finds mass orphans.
+
+### fix-now
+
+(none)
+
+context_tokens≈42000
+
