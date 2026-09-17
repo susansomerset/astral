@@ -372,13 +372,18 @@ def _candidate_data_for_job(astral_job_id: str) -> dict:
 
 def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: dict) -> Dict[str, Any]:
     """Filter to candidate catalog; snapshot contact sections from payload or base_resume."""
-    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    cd = dict(candidate_data) if isinstance(candidate_data, dict) else {}
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: same hydrate→resolve SoT as consult job drafting tokens.
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
+    structure = candidate_mod.resolve_resume_structure(cd)
     filtered = candidate_mod.filter_content_to_resume_structure(
         resume_content if isinstance(resume_content, dict) else {},
         structure,
         allow_contact=False,
     )
-    allowed = set(candidate_mod.draft_job_resume_allowed_section_keys(candidate_data))
+    allowed = set(candidate_mod.draft_job_resume_allowed_section_keys(cd))
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     for sid, val in (resume_content or {}).items():
         if sid in allowed and sid not in filtered and sid not in contact:
@@ -386,7 +391,7 @@ def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: 
                 filtered[sid] = val
             elif isinstance(val, str) and val.strip():
                 filtered[sid] = val
-    artifacts = candidate_data.get("artifacts") if isinstance(candidate_data.get("artifacts"), dict) else {}
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
     base_resume = artifacts.get("base_resume") if isinstance(artifacts.get("base_resume"), dict) else {}
     snapshot: Dict[str, str] = {}
     for sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
@@ -815,7 +820,12 @@ def _resume_payload_body(parsed: Any) -> Dict[str, Any]:
 
 def parsed_matches_resume_content_shape(parsed: Any, candidate_data: dict) -> bool:
     """True when at least one enabled catalog section has body content (AST-551)."""
-    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    cd = dict(candidate_data) if isinstance(candidate_data, dict) else {}
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (no blob-only bypass).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
+    structure = candidate_mod.resolve_resume_structure(cd)
     enabled = set(candidate_mod.enabled_resume_section_ids(structure))
     if not enabled:
         return False
@@ -828,6 +838,10 @@ def parsed_matches_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
     if not isinstance(parsed, dict):
         return False
     cd = _candidate_data_for_job(astral_job_id)
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (idempotent if get_candidate already overlaid).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
     structure = candidate_mod.resolve_resume_structure(cd)
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     body = _resume_payload_body(parsed)
@@ -852,6 +866,10 @@ def job_has_persisted_resume_body(astral_job_id: str, job: Optional[Dict[str, An
         if not isinstance(rc, dict) or not rc:
             return False
     cd = _candidate_data_for_job(astral_job_id)
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (idempotent if get_candidate already overlaid).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
     structure = candidate_mod.resolve_resume_structure(cd)
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     for sid in candidate_mod.enabled_resume_section_ids(structure):
@@ -920,6 +938,10 @@ def persist_job_artifact_from_parsed(
     if allow_resume:
         cd = _candidate_data_for_job(astral_job_id)
         if parsed_matches_job_resume_content(astral_job_id, parsed):
+            cid = candidate_mod.candidate_id_for_current_read(cd)
+            if cid:
+                # AST-1680: hydrate→resolve before filter (idempotent with get_candidate).
+                candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
             structure = candidate_mod.resolve_resume_structure(cd)
             body = _resume_payload_body(parsed)
             filtered = candidate_mod.filter_content_to_resume_structure(

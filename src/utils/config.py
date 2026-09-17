@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -5635,6 +5635,11 @@ BUILD_CONFIG = {
         # AST-1632: raw string body — value is NOT a field-keyed schema (unlike resume_content / cover_letter).
         # Operative validation (sibling) gates on body_shape == "plain_text", not shape.items().
         "plain_text": "raw_string",
+        # AST-1678: structure dict body — sections catalog + optional accent_color.
+        # Value is NOT a field-keyed schema (unlike resume_content / cover_letter) and NOT plain_text.
+        # Operative validation (sibling AST-1679) gates on body_shape == "resume_structure"
+        # and reuses normalize_resume_structure — not shape.items().
+        "resume_structure": "structure_dict",
     },
     # AST-1350: Print / Open HTML when experience is non-array — exact operator toast.
     "unsupported_resume_structure_message": (
@@ -5701,6 +5706,14 @@ ARTIFACT_CONFIG = {
         # Name into BUILD_CONFIG["artifact_shapes"] (resume section contract).
         "body_shape": "resume_content",
         # Core component that owns first-row ingestion for this key (UI save / snapshot today).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.artifacts.resume_structure": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["resume_structure"] (structure dict contract).
+        "body_shape": "resume_structure",
+        # Candidate owns first-row ingestion for structure (UI/API operative save — sibling AST-1679).
         "ingestion_owner": "candidate",
     },
     "job.artifacts.job_resume": {
@@ -5778,6 +5791,7 @@ ARTIFACT_CONFIG = {
 
 assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.artifacts.base_resume",
+    "candidate.artifacts.resume_structure",
     "job.artifacts.job_resume",
     "job.artifacts.cover_letter",
     "candidate.context.strengths",
@@ -5788,7 +5802,7 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.context.ideal_day",
     "candidate.context.writing_preferences",
 }
-# Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2).
+# Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2 / AST-1678 AC3).
 for _sibling in (
     "notes",
     "resume_content",
@@ -5798,6 +5812,7 @@ for _sibling in (
     "job.artifacts.resume_content",
     "job.artifacts.proposed_answers",
     "job.artifacts.application_responses",
+    "job.artifacts.resume_structure",
 ):
     assert _sibling not in ARTIFACT_CONFIG
 
@@ -5824,6 +5839,23 @@ assert set(_br.keys()) == {
 }
 assert TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"
 assert TASK_CONFIG["craft_resume_base"]["artifact_key"] in ARTIFACT_CONFIG
+
+_rs = ARTIFACT_CONFIG["candidate.artifacts.resume_structure"]
+assert _rs["entity_type"] == "candidate"
+assert _rs["entity_type"] in ENTITY_TYPES
+assert _rs["candidate_scoped"] is True
+assert isinstance(_rs["candidate_scoped"], bool)
+assert _rs["body_shape"] == "resume_structure"
+assert _rs["body_shape"] not in ("resume_content", "plain_text", "cover_letter")
+assert _rs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["resume_structure"] == "structure_dict"
+assert _rs["ingestion_owner"] == "candidate"
+assert set(_rs.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
 
 _jr = ARTIFACT_CONFIG["job.artifacts.job_resume"]
 assert _jr["entity_type"] == "job"
@@ -6234,7 +6266,9 @@ for _alias_key, _alias_cfg in TASK_CONFIG.items():
                 )
 
 # Per-candidate resume section catalog (AST-517 / AST-1303).
-# Persistence: artifacts.resume_structure. Extra ids are per-candidate;
+# Persistence SoT after AST-1677 catalog cutover: candidate.artifacts.resume_structure
+# (ARTIFACT_CONFIG — registered AST-1678). Library blob artifacts.resume_structure remains
+# interim until sibling operative save/hydrate (AST-1679). Extra ids are per-candidate;
 # this list is not a closed extra catalog.
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (
     "candidate_name",
