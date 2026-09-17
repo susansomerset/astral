@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664)
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678)
   TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
@@ -44,10 +44,10 @@ Config sections:
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
-  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
+  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529); electronic-contact response-key literal (AST-1688)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
-  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
+  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469); meteorite-row electronic-contact column literal (AST-1688)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
@@ -553,6 +553,8 @@ TASK_CONFIG = {
                     "company_job_id": {"type": "str", "required": False},
                     "jd_text": {"type": "str", "required": False},
                     "employer_name": {"type": "str", "required": False},
+                    # AST-1688: best electronic contact to send the resume (metadata-first; optional)
+                    "electronic_contact": {"type": "str", "required": False},
                 },
             },
         },
@@ -2522,6 +2524,8 @@ METEORITE_CONFIG = {
     "land_outcome_error": "error",
     "employer_name_job_data_key": "employer_name",
     "dedupe_match_order": ("company_job_id", "job_link"),
+    # AST-1688: meteorite-row column for best electronic resume contact (sibling AST-1689 writes it).
+    "electronic_contact_column": "electronic_contact",
     # min_company_job_id_match_chars assigned after METEORITE_EMAIL_INGEST_CONFIG (same int).
 }
 
@@ -2880,6 +2884,8 @@ STAGE_METEORITE_CONFIG = {
         "not_job_content",
         "not_original_posting",
     ),
+    # AST-1688: Ruth jobs[] JSON key for best electronic resume contact (lockstep with items_schema).
+    "electronic_contact_response_key": "electronic_contact",
 }
 assert STAGE_METEORITE_CONFIG["task_key"] == "stage_meteorite"
 assert METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"] == STAGE_METEORITE_CONFIG["task_key"]
@@ -2918,6 +2924,23 @@ assert list(TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"]
     STAGE_METEORITE_CONFIG["outcomes"]
 )
 assert "meteorite_email" not in TASK_CONFIG
+assert STAGE_METEORITE_CONFIG["electronic_contact_response_key"] == "electronic_contact"
+assert METEORITE_CONFIG["electronic_contact_column"] == STAGE_METEORITE_CONFIG[
+    "electronic_contact_response_key"
+]
+assert (
+    STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    in TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+)
+assert (
+    TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"][
+        STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    ]["required"]
+    is False
+)
+# Outcome vocabulary and text source-ref partition unchanged (AST-1529).
+assert "single_jd_no_link" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
+assert "multi_jd_inline" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
 
 # AST-1529: parse_modes Ruth classify RETIRED — live classify is stage_meteorite.
 # Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
@@ -5612,6 +5635,11 @@ BUILD_CONFIG = {
         # AST-1632: raw string body — value is NOT a field-keyed schema (unlike resume_content / cover_letter).
         # Operative validation (sibling) gates on body_shape == "plain_text", not shape.items().
         "plain_text": "raw_string",
+        # AST-1678: structure dict body — sections catalog + optional accent_color.
+        # Value is NOT a field-keyed schema (unlike resume_content / cover_letter) and NOT plain_text.
+        # Operative validation (sibling AST-1679) gates on body_shape == "resume_structure"
+        # and reuses normalize_resume_structure — not shape.items().
+        "resume_structure": "structure_dict",
     },
     # AST-1350: Print / Open HTML when experience is non-array — exact operator toast.
     "unsupported_resume_structure_message": (
@@ -5678,6 +5706,14 @@ ARTIFACT_CONFIG = {
         # Name into BUILD_CONFIG["artifact_shapes"] (resume section contract).
         "body_shape": "resume_content",
         # Core component that owns first-row ingestion for this key (UI save / snapshot today).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.artifacts.resume_structure": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["resume_structure"] (structure dict contract).
+        "body_shape": "resume_structure",
+        # Candidate owns first-row ingestion for structure (UI/API operative save — sibling AST-1679).
         "ingestion_owner": "candidate",
     },
     "job.artifacts.job_resume": {
@@ -5755,6 +5791,7 @@ ARTIFACT_CONFIG = {
 
 assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.artifacts.base_resume",
+    "candidate.artifacts.resume_structure",
     "job.artifacts.job_resume",
     "job.artifacts.cover_letter",
     "candidate.context.strengths",
@@ -5765,7 +5802,7 @@ assert set(ARTIFACT_CONFIG.keys()) == {
     "candidate.context.ideal_day",
     "candidate.context.writing_preferences",
 }
-# Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2).
+# Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2 / AST-1678 AC3).
 for _sibling in (
     "notes",
     "resume_content",
@@ -5775,6 +5812,7 @@ for _sibling in (
     "job.artifacts.resume_content",
     "job.artifacts.proposed_answers",
     "job.artifacts.application_responses",
+    "job.artifacts.resume_structure",
 ):
     assert _sibling not in ARTIFACT_CONFIG
 
@@ -5801,6 +5839,23 @@ assert set(_br.keys()) == {
 }
 assert TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"
 assert TASK_CONFIG["craft_resume_base"]["artifact_key"] in ARTIFACT_CONFIG
+
+_rs = ARTIFACT_CONFIG["candidate.artifacts.resume_structure"]
+assert _rs["entity_type"] == "candidate"
+assert _rs["entity_type"] in ENTITY_TYPES
+assert _rs["candidate_scoped"] is True
+assert isinstance(_rs["candidate_scoped"], bool)
+assert _rs["body_shape"] == "resume_structure"
+assert _rs["body_shape"] not in ("resume_content", "plain_text", "cover_letter")
+assert _rs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["resume_structure"] == "structure_dict"
+assert _rs["ingestion_owner"] == "candidate"
+assert set(_rs.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
 
 _jr = ARTIFACT_CONFIG["job.artifacts.job_resume"]
 assert _jr["entity_type"] == "job"
@@ -6211,7 +6266,9 @@ for _alias_key, _alias_cfg in TASK_CONFIG.items():
                 )
 
 # Per-candidate resume section catalog (AST-517 / AST-1303).
-# Persistence: artifacts.resume_structure. Extra ids are per-candidate;
+# Persistence SoT after AST-1677 catalog cutover: candidate.artifacts.resume_structure
+# (ARTIFACT_CONFIG — registered AST-1678). Library blob artifacts.resume_structure remains
+# interim until sibling operative save/hydrate (AST-1679). Extra ids are per-candidate;
 # this list is not a closed extra catalog.
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (
     "candidate_name",

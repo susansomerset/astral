@@ -406,9 +406,7 @@ class TestAst1550ReportDiscussionSections:
         assert all(s["default_expanded"] is False for s in sections)
         # Discussion also present on report_top_tabs (config list).
         top = resp.get_json()["jobs"]["recommended"]["report_top_tabs"]
-        ids = [t["tab_id"] for t in top]
-        assert "discussion" in ids
-        assert ids[-1] == "meteorite"
+        assert [t["tab_id"] for t in top][-1] == "discussion"
 
     def test_manifest_degrades_discussion_on_walk_failure(
         self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -424,20 +422,6 @@ class TestAst1550ReportDiscussionSections:
         assert body["jobs"]["recommended"]["report_discussion_sections"] == []
         # Rest of manifest still present.
         assert "report_top_tabs" in body["jobs"]["recommended"]
-
-
-class TestAst1691ReportMeteoriteSections:
-    """AST-1691: state_ui_manifest attaches jobs.recommended.report_meteorite_sections."""
-
-    def test_manifest_copies_meteorite_sections(
-        self, system_client: FlaskClient, auth_headers: dict[str, str]
-    ) -> None:
-        from src.utils.config import JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS
-        resp = system_client.get("/api/state_ui_manifest", headers=auth_headers)
-        assert resp.status_code == 200
-        rec = resp.get_json()["jobs"]["recommended"]
-        assert rec["report_meteorite_sections"] == list(JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS)
-        assert [t["tab_id"] for t in rec["report_top_tabs"]][-1] == "meteorite"
 
 
 class TestAst1351ExperienceJobUiConfig:

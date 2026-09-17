@@ -2692,7 +2692,9 @@ async def do_task(
                     parsed_for_persist
                 )
                 save_candidate_data(
-                    str(index), {"artifacts": {"resume_structure": structure}}
+                    str(index),
+                    "candidate.artifacts.resume_structure",
+                    structure,
                 )
                 # AST-1700: harvest only on operative str-path insert of craft body.
                 save_candidate_data(

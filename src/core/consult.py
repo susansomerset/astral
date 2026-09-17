@@ -1071,12 +1071,18 @@ def build_job_token_context(
     job: Dict[str, Any], candidate_data: dict, *, candidate_id: str = "", debug: bool = False
 ) -> Dict[str, str]:
     """Precomputed job-scoped prompt tokens for artifact single-job calls (AST-513 / AST-1193)."""
-    from src.core.candidate import enabled_resume_structure_sections, resolve_resume_structure
+    from src.core.candidate import (
+        enabled_resume_structure_sections,
+        hydrate_operative_resume_structure_for_response,
+        resolve_resume_structure,
+    )
 
     cd = dict(candidate_data or {})
     cid = candidate_id or str(cd.get("_astral_candidate_id") or "")
     if cid:
         cd["_astral_candidate_id"] = cid
+        # AST-1680: table-backed structure SoT for job drafting tokens (no blob-only bypass).
+        hydrate_operative_resume_structure_for_response(cid, cd)
     jd_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     visible = (jd_data.get("job_description") or "").strip()
     out: Dict[str, str] = {"VISIBLE_JD": visible}
