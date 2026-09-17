@@ -118,6 +118,93 @@ def _warn_item(who: Any, why: str, next_step: str) -> None:
     logger.warning("%s — %s\n  %s", who, why, next_step)
 
 
+def _optional_real_company_id(
+    *, company_stem: Optional[str], candidate_id: str
+) -> Optional[str]:
+    """Real employer short_name only — never invent meteorite placeholders (AST-1702)."""
+    _ = candidate_id
+    stem = (company_stem or "").strip()
+    if not stem:
+        return None
+    if stem in (
+        METEORITE_CONFIG["default_stem"],
+        METEORITE_CONFIG["meteorite_self_stem"],
+    ):
+        return None
+    row = get_company(stem)
+    if row is None:
+        return None
+    if (row.get("state") or "") == METEORITE_CONFIG["company_state"]:
+        return None
+    return stem
+
+
+def _append_jd(existing: str, addition: str) -> str:
+    a = (existing or "").strip()
+    b = (addition or "").strip()
+    if not b:
+        return a
+    if not a:
+        return b
+    return f"{a}\n\n{b}"
+
+
+def _insert_paste_meteorite_parent(
+    candidate_id: str,
+    *,
+    content: Optional[str] = None,
+    link: Optional[str] = None,
+) -> int:
+    """Insert a paste staging row and mark READY so land can parent to it (AST-1702)."""
+    logger.debug(
+        "Calling insert_meteorite_rows: [candidate_id=%s, source_kind=paste]",
+        candidate_id,
+    )
+    ids = insert_meteorite_rows(
+        [
+            {
+                "candidate_id": candidate_id,
+                "source_kind": "paste",
+                "source_id": str(uuid.uuid4()),
+                "content": content,
+                "link": link,
+                "classify_outcome": None,
+            }
+        ]
+    )
+    logger.debug("Response from insert_meteorite_rows: %s", ids)
+    mid = int(ids[0])
+    update_meteorite(mid, state="READY")
+    return mid
+
+
+async def _land_link_check_append(
+    scrap: Dict[str, Any], *, candidate_id: str = "", debug: bool = False
+) -> None:
+    """Fetch thin-body http link; bot-block continues land; ok text is appended (AST-1702)."""
+    existing_body = _land_scrap_body(scrap)
+    link = (scrap.get("job_link") or "").strip() if isinstance(scrap.get("job_link"), str) else ""
+    min_jd = int(TASK_CONFIG["qualify_meteorite"]["min_jd_chars"])
+    if not _is_http_url(link) or len(existing_body) >= min_jd:
+        return
+
+    visible, final_url = await _land_fetch_link_text(link, debug=debug)
+    from src.core.gazer import _CONTACT_PAGE_STATUS, _classify_jd
+
+    page_status = _CONTACT_PAGE_STATUS.get(_classify_jd(visible), "missing")
+    if page_status == "blocked":
+        logger.warning(
+            "%s — land link bot-block at %s\n  Land continuing without scraped JD",
+            candidate_id or "land_meteorite",
+            link,
+        )
+        return
+    if page_status == "ok" and (visible or "").strip():
+        scrap["content"] = _append_jd(existing_body, visible.strip())
+        if final_url:
+            scrap["job_link"] = final_url
+
+
 def is_meteorite_company(short_name: Optional[str]) -> bool:
     """True on METEORITE-state companies or legacy meteorite- prefix (AST-1152 / AST-1493)."""
     if not short_name:
@@ -185,30 +272,15 @@ def create_meteorite_job(
     candidate_id: str,
     html_body: str,
     *,
+    meteorite_id: Optional[Any] = None,
     job_link: Optional[str] = None,
-    stem: Optional[str] = None,
+    company_id: Optional[str] = None,
     debug: bool = False,
 ) -> dict[str, Any]:
-    """Lazy-ensure meteorite company, then insert a job from raw HTML.
+    """Create/supersede a job under a meteorite-row parent (AST-1702).
 
-    Create carve-out (not transition_job_state): first write inserts directly into
-    METEORITE_CONFIG["job_create_state"] (METEORITE_NEW after AST-1056) the same
-    way ingest_jobs inserts into NEW (JOB_STATES prior_states=None unrestricted
-    entry). METEORITE_NEW is unrestricted; this path does not expand normal
-    JD_READY priors and does not invent a new job state.
-    Optional job_link for link-sourced ingest (AST-1061); company_job_id stays None
-    (Ruth enrichment owns external UUID). Optional stem= when caller already knows
-    the company short_name stem; email-bound land uses land_meteorite, not this helper.
-
-    Returns:
-      {
-        "astral_job_id": str,
-        "company": str,           # meteorite-<candidate_id>
-        "state": str,             # job_create_state
-        "latest_score": float,    # job_create_latest_score
-        "company_inserted": bool, # from ensure
-        "job": dict,              # get_job row after writes
-      }
+    When meteorite_id is omitted, inserts a paste staging row so gazer/contact
+    callers keep working without ensure_meteorite_company as job parent.
     """
     candidate_id = (candidate_id or "").strip()
     if not candidate_id:
@@ -220,65 +292,66 @@ def create_meteorite_job(
     if not cand:
         raise ValueError(f"candidate not found: {candidate_id}")
 
-    logger.debug(
-        "Calling ensure_meteorite_company: [candidate_id=%s, stem=%s]",
-        candidate_id, stem,
-    )
-    ensured = ensure_meteorite_company(candidate_id, stem=stem, debug=debug)
-    logger.debug(
-        "Response from ensure_meteorite_company: inserted=%s short_name=%s",
-        ensured["inserted"], ensured["short_name"],
-    )
-    short_name = ensured["short_name"]
+    link = job_link.strip() if job_link and str(job_link).strip() else None
     jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
     state = METEORITE_CONFIG["job_create_state"]
     score = float(METEORITE_CONFIG["job_create_latest_score"])
-    astral_job_id = str(uuid.uuid4())
-    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-    link = job_link.strip() if job_link and str(job_link).strip() else None
 
-    logger.debug(
-        "Calling save_job: [astral_job_id=%s, company=%s, state=%s]",
-        astral_job_id, short_name, state,
-    )
-    inserted = save_job(
-        astral_job_id,
-        company=short_name,
-        state=state,
-        job_title=None,
-        job_link=link,
-        company_job_id=None,
-        job_data={jd_key: html_body},
-        state_history=[{"to_state": state, "timestamp": now, "score": score}],
-        state_changed_at=now,
-        merge=False,
-    )
-    if not inserted:
-        raise RuntimeError(f"meteorite job insert failed: {astral_job_id}")
-
-    # INSERT path omits latest_score — update column explicitly (AST-1042 carve-out).
-    save_job(astral_job_id, latest_score=score)
-
-    row = get_job(astral_job_id)
-    if row is None:
-        raise RuntimeError(f"meteorite job missing after save: {astral_job_id}")
-    if row.get("state") != state or row.get("latest_score") != score:
-        raise RuntimeError(
-            f"meteorite job postcondition failed id={astral_job_id} "
-            f"state={row.get('state')!r} latest_score={row.get('latest_score')!r}"
+    if meteorite_id is not None and str(meteorite_id).strip():
+        mid = int(meteorite_id) if not isinstance(meteorite_id, int) else meteorite_id
+        mid = int(mid)
+    else:
+        mid = _insert_paste_meteorite_parent(
+            candidate_id, content=html_body, link=link
         )
 
-    _entity_info(
-        astral_job_id, "job", METEORITE_CONFIG["land_outcome_created"], state
+    mrow = get_meteorite(mid)
+    if mrow is None:
+        raise RuntimeError(f"meteorite missing after parent resolve: {mid}")
+    existing_link = (mrow.get("link") or "").strip()
+    if link and not existing_link:
+        update_meteorite(mid, link=link)
+        existing_link = link
+    inherited = existing_link or link or None
+    emp = company_id if company_id is not None else None
+    if emp is not None:
+        emp = (emp or "").strip() or None
+    else:
+        emp = None
+
+    logger.debug(
+        "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
+        candidate_id, mid,
     )
-    logger.debug("Response from save_job: %s", astral_job_id)
+    save = tracker.save_meteorite_job(
+        candidate_id,
+        meteorite_id=mid,
+        company_id=emp,
+        job_data={jd_key: html_body},
+        job_link=inherited,
+        company_job_id=None,
+        employer_name=None,
+        debug=debug,
+    )
+    logger.debug("Response from tracker.save_meteorite_job: %s", save)
+    row = save.get("job") or get_job(save.get("astral_job_id") or "")
+    if row is None:
+        raise RuntimeError(f"meteorite job missing after save: {save.get('astral_job_id')}")
+    astral_job_id = str(save.get("astral_job_id") or row.get("astral_job_id") or "")
+    if save.get("outcome") == METEORITE_CONFIG["land_outcome_created"]:
+        update_meteorite(mid, state="LANDED", astral_job_id=astral_job_id)
+        _entity_info(
+            astral_job_id, "job", METEORITE_CONFIG["land_outcome_created"], state
+        )
     return {
         "astral_job_id": astral_job_id,
-        "company": short_name,
-        "state": state,
-        "latest_score": score,
-        "company_inserted": ensured["inserted"],
+        "company_id": row.get("company_id"),
+        "meteorite_id": mid,
+        "state": row.get("state") or state,
+        "latest_score": row.get("latest_score") if row.get("latest_score") is not None else score,
+        "company_inserted": False,
         "job": row,
+        "outcome": save.get("outcome"),
     }
 
 
@@ -575,11 +648,12 @@ async def land_meteorite(
     text: Optional[str] = None,
     job_link: Optional[str] = None,
     employer_name: Optional[str] = None,
+    meteorite_id: Optional[Any] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Public meteorite land: scraps → enrich → Tracker save (AST-1470).
+    """Public meteorite land: scraps → enrich → Tracker save under meteorite parent (AST-1702).
 
-    Returns company + outcomes[] + rollup outcome. Never a silent no-op.
+    Returns company_id + outcomes[] + rollup outcome. Never a silent no-op.
     """
     err_key = METEORITE_CONFIG["land_outcome_error"]
     ok_outcomes = (
@@ -644,20 +718,12 @@ async def land_meteorite(
             "company_inserted": False,
         }
 
-    min_jd = int(TASK_CONFIG["qualify_meteorite"]["min_jd_chars"])
-
-    # Optional link scrape when body is thin.
+    # Optional link scrape when body is thin — bot-block continues; ok JD appends.
     for scrap in work:
         link = (scrap.get("job_link") or "").strip() if isinstance(scrap.get("job_link"), str) else ""
         if link:
             scrap["job_link"] = link
-        body = _land_scrap_body(scrap)
-        if link and len(body) < min_jd:
-            visible, final_url = await _land_fetch_link_text(link, debug=debug)
-            if visible:
-                scrap["content"] = visible
-            if final_url:
-                scrap["job_link"] = final_url
+        await _land_link_check_append(scrap, candidate_id=cid, debug=debug)
 
     # Late-import: consult loads is_meteorite_company at module top.
     from src.core.consult import enrich_meteorite_land_packet
@@ -689,36 +755,39 @@ async def land_meteorite(
     enriched_jobs = enrich["jobs"]
     n = len(enriched_jobs)
     first_company: Optional[str] = None
-    first_company_inserted = False
+    shared_mid: Optional[int] = None
+    if meteorite_id is not None and str(meteorite_id).strip():
+        shared_mid = int(meteorite_id)
     logger.debug("Beginning land enrich job loop on %s items", n)
     for i, row in enumerate(enriched_jobs, start=1):
         found_jd = row.get("jd_text") or ""
         found_emp = row.get("employer_name") or ""
         row_stem = (row.get("company_stem") or "").strip() if isinstance(row.get("company_stem"), str) else ""
+        row_link = (row.get("job_link") or "").strip() if isinstance(row.get("job_link"), str) else ""
         try:
+            if shared_mid is not None:
+                mid = shared_mid
+            else:
+                mid = _insert_paste_meteorite_parent(
+                    cid, content=found_jd or None, link=row_link or None
+                )
+            mrow = get_meteorite(mid) or {}
+            mlink = (mrow.get("link") or "").strip()
+            if not mlink and row_link:
+                update_meteorite(mid, link=row_link)
+                mlink = row_link
+            emp = _optional_real_company_id(company_stem=row_stem or None, candidate_id=cid)
             logger.debug(
-                "Calling ensure_meteorite_company: [candidate_id=%s, stem=%s]",
-                cid, row_stem or None,
-            )
-            ensured_row = ensure_meteorite_company(cid, stem=row_stem or None, debug=debug)
-            logger.debug(
-                "Response from ensure_meteorite_company: inserted=%s short_name=%s",
-                ensured_row["inserted"], ensured_row["short_name"],
-            )
-            row_company = ensured_row["short_name"]
-            if first_company is None:
-                first_company = row_company
-                first_company_inserted = bool(ensured_row["inserted"])
-            logger.debug(
-                "Calling tracker.save_meteorite_job: [candidate_id=%s, company=%s]",
-                cid, row_company,
+                "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
+                cid, mid,
             )
             save = tracker.save_meteorite_job(
                 cid,
-                company=row_company,
+                meteorite_id=mid,
+                company_id=emp,
                 company_job_id=row.get("company_job_id") or None,
                 job_title=row.get("job_title") or None,
-                job_link=row.get("job_link") or None,
+                job_link=mlink or None,
                 job_data={jd_key: found_jd},
                 employer_name=found_emp or None,
                 debug=debug,
@@ -726,11 +795,18 @@ async def land_meteorite(
             logger.debug("Response from tracker.save_meteorite_job: %s", save)
             outcomes.append(save)
             if save.get("outcome") in ok_outcomes:
+                job_id = str(save.get("astral_job_id") or "")
+                if shared_mid is None:
+                    update_meteorite(mid, state="LANDED", astral_job_id=job_id)
+                elif job_id:
+                    update_meteorite(mid, state="LANDED", astral_job_id=job_id)
+                if emp and first_company is None:
+                    first_company = emp
                 _entity_info(
-                    save.get("astral_job_id"),
+                    job_id,
                     "job",
                     save.get("outcome"),
-                    row_company,
+                    mid,
                 )
         except (ValueError, RuntimeError) as e:
             outcomes.append({
@@ -755,7 +831,7 @@ async def land_meteorite(
 
     return {
         "company": first_company,
-        "company_inserted": first_company_inserted,
+        "company_inserted": False,
         "outcomes": outcomes,
         "outcome": rollup,
         "error": top_error,
@@ -1328,23 +1404,17 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     summary["total_errors"] += 1
                     continue
 
-                logger.debug("Calling ensure_meteorite_company: [candidate_id=%s]", cid)
-                ensured = ensure_meteorite_company(cid, debug=debug)
+                link_text = (row.get("link") or "").strip()
                 logger.debug(
-                    "Response from ensure_meteorite_company: inserted=%s short_name=%s",
-                    ensured["inserted"], ensured["short_name"],
-                )
-                existing_link = (row.get("link") or "").strip()
-                job_link = existing_link if _is_http_url(existing_link) else None
-                logger.debug(
-                    "Calling tracker.save_meteorite_job: [candidate_id=%s, company=%s]",
-                    cid, ensured["short_name"],
+                    "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
+                    cid, row_id,
                 )
                 save = tracker.save_meteorite_job(
                     cid,
-                    company=ensured["short_name"],
+                    meteorite_id=row_id,
+                    company_id=None,
                     job_data={jd_key: content},
-                    job_link=job_link,
+                    job_link=link_text or None,
                     company_job_id=None,
                     employer_name=None,
                     debug=debug,
@@ -1352,9 +1422,11 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                 logger.debug("Response from tracker.save_meteorite_job: %s", save)
                 if save.get("outcome") in ok_outcomes:
                     job_id = str(save.get("astral_job_id") or "")
+                    if link_text and (save.get("job") or {}).get("job_link") != link_text:
+                        save_job(job_id, job_link=link_text)
                     update_meteorite(row_id, state="LANDED", astral_job_id=job_id)
                     _meteorite_state_info(row_id, "LANDED", from_state="READY")
-                    _entity_info(job_id, "job", save.get("outcome"), ensured["short_name"])
+                    _entity_info(job_id, "job", save.get("outcome"), row_id)
                     summary["total_passed"] += 1
                     continue
 
