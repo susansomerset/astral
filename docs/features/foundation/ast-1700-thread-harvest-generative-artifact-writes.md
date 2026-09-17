@@ -150,3 +150,50 @@ Fail if agent invents a job_resume-specific source override that bypasses tracke
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1700
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1579/AST-1700-thread-harvest-generative-artifact-writes` @ `fbffdfb6994a67bf7b7033d2b2e5233714882a9e`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.traceability | A | | |
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | X | | pass-through slice; harvest pre-computed by #1 |
+| astral.standards.in-scope-only | A | | |
+| astral.standards.data-raises-caller-logs | A | | |
+| astral.layers.import-direction | A | | |
+
+## Traceability
+
+AC5→S1§3, S2§1-2; AC6→S2§1, Explicit scope gate (tracker job_resume auto-cite); AC7→S3§1-3, S2§5; parent AC1–4 N/A (AST-1698 harvest / AST-1699 consult siblings).
+
+## Findings
+
+### discuss
+
+- **Non-catalog agent lands:** `draft_job_resume` and `tracker.persist_job_artifact_from_parsed` do not use the `do_task` catalog-land branch at ~2598; they won't receive harvest pass-through. Parent AC5 names `save_candidate_data` str-path and non-`job_resume` `save_job_artifact` only — `finalize_cover_letter` / craft str-path are covered; incremental draft resume paths remain on existing auto-cite / no-harvest behavior. Acceptable if Susan's intent is finalize/catalog lands only (AST-1603 shape).
+
+### acceptable
+
+- **Tracker no-touch decision:** `save_job_artifact` already accepts `source_artifact_ids` and overrides sources for `job.artifacts.job_resume` — agent call-site pass-through is sufficient for AC5–6.
+- **Craft dict-path excluded (S2§2):** `resume_structure` library merge correctly left without sources; only operative str-path insert gets harvest.
+- **Identical-to-current short-circuit (S1§3):** Sources skipped when no insert matches write-operative; not new semantics.
+- **AST-1698 dependency:** Worktree already has `source_artifact_ids` / `_with_harvest` in `do_task` — build can proceed.
+
+### R6 — Definition fidelity (checklist)
+
+- **Explicit scope gate** present; Files Changed matches ticket Scope (candidate, agent, canon draft only; tracker excluded with documented Decision).
+- Child AC5–7 have concrete Stage steps; empty harvest → explicit `[]` pass-through.
+- No consult re-parse, no new `ARTIFACT_CONFIG` / lineage columns / `tokens_ready` changes.
+- Self-assessment `Confirm Chuckles estimate: 3 — agree` is honest for three focused stages.
+- Plan Discuss rounds completed: **0** (status Plan Ready; assignee Joan).
+
+context_tokens≈95000
