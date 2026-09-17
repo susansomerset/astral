@@ -178,3 +178,49 @@ to_state, _, _grades = _apply_render_verdict_decoded_job(
 
 Confirm Chuckles estimate: 2 — agree
 )
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1699
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1579/AST-1699-persist-harvested-pins-consult-grade-analysis` @ `c2a3224bed2b11712248fec99f10e7edf4079c00`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.traceability | A | | |
+| patt.artifact.read-operative | A | | |
+| astral.standards.in-scope-only | A | | |
+| astral.standards.dry-and-focused-functions | A | | |
+| astral.standards.debug-contract-gated | X | | consult persist only; no new debug surfaces |
+
+## Traceability
+
+AC3→S2§2-3, S4§3-5; AC4→S3§1-2; parent AC1–2 N/A (AST-1698 harvest); parent AC5–7 N/A (AST-1700 artifact-table + job_resume auto-cite).
+
+## Findings
+
+### discuss
+
+- **Gate assignee:** Status `Plan Ready` but assignee is Hedy, not Joan — Chuckles should flip assignee for validate-plan protocol; review proceeded per spawn request.
+- **Normalizer strictness (S1§3):** `_normalize_harvested_source_artifact_ids` keeps only `isinstance(x, str)` elements; if AST-1698 ever returns UUID objects, they'd be dropped to `[]`. Low risk given Ada's str contract — builder may widen to `str(x).strip()` on list elements if paranoid.
+
+### acceptable
+
+- **AST-1698 ordering:** Plan reads `result.get("source_artifact_ids")` with missing→`[]`; safe to build before #1 lands on ftr, though AC3/AC4 verification needs #1 merged or stubbed.
+- **Whole-batch harvest (S4§2):** One `do_task` harvest shared across all jobs in `_run_batch_consult` matches parent whole-run array semantics.
+- **`cfg_dispatch` vs `_orch_cfg` (S4§5):** Plan correctly reads harvest from the wrapped process_fn cfg, not outer `cfg_dispatch` — matches `_consult_scored_dispatch_batch_encoded` closure today.
+
+### R6 — Definition fidelity (checklist)
+
+- **Explicit scope gate** present; **Files Changed** is `consult.py` only; agent.py default no-touch rule is explicit and bounded.
+- All five `tracker.save_job_data` grade/upshot sites in `consult.py` are covered (render_verdict / `_apply_render_verdict_decoded_job`, analysis upshot, joblist, jd_grades, encoded grade_* via batch wrapper); `jd_readiness_skip` correctly excluded.
+- Sibling key stem mirrors existing `{prefix}_grades` / `{prefix}_rubric` convention; `analysis_upshot` → `analysis_upshot_source_artifact_ids` consistent with meteorite sharing `analysis_upshot` job_data key.
+- No re-parse / no `harvest_source_artifact_ids` in consult; empty harvest → `[]` not omit.
+- Self-assessment `Confirm Chuckles estimate: 2 — agree` is honest for four focused stages in one file.
+- Plan Discuss rounds completed: **0** (status Plan Ready).
+
+context_tokens≈78000
