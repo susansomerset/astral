@@ -179,26 +179,3 @@ Open `GET /api/auth_session_policy` returns non-secret session duration + extend
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-
-### AST-1691 · AST-1685
-
-**Publish:** `origin/sub/AST-1685/AST-1691-meteorite-lookup-report-config-api`.
-
-`GET /api/state_ui_manifest` attaches `jobs.recommended.report_meteorite_sections` from `JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS`. Top-tab Meteorite rides `report_top_tabs` from config. Primary: **`docs/test-bible/data/database/meteorites.md`** § AST-1691.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Sections + last-tab meteorite | `src/ui/api/api_system.py` | **`TestAst1691ReportMeteoriteSections`** |
-
-**Broken / obsolete:** AST-1550 Discussion last-tab assert — meteorite is now last; Discussion still present.
-
-**Integration:** none — do not invent.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_system.py::TestAst1691ReportMeteoriteSections \
-  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
-  -q
-```
-
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

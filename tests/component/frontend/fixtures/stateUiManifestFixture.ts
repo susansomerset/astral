@@ -176,18 +176,9 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         { tab_id: "artifacts", nav_label: "Artifacts" },
         // AST-1550 / AST-1551: Discussion after Artifacts
         { tab_id: "discussion", nav_label: "Discussion" },
-        // AST-1691 / AST-1692: Meteorite after Discussion (modal filters when related_meteorite null)
-        { tab_id: "meteorite", nav_label: "Meteorite" },
       ],
       // AST-1550: catalog slots — keys match TestAst1550ReportDiscussionSections._NINE
       // (AST-1612: pane/JAR filter by RESPONSE; header count ≠ raw length when story empty)
-      // AST-1691 / AST-1692: lockstep with JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS
-      report_meteorite_sections: [
-        { section_id: "meteorite_timestamps", nav_label: "Timestamps", default_expanded: true },
-        { section_id: "meteorite_link", nav_label: "Link", default_expanded: true },
-        { section_id: "meteorite_ai", nav_label: "AI Content", default_expanded: true },
-        { section_id: "meteorite_provenance", nav_label: "Provenance", default_expanded: false },
-      ],
       report_discussion_sections: [
         { section_id: "contemplate_job", nav_label: "Contemplate Job", default_expanded: false },
         { section_id: "draft_job_resume", nav_label: "Draft Job Resume", default_expanded: false },

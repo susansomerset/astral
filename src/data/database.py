@@ -9,7 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company, candidate_id (required owning candidate; denormalized from company.candidate_id; AST-1598 / AST-1594), company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (gazed|meteorite; AST-1469), etc.
-- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
+- meteorite — Ingress staging spine (AST-1557): one row per prospective job after classify fan-out; `state` from `METEORITE_STATES`; claim via `batch_id` / `batch_created_at`; eligibility count via `count_meteorites_unclaimed_in_states`; columns id, candidate_id, source_kind, source_id, source_ref, state, content, classify_outcome, link, electronic_contact (AST-1689; config literal from AST-1688), astral_job_id, estelle_thread_ts, estelle_notified_at, nag_count, error, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
@@ -3548,6 +3548,7 @@ _UPDATE_METEORITE_ALLOWED = frozenset({
     "nag_count",
     "error",
     "source_ref",
+    METEORITE_CONFIG["electronic_contact_column"],  # AST-1689
 })
 
 
@@ -3572,6 +3573,7 @@ def _ensure_meteorite_schema(conn: sqlite3.Connection) -> None:
                 content TEXT,
                 classify_outcome TEXT,
                 link TEXT,
+                electronic_contact TEXT,
                 astral_job_id TEXT,
                 estelle_thread_ts TEXT,
                 estelle_notified_at TIMESTAMP,
@@ -3586,6 +3588,16 @@ def _ensure_meteorite_schema(conn: sqlite3.Connection) -> None:
             """
         )
         conn.commit()
+    # AST-1689: migrate existing DBs — column name from METEORITE_CONFIG (AST-1688 literal).
+    _ec_col = METEORITE_CONFIG["electronic_contact_column"]
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(meteorite)").fetchall()}
+    if _ec_col not in cols:
+        try:
+            conn.execute(f"ALTER TABLE meteorite ADD COLUMN {_ec_col} TEXT")
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
     conn.execute(
         "CREATE INDEX IF NOT EXISTS idx_meteorite_state_batch ON meteorite(state, batch_id)"
     )
@@ -3713,12 +3725,13 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                 candidate_id = row["candidate_id"]
                 source_kind = row["source_kind"]
                 source_id = row["source_id"]
+                _ec_col = METEORITE_CONFIG["electronic_contact_column"]
                 cur = conn.execute(
-                    """INSERT INTO meteorite (
+                    f"""INSERT INTO meteorite (
                         candidate_id, source_kind, source_id, source_ref, state,
-                        content, classify_outcome, link, nag_count,
+                        content, classify_outcome, link, {_ec_col}, nag_count,
                         error, created_at, updated_at, state_changed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)""",
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)""",
                     (
                         candidate_id,
                         source_kind,
@@ -3728,6 +3741,7 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                         row.get("content"),
                         row.get("classify_outcome"),
                         row.get("link"),
+                        row.get(_ec_col),
                         row.get("error"),
                         now,
                         now,
@@ -4493,7 +4507,7 @@ def _artifact_row_dict(row: tuple) -> Dict[str, Any]:
     """Map SELECT tuple → public dict; decompress + JSON-parse artifact_data when possible."""
     # SELECT order: uuid, candidate_id, entity_type, entity_id, artifact_type,
     # artifact_data, source_artifact_ids, current, created_at, updated_at
-    # AST-1605: zlib like agent_data; legacy plain TEXT still via _decompress_payload.
+    # AST-1697: zlib like agent_data; legacy plain TEXT still via _decompress_payload.
     plain = _decompress_payload(row[5])
     try:
         artifact_data = json.loads(plain) if plain is not None else None
@@ -4546,7 +4560,7 @@ def save_artifact(
 
     Sets prior current=1 row(s) for (entity_type, entity_id, artifact_type) to
     current=0, then inserts a new UUID row with current=1 and required
-    candidate_id. Stores artifact_data zlib-compressed (AST-1605; like agent_data).
+    candidate_id. Stores artifact_data zlib-compressed (AST-1697 / AST-1605; like agent_data).
     Never SELECT the prior uuid first; never UPDATE artifact_data
     in place. Returns the new uuid.
 
@@ -4557,7 +4571,7 @@ def save_artifact(
     et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
     if artifact_data is None:
         raise ValueError("artifact_data required")
-    # AST-1605: same zlib path as agent_data.block_data (transparent to callers).
+    # AST-1697: same zlib path as agent_data.block_data (transparent to callers).
     plain = artifact_data if isinstance(artifact_data, str) else json.dumps(artifact_data)
     payload = _compress_payload(plain)
     if source_artifact_ids is None:

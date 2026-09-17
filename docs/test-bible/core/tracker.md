@@ -616,27 +616,3 @@ See **`docs/test-bible/core/consult.md`** § AST-1680 (shared numbered list).
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/tracker.md` — *(filled after publish)*
-
----
-
-### AST-1693 · AST-1686
-
-**Parent:** [AST-1686](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link`.
-
-`persist_http_job_link` writes http(s)-only `job.job_link` (no `initialize_job`). `save_meteorite_job` Branch A duplicate-skip backfills empty `job_link` when caller passes http(s); never clobbers a populated link. Land/notify/qualify: **`docs/test-bible/core/meteorite.md`**, **`docs/test-bible/core/consult.md`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| persist_http_job_link http / non-http | `src/core/tracker.py` | **`TestAst1693PersistHttpJobLink`** |
-| Duplicate-skip empty link backfill + no clobber | same | **`TestAst1693SaveMeteoriteDuplicateLinkBackfill`** |
-
-**Broken / obsolete this pass:** none — additive Branch A backfill only.
-
-**Integration:** none.
-
-## QA test manifest
-
-See **`docs/test-bible/core/meteorite.md`** § AST-1693 (shared numbered list).
-
-**Bible shasum (publish tip):** filled with meteorite.md after publish.
-
