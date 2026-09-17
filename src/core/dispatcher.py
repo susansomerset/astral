@@ -654,7 +654,11 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             context=f"dispatch-{input_state}",
             sort_by=sort_override,
             scan_interval_hours=scan_override,
-            require_empty_website=(task.get("task_key") == resolve_key),
+            require_empty_website=(
+                task.get("task_key") == resolve_key
+                and (input_state or "").strip()
+                == INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
+            ),
             score_floor=floor,
             states=claim_states,
             exclude_prefilter_second_strike=(dispatch_task_key == "fetch_website"),
