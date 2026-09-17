@@ -3460,14 +3460,6 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 
-### AST-1691 · AST-1685
-
-Meteorite top tab + sections. Primary: meteorites.md § AST-1691.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Tabs/sections | `src/utils/config.py` | **`TestAst1691MeteoriteReportConfig`** |
-
 ### AST-1612 · AST-1607
 
 **Parent:** [AST-1607](https://linear.app/astralcareermatch/issue/AST-1607/artifacts-discussion-is-incomplete). **Publish:** `origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`. Product: **AST-1609** (`origin/sub/AST-1607/AST-1609-fix-artifacts-discussion-incomplete`).

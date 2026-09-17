@@ -118,6 +118,38 @@ def _warn_item(who: Any, why: str, next_step: str) -> None:
     logger.warning("%s — %s\n  %s", who, why, next_step)
 
 
+def _electronic_contact_from_job(job: Dict[str, Any]) -> Optional[str]:
+    """Normalize Ruth jobs[] electronic_contact → meteorite column value (or None)."""
+    key = STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    raw = job.get(key)
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    return text or None
+
+
+def _soft_persist_meteorite_electronic_contact(
+    meteorite_id: int,
+    contact: Optional[str],
+    *,
+    who: Any,
+) -> Optional[str]:
+    """Best-effort contact write after a good insert/transition. Warns; never fails the row."""
+    col = METEORITE_CONFIG["electronic_contact_column"]
+    try:
+        update_meteorite(int(meteorite_id), **{col: contact})
+        row = get_meteorite(int(meteorite_id))
+        recorded = (row or {}).get(col)
+        return recorded if isinstance(recorded, str) else recorded
+    except Exception as exc:
+        _warn_item(
+            who,
+            f"{col} persist failed: {type(exc).__name__}: {exc}",
+            "This meteorite row continues without a contact write",
+        )
+        return None
+
+
 def is_meteorite_company(short_name: Optional[str]) -> bool:
     """True on METEORITE-state companies or legacy meteorite- prefix (AST-1152 / AST-1493)."""
     if not short_name:
@@ -793,6 +825,7 @@ def _map_classify_jobs_to_meteorite_rows(
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
             if not text:
                 return [], "text scrap missing jd_text"
+            col = METEORITE_CONFIG["electronic_contact_column"]
             out.append({
                 "candidate_id": cid,
                 "source_kind": source_kind,
@@ -800,6 +833,7 @@ def _map_classify_jobs_to_meteorite_rows(
                 "classify_outcome": outcome,
                 "content": text,
                 "link": None,
+                col: _electronic_contact_from_job(job),
             })
         return out, None
 
@@ -811,6 +845,7 @@ def _map_classify_jobs_to_meteorite_rows(
             if not (link.startswith("http://") or link.startswith("https://")):
                 return [], "url scrap missing http(s) job_link"
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
+            col = METEORITE_CONFIG["electronic_contact_column"]
             out.append({
                 "candidate_id": cid,
                 "source_kind": source_kind,
@@ -818,6 +853,7 @@ def _map_classify_jobs_to_meteorite_rows(
                 "classify_outcome": outcome,
                 "content": text or None,
                 "link": link,
+                col: _electronic_contact_from_job(job),
             })
         return out, None
 
@@ -1026,8 +1062,17 @@ async def ingest_candidate_email_message(
                 ),
             )
 
-        for row_id in ids:
+        for row_id, job in zip(ids, job_list):
             _meteorite_state_info(row_id, "NEW")
+            # AST-1689: soft-fail contact persist after successful insert (AC6/AC7/AC8).
+            returned = _electronic_contact_from_job(job if isinstance(job, dict) else {})
+            recorded = _soft_persist_meteorite_electronic_contact(
+                row_id, returned, who=f"meteorite {row_id} for {cid}",
+            )
+            logger.debug(
+                "electronic_contact returned=%r recorded=%r meteorite_id=%s",
+                returned, recorded, row_id,
+            )
         try:
             logger.debug("Calling archive_candidate_email: [message_id=%s]", mid)
             archive_candidate_email(mid)
@@ -1249,6 +1294,7 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                 page_status = _CONTACT_PAGE_STATUS.get(_classify_jd(visible_text), "missing")
 
                 if page_status == "blocked":
+                    # AST-1689: state-only — do not clear electronic_contact (AC4).
                     update_meteorite(row_id, state=status_map["blocked"])
                     _row_miss(
                         row_id, cid,
