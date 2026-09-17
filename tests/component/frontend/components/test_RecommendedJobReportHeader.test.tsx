@@ -169,3 +169,35 @@ describe("RecommendedJobReportHeader — AST-1696 Copy Link", () => {
     expect(screen.getByRole("button", { name: "Copy Link" })).toBeInTheDocument()
   })
 })
+describe("RecommendedJobReportHeader — AST-1704 http(s)-only href", () => {
+  it("uses http jobLink as title href", () => {
+    renderWithProviders(
+      <RecommendedJobReportHeader
+        {...base}
+        jobLink="https://jobs.example/apply"
+        applicationEmail={null}
+        linkedInUrl={null}
+      />,
+    )
+    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute(
+      "href",
+      "https://jobs.example/apply",
+    )
+    expect(document.querySelector(".recommended-report-job-link-text")).toBeNull()
+  })
+
+  it("shows non-http jobLink as text without title href", () => {
+    const crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
+    renderWithProviders(
+      <RecommendedJobReportHeader
+        {...base}
+        jobLink={crumb}
+        applicationEmail={null}
+        linkedInUrl={null}
+      />,
+    )
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByText("Analyst")).toHaveClass("recommended-report-title")
+    expect(screen.getByText(crumb)).toHaveClass("recommended-report-job-link-text")
+  })
+})

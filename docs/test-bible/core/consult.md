@@ -1319,3 +1319,54 @@ Consult grade/analysis persists write whole-run harvest as sibling job_data `*_s
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/consult.md` — *(filled after publish)*
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+Qualify / title-screen partition uses `_job_is_meteorite_track` (`source == meteorite`); real `company_id` must not flip meteorite-parented NEW jobs onto gazed title-pattern screen. Gazer skip + gazed ingest + Job Detail href: **`docs/test-bible/core/gazer.md`**, **`tracker.md`**, **`ui/api/api_jobs.md`**, **`frontend/components.md`**, **`frontend/pages.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Track helper + NEW partition | `src/core/consult.py` | **`TestAst1704MeteoriteTrackSoT`** |
+
+**Broken / obsolete this pass:** none in consult (gazer skip revised under gazer.md).
+
+**Integration:** none.
+
+## QA test manifest (AST-1704)
+
+1. Track SoT qualify: `tests/component/core/test_consult.py::TestAst1704MeteoriteTrackSoT`
+2. Title skip by source (revised): `tests/component/core/test_gazer.py::TestValidateTitleBatch::test_skips_meteorite_source_roster_still_fails`
+3. Gazed ingest parent fields: `tests/component/core/test_tracker.py::TestIngestJobs::test_counts_new_and_duplicate_rows`
+4. Jobs detail parent fields: `tests/component/ui/api/test_api_jobs.py::TestAst1704JobsDetailParentFields`
+5. Header http(s)-only href: `tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx` — pattern **`AST-1704`**
+6. Job Detail Link row: `tests/component/frontend/components/test_JobDetailModal.test.tsx` — pattern **`AST-1704`**
+7. JAR non-http chrome: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — pattern **`AST-1704`**
+8. Routed JobsJobDetail company_id align (§6c): `tests/component/frontend/pages/test_JobsJobDetail.test.tsx` — pattern **`AST-1704`**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1704MeteoriteTrackSoT \
+  tests/component/core/test_gazer.py::TestValidateTitleBatch::test_skips_meteorite_source_roster_still_fails \
+  tests/component/core/test_tracker.py::TestIngestJobs::test_counts_new_and_duplicate_rows \
+  tests/component/ui/api/test_api_jobs.py::TestAst1704JobsDetailParentFields \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx \
+  --testNamePattern='AST-1704'
+```
+
+**Pass criterion:** pytest + Vitest green on lines 1–8 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/consult.md`
+- `docs/test-bible/core/gazer.md`
+- `docs/test-bible/core/tracker.md`
+- `docs/test-bible/ui/api/api_jobs.md`
+- `docs/test-bible/frontend/components.md`
+- `docs/test-bible/frontend/pages.md`

@@ -1553,3 +1553,19 @@ npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+Job Detail / JAR chrome: `job_link` is an href / `window.open` target only for `http(s)`; non-http inherited text still shown. Routed page align: **`docs/test-bible/frontend/pages.md`** § AST-1704. Primary manifest: **`docs/test-bible/core/consult.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header title href + breadcrumb text | `RecommendedJobReportHeader.tsx` | **`test_RecommendedJobReportHeader.test.tsx`** — **`AST-1704`** |
+| Info Link row | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1704`** |
+| JAR header composition | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1704`** |
+
+**Broken / obsolete this pass:** none — existing https deeplink cases remain.
+
+**Integration:** none.

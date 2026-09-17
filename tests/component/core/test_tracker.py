@@ -37,6 +37,10 @@ class TestIngestJobs:
         _, kwargs = save.call_args
         assert kwargs["company"] == "co"
         assert kwargs["state"] == "NEW"
+        # AST-1704: gazed ingest writes company parent SoT + employer company_id.
+        assert kwargs["source"] == cfg.SOURCE_ENTITY_TYPE_COMPANY
+        assert kwargs["source_entity_id"] == "co"
+        assert kwargs["company_id"] == "co"
 
     def test_counts_invalid_title_when_regex_filters_listing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(tracker_mod.database, "raw_job_listing_is_duplicate", lambda *args, **kwargs: False)

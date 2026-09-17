@@ -993,3 +993,36 @@ class TestAst1453SkippedEditMetaAndPut:
         persist.assert_called_once_with(
             "job-1453", {"job_title": "Saved", "state": "NEW"}
         )
+
+# Branches: detail exposes parent/track fields + inherited job_link (AST-1704).
+class TestAst1704JobsDetailParentFields:
+    def test_detail_exposes_source_entity_and_job_link(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_job",
+            lambda job_id: {
+                "astral_job_id": job_id,
+                "job_title": "Analyst",
+                "company_id": "acme",
+                "source": "meteorite",
+                "source_entity_id": "mid-1",
+                "job_link": crumb,
+                "job_data": {},
+            },
+        )
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, astral_job_id=None, debug=False: art or {},
+        )
+        resp = jobs_client.get("/api/jobs/job-1704", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["company_id"] == "acme"
+        assert body["source"] == "meteorite"
+        assert body["source_entity_id"] == "mid-1"
+        assert body["job_link"] == crumb
