@@ -2627,7 +2627,13 @@ async def do_task(
                         catalog_key,
                     )
                 else:
-                    landed = save_job_artifact(index, catalog_key, body)
+                    # AST-1700: pass do_task harvest; job_resume auto-cite stays in tracker.
+                    landed = save_job_artifact(
+                        index,
+                        catalog_key,
+                        body,
+                        source_artifact_ids=list(source_artifact_ids),
+                    )
                     if landed is None:
                         logger.warning(
                             "%s skipped — catalog %s empty\n  The hop is still success; the replica was not saved",
@@ -2688,7 +2694,13 @@ async def do_task(
                 save_candidate_data(
                     str(index), {"artifacts": {"resume_structure": structure}}
                 )
-                save_candidate_data(str(index), artifact_key, content)
+                # AST-1700: harvest only on operative str-path insert of craft body.
+                save_candidate_data(
+                    str(index),
+                    artifact_key,
+                    content,
+                    source_artifact_ids=list(source_artifact_ids),
+                )
             else:
                 _persist_craft_dispatch_success(
                     str(index), task_key, parsed_for_persist
