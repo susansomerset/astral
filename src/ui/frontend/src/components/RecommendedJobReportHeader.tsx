@@ -1,5 +1,6 @@
 interface Props {
   jobTitle: string
+  /** AST-1694 listing_href (http(s) or null) — not raw job_link. */
   jobLink: string | null
   companyName: string
   companyWebsite: string | null
