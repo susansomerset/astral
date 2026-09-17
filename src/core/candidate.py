@@ -126,8 +126,14 @@ def build_candidate_token_view(candidate: dict) -> dict:
 
 
 def is_candidate_token_view(obj: object) -> bool:
-    """True when obj matches build_candidate_token_view output (not a DB row/raft)."""
+    """True when obj matches build_candidate_token_view output (not a DB row/raft).
+
+    Requires ``_astral_candidate_id`` key present so raw library ``candidate_data``
+    (contact/context/artifacts only) is not mistaken for a finished token view.
+    """
     if not isinstance(obj, dict) or "candidate_data" in obj:
+        return False
+    if "_astral_candidate_id" not in obj:
         return False
     return "first" in obj or "last" in obj or "full" in obj or "contact" in obj
 
