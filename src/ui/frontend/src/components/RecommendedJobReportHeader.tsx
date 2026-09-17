@@ -8,6 +8,8 @@ interface Props {
   copyFeedback?: string | null
   onCopyApplicationEmail?: () => void
   onCopyLinkedIn?: () => void
+  onCopyDetailLink?: () => void
+  detailLinkCopied?: boolean
   onCopySnapshot?: () => void
   snapshotCopied?: boolean
   snapshotCopying?: boolean
@@ -28,6 +30,8 @@ export default function RecommendedJobReportHeader({
   copyFeedback,
   onCopyApplicationEmail,
   onCopyLinkedIn,
+  onCopyDetailLink,
+  detailLinkCopied,
   onCopySnapshot,
   snapshotCopied,
   snapshotCopying,
@@ -73,8 +77,17 @@ export default function RecommendedJobReportHeader({
       {link && !httpLink && (
         <div className="recommended-report-job-link-text">{link}</div>
       )}
-      {(onCopySnapshot || applicationEmail || linkedInUrl) && (
+      {(onCopyDetailLink || onCopySnapshot || applicationEmail || linkedInUrl) && (
         <div className="recommended-report-links">
+          {onCopyDetailLink && (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => onCopyDetailLink()}
+            >
+              {detailLinkCopied ? "Copied" : "Copy Link"}
+            </button>
+          )}
           {onCopySnapshot && (
             <button
               type="button"
