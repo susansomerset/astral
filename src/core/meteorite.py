@@ -24,6 +24,7 @@ import os
 import re
 import uuid
 from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core.candidate import email_aliases_for_candidate, get_candidate
@@ -63,6 +64,8 @@ from src.utils.config import (
     STAGE_METEORITE_CONFIG,
     TASK_CONFIG,
     TRACKER_CONFIG,
+    format_contact_timezone_clock,
+    format_job_link_breadcrumb,
 )
 from src.utils.formatting import normalize_pasted_list_email_html
 from src.utils.logging import get_logger, log_batch_id, log_debug
@@ -840,6 +843,68 @@ async def land_meteorite(
 
 # --- check_inbox (AST-1559) ---
 
+def _candidate_contact_timezone(candidate_id: str) -> str:
+    """Manage Candidate contact.timezone IANA key (empty → UTC via format helper)."""
+    row = get_candidate((candidate_id or "").strip())
+    if not isinstance(row, dict):
+        return ""
+    cd = row.get("candidate_data") if isinstance(row.get("candidate_data"), dict) else {}
+    contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
+    if not contact:
+        top = row.get("contact")
+        contact = top if isinstance(top, dict) else {}
+    return (contact.get("timezone") or "").strip()
+
+
+def _email_breadcrumb_link(
+    *,
+    from_email: str,
+    to_email: str,
+    sent_at: str,
+    timezone_key: str,
+) -> str:
+    """Assemble non-http meteorite.link breadcrumb via AST-1701 helpers (AST-1703)."""
+    from_email = (from_email or "").strip()
+    to_email = (to_email or "").strip()
+    sent_at = (sent_at or "").strip()
+    if not from_email:
+        raise ValueError("from_email required")
+    if not to_email:
+        raise ValueError("to_email required")
+    if not sent_at:
+        raise ValueError("sent_at required")
+
+    dt: Optional[datetime] = None
+    try:
+        dt = datetime.fromisoformat(sent_at.replace("Z", "+00:00"))
+    except ValueError:
+        dt = None
+    if dt is None:
+        try:
+            dt = parsedate_to_datetime(sent_at)
+        except (TypeError, ValueError, IndexError):
+            dt = None
+    if dt is None:
+        raise ValueError("unparseable sent_at")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    tz_key = (timezone_key or "").strip()
+    logger.debug(
+        "Calling format_contact_timezone_clock: [dt=%s, timezone_key=%s]",
+        dt.isoformat(), tz_key,
+    )
+    clock = format_contact_timezone_clock(dt, tz_key)
+    logger.debug("Response from format_contact_timezone_clock: %s", clock)
+    logger.debug(
+        "Calling format_job_link_breadcrumb: [from_email=%s, to_email=%s, clock=%s]",
+        from_email, to_email, clock,
+    )
+    breadcrumb = format_job_link_breadcrumb(from_email, to_email, clock)
+    logger.debug("Response from format_job_link_breadcrumb: %s", breadcrumb)
+    return breadcrumb
+
+
 def _map_classify_jobs_to_meteorite_rows(
     outcome: str,
     jobs: List[Dict[str, Any]],
@@ -847,6 +912,7 @@ def _map_classify_jobs_to_meteorite_rows(
     candidate_id: str,
     source_kind: str,
     source_id: str,
+    timezone_key: str = "",
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Map classify jobs → insert_meteorite_rows dicts (no source_ref synthesis)."""
     if source_kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"]:
@@ -869,13 +935,36 @@ def _map_classify_jobs_to_meteorite_rows(
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
             if not text:
                 return [], "text scrap missing jd_text"
+            link: Optional[str] = None
+            if source_kind == "email":
+                from_email = (
+                    (job.get("from_email") or "").strip()
+                    if isinstance(job.get("from_email"), str) else ""
+                )
+                to_email = (
+                    (job.get("to_email") or "").strip()
+                    if isinstance(job.get("to_email"), str) else ""
+                )
+                sent_at = (
+                    (job.get("sent_at") or "").strip()
+                    if isinstance(job.get("sent_at"), str) else ""
+                )
+                try:
+                    link = _email_breadcrumb_link(
+                        from_email=from_email,
+                        to_email=to_email,
+                        sent_at=sent_at,
+                        timezone_key=timezone_key,
+                    )
+                except ValueError as exc:
+                    return [], str(exc)
             out.append({
                 "candidate_id": cid,
                 "source_kind": source_kind,
                 "source_id": sid,
                 "classify_outcome": outcome,
                 "content": text,
-                "link": None,
+                "link": link,
             })
         return out, None
 
@@ -1071,6 +1160,7 @@ async def ingest_candidate_email_message(
             candidate_id=cid,
             source_kind="email",
             source_id=mid,
+            timezone_key=_candidate_contact_timezone(cid),
         )
         if map_err:
             _warn_item(
@@ -1104,6 +1194,13 @@ async def ingest_candidate_email_message(
 
         for row_id in ids:
             _meteorite_state_info(row_id, "NEW")
+        for row_dict, row_id in zip(row_dicts, ids):
+            authored = (row_dict.get("link") or "").strip()
+            if authored and not _is_http_url(authored):
+                logger.debug(
+                    "meteorite %s email breadcrumb link=%s",
+                    row_id, authored,
+                )
         try:
             logger.debug("Calling archive_candidate_email: [message_id=%s]", mid)
             archive_candidate_email(mid)
@@ -1258,6 +1355,19 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     if not content:
                         update_meteorite(row_id, state="ERROR", error="missing content")
                         _row_miss(row_id, cid, "missing content", "This row is ERROR")
+                        summary["total_failed"] += 1
+                        summary["total_errors"] += 1
+                        continue
+                    # AST-1703: email text rows must already carry breadcrumb on link.
+                    kind = (row.get("source_kind") or "").strip()
+                    link = (row.get("link") or "").strip()
+                    if kind == "email" and not link:
+                        update_meteorite(
+                            row_id, state="ERROR", error="missing breadcrumb link",
+                        )
+                        _row_miss(
+                            row_id, cid, "missing breadcrumb link", "This row is ERROR",
+                        )
                         summary["total_failed"] += 1
                         summary["total_errors"] += 1
                         continue
