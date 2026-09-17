@@ -110,10 +110,14 @@ def ingest_jobs(
             title_mismatch_count += 1
             continue
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        # AST-1704: gazed ingest writes company parent SoT + employer company_id.
         inserted = database.save_job(
             str(uuid.uuid4()),
             job_title=parse_text(raw_job_listing),
             company=company,
+            company_id=company,
+            source=SOURCE_ENTITY_TYPE_COMPANY,
+            source_entity_id=company,
             state=initial_state,
             job_data={"raw_job_listing": raw_job_listing},
             state_history=[{"to_state": initial_state, "timestamp": now, "batch_id": batch_id}],
