@@ -249,3 +249,8 @@ AC1 → Stages 2–3 (nullable `company_id` + required parent columns on `save_j
 
 context_tokens≈42000
 
+
+## Review
+
+- **Build tip:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `STAGE3_SHA`
+- **Stages:** config SSOT → job schema/writers → operator SQL `data/sql/ast_1701_job_source_entity_backfill.sql`
