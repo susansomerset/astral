@@ -292,3 +292,77 @@ context_tokens≈55000
 
 - Stage 1: `tracker.save_meteorite_job` meteorite-row parent + company supersede
 - Stage 2: land/create stop ensure-as-parent; link inherit; bot-block continue + JD append
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1702  
+**Publish ref:** `bf40a1e03d77169022f1368a893c02e6ea8436e4` (`origin/sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append`)  
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | `run_land_meteorite` keeps claim → process by `batch_id` → `clear_meteorite_batch` in `finally` |
+| stat.logging.info.entity | A | | Success paths keep `_entity_info` / `_meteorite_state_info`; detail shifts to meteorite/job ids |
+| stat.logging.error | A | | Batch runners retain `logger.exception` + per-row continue on land/scrape loops |
+| stat.logging.warning | A | | Bot-block land emits mandatory who+why `logger.warning` before continuing |
+| stat.logging.debug | B | | Meteorite land paths add ungated `logger.debug` joints; tracker rewrite keeps `debug=` + gated Style D (`debug_index`/`debug_detail`) |
+
+## Column diff vs plan stage
+
+- **stat.logging.warning** — Joan **B** (plan listed bot-block warn as optional) → Radia **A** (tip implements mandatory who+why warning in `_land_link_check_append`, matching Joan’s discuss recommendation).
+- All other ids aligned with Joan’s plan-stage grades.
+
+## Frame diff
+
+(none) — Description **Acceptance criteria** / **Boundaries** rows already checked; tip satisfies AC3–AC6.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** Three-dot diff vs `origin/dev`  
+  **Finding:** Diff includes AST-1701 foundation (`src/utils/config.py`, `src/data/database.py`, operator SQL, AST-1701 tests/bible) stacked on the epic line before AST-1702 commits. AST-1702 product commits touch only `src/core/tracker.py` and `src/core/meteorite.py`.  
+  **Recommendation:** Expected epic ordering after #1; no resolve-child action on #2 for prerequisite files.
+
+- **Location:** `merge-tests(AST-1702)` / `tests/component/utils/test_config.py`  
+  **Finding:** Betty merge-tests carries unrelated sibling test/bible hunks from `origin/tests` alongside AST-1702 coverage.  
+  **Recommendation:** Rollup awareness only; not AST-1702 product scope creep.
+
+- **Location:** `create_meteorite_job` / `_insert_paste_meteorite_parent`  
+  **Finding:** Auto-insert `source_kind=paste` staging rows when `meteorite_id` omitted (public land + contact/gazer paths) is intentional per plan Decision 2c/2d; paste row → `LANDED` only on `land_outcome_created`, not on `duplicate_skip`.  
+  **Recommendation:** Operator audit of orphan `READY` paste rows if duplicate_skip is common; no code change required for this ticket.
+
+- **Location:** `src/core/tracker.py` `save_meteorite_job` debug path  
+  **Finding:** Style D (`if not debug: return` → `debug_index`/`debug_detail`) preserved on tracker rewrite; statute Notes exempt unconverted tracker patterns.  
+  **Recommendation:** Accept for #2; dedicated debug-contract conversion is a separate pass if desired.
+
+## What's solid
+
+- **Stage 1 / AC4:** `save_meteorite_job` requires `meteorite_id`; creates under `source=meteorite` + `source_entity_id`; Branch B supersedes company/legacy `gazed` in-place (same `astral_job_id`, keeps `company_id`, appends `state_history`, `METEORITE_NEW`); Branch A never clobbers meteorite-parented rows; placeholder `company_id` stripped.
+- **Stage 2 / AC3:** `ensure_meteorite_company` remains definition-only — grep gate + `TestAst1702SourceEntityLand::test_ensure_meteorite_company_has_no_job_parent_call_sites` + `test_land_does_not_call_ensure_as_parent`.
+- **Stage 2 / AC5:** `run_land_meteorite` passes full `meteorite.link` (not http-only); repair write if `job_link` drift; `TestAst1702SourceEntityLand::test_land_inherits_meteorite_link` + revised `TestAst1470LandMeteorite::test_playwright_fetch_when_link_and_thin_body`.
+- **Stage 2 / AC6:** `_land_link_check_append` lazy-imports gazer classifiers; bot-block continues land with warning; ok scrape appends JD + updates `job_link`; `TestAst1702SourceEntityLand::test_land_bot_block_continues_without_append` + revised playwright test asserts append path.
+- **Plan fidelity:** Two-file partition respected on AST-1702 code commits; depends on AST-1701 SSOT symbols without re-implementing schema.
+
+## Recommended actions (downstream — not Radia lane)
+
+- Chuckles: append artifact, commit `docs(AST-1702): Radia review — clean`, push sub ref, post slim upshot `--as radia`, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing** (no resolve-child round).
+- Epic rollup: confirm AST-1701 is on the ftr line before Susan UATs parent AC1–2 on combined epic state.
+
+context_tokens≈52000
+
+---
