@@ -104,3 +104,61 @@ context_tokens≈12000
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `fa1807e6` | Header inventory + BLOB DDL; save_artifact compress; _artifact_row_dict decompress |
+
+## Radia review
+
+```
+[code-rubric]
+**Ticket:** AST-1697
+**Publish ref:** 33eb085eb931273dd0819904036a897e55cfb137
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+astral.standards.data-raises-caller-logs | A | | 
+astral.standards.database-header-inventory | A | | 
+astral.layers.import-direction | A | | 
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** Canon clerk / frozen list resolution
+- **Finding:** `canon_clerk.py expand` still returns unknown for all three frozen ids (not yet in `canon/directives/active/`). Statute text was scored from harvested `canon/statutes/` on the publish tip — same workaround Joan used at plan stage. Promote or alias these ids into the clerk active corpus so future expand calls match the frozen list.
+- **Recommendation:** Track as corpus hygiene (Archie); does not block this diff.
+
+- **Location:** Plan `## Files Changed` vs publish tip
+- **Finding:** Plan Stage 1 scoped `src/data/database.py` only; tip also lands Betty’s `tests/component/data/database/test_artifacts.py` and `docs/test-bible/data/database/artifacts.md` (expected `qa-child` / `test-child` pipeline ownership).
+- **Recommendation:** None — scope divergence is expected output, not a defect.
+
+## What's solid
+
+- Stage 1 delivered on the publish tip: header inventory documents zlib-transparent `artifact_data BLOB` (with legacy TEXT note); CREATE DDL uses `BLOB NOT NULL`; `save_artifact` routes through `_compress_payload`; `_artifact_row_dict` routes through `_decompress_payload` before JSON-parse; public getters unchanged.
+- Shared helpers match the `agent_data.block_data` precedent; no parallel `zlib.compress` in `save_artifact`.
+- Component tests cover AC1–5: raw SQL zlib bytes, transparent public readers (dict + string bodies), legacy plain TEXT row, inventory/PRAGMA BLOB, and grep gate on shared helpers. Revised `TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it` aligns with the new inventory/DDL wording.
+- INSERT bind tuple unchanged in shape (`payload` replaces prior plain bind); no new logging or cross-layer imports in the product diff.
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append this artifact to the issue doc, commit `docs(AST-1697): Radia review — clean`, post slim upshot `--as radia`, move to **Review Posted**; datt **§3h** → **User Testing** on PROCEED.
+- Archie (optional): promote `astral.standards.data-raises-caller-logs`, `astral.standards.database-header-inventory`, and `astral.layers.import-direction` into `canon/directives/active/` so clerk expand matches frozen lists.
+
+context_tokens≈18000
+```
