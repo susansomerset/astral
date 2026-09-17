@@ -1217,7 +1217,11 @@ async def _run_analysis_upshot_batch(
             errors += 1
             continue
         # Same job_data key as analysis_upshot so Recommended report consumers keep working.
-        tracker.save_job_data(aid, {"analysis_upshot": parsed})
+        harvested = _normalize_harvested_source_artifact_ids(result.get("source_artifact_ids"))
+        tracker.save_job_data(aid, {
+            "analysis_upshot": parsed,
+            _source_artifact_ids_job_data_key("analysis_upshot"): harvested,
+        })
         _transition_job_state_for_task(task_key, [aid], task_cfg["pass_state"])
         _job_consult_info(aid, task_cfg["pass_state"])
         passed += 1
