@@ -267,3 +267,10 @@ Draft `patt.*` resolved from `canon/directives/draft/` mirrors (same path Joan u
 - **Chuckles:** Append artifact, commit `docs(AST-1700): Radia review — findings`, post slim upshot `--as radia`, → **Review Posted** → datt REVIEW → `resolve-child`.
 
 ---
+
+## Resolution
+
+**2026-09-17** — Radia fix-now: revert AST-1699 `consult.py` smuggle from this publish-ref.
+
+- Restored `src/core/consult.py` to pre-`baca197e` (drop `_apply_render_verdict_decoded_job` / `render_verdict` harvest-pin call sites that referenced undefined helpers).
+- AST-1699 consult sibling persist stays on `sub/AST-1579/AST-1699-…` only.

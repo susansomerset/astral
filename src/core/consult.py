@@ -1218,8 +1218,6 @@ def _apply_render_verdict_decoded_job(
     cfg: Dict[str, Any],
     ctx: Optional[Dict[str, Any]],
     debug: bool = False,
-    *,
-    source_artifact_ids=None,
 ) -> Tuple[str, Optional[Any], List[Any]]:
     """Decode path: hydrate reasons, graded verdict, persist {prefix}_* + transition (single row or batch)."""
     agent_task = cfg.get("agent_task") or (dispatch_task_key or "").strip()
@@ -1282,10 +1280,6 @@ def _apply_render_verdict_decoded_job(
     save_data[f"{prefix}_notes"] = notes_tail
     # AST-1063: job-carried rubric for list headers (same criteria as hydrate/score)
     save_data[f"{prefix}_rubric"] = _rubric_snapshot_for_job_data(rubric_criteria)
-    # AST-1699: whole-run harvest pins beside the grade set (not per grade line)
-    save_data[_source_artifact_ids_job_data_key(f"{prefix}_grades")] = (
-        _normalize_harvested_source_artifact_ids(source_artifact_ids)
-    )
     tracker.save_job_data(astral_job_id, save_data)
     _transition_job_state_for_task(agent_task, [astral_job_id], to_state, score)
     if to_state == cfg.get("pass_state"):
@@ -1393,11 +1387,9 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     row_for_apply = dict(j0)
     row_for_apply["astral_job_id"] = astral_job_id
 
-    harvested = _normalize_harvested_source_artifact_ids(result.get("source_artifact_ids"))
     try:
         to_state, score, grades_out = _apply_render_verdict_decoded_job(
             task_type, astral_job_id, row_for_apply, cfg, ctx, debug=debug,
-            source_artifact_ids=harvested,
         )
     except IncompleteGradeSetError as e:
         # Incomplete/extra → retry holding, never first-touch technical (AST-1155).
