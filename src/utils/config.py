@@ -46,8 +46,9 @@ Config sections:
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
   STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529); electronic-contact response-key literal (AST-1688)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
-  JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
-  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469); meteorite-row electronic-contact column literal (AST-1688)
+  SOURCE_ENTITY_TYPES — job ingest parent + track SoT company|meteorite (repurposed job.source; AST-1701); JOB_SOURCES aliases until sibling #2
+  JOB_LINK_BREADCRUMB_FORMAT / CONTACT_TIMEZONE_CLOCK_LABELS — email breadcrumb + timezone clock helpers (AST-1701; authored by sibling #3)
+  METEORITE_CONFIG — placeholder employer templates (not job parents after AST-1640) + job-create defaults + land/source_entity_type/dedupe (AST-1469 / AST-1701); meteorite-row electronic-contact column literal (AST-1688)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
@@ -61,8 +62,10 @@ Config sections:
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional, Union
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -378,6 +381,21 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-1672: company SA for AI website select on WEBSITE_REVIEW (agent identity stays find_company_website).
+    "resolve_website": {
+        "response_schema": {
+            "task_success": {"type": "bool", "required": True},
+            "website": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "context_format": "find_company_website_{index}",  # reuse existing prompt indexing
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "WEBSITE_REVIEW",
+        "agent_task": "find_company_website",
+        "pass_state": "WEBSITE_FOUND",
+        "fail_state": "NO_WEBSITE",
+    },
     "prefilter_company": {
         "response_format": "json",
         "output_type": "grades_encoded_prefilter_links",
@@ -455,7 +473,7 @@ TASK_CONFIG = {
         "context_format": "vet_inflow_discovery_{index}",
         "entity_type": "company",
         "requires_candidate_key": True,
-        "trigger_state": "NEW",
+        "trigger_state": "DISCOVERED",
     },
     # Phase D. Run Time Job Analysis
     # RUNTIME JOB VETTING PROMPTS - Ruth 1
@@ -553,6 +571,10 @@ TASK_CONFIG = {
                     "company_job_id": {"type": "str", "required": False},
                     "jd_text": {"type": "str", "required": False},
                     "employer_name": {"type": "str", "required": False},
+                    # AST-1703: email breadcrumb inputs for text outcomes (Python formats clock).
+                    "from_email": {"type": "str", "required": False},
+                    "to_email": {"type": "str", "required": False},
+                    "sent_at": {"type": "str", "required": False},
                     # AST-1688: best electronic contact to send the resume (metadata-first; optional)
                     "electronic_contact": {"type": "str", "required": False},
                 },
@@ -1160,6 +1182,8 @@ GRADE_COLORS = {
 COMPANY_STATES = {
     "IMPORTED": {},
     "NEW": {"batch_criteria": {"sort_by": "updated_at"}},
+    # AST-1672: pre-vet inflow land state (discovery → DISCOVERED; vet/CSE claim here).
+    "DISCOVERED": {"batch_criteria": {"sort_by": "updated_at"}},
     "WEBSITE_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     # Dual ownership (AST-892): empty homepage_text → fetch_website scrape retry; non-empty → prefilter second strike.
     "WEBSITE_FOUND_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -1168,7 +1192,8 @@ COMPANY_STATES = {
         "retry_state": "WEBSITE_FOUND_RETRY",
     },
     "NO_WEBSITE": {},
-    "WEBSITE_REVIEW": {},
+    # AST-1672: waiting between CSE fetch and resolve_website AI hop — need sort_by for admin defaults.
+    "WEBSITE_REVIEW": {"batch_criteria": {"sort_by": "updated_at"}},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "PJL_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "JOBLIST_IDENTIFIED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -2060,6 +2085,8 @@ ROSTER_CONFIG = {
         "prefilter_score": "prefilter_score",
         # AST-469: persisted job-list visible text (select confirm path). No coat-check handler — explicit storage only.
         "job_list_visible": "job_list_visible",
+        # AST-1672: CSE hit list for inflow_resolve_website → resolve_website. Explicit storage only.
+        "inflow_resolve_website_hits": "inflow_resolve_website_hits",
         "jobsite_scrape_issue_summary": "jobsite_scrape_issue_summary",
         "jobsite_scrape_issue_evidence": "jobsite_scrape_issue_evidence",
         "possible_joblist_links": "possible_joblist_links",
@@ -2103,6 +2130,7 @@ def roster_scrape_readiness_config() -> Dict[str, Any]:
 
 
 # Phase 1 roster inflow discovery (AST-505): CSE search limits, vet task keys, weekly cadence.
+# AST-1672: DISCOVERED land/vet; resolve block is CSE-only fetch (no inline AI key).
 INFLOW_CONFIG = {
     "discovery": {
         "max_results_per_query": 100,
@@ -2110,18 +2138,22 @@ INFLOW_CONFIG = {
         "dispatch_trigger_state": "ACTIVE_SEARCH",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
-        "vet_dispatch_trigger_state": "NEW",
+        "vet_dispatch_trigger_state": "DISCOVERED",
+        "land_state": "DISCOVERED",
     },
     "resolve": {
         "max_results": 20,
         "date_restrict_days": None,
         "task_key": "inflow_resolve_website",
-        "ai_task_key": "find_company_website",
-        "dispatch_trigger_state": "NEW",
+        "dispatch_trigger_state": "DISCOVERED",
+        "waiting_state": "WEBSITE_REVIEW",
+        "pass_state": "WEBSITE_REVIEW",  # ≥1 CSE hit → waiting
+        "fail_state": "NO_WEBSITE",  # zero CSE hits → terminal
+        "hit_list_data_key": "inflow_resolve_website_hits",
     },
     "vet": {
         "task_key": "vet_inflow_discovery",
-        "dispatch_trigger_state": "NEW",
+        "dispatch_trigger_state": "DISCOVERED",
         "pass_state": "WEBSITE_FOUND",
         "fail_state": "VET_FAILED",
         "blurb_data_key": "inflow_discovery_blurb",
@@ -2130,6 +2162,22 @@ INFLOW_CONFIG = {
         "grade_vector_code": "LT",  # fixed 2-char segment code in encoded lines
     },
 }
+
+# AST-1672: lock DISCOVERED / CSE-only resolve / resolve_website SA cutover.
+assert "DISCOVERED" in COMPANY_STATES
+assert COMPANY_STATES["DISCOVERED"]["batch_criteria"]["sort_by"] == "updated_at"
+assert COMPANY_STATES["WEBSITE_REVIEW"]["batch_criteria"]["sort_by"] == "updated_at"
+assert INFLOW_CONFIG["discovery"]["land_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["vet"]["dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["resolve"]["dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["resolve"]["waiting_state"] == "WEBSITE_REVIEW"
+assert INFLOW_CONFIG["resolve"]["hit_list_data_key"] == "inflow_resolve_website_hits"
+assert "ai_task_key" not in INFLOW_CONFIG["resolve"]
+assert ROSTER_CONFIG["company_data_keys"]["inflow_resolve_website_hits"] == INFLOW_CONFIG["resolve"]["hit_list_data_key"]
+assert TASK_CONFIG["resolve_website"]["agent_task"] == "find_company_website"
+assert TASK_CONFIG["resolve_website"]["trigger_state"] == "WEBSITE_REVIEW"
+assert TASK_CONFIG["vet_inflow_discovery"]["trigger_state"] == "DISCOVERED"
 
 # AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
 # task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
@@ -2481,23 +2529,46 @@ JOB_STATES = {
 }
 
 # ---------------------------------------------------------------------------
-# AST-1469: durable job provenance. gazed = roster/gazer ingest path; meteorite = land path.
-# One-way promotion only: gazed → meteorite allowed; meteorite → gazed forbidden (enforced in tracker).
+# AST-1701: job ingest parent + analysis track SoT (repurposed job.source column).
+# company = gazer/employer parent; meteorite = meteorite staging-row parent.
 # ---------------------------------------------------------------------------
-JOB_SOURCES = ["gazed", "meteorite"]
-JOB_SOURCE_DEFAULT = "gazed"       # backfill + insert default when caller omits source
-JOB_SOURCE_METEORITE = "meteorite"
+SOURCE_ENTITY_TYPES = ["company", "meteorite"]
+SOURCE_ENTITY_TYPE_COMPANY = "company"
+SOURCE_ENTITY_TYPE_METEORITE = "meteorite"
+SOURCE_ENTITY_TYPE_DEFAULT = SOURCE_ENTITY_TYPE_COMPANY  # insert default when caller omits type
 
-assert JOB_SOURCE_DEFAULT in JOB_SOURCES
-assert JOB_SOURCE_METEORITE in JOB_SOURCES
+assert SOURCE_ENTITY_TYPE_DEFAULT in SOURCE_ENTITY_TYPES
+assert SOURCE_ENTITY_TYPE_METEORITE in SOURCE_ENTITY_TYPES
+
+# Temporary aliases for pre-AST-1702 callers (tracker still imports JOB_SOURCE_* until sibling #2).
+# Do not add "gazed" back — writers emit company|meteorite only.
+JOB_SOURCES = SOURCE_ENTITY_TYPES
+JOB_SOURCE_DEFAULT = SOURCE_ENTITY_TYPE_DEFAULT
+JOB_SOURCE_METEORITE = SOURCE_ENTITY_TYPE_METEORITE
+
+# AST-1701: email breadcrumb for no-URL meteorite.link outcomes (authored by sibling #3).
+# Shape: From:<email> M/D H:MM <timezone> To:<email>
+JOB_LINK_BREADCRUMB_FORMAT = "From:{from_email} {clock} To:{to_email}"
+# IANA zone → short label for the clock segment (Manage Candidate contact.timezone options).
+CONTACT_TIMEZONE_CLOCK_LABELS = {
+    "": "UTC",
+    "America/New_York": "Eastern",
+    "America/Chicago": "Central",
+    "America/Denver": "Mountain",
+    "America/Los_Angeles": "Pacific",
+    "America/Anchorage": "Alaska",
+    "Pacific/Honolulu": "Hawaii",
+}
 
 # ---------------------------------------------------------------------------
 # METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
 # Lazy-ensure inserts on demand — never bulk at server start.
 # AST-1493: company_state METEORITE + stem-keyed short_names ({stem}-{candidate_id}).
+# short_name_* templates are NOT job source_entity_id / parent after AST-1640 —
+# meteorite-track job parent is the meteorite row id (sibling #2 stops ensure-as-parent).
 # Job-create defaults (METEORITE_NEW + score) are consumed by create_meteorite_job
 # (AST-1042 / AST-1056); literals stay config-owned (parent Architectural definition).
-# AST-1469: land outcomes, source, dedupe match order, employer_name job_data key.
+# AST-1469 / AST-1701: land outcomes, source_entity_type, dedupe match order, employer_name key.
 # ---------------------------------------------------------------------------
 METEORITE_CONFIG = {
     "short_name_prefix": "meteorite-",
@@ -2516,8 +2587,8 @@ METEORITE_CONFIG = {
     # AST-1042 / AST-1056 job-create defaults (consumed by create_meteorite_job)
     "job_create_state": "METEORITE_NEW",
     "job_create_latest_score": 10.0,
-    # AST-1469 Tracker land / source
-    "job_source": JOB_SOURCE_METEORITE,
+    # AST-1701 Tracker land / parent type (was job_source)
+    "source_entity_type": SOURCE_ENTITY_TYPE_METEORITE,
     "land_outcome_created": "created",
     "land_outcome_duplicate_skip": "duplicate_skip",
     "land_outcome_superseded": "superseded",
@@ -2540,7 +2611,7 @@ assert isinstance(METEORITE_CONFIG["default_stem"], str) and METEORITE_CONFIG["d
 assert "METEORITE" in COMPANY_STATES
 assert COMPANY_STATES["METEORITE"] == {}
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
-assert METEORITE_CONFIG["job_source"] == JOB_SOURCE_METEORITE
+assert METEORITE_CONFIG["source_entity_type"] == SOURCE_ENTITY_TYPE_METEORITE
 assert METEORITE_CONFIG["dedupe_match_order"] == ("company_job_id", "job_link")
 assert isinstance(METEORITE_CONFIG["land_outcome_created"], str) and METEORITE_CONFIG["land_outcome_created"]
 assert isinstance(METEORITE_CONFIG["land_outcome_duplicate_skip"], str) and METEORITE_CONFIG["land_outcome_duplicate_skip"]
@@ -3420,6 +3491,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
+    "resolve_website",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3444,6 +3516,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
+    if task_key == "resolve_website":
+        return "WEBSITE_REVIEW"
     if task_key == "vet_inflow_discovery":
         return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "qualify_job_listings":
@@ -4275,9 +4349,13 @@ ASTRAL_CONFIG = {
         ("IMPORTED", "WEBSITE_FOUND"),
         ("IMPORTED", "NO_WEBSITE"),
         ("IMPORTED", "WEBSITE_REVIEW"),
-        ("NEW", "WEBSITE_FOUND"),
-        ("NEW", "NO_WEBSITE"),
-        ("NEW", "VET_FAILED"),
+        # AST-1672: inflow leaves NEW; DISCOVERED owns vet + CSE; WEBSITE_REVIEW owns AI apply.
+        ("DISCOVERED", "WEBSITE_FOUND"),
+        ("DISCOVERED", "VET_FAILED"),
+        ("DISCOVERED", "WEBSITE_REVIEW"),
+        ("DISCOVERED", "NO_WEBSITE"),
+        ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
+        ("WEBSITE_REVIEW", "NO_WEBSITE"),
         ("WEBSITE_FOUND", "TO_WATCH"),
         ("WEBSITE_FOUND", "IGNORE"),
         ("WEBSITE_FOUND", "PREFILTER_PASSED"),
@@ -6900,29 +6978,79 @@ def validate_value(allowed_list: list, value: object) -> None:
         raise ValueError(f"Value {value!r} not in allowed list: {allowed_list}")
 
 
+def is_valid_source_entity_type(value: object) -> bool:
+    """True when value is a SOURCE_ENTITY_TYPES member (AST-1701)."""
+    return isinstance(value, str) and value in SOURCE_ENTITY_TYPES
+
+
+def validate_source_entity_type(value: object) -> None:
+    """Raise ValueError if value is not in SOURCE_ENTITY_TYPES (AST-1701)."""
+    validate_value(SOURCE_ENTITY_TYPES, value)
+
+
+def source_entity_type_transition_allowed(from_type: Optional[str], to_type: str) -> bool:
+    """True when writing to_type is legal given current from_type (AST-1701).
+
+    unset/blank → any SOURCE_ENTITY_TYPES value OK; same value OK; company → meteorite OK;
+    meteorite → company forbidden.
+    """
+    if not is_valid_source_entity_type(to_type):
+        return False
+    cur = (from_type or "").strip()
+    if not cur:
+        return True
+    if cur == to_type:
+        return True
+    if cur == SOURCE_ENTITY_TYPE_COMPANY and to_type == SOURCE_ENTITY_TYPE_METEORITE:
+        return True
+    return False
+
+
 def is_valid_job_source(value: object) -> bool:
-    """True when value is a JOB_SOURCES member (AST-1469)."""
-    return isinstance(value, str) and value in JOB_SOURCES
+    """Alias for is_valid_source_entity_type (pre-#2 callers)."""
+    return is_valid_source_entity_type(value)
 
 
 def validate_job_source(value: object) -> None:
-    """Raise ValueError if value is not in JOB_SOURCES (AST-1469)."""
-    validate_value(JOB_SOURCES, value)
+    """Alias for validate_source_entity_type (pre-#2 callers)."""
+    validate_source_entity_type(value)
 
 
 def job_source_transition_allowed(from_source: Optional[str], to_source: str) -> bool:
-    """True when writing to_source is legal given current from_source (AST-1469).
+    """Alias for source_entity_type_transition_allowed (pre-#2 callers)."""
+    return source_entity_type_transition_allowed(from_source, to_source)
 
-    unset/blank → any JOB_SOURCES value OK; same value OK; gazed → meteorite OK;
-    meteorite → gazed forbidden.
+
+def format_contact_timezone_clock(
+    dt: Union[datetime, None], timezone_key: Optional[str]
+) -> str:
+    """Format dt as ``M/D H:MM <label>`` in contact.timezone (AST-1701).
+
+    Naive dt treated as UTC. Empty/None timezone_key → UTC. Unknown IANA uses the
+    raw zone string as the label.
     """
-    if not is_valid_job_source(to_source):
-        return False
-    cur = (from_source or "").strip()
-    if not cur:
-        return True
-    if cur == to_source:
-        return True
-    if cur == JOB_SOURCE_DEFAULT and to_source == JOB_SOURCE_METEORITE:
-        return True
-    return False
+    if dt is None:
+        raise ValueError("dt required")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    key = (timezone_key or "").strip()
+    try:
+        zone = ZoneInfo(key) if key else ZoneInfo("UTC")
+    except Exception:
+        zone = ZoneInfo("UTC")
+        key = key or ""
+    local = dt.astimezone(zone)
+    label = CONTACT_TIMEZONE_CLOCK_LABELS.get(key)
+    if label is None:
+        label = key if key else "UTC"
+    # M/D H:MM — no leading zeros on month/day; 24-hour clock zero-padded minutes
+    return f"{local.month}/{local.day} {local.hour:02d}:{local.minute:02d} {label}"
+
+
+def format_job_link_breadcrumb(from_email: str, to_email: str, clock: str) -> str:
+    """Assemble JOB_LINK_BREADCRUMB_FORMAT (AST-1701)."""
+    return JOB_LINK_BREADCRUMB_FORMAT.format(
+        from_email=from_email, clock=clock, to_email=to_email
+    )

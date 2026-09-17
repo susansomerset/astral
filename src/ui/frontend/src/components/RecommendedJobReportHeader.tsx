@@ -41,13 +41,17 @@ export default function RecommendedJobReportHeader({
   onPrintCover,
 }: Props) {
   const link = jobLink?.trim() || null
+  const httpLink = (() => {
+    const t = (link ?? "").toLowerCase()
+    return t.startsWith("http://") || t.startsWith("https://") ? link : null
+  })()
 
   return (
     <div className="recommended-report-header">
       <div className="recommended-report-header-row">
-        {link ? (
+        {httpLink ? (
           <a
-            href={link}
+            href={httpLink}
             target="_blank"
             rel="noopener noreferrer"
             className="recommended-report-title-link"
@@ -70,6 +74,9 @@ export default function RecommendedJobReportHeader({
           <span className="recommended-report-company">{companyName}</span>
         )}
       </div>
+      {link && !httpLink && (
+        <div className="recommended-report-job-link-text">{link}</div>
+      )}
       {(onCopyDetailLink || onCopySnapshot || applicationEmail || linkedInUrl) && (
         <div className="recommended-report-links">
           {onCopyDetailLink && (
