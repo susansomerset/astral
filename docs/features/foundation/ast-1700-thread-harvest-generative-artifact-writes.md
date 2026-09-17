@@ -197,3 +197,11 @@ AC5→S1§3, S2§1-2; AC6→S2§1, Explicit scope gate (tracker job_resume auto-
 - Plan Discuss rounds completed: **0** (status Plan Ready; assignee Joan).
 
 context_tokens≈95000
+
+## Review
+
+**Publish tip:** `751624d7ebdf9bc441fc3d08a51ae751ea8026af` on `sub/AST-1579/AST-1700-thread-harvest-generative-artifact-writes`
+
+- Stage 1: `save_candidate_data` str-path optional `source_artifact_ids` → `database.save_artifact`
+- Stage 2: `do_task` job + candidate craft lands pass `list(source_artifact_ids)`
+- Stage 3: draft `patt.artifact.traceability` Implementation alignment (AST-1579 seed-id slice)
