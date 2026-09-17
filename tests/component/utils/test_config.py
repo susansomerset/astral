@@ -6547,3 +6547,30 @@ class TestAst1672DiscoveredResolveRegistrySsot:
         assert cfg.dispatch_task_admin_defaults("vet_inflow_discovery")["trigger_state"] == (
             "DISCOVERED"
         )
+
+
+# Branches: artifact token parse; key-level dedupe; skip non-artifact / unknown / empty.
+class TestAst1698ListArtifactKeysInPromptTexts:
+    """AST-1698: list_artifact_keys_in_prompt_texts — catalog parse, no pinnable allowlist."""
+
+    _BASE = "candidate.artifacts.base_resume"
+    _STRENGTHS = "candidate.context.strengths"
+
+    def test_double_base_resume_dedupes_to_one_key(self) -> None:
+        keys = cfg.list_artifact_keys_in_prompt_texts(
+            "see {$BASE_RESUME} and again {$BASE_RESUME}"
+        )
+        assert keys == [self._BASE]
+
+    def test_ordered_unique_across_texts_skips_non_artifact(self) -> None:
+        keys = cfg.list_artifact_keys_in_prompt_texts(
+            "{$FIRST_NAME} {$BASE_RESUME}",
+            "{$STRENGTHS} {$NOT_A_TOKEN} {$BASE_RESUME}",
+            "",
+            None,  # type: ignore[arg-type]
+        )
+        assert keys == [self._BASE, self._STRENGTHS]
+
+    def test_empty_inputs(self) -> None:
+        assert cfg.list_artifact_keys_in_prompt_texts() == []
+        assert cfg.list_artifact_keys_in_prompt_texts("no tokens here") == []

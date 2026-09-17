@@ -1435,3 +1435,42 @@ Board REVISE (copied from AST-1682): Contact-shaped `do_task(index=cid, ctx=None
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/agent.md` — *(filled after publish)*
+
+### AST-1698 · AST-1579
+
+**Parent:** [AST-1579 — Capture deduped source-artifact-id array](https://linear.app/astralcareermatch/issue/AST-1579). **Publish:** `origin/sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper`.
+
+Prompt-time source-pin harvest: parse `{$TOKEN}` via `_TOKEN_RE` / `TOKEN_SOURCES.source_type == "artifact"`, resolve current `artifact_uuid` per catalog key, dedupe, attach `source_artifact_ids` on `do_task` result. No job_data siblings / save-signature threading (siblings AST-1699 / AST-1700). Config parse: **`docs/test-bible/utils/config.md`** § AST-1698. Candidate UUID helper: **`docs/test-bible/core/candidate.md`** § AST-1698.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Harvest entry (AC1 dedupe + miss/empty cid) | `src/core/agent.py` | **`TestAst1698HarvestSourceArtifactIds`** |
+| `do_task` attaches `source_artifact_ids` | same | **`TestAst1698HarvestSourceArtifactIds::test_do_task_attaches_source_artifact_ids`** |
+| Config key parse (no pinnable allowlist) | `src/utils/config.py` | **`TestAst1698ListArtifactKeysInPromptTexts`** |
+| Current uuid-by-key | `src/core/candidate.py` | **`TestAst1698GetCandidateCurrentArtifactUuid`** |
+
+**Broken / obsolete this pass:** none — additive helpers; existing TOKEN_SOURCES / get_candidate_current suites unchanged.
+
+**Integration:** none — no existing scenario asserts `source_artifact_ids` / harvest; do not invent.
+
+## QA test manifest
+
+1. Harvest AC1 + miss/empty + non-artifact skip: `tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds`
+2. Config parse/dedupe: `tests/component/utils/test_config.py::TestAst1698ListArtifactKeysInPromptTexts`
+3. Candidate uuid helper: `tests/component/core/test_candidate.py::TestAst1698GetCandidateCurrentArtifactUuid`
+4. AC2 (catalog reuse, no parallel allowlist): `rg -n 'list_artifact_keys_in_prompt_texts|harvest_source_artifact_ids|get_artifact_key_for_token|_TOKEN_RE' src/utils/config.py src/core/agent.py` — expect helpers; fail if a new frozenset/tuple of pinnable token names appears beside harvest.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
+  tests/component/utils/test_config.py::TestAst1698ListArtifactKeysInPromptTexts \
+  tests/component/core/test_candidate.py::TestAst1698GetCandidateCurrentArtifactUuid \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines 1–3 + AC2 grep — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/agent.md` — *(filled after publish)*
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*

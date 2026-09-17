@@ -4130,3 +4130,24 @@ Config-only (sibling **AST-1689** owns DB/map/persist): optional `electronic_con
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 - `docs/test-bible/core/repo_admin_json.md` — *(filled after publish)*
+
+### AST-1698 · AST-1579
+
+**Parent:** [AST-1579](https://linear.app/astralcareermatch/issue/AST-1579). **Publish:** `origin/sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper`.
+
+`list_artifact_keys_in_prompt_texts` — ordered-unique `ARTIFACT_CONFIG` keys for artifact-typed `{$TOKEN}` names via `_TOKEN_RE` + `TOKEN_SOURCES` / `get_artifact_key_for_token` (no hard-coded pinnable allowlist). Primary harvest + `do_task` attach: **`docs/test-bible/core/agent.md`** § AST-1698.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt-text artifact key parse + key-level dedupe | `src/utils/config.py` | **`TestAst1698ListArtifactKeysInPromptTexts`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/agent.md`** § AST-1698 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
