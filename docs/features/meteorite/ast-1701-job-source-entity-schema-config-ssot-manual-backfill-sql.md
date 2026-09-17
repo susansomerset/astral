@@ -369,3 +369,23 @@ Smoke for make-fix / test-fix: call `get_job_batch` against a migrated DB with (
 - `stat.logging.debug`: no new `logger.debug` / `print` in this one-line fix.
 - No change to claim criteria, `clear_job_batch`, or source-entity parent fields (`source` / `source_entity_id`).
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/0f76620d650d7b1640f39ad155da7742/eca3082c-eb7a-4df1-a3ff-bc48066b98d4/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/04a57f8a-59bf-4e90-bc97-473c1037bbed/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/0f76620d650d7b1640f39ad155da7742/cc622d7a-465e-4f5d-a272-25a1fda6b285/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1705 (parent) | ftr/AST-1705-qualify-meteorite-is-failing |
+| AST-1706 | sub/AST-1705/AST-1706-fix-get-job-batch-company-id |
+
+**Epic worktree:** `astral-AST-1705/` — one active sub checked out at a time.
