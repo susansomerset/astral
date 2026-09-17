@@ -233,3 +233,63 @@ AC3→S2§2-3, S4§3-5; AC4→S3§1-2; parent AC1–2 N/A (AST-1698 harvest); pa
 - Plan Discuss rounds completed: **0** (status Plan Ready).
 
 context_tokens≈78000
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1699
+**Publish ref:** `17225b7e3631f5f8d6b2ab3ea1060d34fb3978dc` (`origin/sub/AST-1579/AST-1699-persist-harvested-pins-consult-grade-analysis`)
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.traceability | A | | |
+| patt.artifact.read-operative | A | | |
+| astral.standards.in-scope-only | A | | |
+| astral.standards.dry-and-focused-functions | A | | |
+| astral.standards.debug-contract-gated | X | | |
+
+Draft `patt.*` resolved from `canon/directives/draft/` mirrors (same path Joan used).
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Normalizer strictness (Joan carry-forward):** `_normalize_harvested_source_artifact_ids` keeps only `isinstance(x, str)` list elements; non-string UUID objects would drop to `[]`. Low risk given AST-1698’s str contract — widen to `str(x).strip()` only if Ada ever changes harvest element types.
+- **Branch diff vs AST-1699 product scope:** Three-dot diff vs `origin/dev` includes AST-1698 harvest stack (`agent.py`, `candidate.py`, `config.py`) plus Betty `merge-tests` sibling manifests/tests (AST-1700 test commit on tip, meteorite, etc.). **AST-1699 product commits touch `consult.py` only** (`4fed1f82` → `51b94c28`); dependency rollup is expected on the sub ref, not scope creep by this ticket.
+- **Batch path test depth:** `TestAst1699PersistHarvestedPinsConsult` covers helpers, `_apply_render_verdict_decoded_job`, analysis upshot, and `render_verdict` integration; Betty revised existing analysis exact-save tests for empty `analysis_upshot_source_artifact_ids`. **No dedicated component test** asserts `joblist_source_artifact_ids` / `jd_source_artifact_ids` / encoded `grade_*` batch wrapper — wiring mirrors the tested render_verdict path structurally; acceptable given manifest, but a future Betty row could pin one batch save if regressions worry Susan.
+
+## What's solid
+
+- **Stage 1:** `_source_artifact_ids_job_data_key` uses the same `{prefix}_grades` → `{prefix}_source_artifact_ids` stem as rubric; `analysis_upshot` → `analysis_upshot_source_artifact_ids`. Normalizer returns a fresh `list[str]`, missing/non-list → `[]`, strips blanks, no re-dedupe.
+- **Stage 2:** `_apply_render_verdict_decoded_job` always writes sibling beside `{prefix}_grades` before `save_job_data`; `render_verdict` forwards normalized harvest from `do_task` result.
+- **Stage 3:** `_run_analysis_upshot_batch` saves upshot + sibling in one dict (meteorite shares `analysis_upshot` key).
+- **Stage 4:** `_run_batch_consult` normalizes once, injects `_source_artifact_ids` via process_fn wrapper; `qualify_job_listings` / `evaluate_jd_batch` / `_consult_scored_dispatch_batch_encoded` read harvest from wrapped `cfg` / `_orch_cfg` (not bare `cfg_dispatch`). `jd_readiness_skip` save unchanged (no sibling).
+- **Boundaries:** No `harvest_source_artifact_ids` / prompt re-parse in consult; no artifact-table `source_artifact_ids` threading; no `agent.py` edits in AST-1699 commits (reads existing `result["source_artifact_ids"]` only).
+- **Contrast with AST-1700 tip review:** This branch includes the helper defs that were missing on the AST-1700 sub ref’s partial consult smuggle — AST-1699 product slice is complete here.
+
+## Recommended actions (downstream — not Radia lane)
+
+- Chuckles: append artifact, commit `docs(AST-1699): Radia review — clean`, push sub ref, post slim upshot `--as radia`, → **Review Posted** → datt PROCEED (no `resolve-child` canon work expected).
+- Optional Betty follow-up (advisory only): one batch consult test for `joblist_grades` or `jd_grades` sibling if Susan wants explicit AC3 batch-path lock.
+
+---
