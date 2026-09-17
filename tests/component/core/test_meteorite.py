@@ -1001,6 +1001,157 @@ def _notify_task(*, batch_id: str) -> dict:
     not hasattr(meteorite_mod, "run_stage_meteorite"),
     reason="AST-1560 ingress transition runners not on this publish tip",
 )
+
+# Branches: map breadcrumb for email text; timezone clock; stage blank-link ERROR; schema fields (AST-1703).
+class TestAst1703EmailBreadcrumb:
+    """AST-1703: non-http meteorite.link breadcrumb for email text outcomes."""
+
+    def test_email_breadcrumb_link_iso_and_rfc2822(self) -> None:
+        from src.utils.config import format_job_link_breadcrumb
+
+        iso = meteorite_mod._email_breadcrumb_link(
+            from_email="list@co.com",
+            to_email="cand@ex.com",
+            sent_at="2026-09-17T18:05:00Z",
+            timezone_key="America/New_York",
+        )
+        assert iso.startswith("From:list@co.com ")
+        assert "Eastern" in iso
+        assert iso.endswith(" To:cand@ex.com")
+        assert not iso.startswith("http")
+        assert not iso.startswith("email-")
+        rfc = meteorite_mod._email_breadcrumb_link(
+            from_email="a@x.com",
+            to_email="b@y.com",
+            sent_at="Thu, 17 Sep 2026 18:05:00 +0000",
+            timezone_key="",
+        )
+        assert "From:a@x.com" in rfc and "To:b@y.com" in rfc
+        assert "UTC" in rfc
+
+    def test_email_breadcrumb_link_rejects_blank_and_bad_sent_at(self) -> None:
+        with pytest.raises(ValueError, match="from_email"):
+            meteorite_mod._email_breadcrumb_link(
+                from_email="", to_email="b@y.com", sent_at="2026-09-17T18:05:00Z",
+                timezone_key="",
+            )
+        with pytest.raises(ValueError, match="unparseable"):
+            meteorite_mod._email_breadcrumb_link(
+                from_email="a@x.com", to_email="b@y.com", sent_at="not-a-date",
+                timezone_key="",
+            )
+
+    def test_map_email_text_sets_breadcrumb_paste_stays_none(self, sqlite_in_memory) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{
+                "jd_text": "JD " + ("x" * 40),
+                "from_email": "recruiter@co.com",
+                "to_email": "me@ex.com",
+                "sent_at": "2026-09-17T18:05:00+00:00",
+            }],
+            candidate_id="cand-map",
+            source_kind="email",
+            source_id="mid-1",
+            timezone_key="America/Chicago",
+        )
+        assert err is None and len(rows) == 1
+        link = rows[0]["link"]
+        assert link and link.startswith("From:recruiter@co.com")
+        assert "Central" in link
+        assert link.endswith(" To:me@ex.com")
+
+        paste_rows, paste_err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{"jd_text": "paste JD " + ("y" * 40)}],
+            candidate_id="cand-map",
+            source_kind="paste",
+            source_id="paste-1",
+            timezone_key="America/Chicago",
+        )
+        assert paste_err is None and paste_rows[0]["link"] is None
+
+    def test_map_email_text_missing_headers_errors(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{"jd_text": "JD " + ("x" * 40), "from_email": "a@x.com"}],
+            candidate_id="cand-map",
+            source_kind="email",
+            source_id="mid-2",
+        )
+        assert rows == []
+        assert err and "to_email" in err
+
+    def test_candidate_contact_timezone_reads_nested_contact(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-tz"
+        db.save_candidate(
+            cid,
+            state="NEW_CANDIDATE",
+            candidate_data={"name": "Z", "contact": {"timezone": "America/Los_Angeles"}},
+        )
+        assert meteorite_mod._candidate_contact_timezone(cid) == "America/Los_Angeles"
+        assert meteorite_mod._candidate_contact_timezone("missing") == ""
+
+    @pytest.mark.asyncio
+    async def test_stage_email_text_blank_link_errors(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-stg-nobread"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "N"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            classify_outcome="single_jd_no_link",
+            content="JD " + ("z" * 40),
+            # link omitted → blank → ERROR missing breadcrumb link
+        )
+        out = await meteorite_mod.run_stage_meteorite(
+            _ingress_task(batch_id="stage-batch-nobread")
+        )
+        assert out["total_errors"] == 1
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "ERROR"
+        assert "breadcrumb" in (row.get("error") or "")
+
+    def test_stage_meteorite_schema_accepts_breadcrumb_fields(self) -> None:
+        from src.utils import config as cfg
+
+        items = cfg.TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        for key in ("from_email", "to_email", "sent_at"):
+            assert key in items
+            assert items[key]["type"] == "str"
+            assert items[key]["required"] is False
+
+    def test_agent_task_prompt_requires_header_fields(self) -> None:
+        import json
+        from pathlib import Path
+
+        path = Path("data/admin/agent_task.json")
+        assert path.is_file()
+        blob = json.loads(path.read_text())
+        rows = blob if isinstance(blob, list) else blob.get("agent_task") or blob.get("tasks") or []
+        if isinstance(blob, dict) and not rows:
+            # flat dict keyed by task — or list under another key
+            rows = [v for v in blob.values() if isinstance(v, dict) and v.get("task_key") == "stage_meteorite"]
+            if not rows and "task_key" in blob:
+                rows = [blob]
+        stage = next(
+            (r for r in rows if isinstance(r, dict) and r.get("task_key") == "stage_meteorite"),
+            None,
+        )
+        assert stage is not None, "stage_meteorite task missing from agent_task.json"
+        cache = (stage.get("cache_prompt") or "") + (stage.get("user_prompt") or "")
+        assert "from_email" in cache and "to_email" in cache and "sent_at" in cache
+        assert "forward" in cache.lower() or "inner" in cache.lower()
+
+
+
 class TestAst1560RunStageMeteorite:
     """AST-1560: NEW → SCRAPE_LINK | READY via dispatch claim batch."""
 
@@ -1035,33 +1186,39 @@ class TestAst1560RunStageMeteorite:
         db = sqlite_in_memory
         cid = "cand-stg-text"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
+        # AST-1703: email text rows require non-http breadcrumb on link before READY.
+        crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
         row_id = _insert_meteorite_row(
             db,
             cid,
             classify_outcome="single_jd_no_link",
             content="Full JD body " + ("x" * 40),
+            link=crumb,
         )
         batch_id = "stage-batch-text"
         out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id))
         assert out["total_passed"] == 1
-        assert db.get_meteorite(row_id)["state"] == "READY"
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "READY"
+        assert row["link"] == crumb
 
     @pytest.mark.asyncio
     async def test_missing_classify_outcome_errors_with_monitoring(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+        self, sqlite_in_memory, caplog
     ) -> None:
+        import logging
+
         db = sqlite_in_memory
         cid = "cand-stg-miss"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "M"})
         row_id = _insert_meteorite_row(db, cid)
-        out = await meteorite_mod.run_stage_meteorite(
-            _ingress_task(batch_id="stage-batch-miss")
-        )
+        with caplog.at_level(logging.WARNING):
+            out = await meteorite_mod.run_stage_meteorite(
+                _ingress_task(batch_id="stage-batch-miss")
+            )
         assert out["total_errors"] == 1
         assert db.get_meteorite(row_id)["state"] == "ERROR"
-        assert any(
-            "missing classify_outcome" in c.args[0] for c in log.info.call_args_list
-        )
+        assert any("missing classify_outcome" in r.message for r in caplog.records)
 
 
 @pytest.mark.skipif(
