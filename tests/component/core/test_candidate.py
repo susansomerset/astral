@@ -6787,3 +6787,52 @@ class TestAst1679ResumeStructureOperativeSaveHydrate:
         craft_src = inspect.getsource(candidate_mod.run_candidate_artifact_generation)
         assert "_RESUME_STRUCTURE_ARTIFACT_KEY" in craft_src
 
+
+
+# Branches: uuid hit/miss; same fail-fast as get_candidate_current; empty uuid column.
+class TestAst1698GetCandidateCurrentArtifactUuid:
+    """AST-1698: get_candidate_current_artifact_uuid — current-read id, not body."""
+
+    def test_hit_returns_current_uuid(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="uuid-read")
+        uid = candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        assert (
+            candidate_mod.get_candidate_current_artifact_uuid(
+                "cand-1", _PILOT_ARTIFACT_KEY
+            )
+            == uid
+        )
+
+    def test_miss_returns_none(self, seeded_db) -> None:
+        assert (
+            candidate_mod.get_candidate_current_artifact_uuid(
+                "cand-1", _PILOT_ARTIFACT_KEY
+            )
+            is None
+        )
+
+    def test_unknown_and_blank_keys_fail_fast(self) -> None:
+        with pytest.raises(ValueError, match="unknown catalog key"):
+            candidate_mod.get_candidate_current_artifact_uuid("c1", "not.in.catalog")
+        with pytest.raises(ValueError, match="artifact_key required"):
+            candidate_mod.get_candidate_current_artifact_uuid("c1", "   ")
+        with pytest.raises(ValueError, match="candidate_id required"):
+            candidate_mod.get_candidate_current_artifact_uuid("   ", _PILOT_ARTIFACT_KEY)
+
+    def test_non_candidate_scoped_key_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(
+            candidate_mod.ARTIFACT_CONFIG,
+            "job.artifacts.base_resume",
+            {
+                "entity_type": "job",
+                "candidate_scoped": False,
+                "body_shape": "resume_content",
+                "ingestion_owner": "tracker",
+            },
+        )
+        with pytest.raises(ValueError, match="not candidate-scoped"):
+            candidate_mod.get_candidate_current_artifact_uuid(
+                "c1", "job.artifacts.base_resume"
+            )

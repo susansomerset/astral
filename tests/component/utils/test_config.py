@@ -568,12 +568,14 @@ class TestBuildStateUiManifest:
             "analysis",
             "artifacts",
             "discussion",
+            "meteorite",
         ]
         assert [t["nav_label"] for t in rec["report_top_tabs"]] == [
             "Summary",
             "Analysis",
             "Artifacts",
             "Discussion",
+            "Meteorite",
         ]
         assert [s["section_id"] for s in rec["report_summary_sections"]] == [
             "job_summary",
@@ -4268,6 +4270,69 @@ class TestAst1529StageMeteoriteConfig:
             cfg._dispatch_trigger_state_for_task_key("meteorite_email")
 
 
+# Branches: electronic_contact schema field + STAGE/METEORITE key lockstep (AST-1688).
+@pytest.mark.skipif(
+    "electronic_contact_response_key" not in getattr(cfg, "STAGE_METEORITE_CONFIG", {}),
+    reason="AST-1688 electronic_contact not on this publish tip",
+)
+class TestAst1688StageMeteoriteElectronicContactConfig:
+    """AST-1688: optional electronic_contact on stage_meteorite jobs items_schema + config literals."""
+
+    def test_schema_field_and_config_literals_lockstep(self) -> None:
+        stage = cfg.STAGE_METEORITE_CONFIG
+        met = cfg.METEORITE_CONFIG
+        key = stage["electronic_contact_response_key"]
+        assert key == "electronic_contact"
+        assert met["electronic_contact_column"] == key
+        items = cfg.TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert key in items
+        assert items[key] == {"type": "str", "required": False}
+        # Outcome vocabulary + text source-ref partition unchanged (AST-1529).
+        assert "single_jd_no_link" in stage["text_source_ref_outcomes"]
+        assert "multi_jd_inline" in stage["text_source_ref_outcomes"]
+        for scrap in (
+            "job_title",
+            "job_link",
+            "company_job_id",
+            "jd_text",
+            "employer_name",
+        ):
+            assert scrap in items
+
+    def test_validate_allows_omit_and_string_electronic_contact(self) -> None:
+        from src.core import agent as agent_mod
+
+        schema = cfg.TASK_CONFIG["stage_meteorite"]["response_schema"]
+        base_job = {
+            "job_title": "Engineer",
+            "jd_text": "Build things.",
+        }
+        omit = {
+            "agent_payload": {
+                "outcome": "single_jd_no_link",
+                "jobs": [base_job],
+            }
+        }
+        assert agent_mod._validate_response_schema(omit, schema, "stage_meteorite") is None
+        with_contact = {
+            "agent_payload": {
+                "outcome": "single_jd_no_link",
+                "jobs": [{**base_job, "electronic_contact": "hiring@example.com"}],
+            }
+        }
+        assert (
+            agent_mod._validate_response_schema(with_contact, schema, "stage_meteorite")
+            is None
+        )
+        empty = {
+            "agent_payload": {
+                "outcome": "multi_jd_inline",
+                "jobs": [{**base_job, "electronic_contact": ""}],
+            }
+        }
+        assert agent_mod._validate_response_schema(empty, schema, "stage_meteorite") is None
+
+
 # Branches: AST-1144 metadata dict on retired meteorite_email parse schema — superseded by AST-1529.
 @pytest.mark.skip(
     reason="AST-1529 retired TASK_CONFIG['meteorite_email'] parse schema (metadata dict)",
@@ -5358,8 +5423,10 @@ class TestAst1550DiscussionHopKeys:
             "analysis",
             "artifacts",
             "discussion",
+            "meteorite",
         ]
-        assert tabs[-1]["nav_label"] == "Discussion"
+        assert tabs[-2]["nav_label"] == "Discussion"
+        assert tabs[-1]["nav_label"] == "Meteorite"
 
     def test_hop_walk_follows_run_next(
         self, monkeypatch: pytest.MonkeyPatch,
@@ -5418,6 +5485,25 @@ class TestAst1550DiscussionHopKeys:
         )
         with pytest.raises(RuntimeError, match="cycle"):
             cfg.build_artifacts_discussion_hop_task_keys()
+
+
+class TestAst1691MeteoriteReportConfig:
+    """AST-1691: Meteorite top tab + JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS."""
+
+    def test_meteorite_tab_after_discussion(self) -> None:
+        tabs = cfg.JOBS_RECOMMENDED_REPORT_TOP_TABS
+        assert tabs[-1] == {"tab_id": "meteorite", "nav_label": "Meteorite"}
+        assert tabs[-2]["tab_id"] == "discussion"
+
+    def test_meteorite_sections_order_and_expanded(self) -> None:
+        sections = cfg.JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS
+        assert [s["section_id"] for s in sections] == [
+            "meteorite_timestamps", "meteorite_link", "meteorite_ai", "meteorite_provenance",
+        ]
+        assert [s["nav_label"] for s in sections] == [
+            "Timestamps", "Link", "AI Content", "Provenance",
+        ]
+        assert [s["default_expanded"] for s in sections] == [True, True, True, False]
 
 
 class TestAst1557MeteoriteStates:
@@ -6461,3 +6547,30 @@ class TestAst1672DiscoveredResolveRegistrySsot:
         assert cfg.dispatch_task_admin_defaults("vet_inflow_discovery")["trigger_state"] == (
             "DISCOVERED"
         )
+
+
+# Branches: artifact token parse; key-level dedupe; skip non-artifact / unknown / empty.
+class TestAst1698ListArtifactKeysInPromptTexts:
+    """AST-1698: list_artifact_keys_in_prompt_texts — catalog parse, no pinnable allowlist."""
+
+    _BASE = "candidate.artifacts.base_resume"
+    _STRENGTHS = "candidate.context.strengths"
+
+    def test_double_base_resume_dedupes_to_one_key(self) -> None:
+        keys = cfg.list_artifact_keys_in_prompt_texts(
+            "see {$BASE_RESUME} and again {$BASE_RESUME}"
+        )
+        assert keys == [self._BASE]
+
+    def test_ordered_unique_across_texts_skips_non_artifact(self) -> None:
+        keys = cfg.list_artifact_keys_in_prompt_texts(
+            "{$FIRST_NAME} {$BASE_RESUME}",
+            "{$STRENGTHS} {$NOT_A_TOKEN} {$BASE_RESUME}",
+            "",
+            None,  # type: ignore[arg-type]
+        )
+        assert keys == [self._BASE, self._STRENGTHS]
+
+    def test_empty_inputs(self) -> None:
+        assert cfg.list_artifact_keys_in_prompt_texts() == []
+        assert cfg.list_artifact_keys_in_prompt_texts("no tokens here") == []

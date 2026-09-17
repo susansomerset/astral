@@ -9301,3 +9301,97 @@ class TestAst1683ContactBaseResumeCurrentRead:
         # Pre-fix: "XY" (blank token). Post AST-1682 cid threading: section-id JSON.
         assert self._SUMMARY in resolved
         assert resolved != "XY"
+
+
+# Branches: AC1 double BASE_RESUME → one uuid; miss/empty cid → []; do_task attaches list.
+class TestAst1698HarvestSourceArtifactIds:
+    """AST-1698: harvest_source_artifact_ids + do_task source_artifact_ids attach."""
+
+    _CID = "cand-1"
+
+    def _pin_base_resume(self, db, summary: str = "pin") -> str:
+        # Direct table write — harvest resolves uuid via get_current_artifact, not body shape.
+        return db.save_artifact(
+            "candidate",
+            self._CID,
+            "base_resume",
+            {"professional_summary": summary},
+        )
+
+    def test_double_base_resume_dedupes_to_one_uuid(self, seeded_db) -> None:
+        uid = self._pin_base_resume(seeded_db, "pin")
+        out = agent_mod.harvest_source_artifact_ids(
+            "see {$BASE_RESUME} and again {$BASE_RESUME}",
+            candidate_id=self._CID,
+        )
+        assert out == [uid]
+
+    def test_no_current_row_returns_empty(self, seeded_db) -> None:
+        assert (
+            agent_mod.harvest_source_artifact_ids(
+                "{$BASE_RESUME}", candidate_id=self._CID
+            )
+            == []
+        )
+
+    def test_blank_candidate_id_returns_empty_without_resolve(self) -> None:
+        assert agent_mod.harvest_source_artifact_ids("{$BASE_RESUME}") == []
+        assert (
+            agent_mod.harvest_source_artifact_ids(
+                "{$BASE_RESUME}", candidate_id="   "
+            )
+            == []
+        )
+
+    def test_skips_non_artifact_tokens(self, seeded_db) -> None:
+        uid = self._pin_base_resume(seeded_db, "pin2")
+        out = agent_mod.harvest_source_artifact_ids(
+            "{$FIRST_NAME} {$BASE_RESUME} {$NOT_A_TOKEN}",
+            candidate_id=self._CID,
+        )
+        assert out == [uid]
+
+    @pytest.mark.asyncio
+    async def test_do_task_attaches_source_artifact_ids(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        seeded_db,
+        batch_token: Any,
+    ) -> None:
+        uid = self._pin_base_resume(seeded_db, "attach")
+        agent_row, task_row = _agent_rows(brain_setting="Big")
+        task_row = dict(task_row)
+        task_row["user_prompt"] = "A{$BASE_RESUME}B{$BASE_RESUME}C"
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda task_key: (agent_row, task_row)
+        )
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"reply": "ok"},
+                },
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "_system_text_with_candidate_prefix",
+            lambda system_content, candidate_id: system_content,
+        )
+
+        out = await agent_mod.do_task(
+            "contact_estelle_turn",
+            index=self._CID,
+            candidate_data={"contact": {}, "context": {}, "artifacts": {}},
+            ctx={"astral_candidate_id": self._CID},
+            store_agent_data=False,
+        )
+        assert out["success"] is True
+        assert out["source_artifact_ids"] == [uid]
