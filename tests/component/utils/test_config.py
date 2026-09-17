@@ -6574,3 +6574,51 @@ class TestAst1698ListArtifactKeysInPromptTexts:
     def test_empty_inputs(self) -> None:
         assert cfg.list_artifact_keys_in_prompt_texts() == []
         assert cfg.list_artifact_keys_in_prompt_texts("no tokens here") == []
+
+
+
+# Branches: SOURCE_ENTITY_TYPES closed set; aliases; validators/transitions; METEORITE_CONFIG
+# key rename; breadcrumb clock helpers (AST-1701).
+class TestAst1701SourceEntityTypes:
+    """AST-1701: company|meteorite SSOT + breadcrumb helpers (gazed retired as write authority)."""
+
+    def test_closed_set_and_job_source_aliases(self) -> None:
+        assert cfg.SOURCE_ENTITY_TYPES == ["company", "meteorite"]
+        assert "gazed" not in cfg.SOURCE_ENTITY_TYPES
+        assert cfg.JOB_SOURCES is cfg.SOURCE_ENTITY_TYPES or cfg.JOB_SOURCES == cfg.SOURCE_ENTITY_TYPES
+        assert cfg.JOB_SOURCE_DEFAULT == cfg.SOURCE_ENTITY_TYPE_DEFAULT == "company"
+        assert cfg.JOB_SOURCE_METEORITE == cfg.SOURCE_ENTITY_TYPE_METEORITE == "meteorite"
+        assert cfg.METEORITE_CONFIG["source_entity_type"] == "meteorite"
+        assert "job_source" not in cfg.METEORITE_CONFIG
+
+    def test_validators_and_transitions(self) -> None:
+        assert cfg.is_valid_source_entity_type("company")
+        assert cfg.is_valid_source_entity_type("meteorite")
+        assert not cfg.is_valid_source_entity_type("gazed")
+        assert not cfg.is_valid_job_source("gazed")
+        cfg.validate_source_entity_type("company")
+        cfg.validate_job_source("meteorite")
+        with pytest.raises(ValueError):
+            cfg.validate_source_entity_type("gazed")
+        assert cfg.source_entity_type_transition_allowed(None, "company")
+        assert cfg.source_entity_type_transition_allowed("", "meteorite")
+        assert cfg.source_entity_type_transition_allowed("company", "meteorite")
+        assert cfg.job_source_transition_allowed("company", "meteorite")
+        assert not cfg.source_entity_type_transition_allowed("meteorite", "company")
+        assert not cfg.source_entity_type_transition_allowed("company", "gazed")
+
+    def test_breadcrumb_clock_and_format(self) -> None:
+        from datetime import datetime, timezone
+
+        dt = datetime(2026, 9, 17, 18, 5, tzinfo=timezone.utc)
+        eastern = cfg.format_contact_timezone_clock(dt, "America/New_York")
+        assert eastern == "9/17 14:05 Eastern"
+        utc = cfg.format_contact_timezone_clock(dt, "")
+        assert utc.endswith(" UTC") and "9/17" in utc
+        unknown = cfg.format_contact_timezone_clock(dt, "Europe/Paris")
+        assert "Europe/Paris" in unknown
+        bc = cfg.format_job_link_breadcrumb("from@x.com", "to@y.com", eastern)
+        assert bc == f"From:from@x.com {eastern} To:to@y.com"
+        assert "{" not in cfg.JOB_LINK_BREADCRUMB_FORMAT.replace("{from_email}", "").replace(
+            "{clock}", ""
+        ).replace("{to_email}", "")
