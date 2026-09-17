@@ -617,26 +617,25 @@ See **`docs/test-bible/core/consult.md`** § AST-1680 (shared numbered list).
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/tracker.md` — *(filled after publish)*
 
----
+### AST-1702 · AST-1640
 
-### AST-1693 · AST-1686
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append`.
 
-**Parent:** [AST-1686](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link`.
-
-`persist_http_job_link` writes http(s)-only `job.job_link` (no `initialize_job`). `save_meteorite_job` Branch A duplicate-skip backfills empty `job_link` when caller passes http(s); never clobbers a populated link. Land/notify/qualify: **`docs/test-bible/core/meteorite.md`**, **`docs/test-bible/core/consult.md`**.
+`save_meteorite_job(meteorite_id=…)` creates under `source=meteorite` + `source_entity_id`; company/gazed match supersedes in-place (same `astral_job_id`, keep `company_id`, append history); never clobber existing meteorite parent. Land surfaces: **`docs/test-bible/core/meteorite.md`** § AST-1702.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| persist_http_job_link http / non-http | `src/core/tracker.py` | **`TestAst1693PersistHttpJobLink`** |
-| Duplicate-skip empty link backfill + no clobber | same | **`TestAst1693SaveMeteoriteDuplicateLinkBackfill`** |
+| Create + company→meteorite supersede | `src/core/tracker.py` | **`TestAst1702SourceEntityLand::test_save_meteorite_job_create_and_gazed_supersede`** |
+| Never clobber meteorite parent | `src/core/tracker.py` | **`…::test_save_meteorite_job_never_clobbers_meteorite_parent`** |
+| Tracker Style D on land debug | `src/core/tracker.py` | **`TestAst1470LandMeteorite::test_debug_true_emits_tracker_style_d_false_silent`** |
 
-**Broken / obsolete this pass:** none — additive Branch A backfill only.
+**Broken / obsolete:** required `company=` parent arg on `save_meteorite_job`.
 
 **Integration:** none.
 
 ## QA test manifest
 
-See **`docs/test-bible/core/meteorite.md`** § AST-1693 (shared numbered list).
+See **`docs/test-bible/core/meteorite.md`** § AST-1702 (shared numbered list).
 
-**Bible shasum (publish tip):** filled with meteorite.md after publish.
-
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
