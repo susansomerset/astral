@@ -957,6 +957,25 @@ def _analysis_phase_rubric_snapshot_key(grades_key: str) -> str:
     return grades_key[:-7] + "_rubric"
 
 
+def _source_artifact_ids_job_data_key(set_key: str) -> str:
+    """Sibling job_data key for a grades/upshot set key (AST-1699).
+
+    ``{prefix}_grades`` → ``{prefix}_source_artifact_ids`` (same stem rule as
+    ``_analysis_phase_rubric_snapshot_key``). Any other set key (e.g.
+    ``analysis_upshot``) → ``{set_key}_source_artifact_ids``.
+    """
+    if isinstance(set_key, str) and set_key.endswith("_grades"):
+        return set_key[:-7] + "_source_artifact_ids"
+    return f"{set_key}_source_artifact_ids"
+
+
+def _normalize_harvested_source_artifact_ids(raw: Any) -> List[str]:
+    """Always a new list[str] for job_data sibling writes (empty when absent)."""
+    if not isinstance(raw, list):
+        return []
+    return [str(x) for x in raw if isinstance(x, str) and x.strip()]
+
+
 def _format_analysis_phase_text(
     phase_token: str,
     job_data: dict,
