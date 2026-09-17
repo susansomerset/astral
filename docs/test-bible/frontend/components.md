@@ -1363,39 +1363,6 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
-### AST-1692 · AST-1685
-
-**Parent:** [AST-1685](https://linear.app/astralcareermatch/issue/AST-1685/view-related-meteorite-record-data-on-recommended-job-modal). **Publish:** `origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal`.
-
-`JobMeteoritePane` — read-only staging-row sections via `ReportSectionList` from `report_meteorite_sections` (timestamps / http(s)-gated link / AI `classify_outcome`+content / provenance). `JobAnalysisReportModal` filters Meteorite top tab when `related_meteorite` is null; does not hardcode tab label/order. Manifest/API shapes: sibling **AST-1691**. No page-file product diff — §6c routed-page rule N/A.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Pane timestamps / link / AI / provenance | `JobMeteoritePane.tsx` | **`test_JobMeteoritePane.test.tsx`** — **`JobMeteoritePane — AST-1692`** |
-| Modal Meteorite tab filter + render | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1692 Meteorite tab`**; revised AST-1551 null-filter assert |
-| Manifest fixture Meteorite | `stateUiManifestFixture.ts` | consumed by JAR / pane tests |
-
-**Broken / obsolete:** AST-1551 “Discussion is last top tab” wording — Meteorite is last in fixture/`report_top_tabs` but filtered out when `related_meteorite` null (gazed jobs keep four tabs).
-
-**Integration:** none — do not invent.
-
-## QA test manifest
-
-1. `tests/component/frontend/components/test_JobMeteoritePane.test.tsx`
-2. `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1692|AST-1551 Discussion"`
-3. Fixture: `tests/component/frontend/fixtures/stateUiManifestFixture.ts` (`report_meteorite_sections` + Meteorite top tab)
-
-```bash
-cd src/ui/frontend && npm run test:component -- \
-  ../../../tests/component/frontend/components/test_JobMeteoritePane.test.tsx \
-  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
-  --testNamePattern="AST-1692|AST-1551 Discussion|AST-948 horizontal shell"
-```
-
-**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
-
----
-
 ### AST-1577 · AST-1569
 
 **Publish:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`.
