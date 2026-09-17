@@ -44,10 +44,10 @@ Config sections:
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
-  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
+  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529); electronic-contact response-key literal (AST-1688)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
-  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
+  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469); meteorite-row electronic-contact column literal (AST-1688)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
@@ -568,6 +568,8 @@ TASK_CONFIG = {
                     "company_job_id": {"type": "str", "required": False},
                     "jd_text": {"type": "str", "required": False},
                     "employer_name": {"type": "str", "required": False},
+                    # AST-1688: best electronic contact to send the resume (metadata-first; optional)
+                    "electronic_contact": {"type": "str", "required": False},
                 },
             },
         },
@@ -2563,6 +2565,8 @@ METEORITE_CONFIG = {
     "land_outcome_error": "error",
     "employer_name_job_data_key": "employer_name",
     "dedupe_match_order": ("company_job_id", "job_link"),
+    # AST-1688: meteorite-row column for best electronic resume contact (sibling AST-1689 writes it).
+    "electronic_contact_column": "electronic_contact",
     # min_company_job_id_match_chars assigned after METEORITE_EMAIL_INGEST_CONFIG (same int).
 }
 
@@ -2921,6 +2925,8 @@ STAGE_METEORITE_CONFIG = {
         "not_job_content",
         "not_original_posting",
     ),
+    # AST-1688: Ruth jobs[] JSON key for best electronic resume contact (lockstep with items_schema).
+    "electronic_contact_response_key": "electronic_contact",
 }
 assert STAGE_METEORITE_CONFIG["task_key"] == "stage_meteorite"
 assert METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"] == STAGE_METEORITE_CONFIG["task_key"]
@@ -2959,6 +2965,23 @@ assert list(TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"]
     STAGE_METEORITE_CONFIG["outcomes"]
 )
 assert "meteorite_email" not in TASK_CONFIG
+assert STAGE_METEORITE_CONFIG["electronic_contact_response_key"] == "electronic_contact"
+assert METEORITE_CONFIG["electronic_contact_column"] == STAGE_METEORITE_CONFIG[
+    "electronic_contact_response_key"
+]
+assert (
+    STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    in TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+)
+assert (
+    TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"][
+        STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    ]["required"]
+    is False
+)
+# Outcome vocabulary and text source-ref partition unchanged (AST-1529).
+assert "single_jd_no_link" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
+assert "multi_jd_inline" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
 
 # AST-1529: parse_modes Ruth classify RETIRED — live classify is stage_meteorite.
 # Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
@@ -3430,13 +3453,13 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
+    "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
     "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
+    "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
     "resolve_website",
 })
@@ -3446,29 +3469,8 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
     return (task_key or "").strip()
 
 
-def dispatch_task_grouping_catalog_key(task_key: str) -> str:
-    """Agent_task row key for admin grouping metadata when dispatch key differs from consult key."""
-    tk = (task_key or "").strip()
-    if tk == "prefilter":
-        return ROSTER_CONFIG["prefilter"]["task_key"]
-    return tk
-
-
-def dispatch_row_task_key(task_key: str) -> str:
-    """Map consult/catalog task_key to dispatch_task.task_key when they differ.
-
-    ROSTER_CONFIG['prefilter']['task_key'] (`prefilter_company`) and the bare
-    dispatch key `prefilter` both resolve to `prefilter` (AST-823 migrated rows).
-    All other keys (including meteorite_grade_* aliases) are identity.
-    """
-    tk = (task_key or "").strip()
-    if tk == "prefilter" or tk == ROSTER_CONFIG["prefilter"]["task_key"]:
-        return "prefilter"
-    return tk
-
-
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
-    if task_key == "prefilter":
+    if task_key == "prefilter_company":
         return ROSTER_CONFIG["prefilter"]["input_state"]
     if task_key == "parse_job_list":
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
@@ -3540,7 +3542,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 
 
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
-    if task_key == "prefilter" or task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
+    if task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
     if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"

@@ -62,6 +62,22 @@ def _is_inbox_mailbox_task_key(task_key: str) -> bool:
     return is_meteorite_email_mailbox_task_key(task_key)
 
 
+def meteorite_mailbox_trigger_allows(task: Dict[str, Any]) -> bool:
+    """Empty trigger always runs; a set trigger_state must match the bound candidate.state."""
+    ts = str(task.get("trigger_state") or "").strip()
+    if not ts:
+        return True
+    cid = str(task.get("candidate_id") or "").strip()
+    if not cid:
+        return False
+    cand = database.get_candidate(cid)
+    st = str((cand or {}).get("state") or "").strip()
+    if st == ts:
+        return True
+    parsed = parse_dispatch_hop_label(st)
+    return bool(parsed and parsed[0] == ts)
+
+
 def _is_meteorite_ingress_transition_task_key(task_key: str) -> bool:
     """True for table transition runners (AST-1560) — not Ruth classify / consult hop."""
     tk = (task_key or "").strip()
@@ -1176,6 +1192,18 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                 task_key,
             )
             return
+        if not meteorite_mailbox_trigger_allows(task):
+            logger.debug(
+                "skipped — mailbox trigger_state does not match candidate task_key=%s candidate_id=%s trigger_state=%s",
+                task_key, ledger_cid, task.get("trigger_state"),
+            )
+            logger.warning(
+                "%s | dispatch %s skipped — candidate is not in trigger_state %s\n  This task is not starting",
+                ledger_cid,
+                task_key,
+                task.get("trigger_state"),
+            )
+            return
         database.save_dispatch_ledger(
             entity_batch_id,
             task_key,
@@ -1734,6 +1762,8 @@ def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
     due: List[Dict[str, Any]] = []
     for task in auto_gaze:
         cid = str(task["candidate_id"]).strip()
+        if not meteorite_mailbox_trigger_allows(task):
+            continue
         avail = int(bound_counts.get(cid, 0))
         if avail < (task.get("min_count") or 1):
             continue
