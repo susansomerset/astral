@@ -388,3 +388,48 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + warnin
   tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
   -q
 ```
+
+### AST-1702 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append`.
+
+Land/create parent to meteorite row id (no `ensure_meteorite_company` as job parent); `job.job_link` inherits `meteorite.link`; link-check bot-block continues land; non-blocked scrape JD is appended. Tracker writes: **`docs/test-bible/core/tracker.md`** § AST-1702.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create under meteorite parent | `src/core/meteorite.py` | **`TestAst1042CreateMeteoriteJob`** (revised), **`TestAst1702SourceEntityLand::test_land_does_not_call_ensure_as_parent`** |
+| Optional real company_id from stem | `src/core/meteorite.py` | **`TestAst1495LandStemAttach`** (revised) |
+| Land create / skip / thin-body append | `src/core/meteorite.py` | **`TestAst1470LandMeteorite`** (revised), **`…::test_playwright_fetch_when_link_and_thin_body`** |
+| Link inherit + bot-block continue | `src/core/meteorite.py` | **`TestAst1702SourceEntityLand::test_land_inherits_meteorite_link`**, **`…::test_land_bot_block_continues_without_append`** |
+| Grep gate — no ensure call sites | `src/core/meteorite.py` | **`…::test_ensure_meteorite_company_has_no_job_parent_call_sites`** |
+| Dispatch READY→LANDED | `src/core/meteorite.py` | **`TestAst1560RunLandMeteorite`** |
+
+**Broken / obsolete this pass:** AST-1041 Style D on ensure (product uses `_with_log_debug`); AST-1042 `stem=` / `company` return shape; AST-1495 placeholder company attach; AST-1470 land asserts on meteorite-* company parent.
+
+**Integration:** none.
+
+## QA test manifest (AST-1702)
+
+1. Tracker parent writes: `tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand`
+2. Create (revised): `tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob`
+3. Stem/employer (revised): `tests/component/core/test_meteorite.py::TestAst1495LandStemAttach`
+4. Land (revised): `tests/component/core/test_meteorite.py::TestAst1470LandMeteorite`
+5. Ensure still works (no Style D): `tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany`
+6. Dispatch land regression: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/core/test_meteorite.py::TestAst1495LandStemAttach \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–6 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
+- `docs/test-bible/core/tracker.md`
