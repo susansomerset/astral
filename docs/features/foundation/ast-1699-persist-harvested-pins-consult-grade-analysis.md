@@ -177,7 +177,16 @@ to_state, _, _grades = _apply_render_verdict_decoded_job(
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
-)
+
+## Review
+
+**Publish tip:** `51b94c280db6bb53539630ce62fa66977cb7394c` on `sub/AST-1579/AST-1699-persist-harvested-pins-consult-grade-analysis`
+
+- Stage 1: `_source_artifact_ids_job_data_key` + `_normalize_harvested_source_artifact_ids` in `src/core/consult.py`
+- Stage 2: `_apply_render_verdict_decoded_job` / `render_verdict` write `{prefix}_source_artifact_ids`
+- Stage 3: `_run_analysis_upshot_batch` writes `analysis_upshot_source_artifact_ids`
+- Stage 4: `_run_batch_consult` shares batch harvest; joblist / jd / encoded scored batch grade saves
+
 
 ## Joan validate
 
