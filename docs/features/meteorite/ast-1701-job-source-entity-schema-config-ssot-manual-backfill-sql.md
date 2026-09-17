@@ -254,3 +254,67 @@ context_tokens≈42000
 
 - **Build tip:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `753c41bde1eb6ebcb1aa11cf9c6f4510edba45d2`
 - **Stages:** config SSOT → job schema/writers → operator SQL `data/sql/ast_1701_job_source_entity_backfill.sql`
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1701  
+**Publish ref:** `6d2a084b31bc1f54f8127ea3346eb5b9d26c938b` (`origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql`)  
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | X | | No `dispatch_task` claim shape or criteria literals — config SSOT, job DDL/writers, operator SQL only |
+| stat.logging.debug | A | | No new `logger.debug`/`print` in `src/data/database.py` or pure AST-1701 formatters in `src/utils/config.py` |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded `patt.entity.batch-criteria` **X** and `stat.logging.debug` **A**; code review matches on both.
+
+## Frame diff
+
+(none) — Description **Acceptance criteria** / **Boundaries** rows already checked and satisfied by the tip.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `tests/component/utils/test_config.py`, `docs/test-bible/utils/config.md` (merge-tests tip)  
+  **Finding:** `merge-tests(AST-1701)` merged `origin/tests` and carries AST-1688/1691/1698 bible+test hunks alongside AST-1701. Product diff is cleanly scoped to `src/utils/config.py`, `src/data/database.py`, and `data/sql/ast_1701_job_source_entity_backfill.sql`; the extra test/bible rows are Betty merge-tests noise, not sibling product code.  
+  **Recommendation:** No resolve-child action; note for epic rollup awareness only.
+
+- **Location:** `data/sql/ast_1701_job_source_entity_backfill.sql` step 2b / orphan diagnostic  
+  **Finding:** Placeholder-only rows with no meteorite link remain without invented parent ids; commented orphan SELECT is the operator follow-up Joan flagged at plan.  
+  **Recommendation:** Susan runs verification queries after manual backfill; row counts belong in operator notes, not code changes here.
+
+- **Location:** Canon Scope / Citations  
+  **Finding:** `patt.entity.batch-criteria` on the frozen list grades **X** for this footprint (same Joan observation).  
+  **Recommendation:** Archie may drop at Discussion on a future ticket; no action for AST-1701 resolve-child.
+
+## What's solid
+
+- **Stage 1:** `SOURCE_ENTITY_TYPES` (`company`|`meteorite`) replaces gazed write authority; thin `JOB_SOURCES` aliases; `METEORITE_CONFIG["source_entity_type"]`; breadcrumb format + timezone clock helpers match plan.  
+- **Stage 2:** `company` → nullable `company_id` rebuild; `source_entity_id` column; meteorite/company `_resolve_job_candidate_id`; `save_job` INSERT bridge (`company=` → `company_id` → default `source_entity_id` for company parent) addresses Joan’s pre-#2 tracker ordering concern; `_job_row_to_dict` in-module `company` compat; identity index on `company_id`; ensure is DDL-only (no `UPDATE job SET source` in `database.py`).  
+- **Stage 3:** Operator SQL ships with meteorite-link + gazed/unset backfill + verification comments; `SEED_CONFIG` grep gate covered by `TestAst1701SourceEntitySchema::test_operator_sql_artifact_not_in_seed_config`.  
+- **Tests:** Manifest classes `TestAst1701SourceEntityTypes` and `TestAst1701SourceEntitySchema` assert closed set, bridge, meteorite cid resolve, gazed rejection, DDL-only ensure, and seed isolation.
+
+## Recommended actions (downstream — not Radia lane)
+
+- Chuckles: append this artifact to the issue doc, commit `docs(AST-1701): Radia review — clean`, push sub ref, post slim upshot `--as radia`, move to **Review Posted**.  
+- datt: **PROCEED** → **User Testing** (no resolve-child round).  
+- Susan: run `data/sql/ast_1701_job_source_entity_backfill.sql` manually after DDL boot before UAT parent checks on existing rows.
+
+context_tokens≈48000
+
