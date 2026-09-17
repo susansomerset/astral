@@ -222,3 +222,65 @@ context_tokens≈52000
 - Stage 1: `list_artifact_keys_in_prompt_texts` in `src/utils/config.py`
 - Stage 2: `get_candidate_current_artifact_uuid` in `src/core/candidate.py`
 - Stage 3: `harvest_source_artifact_ids` + `do_task` attach `source_artifact_ids`
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1698
+**Publish ref:** `24e07d28b50328837165a6c26118bf994ac82c29` (`origin/sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper`)
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.traceability | A | | |
+| patt.artifact.read-current | A | | |
+| patt.artifact.manage-catalog | A | | |
+| patt.config.config-block | A | | |
+| astral.config.config-source-of-truth | A | | |
+| astral.standards.no-hardcoded-sets | A | | |
+| astral.standards.dry-and-focused-functions | B | | |
+| astral.layers.import-direction | A | | |
+
+Draft `patt.*` / `patt.config.*` ids resolved from `canon/directives/draft/` mirrors (same path Joan used; not on active `canon_clerk expand` roster).
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **`intake_prompt_snapshot` vs unresolved harvest (plan S3§4):** Harvest runs on DB unresolved templates before the intake snap overlay (~`agent.py` 2028–2038). For `intake_*` tasks where snap-only text differs from DB rows, `source_artifact_ids` may not match tokens actually sent to the provider. Plan explicitly chose this; siblings AST-1699/AST-1700 should treat `[]`/missing consistently on those edges.
+- **`run_next` chain return:** When `do_task` recurses to a successor hop (~2857), the returned dict is the **child** hop’s result; the parent hop’s `source_artifact_ids` is not merged forward (same pattern as other parent-only result fields). Acceptable if persist siblings only consume the terminal hop — flag for AST-1699 wiring awareness.
+- **Branch diff vs product scope:** Three-dot diff vs `origin/dev` is ~2.8k lines (Betty `merge-tests` + sibling manifests: meteorite, AST-1693/1694, frontend, etc.). **Product `src/` delta is exactly the three scoped files** (`config.py`, `candidate.py`, `agent.py`); no consult/tracker/save-signature drift in product code.
+- **Canon Scope (parent):** `astral.standards.data-raises-caller-logs` governs harvest miss semantics but is absent from this child’s frozen list (Joan noted). Plan/implementation match omit-not-invent behavior; not scored here.
+
+## What's solid
+
+- **Stage 1:** `list_artifact_keys_in_prompt_texts` uses `_TOKEN_RE`, `TOKEN_SOURCES.source_type == "artifact"`, and `get_artifact_key_for_token` — ordered-unique catalog keys, no parallel pinnable allowlist, no DB I/O.
+- **Stage 2:** `get_candidate_current_artifact_uuid` mirrors `get_candidate_current` resolve preamble, returns non-empty `artifact_uuid` or `None`, same validation raises.
+- **Stage 3:** `harvest_source_artifact_ids` dedupes UUIDs, swallows bad keys, empty `candidate_id` → `[]`; `do_task` harvests the planned unresolved text slots immediately after `_resolve_task_prompts`; `_with_harvest` wraps post-harvest failure dicts; success/provider-failure paths attach via `result["source_artifact_ids"]` (set before early provider-fail return at ~2252).
+- **Boundaries:** No `save_*` / consult / tracker / draft-traceability edits in product diff; Betty manifest classes cover AC1–AC2 (`TestAst1698*` suites present on tip).
+
+## Recommended actions (downstream — not Radia lane)
+
+- Chuckles: append this artifact to `docs/features/foundation/ast-1698-prompt-token-source-pin-harvest-helper.md`, commit `docs(AST-1698): Radia review — clean`, push sub ref, post slim upshot `--as radia`, advance to **Review Posted** → datt PROCEED path (no `resolve-child` canon work).
+- AST-1699 implementer: confirm whether terminal-hop-only `source_artifact_ids` is sufficient for consult persist, or whether parent-hop pins must merge on `run_next`.
+
+---
