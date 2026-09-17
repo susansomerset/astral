@@ -388,3 +388,84 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + warnin
   tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
   -q
 ```
+
+### AST-1702 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append`.
+
+Land/create parent to meteorite row id (no `ensure_meteorite_company` as job parent); `job.job_link` inherits `meteorite.link`; link-check bot-block continues land; non-blocked scrape JD is appended. Tracker writes: **`docs/test-bible/core/tracker.md`** § AST-1702.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create under meteorite parent | `src/core/meteorite.py` | **`TestAst1042CreateMeteoriteJob`** (revised), **`TestAst1702SourceEntityLand::test_land_does_not_call_ensure_as_parent`** |
+| Optional real company_id from stem | `src/core/meteorite.py` | **`TestAst1495LandStemAttach`** (revised) |
+| Land create / skip / thin-body append | `src/core/meteorite.py` | **`TestAst1470LandMeteorite`** (revised), **`…::test_playwright_fetch_when_link_and_thin_body`** |
+| Link inherit + bot-block continue | `src/core/meteorite.py` | **`TestAst1702SourceEntityLand::test_land_inherits_meteorite_link`**, **`…::test_land_bot_block_continues_without_append`** |
+| Grep gate — no ensure call sites | `src/core/meteorite.py` | **`…::test_ensure_meteorite_company_has_no_job_parent_call_sites`** |
+| Dispatch READY→LANDED | `src/core/meteorite.py` | **`TestAst1560RunLandMeteorite`** |
+
+**Broken / obsolete this pass:** AST-1041 Style D on ensure (product uses `_with_log_debug`); AST-1042 `stem=` / `company` return shape; AST-1495 placeholder company attach; AST-1470 land asserts on meteorite-* company parent.
+
+**Integration:** none.
+
+## QA test manifest (AST-1702)
+
+1. Tracker parent writes: `tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand`
+2. Create (revised): `tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob`
+3. Stem/employer (revised): `tests/component/core/test_meteorite.py::TestAst1495LandStemAttach`
+4. Land (revised): `tests/component/core/test_meteorite.py::TestAst1470LandMeteorite`
+5. Ensure still works (no Style D): `tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany`
+6. Dispatch land regression: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/core/test_meteorite.py::TestAst1495LandStemAttach \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–6 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
+- `docs/test-bible/core/tracker.md`
+
+### AST-1703 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock`.
+
+Email text outcomes author non-http `meteorite.link` breadcrumbs (From/To + timezone clock); paste leaves `link` null; stage ERROR when email text lacks breadcrumb; `stage_meteorite` schema + agent_task prompts accept `from_email` / `to_email` / `sent_at`. Format helpers: **`docs/test-bible/utils/config.md`** § AST-1701.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Breadcrumb format (ISO + RFC2822) | `src/core/meteorite.py` | **`TestAst1703EmailBreadcrumb::test_email_breadcrumb_link_iso_and_rfc2822`**, **`…::test_email_breadcrumb_link_rejects_blank_and_bad_sent_at`** |
+| Map authorship (email vs paste) | `src/core/meteorite.py` | **`…::test_map_email_text_sets_breadcrumb_paste_stays_none`**, **`…::test_map_email_text_missing_headers_errors`** |
+| Candidate timezone read | `src/core/meteorite.py` | **`…::test_candidate_contact_timezone_reads_nested_contact`** |
+| Stage blank-link ERROR | `src/core/meteorite.py` | **`…::test_stage_email_text_blank_link_errors`** |
+| Schema + agent_task prompts | `src/utils/config.py`, `data/admin/agent_task.json` | **`…::test_stage_meteorite_schema_accepts_breadcrumb_fields`**, **`…::test_agent_task_prompt_requires_header_fields`** |
+| READY path with breadcrumb | `src/core/meteorite.py` | **`TestAst1560RunStageMeteorite::test_text_outcome_to_ready`** (revised) |
+
+**Broken / obsolete this pass:** AST-1560 text READY asserted blank/`None` link — now requires non-http breadcrumb for email text rows.
+
+**Integration:** none.
+
+## QA test manifest (AST-1703)
+
+1. Email breadcrumb authorship: `tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb`
+2. Stage READY with breadcrumb (revised): `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–2 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`

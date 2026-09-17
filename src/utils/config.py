@@ -46,8 +46,9 @@ Config sections:
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
   STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
-  JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
-  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
+  SOURCE_ENTITY_TYPES — job ingest parent + track SoT company|meteorite (repurposed job.source; AST-1701); JOB_SOURCES aliases until sibling #2
+  JOB_LINK_BREADCRUMB_FORMAT / CONTACT_TIMEZONE_CLOCK_LABELS — email breadcrumb + timezone clock helpers (AST-1701; authored by sibling #3)
+  METEORITE_CONFIG — placeholder employer templates (not job parents after AST-1640) + job-create defaults + land/source_entity_type/dedupe (AST-1469 / AST-1701)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
@@ -61,8 +62,10 @@ Config sections:
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional, Union
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -553,6 +556,10 @@ TASK_CONFIG = {
                     "company_job_id": {"type": "str", "required": False},
                     "jd_text": {"type": "str", "required": False},
                     "employer_name": {"type": "str", "required": False},
+                    # AST-1703: email breadcrumb inputs for text outcomes (Python formats clock).
+                    "from_email": {"type": "str", "required": False},
+                    "to_email": {"type": "str", "required": False},
+                    "sent_at": {"type": "str", "required": False},
                 },
             },
         },
@@ -2479,23 +2486,46 @@ JOB_STATES = {
 }
 
 # ---------------------------------------------------------------------------
-# AST-1469: durable job provenance. gazed = roster/gazer ingest path; meteorite = land path.
-# One-way promotion only: gazed → meteorite allowed; meteorite → gazed forbidden (enforced in tracker).
+# AST-1701: job ingest parent + analysis track SoT (repurposed job.source column).
+# company = gazer/employer parent; meteorite = meteorite staging-row parent.
 # ---------------------------------------------------------------------------
-JOB_SOURCES = ["gazed", "meteorite"]
-JOB_SOURCE_DEFAULT = "gazed"       # backfill + insert default when caller omits source
-JOB_SOURCE_METEORITE = "meteorite"
+SOURCE_ENTITY_TYPES = ["company", "meteorite"]
+SOURCE_ENTITY_TYPE_COMPANY = "company"
+SOURCE_ENTITY_TYPE_METEORITE = "meteorite"
+SOURCE_ENTITY_TYPE_DEFAULT = SOURCE_ENTITY_TYPE_COMPANY  # insert default when caller omits type
 
-assert JOB_SOURCE_DEFAULT in JOB_SOURCES
-assert JOB_SOURCE_METEORITE in JOB_SOURCES
+assert SOURCE_ENTITY_TYPE_DEFAULT in SOURCE_ENTITY_TYPES
+assert SOURCE_ENTITY_TYPE_METEORITE in SOURCE_ENTITY_TYPES
+
+# Temporary aliases for pre-AST-1702 callers (tracker still imports JOB_SOURCE_* until sibling #2).
+# Do not add "gazed" back — writers emit company|meteorite only.
+JOB_SOURCES = SOURCE_ENTITY_TYPES
+JOB_SOURCE_DEFAULT = SOURCE_ENTITY_TYPE_DEFAULT
+JOB_SOURCE_METEORITE = SOURCE_ENTITY_TYPE_METEORITE
+
+# AST-1701: email breadcrumb for no-URL meteorite.link outcomes (authored by sibling #3).
+# Shape: From:<email> M/D H:MM <timezone> To:<email>
+JOB_LINK_BREADCRUMB_FORMAT = "From:{from_email} {clock} To:{to_email}"
+# IANA zone → short label for the clock segment (Manage Candidate contact.timezone options).
+CONTACT_TIMEZONE_CLOCK_LABELS = {
+    "": "UTC",
+    "America/New_York": "Eastern",
+    "America/Chicago": "Central",
+    "America/Denver": "Mountain",
+    "America/Los_Angeles": "Pacific",
+    "America/Anchorage": "Alaska",
+    "Pacific/Honolulu": "Hawaii",
+}
 
 # ---------------------------------------------------------------------------
 # METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
 # Lazy-ensure inserts on demand — never bulk at server start.
 # AST-1493: company_state METEORITE + stem-keyed short_names ({stem}-{candidate_id}).
+# short_name_* templates are NOT job source_entity_id / parent after AST-1640 —
+# meteorite-track job parent is the meteorite row id (sibling #2 stops ensure-as-parent).
 # Job-create defaults (METEORITE_NEW + score) are consumed by create_meteorite_job
 # (AST-1042 / AST-1056); literals stay config-owned (parent Architectural definition).
-# AST-1469: land outcomes, source, dedupe match order, employer_name job_data key.
+# AST-1469 / AST-1701: land outcomes, source_entity_type, dedupe match order, employer_name key.
 # ---------------------------------------------------------------------------
 METEORITE_CONFIG = {
     "short_name_prefix": "meteorite-",
@@ -2514,8 +2544,8 @@ METEORITE_CONFIG = {
     # AST-1042 / AST-1056 job-create defaults (consumed by create_meteorite_job)
     "job_create_state": "METEORITE_NEW",
     "job_create_latest_score": 10.0,
-    # AST-1469 Tracker land / source
-    "job_source": JOB_SOURCE_METEORITE,
+    # AST-1701 Tracker land / parent type (was job_source)
+    "source_entity_type": SOURCE_ENTITY_TYPE_METEORITE,
     "land_outcome_created": "created",
     "land_outcome_duplicate_skip": "duplicate_skip",
     "land_outcome_superseded": "superseded",
@@ -2536,7 +2566,7 @@ assert isinstance(METEORITE_CONFIG["default_stem"], str) and METEORITE_CONFIG["d
 assert "METEORITE" in COMPANY_STATES
 assert COMPANY_STATES["METEORITE"] == {}
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
-assert METEORITE_CONFIG["job_source"] == JOB_SOURCE_METEORITE
+assert METEORITE_CONFIG["source_entity_type"] == SOURCE_ENTITY_TYPE_METEORITE
 assert METEORITE_CONFIG["dedupe_match_order"] == ("company_job_id", "job_link")
 assert isinstance(METEORITE_CONFIG["land_outcome_created"], str) and METEORITE_CONFIG["land_outcome_created"]
 assert isinstance(METEORITE_CONFIG["land_outcome_duplicate_skip"], str) and METEORITE_CONFIG["land_outcome_duplicate_skip"]
@@ -6843,29 +6873,79 @@ def validate_value(allowed_list: list, value: object) -> None:
         raise ValueError(f"Value {value!r} not in allowed list: {allowed_list}")
 
 
+def is_valid_source_entity_type(value: object) -> bool:
+    """True when value is a SOURCE_ENTITY_TYPES member (AST-1701)."""
+    return isinstance(value, str) and value in SOURCE_ENTITY_TYPES
+
+
+def validate_source_entity_type(value: object) -> None:
+    """Raise ValueError if value is not in SOURCE_ENTITY_TYPES (AST-1701)."""
+    validate_value(SOURCE_ENTITY_TYPES, value)
+
+
+def source_entity_type_transition_allowed(from_type: Optional[str], to_type: str) -> bool:
+    """True when writing to_type is legal given current from_type (AST-1701).
+
+    unset/blank → any SOURCE_ENTITY_TYPES value OK; same value OK; company → meteorite OK;
+    meteorite → company forbidden.
+    """
+    if not is_valid_source_entity_type(to_type):
+        return False
+    cur = (from_type or "").strip()
+    if not cur:
+        return True
+    if cur == to_type:
+        return True
+    if cur == SOURCE_ENTITY_TYPE_COMPANY and to_type == SOURCE_ENTITY_TYPE_METEORITE:
+        return True
+    return False
+
+
 def is_valid_job_source(value: object) -> bool:
-    """True when value is a JOB_SOURCES member (AST-1469)."""
-    return isinstance(value, str) and value in JOB_SOURCES
+    """Alias for is_valid_source_entity_type (pre-#2 callers)."""
+    return is_valid_source_entity_type(value)
 
 
 def validate_job_source(value: object) -> None:
-    """Raise ValueError if value is not in JOB_SOURCES (AST-1469)."""
-    validate_value(JOB_SOURCES, value)
+    """Alias for validate_source_entity_type (pre-#2 callers)."""
+    validate_source_entity_type(value)
 
 
 def job_source_transition_allowed(from_source: Optional[str], to_source: str) -> bool:
-    """True when writing to_source is legal given current from_source (AST-1469).
+    """Alias for source_entity_type_transition_allowed (pre-#2 callers)."""
+    return source_entity_type_transition_allowed(from_source, to_source)
 
-    unset/blank → any JOB_SOURCES value OK; same value OK; gazed → meteorite OK;
-    meteorite → gazed forbidden.
+
+def format_contact_timezone_clock(
+    dt: Union[datetime, None], timezone_key: Optional[str]
+) -> str:
+    """Format dt as ``M/D H:MM <label>`` in contact.timezone (AST-1701).
+
+    Naive dt treated as UTC. Empty/None timezone_key → UTC. Unknown IANA uses the
+    raw zone string as the label.
     """
-    if not is_valid_job_source(to_source):
-        return False
-    cur = (from_source or "").strip()
-    if not cur:
-        return True
-    if cur == to_source:
-        return True
-    if cur == JOB_SOURCE_DEFAULT and to_source == JOB_SOURCE_METEORITE:
-        return True
-    return False
+    if dt is None:
+        raise ValueError("dt required")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    key = (timezone_key or "").strip()
+    try:
+        zone = ZoneInfo(key) if key else ZoneInfo("UTC")
+    except Exception:
+        zone = ZoneInfo("UTC")
+        key = key or ""
+    local = dt.astimezone(zone)
+    label = CONTACT_TIMEZONE_CLOCK_LABELS.get(key)
+    if label is None:
+        label = key if key else "UTC"
+    # M/D H:MM — no leading zeros on month/day; 24-hour clock zero-padded minutes
+    return f"{local.month}/{local.day} {local.hour:02d}:{local.minute:02d} {label}"
+
+
+def format_job_link_breadcrumb(from_email: str, to_email: str, clock: str) -> str:
+    """Assemble JOB_LINK_BREADCRUMB_FORMAT (AST-1701)."""
+    return JOB_LINK_BREADCRUMB_FORMAT.format(
+        from_email=from_email, clock=clock, to_email=to_email
+    )
