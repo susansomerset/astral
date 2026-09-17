@@ -141,3 +141,58 @@ One core authorship path + schema/prompt wiring; helpers already from #1; no sch
 - Child AC6 / Parent AC6 (breadcrumb on `meteorite.link` for no-URL email; inherit by #2) → Stage 2.
 - Parent Functional scope item 6 format + forward peel + `contact.timezone` clock → Stage 1 (agent peel) + Stage 2 (Python format).
 - `source_ref` unused → Stage 1 prompt + Stage 2 map (no synthesis).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1703
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock` @ `76def5139ed280f45a51005b4960c8c36ba51c5e`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.entity | A | | Step 6 keeps id-pipe info; full breadcrumb on `logger.debug` only — no PII dump on always-on info |
+| stat.logging.debug | A | | `_email_breadcrumb_link` requires ungated callee in/out around AST-1701 format helpers |
+
+## Traceability
+
+AC6 → Stage 2 (`_map_classify_jobs_to_meteorite_rows` authors non-http `meteorite.link` for email + `text_source_ref_outcomes`; #2 inherit out of scope). Parent Functional scope item 6 (format, forward peel, `contact.timezone` clock) → Stage 1 (Ruth peel + schema fields) + Stage 2 (Python format via #1 helpers). `source_ref` unused → Stage 1 prompt + Stage 2 map (no synthesis). Parent AC1–5, 7–9 N/A — siblings #1–2 / #4.
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description `## Scope` vs plan `## Scope gate`
+- **Finding:** Ticket body still lists only `meteorite.py` + narrow `config.py` call; plan (post `[scope-gate]`) correctly adds `data/admin/agent_task.json` and `TASK_CONFIG` schema wiring. Plan is self-consistent; Linear partition text is stale.
+- **Recommendation:** Chuckles syncs Linear `## Scope` to match amended plan; implementer follows plan Scope gate.
+
+- **Location:** Stage 2 step 7 — optional `run_stage_meteorite` safety
+- **Finding:** Authorship at insert is the SoT; optional stage backfill for blank email `link` is defensive only. Omitting it does not block AC6 if map-time authorship is correct.
+- **Recommendation:** Include the ≤10-line safety if cheap; not required for plan approval.
+
+- **Location:** Child AC6 wording / UAT fitness
+- **Finding:** End-to-end `job.job_link == meteorite.link` after land requires #2 inherit; this ticket’s concrete fail test is breadcrumb present on `meteorite.link` at insert — honestly scoped.
+- **Recommendation:** None; coordinate UAT with #2 on epic line.
+
+### acceptable
+
+- **Location:** `[scope-gate]` thread
+- **Finding:** Prior gate correctly identified missing `agent_task.json` + schema fields; republished plan at `76def513` addresses envelope-only From/To and source-ref contradiction.
+- **Recommendation:** None.
+
+- **Location:** Stage 1 — jobs `items_schema` placement
+- **Finding:** Fields on each jobs item flow through `invoke_stage_meteorite` without `consult.py` edits — matches Technical scope and current `consult.py` passthrough.
+- **Recommendation:** None.
+
+- **Location:** Stage 2 — `source_kind == "email"` branch only
+- **Finding:** `_map_classify_jobs_to_meteorite_rows` has a single caller (`ingest_candidate_email_message`); slack/paste stay `link=None` per parent boundary.
+- **Recommendation:** None.
+
+### fix-now
+
+(none)
+
+context_tokens≈65000
