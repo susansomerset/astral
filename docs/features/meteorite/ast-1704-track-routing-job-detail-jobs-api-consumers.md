@@ -215,3 +215,9 @@ AC4 → Stage 1 (`_job_is_meteorite_track` + `validate_title_batch` skip on `sou
 context_tokens≈72000
 
 ---
+
+## Review
+
+- **Build tip:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers` @ `9c2e34c71d4c81e86d66a97986273730b00f7579`
+- **Stages:** track SoT consult/gazer/ingest_jobs → API parent fields + http(s)-only Job Detail hrefs
+
