@@ -422,3 +422,17 @@ Shared `jd_classifier.bot_signals` widened so parent-captured Cloudflare interst
   tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
   -q
 ```
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+`validate_title_batch` skips title-pattern screen when `source == meteorite` (not `is_meteorite_company(company)`). Primary manifest: **`docs/test-bible/core/consult.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip meteorite source; roster peer fails | `src/core/gazer.py` | **`TestValidateTitleBatch::test_skips_meteorite_source_roster_still_fails`** (revised) |
+
+**Broken / obsolete this pass:** `test_skips_meteorite_company_roster_still_fails` — retargeted to `source` SoT (+ real `company_id` must stay skipped).
+
+**Integration:** none.

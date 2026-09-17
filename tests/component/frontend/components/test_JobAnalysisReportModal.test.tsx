@@ -51,6 +51,8 @@ function jobHandler(
         state: "RECOMMENDED",
         state_changed_at: "2026-01-03T00:00:00Z",
         job_link: "https://jobs.example/apply",
+        // AST-1695: title/Apply navigate via listing_href (not raw job_link)
+        listing_href: "https://jobs.example/apply",
         job_data: {
           job_description: "Full JD body text",
           analysis_upshot: fullUpshot(),
@@ -91,7 +93,7 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
     expect(within(bar).getByRole("button", { name: "Analysis" })).toBeInTheDocument()
     expect(within(bar).getByRole("button", { name: "Artifacts" })).toBeInTheDocument()
-    // AST-1551: Discussion follows Artifacts via report_top_tabs (fixture + AST-1550)
+    // AST-1551 / AST-1692: Discussion follows Artifacts; Meteorite filtered when related_meteorite null
     expect(within(bar).getByRole("button", { name: "Discussion" })).toBeInTheDocument()
     expect(document.querySelector(".side-tab-list")).toBeNull()
     // Summary section chrome (bodies filled by AST-949)
@@ -295,13 +297,13 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.queryByRole("button", { name: "Print Cover Letter" })).not.toBeInTheDocument()
   })
 
-  it("job title deeplink replaces Apply for CANDIDATE_REVIEW", async () => {
+  it("job title deeplink uses listing_href for CANDIDATE_REVIEW (Apply filtered from Artifacts)", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j-ready", { state: "CANDIDATE_REVIEW" }))
     renderWithProviders(<JobAnalysisReportModal jobId="j-ready" onClose={() => {}} />)
     await waitForShell()
     expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute("href", "https://jobs.example/apply")
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
-    // Apply filtered from Artifacts strip — no primary actions left on CANDIDATE_REVIEW
+    // Apply filtered from Artifacts strip — navigable open is title link + CLIENT handler
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     expect(screen.queryByRole("button", { name: "Generate Artifacts" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
@@ -1192,6 +1194,42 @@ describe("JobAnalysisReportModal — AST-1421 snapshot Copy", () => {
   })
 })
 
+describe("JobAnalysisReportModal — AST-1696 Copy Link", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined) },
+      configurable: true,
+    })
+  })
+
+  it("writes absolute /jobs/detail/<id> URL and returns idle label; other header actions stay", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j1696"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1696" onClose={() => {}} />)
+    await waitForShell()
+    const links = document.querySelector(".recommended-report-links") as HTMLElement
+    expect(within(links).getByRole("button", { name: "Copy Link" })).toHaveClass("btn", "secondary")
+    expect(within(links).getByRole("button", { name: /^Copy$/ })).toBeInTheDocument()
+    expect(within(links).getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
+    expect(within(links).getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
+
+    await userEvent.click(within(links).getByRole("button", { name: "Copy Link" }))
+    await waitFor(() =>
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        `${window.location.origin}/jobs/detail/j1696`,
+      ),
+    )
+    await waitFor(() =>
+      expect(within(links).getByRole("button", { name: /^Copied$/ })).toBeInTheDocument(),
+    )
+    expect(document.querySelector(".recommended-report-copy-feedback")).toBeNull()
+    await waitFor(
+      () => expect(within(links).getByRole("button", { name: "Copy Link" })).toBeInTheDocument(),
+      { timeout: 3000 },
+    )
+  })
+})
+
 describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
   beforeEach(() => mockedApi.mockReset())
 
@@ -1202,7 +1240,7 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
     await waitForShell()
     const bar = topTabBar()
     const discussion = within(bar).getByRole("button", { name: "Discussion" })
-    // Discussion is last top tab (after Artifacts)
+    // AST-1692: Meteorite omitted when related_meteorite null — Discussion still last visible
     const tabs = within(bar).getAllByRole("button")
     expect(tabs.map(t => t.textContent)).toEqual([
       "Summary",
@@ -1210,6 +1248,7 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
       "Artifacts",
       "Discussion",
     ])
+    expect(within(bar).queryByRole("button", { name: "Meteorite" })).not.toBeInTheDocument()
     await userEvent.click(discussion)
     expect(screen.queryByText("Contemplate Job")).not.toBeInTheDocument()
     expect(screen.queryByText("Propose Application Responses")).not.toBeInTheDocument()
@@ -1245,6 +1284,63 @@ describe("JobAnalysisReportModal — AST-1551 Discussion tab", () => {
   })
 })
 
+
+
+
+describe("JobAnalysisReportModal — AST-1692 Meteorite tab", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  const related = {
+    id: 7,
+    created_at: "2026-02-01T00:00:00Z",
+    updated_at: "2026-02-02T00:00:00Z",
+    state_changed_at: "2026-02-03T00:00:00Z",
+    estelle_notified_at: null,
+    link: "https://jobs.example/m7",
+    classify_outcome: "QUALIFIED",
+    content: '{"pane":true}',
+    state: "LANDED",
+    source_kind: "email",
+    source_id: "src-7",
+    error: null,
+  }
+
+  it("shows Meteorite after Discussion when related_meteorite is present", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j1692", { related_meteorite: related }))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1692" onClose={() => {}} />)
+    await waitForShell()
+    const bar = topTabBar()
+    expect(within(bar).getAllByRole("button").map(t => t.textContent)).toEqual([
+      "Summary",
+      "Analysis",
+      "Artifacts",
+      "Discussion",
+      "Meteorite",
+    ])
+    await userEvent.click(within(bar).getByRole("button", { name: "Meteorite" }))
+    expect(screen.getByText("Timestamps")).toBeInTheDocument()
+    expect(screen.getByText("created_at: 2026-02-01T00:00:00Z")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "https://jobs.example/m7" })).toBeInTheDocument()
+    expect(screen.getByText("classify_outcome: QUALIFIED")).toBeInTheDocument()
+    const area = document.querySelector("textarea.entity-story-content") as HTMLTextAreaElement
+    expect(area?.readOnly).toBe(true)
+    expect(area?.value).toContain('"pane": true')
+  })
+
+  it("omits Meteorite tab when related_meteorite is null", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j1692-null", { related_meteorite: null }))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1692-null" onClose={() => {}} />)
+    await waitForShell()
+    const bar = topTabBar()
+    expect(within(bar).queryByRole("button", { name: "Meteorite" })).not.toBeInTheDocument()
+    expect(within(bar).getAllByRole("button").map(t => t.textContent)).toEqual([
+      "Summary",
+      "Analysis",
+      "Artifacts",
+      "Discussion",
+    ])
+  })
+})
 
 describe("JobAnalysisReportModal — AST-1599 no Source base resume on Artifacts", () => {
   beforeEach(() => mockedApi.mockReset())
@@ -1312,3 +1408,69 @@ describe("JobAnalysisReportModal — AST-1599 no Source base resume on Artifacts
   })
 })
 
+describe("JobAnalysisReportModal — AST-1695 listing_href title", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("title <a> uses listing_href; raw job_link alone is not navigable", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-a", {
+        job_link: "https://jobs.example/stale-column",
+        listing_href: "https://jobs.example/listing",
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-a" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute(
+      "href",
+      "https://jobs.example/listing",
+    )
+  })
+
+  it("null listing_href → plain title span even when job_link is http(s)", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-b", {
+        job_link: "https://jobs.example/apply",
+        listing_href: null,
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-b" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Analyst")
+  })
+
+  it("non-http listing_href → plain title span", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-c", {
+        listing_href: "not-a-url",
+        job_link: "https://jobs.example/apply",
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-c" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+  })
+})
+describe("JobAnalysisReportModal — AST-1704 non-http job_link chrome", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+    mockedCopy.mockReset()
+    mockedCopy.mockResolvedValue(true)
+  })
+
+  it("shows breadcrumb text and plain title when job_link is non-http", async () => {
+    const crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j-crumb", { job_link: crumb, state: "RECOMMENDED" }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j-crumb" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByText("Analyst")).toHaveClass("recommended-report-title")
+    expect(screen.getByText(crumb)).toHaveClass("recommended-report-job-link-text")
+  })
+})

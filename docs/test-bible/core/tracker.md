@@ -639,3 +639,17 @@ See **`docs/test-bible/core/meteorite.md`** § AST-1702 (shared numbered list).
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/tracker.md` — *(filled after publish)*
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+Gazed `ingest_jobs` writes `source=company`, `source_entity_id` + `company_id` to employer short_name. Primary manifest: **`docs/test-bible/core/consult.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ingest company parent fields | `src/core/tracker.py` | **`TestIngestJobs::test_counts_new_and_duplicate_rows`** (extended) |
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** none.

@@ -1677,7 +1677,10 @@ class TestAnalysisUpshotPrepAndBatch480ExtraBranches:
         )
         assert out["total_passed"] == 1
         get_co.assert_not_called()
-        saver.assert_called_once_with("jz", {"analysis_upshot": {"whole_jd_upshot": "ok"}})
+        saver.assert_called_once()
+        saved = saver.call_args.args[1]
+        assert saved["analysis_upshot"] == {"whole_jd_upshot": "ok"}
+        assert saved["analysis_upshot_source_artifact_ids"] == []
         transition.assert_called_once_with(
             "analysis_upshot",
             ["jz"],
@@ -2189,7 +2192,10 @@ class TestAnalysisUpshotPrepAndBatch480:
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
         out = await consult_mod._run_analysis_upshot_batch("bx", [job], {}, False)
         assert out["total_passed"] == 1 and out["total_errors"] == 0
-        saver.assert_called_once_with("j9", {"analysis_upshot": parsed})
+        saver.assert_called_once()
+        saved = saver.call_args.args[1]
+        assert saved["analysis_upshot"] == parsed
+        assert saved["analysis_upshot_source_artifact_ids"] == []
         trans.assert_called_once_with(
             "analysis_upshot",
             ["j9"],
@@ -2278,7 +2284,10 @@ class TestAnalysisUpshotPrepAndBatch480:
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", trans)
         out = await consult_mod._run_analysis_upshot_batch("b", [job], {}, False)
         assert out["total_passed"] == 1
-        saver.assert_called_once_with("ok", {"analysis_upshot": {"upshot": True}})
+        saver.assert_called_once()
+        saved = saver.call_args.args[1]
+        assert saved["analysis_upshot"] == {"upshot": True}
+        assert saved["analysis_upshot_source_artifact_ids"] == []
         trans.assert_called_once_with(
             "analysis_upshot",
             ["ok"],
@@ -4184,7 +4193,10 @@ class TestAst1055MeteoriteConsultRoutes:
             "b-mz", [job], {}, False, task_key="meteorite_upshot",
         )
         assert out["total_passed"] == 1
-        saver.assert_called_once_with("mz", {"analysis_upshot": parsed})
+        saver.assert_called_once()
+        saved = saver.call_args.args[1]
+        assert saved["analysis_upshot"] == parsed
+        assert saved["analysis_upshot_source_artifact_ids"] == []
         trans.assert_called_once_with(
             "meteorite_upshot",
             ["mz"],
@@ -5434,8 +5446,11 @@ class TestAst1197QualifyMeteoriteApply:
         bot_state = TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"]
         transition = MagicMock()
         initialize = MagicMock()
+        persist = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        # AST-1693: bot branch writes http job_link before transition (no initialize_job).
+        monkeypatch.setattr(consult_mod.tracker, "persist_http_job_link", persist)
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -5464,6 +5479,7 @@ class TestAst1197QualifyMeteoriteApply:
         assert out["passed"] == 0
         assert out["failed"] == 1
         initialize.assert_not_called()
+        persist.assert_called_once_with("j-bot", "https://jobs.example.com/blocked")
         assert transition.call_args.args[2] == bot_state
 
     @pytest.mark.asyncio
@@ -6512,3 +6528,272 @@ class TestAst1680JobDraftingHydrateCatalog:
             "special_case"
         )
 
+
+# Branches: sibling key stem; normalize; grade save AC3; analysis save AC4; empty harvest → [].
+class TestAst1699PersistHarvestedPinsConsult:
+    """AST-1699: sibling *_source_artifact_ids beside grades/upshot job_data sets."""
+
+    def test_sibling_key_stem_for_grades_and_upshot(self) -> None:
+        assert (
+            consult_mod._source_artifact_ids_job_data_key("do_grades")
+            == "do_source_artifact_ids"
+        )
+        assert (
+            consult_mod._source_artifact_ids_job_data_key("joblist_grades")
+            == "joblist_source_artifact_ids"
+        )
+        assert (
+            consult_mod._source_artifact_ids_job_data_key("analysis_upshot")
+            == "analysis_upshot_source_artifact_ids"
+        )
+
+    def test_normalize_harvest_list_and_empty(self) -> None:
+        assert consult_mod._normalize_harvested_source_artifact_ids(None) == []
+        assert consult_mod._normalize_harvested_source_artifact_ids("x") == []
+        assert consult_mod._normalize_harvested_source_artifact_ids(
+            ["u1", "", "  ", 3, "u2"]
+        ) == ["u1", "u2"]
+        raw = ["a"]
+        out = consult_mod._normalize_harvested_source_artifact_ids(raw)
+        assert out == ["a"] and out is not raw
+
+    def test_apply_render_verdict_writes_sibling_pins(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rubric = [_rubric_item("Fit")]
+        cfg = {
+            "agent_task": "grade_do",
+            "save_prefix": "do",
+            "pass_state": TASK_CONFIG["grade_do"]["pass_state"],
+            "fail_state": TASK_CONFIG["grade_do"]["fail_state"],
+            "rubric_artifact": "do_rubric",
+        }
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda *_a, **_k: rubric)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda _aid: {
+                "astral_job_id": "job-1",
+                "state": "PASSED_JD",
+                "astral_candidate_id": "c1",
+            },
+        )
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "list_dispatch_tasks_for_candidate",
+            MagicMock(
+                return_value=[
+                    {
+                        "id": 1,
+                        "task_key": "grade_do",
+                        "score_floor": 0.0,
+                        "trigger_state": "PASSED_JD",
+                    }
+                ]
+            ),
+        )
+        pins = ["uuid-base-1"]
+        to_state, _score, grades = consult_mod._apply_render_verdict_decoded_job(
+            "grade_do",
+            "job-1",
+            {"grades": [{"grade": "A", "confidence": 2, "vector": "Fit"}], "notes": ""},
+            cfg,
+            {"astral_candidate_id": "c1"},
+            source_artifact_ids=pins,
+        )
+        assert to_state
+        assert isinstance(grades, list)
+        save.assert_called_once()
+        payload = save.call_args.args[1]
+        assert "do_grades" in payload
+        assert payload["do_source_artifact_ids"] == pins
+        save.reset_mock()
+        consult_mod._apply_render_verdict_decoded_job(
+            "grade_do",
+            "job-1",
+            {"grades": [{"grade": "A", "confidence": 2, "vector": "Fit"}], "notes": ""},
+            cfg,
+            {"astral_candidate_id": "c1"},
+            source_artifact_ids=None,
+        )
+        assert save.call_args.args[1]["do_source_artifact_ids"] == []
+
+    @pytest.mark.asyncio
+    async def test_analysis_upshot_persists_harvest_sibling(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cfg = dict(TASK_CONFIG["analysis_upshot"])
+        cfg["requires_company"] = False
+        monkeypatch.setitem(TASK_CONFIG, "analysis_upshot", cfg)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "company": ""},
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "_prep_analysis_upshot_live_content",
+            AsyncMock(return_value="live"),
+        )
+        pins = ["uuid-br", "uuid-str"]
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"whole_jd_upshot": "ok"},
+                    "source_artifact_ids": pins,
+                },
+            ),
+        )
+        saver = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", saver)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        out = await consult_mod._run_analysis_upshot_batch(
+            "bid", [{"astral_job_id": "j-pin"}], {}, False
+        )
+        assert out["total_passed"] == 1
+        saved = saver.call_args.args[1]
+        assert saved["analysis_upshot"] == {"whole_jd_upshot": "ok"}
+        assert saved["analysis_upshot_source_artifact_ids"] == pins
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_forwards_do_task_harvest(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = {
+            "astral_job_id": "job-1",
+            "company": "co",
+            "job_data": {},
+            "astral_candidate_id": "c1",
+            "state": "PASSED_JD",
+        }
+        rubric = [_rubric_item("Fit")]
+        pins = ["uuid-from-do-task"]
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-1",
+                                "grades": [
+                                    {"grade": "A", "confidence": 2, "vector": "Fit"}
+                                ],
+                                "notes": "",
+                            }
+                        ]
+                    },
+                    "source_artifact_ids": pins,
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
+        out = await consult_mod.render_verdict(
+            "grade_do",
+            "job-1",
+            ctx={
+                "astral_candidate_id": "c1",
+                "candidate_data": {"artifacts": {"do_rubric": rubric}},
+            },
+        )
+        assert out["success"] is True
+        assert save.call_args.args[1]["do_source_artifact_ids"] == pins
+
+# Branches: source=meteorite track SoT; company_id must not flip to gazed title screen (AST-1704).
+class TestAst1704MeteoriteTrackSoT:
+    """AST-1704: qualify track partition uses job.source, not employer company_id."""
+
+    def test_job_is_meteorite_track_helper(self) -> None:
+        assert consult_mod._job_is_meteorite_track({"source": "meteorite"}) is True
+        assert consult_mod._job_is_meteorite_track({"source": " meteorite "}) is True
+        assert consult_mod._job_is_meteorite_track({"source": "company"}) is False
+        assert (
+            consult_mod._job_is_meteorite_track(
+                {"source": "company", "company_id": "acme"}
+            )
+            is False
+        )
+        assert consult_mod._job_is_meteorite_track(None) is False
+        assert consult_mod._job_is_meteorite_track({}) is False
+
+    @pytest.mark.asyncio
+    async def test_qualify_meteorite_source_with_company_id_skips_title_screen(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        vt = AsyncMock(return_value={"failed": 0, "passed": 0, "total": 0})
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda jid: {
+                "astral_job_id": jid,
+                "state": METEORITE_CONFIG["job_create_state"],
+                "source": "meteorite",
+                "company_id": "acme",
+            },
+        )
+        batch = AsyncMock(return_value={"passed": 0, "failed": 0, "total": 1})
+        monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
+        jobs = [
+            {
+                "astral_job_id": "job-m",
+                "state": "NEW",
+                "source": "meteorite",
+                "company_id": "acme",
+                "job_data": {"raw_job_listing": "Janitor"},
+            }
+        ]
+        out = await consult_mod.qualify_job_listings("batch-1704", jobs, {}, debug=False)
+        vt.assert_not_awaited()
+        transition.assert_called_once_with(
+            ["job-m"], METEORITE_CONFIG["job_create_state"]
+        )
+        assert out["total"] == 1
+
+    @pytest.mark.asyncio
+    async def test_qualify_company_source_new_still_title_screens(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        vt = AsyncMock(return_value={"failed": 0, "passed": 1, "total": 1})
+        transition = MagicMock()
+        monkeypatch.setattr("src.core.gazer.validate_title_batch", vt)
+        monkeypatch.setattr(consult_mod.tracker, "transition_job_state", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "VALID_TITLE", "source": "company"},
+        )
+        batch = AsyncMock(return_value={"passed": 1, "failed": 0, "total": 1})
+        monkeypatch.setattr(consult_mod, "_run_batch_consult", batch)
+        jobs = [
+            {
+                "astral_job_id": "job-c",
+                "state": "NEW",
+                "source": "company",
+                "company_id": "acme",
+                "job_data": {"raw_job_listing": "Engineer"},
+            }
+        ]
+        out = await consult_mod.qualify_job_listings("batch-1704b", jobs, {}, debug=False)
+        vt.assert_awaited_once()
+        transition.assert_not_called()
+        batch.assert_awaited_once()
+        assert out["passed"] == 1
