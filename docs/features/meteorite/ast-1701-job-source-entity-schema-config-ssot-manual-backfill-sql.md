@@ -208,7 +208,7 @@ Schema rebuild + writer contract + operator SQL with no boot side effects matche
 **Ticket:** AST-1701
 **Overall:** APPROVED
 **Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
-**Publish ref:** `sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `68114dd221cdc0a0b6525959a53a126558ba781b`
+**Publish ref:** `sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `fb0827d5ebba38a70ed3e1723a882a008bd63d09`
 
 ## Canon scores
 
@@ -252,5 +252,5 @@ context_tokens≈42000
 
 ## Review
 
-- **Build tip:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `018c1c20593f9370f4c7cad3e2e2d47a7ad07002`
+- **Build tip:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `fb0827d5ebba38a70ed3e1723a882a008bd63d09`
 - **Stages:** config SSOT → job schema/writers → operator SQL `data/sql/ast_1701_job_source_entity_backfill.sql`
