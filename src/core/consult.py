@@ -42,6 +42,7 @@ from src.utils.config import (
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     METEORITE_CONFIG,
+    SOURCE_ENTITY_TYPE_METEORITE,
     STAGE_METEORITE_CONFIG,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
@@ -146,6 +147,13 @@ def _consult_orchestration(task_key: str) -> Dict[str, Any]:
 
 def _entity_state_is_meteorite(state: Optional[str]) -> bool:
     return bool(state) and str(state).startswith("METEORITE_")
+
+
+def _job_is_meteorite_track(job: Optional[Dict[str, Any]]) -> bool:
+    """True when job parent/track SoT is meteorite (AST-1704; physical column `source`)."""
+    if not job:
+        return False
+    return (job.get("source") or "").strip() == SOURCE_ENTITY_TYPE_METEORITE
 
 
 def _consult_orchestration_for_entity(task_key: str, entity_state: Optional[str] = None) -> Dict[str, Any]:
@@ -1755,11 +1763,11 @@ async def qualify_job_listings(
     title_screen_failed = 0
     if any((j.get("state") or "") == "NEW" for j in jobs):
         from src.core.gazer import validate_title_batch
-        from src.core.meteorite import is_meteorite_company
 
         new_jobs = [j for j in jobs if (j.get("state") or "") == "NEW"]
-        meteorite_new = [j for j in new_jobs if is_meteorite_company(j.get("company"))]
-        roster_new = [j for j in new_jobs if not is_meteorite_company(j.get("company"))]
+        # AST-1704: track from source_entity SoT (column `source`), not employer company_id.
+        meteorite_new = [j for j in new_jobs if _job_is_meteorite_track(j)]
+        roster_new = [j for j in new_jobs if not _job_is_meteorite_track(j)]
         # AST-1152: candidate submission is title qualification — never pattern-screen meteorites.
         meteorite_landing = METEORITE_CONFIG["job_create_state"]
         logger.debug("Beginning meteorite NEW re-home loop on %s items", len(meteorite_new))
@@ -1772,7 +1780,7 @@ async def qualify_job_listings(
             tr = await validate_title_batch(batch_id, roster_new, ctx or {}, debug=debug)
             title_screen_failed = int(tr.get("failed", 0))
         for j in jobs:
-            if (j.get("state") or "") == "NEW" or is_meteorite_company(j.get("company")):
+            if (j.get("state") or "") == "NEW" or _job_is_meteorite_track(j):
                 fresh = tracker.get_job(j["astral_job_id"])
                 if fresh:
                     j["state"] = fresh.get("state")
@@ -2723,6 +2731,56 @@ async def run_consult_task(
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
             errors = max(0, total - passed - failed)
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+            }
+        from src.utils.config import INFLOW_CONFIG
+        if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
+            # Align with run_company_task terminal_ok: NO_WEBSITE is a completed terminal.
+            resolve_terminal_ok = (
+                INFLOW_CONFIG["resolve"]["pass_state"],
+                INFLOW_CONFIG["resolve"]["fail_state"],
+                "WEBSITE_FOUND",
+            )
+            passed = failed = errors = 0
+            for entity in entities:
+                r = await roster.resolve_company_website(
+                    entity.get("short_name", ""), entity, ctx=ctx, debug=debug,
+                )
+                if r.get("error"):
+                    errors += 1
+                elif r.get("state") in resolve_terminal_ok:
+                    passed += 1
+                else:
+                    failed += 1
+            total = len(entities)
+            return {
+                "total_processed": total,
+                "total_passed": passed,
+                "total_failed": failed,
+                "total_errors": errors,
+            }
+        if task_key == "resolve_website":
+            from src.utils.config import TASK_CONFIG
+            terminal_ok = (
+                TASK_CONFIG["resolve_website"]["pass_state"],
+                TASK_CONFIG["resolve_website"]["fail_state"],
+            )
+            passed = failed = errors = 0
+            for entity in entities:
+                r = await roster.resolve_website_company(
+                    entity.get("short_name", ""), entity, ctx=ctx, debug=debug,
+                )
+                if r.get("error"):
+                    errors += 1
+                elif r.get("state") in terminal_ok:
+                    passed += 1
+                else:
+                    failed += 1
+            total = len(entities)
             return {
                 "total_processed": total,
                 "total_passed": passed,

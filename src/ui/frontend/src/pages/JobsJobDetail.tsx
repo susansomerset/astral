@@ -47,8 +47,10 @@ export default function JobsJobDetail() {
         setGateError(msg)
         return
       }
-      const data = (await res.json()) as { company?: unknown }
-      const co = typeof data.company === "string" ? data.company.trim() : ""
+      const data = (await res.json()) as { company_id?: unknown; company?: unknown }
+      const co =
+        (typeof data.company_id === "string" ? data.company_id.trim() : "") ||
+        (typeof data.company === "string" ? data.company.trim() : "")
       setCompany(co)
     })()
     return () => { cancelled = true }

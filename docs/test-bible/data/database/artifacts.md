@@ -198,43 +198,4 @@ Singular SQLite table `artifact` (was `artifacts`) with required `candidate_id` 
 
 **Integration:** none.
 
----
-
-### AST-1697 · AST-1605
-
-**Parent:** [AST-1605 — Confirm that artifacts are compressed](https://linear.app/astralcareermatch/issue/AST-1605/confirm-that-artifacts-are-compressed). **Publish:** `origin/sub/AST-1605/AST-1697-artifact-zlib-write-read-data-layer`.
-
-Data-layer `artifact.artifact_data` zlib contract (re-land after premature `08a2b32b` revert on `origin/dev`): `save_artifact` stores via `_compress_payload`; `_artifact_row_dict` decompresses via `_decompress_payload` before JSON-parse; CREATE DDL `BLOB`; header inventory notes zlib transparency like `agent_data.block_data`; legacy plain TEXT rows still readable. No new statute; no core/UI call-site changes.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Fresh write → raw SQL zlib bytes | `src/data/database.py` | **`TestAst1697ArtifactZlibWriteRead::test_save_stores_zlib_bytes_raw_sql_decompresses`** |
-| Public readers stay deserialized | `src/data/database.py` | **`TestAst1697ArtifactZlibWriteRead::test_public_readers_return_deserialized_not_zlib`** |
-| Legacy uncompressed TEXT still loads | `src/data/database.py` | **`TestAst1697ArtifactZlibWriteRead::test_legacy_plain_text_row_still_readable`** |
-| Inventory + shared helpers (no parallel zlib) | `src/data/database.py` | **`TestAst1697ArtifactZlibWriteRead::test_save_and_row_dict_use_shared_compress_helpers`**; revised **`TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it`** (zlib/BLOB inventory + PRAGMA type) |
-
-**Broken / obsolete this pass:** `TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it` — inventory/DDL now document zlib-transparent BLOB (revised in place). Existing round-trip / rename / get-by-uuid / source-ids / cid suites stay (public contract unchanged).
-
-**Integration:** none — no existing `tests/integration/` scenario asserts on-disk `artifact_data` encoding; do not invent new scenarios.
-
-## QA test manifest (AST-1697)
-
-1. Zlib write/read suite: `tests/component/data/database/test_artifacts.py::TestAst1697ArtifactZlibWriteRead`
-2. Revised ensure/inventory: `tests/component/data/database/test_artifacts.py::TestAst1352Artifacts::test_ensure_creates_table_and_inventory_lists_it`
-3. Regression writers: `tests/component/data/database/test_artifacts.py::TestAst1352Artifacts`
-4. Regression rename: `tests/component/data/database/test_artifacts.py::TestAst1364RenameArtifacts`
-5. Regression get-by-uuid: `tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact`
-6. Regression source refs: `tests/component/data/database/test_artifacts.py::TestAst1591SourceArtifactIds`
-7. Regression singular+cid: `tests/component/data/database/test_artifacts.py::TestAst1597ArtifactSingularAndCandidateId`
-8. Regression job cid resolve: `tests/component/data/database/test_artifacts.py::TestAst1600JobArtifactCandidateIdResolve`
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/data/database/test_artifacts.py \
-  -q
-```
-
-**Pass criterion:** pytest green on lines 1–8 — not zero-arg harness / branch-lock gate.
-
-**Bible path shasum (record after publish):** `docs/test-bible/data/database/artifacts.md`
 

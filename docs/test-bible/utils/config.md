@@ -4143,3 +4143,26 @@ See **`docs/test-bible/core/agent.md`** § AST-1698 (shared numbered list).
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1701 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql`.
+
+`SOURCE_ENTITY_TYPES` company|meteorite replaces gazed write authority; `JOB_SOURCES` / `is_valid_job_source` / `validate_job_source` / `job_source_transition_allowed` are aliases until sibling #2; `METEORITE_CONFIG["source_entity_type"]`; breadcrumb format + timezone clock helpers. Job DDL/writers: **`docs/test-bible/data/database/jobs.md`** § AST-1701.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Closed set + aliases + METEORITE_CONFIG key | `src/utils/config.py` | **`TestAst1701SourceEntityTypes::test_closed_set_and_job_source_aliases`** |
+| Validators + transitions (no gazed; no meteorite→company) | `src/utils/config.py` | **`…::test_validators_and_transitions`** |
+| Breadcrumb clock + format | `src/utils/config.py` | **`…::test_breadcrumb_clock_and_format`** |
+
+**Broken / obsolete:** none in config suite (gazed was not asserted as live write set).
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/data/database/jobs.md`** § AST-1701 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
