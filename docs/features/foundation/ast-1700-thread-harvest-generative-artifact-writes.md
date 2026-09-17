@@ -205,3 +205,65 @@ context_tokens≈95000
 - Stage 1: `save_candidate_data` str-path optional `source_artifact_ids` → `database.save_artifact`
 - Stage 2: `do_task` job + candidate craft lands pass `list(source_artifact_ids)`
 - Stage 3: draft `patt.artifact.traceability` Implementation alignment (AST-1579 seed-id slice)
+
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1700
+**Publish ref:** `576649914ccc547e2f911ec1ea2e96334b54883d` (`origin/sub/AST-1579/AST-1700-thread-harvest-generative-artifact-writes`)
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Overall:** FIX-NOW
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.artifact.traceability | A | | |
+| patt.artifact.write-operative | A | | |
+| patt.artifact.read-current | X | | |
+| astral.standards.in-scope-only | D | 1 | `src/core/consult.py` AST-1699 persist slice on AST-1700 branch |
+| astral.standards.data-raises-caller-logs | A | | |
+| astral.layers.import-direction | A | | |
+
+Draft `patt.*` resolved from `canon/directives/draft/` mirrors (same path Joan used).
+
+## Column diff vs plan stage
+
+| slug | Joan | Radia | note |
+|------|------|-------|------|
+| astral.standards.in-scope-only | A | D/1 | Branch tip includes out-of-scope `consult.py` AST-1699 call sites without helper defs — plan explicitly bans consult / AST-1699 |
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+- **`src/core/consult.py` — partial AST-1699 smuggle + runtime break (commit `baca197e`):** Three-dot diff vs `origin/dev` adds AST-1699 wiring in `_apply_render_verdict_decoded_job` (~1285–1288) and `render_verdict` (~1396–1400) calling `_normalize_harvested_source_artifact_ids` and `_source_artifact_ids_job_data_key`, but **neither helper is defined anywhere under `src/`** (only named in AST-1699 plan doc). Import succeeds; **`render_verdict` raises `NameError` on first grade persist path**. Violates AST-1700 Explicit scope gate (“Out: `consult.py` / AST-1699 job_data siblings”) and sibling relation `after AST-1698; sibling AST-1699`. **Resolve:** revert `consult.py` on this sub ref until AST-1699 lands helpers + tests, or complete AST-1699 on its own publish ref — do not ship broken consult from AST-1700.
+
+### discuss
+
+- **Non-catalog agent lands (Joan carry-forward):** `draft_job_resume` / `persist_job_artifact_from_parsed` still bypass the catalog-land branch (~2598); no harvest pass-through there. Matches parent AC5 wording if Susan’s intent is finalize/catalog lands only — unchanged from plan discuss.
+
+### advisory
+
+- **AST-1700 scoped product work is otherwise faithful:** Stage 1 `save_candidate_data` keyword-only `source_artifact_ids` on str-path only; identical-to-current short-circuit skips `save_artifact`; dict path ignores kwarg. Stage 2 passes `list(source_artifact_ids)` into `save_job_artifact` and craft str-path `save_candidate_data`; dict-path `resume_structure` merge unchanged; no agent `job_resume` special-case (tracker auto-cite ~488–495 unchanged). Stage 3 draft traceability Implementation + Examples aligned.
+- **Betty coverage:** `TestAst1700SaveCandidateDataSourceArtifactIds` and `TestAst1700ThreadHarvestGenerativeLands` on tip exercise forward/omit/short-circuit, craft str-path vs dict-path, cover_letter land, and job_resume “agent passes list, tracker ignores” — good AC5–6 signal once consult smuggle is removed.
+- **Branch diff noise:** Tip also carries AST-1698 harvest stack (`config.py`, harvest helpers in `agent.py`) plus Betty `merge-tests` sibling manifests — expected epic rollup; AST-1700 product delta in scoped files is the three Stage commits (`89c01a2f`, `61d471b4`, `751624d7`) plus canon draft.
+
+## What's solid
+
+- Operative write-operative pass-through matches plan: sources forwarded only on insert, not on identical no-op, not on library dict merge.
+- Generative land sites use the pre-computed `do_task` local list — no re-harvest at land time.
+- Draft canon documents AST-1579 seed-id slice without promoting draft or inventing agent/task lineage columns.
+
+## Recommended actions (downstream — not Radia lane)
+
+- **`resolve-child` (AST-1700):** Revert `src/core/consult.py` AST-1699 hunks from `sub/AST-1579/AST-1700-thread-harvest-generative-artifact-writes` (or cherry-pick only AST-1700 commits if branch history is messy); re-run Betty AST-1700 manifest; re-publish tip.
+- **AST-1699:** Land helper defs + consult tests on `sub/…/AST-1699-…` separately — do not piggyback on AST-1700.
+- **Chuckles:** Append artifact, commit `docs(AST-1700): Radia review — findings`, post slim upshot `--as radia`, → **Review Posted** → datt REVIEW → `resolve-child`.
+
+---
