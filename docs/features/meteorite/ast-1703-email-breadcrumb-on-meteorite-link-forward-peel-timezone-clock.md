@@ -205,3 +205,71 @@ context_tokens≈65000
 
 - Stage 1: `stage_meteorite` schema + Ruth peel prompt (`from_email` / `to_email` / `sent_at`)
 - Stage 2: email text map authors non-http `meteorite.link` via AST-1701 helpers; stage safety for blank email breadcrumb
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1703  
+**Publish ref:** `0dbf963a45e8aca76376089358a5b3ced880348f` (`origin/sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock`)  
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.entity | A | | NEW insert keeps `_meteorite_state_info`; full breadcrumb on ungated `logger.debug` only — no PII on always-on info |
+| stat.logging.debug | A | | `_email_breadcrumb_link` emits ungated callee in/out around AST-1701 format helpers; no `print` / gated debug |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded both statutes **A**; code review matches.
+
+## Frame diff
+
+(none) — Description **Acceptance criteria** / **Boundaries** rows already checked; tip satisfies AC6 authorship on `meteorite.link` at insert (+ stage safety).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** Three-dot diff vs `origin/dev`  
+  **Finding:** Publish ref stacks AST-1701 schema SSOT, AST-1702 tracker/land writes, and AST-1703 breadcrumb authorship. AST-1703 **code** commits touch only `data/admin/agent_task.json`, four schema lines in `src/utils/config.py`, and `src/core/meteorite.py` (+ tests/bible).  
+  **Recommendation:** Expected epic ordering; no resolve-child action on #3 for sibling foundation files.
+
+- **Location:** `merge-tests(AST-1703)`  
+  **Finding:** Betty merge-tests carries unrelated sibling test/bible hunks from `origin/tests` alongside `TestAst1703EmailBreadcrumb`.  
+  **Recommendation:** Rollup awareness only.
+
+- **Location:** Child AC6 / UAT  
+  **Finding:** End-to-end `job.job_link == meteorite.link` after land still depends on sibling #2 inherit; this ticket’s concrete deliverable is non-http breadcrumb on `meteorite.link` at email text insert (map + ingest), with stage safety for blank email links.  
+  **Recommendation:** Coordinate parent UAT on epic line after #2 is merged; no code change here.
+
+- **Location:** Linear Description `## Scope` vs plan Scope gate  
+  **Finding:** Joan noted Linear body omits `data/admin/agent_task.json` and schema wiring; plan (post `[scope-gate]`) and tip implement the amended partition.  
+  **Recommendation:** Chuckles syncs Linear `## Scope` downstream; implementer followed plan.
+
+## What's solid
+
+- **Stage 1:** `from_email` / `to_email` / `sent_at` on `stage_meteorite` jobs `items_schema`; `agent_task.json` `stage_meteorite` prompt adds **HEADER / BREADCRUMB FIELDS** with forward peel, bare addresses, `source_ref` unused — no second format SSOT in config.
+- **Stage 2:** `_email_breadcrumb_link` parses ISO + RFC2822 `sent_at`, calls AST-1701 `format_contact_timezone_clock` + `format_job_link_breadcrumb`; `_map_classify_jobs_to_meteorite_rows` authors breadcrumb for `source_kind == "email"` + text outcomes, paste/slack stay `link=None`; `ingest_candidate_email_message` passes `_candidate_contact_timezone(cid)`; no `email-*` / `source_ref` synthesis.
+- **Stage safety:** `run_stage_meteorite` errors email text rows with blank `link` (`missing breadcrumb link`); revised `TestAst1560RunStageMeteorite::test_text_outcome_to_ready` requires breadcrumb before READY.
+- **Tests:** `TestAst1703EmailBreadcrumb` covers ISO/RFC2822 clock, map authorship, missing headers, timezone reader, stage blank-link ERROR, schema fields, and prompt peel wording.
+- **Boundaries:** `consult.py` / `tracker.py` / land inherit untouched in AST-1703 commits; breadcrumb format SSOT remains in AST-1701 helpers only.
+
+## Recommended actions (downstream — not Radia lane)
+
+- Chuckles: append artifact, commit `docs(AST-1703): Radia review — clean`, push sub ref, post slim upshot `--as radia`, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing**.
+- Chuckles: sync Linear `## Scope` to amended plan partition (agent_task + schema lines).
+
+context_tokens≈58000
