@@ -221,3 +221,70 @@ context_tokens≈72000
 - **Build tip:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers` @ `9c2e34c71d4c81e86d66a97986273730b00f7579`
 - **Stages:** track SoT consult/gazer/ingest_jobs → API parent fields + http(s)-only Job Detail hrefs
 
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1704  
+**Publish ref:** `211e9e013c3a65b6ede67652d41f87a19968491b` (`origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`)  
+**Corpus:** `fc0c368e5927a57f1561c057ce9a0ff4abe1fb13`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | X | | Consumer rewire only — no `dispatch_task` claim-shape literals or criteria sourcing changes |
+| stat.logging.debug | A | | No new gated `logger.debug`, `print`, or `logger.info("[DEBUG]")`; existing consult loop debug preserved; FE out of statute scope |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded `patt.entity.batch-criteria` **X** and `stat.logging.debug` **A**; code review matches on both.
+
+## Frame diff
+
+(none) — Description **Acceptance criteria** / **Boundaries** rows already checked; tip satisfies AC4–AC6.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** Three-dot diff vs `origin/dev`  
+  **Finding:** Publish ref stacks AST-1701–1703 foundation plus AST-1704 consumer glue. AST-1704 **code** commits touch only `consult.py`, `gazer.py`, `tracker.py` (ingest), `api_jobs.py`, and three FE components + `JobsJobDetail.tsx` (+ tests/bible).  
+  **Recommendation:** Expected epic ordering; no resolve-child action on #4 for sibling foundation files.
+
+- **Location:** `merge-tests(AST-1704)`  
+  **Finding:** Betty merge-tests carries unrelated sibling test/bible hunks from `origin/tests` alongside AST-1704 coverage.  
+  **Recommendation:** Rollup awareness only.
+
+- **Location:** `consult.py` `_entity_state_is_meteorite` (unchanged)  
+  **Finding:** Evaluate/rubric override still keys off job **state** prefix, not `source`. Joan flagged this as outside AC4/AC6 narrow fail mode unless UAT shows rubric mis-selection.  
+  **Recommendation:** Watch during parent UAT; escalate only if rubric mis-routes meteorite-parent + real employer jobs.
+
+- **Location:** Stage 1 — track predicate duplication  
+  **Finding:** `_job_is_meteorite_track` in `consult.py` vs inline `source == SOURCE_ENTITY_TYPE_METEORITE` in `gazer.validate_title_batch` — plan accepts because Scope excludes new shared config helper.  
+  **Recommendation:** Optional future extract if a later ticket opens config wiring; not resolve-child for #4.
+
+## What's solid
+
+- **Stage 1 / AC4 + AC6:** `_job_is_meteorite_track` partitions `qualify_job_listings` NEW jobs by `source=meteorite`, not `is_meteorite_company(company)`; `validate_title_batch` skips title screen on meteorite source; `ingest_jobs` writes `source=company`, `source_entity_id=company`, `company_id=company`. Tests: `TestAst1704MeteoriteTrackSoT`, revised `test_gazer`, revised `test_tracker`.
+- **Stage 2 / AC5:** `api_jobs.detail` exposes `company_id`, `source`, `source_entity_id` (plus inherited `job_link`); `JobDetailModal` http(s)-only `<a>` else plain text; `RecommendedJobReportHeader` http(s) title href + muted non-http line; `JobAnalysisReportModal` gates `window.open` to http(s); `JobsJobDetail` prefetch prefers `company_id`. Component/API tests cover breadcrumb text visibility without href.
+- **Scope:** No `meteorite.py` land/breadcrumb edits, no new config helpers, no schema DDL in AST-1704 commits — matches amended Scope gate.
+
+## Recommended actions (downstream — not Radia lane)
+
+- Chuckles: append artifact, commit `docs(AST-1704): Radia review — clean`, push sub ref, post slim upshot `--as radia`, move to **Review Posted**.
+- datt: **PROCEED** → **User Testing**.
+- Parent UAT: exercise meteorite-parent + real `company_id` through qualify path and breadcrumb `job_link` chrome end-to-end on epic line after siblings merge.
+
+context_tokens≈62000
+
+---
