@@ -355,12 +355,12 @@ function InfoTab({
                   </span>
                 ) : (
                   (() => {
-                    const t = (job.job_link ?? "").trim().toLowerCase()
-                    const http = t.startsWith("http://") || t.startsWith("https://")
+                    const link = (job.job_link ?? "").trim()
+                    const http = link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")
                     return http ? (
-                      <span><a href={job.job_link} target="_blank" rel="noreferrer">{job.job_link}</a></span>
+                      <span><a href={link} target="_blank" rel="noreferrer">{link}</a></span>
                     ) : (
-                      <span>{job.job_link}</span>
+                      <span>{link}</span>
                     )
                   })()
                 )}
