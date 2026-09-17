@@ -252,5 +252,5 @@ context_tokens≈42000
 
 ## Review
 
-- **Build tip:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `184871b953bffecccf911871c508a5e1c608fa8c`
+- **Build tip:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `753c41bde1eb6ebcb1aa11cf9c6f4510edba45d2`
 - **Stages:** config SSOT → job schema/writers → operator SQL `data/sql/ast_1701_job_source_entity_backfill.sql`
