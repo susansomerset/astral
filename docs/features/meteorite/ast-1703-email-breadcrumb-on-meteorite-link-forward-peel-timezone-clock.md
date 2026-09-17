@@ -196,3 +196,12 @@ AC6 → Stage 2 (`_map_classify_jobs_to_meteorite_rows` authors non-http `meteor
 (none)
 
 context_tokens≈65000
+
+---
+
+## Build
+
+**Code Complete** @ `f264e868d19fae2f56e45011cd97a6bbeada929b` on `sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock`
+
+- Stage 1: `stage_meteorite` schema + Ruth peel prompt (`from_email` / `to_email` / `sent_at`)
+- Stage 2: email text map authors non-http `meteorite.link` via AST-1701 helpers; stage safety for blank email breadcrumb
