@@ -609,7 +609,12 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setError(null)
     try {
       if (action.method === "CLIENT") {
-        if (job.job_link) window.open(job.job_link, "_blank", "noopener,noreferrer")
+        if (job.job_link) {
+          const t = job.job_link.trim().toLowerCase()
+          if (t.startsWith("http://") || t.startsWith("https://")) {
+            window.open(job.job_link, "_blank", "noopener,noreferrer")
+          }
+        }
         return
       }
       const path = `/api/jobs/${encodeURIComponent(jobId)}/${action.path_suffix}`

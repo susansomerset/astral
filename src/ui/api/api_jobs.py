@@ -219,6 +219,10 @@ def detail(astral_job_id):
             exc,
         )
         job["agent_story"] = []
+    # AST-1704: parent/track fields + employer for Job Detail consumers
+    job["company_id"] = job.get("company_id")
+    job["source"] = job.get("source")
+    job["source_entity_id"] = job.get("source_entity_id")
     # AST-1691: reverse-link meteorite provenance for Recommended report pane.
     try:
         logger.debug(

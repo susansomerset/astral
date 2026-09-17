@@ -308,40 +308,6 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + always
 
 ---
 
-### AST-1690 · AST-1685
-
-**Parent:** [AST-1685 — View related meteorite record data on recommended job modal](https://linear.app/astralcareermatch/issue/AST-1685/view-related-meteorite-record-data-on-recommended-job-modal). **Publish:** `origin/sub/AST-1685/AST-1690-retention-skip-job-linked-meteorites`.
-
-`run_meteorite_retention` LANDED purge: skip rows whose non-blank `astral_job_id` still resolves via `get_job`; null/blank/orphan-job rows stay age-purge eligible (AC7/AC8). No `database.py` / `config.py` change on this child. Prior retention shell: **AST-1562** above. Siblings AST-1691 / AST-1692 own report API/UI.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Job-linked LANDED retention skip | `src/core/meteorite.py` | **`TestAst1690RetentionJobLinkedSkip`** |
-| Prior retention shell (null-link purge + stale + fresh) | same | **`TestAst1562RunMeteoriteRetention`** |
-
-**Broken / obsolete this pass:** none — AST-1562 null-`astral_job_id` purge still matches AC8; additive skip only.
-
-**Integration:** no existing scenario asserts meteorite retention / `run_meteorite_retention` — none revised; do not invent.
-
-## QA test manifest
-
-1. Job-linked skip + orphan/blank/mixed: `tests/component/core/test_meteorite.py::TestAst1690RetentionJobLinkedSkip`
-2. Prior retention shell: `tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention`
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite.py::TestAst1690RetentionJobLinkedSkip \
-  tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention \
-  -q
-```
-
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
-
-**Bible shasum (publish tip):**
-- `docs/test-bible/core/meteorite.md` — *(filled after publish)*
-
----
-
 ### AST-1561 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
@@ -418,82 +384,83 @@ Scheduled `run_meteorite_retention`: batched purge of old `LANDED` rows + always
   -q
 ```
 
----
+### AST-1702 · AST-1640
 
-### AST-1693 · AST-1686
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append`.
 
-**Parent:** [AST-1686 — Hyperlink to job with meteorite http link](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link`.
-
-`run_land_meteorite` claims READY + BOT_BLOCKED; contentful BOT_BLOCKED → `save_meteorite_job` with http(s) `row.link` → LANDED; empty BOT_BLOCKED left for AST-1561. `run_notify_meteorite_bot_blocked` skips contentful rows (land owns AC2). Tracker duplicate-skip / `persist_http_job_link` / qualify bot write: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/consult.md`**.
+Land/create parent to meteorite row id (no `ensure_meteorite_company` as job parent); `job.job_link` inherits `meteorite.link`; link-check bot-block continues land; non-blocked scrape JD is appended. Tracker writes: **`docs/test-bible/core/tracker.md`** § AST-1702.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Contentful BOT_BLOCKED land + http job_link | `src/core/meteorite.py` | **`TestAst1693RunLandBotBlocked`** |
-| Empty BOT_BLOCKED left for Estelle | same | **`TestAst1693RunLandBotBlocked::test_empty_bot_blocked_left_for_estelle`** |
-| Notify skips contentful | same | **`TestAst1693NotifySkipsContentful`** |
-| Prior READY land / empty READY ERROR | same | **`TestAst1560RunLandMeteorite`** |
-| Prior empty-content notify | same | **`TestAst1561RunNotifyBotBlocked`** |
+| Create under meteorite parent | `src/core/meteorite.py` | **`TestAst1042CreateMeteoriteJob`** (revised), **`TestAst1702SourceEntityLand::test_land_does_not_call_ensure_as_parent`** |
+| Optional real company_id from stem | `src/core/meteorite.py` | **`TestAst1495LandStemAttach`** (revised) |
+| Land create / skip / thin-body append | `src/core/meteorite.py` | **`TestAst1470LandMeteorite`** (revised), **`…::test_playwright_fetch_when_link_and_thin_body`** |
+| Link inherit + bot-block continue | `src/core/meteorite.py` | **`TestAst1702SourceEntityLand::test_land_inherits_meteorite_link`**, **`…::test_land_bot_block_continues_without_append`** |
+| Grep gate — no ensure call sites | `src/core/meteorite.py` | **`…::test_ensure_meteorite_company_has_no_job_parent_call_sites`** |
+| Dispatch READY→LANDED | `src/core/meteorite.py` | **`TestAst1560RunLandMeteorite`** |
 
-**Broken / obsolete this pass:** none — AST-1560 READY path and AST-1561 empty-content notify still hold; additive claim/skip only.
+**Broken / obsolete this pass:** AST-1041 Style D on ensure (product uses `_with_log_debug`); AST-1042 `stem=` / `company` return shape; AST-1495 placeholder company attach; AST-1470 land asserts on meteorite-* company parent.
 
-**Integration:** no existing scenario asserts `run_land_meteorite` BOT_BLOCKED claim or notify contentful skip — none revised; do not invent.
+**Integration:** none.
 
-## QA test manifest
+## QA test manifest (AST-1702)
 
-1. Land BOT_BLOCKED contentful + empty: `tests/component/core/test_meteorite.py::TestAst1693RunLandBotBlocked`
-2. Notify skip contentful: `tests/component/core/test_meteorite.py::TestAst1693NotifySkipsContentful`
-3. Prior READY land: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
-4. Prior empty notify: `tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked`
-5. Tracker persist + dup backfill: `tests/component/core/test_tracker.py::TestAst1693PersistHttpJobLink` + `TestAst1693SaveMeteoriteDuplicateLinkBackfill`
-6. Qualify bot persist: `tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply::test_challenge_input_jd_transitions_bot_blocked`
+1. Tracker parent writes: `tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand`
+2. Create (revised): `tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob`
+3. Stem/employer (revised): `tests/component/core/test_meteorite.py::TestAst1495LandStemAttach`
+4. Land (revised): `tests/component/core/test_meteorite.py::TestAst1470LandMeteorite`
+5. Ensure still works (no Style D): `tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany`
+6. Dispatch land regression: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite.py::TestAst1693RunLandBotBlocked \
-  tests/component/core/test_meteorite.py::TestAst1693NotifySkipsContentful \
+  tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/core/test_meteorite.py::TestAst1495LandStemAttach \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
   tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
-  tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked \
-  tests/component/core/test_tracker.py::TestAst1693PersistHttpJobLink \
-  tests/component/core/test_tracker.py::TestAst1693SaveMeteoriteDuplicateLinkBackfill \
-  tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply::test_challenge_input_jd_transitions_bot_blocked \
   -q
 ```
 
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on lines 1–6 — not zero-arg harness / branch-lock gate.
 
-**Bible shasum (publish tip):**
-- `docs/test-bible/core/meteorite.md` — *(filled after publish)*
-- `docs/test-bible/core/tracker.md` — *(filled after publish)*
-- `docs/test-bible/core/consult.md` — *(filled after publish)*
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
+- `docs/test-bible/core/tracker.md`
 
-### AST-1689 · AST-1684
+### AST-1703 · AST-1640
 
-**Parent:** [AST-1684](https://linear.app/astralcareermatch/issue/AST-1684/reply-to-emails-in-meteorite-when-single-jd-no-link). **Publish:** `origin/sub/AST-1684/AST-1689-meteorite-row-contact-column-map-persist-soft-fail`.
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock`.
 
-Classify→row map copies Ruth `electronic_contact` onto fan-out dicts; soft-fail persist after insert; BOT_BLOCKED state-only update preserves contact; land/`save_meteorite_job` does not receive contact; `logger.debug` returned-vs-recorded when `debug=True`. Column/allowlist: **`docs/test-bible/data/database/meteorites.md`** § AST-1689. Config literals: **`docs/test-bible/utils/config.md`** § AST-1688.
+Email text outcomes author non-http `meteorite.link` breadcrumbs (From/To + timezone clock); paste leaves `link` null; stage ERROR when email text lacks breadcrumb; `stage_meteorite` schema + agent_task prompts accept `from_email` / `to_email` / `sent_at`. Format helpers: **`docs/test-bible/utils/config.md`** § AST-1701.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Map + soft-fail + BOT_BLOCKED preserve + land fence + debug | `src/core/meteorite.py` | **`TestAst1689ElectronicContactMapPersist`** |
+| Breadcrumb format (ISO + RFC2822) | `src/core/meteorite.py` | **`TestAst1703EmailBreadcrumb::test_email_breadcrumb_link_iso_and_rfc2822`**, **`…::test_email_breadcrumb_link_rejects_blank_and_bad_sent_at`** |
+| Map authorship (email vs paste) | `src/core/meteorite.py` | **`…::test_map_email_text_sets_breadcrumb_paste_stays_none`**, **`…::test_map_email_text_missing_headers_errors`** |
+| Candidate timezone read | `src/core/meteorite.py` | **`…::test_candidate_contact_timezone_reads_nested_contact`** |
+| Stage blank-link ERROR | `src/core/meteorite.py` | **`…::test_stage_email_text_blank_link_errors`** |
+| Schema + agent_task prompts | `src/utils/config.py`, `data/admin/agent_task.json` | **`…::test_stage_meteorite_schema_accepts_breadcrumb_fields`**, **`…::test_agent_task_prompt_requires_header_fields`** |
+| READY path with breadcrumb | `src/core/meteorite.py` | **`TestAst1560RunStageMeteorite::test_text_outcome_to_ready`** (revised) |
 
-**Broken / obsolete this pass (return):** AST-1689 manifest no longer includes **`TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring`** / **`TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich`** — those assert retired `log.info` strings (`meteorite scrape blocked` / `meteorite land id=`); live paths use `_row_miss` warning + `_meteorite_state_info` entity pipe. Not AST-1689 AC locks (Hedy `[qa-handoff]`).
+**Broken / obsolete this pass:** AST-1560 text READY asserted blank/`None` link — now requires non-http breadcrumb for email text rows.
 
-**Integration:** none revised; do not invent.
+**Integration:** none.
 
-## QA test manifest
+## QA test manifest (AST-1703)
 
-1. Column: `tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn`
-2. Map/persist: `tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist`
+1. Email breadcrumb authorship: `tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb`
+2. Stage READY with breadcrumb (revised): `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn \
-  tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite \
   -q
 ```
 
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on lines 1–2 — not zero-arg harness / branch-lock gate.
 
-**Bible shasum (publish tip):**
-- `docs/test-bible/core/meteorite.md` — *(filled after publish)*
-- `docs/test-bible/data/database/meteorites.md` — *(filled after publish)*
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
