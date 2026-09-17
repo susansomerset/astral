@@ -225,3 +225,63 @@ Tracker rewrite + two land surfaces + create cutover + bot-block/append semantic
 - AC4 → Stage 1 Branch B (same `astral_job_id`, meteorite parent, `METEORITE_NEW`, history append).
 - AC5 → Stage 2b/2c (`job.job_link` inherits full `meteorite.link`).
 - AC6 → Stage 2a/2c (bot-block does not fail land; non-blocked JD appended).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1702
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append` @ `5d7ad9886b894882b0be7170d66c671435e6bde3`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | Stage 2b preserves claim → process by `batch_id` → `clear_meteorite_batch` in `finally` |
+| stat.logging.info.entity | A | | Keeps `_entity_info` / `_meteorite_state_info` id-pipe; detail shifts from placeholder short_name to meteorite/job outcome |
+| stat.logging.error | A | | Batch runners keep `logger.exception` + per-row continue on `run_land_meteorite` |
+| stat.logging.warning | B | | Bot-block land continue lists warning as optional; statute prefers explicit who+why on soft misses |
+| stat.logging.debug | B | | Meteorite land paths keep ungated `logger.debug` joints; tracker rewrite retains `debug=` + gated `debug_index` (Style D) |
+
+## Traceability
+
+AC3 → Stage 2 (drop ensure-as-parent call sites; grep gate). AC4 → Stage 1 Branch B (same `astral_job_id`, history append, meteorite parent at `METEORITE_NEW`). AC5 → Stage 2b/2c (full `meteorite.link` → `job.job_link`, including non-http). AC6 → Stage 2a/2c (`_land_link_check_append`: bot-block does not fail land; non-blocked scrape appended). Parent AC1–2, 7–9 N/A — siblings #1 / #3–#4.
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 2a step 3 / `_land_link_check_append`
+- **Finding:** Bot-block handling says warning is **optional**; `stat.logging.warning` expects who+why when an item misses the happy path without throwing. Land continues (correct for AC6), but production observability is weaker if implementer skips the warn.
+- **Recommendation:** Make the bot-block `logger.warning` (candidate + link + reason) mandatory, not optional.
+
+- **Location:** Stage 2c / 2d — auto-insert `paste` meteorite rows
+- **Finding:** Public `land_meteorite` / `create_meteorite_job` without `meteorite_id` inserts a staging row, sets `READY`, then lands — bypasses normal ingress classify/scrape pipeline. In scope for “parent to meteorite row,” but a new side-effect path Susan should know about.
+- **Recommendation:** Stage comment should note row count / `source_kind=paste` for operator audit; no plan rewrite unless rehearsal shows duplicates.
+
+- **Location:** Stage 2a step 3 — `from src.core.gazer import _CONTACT_PAGE_STATUS, _classify_jd`
+- **Finding:** Late import inside helper avoids editing `gazer.py` (correct boundary) but carries usual circular-import risk if moved to module top.
+- **Recommendation:** Keep lazy import inside `_land_link_check_append` as written.
+
+- **Location:** Stage 1 step 10
+- **Finding:** Rewritten `save_meteorite_job` preserves `debug=` + `if not debug: return` around `debug_index`/`debug_detail` instead of converting logic joints to ungated `logger.debug`. Consistent with pre-existing tracker Style D; statute Notes exempt unconverted tracker patterns.
+- **Recommendation:** Accept for this ticket; convert tracker debug contract in a dedicated pass if desired later.
+
+### acceptable
+
+- **Location:** Depends on AST-1701
+- **Finding:** Plan correctly gates on `sync-child` / missing `SOURCE_ENTITY_TYPES` symbols — does not re-implement schema in #2.
+- **Recommendation:** None.
+
+- **Location:** Stage 2b step 2 vs current `run_land_meteorite`
+- **Finding:** Plan passes **full** `meteorite.link` (not http-only filter) — closes current gap vs AC5 for breadcrumb inherit.
+- **Recommendation:** None.
+
+### fix-now
+
+(none)
+
+context_tokens≈55000
+
+---
