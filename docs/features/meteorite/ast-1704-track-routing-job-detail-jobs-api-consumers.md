@@ -154,3 +154,64 @@ Cross-layer glue (consult/gazer/tracker + API + three FE surfaces) with a clear 
 Revision 1 — 2026-09-17  
 Driven by: Chuckles `[scope-gate] cleared` — Scope amended to name `JobAnalysisReportModal` / `RecommendedJobReportHeader` / `JobDetailModal` for AC5.  
 Changes: first full plan after scope-gate unblock (no prior plan doc on publish ref).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1704
+**Overall:** APPROVED
+**Corpus:** fc0c368e5927a57f1561c057ce9a0ff4abe1fb13
+**Publish ref:** `sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers` @ `9c8158e7ffddd1452815fc6da373e8c5b5b8ef78`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-criteria | X | | Consumer rewire only — no `dispatch_task` claim-shape literals or criteria sourcing changes |
+| stat.logging.debug | A | | No new gated `logger.debug`, `print`, or `logger.info("[DEBUG]")`; existing consult loop debug preserved; FE out of statute scope |
+
+## Traceability
+
+AC4 → Stage 1 (`_job_is_meteorite_track` + `validate_title_batch` skip on `source=meteorite`; meteorite+real `company_id` avoids gazed title fail-early). AC5 → Stage 2 (`api_jobs` detail fields + `JobDetailModal` / `RecommendedJobReportHeader` / `JobAnalysisReportModal` http(s)-only href with non-http text shown). AC6 → Stage 1 (track partition from `source` / `SOURCE_ENTITY_TYPE_METEORITE`, not `is_meteorite_company(company)`). Parent AC1–3, 7–9 N/A — siblings #1–#3. Stages 1–2 → parent Functional scope items 3–4, 8–9 (child partition).
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 1 — `_job_is_meteorite_track` vs `gazer.py` one-liner
+- **Finding:** Track predicate duplicated (`consult.py` helper vs inline compare in `validate_title_batch`) because Scope excludes new `config.py` shared helper.
+- **Recommendation:** Accept for this ticket; optional future extract if a later scope allows config wiring.
+
+- **Location:** Scope header “land-packet / track selection” vs stages
+- **Finding:** Plan names land-packet in Scope but stages only touch `qualify_job_listings` title partition and gazer title skip; `enrich_meteorite_land_packet` already routes through `qualify_meteorite` without `is_meteorite_company`.
+- **Recommendation:** No plan change; note in stage comment that land-packet path is already source-entity-neutral.
+
+- **Location:** Stage 2 step 1 — `api_jobs.detail`
+- **Finding:** Explicit `job["source"] = job.get("source")` assignments are defensive if `get_job` already returns parent columns post-#1; low risk either way.
+- **Recommendation:** Implementer confirms detail JSON includes `source`, `source_entity_id`, `company_id`, `job_link` in manual check.
+
+- **Location:** `consult.py` `_entity_state_is_meteorite` (unchanged)
+- **Finding:** Still used for evaluate rubric override by job state prefix; not rewired to `source`. Parent AC6 fail test targets qualify/gazer old-flag routing — outside that narrow fail mode.
+- **Recommendation:** Escalate only if UAT shows rubric mis-selection on meteorite-parent + real employer; not a plan blocker for declared ACs.
+
+### acceptable
+
+- **Location:** `[scope-gate]` thread + amended Scope gate
+- **Finding:** Prior gate correctly named `JobAnalysisReportModal`, `RecommendedJobReportHeader`, `JobDetailModal`; republished plan covers all three href surfaces AC5 needs.
+- **Recommendation:** None.
+
+- **Location:** Stage 2 steps 4–6
+- **Finding:** Targets current bug surfaces (`RecommendedJobReportHeader` `{link ? <a>}`, `JobDetailModal` always `<a href>`, `JobAnalysisReportModal` ungated `window.open(job.job_link)`).
+- **Recommendation:** None.
+
+- **Location:** Stage 1 step 4 — `tracker.ingest_jobs`
+- **Finding:** Explicit `source=company`, `source_entity_id=company`, `company_id=company` aligns gazed create with #1 parent SoT.
+- **Recommendation:** None.
+
+### fix-now
+
+(none)
+
+context_tokens≈72000
+
+---
