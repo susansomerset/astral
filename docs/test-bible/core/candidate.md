@@ -2219,3 +2219,24 @@ See **`docs/test-bible/core/agent.md`** § AST-1698 (shared numbered list).
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
+### AST-1700 · AST-1579
+
+**Parent:** [AST-1579](https://linear.app/astralcareermatch/issue/AST-1579). **Publish:** `origin/sub/AST-1579/AST-1700-thread-harvest-generative-artifact-writes`.
+
+Operative `save_candidate_data` str-path accepts optional `source_artifact_ids` and forwards to `database.save_artifact`. Dict/library path unchanged. Identical-to-current short-circuit unchanged. Primary agent land wiring: **`docs/test-bible/core/agent.md`** § AST-1700.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Str-path sources forward / omit / short-circuit / dict ignore | `src/core/candidate.py` | **`TestAst1700SaveCandidateDataSourceArtifactIds`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/agent.md`** § AST-1700 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/candidate.md` — *(filled after publish)*
