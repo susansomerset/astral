@@ -318,3 +318,54 @@ context_tokens≈42000
 
 context_tokens≈48000
 
+## Bug: AST-1706 — get_job_batch JOIN on company_id
+
+Orphaned fix child of AST-1705. AST-1701 renamed `job.company` → nullable `company_id` but left `get_job_batch`'s employer JOIN on the retired column. Canon for this delta inherits AST-1701 Citations (`patt.entity.batch-criteria`; `stat.logging.debug`) — this footprint does not touch claim-criteria literals or add logging.
+
+### As-is
+
+`qualify_meteorite` (and any other job-batch dispatch) claims a batch, then `tracker.get_new_job_batch` → `database.get_job_batch` runs `SELECT j.*, c.job_site FROM job j LEFT JOIN company c ON j.company = c.short_name WHERE j.batch_id = ?`. After the AST-1701 table rebuild, `job.company` does not exist, so SQLite raises `OperationalError: no such column: j.company`, the dispatcher truncates the batch, and qualify never runs.
+
+### To-be
+
+`get_job_batch` joins employer on `j.company_id = c.short_name`, returns the same job dicts (via `_job_row_to_dict`) plus `job_site` when `company_id` matches a company row, and `qualify_meteorite` batches proceed without a schema OperationalError. Rows with NULL `company_id` still return with `job_site` NULL (LEFT JOIN).
+
+### Repro
+
+1. Boot against a DB whose `job` table already has `company_id` and no `company` column (post–AST-1701 `_ensure_job_schema` / rebuild).
+2. Insert (or land) at least one job in a claimable state with a non-empty `batch_id` (or claim via `get_new_job_batch` / dispatcher for `qualify_meteorite`).
+3. Call `database.get_job_batch(<that batch_id>)` (or let dispatcher claim → load).
+4. Observe: `OperationalError: no such column: j.company` at `database.py` `get_job_batch` execute of the JOIN on `j.company`.
+
+Concrete log shape from production (2026-09-17): dispatcher starts `qualify_meteorite` batch `qualify_meteorite-3cb6fd14-7596-44bb-897b-87d4879af3d3` → `tracker.get_new_job_batch` → `database.get_job_batch` → `_with_conn` fails on the `j.company` JOIN → dispatcher truncates the batch.
+
+### Root cause
+
+AST-1701 Stage 2 rebuilt `job` (`company` → nullable `company_id`) and updated writers/identity/`_job_row_to_dict`, but the live SQL string inside `get_job_batch` still predicates `ON j.company = c.short_name`. That is the only remaining `j.company` column reference in product SQL on this tree.
+
+### Proposed change
+
+In `src/data/database.py`, function `get_job_batch` (`_with_conn`), change the single execute string:
+
+- From: `LEFT JOIN company c ON j.company = c.short_name`
+- To: `LEFT JOIN company c ON j.company_id = c.short_name`
+
+Leave `_job_row_to_dict`'s existing `company_id` → `company` in-module compat alias unchanged. Do not touch `tracker.py`, claim/clear batch helpers, or schema ensure. No new files.
+
+Smoke for make-fix / test-fix: call `get_job_batch` against a migrated DB with (a) a job whose `company_id` matches `company.short_name` and that company has `job_site` set → row returns without OperationalError and includes `job_site`; (b) a job with `company_id` NULL → row returns, `job_site` is NULL.
+
+### Blast radius
+
+- Call path: `dispatcher` → `tracker.get_new_job_batch` / `tracker.get_job_batch` → `database.get_job_batch` — every job-batch dispatch (`qualify_meteorite` and any other task that claims jobs by `batch_id`).
+- Shared: `_job_row_to_dict` still shapes returned dicts; JOIN only adds `job_site` from `company`.
+- Out of this fix's Scope: `tracker.py` string match on `"job.company"` in an error message (~L70) is not live SQL and is not in AST-1706 Component/Technical scope — leave alone unless a later ticket widens scope.
+- Tests: any coverage that exercised `get_job_batch` against a post-rename schema would have failed open; Betty/fix-board decide whether a targeted repro test is required.
+
+### What must still hold
+
+- AST-1701: physical column remains `company_id` (nullable); no resurrection of `job.company` NOT NULL; ensure stays DDL-only (no parent content UPDATE).
+- `get_job_batch` still returns full job records for `batch_id` with `job_data` / `state_history` parsed, plus `job_site` when the employer JOIN hits.
+- `_job_row_to_dict` compat (`company` = `company_id` when `company` absent) remains for in-module / pre-#2 readers.
+- `stat.logging.debug`: no new `logger.debug` / `print` in this one-line fix.
+- No change to claim criteria, `clear_job_batch`, or source-entity parent fields (`source` / `source_entity_id`).
+
