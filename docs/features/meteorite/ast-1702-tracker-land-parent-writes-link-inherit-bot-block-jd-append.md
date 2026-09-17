@@ -285,3 +285,10 @@ AC3 → Stage 2 (drop ensure-as-parent call sites; grep gate). AC4 → Stage 1 B
 context_tokens≈55000
 
 ---
+
+## Build
+
+**Code Complete** @ `9960d2c97e510224a1fda1e0c30343d571832099` on `sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append`
+
+- Stage 1: `tracker.save_meteorite_job` meteorite-row parent + company supersede
+- Stage 2: land/create stop ensure-as-parent; link inherit; bot-block continue + JD append
