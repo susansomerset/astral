@@ -293,3 +293,12 @@ Draft `patt.*` resolved from `canon/directives/draft/` mirrors (same path Joan u
 - Optional Betty follow-up (advisory only): one batch consult test for `joblist_grades` or `jd_grades` sibling if Susan wants explicit AC3 batch-path lock.
 
 ---
+
+## Resolution
+
+**2026-09-17** — Radia **CLEAN** / Linear **PROCEED** (`17225b7e`); no fix-now / discuss items.
+
+- Stacked sub onto `origin/ftr/AST-1579-capture-deduped-source-artifact-id-array` via `sync-child` + conflict resolve on `docs/features/foundation/ast-1700-thread-harvest-generative-artifact-writes.md` (took ftr full plan; HEAD side was a truncated worktree-race stub).
+- Product: AST-1699 `consult.py` harvest sibling pins unchanged; ftr brought AST-1700 agent/candidate/draft-traceability rollup.
+- Advisory normalizer widen: not applied (AST-1698 still returns `list[str]`).
+- §9a dry-run: clean vs `origin/dev` and vs `origin/ftr/AST-1579-capture-deduped-source-artifact-id-array`.
