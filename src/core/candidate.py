@@ -41,7 +41,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.data import database
 from src.core.agent import (
@@ -785,12 +785,14 @@ def save_candidate_data(
     blob: Any = None,
     replace: bool = False,
     *,
+    source_artifact_ids: Optional[Sequence[str]] = None,
     debug: bool = False,
 ) -> Optional[str]:
     """Library merge (dict) or operative artifact write (artifact_key str) — AST-1576.
 
     Dict path: merge/replace library blobs + optional name columns (AST-1014); returns None.
     Str path: ARTIFACT_CONFIG → validate body_shape → save_artifact; returns new uuid.
+    Optional source_artifact_ids applies on the str path only (generative seed pins).
     """
     # Operative write-operative path (pilot: candidate.artifacts.base_resume).
     if isinstance(data_or_artifact_key, str):
@@ -826,7 +828,11 @@ def save_candidate_data(
         if current_row is not None and current_row.get("artifact_data") == blob:
             return current_row.get("artifact_uuid")
         new_uuid = database.save_artifact(
-            entry["entity_type"], candidate_id, artifact_type, blob
+            entry["entity_type"],
+            candidate_id,
+            artifact_type,
+            blob,
+            source_artifact_ids=source_artifact_ids,
         )
         if artifact_key == _STRENGTHS_ARTIFACT_KEY:
             logger.info(
@@ -1587,6 +1593,36 @@ def get_candidate_current(candidate_id: str, artifact_key: str) -> Optional[Any]
     if row is None:
         return None
     return row.get("artifact_data")
+
+
+def get_candidate_current_artifact_uuid(
+    candidate_id: str, artifact_key: str
+) -> Optional[str]:
+    """Current-read ``artifact_uuid`` for a catalog key (patt.artifact.read-current).
+
+    Same ARTIFACT_CONFIG / candidate_scoped / entity resolve as
+    ``get_candidate_current``, but returns ``artifact_uuid`` (or None on miss)
+    instead of ``artifact_data``. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    uuid = row.get("artifact_uuid")
+    if not isinstance(uuid, str) or not uuid.strip():
+        return None
+    return uuid
 
 
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
