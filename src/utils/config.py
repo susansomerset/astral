@@ -381,6 +381,21 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-1672: company SA for AI website select on WEBSITE_REVIEW (agent identity stays find_company_website).
+    "resolve_website": {
+        "response_schema": {
+            "task_success": {"type": "bool", "required": True},
+            "website": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "context_format": "find_company_website_{index}",  # reuse existing prompt indexing
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "WEBSITE_REVIEW",
+        "agent_task": "find_company_website",
+        "pass_state": "WEBSITE_FOUND",
+        "fail_state": "NO_WEBSITE",
+    },
     "prefilter_company": {
         "response_format": "json",
         "output_type": "grades_encoded_prefilter_links",
@@ -458,7 +473,7 @@ TASK_CONFIG = {
         "context_format": "vet_inflow_discovery_{index}",
         "entity_type": "company",
         "requires_candidate_key": True,
-        "trigger_state": "NEW",
+        "trigger_state": "DISCOVERED",
     },
     # Phase D. Run Time Job Analysis
     # RUNTIME JOB VETTING PROMPTS - Ruth 1
@@ -1167,6 +1182,8 @@ GRADE_COLORS = {
 COMPANY_STATES = {
     "IMPORTED": {},
     "NEW": {"batch_criteria": {"sort_by": "updated_at"}},
+    # AST-1672: pre-vet inflow land state (discovery → DISCOVERED; vet/CSE claim here).
+    "DISCOVERED": {"batch_criteria": {"sort_by": "updated_at"}},
     "WEBSITE_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     # Dual ownership (AST-892): empty homepage_text → fetch_website scrape retry; non-empty → prefilter second strike.
     "WEBSITE_FOUND_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -1175,7 +1192,8 @@ COMPANY_STATES = {
         "retry_state": "WEBSITE_FOUND_RETRY",
     },
     "NO_WEBSITE": {},
-    "WEBSITE_REVIEW": {},
+    # AST-1672: waiting between CSE fetch and resolve_website AI hop — need sort_by for admin defaults.
+    "WEBSITE_REVIEW": {"batch_criteria": {"sort_by": "updated_at"}},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "PJL_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "JOBLIST_IDENTIFIED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -2067,6 +2085,8 @@ ROSTER_CONFIG = {
         "prefilter_score": "prefilter_score",
         # AST-469: persisted job-list visible text (select confirm path). No coat-check handler — explicit storage only.
         "job_list_visible": "job_list_visible",
+        # AST-1672: CSE hit list for inflow_resolve_website → resolve_website. Explicit storage only.
+        "inflow_resolve_website_hits": "inflow_resolve_website_hits",
         "jobsite_scrape_issue_summary": "jobsite_scrape_issue_summary",
         "jobsite_scrape_issue_evidence": "jobsite_scrape_issue_evidence",
         "possible_joblist_links": "possible_joblist_links",
@@ -2110,6 +2130,7 @@ def roster_scrape_readiness_config() -> Dict[str, Any]:
 
 
 # Phase 1 roster inflow discovery (AST-505): CSE search limits, vet task keys, weekly cadence.
+# AST-1672: DISCOVERED land/vet; resolve block is CSE-only fetch (no inline AI key).
 INFLOW_CONFIG = {
     "discovery": {
         "max_results_per_query": 100,
@@ -2117,18 +2138,22 @@ INFLOW_CONFIG = {
         "dispatch_trigger_state": "ACTIVE_SEARCH",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
-        "vet_dispatch_trigger_state": "NEW",
+        "vet_dispatch_trigger_state": "DISCOVERED",
+        "land_state": "DISCOVERED",
     },
     "resolve": {
         "max_results": 20,
         "date_restrict_days": None,
         "task_key": "inflow_resolve_website",
-        "ai_task_key": "find_company_website",
-        "dispatch_trigger_state": "NEW",
+        "dispatch_trigger_state": "DISCOVERED",
+        "waiting_state": "WEBSITE_REVIEW",
+        "pass_state": "WEBSITE_REVIEW",  # ≥1 CSE hit → waiting
+        "fail_state": "NO_WEBSITE",  # zero CSE hits → terminal
+        "hit_list_data_key": "inflow_resolve_website_hits",
     },
     "vet": {
         "task_key": "vet_inflow_discovery",
-        "dispatch_trigger_state": "NEW",
+        "dispatch_trigger_state": "DISCOVERED",
         "pass_state": "WEBSITE_FOUND",
         "fail_state": "VET_FAILED",
         "blurb_data_key": "inflow_discovery_blurb",
@@ -2137,6 +2162,22 @@ INFLOW_CONFIG = {
         "grade_vector_code": "LT",  # fixed 2-char segment code in encoded lines
     },
 }
+
+# AST-1672: lock DISCOVERED / CSE-only resolve / resolve_website SA cutover.
+assert "DISCOVERED" in COMPANY_STATES
+assert COMPANY_STATES["DISCOVERED"]["batch_criteria"]["sort_by"] == "updated_at"
+assert COMPANY_STATES["WEBSITE_REVIEW"]["batch_criteria"]["sort_by"] == "updated_at"
+assert INFLOW_CONFIG["discovery"]["land_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["vet"]["dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["resolve"]["dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["resolve"]["waiting_state"] == "WEBSITE_REVIEW"
+assert INFLOW_CONFIG["resolve"]["hit_list_data_key"] == "inflow_resolve_website_hits"
+assert "ai_task_key" not in INFLOW_CONFIG["resolve"]
+assert ROSTER_CONFIG["company_data_keys"]["inflow_resolve_website_hits"] == INFLOW_CONFIG["resolve"]["hit_list_data_key"]
+assert TASK_CONFIG["resolve_website"]["agent_task"] == "find_company_website"
+assert TASK_CONFIG["resolve_website"]["trigger_state"] == "WEBSITE_REVIEW"
+assert TASK_CONFIG["vet_inflow_discovery"]["trigger_state"] == "DISCOVERED"
 
 # AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
 # task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
@@ -3450,6 +3491,7 @@ _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
     "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
+    "resolve_website",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3474,6 +3516,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
+    if task_key == "resolve_website":
+        return "WEBSITE_REVIEW"
     if task_key == "vet_inflow_discovery":
         return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "qualify_job_listings":
@@ -4305,9 +4349,13 @@ ASTRAL_CONFIG = {
         ("IMPORTED", "WEBSITE_FOUND"),
         ("IMPORTED", "NO_WEBSITE"),
         ("IMPORTED", "WEBSITE_REVIEW"),
-        ("NEW", "WEBSITE_FOUND"),
-        ("NEW", "NO_WEBSITE"),
-        ("NEW", "VET_FAILED"),
+        # AST-1672: inflow leaves NEW; DISCOVERED owns vet + CSE; WEBSITE_REVIEW owns AI apply.
+        ("DISCOVERED", "WEBSITE_FOUND"),
+        ("DISCOVERED", "VET_FAILED"),
+        ("DISCOVERED", "WEBSITE_REVIEW"),
+        ("DISCOVERED", "NO_WEBSITE"),
+        ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
+        ("WEBSITE_REVIEW", "NO_WEBSITE"),
         ("WEBSITE_FOUND", "TO_WATCH"),
         ("WEBSITE_FOUND", "IGNORE"),
         ("WEBSITE_FOUND", "PREFILTER_PASSED"),
