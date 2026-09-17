@@ -433,3 +433,39 @@ Land/create parent to meteorite row id (no `ensure_meteorite_company` as job par
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/meteorite.md`
 - `docs/test-bible/core/tracker.md`
+
+### AST-1703 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock`.
+
+Email text outcomes author non-http `meteorite.link` breadcrumbs (From/To + timezone clock); paste leaves `link` null; stage ERROR when email text lacks breadcrumb; `stage_meteorite` schema + agent_task prompts accept `from_email` / `to_email` / `sent_at`. Format helpers: **`docs/test-bible/utils/config.md`** § AST-1701.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Breadcrumb format (ISO + RFC2822) | `src/core/meteorite.py` | **`TestAst1703EmailBreadcrumb::test_email_breadcrumb_link_iso_and_rfc2822`**, **`…::test_email_breadcrumb_link_rejects_blank_and_bad_sent_at`** |
+| Map authorship (email vs paste) | `src/core/meteorite.py` | **`…::test_map_email_text_sets_breadcrumb_paste_stays_none`**, **`…::test_map_email_text_missing_headers_errors`** |
+| Candidate timezone read | `src/core/meteorite.py` | **`…::test_candidate_contact_timezone_reads_nested_contact`** |
+| Stage blank-link ERROR | `src/core/meteorite.py` | **`…::test_stage_email_text_blank_link_errors`** |
+| Schema + agent_task prompts | `src/utils/config.py`, `data/admin/agent_task.json` | **`…::test_stage_meteorite_schema_accepts_breadcrumb_fields`**, **`…::test_agent_task_prompt_requires_header_fields`** |
+| READY path with breadcrumb | `src/core/meteorite.py` | **`TestAst1560RunStageMeteorite::test_text_outcome_to_ready`** (revised) |
+
+**Broken / obsolete this pass:** AST-1560 text READY asserted blank/`None` link — now requires non-http breadcrumb for email text rows.
+
+**Integration:** none.
+
+## QA test manifest (AST-1703)
+
+1. Email breadcrumb authorship: `tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb`
+2. Stage READY with breadcrumb (revised): `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–2 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
