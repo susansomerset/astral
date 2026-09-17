@@ -3,6 +3,7 @@ import AgentAnalysisHeader from "./AgentAnalysisHeader"
 import { type AgentStoryEntry } from "./AgentStoryTab"
 import ArtifactEditor from "./ArtifactEditor"
 import JobDiscussionPane from "./JobDiscussionPane"
+import JobMeteoritePane, { type RelatedMeteorite } from "./JobMeteoritePane"
 import Modal from "./Modal"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
@@ -68,6 +69,7 @@ interface JobDetail {
   get_rubric?: unknown
   like_rubric?: unknown
   agent_story?: AgentStoryEntry[]
+  related_meteorite?: RelatedMeteorite | null
 }
 
 interface Props {
@@ -88,6 +90,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [snapshotCopied, setSnapshotCopied] = useState(false)
+  const [detailLinkCopied, setDetailLinkCopied] = useState(false)
   const [snapshotCopying, setSnapshotCopying] = useState(false)
   const [activeTopTab, setActiveTopTab] = useState("summary")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
@@ -281,11 +284,15 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setActiveTopTab("summary")
   }, [jobId])
   useEffect(() => { setSnapshotCopied(false) }, [jobId])
+  useEffect(() => { setDetailLinkCopied(false) }, [jobId])
 
   const topTabs = useMemo(() => {
     const rows = manifest?.jobs.recommended.report_top_tabs ?? []
-    return rows.map(r => ({ key: r.tab_id, label: r.nav_label }))
-  }, [manifest])
+    const hasMeteorite = job?.related_meteorite != null
+    return rows
+      .filter(r => r.tab_id !== "meteorite" || hasMeteorite)
+      .map(r => ({ key: r.tab_id, label: r.nav_label }))
+  }, [manifest, job?.related_meteorite])
 
   useEffect(() => {
     if (topTabs.length === 0) return
@@ -351,6 +358,16 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
         }
       | undefined
     const rows = recommended?.report_discussion_sections ?? []
+    return rows.map(s => ({
+      section_id: s.section_id,
+      nav_label: s.nav_label,
+      default_expanded: s.default_expanded,
+    }))
+  }, [manifest])
+
+  // AST-1692: Meteorite pane sections from typed manifest (AST-1691 config).
+  const meteoriteSections = useMemo((): ReportSectionDef[] => {
+    const rows = manifest?.jobs.recommended.report_meteorite_sections ?? []
     return rows.map(s => ({
       section_id: s.section_id,
       nav_label: s.nav_label,
@@ -637,6 +654,16 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     window.setTimeout(() => setSnapshotCopied(false), 2000)
   }
 
+  function handleCopyDetailLink() {
+    if (!jobId) return
+    const url =
+      `${window.location.origin}/jobs/detail/${encodeURIComponent(jobId)}`
+    navigator.clipboard.writeText(url).then(() => {
+      setDetailLinkCopied(true)
+      window.setTimeout(() => setDetailLinkCopied(false), 2000)
+    })
+  }
+
   function handleCopyApplicationEmail() {
     if (!applicationEmail) return
     const text = emailWithJobPlusTag(applicationEmail, emailPlusTag)
@@ -679,6 +706,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               copyFeedback={copyFeedback}
               onCopyApplicationEmail={handleCopyApplicationEmail}
               onCopyLinkedIn={handleCopyLinkedIn}
+              onCopyDetailLink={handleCopyDetailLink}
+              detailLinkCopied={detailLinkCopied}
               onCopySnapshot={handleCopySnapshot}
               snapshotCopied={snapshotCopied}
               snapshotCopying={snapshotCopying}
@@ -730,6 +759,12 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
                 <JobDiscussionPane
                   sections={discussionSections}
                   agentStory={job?.agent_story ?? []}
+                />
+              )}
+              {activeTopTab === "meteorite" && job?.related_meteorite != null && (
+                <JobMeteoritePane
+                  sections={meteoriteSections}
+                  relatedMeteorite={job.related_meteorite}
                 />
               )}
             </div>

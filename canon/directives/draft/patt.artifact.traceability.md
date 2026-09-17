@@ -52,9 +52,14 @@ themselves.
 2. **AST-1588** — Lands `source_artifact_ids` persistence on the `artifacts` table
    (data layer) so job_resume versions can cite base_resume; agent/task lineage and
    full token-catalog harvest remain out of that epic.
-3. **Capture at generative write** — When an agent-produced operative write lands,
-   record versioned `agent_id`, versioned `agent_task_id`, and the seed
-   `artifact_id[]` that fed tokens (implement ticket).
+3. **Capture at generative write (AST-1579 seed-id slice)** — Prompt-time token
+   harvest ([AST-1698](https://linear.app/astralcareermatch/issue/AST-1698)) +
+   generative operative writes pass the harvest as `source_artifact_ids` via
+   `save_candidate_data` str-path / non-`job_resume` `save_job_artifact`
+   ([AST-1700](https://linear.app/astralcareermatch/issue/AST-1700)); consult
+   grade/analysis sibling job_data array is
+   [AST-1699](https://linear.app/astralcareermatch/issue/AST-1699). Versioned
+   `agent_id` / `agent_task_id` lineage remains implement-later.
 4. **Manual edit inheritance** — UI / Estelle write-operative paths that create a
    new version after a human edit mark the version manual and copy inherited
    originating task sources forward (implement ticket).
@@ -65,7 +70,7 @@ themselves.
 
 # Examples
 
-**Live today** — `database.save_artifact(..., source_artifact_ids=...)` persists a JSON array of seed `artifact_uuid` strings on the new row (job_resume→base_resume citation via `tracker.save_job_artifact`). **Still draft / illustrative** — versioned `agent_id` + versioned `agent_task_id` lineage and full token-catalog harvest are **not** product-wired; do not invent those columns as live APIs.
+**Live today** — `database.save_artifact(..., source_artifact_ids=...)` persists a JSON array of seed `artifact_uuid` strings on the new row (job_resume→base_resume citation via `tracker.save_job_artifact`; generative agent lands may also pass the harvested list for non-`job_resume` keys). **Still draft / illustrative** — versioned `agent_id` + versioned `agent_task_id` lineage remain **not** product-wired; do not invent those columns as live APIs.
 
 ```python
 # Live: optional seed pins on the new artifact row (list[str] artifact_uuid)

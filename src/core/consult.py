@@ -965,6 +965,25 @@ def _analysis_phase_rubric_snapshot_key(grades_key: str) -> str:
     return grades_key[:-7] + "_rubric"
 
 
+def _source_artifact_ids_job_data_key(set_key: str) -> str:
+    """Sibling job_data key for a grades/upshot set key (AST-1699).
+
+    ``{prefix}_grades`` → ``{prefix}_source_artifact_ids`` (same stem rule as
+    ``_analysis_phase_rubric_snapshot_key``). Any other set key (e.g.
+    ``analysis_upshot``) → ``{set_key}_source_artifact_ids``.
+    """
+    if isinstance(set_key, str) and set_key.endswith("_grades"):
+        return set_key[:-7] + "_source_artifact_ids"
+    return f"{set_key}_source_artifact_ids"
+
+
+def _normalize_harvested_source_artifact_ids(raw: Any) -> List[str]:
+    """Always a new list[str] for job_data sibling writes (empty when absent)."""
+    if not isinstance(raw, list):
+        return []
+    return [str(x) for x in raw if isinstance(x, str) and x.strip()]
+
+
 def _format_analysis_phase_text(
     phase_token: str,
     job_data: dict,
@@ -1212,7 +1231,11 @@ async def _run_analysis_upshot_batch(
             errors += 1
             continue
         # Same job_data key as analysis_upshot so Recommended report consumers keep working.
-        tracker.save_job_data(aid, {"analysis_upshot": parsed})
+        harvested = _normalize_harvested_source_artifact_ids(result.get("source_artifact_ids"))
+        tracker.save_job_data(aid, {
+            "analysis_upshot": parsed,
+            _source_artifact_ids_job_data_key("analysis_upshot"): harvested,
+        })
         _transition_job_state_for_task(task_key, [aid], task_cfg["pass_state"])
         _job_consult_info(aid, task_cfg["pass_state"])
         passed += 1
@@ -1232,6 +1255,8 @@ def _apply_render_verdict_decoded_job(
     cfg: Dict[str, Any],
     ctx: Optional[Dict[str, Any]],
     debug: bool = False,
+    *,
+    source_artifact_ids=None,
 ) -> Tuple[str, Optional[Any], List[Any]]:
     """Decode path: hydrate reasons, graded verdict, persist {prefix}_* + transition (single row or batch)."""
     agent_task = cfg.get("agent_task") or (dispatch_task_key or "").strip()
@@ -1294,6 +1319,10 @@ def _apply_render_verdict_decoded_job(
     save_data[f"{prefix}_notes"] = notes_tail
     # AST-1063: job-carried rubric for list headers (same criteria as hydrate/score)
     save_data[f"{prefix}_rubric"] = _rubric_snapshot_for_job_data(rubric_criteria)
+    # AST-1699: whole-run harvest pins beside the grade set (not per grade line)
+    save_data[_source_artifact_ids_job_data_key(f"{prefix}_grades")] = (
+        _normalize_harvested_source_artifact_ids(source_artifact_ids)
+    )
     tracker.save_job_data(astral_job_id, save_data)
     _transition_job_state_for_task(agent_task, [astral_job_id], to_state, score)
     if to_state == cfg.get("pass_state"):
@@ -1401,9 +1430,11 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
     row_for_apply = dict(j0)
     row_for_apply["astral_job_id"] = astral_job_id
 
+    harvested = _normalize_harvested_source_artifact_ids(result.get("source_artifact_ids"))
     try:
         to_state, score, grades_out = _apply_render_verdict_decoded_job(
             task_type, astral_job_id, row_for_apply, cfg, ctx, debug=debug,
+            source_artifact_ids=harvested,
         )
     except IncompleteGradeSetError as e:
         # Incomplete/extra → retry holding, never first-touch technical (AST-1155).
@@ -1610,6 +1641,15 @@ async def _run_batch_consult(
     if fabricated:
         logger.debug("FABRICATED %s IDs: %s", len(fabricated), sorted(fabricated))
 
+    # AST-1699: one do_task → one harvest list shared by every grade save in this batch
+    batch_harvest = _normalize_harvested_source_artifact_ids(result.get("source_artifact_ids"))
+    _inner_process = process_fn
+
+    def process_fn(input_job, response_job, cfg):
+        cfg_with_harvest = dict(cfg)
+        cfg_with_harvest["_source_artifact_ids"] = batch_harvest
+        return _inner_process(input_job, response_job, cfg_with_harvest)
+
     passed = failed = 0
     bad_grades: set = set()
 
@@ -1805,6 +1845,10 @@ async def qualify_job_listings(
             normalized_score = _latest_score_value(score)
             if _task_config_scored(task_key) and normalized_score is not None:
                 save_data["joblist_score"] = normalized_score
+            # AST-1699: sibling pins for this batch run's harvest
+            save_data[_source_artifact_ids_job_data_key("joblist_grades")] = (
+                _normalize_harvested_source_artifact_ids(cfg.get("_source_artifact_ids"))
+            )
             tracker.save_job_data(aid, save_data)
 
         if to_state == cfg["fail_state"]:
@@ -2357,6 +2401,10 @@ async def evaluate_jd_batch(
             save_data[f"jd_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"] = _phase_score_breakdown(
                 rubric_list, grades
             )
+        # AST-1699: sibling pins for this batch run's harvest
+        save_data[_source_artifact_ids_job_data_key("jd_grades")] = (
+            _normalize_harvested_source_artifact_ids(cfg.get("_source_artifact_ids"))
+        )
         tracker.save_job_data(aid, save_data)
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         if to_state == cfg["pass_state"]:
@@ -2467,6 +2515,7 @@ async def _consult_scored_dispatch_batch_encoded(
         aid = response_job["astral_job_id"]
         to_state, _, _grades = _apply_render_verdict_decoded_job(
             dispatch_task_key, aid, response_job, cfg_dispatch, ctx, debug=debug,
+            source_artifact_ids=_orch_cfg.get("_source_artifact_ids"),
         )
         return to_state
 

@@ -3324,12 +3324,13 @@ JOBS_RECOMMENDED_PRIMARY_ACTIONS = {
 
 assert all(state in RECOMMENDED_JOB_STATES for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS)
 
-# AST-948 / AST-1550: top-level Recommended report tabs (Discussion after Artifacts).
+# AST-948 / AST-1550 / AST-1691: top-level Recommended report tabs (Meteorite after Discussion).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
     {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "analysis", "nav_label": "Analysis"},
     {"tab_id": "artifacts", "nav_label": "Artifacts"},
     {"tab_id": "discussion", "nav_label": "Discussion"},
+    {"tab_id": "meteorite", "nav_label": "Meteorite"},
 ]
 
 JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
@@ -3338,6 +3339,18 @@ JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
     {"section_id": "caveats", "nav_label": "Noteworthy Caveats", "default_expanded": True},
     {"section_id": "questions", "nav_label": "Questions to Ask", "default_expanded": True},
     {"section_id": "raw_jd", "nav_label": "Raw Job Description", "default_expanded": False},
+]
+
+# AST-1691: Recommended report Meteorite pane sections (config → manifest; React must not invent order).
+JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS = [
+    {"section_id": "meteorite_timestamps", "nav_label": "Timestamps", "default_expanded": True},
+    {"section_id": "meteorite_link", "nav_label": "Link", "default_expanded": True},
+    {"section_id": "meteorite_ai", "nav_label": "AI Content", "default_expanded": True},
+    {
+        "section_id": "meteorite_provenance",
+        "nav_label": "Provenance",
+        "default_expanded": False,
+    },
 ]
 
 # Phase rows are Analysis-tab sections (not top tabs) after AST-948.
@@ -6773,6 +6786,31 @@ def get_artifact_key_for_token(token_name: str) -> str:
     if not isinstance(key, str) or not key:
         raise ValueError(f"artifact token missing artifact_key: {token_name!r}")
     return key
+
+
+def list_artifact_keys_in_prompt_texts(*texts: str) -> list[str]:
+    """Return ordered-unique ARTIFACT_CONFIG keys for {$TOKEN} names in ``texts``.
+
+    Uses ``_TOKEN_RE`` and ``TOKEN_SOURCES`` / ``get_artifact_key_for_token`` —
+    no hard-coded pinnable-token allowlist. Non-artifact and unknown names are
+    skipped. Empty / None texts are ignored.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        if not isinstance(text, str) or not text:
+            continue
+        for match in _TOKEN_RE.finditer(text):
+            name = match.group(1)
+            spec = TOKEN_SOURCES.get(name)
+            if spec is None or spec.get("source_type") != "artifact":
+                continue
+            key = get_artifact_key_for_token(name)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+    return out
 
 
 CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(
