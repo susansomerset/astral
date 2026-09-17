@@ -1312,3 +1312,69 @@ describe("JobAnalysisReportModal — AST-1599 no Source base resume on Artifacts
   })
 })
 
+describe("JobAnalysisReportModal — AST-1695 listing_href title", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("title <a> uses listing_href; raw job_link alone is not navigable", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-a", {
+        job_link: "https://jobs.example/stale-column",
+        listing_href: "https://jobs.example/listing",
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-a" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.getByRole("link", { name: "Analyst" })).toHaveAttribute(
+      "href",
+      "https://jobs.example/listing",
+    )
+  })
+
+  it("null listing_href → plain title span even when job_link is http(s)", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-b", {
+        job_link: "https://jobs.example/apply",
+        listing_href: null,
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-b" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(document.querySelector(".recommended-report-title")).toHaveTextContent("Analyst")
+  })
+
+  it("non-http listing_href → plain title span", async () => {
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j1695-c", {
+        listing_href: "not-a-url",
+        job_link: "https://jobs.example/apply",
+      }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j1695-c" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+  })
+})
+describe("JobAnalysisReportModal — AST-1704 non-http job_link chrome", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+    mockedCopy.mockReset()
+    mockedCopy.mockResolvedValue(true)
+  })
+
+  it("shows breadcrumb text and plain title when job_link is non-http", async () => {
+    const crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
+    installBaseApiMocks(
+      mockedApi,
+      jobHandler("j-crumb", { job_link: crumb, state: "RECOMMENDED" }),
+    )
+    renderWithProviders(<JobAnalysisReportModal jobId="j-crumb" onClose={() => {}} />)
+    await waitForShell()
+    expect(screen.queryByRole("link", { name: "Analyst" })).not.toBeInTheDocument()
+    expect(screen.getByText("Analyst")).toHaveClass("recommended-report-title")
+    expect(screen.getByText(crumb)).toHaveClass("recommended-report-job-link-text")
+  })
+})

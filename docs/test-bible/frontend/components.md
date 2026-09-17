@@ -1452,3 +1452,54 @@ cd src/ui/frontend && npx vitest run \
 ```
 
 **Pass criterion (test-fix):** [bug-repro] flips red→green after make-fix removes the panel — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1696 · AST-1687
+
+**Parent:** [AST-1687 — Copy single page access link from recommended job modal](https://linear.app/astralcareermatch/issue/AST-1687/copy-single-page-access-link-from-recommended-job-modal). **Publish:** `origin/sub/AST-1687/AST-1696-copy-detail-deeplink-from-report-header`.
+
+Labeled **Copy Link** (`.btn secondary`) on Recommended Job Report header. Click writes absolute `origin + /jobs/detail/<jobId>` via `navigator.clipboard.writeText`, shows **Copied** ~2s (same feedback pattern as diagnostic Copy — not the email/LinkedIn `copyFeedback` span). Diagnostic Copy / email / LinkedIn / print unchanged. Deeplink host (`JobsJobDetail`) untouched — AC3 relies on existing AST-1463/AST-1481. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header Copy Link alone + Copied prop + coexistence | `RecommendedJobReportHeader.tsx` | **`test_RecommendedJobReportHeader.test.tsx`** — **`RecommendedJobReportHeader — AST-1696 Copy Link`** |
+| JAR absolute URL clipboard + idle restore; other header actions | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1696 Copy Link`** |
+
+**Broken / obsolete:** none — additive control; existing AST-1421 snapshot Copy / email / LinkedIn asserts still hold.
+
+**Integration:** no existing jobs-modal clipboard scenario — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Header Copy Link alone + coexistence + Copied prop: `tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx` — `AST-1696`
+2. JAR absolute `/jobs/detail/<id>` clipboard + Copied→idle; diagnostic/email/LinkedIn stay: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `AST-1696`
+3. Regression (coexistence): same files — `AST-1421` (header + JAR snapshot Copy)
+
+**AST-1696** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npx tsc -b --noEmit
+npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1696|AST-1421"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+Job Detail / JAR chrome: `job_link` is an href / `window.open` target only for `http(s)`; non-http inherited text still shown. Routed page align: **`docs/test-bible/frontend/pages.md`** § AST-1704. Primary manifest: **`docs/test-bible/core/consult.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header title href + breadcrumb text | `RecommendedJobReportHeader.tsx` | **`test_RecommendedJobReportHeader.test.tsx`** — **`AST-1704`** |
+| Info Link row | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`AST-1704`** |
+| JAR header composition | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1704`** |
+
+**Broken / obsolete this pass:** none — existing https deeplink cases remain.
+
+**Integration:** none.

@@ -279,3 +279,141 @@ describe("JobDetailModal — AST-1454 skipped-field editors", () => {
     await waitFor(() => expect(onRefresh).toHaveBeenCalled())
   })
 })
+
+describe("JobDetailModal — AST-1695 listing_href", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+    mockedCopy.mockReset()
+    mockedCopy.mockResolvedValue(true)
+  })
+
+  it("read-only BOT_BLOCKED: Link <a> from listing_href; raw job_link not wrapped", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return { json: async () => [] } as Response
+      }
+      if (url === "/api/jobs/j1") {
+        return {
+          ok: true,
+          json: async () => ({
+            ...jobPayload,
+            fields_editable: false,
+            legal_next_states: [],
+            job_link: "https://example.com/column",
+            listing_href: "https://example.com/listing",
+            state: "BOT_BLOCKED",
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Engineer" })).toBeInTheDocument())
+    expect(screen.getByRole("link", { name: "https://example.com/listing" })).toHaveAttribute(
+      "href",
+      "https://example.com/listing",
+    )
+    expect(screen.queryByRole("link", { name: "https://example.com/column" })).not.toBeInTheDocument()
+  })
+
+  it("read-only: null listing_href → no Link <a> even when job_link is http(s)", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return { json: async () => [] } as Response
+      }
+      if (url === "/api/jobs/j1") {
+        return {
+          ok: true,
+          json: async () => ({
+            ...jobPayload,
+            fields_editable: false,
+            legal_next_states: [],
+            job_link: "https://example.com",
+            listing_href: null,
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Engineer" })).toBeInTheDocument())
+    expect(screen.queryByRole("link", { name: "https://example.com" })).not.toBeInTheDocument()
+  })
+
+  it("editable: Open listing row from listing_href beside job_link input", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return { json: async () => [] } as Response
+      }
+      if (url === "/api/jobs/j1") {
+        return {
+          ok: true,
+          json: async () => ({
+            ...jobPayload,
+            fields_editable: true,
+            legal_next_states: ["NEW"],
+            job_link: "paste-me",
+            listing_href: "https://example.com/open",
+            state: "BOT_BLOCKED",
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByDisplayValue("paste-me")).toBeInTheDocument())
+    expect(screen.getByText("Open listing")).toBeInTheDocument()
+    expect(screen.getByRole("link", { name: "https://example.com/open" })).toHaveAttribute(
+      "href",
+      "https://example.com/open",
+    )
+  })
+})
+describe("JobDetailModal — AST-1704 http(s)-only Link row", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+    mockedCopy.mockReset()
+    mockedCopy.mockResolvedValue(true)
+  })
+
+  it("renders http job_link as anchor", async () => {
+    mockJobDetailApis()
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Engineer" })).toBeInTheDocument())
+    await userEvent.click(screen.getByText("Info"))
+    expect(screen.getByRole("link", { name: "https://example.com" })).toHaveAttribute(
+      "href",
+      "https://example.com",
+    )
+  })
+
+  it("renders non-http job_link as plain text", async () => {
+    const crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return { json: async () => [] } as Response
+      }
+      if (url === "/api/jobs/j1" && !init) {
+        return { ok: true, json: async () => ({ ...jobPayload, job_link: crumb }) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(<JobDetailModal jobId="j1" onClose={() => {}} />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Engineer" })).toBeInTheDocument())
+    await userEvent.click(screen.getByText("Info"))
+    expect(screen.queryByRole("link", { name: crumb })).not.toBeInTheDocument()
+    expect(screen.getByText(crumb)).toBeInTheDocument()
+  })
+})

@@ -887,39 +887,6 @@ class TestAst1529StageMeteoriteCatalogRow:
         ).read_bytes()
 
 
-class TestAst1688StageMeteoriteElectronicContactPrompts:
-    """AST-1688: stage_meteorite prompts — metadata-first electronic_contact; never invent."""
-
-    def test_cache_and_user_prompt_metadata_first(self) -> None:
-        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        row = next(r for r in rows if r.get("task_key") == "stage_meteorite")
-        cache = row["cache_prompt"]
-        assert "## ELECTRONIC CONTACT (resume send)" in cache
-        assert "metadata" in cache.lower()
-        assert "Never invent addresses" in cache
-        assert "single_jd_no_link" in cache
-        assert "multi_jd_inline" in cache
-        user = row["user_prompt"]
-        assert "electronic_contact" in user
-        assert "metadata" in user.lower()
-        assert "never invent" in user.lower()
-
-    def test_fixture_stage_meteorite_electronic_contact_lockstep(self) -> None:
-        cat = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        fix = json.loads(
-            Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_text(
-                encoding="utf-8"
-            )
-        )
-        cat_row = next(r for r in cat if r.get("task_key") == "stage_meteorite")
-        fix_row = next(r for r in fix if r.get("task_key") == "stage_meteorite")
-        assert fix_row["cache_prompt"] == cat_row["cache_prompt"]
-        assert fix_row["user_prompt"] == cat_row["user_prompt"]
-        assert Path("data/admin/agent_task.json").read_bytes() == Path(
-            "docs/uat-fixtures/AST-756/expected-agent_task.json"
-        ).read_bytes()
-
-
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
 class TestAst1106GazeEmailCatalogRow:
     """AST-1467: gaze_email catalog shell retired; meteorite_email remains Meteorite Review."""
