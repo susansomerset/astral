@@ -1627,6 +1627,15 @@ async def _run_batch_consult(
     if fabricated:
         logger.debug("FABRICATED %s IDs: %s", len(fabricated), sorted(fabricated))
 
+    # AST-1699: one do_task → one harvest list shared by every grade save in this batch
+    batch_harvest = _normalize_harvested_source_artifact_ids(result.get("source_artifact_ids"))
+    _inner_process = process_fn
+
+    def process_fn(input_job, response_job, cfg):
+        cfg_with_harvest = dict(cfg)
+        cfg_with_harvest["_source_artifact_ids"] = batch_harvest
+        return _inner_process(input_job, response_job, cfg_with_harvest)
+
     passed = failed = 0
     bad_grades: set = set()
 
@@ -1822,6 +1831,10 @@ async def qualify_job_listings(
             normalized_score = _latest_score_value(score)
             if _task_config_scored(task_key) and normalized_score is not None:
                 save_data["joblist_score"] = normalized_score
+            # AST-1699: sibling pins for this batch run's harvest
+            save_data[_source_artifact_ids_job_data_key("joblist_grades")] = (
+                _normalize_harvested_source_artifact_ids(cfg.get("_source_artifact_ids"))
+            )
             tracker.save_job_data(aid, save_data)
 
         if to_state == cfg["fail_state"]:
@@ -2372,6 +2385,10 @@ async def evaluate_jd_batch(
             save_data[f"jd_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"] = _phase_score_breakdown(
                 rubric_list, grades
             )
+        # AST-1699: sibling pins for this batch run's harvest
+        save_data[_source_artifact_ids_job_data_key("jd_grades")] = (
+            _normalize_harvested_source_artifact_ids(cfg.get("_source_artifact_ids"))
+        )
         tracker.save_job_data(aid, save_data)
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         if to_state == cfg["pass_state"]:
@@ -2482,6 +2499,7 @@ async def _consult_scored_dispatch_batch_encoded(
         aid = response_job["astral_job_id"]
         to_state, _, _grades = _apply_render_verdict_decoded_job(
             dispatch_task_key, aid, response_job, cfg_dispatch, ctx, debug=debug,
+            source_artifact_ids=_orch_cfg.get("_source_artifact_ids"),
         )
         return to_state
 
