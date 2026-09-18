@@ -600,4 +600,17 @@ Optional type honesty (same file, only if `tsc` complains after the nullish coal
 | **REVIEW** (findings, C7 complete) | Normal AST-1707 UAT-batch | → **Review Posted** → `resolve-child` → **User Testing** after `[bug-repro]` bar cleared |
 
 context_tokens≈28000
+
+## Resolution (AST-1708 — resolve-child)
+
+**Date:** 2026-09-18  
+**Publish tip at resolve:** `origin/sub/AST-1707/AST-1708-null-guard-recommended-startswith` (product @ `4e8a88bd`; review-fix append @ `746dce2e`)
+
+| Finding | Disposition |
+|---------|-------------|
+| **fix-now** — missing `[bug-repro]` / bible after board `TESTS: REVISE` | **No product change on this tip.** Coverage is sibling gap **AST-1709** (orphaned fix-board path: TESTS:REVISE → gap child, not `qa-fix` on AST-1708). Do not regress this ticket to wait on Betty here. |
+| **discuss** — no frozen Canon Scope on bug | Accepted as process note; no code. |
+| **advisory** — `sortRecommendedJobs` `localeCompare` still null-unsafe | Out of AST-1708 scope per plan-fix; no code. |
+
+Product null-guard `(job.company ?? "").startsWith(prefix)` unchanged. Advanced to **User Testing**; assignee remains Katherine.
 ```
