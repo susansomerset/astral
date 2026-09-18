@@ -696,3 +696,8 @@ Board `[board-betty] TESTS: REVISE` on AST-1708: AST-1057 bible/`test_JobsRecomm
 - Empty/missing prefix behavior of AST-1057 “omits Meteorites” case unchanged.
 - Engineer test-tree ban: landing of (1)/(2) is Betty / qa-fix (or test-tree owner) — not a product `code()` commit on this gap.
 
+
+
+## Radia review (AST-1709)
+
+PROCEED — [bug-repro] OK; What must still hold OK. §3h shortcut to User Testing.
