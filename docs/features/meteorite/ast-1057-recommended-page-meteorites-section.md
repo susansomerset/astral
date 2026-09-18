@@ -701,3 +701,25 @@ Board `[board-betty] TESTS: REVISE` on AST-1708: AST-1057 bible/`test_JobsRecomm
 ## Radia review (AST-1709)
 
 PROCEED — [bug-repro] OK; What must still hold OK. §3h shortcut to User Testing.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/37a416c61e4d353a48369a20a3dd4eb7/23ddf91e-cdb4-4f49-8cf7-18ebdcfcb95a/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/468ea701-db85-4c2b-88c1-4515876133ef/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/37a416c61e4d353a48369a20a3dd4eb7/4fd8705f-cc22-4841-ad57-14d90886bc56/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1707 (parent) | ftr/AST-1707-recommended-jobs-startswith-null |
+| AST-1708 | sub/AST-1707/AST-1708-null-guard-recommended-startswith |
+| AST-1709 | sub/AST-1707/AST-1709-null-company-recommended-partition-test |
+
+**Epic worktree:** `astral-AST-1707/` — one active sub checked out at a time.
