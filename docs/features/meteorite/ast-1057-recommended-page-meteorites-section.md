@@ -614,3 +614,8 @@ context_tokens≈28000
 
 Product null-guard `(job.company ?? "").startsWith(prefix)` unchanged. Advanced to **User Testing**; assignee remains Katherine.
 ```
+
+
+## Docs-acceptance (AST-1708)
+
+`docs-acceptance` — product tip; null-company partition Vitest/bible owned by sibling gap **AST-1709** (orphaned fix-board TESTS:REVISE path).
