@@ -554,3 +554,50 @@ Optional type honesty (same file, only if `tsc` complains after the nullish coal
 - Empty/missing prefix still disables meteorite partition (`Boolean(prefix)` false) — all rows stay normal.
 - No new Recommended job state; no config/manifest contract change; no GDL / dispatch / Create edits.
 
+
+
+## Review-fix findings (AST-1708)
+
+| Item | Verdict |
+|------|---------|
+| Prefix from `manifest.jobs.recommended.meteorite_section.company_prefix` only; no hardcoded `"meteorite-"` | **holds** — `meteoriteSection?.company_prefix ?? ""` unchanged |
+| Normal Recommended / In Progress / Ready iterate `normalRows` only; prefix matches excluded | **holds** — `normalRows` / `meteoriteRows` split unchanged |
+| Meteorites prepends only when `meteoriteRows.length > 0` && `meteorite_section` present | **holds** — `out.unshift` guard unchanged |
+| Empty/missing prefix disables partition (`Boolean(prefix)` false) | **holds** — short-circuit before `.startsWith` |
+| No new state, no config/manifest/GDL/dispatch/Create edits | **holds** — single predicate nullish-coalesce only |
+
+## Findings
+
+### fix-now
+
+**Location:** test bar — `TESTS: REVISE` with no `qa-fix` / `[bug-repro]` delivery  
+**Finding:** Board raised the repro-first bar; tip has product fix only (`JobsRecommended.tsx` `(job.company ?? "").startsWith(prefix)`). No regression test pins null-`company` partition behavior. `test-fix` gate was bypassed.  
+**Recommendation:** Route through `resolve-child`: spawn `qa-fix` (Betty lands `[bug-repro]` + bible node), then re-run `test-fix` for red→green. Do **not** advance to User Testing on product-only tip.
+
+### discuss
+
+**Location:** AST-1708 Linear description — Canon Scope  
+**Finding:** No frozen directive list on the bug ticket (parent AST-1707 also none). Fix-board Joan pass was `CANON: OK`; product change is a one-line null guard inside existing AST-1057 manifest partition — no canon edit implied. Process gap vs validate-plan §4a empty-list rule, but not blocking product review given board + ancestor context.  
+**Recommendation:** Archie/Chuckles: consider adding explicit `Citations: none` or minimal scope ids on future UAT-batch bugs for Radia comparability.
+
+### advisory
+
+**Location:** `JobsRecommended.tsx` `sortRecommendedJobs` L39–40  
+**Finding:** `a.company.localeCompare(b.company)` can still throw if user sorts by Company on a null-company row. Plan-fix explicitly excludes this (`## Blast radius` / `## Proposed change`).  
+**Recommendation:** Accept for AST-1708 scope; file separately if Susan hits it in UAT.
+
+## What's solid
+
+- Product fix matches `plan-fix` `## Proposed change` exactly — minimal `(job.company ?? "").startsWith(prefix)` in `isMeteoriteJob`.
+- Scope discipline: only `JobsRecommended.tsx` touched; sibling components correctly left alone.
+- Null/empty `company` → not meteorite-prefix match → `normalRows` path — correct `## To-be` semantics.
+- `## What must still hold` invariants intact on publish ref.
+
+## Notes for Chuckles
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (findings, C7 complete) | Normal AST-1707 UAT-batch | → **Review Posted** → `resolve-child` → **User Testing** after `[bug-repro]` bar cleared |
+
+context_tokens≈28000
+```
