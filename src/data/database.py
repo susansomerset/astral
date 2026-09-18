@@ -2225,7 +2225,7 @@ def get_job_batch(batch_id: str) -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
             _ensure_job_schema(conn)
-            cursor = conn.execute("SELECT j.*, c.job_site FROM job j LEFT JOIN company c ON j.company = c.short_name WHERE j.batch_id = ?", (batch_id,))
+            cursor = conn.execute("SELECT j.*, c.job_site FROM job j LEFT JOIN company c ON j.company_id = c.short_name WHERE j.batch_id = ?", (batch_id,))
             return [_job_row_to_dict(r) for r in cursor.fetchall()]
         finally:
             conn.close()

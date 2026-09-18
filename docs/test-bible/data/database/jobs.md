@@ -204,3 +204,11 @@ Job table reshape: nullable `company_id` (employer), repurposed `source` ∈ {`c
 **Bible path shasums (record after publish):**
 - `docs/test-bible/data/database/jobs.md`
 - `docs/test-bible/utils/config.md`
+
+### AST-1706 · AST-1705 (bug) — docs-acceptance
+
+**Publish:** `origin/sub/AST-1705/AST-1706-fix-get-job-batch-company-id`.
+
+One-line `get_job_batch` JOIN rename (`j.company` → `j.company_id`) after AST-1701. **fix-board** `[board-betty] TESTS: OK` — existing `get_job_batch` callers already exercise the path; **no new component test** on this ticket.
+
+**Integration:** none.
