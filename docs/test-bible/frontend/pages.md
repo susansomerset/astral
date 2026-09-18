@@ -1287,6 +1287,26 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
 ```
 
+### AST-1709 · AST-1707
+
+**Parent:** [AST-1707](https://linear.app/astralcareermatch/issue/AST-1707). **Publish:** `origin/sub/AST-1707/AST-1709-null-company-recommended-partition-test`. **Sibling product guard:** AST-1708 (`(job.company ?? "").startsWith(prefix)` on `JobsRecommended.tsx`).
+
+Null `company` through Recommended meteorite partition (`isMeteoriteJob` / sections `useMemo`): page must not throw; row stays out of Meteorites and in the normal state section. Product null-guard is AST-1708 — this gap does not re-edit `JobsRecommended.tsx`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Null-company partition ([bug-repro]) | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** — **`AST-1708/AST-1709: null company does not throw; stays out of Meteorites`** |
+
+**Broken / obsolete:** none — additive repro next to AST-1057 cases.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1708/AST-1709"
+```
+
 ### AST-1061 · AST-1058
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
