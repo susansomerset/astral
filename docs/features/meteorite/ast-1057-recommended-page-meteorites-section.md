@@ -475,3 +475,82 @@ meteorite_section?: {
 
 No product changes. Acknowledged discuss stragglers as plan-time Joan exclusions that became in-scope on the three-dot vs `origin/dev` (stacked siblings + Betty tests/docs) — no code delta. Advanced to **User Testing**.
 
+## Bug: AST-1708 — Null-guard Recommended list startsWith
+
+### As-is
+
+Opening **Recommended Jobs** throws `TypeError: Cannot read properties of null (reading 'startsWith')` inside the `sections` `useMemo` → `rows.filter(isMeteoriteJob)` path in `JobsRecommended.tsx`, and React Router’s error boundary replaces the page.
+
+### To-be
+
+Recommended Jobs loads and partitions meteorite vs normal rows without throwing when a job row’s `company` is `null` (or otherwise non-string). Null/empty `company` is treated as not a meteorite-prefix match and stays in the normal state-section path.
+
+### Repro
+
+1. Have at least one job on the Recommended surface (`RECOMMENDED` / `BUILD_ARTIFACTS` / `CANDIDATE_REVIEW`) whose API/list payload includes `"company": null` (TypeScript `Job.company` is typed `string`, but runtime JSON can be null — e.g. after nullable company linkage).
+2. Navigate to `/jobs/recommended` with a loaded state-UI manifest that includes `jobs.recommended.meteorite_section.company_prefix` (e.g. `"meteorite-"`).
+3. Observe: client throws at `job.company.startsWith(prefix)` during `Array.filter` inside `useMemo`; error boundary.
+
+Fixture-shaped predicate input (enough for a component test):
+
+```ts
+const rows = [
+  { astral_job_id: "j1", company: null as unknown as string, state: "RECOMMENDED", /* … */ },
+  { astral_job_id: "j2", company: "meteorite-acme", state: "RECOMMENDED", /* … */ },
+  { astral_job_id: "j3", company: "Acme Corp", state: "RECOMMENDED", /* … */ },
+]
+// After fix: no throw; j2 → Meteorites; j1 and j3 → normal Recommended section.
+```
+
+### Root cause
+
+AST-1057 Stage 2 defined membership as:
+
+`isMeteoriteJob(job) => Boolean(prefix) && job.company.startsWith(prefix)`
+
+That assumes `job.company` is always a string. When `company` is `null`, `Boolean(prefix)` is true (prefix non-empty) and evaluation reaches `null.startsWith(...)`, which throws. The call sits inside `rows.filter` in a `useMemo`, matching the live stack.
+
+Sibling Recommended-surface http(s) helpers (`JobMeteoritePane.isNavigableHttpLink`, `RecommendedJobReportHeader` title-link coerce, `JobAnalysisReportModal.httpListingHref`) already null-guard before `.startsWith` and are **not** the list crash site.
+
+### Proposed change
+
+**File (in scope):** `src/ui/frontend/src/pages/JobsRecommended.tsx` only.
+
+In the `sections` `useMemo` (current tip ~L92–129), change the meteorite membership predicate from:
+
+```ts
+const isMeteoriteJob = (job: Job) => Boolean(prefix) && job.company.startsWith(prefix)
+```
+
+to:
+
+```ts
+const isMeteoriteJob = (job: Job) =>
+  Boolean(prefix) && (job.company ?? "").startsWith(prefix)
+```
+
+Behavior:
+
+- `company` null/undefined → `""` → does not start with a non-empty prefix → **not** meteorite; row stays in `normalRows` and is grouped by `job.state` as today.
+- `company` string (including `""`) → same as today.
+- Do **not** change prefix sourcing (`meteorite_section?.company_prefix ?? ""`), section prepend rules, normal/legacy grouping, table markup, or `/api/jobs` payload shape.
+- Do **not** edit `JobMeteoritePane.tsx`, `RecommendedJobReportHeader.tsx`, or `JobAnalysisReportModal.tsx` on this ticket (already null-safe; stack is list partition only).
+- Do **not** widen into `sortJobs` `company.localeCompare` or other list pages — out of AST-1708 `## Scope`.
+
+Optional type honesty (same file, only if `tsc` complains after the nullish coalesce): widen local `Job.company` to `string | null` so the interface matches runtime; not required if the coalesce alone typechecks.
+
+### Blast radius
+
+- **Same path:** `meteoriteRows` / `normalRows` filters and Meteorites prepend — null-company jobs that previously crashed the page will now appear under normal state sections (not Meteorites).
+- **Tests:** Betty’s AST-1057 Vitest `tests/component/frontend/pages/test_JobsRecommended.test.tsx` assumes string companies; may need a null-company case later (qa-fix / Betty) — engineer does not edit `tests/`.
+- **Sibling tickets:** AST-1692 / AST-1695 / AST-1704 link helpers already guard; no product change expected there.
+- **Out of scope adjacent:** `sortJobs` still calls `a.company.localeCompare` — could throw if the user sorts by Company on a null-company row; not this bug’s `startsWith` scope.
+
+### What must still hold
+
+- Manifest-driven membership only: prefix from `manifest.jobs.recommended.meteorite_section.company_prefix`; no hardcoded `"meteorite-"` in the page (`astral.standards.no-hardcoded-sets` / Stage 2).
+- Non-meteorite Recommended / In Progress / Ready sections still iterate **`normalRows` only**; meteorite-prefix jobs still excluded from those sections when `company` matches prefix.
+- Meteorites section still prepends only when `meteoriteRows.length > 0` and `meteorite_section` is present.
+- Empty/missing prefix still disables meteorite partition (`Boolean(prefix)` false) — all rows stay normal.
+- No new Recommended job state; no config/manifest contract change; no GDL / dispatch / Create edits.
+
