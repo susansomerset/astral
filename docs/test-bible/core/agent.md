@@ -1385,3 +1385,53 @@ Shared assembly prepends `[astral-<id>]` as the first bytes of the first system 
 
 **Bible shasum (after publish):** `git show origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix:docs/test-bible/core/agent.md | shasum`
 
+### AST-1679 · AST-1677
+
+**Parent:** [AST-1677](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`.
+
+`do_task` persist_candidate_craft_hops (inline): when `artifact_key` set, land structure via `candidate.artifacts.resume_structure` then body via catalog key (no library dict-path for structure). Primary candidate: **`docs/test-bible/core/candidate.md`** § AST-1679.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft-persist dual operative keys | `src/core/agent.py` | revised **`TestAst1576CraftPersistOperative`** |
+| Source gate (catalog key, no library dict) | same | **`TestAst1679CraftPersistResumeStructureOperative`** |
+
+**Broken / obsolete:** AST-1576 expected a library dict-path save for structure — revised to operative str-path.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/agent.md` — *(filled after publish)*
+
+### AST-1683 · AST-1682 · AST-1681 (Contact-shaped BASE_RESUME current-read — test gap for AST-1682)
+
+**Parent:** [AST-1681](https://linear.app/astralcareermatch/issue/AST-1681). **Sibling product fix:** AST-1682. **Publish:** `origin/sub/AST-1681/AST-1683-cover-contact-base-resume-current-read`.
+
+Board REVISE (copied from AST-1682): Contact-shaped `do_task(index=cid, ctx=None)` / library blob without `_astral_candidate_id` → `{$BASE_RESUME}` current-read not exercised (AST-1587/607/1192 only cover pre-stamped cid or name tokens). Product cid-threading lives on AST-1682; this child lands the repro-first gate only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Contact-shaped index=cid, ctx=None → `{$BASE_RESUME}` current-read | `src/core/agent.py` (`_token_view_for_do_task` / `do_task`) | **`TestAst1683ContactBaseResumeCurrentRead::test_do_task_index_cid_ctx_none_resolves_base_resume`** |
+
+**Broken / obsolete:** none — additive repro; AST-1192 name-token suite unchanged.
+
+**Integration:** none.
+
+## QA test manifest (AST-1683)
+
+1. Bug-repro (red pre AST-1682 cid threading; green after): `tests/component/core/test_agent.py::TestAst1683ContactBaseResumeCurrentRead::test_do_task_index_cid_ctx_none_resolves_base_resume`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1683ContactBaseResumeCurrentRead::test_do_task_index_cid_ctx_none_resolves_base_resume \
+  -q
+```
+
+**Pass criterion:** pytest green on the repro node once AST-1682 make-fix lands — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/agent.md` — *(filled after publish)*

@@ -1287,6 +1287,26 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
 ```
 
+### AST-1709 · AST-1707
+
+**Parent:** [AST-1707](https://linear.app/astralcareermatch/issue/AST-1707). **Publish:** `origin/sub/AST-1707/AST-1709-null-company-recommended-partition-test`. **Sibling product guard:** AST-1708 (`(job.company ?? "").startsWith(prefix)` on `JobsRecommended.tsx`).
+
+Null `company` through Recommended meteorite partition (`isMeteoriteJob` / sections `useMemo`): page must not throw; row stays out of Meteorites and in the normal state section. Product null-guard is AST-1708 — this gap does not re-edit `JobsRecommended.tsx`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Null-company partition ([bug-repro]) | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** — **`AST-1708/AST-1709: null company does not throw; stays out of Meteorites`** |
+
+**Broken / obsolete:** none — additive repro next to AST-1057 cases.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1708/AST-1709"
+```
+
 ### AST-1061 · AST-1058
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
@@ -2859,3 +2879,17 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+`JobsJobDetail` prefetch prefers `company_id` over legacy `company` for admin candidate align (§6c routed page). FE href chrome: **`docs/test-bible/frontend/components.md`** § AST-1704. Primary manifest: **`docs/test-bible/core/consult.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed deeplink host — company_id align | `JobsJobDetail.tsx` | **`test_JobsJobDetail.test.tsx`** — **`AST-1704`** |
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** none.

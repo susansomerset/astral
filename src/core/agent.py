@@ -66,6 +66,7 @@ from src.utils.config import (
     get_task_keys,
     dispatch_chain_graduation_target,
     _TOKEN_RE,
+    list_artifact_keys_in_prompt_texts,
     RUBRIC_FEEDBACK_CONFIG,
     CRAFT_RUBRIC_MAX_TOKENS,
     CRAFT_RUBRIC_UI_TASK_KEYS,
@@ -437,6 +438,7 @@ def _job_context_for_call(
 def _token_view_for_do_task(
     ctx: Optional[Dict[str, Any]],
     candidate_data: Optional[Dict[str, Any]],
+    index: Optional[str] = None,
 ) -> dict:
     """Walkable resolve_tokens dict: name columns + library blobs (AST-1192 / AST-1014)."""
     # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
@@ -454,6 +456,12 @@ def _token_view_for_do_task(
             return build_candidate_token_view(row)
     if is_candidate_row_with_name_columns(ctx):
         return build_candidate_token_view(ctx)  # type: ignore[arg-type]
+    # Contact-style: index=<astral_candidate_id>, no ctx — load current-bearing view.
+    idx = str(index or "").strip()
+    if idx:
+        row = get_candidate(idx)
+        if row:
+            return build_candidate_token_view(row)
     if is_candidate_token_view(candidate_data):
         return dict(candidate_data)  # type: ignore[arg-type]
     return dict(candidate_data or (ctx or {}).get("candidate_data") or {})
@@ -863,6 +871,39 @@ def _task_prompt_texts(
         "nocache": agent_task_row.get("nocache_prompt") or "",
         "live": live_content or "",
     }
+
+
+def harvest_source_artifact_ids(
+    *texts: str,
+    candidate_id: Optional[str] = None,
+) -> list[str]:
+    """Deduped current artifact_uuid pins for artifact-typed {$TOKEN}s in ``texts``.
+
+    Parse/classify via config ``list_artifact_keys_in_prompt_texts``; resolve each
+    key with ``get_candidate_current_artifact_uuid``. Missing candidate_id or
+    missing current rows omit that id (no coat-check, no invent). Order = first
+    successful resolve; UUID duplicates collapsed (set semantics).
+    """
+    if not (candidate_id or "").strip():
+        return []
+    keys = list_artifact_keys_in_prompt_texts(*texts)
+    # Late import: avoid agent↔candidate cycle if candidate later imports agent.
+    from src.core.candidate import get_candidate_current_artifact_uuid
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        try:
+            uuid = get_candidate_current_artifact_uuid(candidate_id, key)
+        except ValueError:
+            continue
+        if not isinstance(uuid, str) or not uuid.strip():
+            continue
+        if uuid in seen:
+            continue
+        seen.add(uuid)
+        out.append(uuid)
+    return out
 
 
 def _task_references_caller_tokens(
@@ -1817,7 +1858,7 @@ async def do_task(
             "Add response_schema to TASK_CONFIG for this task."
         )
 
-    cd = _token_view_for_do_task(ctx, candidate_data)
+    cd = _token_view_for_do_task(ctx, candidate_data, index=index)
 
     # Dict truthiness is always true for the 8-key view; check identity material (AST-1192 resolve).
     if task_config.get("requires_candidate_key") and not _candidate_identity_material_present(cd):
@@ -1841,6 +1882,27 @@ async def do_task(
         api_key_override = ctx.get("candidate_api_key")
 
     agent_row, agent_task_row = _resolve_task_prompts(task_key)
+    # AST-1698: harvest artifact pins from unresolved prompt templates (before resolve).
+    _system_unresolved = (
+        (agent_task_row.get("system_prompt") or "").strip()
+        or (agent_row.get("content") or "")
+    )
+    source_artifact_ids = harvest_source_artifact_ids(
+        _system_unresolved,
+        agent_task_row.get("user_prompt") or "",
+        agent_task_row.get("cache_prompt") or "",
+        agent_task_row.get("cache_prompt_b") or "",
+        agent_task_row.get("cache_prompt_c") or "",
+        agent_task_row.get("cache_prompt_d") or "",
+        agent_task_row.get("nocache_prompt") or "",
+        live_content or "",
+        candidate_id=candidate_id,
+    )
+
+    def _with_harvest(payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload["source_artifact_ids"] = list(source_artifact_ids)
+        return payload
+
     effective_chain_context = chain_context
     entity_type_pre = _effective_entity_type(task_config, index)
     parent_for_hydration = (chain_context or {}).get("_hop_parent_task_key")
@@ -1866,13 +1928,13 @@ async def do_task(
                     debug=debug,
                 )
                 if hydr_err:
-                    return {
+                    return _with_harvest({
                         "success": False,
                         "error": hydr_err,
                         "api_response": None,
                         "parsed_response": None,
                         "timesheet": {},
-                    }
+                    })
                 effective_chain_context = _merge_hydrated_caller_context(
                     chain_context, hydrated
                 )
@@ -2007,13 +2069,13 @@ async def do_task(
                 task_key,
                 guard_err,
             )
-            return {
+            return _with_harvest({
                 "success": False,
                 "error": guard_err,
                 "api_response": None,
                 "parsed_response": None,
                 "timesheet": {},
-            }
+            })
 
     context = _build_context(task_key, task_config, index)
     response_format = task_config.get("response_format", "text")
@@ -2144,6 +2206,7 @@ async def do_task(
         )
     logger.debug("Response from %s: %s", send_fn_name, result)
     result["runtime_prompt"] = runtime_prompt
+    result["source_artifact_ids"] = list(source_artifact_ids)
 
     if not result.get("success"):
         err = normalize_provider_error(
@@ -2236,9 +2299,9 @@ async def do_task(
             except Exception as exc:
                 _log_swallowed_agent_data(index, task_key, exc)
         _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
-        return {"success": False, "api_response": result.get("api_response"),
+        return _with_harvest({"success": False, "api_response": result.get("api_response"),
                 "parsed_response": None, "error": envelope_err, "raw_response": parsed,
-                "timesheet": result.get("timesheet", {})}
+                "timesheet": result.get("timesheet", {})})
 
     if parsed is not None and response_format in ("json", "python") and not rubric_encoded:
         if isinstance(parsed, dict) and schema:
@@ -2268,8 +2331,8 @@ async def do_task(
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
-            return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                    "error": err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
+            return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
+                    "error": err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
@@ -2293,8 +2356,8 @@ async def do_task(
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
-                return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                        "error": cat_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
+                return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
+                        "error": cat_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
         inner_payload = _inner_task_payload(parsed)
         if isinstance(inner_payload, dict):
@@ -2313,8 +2376,8 @@ async def do_task(
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
-                return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                        "error": conf_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
+                return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
+                        "error": conf_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
         vectors = task_config.get("vectors")
         # AST-594: draft_job_resume is structure-keyed, not graded-consult.
@@ -2336,8 +2399,8 @@ async def do_task(
                         except Exception:
                             _log_swallowed_agent_data(index, task_key)
                     _close_hop_ledger(success=False, clear_log=True, failure_error=str(grade_err))
-                    return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                            "error": grade_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
+                    return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
+                            "error": grade_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
     if isinstance(parsed, dict) and "agent_payload" in parsed:
         # AST-1072: preserve conversational outcome on result before unwrapping payload.
@@ -2386,8 +2449,8 @@ async def do_task(
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
-            return {"success": False, "api_response": result.get("api_response"),
-                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})}
+            return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})})
     elif "_encoded" in output_type and isinstance(parsed, str):
         try:
             logger.debug(
@@ -2418,8 +2481,8 @@ async def do_task(
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
-            return {"success": False, "api_response": result.get("api_response"),
-                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})}
+            return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})})
     if post_rubric_decode:
         if isinstance(parsed, dict) and schema:
             if task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS:
@@ -2448,8 +2511,8 @@ async def do_task(
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
-            return {"success": False, "api_response": result.get("api_response"),
-                    "parsed_response": None, "error": err, "timesheet": result.get("timesheet", {})}
+            return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                    "parsed_response": None, "error": err, "timesheet": result.get("timesheet", {})})
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
 
@@ -2472,8 +2535,8 @@ async def do_task(
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
-                return {"success": False, "api_response": result.get("api_response"),
-                        "parsed_response": None, "error": cat_err, "timesheet": result.get("timesheet", {})}
+                return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                        "parsed_response": None, "error": cat_err, "timesheet": result.get("timesheet", {})})
         if isinstance(parsed, dict):
             conf_err = _validate_grade_confidence_in_payload(parsed, task_key)
             if conf_err:
@@ -2490,8 +2553,8 @@ async def do_task(
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
-                return {"success": False, "api_response": result.get("api_response"),
-                        "parsed_response": None, "error": conf_err, "timesheet": result.get("timesheet", {})}
+                return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                        "parsed_response": None, "error": conf_err, "timesheet": result.get("timesheet", {})})
 
     # AST-997: pin experience metadata after finalize schema OK; Style D job detail on tailor hops.
     if task_key in ("draft_job_resume", "finalize_job_resume") and isinstance(parsed, dict):
@@ -2566,7 +2629,13 @@ async def do_task(
                         catalog_key,
                     )
                 else:
-                    landed = save_job_artifact(index, catalog_key, body)
+                    # AST-1700: pass do_task harvest; job_resume auto-cite stays in tracker.
+                    landed = save_job_artifact(
+                        index,
+                        catalog_key,
+                        body,
+                        source_artifact_ids=list(source_artifact_ids),
+                    )
                     if landed is None:
                         logger.warning(
                             "%s skipped — catalog %s empty\n  The hop is still success; the replica was not saved",
@@ -2625,9 +2694,17 @@ async def do_task(
                     parsed_for_persist
                 )
                 save_candidate_data(
-                    str(index), {"artifacts": {"resume_structure": structure}}
+                    str(index),
+                    "candidate.artifacts.resume_structure",
+                    structure,
                 )
-                save_candidate_data(str(index), artifact_key, content)
+                # AST-1700: harvest only on operative str-path insert of craft body.
+                save_candidate_data(
+                    str(index),
+                    artifact_key,
+                    content,
+                    source_artifact_ids=list(source_artifact_ids),
+                )
             else:
                 _persist_craft_dispatch_success(
                     str(index), task_key, parsed_for_persist
@@ -2644,13 +2721,13 @@ async def do_task(
             _close_hop_ledger(
                 success=False, clear_log=True, failure_error=str(persist_err),
             )
-            return {
+            return _with_harvest({
                 "success": False,
                 "api_response": result.get("api_response"),
                 "parsed_response": None,
                 "error": str(persist_err),
                 "timesheet": result.get("timesheet") or {},
-            }
+            })
 
     # Lightweight agent_ref for batch callers (roster/consult tag RESPONSE entity_ids)
     if _should_store:

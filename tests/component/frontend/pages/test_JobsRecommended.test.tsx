@@ -283,3 +283,44 @@ describe("JobsRecommended", () => {
     expect(screen.getByRole("heading", { name: /Recommended \(2\)/ })).toBeInTheDocument()
   })
 
+  // AST-1708/AST-1709: null company must not throw in isMeteoriteJob; stays out of Meteorites.
+  it("AST-1708/AST-1709: null company does not throw; stays out of Meteorites", async () => {
+    const mixed = [
+      ...sectionedJobs,
+      {
+        astral_job_id: "j-null-co",
+        job_title: "Null Company Rec",
+        company: null as unknown as string,
+        state: "RECOMMENDED",
+        state_changed_at: "2026-01-06T00:00:00Z",
+        jd_score: 1,
+        do_score: 1,
+        get_score: 1,
+        like_score: 1,
+      },
+      {
+        astral_job_id: "j-met-null-case",
+        job_title: "Meteorite Rec",
+        company: "meteorite-cand-1",
+        state: "RECOMMENDED",
+        state_changed_at: "2026-01-04T00:00:00Z",
+        jd_score: 8.0,
+        do_score: 8.0,
+        get_score: 8.0,
+        like_score: 8.0,
+      },
+    ]
+    installBaseApiMocks(mockedApi, jobsViewHandler("recommended", mixed))
+    renderWithProviders(<JobsRecommended />)
+    await waitFor(() => expect(screen.getByText("Null Company Rec")).toBeInTheDocument())
+
+    expect(screen.getByRole("heading", { name: /Meteorites \(1\)/ })).toBeInTheDocument()
+    const met = screen.getByRole("heading", { name: /Meteorites \(1\)/ }).parentElement!
+    expect(within(met).getByText("Meteorite Rec")).toBeInTheDocument()
+    expect(within(met).queryByText("Null Company Rec")).not.toBeInTheDocument()
+
+    expect(screen.getByRole("heading", { name: /Recommended \(3\)/ })).toBeInTheDocument()
+    const rec = screen.getByRole("heading", { name: /Recommended \(3\)/ }).parentElement!
+    expect(within(rec).getByText("Null Company Rec")).toBeInTheDocument()
+  })
+

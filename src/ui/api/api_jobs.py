@@ -28,6 +28,10 @@ from src.core.tracker import (
     start_artifact_build,
     transition_job_state,
 )
+from src.data.database import (
+    get_meteorite_by_astral_job_id,
+    get_meteorite_link_by_astral_job_id,
+)
 from src.utils.config import (
     APPLIED_JOB_STATES,
     IN_REVIEW_STATES,
@@ -41,6 +45,16 @@ from src.utils.logging import get_logger
 
 jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
 logger = get_logger(__name__)
+
+
+def _http_listing_url(raw) -> Optional[str]:
+    """Return stripped http(s) URL, else None. Non-http breadcrumbs → None."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    return None
 
 
 def _flatten_grades(job: dict) -> dict:
@@ -218,6 +232,70 @@ def detail(astral_job_id):
             exc,
         )
         job["agent_story"] = []
+    # AST-1704: parent/track fields + employer for Job Detail consumers
+    job["company_id"] = job.get("company_id")
+    job["source"] = job.get("source")
+    job["source_entity_id"] = job.get("source_entity_id")
+    # AST-1691: reverse-link meteorite provenance for Recommended report pane.
+    try:
+        logger.debug(
+            "Calling get_meteorite_by_astral_job_id: [astral_job_id=%s]",
+            astral_job_id,
+        )
+        row = get_meteorite_by_astral_job_id(astral_job_id)
+        # Full row — stat.logging.debug: no truncation of callee response.
+        logger.debug("Response from get_meteorite_by_astral_job_id: %s", row)
+        if row is None:
+            job["related_meteorite"] = None
+        else:
+            job["related_meteorite"] = {
+                "id": row.get("id"),
+                "created_at": row.get("created_at"),
+                "updated_at": row.get("updated_at"),
+                "state_changed_at": row.get("state_changed_at"),
+                "estelle_notified_at": row.get("estelle_notified_at"),
+                "link": row.get("link"),
+                "classify_outcome": row.get("classify_outcome"),
+                "content": row.get("content"),
+                "state": row.get("state"),
+                "source_kind": row.get("source_kind"),
+                "source_id": row.get("source_id"),
+                "error": row.get("error"),
+            }
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s related_meteorite lookup failed\n  %s: %s\n  Returning related_meteorite=null",
+            job.get("candidate_id") or "-",
+            f"/api/jobs/{astral_job_id}",
+            type(exc).__name__,
+            exc,
+        )
+        job["related_meteorite"] = None
+    # AST-1694: resolved http(s) listing href (job.job_link else meteorite.link).
+    listing = _http_listing_url(job.get("job_link"))
+    if listing is None:
+        try:
+            logger.debug(
+                "Calling get_meteorite_link_by_astral_job_id: [astral_job_id=%s]",
+                astral_job_id,
+            )
+            meta_link = get_meteorite_link_by_astral_job_id(astral_job_id)
+            logger.debug(
+                "Response from get_meteorite_link_by_astral_job_id: %s",
+                meta_link,
+            )
+            listing = _http_listing_url(meta_link)
+        except Exception as exc:
+            logger.exception(
+                "%s | api %s listing_href meteorite lookup failed\n  %s: %s\n"
+                "  Continuing with listing_href from job.job_link only",
+                job.get("candidate_id") or "-",
+                f"/api/jobs/{astral_job_id}",
+                type(exc).__name__,
+                exc,
+            )
+            listing = None
+    job["listing_href"] = listing
     return jsonify(job)
 
 

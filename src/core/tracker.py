@@ -27,22 +27,22 @@ from src.utils.config import (
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
     JOB_ARTIFACT_ENTITY_TYPE,
     JOB_EDITABLE_ARTIFACT_TYPES,
-    JOB_SOURCE_DEFAULT,
-    JOB_SOURCE_METEORITE,
     JOB_STATES,
     METEORITE_CONFIG,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     SKIPPED_STATES,
+    SOURCE_ENTITY_TYPE_COMPANY,
+    SOURCE_ENTITY_TYPE_METEORITE,
     TASK_CONFIG,
     TRACKER_CONFIG,
     dispatch_chain_graduation_target,
     dispatch_hop_label,
-    job_source_transition_allowed,
     parse_dispatch_hop_label,
     is_build_artifacts_in_progress,
     is_valid_job_batch_claim_state,
     legacy_build_artifacts_hop,
-    validate_job_source,
+    source_entity_type_transition_allowed,
+    validate_source_entity_type,
     validate_value,
 )
 from src.utils.logging import get_logger, truncate_debug_content
@@ -110,10 +110,14 @@ def ingest_jobs(
             title_mismatch_count += 1
             continue
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        # AST-1704: gazed ingest writes company parent SoT + employer company_id.
         inserted = database.save_job(
             str(uuid.uuid4()),
             job_title=parse_text(raw_job_listing),
             company=company,
+            company_id=company,
+            source=SOURCE_ENTITY_TYPE_COMPANY,
+            source_entity_id=company,
             state=initial_state,
             job_data={"raw_job_listing": raw_job_listing},
             state_history=[{"to_state": initial_state, "timestamp": now, "batch_id": batch_id}],
@@ -131,29 +135,47 @@ def ingest_jobs(
     }
 
 
-def _assert_job_source_write(current: Optional[str], new: str) -> None:
-    """Validate one-way job source write (AST-1469): meteorite → gazed forbidden."""
-    validate_job_source(new)
-    if not job_source_transition_allowed(current, new):
+def _assert_source_entity_type_write(current: Optional[str], new: str) -> None:
+    """Validate one-way source_entity_type write (AST-1702): meteorite → company forbidden."""
+    validate_source_entity_type(new)
+    if not source_entity_type_transition_allowed(current, new):
         raise ValueError(
-            f"Invalid job source transition: {current!r} -> {new!r} "
-            f"(meteorite → gazed forbidden)"
+            f"Invalid source_entity_type transition: {current!r} -> {new!r} "
+            f"(meteorite → company forbidden)"
         )
 
 
 def set_job_source(astral_job_id: str, source: str) -> None:
-    """Admin/core helper: validate one-way source write on an existing job (AST-1469)."""
+    """Admin/core helper: validate one-way source write on an existing job (AST-1469 / AST-1702)."""
     job = database.get_job(astral_job_id)
     if not job:
         raise ValueError(f"Job not found: {astral_job_id}")
-    _assert_job_source_write(job.get("source"), source)
+    _assert_source_entity_type_write(job.get("source"), source)
     database.save_job(astral_job_id, source=source)
+
+
+def _strip_placeholder_company_id(company_id: Optional[str], candidate_id: str) -> Optional[str]:
+    """Null fake meteorite-* / default-stem placeholders; keep real employer short_names."""
+    emp = (company_id or "").strip() or None
+    if not emp:
+        return None
+    prefix = METEORITE_CONFIG["short_name_prefix"]
+    if emp.startswith(prefix):
+        return None
+    default_placeholder = METEORITE_CONFIG["stem_short_name_template"].format(
+        stem=METEORITE_CONFIG["default_stem"],
+        candidate_id=candidate_id,
+    )
+    if emp == default_placeholder:
+        return None
+    return emp
 
 
 def save_meteorite_job(
     candidate_id: str,
     *,
-    company: str,
+    meteorite_id: Any,
+    company_id: Optional[str] = None,
     company_job_id: Optional[str] = None,
     job_title: Optional[str] = None,
     job_link: Optional[str] = None,
@@ -161,27 +183,28 @@ def save_meteorite_job(
     employer_name: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Tracker meteorite save: dedupe before write; create / gazed-supersede / never clobber (AST-1469).
+    """Tracker meteorite save: dedupe; create / company→meteorite supersede / never clobber (AST-1702).
 
-    Caller supplies already-ensured meteorite company short_name (land owns ensure).
-    Supersede uses direct save_job into job_create_state (METEORITE_NEW) — carve-out twin of
-    create_meteorite_job; does not gate on the gazed job's prior state (parent AC2).
+    Parent is the meteorite row id (source=meteorite + source_entity_id). Optional company_id is a
+    real employer only. Company-parented (incl. legacy gazed) match flips parent to meteorite,
+    keeps company_id, state METEORITE_NEW, appends history — same astral_job_id, no second row.
     """
     cid = (candidate_id or "").strip()
-    company_key = (company or "").strip()
+    mid = str(meteorite_id).strip() if meteorite_id is not None else ""
     if not cid:
         raise ValueError("candidate_id is required")
-    if not company_key:
-        raise ValueError("company is required")
+    if not mid:
+        raise ValueError("meteorite_id is required")
 
     log = get_logger(__name__)
     log.set_debug_flag(debug)
 
     prepared: Dict[str, Any] = dict(job_data or {})
-    emp = (employer_name or "").strip() if employer_name is not None else ""
-    if emp:
-        prepared[METEORITE_CONFIG["employer_name_job_data_key"]] = emp
+    emp_name = (employer_name or "").strip() if employer_name is not None else ""
+    if emp_name:
+        prepared[METEORITE_CONFIG["employer_name_job_data_key"]] = emp_name
 
+    emp = _strip_placeholder_company_id(company_id, cid)
     cid_job = (company_job_id or "").strip() or None
     title = (job_title or "").strip() or None
     link = (job_link or "").strip() or None
@@ -204,18 +227,30 @@ def save_meteorite_job(
             outcome=outcome,
         )
         log.debug_detail(f"candidate_id={cid}")
-        log.debug_detail(f"company={company_key}")
+        log.debug_detail(f"meteorite_id={mid}")
+        log.debug_detail(f"company_id={emp!r}")
+        log.debug_detail(f"source_entity_id={mid}")
         if matched_id:
             log.debug_detail(f"matched_id={matched_id}")
         if src_before is not None:
-            log.debug_detail(f"source_before={src_before!r} source_after={JOB_SOURCE_METEORITE!r}")
+            log.debug_detail(
+                f"source_before={src_before!r} source_after={SOURCE_ENTITY_TYPE_METEORITE!r}"
+            )
 
     if match is not None:
-        match_source = (match.get("source") or "").strip() or JOB_SOURCE_DEFAULT
+        match_source = (match.get("source") or "").strip()
         match_id = match["astral_job_id"]
 
-        # Branch A — existing meteorite: never clobber
-        if match_source == JOB_SOURCE_METEORITE:
+        # Branch A — existing meteorite parent: never clobber (AST-1693: backfill empty job_link only)
+        if match_source == SOURCE_ENTITY_TYPE_METEORITE:
+            row_out = match
+            if (
+                link
+                and (link.startswith("http://") or link.startswith("https://"))
+                and not (match.get("job_link") or "").strip()
+            ):
+                database.save_job(match_id, job_link=link)
+                row_out = database.get_job(match_id) or match
             _debug(
                 METEORITE_CONFIG["land_outcome_duplicate_skip"],
                 match_id,
@@ -225,56 +260,66 @@ def save_meteorite_job(
             return {
                 "outcome": METEORITE_CONFIG["land_outcome_duplicate_skip"],
                 "astral_job_id": match_id,
-                "job": match,
-                "source": JOB_SOURCE_METEORITE,
+                "job": row_out,
+                "source": SOURCE_ENTITY_TYPE_METEORITE,
             }
 
-        # Branch B — gazed supersede (any prior job state; keep company)
-        if match_source == JOB_SOURCE_DEFAULT:
-            _assert_job_source_write(match.get("source"), JOB_SOURCE_METEORITE)
-            history = list(match.get("state_history") or [])
-            history.append({"to_state": state, "timestamp": now, "score": score})
-            save_kwargs: Dict[str, Any] = {
-                "state": state,
-                "source": JOB_SOURCE_METEORITE,
-                "job_data": prepared if prepared else None,
-                "state_history": history,
-                "state_changed_at": now,
-                "latest_score": score,
-                "merge": True,
-            }
-            if cid_job is not None:
-                save_kwargs["company_job_id"] = cid_job
-            if title is not None:
-                save_kwargs["job_title"] = title
-            if link is not None:
-                save_kwargs["job_link"] = link
-            database.save_job(match_id, **save_kwargs)
-            row = database.get_job(match_id)
-            if row is None:
-                raise RuntimeError(f"meteorite supersede missing after save: {match_id}")
-            _debug(
-                METEORITE_CONFIG["land_outcome_superseded"],
-                match_id,
-                matched_id=match_id,
-                src_before=match_source,
+        # Branch B — company / legacy gazed / other non-meteorite: supersede in place
+        # Legacy "gazed" is not in SOURCE_ENTITY_TYPES — treat as company for the one-way gate.
+        from_type = match.get("source")
+        if (from_type or "").strip() == "gazed":
+            from_type = SOURCE_ENTITY_TYPE_COMPANY
+        _assert_source_entity_type_write(from_type, SOURCE_ENTITY_TYPE_METEORITE)
+        history = list(match.get("state_history") or [])
+        history.append({"to_state": state, "timestamp": now, "score": score})
+        keep_emp = emp
+        if keep_emp is None:
+            keep_emp = _strip_placeholder_company_id(
+                match.get("company_id") or match.get("company"), cid
             )
-            return {
-                "outcome": METEORITE_CONFIG["land_outcome_superseded"],
-                "astral_job_id": match_id,
-                "job": row,
-                "source": JOB_SOURCE_METEORITE,
-            }
+        save_kwargs: Dict[str, Any] = {
+            "state": state,
+            "source": SOURCE_ENTITY_TYPE_METEORITE,
+            "source_entity_id": mid,
+            "company_id": keep_emp,
+            "job_data": prepared if prepared else None,
+            "state_history": history,
+            "state_changed_at": now,
+            "latest_score": score,
+            "merge": True,
+        }
+        if cid_job is not None:
+            save_kwargs["company_job_id"] = cid_job
+        if title is not None:
+            save_kwargs["job_title"] = title
+        if link is not None:
+            save_kwargs["job_link"] = link
+        database.save_job(match_id, **save_kwargs)
+        row = database.get_job(match_id)
+        if row is None:
+            raise RuntimeError(f"meteorite supersede missing after save: {match_id}")
+        _debug(
+            METEORITE_CONFIG["land_outcome_superseded"],
+            match_id,
+            matched_id=match_id,
+            src_before=match_source,
+        )
+        return {
+            "outcome": METEORITE_CONFIG["land_outcome_superseded"],
+            "astral_job_id": match_id,
+            "job": row,
+            "source": SOURCE_ENTITY_TYPE_METEORITE,
+        }
 
-        raise ValueError(f"Unexpected job source on dedupe match: {match_source!r}")
-
-    # Branch C — create under caller-supplied meteorite company
+    # Branch C — create under meteorite row parent
     astral_job_id = str(uuid.uuid4())
     inserted = database.save_job(
         astral_job_id,
-        company=company_key,
+        company_id=emp,
+        candidate_id=cid,
         state=state,
-        source=JOB_SOURCE_METEORITE,
+        source=SOURCE_ENTITY_TYPE_METEORITE,
+        source_entity_id=mid,
         company_job_id=cid_job,
         job_title=title,
         job_link=link,
@@ -284,12 +329,11 @@ def save_meteorite_job(
         merge=False,
     )
     if not inserted:
-        # Identity unique bounce — treat as duplicate when re-findable
         bounced = database.find_meteorite_dedupe_match(
             cid, company_job_id=cid_job, job_link=link
         )
-        if bounced is None and cid_job and title:
-            bounced_id = database.get_job_id_by_identity(company_key, title, cid_job)
+        if bounced is None and emp and cid_job and title:
+            bounced_id = database.get_job_id_by_identity(emp, title, cid_job)
             bounced = database.get_job(bounced_id) if bounced_id else None
         if bounced is not None:
             _debug(
@@ -302,11 +346,10 @@ def save_meteorite_job(
                 "outcome": METEORITE_CONFIG["land_outcome_duplicate_skip"],
                 "astral_job_id": bounced["astral_job_id"],
                 "job": bounced,
-                "source": (bounced.get("source") or JOB_SOURCE_METEORITE),
+                "source": (bounced.get("source") or SOURCE_ENTITY_TYPE_METEORITE),
             }
         raise RuntimeError(f"meteorite job insert failed: {astral_job_id}")
 
-    # INSERT path omits latest_score — update column explicitly (create carve-out twin)
     database.save_job(astral_job_id, latest_score=score)
     row = database.get_job(astral_job_id)
     if row is None:
@@ -316,7 +359,7 @@ def save_meteorite_job(
         "outcome": METEORITE_CONFIG["land_outcome_created"],
         "astral_job_id": astral_job_id,
         "job": row,
-        "source": JOB_SOURCE_METEORITE,
+        "source": SOURCE_ENTITY_TYPE_METEORITE,
     }
 
 
@@ -364,13 +407,18 @@ def _candidate_data_for_job(astral_job_id: str) -> dict:
 
 def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: dict) -> Dict[str, Any]:
     """Filter to candidate catalog; snapshot contact sections from payload or base_resume."""
-    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    cd = dict(candidate_data) if isinstance(candidate_data, dict) else {}
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: same hydrate→resolve SoT as consult job drafting tokens.
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
+    structure = candidate_mod.resolve_resume_structure(cd)
     filtered = candidate_mod.filter_content_to_resume_structure(
         resume_content if isinstance(resume_content, dict) else {},
         structure,
         allow_contact=False,
     )
-    allowed = set(candidate_mod.draft_job_resume_allowed_section_keys(candidate_data))
+    allowed = set(candidate_mod.draft_job_resume_allowed_section_keys(cd))
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     for sid, val in (resume_content or {}).items():
         if sid in allowed and sid not in filtered and sid not in contact:
@@ -378,7 +426,7 @@ def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: 
                 filtered[sid] = val
             elif isinstance(val, str) and val.strip():
                 filtered[sid] = val
-    artifacts = candidate_data.get("artifacts") if isinstance(candidate_data.get("artifacts"), dict) else {}
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
     base_resume = artifacts.get("base_resume") if isinstance(artifacts.get("base_resume"), dict) else {}
     snapshot: Dict[str, str] = {}
     for sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
@@ -807,7 +855,12 @@ def _resume_payload_body(parsed: Any) -> Dict[str, Any]:
 
 def parsed_matches_resume_content_shape(parsed: Any, candidate_data: dict) -> bool:
     """True when at least one enabled catalog section has body content (AST-551)."""
-    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    cd = dict(candidate_data) if isinstance(candidate_data, dict) else {}
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (no blob-only bypass).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
+    structure = candidate_mod.resolve_resume_structure(cd)
     enabled = set(candidate_mod.enabled_resume_section_ids(structure))
     if not enabled:
         return False
@@ -820,6 +873,10 @@ def parsed_matches_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
     if not isinstance(parsed, dict):
         return False
     cd = _candidate_data_for_job(astral_job_id)
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (idempotent if get_candidate already overlaid).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
     structure = candidate_mod.resolve_resume_structure(cd)
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     body = _resume_payload_body(parsed)
@@ -844,6 +901,10 @@ def job_has_persisted_resume_body(astral_job_id: str, job: Optional[Dict[str, An
         if not isinstance(rc, dict) or not rc:
             return False
     cd = _candidate_data_for_job(astral_job_id)
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (idempotent if get_candidate already overlaid).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
     structure = candidate_mod.resolve_resume_structure(cd)
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     for sid in candidate_mod.enabled_resume_section_ids(structure):
@@ -912,6 +973,10 @@ def persist_job_artifact_from_parsed(
     if allow_resume:
         cd = _candidate_data_for_job(astral_job_id)
         if parsed_matches_job_resume_content(astral_job_id, parsed):
+            cid = candidate_mod.candidate_id_for_current_read(cd)
+            if cid:
+                # AST-1680: hydrate→resolve before filter (idempotent with get_candidate).
+                candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
             structure = candidate_mod.resolve_resume_structure(cd)
             body = _resume_payload_body(parsed)
             filtered = candidate_mod.filter_content_to_resume_structure(
@@ -1208,6 +1273,17 @@ def _hop_blocks_for_batch(batch_rows: List[Dict[str, Any]]) -> Dict[str, Dict[st
             "content": last.get("block_data") or "",
         }
     return blocks
+
+
+def persist_http_job_link(astral_job_id: str, job_link: str) -> None:
+    """Write job.job_link when the URL is http(s); no-op for non-http breadcrumbs (AST-1693).
+
+    Link-only column update — does not call initialize_job or require job_title.
+    """
+    link = (job_link or "").strip()
+    if not (link.startswith("http://") or link.startswith("https://")):
+        return
+    save_job(astral_job_id, job_link=link)
 
 
 def initialize_job(

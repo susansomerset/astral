@@ -26,6 +26,7 @@ from src.utils.config import (
     PREAMBLE_CONFIG,
     TOPIC_MENU_GEN_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
+    JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS,
     build_artifacts_discussion_hop_task_keys,
     build_state_ui_manifest,
     dispatch_hop_label,
@@ -250,6 +251,10 @@ def state_ui_manifest():
         manifest.setdefault("jobs", {}).setdefault("recommended", {})[
             "report_discussion_sections"
         ] = []
+    # AST-1691: Meteorite pane sections — static config copy (no live walk).
+    manifest.setdefault("jobs", {}).setdefault("recommended", {})[
+        "report_meteorite_sections"
+    ] = list(JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS)
     return jsonify(manifest)
 
 

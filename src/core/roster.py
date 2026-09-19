@@ -370,7 +370,7 @@ def record_inflow_discovery_hit(
     index: int = 0,
     search_term: str = "",
 ) -> Tuple[bool, str]:
-    """Record one CSE hit as a NEW company row with discovery blurb stored."""
+    """Record one CSE hit as a company in discovery land_state (DISCOVERED) with blurb stored."""
     url = (hit.get("url") or "").strip()
     if not url:
         return False, "skipped empty url"
@@ -394,7 +394,7 @@ def record_inflow_discovery_hit(
     term = (search_term or "").strip() or None
     save_company(
         short_name=slug,
-        state="NEW",
+        state=INFLOW_CONFIG["discovery"]["land_state"],
         company_website="",
         candidate_id=candidate_id,
         company_name=slug,
@@ -407,11 +407,11 @@ def record_inflow_discovery_hit(
             "inflow_discovery_notes": url,
         },
     )
+    land = INFLOW_CONFIG["discovery"]["land_state"]
+    _entity_info(slug, "company", "inflow recorded", land)
     if term:
-        _entity_info(slug, "company", "inflow recorded", "NEW")
-        return True, f"recorded NEW slug={slug} term={term!r}"
-    _entity_info(slug, "company", "inflow recorded", "NEW")
-    return True, f"recorded NEW slug={slug}"
+        return True, f"recorded {land} slug={slug} term={term!r}"
+    return True, f"recorded {land} slug={slug}"
 
 
 def _ingest_failure_reason(
@@ -637,7 +637,9 @@ async def resolve_company_website(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Phase 2: CSE resolution search + find_company_website → WEBSITE_FOUND | NO_WEBSITE."""
+    """CSE-only fetch hop for inflow_resolve_website → persist hits → WEBSITE_REVIEW | NO_WEBSITE; never do_task."""
+    del ctx  # fetch hop — no agent call
+    _ = debug
     cfg = INFLOW_CONFIG["resolve"]
     site = (entity.get("company_website") or "").strip()
     if site:
@@ -665,20 +667,49 @@ async def resolve_company_website(
     logger.debug("Response from search_google_cse: %s", hits)
     if not hits:
         logger.debug("Response from search_google_cse: zero hits query=%r", query)
-        transition_company_state(short_name, "NO_WEBSITE")
-        return {"success": True, "state": "NO_WEBSITE", "error": None}
-    # find_company_website: row 0 = company slug; hit rows 1..N (1-based index in live_content).
+        fail_state = cfg["fail_state"]
+        transition_company_state(short_name, fail_state)
+        return {"success": True, "state": fail_state, "error": None}
+    # Persist CSE hits for resolve_website apply (AST-1674); wait on WEBSITE_REVIEW.
+    logger.debug("Calling save_company_data: %s=%s", cfg["hit_list_data_key"], hits)
+    save_company_data(short_name, {cfg["hit_list_data_key"]: hits})
+    pass_state = cfg["pass_state"]
+    transition_company_state(short_name, pass_state)
+    _entity_info(
+        short_name, "company", "inflow_resolve_website",
+        f"{len(hits)} hits -> {pass_state}",
+    )
+    return {"success": True, "state": pass_state, "error": None}
+
+
+async def resolve_website_company(
+    short_name: str,
+    entity: Dict[str, Any],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """resolve_website AI apply — load persisted CSE hits → find_company_website → WEBSITE_FOUND | NO_WEBSITE."""
+    hit_key = INFLOW_CONFIG["resolve"]["hit_list_data_key"]
+    sa_cfg = TASK_CONFIG["resolve_website"]
+    agent_task_key = sa_cfg["agent_task"]  # find_company_website — agent identity, not SA key
+    pass_state = sa_cfg["pass_state"]
+    fail_state = sa_cfg["fail_state"]
+
+    hits = (entity.get("company_data") or {}).get(hit_key)
+    if not isinstance(hits, list) or not hits:
+        _warn_company(short_name, "-", f"missing or empty {hit_key}")
+        return {"success": False, "state": None, "error": f"missing or empty {hit_key}"}
+
+    # Same live_content shape as pre-split resolve: row 0 = slug; hits 1..N (1-based).
     lines = [f"0|{short_name}|"]
     for i, hit in enumerate(hits):
         snip = (hit.get("snippet") or "")[:500]
         lines.append(f"{i + 1}|{hit.get('title', '')}|{hit.get('url', '')}|{snip}")
     live_content = "\n".join(lines)
-    logger.debug(
-        "Calling agent.do_task: task_key=%s index=%s", cfg["ai_task_key"], short_name,
-    )
+    logger.debug("Calling agent.do_task: task_key=%s index=%s", agent_task_key, short_name)
     logger.debug("Calling agent.do_task live_content: %s", live_content)
     api_result = await do_task(
-        task_key=cfg["ai_task_key"],
+        task_key=agent_task_key,
         live_content=live_content,
         index=short_name,
         ctx=ctx,
@@ -688,6 +719,7 @@ async def resolve_company_website(
     if not api_result.get("success"):
         _warn_company(short_name, "-", api_result.get("error") or "task failed")
         return {"success": False, "state": None, "error": api_result.get("error") or "task failed"}
+
     parsed = api_result.get("parsed_response") or {}
     website = (parsed.get("website") or "").strip()
     if not parsed.get("task_success") or not website:
@@ -695,11 +727,17 @@ async def resolve_company_website(
             "Response from find_company_website: task_success=%r website=%r",
             parsed.get("task_success"), website,
         )
-        transition_company_state(short_name, "NO_WEBSITE")
-        return {"success": True, "state": "NO_WEBSITE", "error": None}
+        transition_company_state(short_name, fail_state)
+        _entity_info(short_name, "company", "resolve_website", f"-> {fail_state}")
+        return {"success": True, "state": fail_state, "error": None}
+
     update_company(short_name, company_website=website)
-    transition_company_state(short_name, "WEBSITE_FOUND")
-    return {"success": True, "state": "WEBSITE_FOUND", "error": None}
+    transition_company_state(short_name, pass_state)
+    _entity_info(
+        short_name, "company", "resolve_website",
+        f"website={website!r} -> {pass_state}",
+    )
+    return {"success": True, "state": pass_state, "error": None}
 
 
 async def run_inflow_discovery_batch(
@@ -708,7 +746,7 @@ async def run_inflow_discovery_batch(
     ctx: Optional[Dict[str, Any]],
     debug: bool,
 ) -> Dict[str, Any]:
-    """Phase 1: CSE per stale table term, record deduped hits as NEW (AST-775)."""
+    """Phase 1: CSE per stale table term, record deduped hits as DISCOVERED (land_state)."""
     _ = debug
     zero = {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     candidate_id = (candidate.get("astral_candidate_id") or candidate.get("candidate_id") or "").strip()
@@ -802,7 +840,7 @@ async def run_company_task(
     company_website = entity.get("company_website", "")
 
     try:
-        if input_state == "NEW":
+        if input_state == "DISCOVERED":
             tk = (dispatch_task_key or "").strip()
             if tk == INFLOW_CONFIG["vet"]["task_key"]:
                 r = await vet_inflow_discovery_company(
@@ -813,7 +851,7 @@ async def run_company_task(
             else:
                 _warn_company(
                     short_name, "-",
-                    f"NEW requires dispatch_task_key {INFLOW_CONFIG['vet']['task_key']!r} or {INFLOW_CONFIG['resolve']['task_key']!r}",
+                    f"DISCOVERED requires dispatch_task_key {INFLOW_CONFIG['vet']['task_key']!r} or {INFLOW_CONFIG['resolve']['task_key']!r}",
                 )
                 return {**zero, "total_errors": 1}
             if r.get("error"):
@@ -821,8 +859,24 @@ async def run_company_task(
             terminal_ok = (
                 INFLOW_CONFIG["vet"]["pass_state"],
                 INFLOW_CONFIG["vet"]["fail_state"],
-                "WEBSITE_FOUND",
-                "NO_WEBSITE",
+                INFLOW_CONFIG["resolve"]["pass_state"],
+                INFLOW_CONFIG["resolve"]["fail_state"],
+            )
+            if r.get("state") in terminal_ok:
+                return {**zero, "total_passed": 1}
+            return {**zero, "total_failed": 1}
+
+        elif input_state == "WEBSITE_REVIEW":
+            tk = (dispatch_task_key or "").strip()
+            if tk != "resolve_website":
+                _warn_company(short_name, "-", f"WEBSITE_REVIEW expects resolve_website, got {tk}")
+                return {**zero, "total_errors": 1}
+            r = await resolve_website_company(short_name, entity, ctx=ctx, debug=debug)
+            if r.get("error"):
+                return {**zero, "total_errors": 1}
+            terminal_ok = (
+                TASK_CONFIG["resolve_website"]["pass_state"],
+                TASK_CONFIG["resolve_website"]["fail_state"],
             )
             if r.get("state") in terminal_ok:
                 return {**zero, "total_passed": 1}
