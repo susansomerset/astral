@@ -213,10 +213,10 @@ class TestAst1558CandidateInboxVerbs:
             "src.data.database.list_dispatch_tasks",
             MagicMock(
                 return_value=[
-                    {"candidate_id": "cand-ada", "task_key": "meteorite_email"},
-                    {"candidate_id": "cand-bob", "task_key": "meteorite_email"},
+                    {"candidate_id": "cand-ada", "task_key": "stage_email_meteorite"},
+                    {"candidate_id": "cand-bob", "task_key": "stage_email_meteorite"},
                     {"candidate_id": "cand-other", "task_key": "stage_meteorite"},
-                    {"candidate_id": "", "task_key": "meteorite_email"},
+                    {"candidate_id": "", "task_key": "stage_email_meteorite"},
                 ]
             ),
         )

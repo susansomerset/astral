@@ -866,9 +866,9 @@
     "system_prompt": "",
     "task_group_name": "Meteorite Review",
     "task_group_order": "4500",
-    "task_key": "meteorite_email",
+    "task_key": "stage_email_meteorite",
     "task_key_uuid": "39b73c1e-b24f-45bc-bd03-085c72892fb3",
-    "task_name": "meteorite_email",
+    "task_name": "stage_email_meteorite",
     "task_seq": 999,
     "updated_at": "2026-08-16 17:26:50",
     "user_prompt": ""

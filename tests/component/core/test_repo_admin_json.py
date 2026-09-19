@@ -255,7 +255,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_initiate_candidate",
         "meteorite_like",
         "meteorite_upshot",
-        "meteorite_email",
+        "stage_email_meteorite",
         "meteorite_grade_do",
         "meteorite_grade_get",
         "parse_job_list",
@@ -864,7 +864,7 @@ class TestAst1529StageMeteoriteCatalogRow:
         assert "outcome" in user.lower()
         assert "jobs" in user.lower()
         # Mailbox poller row remains non-live (no Ruth classify).
-        mailbox = by["meteorite_email"]
+        mailbox = by["stage_email_meteorite"]
         assert mailbox["agent_id"] in ("", None)
         assert not (mailbox.get("cache_prompt") or "").strip()
         assert not (mailbox.get("user_prompt") or "").strip()
@@ -1341,3 +1341,18 @@ class TestAst1400EstelleCraftSeedPins:
                 "docs/uat-fixtures/AST-756/expected-agent_task.json", task_key,
             )
             assert cat == fix, task_key
+
+class TestAst1712MailboxCatalogKey:
+    """AST-1712: mailbox shell row key follows stage_email_meteorite; Ruth row stays."""
+
+    def test_mailbox_row_renamed_ruth_row_unchanged(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by_key = {row["task_key"]: row for row in rows}
+        by_uuid = {row["task_key_uuid"]: row for row in rows}
+        assert "meteorite_email" not in by_key
+        mailbox = by_uuid["39b73c1e-b24f-45bc-bd03-085c72892fb3"]
+        assert mailbox["task_key"] == mailbox["task_name"] == "stage_email_meteorite"
+        assert not (mailbox.get("cache_prompt") or "").strip()
+        assert not (mailbox.get("user_prompt") or "").strip()
+        ruth = by_uuid["3bbd54c2-60a7-494e-b79a-e68aca7c2d77"]
+        assert ruth["task_key"] == ruth["task_name"] == "stage_meteorite"
