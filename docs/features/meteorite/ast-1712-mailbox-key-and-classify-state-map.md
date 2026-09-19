@@ -146,3 +146,24 @@ Execute stages in order, steps in order. One commit per stage on this epic workt
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1712
+**Overall:** APPROVED
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref:** fccf0171663f737c49825abe1651267c0c33b394
+
+## Canon scores
+patt.task.dispatch-retry | A
+
+## Traceability
+AC1 → Stage 2 (mailbox task key, `agent_task.json`, `agent.py` fold); AC2 → Stage 1 (registry, retention, ingress map, no dispatch triggers on `NOT_A_JOB`/`NEW_EMAIL_ERROR`; narrowed AC2 — `meteorite.py` `state="ERROR"` clause deferred to AST-1713)
+
+## Findings
+None.
+
+context_tokens≈32000
+
+[plan-rubric] PROCEED (Commit: fccf0171663f737c49825abe1651267c0c33b394) registry and key rename
