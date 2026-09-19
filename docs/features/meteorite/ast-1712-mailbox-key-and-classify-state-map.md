@@ -187,3 +187,57 @@ None.
 context_tokens≈32000
 
 [plan-rubric] PROCEED (Commit: fccf0171663f737c49825abe1651267c0c33b394) registry and key rename
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1712
+**Publish ref:** `b4d8f65a79d7716adc0b6daf494baa10cd77d892` (`origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map`)
+**Corpus:** `751624d7ebdf9bc441fc3d08a51ae751ea8026af`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan `patt.task.dispatch-retry | A`; code review `A`.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Joan traceability drift** — `## Joan validate` traceability still says `meteorite.py` `state="ERROR"` is deferred to AST-1713; publish tip lands Stage 3 / AC3 (`ERROR` → `SCRAPE_ERROR` in `src/core/meteorite.py`). Artifact-only; implementation is correct.
+- **Interim stage-failure routing** — `run_stage_meteorite` still writes `SCRAPE_ERROR` for classify/shape misses (same paths as pre-rename `ERROR`). Registry now defines `NEW_EMAIL_ERROR` / `NOT_A_JOB` and excludes them from dispatch retry; proper outcome routing is AST-1713 per plan boundaries. Expected sibling sequencing, not a canon defect on this slice.
+
+## What's solid
+
+- **Registry** — `METEORITE_STATES` drops `ERROR`, adds `SCRAPE_ERROR`, `NOT_A_JOB`, `NEW_EMAIL_ERROR`; `SCRAPE_LINK` priors include `SCRAPE_ERROR`; retention partitions and `scrape_page_status_states` retargeted; asserts lock the shape.
+- **Dispatch-retry slice** — No `trigger_state` (ingress, dispatch tasks, or notify config) targets `NEW_EMAIL_ERROR` or `NOT_A_JOB`; `TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers` encodes that.
+- **Mailbox key** — `stage_email_meteorite` on mailbox + parse configs, `agent_task.json` shell row (`39b73c1e-…`), `debug_func` → `inbox.check_email`; `stage_meteorite` Ruth row untouched; AC1 quoted-key grep clean on scoped product files.
+- **Failure writes** — All `state="ERROR"` and `status_map.get(page_status, "ERROR")` retargeted to `SCRAPE_ERROR`; log strings `This row is ERROR` preserved.
+- **Tests** — Betty manifest classes (`TestAst1712MailboxKeyAndClassifyStates`, `TestAst1712MailboxCatalogKey`, `TestAst1712NotAJobPurge`) plus revised meteorite state asserts; AST-756 fixture lockstep.
+- **Scope** — No product edits to `inbox.py`, `dispatcher.py`, or `api_admin.py`; no `NEW_EMAIL_ERROR` / `NOT_A_JOB` row writes; estimate footprint fits confirmed **3**.
+
+## Recommended actions
+
+Chuckles: append artifact, `docs(AST-1712): Radia review — clean`, push sub ref, post slim upshot `--as radia`, → **Review Posted**; datt **PROCEED** → User Testing (no `resolve-child` canon work).
+
+context_tokens≈48000
+
+[code-rubric] PROCEED (Commit: b4d8f65a) registry key SCRAPE_ERROR clean
