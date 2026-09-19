@@ -1838,15 +1838,14 @@ CONTACT_CONFIG = {
             "entity": "candidate",
             "write": True,
             "description": (
-                "Merge allowlisted profile fields into candidate_data.profile "
+                "Merge allowlisted name columns (first/last/pronouns) "
                 "for Slack Contact intake."
             ),
-            # Dotted paths under candidate_data. Payload field keys must match exactly.
+            # AST-1014 name columns — not candidate_data.profile (refused on save).
             "allowed_paths": (
-                "profile.first",
-                "profile.last",
-                "profile.pronoun_preference",
-                "profile.contact_email",
+                "first",
+                "last",
+                "pronouns",
             ),
         },
         "save_candidate_contact": {
@@ -1916,8 +1915,15 @@ for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
     assert isinstance(_skill_meta.get("description"), str) and _skill_meta["description"].strip(), _skill_key
     _paths = _skill_meta.get("allowed_paths")
     assert isinstance(_paths, tuple) and len(_paths) > 0, _skill_key
+    _name_cols = set(CANDIDATE_LIBRARY_CONFIG["name_columns"])
     for _p in _paths:
-        assert isinstance(_p, str) and "." in _p, (_skill_key, _p)
+        assert isinstance(_p, str) and _p, (_skill_key, _p)
+        if _p in _name_cols:
+            continue
+        assert "." in _p, (_skill_key, _p)
+assert set(CONTACT_CONFIG["skills"]["save_candidate_profile"]["allowed_paths"]).issubset(
+    CANDIDATE_LIBRARY_CONFIG["name_columns"]
+)
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {

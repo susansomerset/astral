@@ -56,7 +56,7 @@ from src.data.database import (
     COMPANY_BATCH_SORT_COLUMNS,
     ensure_batch_response_entity_ids,
 )
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, log_batch_id
 from src.utils.llm_external import is_provider_balance_refusal
 from src.utils.config import (
     ASTRAL_CONFIG,
@@ -78,6 +78,25 @@ from src.utils.formatting import (
 
 # Logger for this module
 logger = get_logger(__name__)
+
+
+def _entity_info(entity_id: Any, entity_type: str, event: str, detail: Any) -> None:
+    logger.info(
+        "%s | %s %s: %s (batch: %s)",
+        entity_id,
+        entity_type,
+        event,
+        detail,
+        log_batch_id.get() or "-",
+    )
+
+
+def _warn_company(aid: Any, dest: Any, reason: str) -> None:
+    logger.warning("%s -> %s [%s]", aid, dest, reason)
+
+
+def _pace_debug(message: str) -> None:
+    logger.debug("%s", message)
 
 
 def make_locate_parse_resolver(dom_map: Dict[int, str], visible_map: Dict[int, str]):  # pragma: no cover
@@ -222,13 +241,7 @@ def transition_company_state(short_name: str, to_state: str) -> None:
     batch_id = company.get("batch_id")
     history.append({"from_state": from_state, "to_state": to_state, "timestamp": now, "batch_id": batch_id})
     if from_state != to_state:
-        logger.info(
-            "[%s] company state %s -> %s (batch_id=%s)",
-            short_name,
-            from_state or "(none)",
-            to_state,
-            batch_id or "",
-        )
+        _entity_info(short_name, "company", "state", f"{from_state or '(none)'} -> {to_state}")
     update_company(short_name, state=to_state, state_history=history)
 
 
@@ -296,39 +309,29 @@ def _apply_vet_inflow_result_row(
     index: int,
     total: int,
 ) -> Dict[str, Any]:
+    _ = (log, debug, index, total)
     grade = (row.get("grade") or "").strip().upper()
     website = (row.get("website") or "").strip()
     if not website:
-        if debug:
-            log.debug_detail(f"grade={grade!r} missing website")
+        logger.debug("Response from vet grade row: grade=%r missing website", grade)
         return {"success": False, "state": None, "error": "missing website"}
     if grade in cfg["fail_grades"]:
         transition_company_state(short_name, cfg["fail_state"])
-        outcome = f"recorded {cfg['fail_state']} grade={grade} website={website!r}"
-        if debug:
-            log.debug_index(
-                func="roster.vet_inflow_discovery_company",
-                index=index,
-                total=total,
-                identifier=short_name,
-                outcome=outcome,
-            )
-            log.debug_detail(f"grade={grade!r} website={website!r}")
+        _warn_company(short_name, cfg["fail_state"], f"vet grade {grade}")
+        logger.debug(
+            "Response from vet grade row: grade=%r website=%r state=%s",
+            grade, website, cfg["fail_state"],
+        )
         return {"success": True, "state": cfg["fail_state"], "error": None}
     if grade not in cfg["pass_grades"]:
-        logger.warning("[%s] vet_inflow_discovery_company: unknown grade %r", short_name, row.get("grade"))
+        _warn_company(short_name, "-", f"unknown grade {row.get('grade')!r}")
         return {"success": False, "state": None, "error": f"unknown grade {grade!r}"}
     update_company(short_name, company_website=website)
     transition_company_state(short_name, cfg["pass_state"])
-    if debug:
-        log.debug_index(
-            func="roster.vet_inflow_discovery_company",
-            index=index,
-            total=total,
-            identifier=short_name,
-            outcome=f"recorded {cfg['pass_state']} grade={grade} website={website!r}",
-        )
-        log.debug_detail(f"grade={grade!r} website={website!r}")
+    logger.debug(
+        "Response from vet grade row: grade=%r website=%r state=%s",
+        grade, website, cfg["pass_state"],
+    )
     return {"success": True, "state": cfg["pass_state"], "error": None}
 
 
@@ -404,9 +407,11 @@ def record_inflow_discovery_hit(
             "inflow_discovery_notes": url,
         },
     )
+    land = INFLOW_CONFIG["discovery"]["land_state"]
+    _entity_info(slug, "company", "inflow recorded", land)
     if term:
-        return True, f"recorded DISCOVERED slug={slug} term={term!r}"
-    return True, f"recorded DISCOVERED slug={slug}"
+        return True, f"recorded {land} slug={slug} term={term!r}"
+    return True, f"recorded {land} slug={slug}"
 
 
 def _ingest_failure_reason(
@@ -442,18 +447,18 @@ def ingest_new_companies(
     """Create NEW or WEBSITE_FOUND company row for an accepted inflow hit."""
     slug = (slug or "").strip().lower()
     if not slug or not _INFLOW_SLUG_RE.match(slug):
-        logger.warning("ingest_new_companies: invalid slug %r for candidate %s", slug, candidate_id)
+        _warn_company(slug or "-", "-", f"invalid slug {slug!r}")
         return False
     existing = get_company(slug)
     if existing:
         if (existing.get("candidate_id") or "") != candidate_id:
-            logger.warning("ingest_new_companies: slug %r owned by another candidate", slug)
+            _warn_company(slug, "-", f"owned by another candidate")
         return False
     site = (website or "").strip()
     if site:
         norm = _normalize_company_url_for_dedupe(site)
         if norm and norm in _candidate_company_urls(candidate_id):
-            logger.info("ingest_new_companies: duplicate URL for %s candidate %s", slug, candidate_id)
+            _warn_company(slug, "-", f"duplicate URL {site!r}")
             return False
     term = originating_search_term
     if term is None and isinstance(source_hit, dict):
@@ -476,6 +481,7 @@ def ingest_new_companies(
         note_url = (source_hit.get("url") or "").strip()
         if note_url:
             save_company_data(slug, {"inflow_discovery_notes": note_url})
+    _entity_info(slug, "company", "inflow recorded", target_state)
     return True
 
 
@@ -489,22 +495,13 @@ async def vet_inflow_discovery_company(
     """Company dispatch: vet stored discovery blurb → WEBSITE_FOUND | VET_FAILED (AST-776)."""
     del batch_id  # company batch_id is on entity row; do_task uses log_batch_id from dispatcher
     cfg = INFLOW_CONFIG["vet"]
-    log = logger
-    log.set_debug_flag(debug)
     blurb = ((entity.get("company_data") or {}).get(cfg["blurb_data_key"]) or "").strip()
     if not blurb:
-        logger.warning("[%s] vet_inflow_discovery_company: missing inflow_discovery_blurb", short_name)
+        _warn_company(short_name, "-", "missing inflow_discovery_blurb")
         return {"success": False, "state": None, "error": "missing inflow_discovery_blurb"}
     live_content = f"Discovery hit (index|title|url|snippet)\n{blurb}"
-    if debug:
-        log.debug_index(
-            func="roster.vet_inflow_discovery_company",
-            index=1,
-            total=1,
-            identifier=short_name,
-            outcome="vet vet_inflow_discovery 1 blurb",
-        )
-        log.debug_detail_block(live_content)
+    logger.debug("Calling agent.do_task: task_key=%s index=%s", cfg["task_key"], short_name)
+    logger.debug("Calling agent.do_task live_content: %s", live_content)
     api_result = await do_task(
         task_key=cfg["task_key"],
         live_content=live_content,
@@ -516,16 +513,9 @@ async def vet_inflow_discovery_company(
         },
         debug=debug,
     )
+    logger.debug("Response from agent.do_task: %s", api_result)
     if not api_result.get("success"):
-        if debug:
-            log.debug_index(
-                func="roster.vet_inflow_discovery_company",
-                index=1,
-                total=1,
-                identifier=short_name,
-                outcome="vet task failed",
-            )
-            log.debug_detail(f"error={api_result.get('error')!r}")
+        _warn_company(short_name, "-", api_result.get("error") or "task failed")
         return {"success": False, "state": None, "error": api_result.get("error") or "task failed"}
     parsed = api_result.get("parsed_response") or {}
     rows = parsed.get("results")
@@ -536,11 +526,11 @@ async def vet_inflow_discovery_company(
                 row = r
                 break
     if not row:
-        if debug:
-            log.debug_detail("vet parsed_response missing results list")
+        _warn_company(short_name, "-", "missing results")
+        logger.debug("Response from vet parse: missing results list")
         return {"success": False, "state": None, "error": "missing results"}
     return _apply_vet_inflow_result_row(
-        short_name, row, cfg, log, debug, index=1, total=1,
+        short_name, row, cfg, logger, debug, index=1, total=1,
     )
 
 
@@ -552,11 +542,10 @@ async def vet_inflow_discovery_company_batch(
 ) -> Dict[str, Any]:
     """Batch company vet: one do_task, hit_index decode → WEBSITE_FOUND | VET_FAILED (AST-822)."""
     cfg = INFLOW_CONFIG["vet"]
-    log = logger
-    log.set_debug_flag(debug)
     blurb_key = cfg["blurb_data_key"]
     ready: List[Dict[str, Any]] = []
     not_ready: List[Dict[str, Any]] = []
+    logger.debug("Beginning vet_inflow_discovery loop on %s items", len(companies))
     for company in companies:
         blurb = ((company.get("company_data") or {}).get(blurb_key) or "").strip()
         if blurb:
@@ -565,20 +554,13 @@ async def vet_inflow_discovery_company_batch(
             not_ready.append(company)
     for company in not_ready:
         sn = company.get("short_name") or "?"
-        logger.warning("[%s] vet_inflow_discovery_company_batch: missing inflow_discovery_blurb", sn)
+        _warn_company(sn, "-", "missing inflow_discovery_blurb")
     total = len(companies)
     if not ready:
+        logger.debug("End vet_inflow_discovery loop after %s items", total)
         return {"passed": 0, "failed": 0, "skipped": 0, "total": total}
     short_names = [c.get("short_name") or "?" for c in ready]
-    if debug:
-        log.debug_index(
-            func="roster.vet_inflow_discovery_company_batch",
-            index=1,
-            total=1,
-            identifier=batch_id,
-            outcome=f"batch start n={len(ready)}",
-        )
-        log.debug_detail(f"batch_id={batch_id} short_names={short_names}")
+    logger.debug("Calling agent.do_task: task_key=%s short_names=%s", cfg["task_key"], short_names)
     ready_blurbs = [
         ((c.get("company_data") or {}).get(blurb_key) or "").strip() for c in ready
     ]
@@ -589,8 +571,7 @@ async def vet_inflow_discovery_company_batch(
     )
     body = "\n".join(_renumber_vet_blurb_line(b, i) for i, b in enumerate(ready_blurbs))
     live_content = f"{header}\n{body}"
-    if debug:
-        log.debug_detail_block(live_content)
+    logger.debug("Calling agent.do_task live_content: %s", live_content)
     ready_for_decode = [
         {
             "astral_job_id": c.get("short_name") or "?",
@@ -611,16 +592,11 @@ async def vet_inflow_discovery_company_batch(
         },
         debug=debug,
     )
+    logger.debug("Response from agent.do_task: %s", api_result)
     if not api_result.get("success"):
-        if debug:
-            log.debug_index(
-                func="roster.vet_inflow_discovery_company_batch",
-                index=1,
-                total=1,
-                identifier=batch_id,
-                outcome="vet task failed",
-            )
-            log.debug_detail(f"error={api_result.get('error')!r}")
+        for company in ready:
+            _warn_company(company.get("short_name") or "?", "-", api_result.get("error") or "task failed")
+        logger.debug("End vet_inflow_discovery loop after %s items", total)
         return {"passed": 0, "failed": 0, "skipped": 0, "total": total}
     parsed = api_result.get("parsed_response") or {}
     rows = parsed.get("results")
@@ -637,14 +613,11 @@ async def vet_inflow_discovery_company_batch(
         short_name = company.get("short_name") or "?"
         row = index_by_hit.get(i)
         if not row:
-            logger.warning(
-                "[%s] vet_inflow_discovery_company_batch: missing results row hit_index=%s",
-                short_name, i,
-            )
+            _warn_company(short_name, "-", f"missing results row hit_index={i}")
             errors += 1
             continue
         r = _apply_vet_inflow_result_row(
-            short_name, row, cfg, log, debug, index=i + 1, total=len(ready),
+            short_name, row, cfg, logger, debug, index=i + 1, total=len(ready),
         )
         if r.get("error"):
             errors += 1
@@ -654,6 +627,7 @@ async def vet_inflow_discovery_company_batch(
             failed += 1
         else:
             errors += 1
+    logger.debug("End vet_inflow_discovery loop after %s items", total)
     return {"passed": passed, "failed": failed, "skipped": 0, "total": total}
 
 
@@ -665,89 +639,47 @@ async def resolve_company_website(
 ) -> Dict[str, Any]:
     """CSE-only fetch hop for inflow_resolve_website → persist hits → WEBSITE_REVIEW | NO_WEBSITE; never do_task."""
     del ctx  # fetch hop — no agent call
+    _ = debug
     cfg = INFLOW_CONFIG["resolve"]
-    log = logger
-    log.set_debug_flag(debug)
     site = (entity.get("company_website") or "").strip()
     if site:
-        if debug:
-            log.debug_index(
-                func="roster.resolve_company_website",
-                index=1,
-                total=1,
-                identifier=short_name,
-                outcome="skipped — company_website already set",
-            )
-            log.debug_detail(f"company_website={site!r}")
+        logger.debug("Calling search_google_cse skipped: company_website=%r", site)
         return {"success": True, "state": "WEBSITE_FOUND", "error": None}
     name = (entity.get("company_name") or short_name or "").strip()
     query = f"{name} official website"
-    if debug:
-        log.debug_index(
-            func="roster.resolve_company_website",
-            index=1,
-            total=1,
-            identifier=short_name,
-            outcome="CSE search",
-        )
-        pace_detail = log.debug_detail
-    else:
-        pace_detail = None
+    logger.debug("Calling search_google_cse: query=%r", query)
     try:
         hits = search_google_cse(
             query=query,
             max_results=int(cfg["max_results"]),
             site_filters=None,
             days=cfg["date_restrict_days"],
-            pace_detail=pace_detail,
+            pace_detail=_pace_debug,
         )
     except (RuntimeError, ValueError) as exc:
-        if debug:
-            log.debug_detail(f"CSE failed: {exc!s}")
-            log.debug_detail(f"query={query!r}")
-        logger.warning("[%s] resolve_company_website: CSE failed: %s", short_name, exc)
-        return {"success": False, "state": None, "error": str(exc)}
-    if debug:
-        log.debug_detail(f"search complete: {len(hits)} CSE hit(s)")
-        log.debug_detail(f"query={query!r} raw_hits={len(hits)}")
-        for hi, hit in enumerate(hits):
-            if hi >= 20:  # UAT cap — same as discovery
-                log.debug_detail(f"... {len(hits) - 20} more hits omitted from log")
-                break
-            log.debug_detail(
-                f"hit title={hit.get('title', '')!r} url={hit.get('url', '')!r}"
-            )
-    if not hits:
-        if debug:
-            log.debug_index(
-                func="roster.resolve_company_website",
-                index=1,
-                total=1,
-                identifier=short_name,
-                outcome="NO_WEBSITE — zero CSE hits",
-            )
-            log.debug_detail(f"query={query!r}")
-        transition_company_state(short_name, cfg["fail_state"])
-        return {"success": True, "state": cfg["fail_state"], "error": None}
-    # Persist CSE hits for resolve_website apply (AST-1674); wait on WEBSITE_REVIEW.
-    if debug:
-        log.debug_index(
-            func="roster.resolve_company_website",
-            index=1,
-            total=1,
-            identifier=short_name,
-            outcome=f"persist {len(hits)} CSE hit(s) -> {cfg['pass_state']}",
+        logger.exception(
+            "%s | company CSE search\n  %s: %s\n  Leaving website unresolved",
+            short_name,
+            type(exc).__name__,
+            exc,
         )
+        return {"success": False, "state": None, "error": str(exc)}
+    logger.debug("Response from search_google_cse: %s", hits)
+    if not hits:
+        logger.debug("Response from search_google_cse: zero hits query=%r", query)
+        fail_state = cfg["fail_state"]
+        transition_company_state(short_name, fail_state)
+        return {"success": True, "state": fail_state, "error": None}
+    # Persist CSE hits for resolve_website apply (AST-1674); wait on WEBSITE_REVIEW.
+    logger.debug("Calling save_company_data: %s=%s", cfg["hit_list_data_key"], hits)
     save_company_data(short_name, {cfg["hit_list_data_key"]: hits})
-    transition_company_state(short_name, cfg["pass_state"])
-    logger.info(
-        "%s | company %s: %s (batch: %s)",
-        short_name,
-        "inflow_resolve_website",
-        f"{len(hits)} hits -> {cfg['pass_state']}",
-        (entity.get("batch_id") or "-"),
+    pass_state = cfg["pass_state"]
+    transition_company_state(short_name, pass_state)
+    _entity_info(
+        short_name, "company", "inflow_resolve_website",
+        f"{len(hits)} hits -> {pass_state}",
     )
-    return {"success": True, "state": cfg["pass_state"], "error": None}
+    return {"success": True, "state": pass_state, "error": None}
 
 
 async def resolve_website_company(
@@ -762,12 +694,10 @@ async def resolve_website_company(
     agent_task_key = sa_cfg["agent_task"]  # find_company_website — agent identity, not SA key
     pass_state = sa_cfg["pass_state"]
     fail_state = sa_cfg["fail_state"]
-    log = logger
-    log.set_debug_flag(debug)
 
     hits = (entity.get("company_data") or {}).get(hit_key)
     if not isinstance(hits, list) or not hits:
-        logger.warning("[%s] resolve_website_company: missing or empty %s", short_name, hit_key)
+        _warn_company(short_name, "-", f"missing or empty {hit_key}")
         return {"success": False, "state": None, "error": f"missing or empty {hit_key}"}
 
     # Same live_content shape as pre-split resolve: row 0 = slug; hits 1..N (1-based).
@@ -776,17 +706,8 @@ async def resolve_website_company(
         snip = (hit.get("snippet") or "")[:500]
         lines.append(f"{i + 1}|{hit.get('title', '')}|{hit.get('url', '')}|{snip}")
     live_content = "\n".join(lines)
-
-    if debug:
-        log.debug_index(
-            func="roster.resolve_website_company",
-            index=1,
-            total=1,
-            identifier=short_name,
-            outcome=f"vet {agent_task_key} {len(hits)} hit(s)",
-        )
-        log.debug_detail_block(live_content)
-
+    logger.debug("Calling agent.do_task: task_key=%s index=%s", agent_task_key, short_name)
+    logger.debug("Calling agent.do_task live_content: %s", live_content)
     api_result = await do_task(
         task_key=agent_task_key,
         live_content=live_content,
@@ -794,59 +715,28 @@ async def resolve_website_company(
         ctx=ctx,
         debug=debug,
     )
+    logger.debug("Response from agent.do_task: %s", api_result)
     if not api_result.get("success"):
-        if debug:
-            log.debug_index(
-                func="roster.resolve_website_company",
-                index=1,
-                total=1,
-                identifier=short_name,
-                outcome="find_company_website task failed",
-            )
-            log.debug_detail(f"error={api_result.get('error')!r}")
+        _warn_company(short_name, "-", api_result.get("error") or "task failed")
         return {"success": False, "state": None, "error": api_result.get("error") or "task failed"}
 
     parsed = api_result.get("parsed_response") or {}
     website = (parsed.get("website") or "").strip()
     if not parsed.get("task_success") or not website:
-        if debug:
-            log.debug_index(
-                func="roster.resolve_website_company",
-                index=1,
-                total=1,
-                identifier=short_name,
-                outcome="NO_WEBSITE — task_success false or empty website",
-            )
-            log.debug_detail(
-                f"task_success={parsed.get('task_success')!r} website={website!r}"
-            )
-        transition_company_state(short_name, fail_state)
-        logger.info(
-            "%s | company %s: %s (batch: %s)",
-            short_name,
-            "resolve_website",
-            f"-> {fail_state}",
-            (entity.get("batch_id") or "-"),
+        logger.debug(
+            "Response from find_company_website: task_success=%r website=%r",
+            parsed.get("task_success"), website,
         )
+        transition_company_state(short_name, fail_state)
+        _entity_info(short_name, "company", "resolve_website", f"-> {fail_state}")
         return {"success": True, "state": fail_state, "error": None}
 
     update_company(short_name, company_website=website)
     transition_company_state(short_name, pass_state)
-    logger.info(
-        "%s | company %s: %s (batch: %s)",
-        short_name,
-        "resolve_website",
+    _entity_info(
+        short_name, "company", "resolve_website",
         f"website={website!r} -> {pass_state}",
-        (entity.get("batch_id") or "-"),
     )
-    if debug:
-        log.debug_index(
-            func="roster.resolve_website_company",
-            index=1,
-            total=1,
-            identifier=short_name,
-            outcome=f"recorded WEBSITE_FOUND website={website!r}",
-        )
     return {"success": True, "state": pass_state, "error": None}
 
 
@@ -857,126 +747,74 @@ async def run_inflow_discovery_batch(
     debug: bool,
 ) -> Dict[str, Any]:
     """Phase 1: CSE per stale table term, record deduped hits as DISCOVERED (land_state)."""
+    _ = debug
     zero = {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     candidate_id = (candidate.get("astral_candidate_id") or candidate.get("candidate_id") or "").strip()
     cfg = INFLOW_CONFIG["discovery"]
-    log = logger
-    log.set_debug_flag(debug)
     freq_hrs = float((ctx or {}).get("inflow_discovery_freq_hrs") or 0)
     terms = list_stale_company_search_terms(candidate_id, freq_hrs)
     term_total = len(terms)
     if not terms:
-        if debug:
-            log.debug_index(
-                func="roster.run_inflow_discovery_batch",
-                index=1,
-                total=1,
-                identifier=candidate_id,
-                outcome="no stale search terms",
-            )
-        logger.warning("run_inflow_discovery_batch: no stale search terms for %s", candidate_id)
+        _entity_info(candidate_id, "candidate", "inflow_discovery", "no stale search terms")
         return {**zero, "total_errors": 0}
     all_hits: List[Tuple[str, GoogleCseHit]] = []
     seen_urls: Set[str] = set()
     errors = 0
-    for term_i, term in enumerate(terms, start=1):
-        if debug:
-            log.debug_index(
-                func="roster.run_inflow_discovery_batch",
-                index=term_i,
-                total=term_total,
-                identifier=term,
-                outcome="CSE search",
-            )
-            pace_detail = log.debug_detail
-        else:
-            pace_detail = None
+    logger.debug("Beginning CSE term loop on %s items", term_total)
+    for term in terms:
+        logger.debug("Calling search_google_cse: query=%r", term)
         try:
             hits = search_google_cse(
                 query=term,
                 max_results=int(cfg["max_results_per_query"]),
                 site_filters=None,
                 days=int(cfg["date_restrict_days"]),
-                pace_detail=pace_detail,
+                pace_detail=_pace_debug,
             )
         except (RuntimeError, ValueError) as exc:
-            if debug:
-                log.debug_detail(f"CSE failed: {exc!s}")
-            logger.warning("run_inflow_discovery_batch: CSE failed for term %r: %s", term, exc)
+            logger.exception(
+                "%s | candidate CSE search term %r\n  %s: %s\n  Continuing to the next search term",
+                candidate_id,
+                term,
+                type(exc).__name__,
+                exc,
+            )
             errors += 1
             continue
-        if debug:
-            log.debug_detail(f"search complete: {len(hits)} hit(s)")
-            log.debug_detail(f"search_term={term!r} raw_hits={len(hits)}")
-            for hi, hit in enumerate(hits):
-                if hi >= 20:  # UAT cap per term
-                    log.debug_detail(f"... {len(hits) - 20} more hits omitted from log")
-                    break
-                log.debug_detail(
-                    f"hit title={hit.get('title', '')!r} url={hit.get('url', '')!r}"
-                )
+        logger.debug("Response from search_google_cse: %s", hits)
         update_company_search_term_last_scan_at(candidate_id, term)
-        if debug:
-            log.debug_detail("last_scan_at bumped")
         for hit in hits:
             norm = _normalize_company_url_for_dedupe(hit.get("url") or "")
             if not norm or norm in seen_urls:
                 continue
             seen_urls.add(norm)
             all_hits.append((term, hit))
+    logger.debug("End CSE term loop after %s items", term_total)
     if not all_hits:
-        if debug:
-            log.debug_index(
-                func="roster.run_inflow_discovery_batch",
-                index=1,
-                total=1,
-                identifier=candidate_id,
-                outcome="no deduped hits — nothing to record",
-            )
-            log.debug_detail(
-                f"terms_searched={term_total} errors={errors} deduped_hits=0"
-            )
+        logger.debug(
+            "Response from run_inflow_discovery_batch: terms_searched=%s errors=%s deduped_hits=0",
+            term_total, errors,
+        )
         return {**zero, "total_errors": errors}
     hit_total = len(all_hits)
     recorded = 0
     skipped = 0
+    logger.debug("Beginning inflow record loop on %s items", hit_total)
     for hit_i, (term, hit) in enumerate(all_hits):
         ok, outcome = record_inflow_discovery_hit(
             candidate_id, hit, index=hit_i, search_term=term,
         )
-        hit_url = (hit.get("url") or "").strip()
-        identifier = _normalize_company_url_for_dedupe(hit_url) or hit_url or f"hit_{hit_i}"
-        if debug:
-            log.debug_index(
-                func="roster.run_inflow_discovery_batch",
-                index=hit_i + 1,
-                total=hit_total,
-                identifier=identifier,
-                outcome=outcome,
-            )
-            log.debug_detail(
-                f"title={hit.get('title', '')!r} url={hit_url!r}"
-            )
-            log.debug_detail(f"originating_search_term={term!r}")
+        logger.debug("Response from record_inflow_discovery_hit: %s", outcome)
         if ok:
             recorded += 1
         else:
             skipped += 1
-    if debug:
-        log.debug_detail(
-            f"batch summary terms_searched={term_total} deduped_hits={hit_total} "
-            f"recorded={recorded} skipped={skipped} errors={errors}"
-        )
-    if errors > 0:
-        logger.warning(
-            "run_inflow_discovery_batch: %d CSE term error(s) for candidate %s "
-            "(terms_searched=%d recorded=%d skipped=%d)",
-            errors,
-            candidate_id,
-            term_total,
-            recorded,
-            skipped,
-        )
+            _warn_company(
+                _normalize_company_url_for_dedupe((hit.get("url") or "").strip()) or f"hit_{hit_i}",
+                "-",
+                outcome,
+            )
+    logger.debug("End inflow record loop after %s items", hit_total)
     return {
         "total_processed": 1,
         "total_passed": recorded,
@@ -1011,11 +849,9 @@ async def run_company_task(
             elif tk == INFLOW_CONFIG["resolve"]["task_key"]:
                 r = await resolve_company_website(short_name, entity, ctx=ctx, debug=debug)
             else:
-                logger.warning(
-                    "run_company_task: DISCOVERED requires dispatch_task_key %r or %r for %s",
-                    INFLOW_CONFIG["vet"]["task_key"],
-                    INFLOW_CONFIG["resolve"]["task_key"],
-                    short_name,
+                _warn_company(
+                    short_name, "-",
+                    f"DISCOVERED requires dispatch_task_key {INFLOW_CONFIG['vet']['task_key']!r} or {INFLOW_CONFIG['resolve']['task_key']!r}",
                 )
                 return {**zero, "total_errors": 1}
             if r.get("error"):
@@ -1033,9 +869,7 @@ async def run_company_task(
         elif input_state == "WEBSITE_REVIEW":
             tk = (dispatch_task_key or "").strip()
             if tk != "resolve_website":
-                logger.warning(
-                    "run_company_task: WEBSITE_REVIEW expects resolve_website, got %s", tk
-                )
+                _warn_company(short_name, "-", f"WEBSITE_REVIEW expects resolve_website, got {tk}")
                 return {**zero, "total_errors": 1}
             r = await resolve_website_company(short_name, entity, ctx=ctx, debug=debug)
             if r.get("error"):
@@ -1050,24 +884,18 @@ async def run_company_task(
 
         elif input_state in ("WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"):
             tk = (dispatch_task_key or "").strip()
-            logger.warning(
-                "run_company_task: monolithic WEBSITE_FOUND dispatch removed for %s "
-                "(dispatch_task_key=%r; use fetch_website or HOMEPAGE_READY prefilter batch)",
-                short_name, tk or None,
+            _warn_company(
+                short_name, "-",
+                f"monolithic WEBSITE_FOUND dispatch removed (dispatch_task_key={tk or None!r}; use fetch_website or HOMEPAGE_READY prefilter batch)",
             )
             return {**zero, "total_errors": 1}
 
         elif input_state == "NO_OPENINGS":
             r = await process_recheck_no_openings(entity, batch_id, ctx=ctx, debug=debug)
             if not r.get("success"):
-                logger.error("[%s] recheck_no_openings failed (state unchanged): %s", short_name, r.get("message", ""))
+                _warn_company(short_name, "-", r.get("message", "") or "recheck_no_openings failed")
                 return {**zero, "total_errors": 1}
-            logger.info(
-                "[%s] recheck_no_openings ok: %s (state=%s)",
-                short_name,
-                r.get("message", ""),
-                r.get("new_state", ""),
-            )
+            _entity_info(short_name, "company", "recheck_no_openings", r.get("new_state", ""))
             return {**zero, "total_passed": 1}
 
         elif input_state == "JOBS_FOUND" and "JOBS_FOUND" in frozenset(
@@ -1079,7 +907,12 @@ async def run_company_task(
             )
             error_state = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
             if result.get("error"):  # pragma: no branch
-                logger.error(f"[{short_name}] jobs_found_process_job_site error: {result['error']}")
+                dest = error_state if (
+                    error_state
+                    and not result.get("state_held")
+                    and not is_provider_balance_refusal(result)
+                ) else "-"
+                _warn_company(short_name, dest, result["error"])
                 # AST-897: balance/credit hold already kept loop-eligible state — do not undo with error_state
                 if (
                     error_state
@@ -1096,14 +929,12 @@ async def run_company_task(
         elif input_state == ROSTER_CONFIG["select_job_page"]["dispatch_trigger_state"]:
             tk = (dispatch_task_key or "").strip()
             if tk != "select_job_page":
-                logger.warning(
-                    "run_company_task: PJL_READY expects select_job_page, got %s", tk
-                )
+                _warn_company(short_name, "-", f"PJL_READY expects select_job_page, got {tk}")
                 return {**zero, "total_errors": 1}
             result = await run_select_job_page_dispatch(entity, batch_id, ctx, debug)
             sel_cfg = ROSTER_CONFIG["select_job_page"]
             if result.get("error"):
-                logger.error(f"[{short_name}] select_job_page error: {result['error']}")
+                _warn_company(short_name, "-", result["error"])
                 return {**zero, "total_errors": 1}
             terminal_ok = frozenset({
                 sel_cfg.get("identified_state"),
@@ -1123,15 +954,12 @@ async def run_company_task(
         ):
             tk = (dispatch_task_key or "").strip()
             if tk != "parse_job_list":
-                logger.warning(
-                    "run_company_task: %s expects parse_job_list, got %s",
-                    input_state, tk,
-                )
+                _warn_company(short_name, "-", f"{input_state} expects parse_job_list, got {tk}")
                 return {**zero, "total_errors": 1}
             result = await run_parse_job_list_dispatch(entity, batch_id, ctx, debug)
             parse_cfg = ROSTER_CONFIG["parse_job_list"]
             if result.get("error"):
-                logger.error(f"[{short_name}] parse_job_list error: {result['error']}")
+                _warn_company(short_name, "-", result["error"])
                 return {**zero, "total_errors": 1}
             ok_states = frozenset({
                 parse_cfg["pass_state"],
@@ -1148,19 +976,24 @@ async def run_company_task(
             outcomes = await process_gazer_batch(batch_id, [entity], debug=debug, ctx=ctx)
             o = outcomes[0] if outcomes else {}
             if o.get("status") == "failure":
-                logger.error(f"[{short_name}] {o.get('message', '')}")
+                _warn_company(short_name, error_state or "-", o.get("message", "") or "gaze failed")
                 if error_state:
                     transition_company_state(short_name, error_state)
                 return {**zero, "total_errors": 1}
-            logger.info(f"[{short_name}] {o.get('message', '')}")
+            _entity_info(short_name, "company", "gaze", o.get("message", "") or "ok")
             return {**zero, "total_passed": 1}
 
         else:
-            logger.warning("run_company_task: unhandled input_state=%s for %s", input_state, short_name)
+            _warn_company(short_name, "-", f"unhandled input_state={input_state}")
             return {**zero, "total_errors": 1}
 
     except Exception as e:
-        logger.exception(f"[{short_name}] run_company_task exception: {e}")
+        logger.exception(
+            "%s | company run_company_task\n  %s: %s\n  Continuing to the next company",
+            short_name,
+            type(e).__name__,
+            e,
+        )
         return {**zero, "total_errors": 1}
 
 
@@ -1179,10 +1012,7 @@ async def run_select_job_page_dispatch(
     row_state = (company or {}).get("state") or ""
     entity_state = entity.get("state") or row_state
     if entity_state != "PJL_READY" and row_state != "PJL_READY":
-        logger.warning(
-            "run_select_job_page_dispatch: unexpected state %s for %s (PJL_READY only)",
-            entity_state or row_state, short_name,
-        )
+        _warn_company(short_name, "-", f"unexpected state {entity_state or row_state} (PJL_READY only)")
         return {"short_name": short_name, "state": entity_state or row_state, "error": "unexpected_state"}
 
     assembled_content, page_url_map, visible_map = _pjl_maps_from_company_data(cdata)
@@ -1193,16 +1023,10 @@ async def run_select_job_page_dispatch(
         return {"short_name": short_name, "state": "NO_PJL_SELECTED", "job_site": "", "response_type": "NO_PJL_ASSEMBLED"}
     nav_links = _nav_links_for_try_links(cdata)
     live_content = _build_select_job_page_live_content(assembled_content, nav_links)
-    if debug:
-        log = logger
-        log.set_debug_flag(True)
-        log.debug_index(
-            func="roster.run_select_job_page_dispatch",
-            index=1,
-            total=1,
-            identifier=short_name,
-            outcome=f"pages={len(page_url_map)} assembled_chars={len(assembled_content)}",
-        )
+    logger.debug(
+        "Calling _find_job_page_from_assembled: page_url_map=%s assembled_content=%s",
+        page_url_map, live_content,
+    )
     ctx_no_chain = {k: v for k, v in (ctx or {}).items() if k != "resolve_run_next_live"}
     result = await _find_job_page_from_assembled(
         short_name=short_name,
@@ -1218,13 +1042,7 @@ async def run_select_job_page_dispatch(
         chain_parse=False,
         decomposed=True,
     )
-    if debug:
-        log = logger
-        log.set_debug_flag(True)
-        log.debug_detail(
-            f"nav_links_chars={len(nav_links)} live_chars={len(live_content)} "
-            f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}"
-        )
+    logger.debug("Response from _find_job_page_from_assembled: %s", result)
     return result
 
 
@@ -1237,6 +1055,7 @@ async def _scrape_list_page_dom_for_parse(
     short_name: str = "",
 ) -> str:
     """Playwright DOM reload for parse_job_list — careers-list readiness (AST-689)."""
+    _ = debug
     try:
         if batch_session is not None:
             pg = await get_page(batch_session=batch_session, url=url)
@@ -1245,22 +1064,7 @@ async def _scrape_list_page_dom_for_parse(
         try:
             readiness_cfg = roster_scrape_readiness_config()
             ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-            if debug:
-                log = logger
-                log.set_debug_flag(True)
-                log.debug_index(
-                    func="roster._scrape_list_page_dom_for_parse",
-                    index=1,
-                    total=1,
-                    identifier=url,
-                    outcome=ready_meta.get("outcome")
-                    or ("ready" if ready_meta.get("ready") else "timeout"),
-                )
-                log.debug_detail(
-                    f"ready={ready_meta.get('ready')} visible_chars={ready_meta.get('visible_chars')} "
-                    f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
-                    f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
-                )
+            logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
             return (await extract_page_dom(pg)) or ""
         finally:
             await close_page(pg)
@@ -1272,12 +1076,6 @@ async def _scrape_list_page_dom_for_parse(
             fc = classify_playwright_failure(scrape_err)
             msg = str(scrape_err)
         if is_playwright_infra_failure(fc):
-            logger.warning(
-                "[%s] playwright infra failure failure_class=%s %s",
-                short_name or url,
-                fc,
-                msg,
-            )
             if isinstance(scrape_err, PlaywrightInfraError):
                 raise
             raise PlaywrightInfraError(fc, msg) from scrape_err
@@ -1373,9 +1171,7 @@ async def run_parse_job_list_dispatch(
         ROSTER_CONFIG["parse_job_list"]["retry_trigger_state"],
     )
     if input_state not in allowed:
-        logger.warning(
-            "run_parse_job_list_dispatch: unexpected state %s for %s", input_state, short_name,
-        )
+        _warn_company(short_name, "-", f"unexpected state {input_state}")
         return {"short_name": short_name, "state": input_state, "error": "unexpected_state"}
     company = get_company(short_name)
     cdata = (company.get("company_data") or {}) if company else {}
@@ -1392,16 +1188,10 @@ async def run_parse_job_list_dispatch(
             notes="missing job_titles", response_type="PARSE_DISPATCH_MISSING_TITLES",
         )
     cull_outcome = ""
-    if debug:
-        log = logger
-        log.set_debug_flag(True)
-        log.debug_index(
-            func="roster.run_parse_job_list_dispatch",
-            index=1,
-            total=1,
-            identifier=short_name,
-            outcome=f"url={list_url} titles={len(job_titles)} state={input_state}",
-        )
+    logger.debug(
+        "Calling run_parse_job_list_dispatch: url=%s titles=%s state=%s",
+        list_url, job_titles, input_state,
+    )
 
     async def _scrape_and_parse(browser_context=None):
         nonlocal cull_outcome
@@ -1417,17 +1207,11 @@ async def run_parse_job_list_dispatch(
                 short_name, company_website, list_url, input_state,
                 notes="empty dom after reload", response_type="PARSE_DISPATCH_EMPTY_DOM",
             )
-        pre_cull_chars = len(dom_html or "")
         dom_joined, containers, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
-        post_cull_chars = len(dom_joined or "")
-        if debug:
-            log = logger
-            log.set_debug_flag(True)
-            log.debug_detail(
-                f"titles={len(job_titles)} pre_cull_chars={pre_cull_chars} "
-                f"post_cull_chars={post_cull_chars} containers={len(containers)} "
-                f"cull_outcome={cull_outcome!r}"
-            )
+        logger.debug(
+            "Response from _culled_dom_for_parse: titles=%s containers=%s cull_outcome=%r dom_joined=%s",
+            job_titles, containers, cull_outcome, dom_joined,
+        )
         if cull_outcome == "cull_miss" or not dom_joined.strip():
             return _save_parse_dispatch_failure(
                 short_name, company_website, list_url, input_state,
@@ -1461,24 +1245,30 @@ async def run_parse_job_list_dispatch(
             async with create_browser_context() as browser_context:
                 result = await _scrape_and_parse(browser_context)
     except PlaywrightInfraError as ex:
+        logger.exception(
+            "%s | company parse_job_list scrape\n  %s: %s\n  Continuing to the next company",
+            short_name,
+            type(ex).__name__,
+            ex,
+        )
         result = _save_parse_dispatch_failure(
             short_name, company_website, list_url, input_state,
             notes=f"[playwright:{ex.failure_class}] {ex.detail}",
             response_type="PARSE_DISPATCH_INFRA",
         )
     except Exception as ex:
+        logger.exception(
+            "%s | company parse_job_list scrape\n  %s: %s\n  Continuing to the next company",
+            short_name,
+            type(ex).__name__,
+            ex,
+        )
         result = _save_parse_dispatch_failure(
             short_name, company_website, list_url, input_state,
             notes=str(ex),
             response_type="PARSE_DISPATCH_ERROR",
         )
-    if debug:
-        log = logger
-        log.set_debug_flag(True)
-        log.debug_detail(
-            f"response_type={result.get('response_type')!r} -> state={result.get('state')!r} "
-            f"cull={cull_outcome!r}"
-        )
+    logger.debug("Response from run_parse_job_list_dispatch: %s", result)
     return result
 
 
@@ -1499,8 +1289,7 @@ async def parse_job_list_batch(
     })
     company_total = len(companies)
     passed = errors = 0
-    if debug:
-        logger.set_debug_flag(True)
+    logger.debug("Beginning parse_job_list loop on %s items", company_total)
 
     async with create_batch_browser_session() as batch_session:
         async def _one(company: Dict[str, Any], company_index: int) -> None:
@@ -1508,19 +1297,13 @@ async def parse_job_list_batch(
             short_name = company.get("short_name") or ""
             company_website = company.get("company_website") or ""
             input_state = str(company.get("state") or "").strip()
-            list_url = ""
-            if debug:
-                logger.set_debug_flag(True)
-                company_row = get_company(short_name)
-                cdata = (company_row.get("company_data") or {}) if company_row else {}
-                list_url = _resolve_selected_pjl_url(cdata)
-                logger.debug_index(
-                    func="roster.parse_job_list_batch",
-                    index=company_index,
-                    total=company_total,
-                    identifier=short_name,
-                    outcome=f"state={input_state} url={list_url}",
-                )
+            company_row = get_company(short_name)
+            cdata = (company_row.get("company_data") or {}) if company_row else {}
+            list_url = _resolve_selected_pjl_url(cdata)
+            logger.debug(
+                "Calling run_parse_job_list_dispatch: [%s/%s] %s state=%s url=%s",
+                company_index, company_total, short_name, input_state, list_url,
+            )
             try:
                 result = await asyncio.wait_for(
                     run_parse_job_list_dispatch(
@@ -1529,10 +1312,10 @@ async def parse_job_list_batch(
                     timeout=scrape_timeout,
                 )
             except asyncio.TimeoutError:
-                logger.warning(
-                    "[%s] playwright infra failure failure_class=scrape_timeout batch_id=%s",
+                logger.exception(
+                    "%s | company parse_job_list scrape\n  TimeoutError: scrape exceeded %ss\n  Continuing to the next company",
                     short_name,
-                    batch_id,
+                    scrape_timeout,
                 )
                 result = _save_parse_dispatch_failure(
                     short_name,
@@ -1542,11 +1325,7 @@ async def parse_job_list_batch(
                     notes=f"[playwright:scrape_timeout] company scrape exceeded {scrape_timeout}s",
                     response_type="PARSE_DISPATCH_INFRA",
                 )
-            if debug:
-                logger.set_debug_flag(True)
-                logger.debug_detail(
-                    f"response_type={result.get('response_type')!r} -> state={result.get('state')!r}"
-                )
+            logger.debug("Response from run_parse_job_list_dispatch: %s", result)
             if result.get("error") or result.get("state") not in ok_states:
                 errors += 1
             else:
@@ -1566,17 +1345,14 @@ async def parse_job_list_batch(
             if isinstance(r, BaseException):
                 errors += 1
                 logger.exception(
-                    "parse_job_list_batch unhandled error batch_id=%s: %s",
+                    "%s | company parse_job_list_batch\n  %s: %s\n  Continuing to the next company",
                     batch_id,
+                    type(r).__name__,
                     r,
                     exc_info=r,
                 )
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_detail(
-            f"summary passed={passed} failed=0 errors={errors} total={company_total}"
-        )
+    logger.debug("End parse_job_list loop after %s items", company_total)
     return {"passed": passed, "failed": 0, "total": company_total, "errors": errors}
 
 
@@ -1609,29 +1385,25 @@ async def process_recheck_no_openings(
                 job_site, context=browser_context, return_final_url=True
             )
     except Exception as ex:
-        logger.warning("[%s] recheck_no_openings: playwright failed (state unchanged): %s", short_name, ex)
+        logger.exception(
+            "%s | company recheck_no_openings\n  %s: %s\n  State unchanged",
+            short_name,
+            type(ex).__name__,
+            ex,
+        )
         return {"success": False, "message": f"playwright scrape: {ex}", "new_state": ""}
 
     if final_url and final_url != job_site:
-        logger.info("[%s] recheck_no_openings: job_site redirect %s -> %s", short_name, job_site, final_url)
+        _entity_info(short_name, "company", "job_site redirect", f"{job_site} -> {final_url}")
         update_company(short_name, job_site=final_url)
         job_site = final_url
 
     text_blob = visible_text or ""
     if no_jobs_message in text_blob:
         update_company_last_scan_at(short_name)
-        logger.info(
-            "[%s] recheck_no_openings: no_jobs_message still on page; staying NO_OPENINGS (job_site=%s)",
-            short_name,
-            job_site,
-        )
+        _entity_info(short_name, "company", "recheck_no_openings", "staying NO_OPENINGS")
         return {"success": True, "message": "no_jobs_message_present", "new_state": "NO_OPENINGS"}
 
-    logger.info(
-        "[%s] recheck_no_openings: no_jobs_message absent from visible text; transitioning NO_OPENINGS -> JOBS_FOUND (job_site=%s)",
-        short_name,
-        job_site,
-    )
     transition_company_state(short_name, "JOBS_FOUND")
     update_company_last_scan_at(short_name)
     return {"success": True, "message": "no_jobs_message_absent", "new_state": "JOBS_FOUND"}
@@ -1809,22 +1581,16 @@ def finalize_page_scrape_contract(raw: Dict[str, Any]) -> Dict[str, Any]:
 
 async def scrape_loaded_page_contract(page, *, debug: bool = False) -> Dict[str, Any]:
     """Single page load → collapsed visible text + enumerated nav links (AST-759)."""
+    _ = debug
     raw = await extract_page_scrape_contract(page)
     contract = finalize_page_scrape_contract(raw)
-    if debug:
-        log = logger
-        log.set_debug_flag(True)
-        final_url = contract.get("final_url") or getattr(page, "url", "")
-        visible_text = contract.get("visible_text") or ""
-        nav_urls = contract.get("nav_urls") or []
-        log.debug_index(
-            func="roster.scrape_loaded_page_contract",
-            index=1,
-            total=1,
-            identifier=final_url,
-            outcome=f"visible_chars={len(visible_text)} nav_links={len(nav_urls)}",
-        )
-        log.debug_detail(f"collapsed_visible_chars={len(visible_text)}")
+    final_url = contract.get("final_url") or getattr(page, "url", "")
+    visible_text = contract.get("visible_text") or ""
+    nav_urls = contract.get("nav_urls") or []
+    logger.debug(
+        "Response from extract_page_scrape_contract: url=%s visible_text=%s nav_urls=%s",
+        final_url, visible_text, nav_urls,
+    )
     return contract
 
 
@@ -1871,14 +1637,14 @@ async def scrape_company_homepage_content(
             msg = str(scrape_err)
         if is_playwright_infra_failure(fc):
             out["error"] = f"[playwright:{fc}] {msg}"
-            logger.warning(
-                "[%s] playwright infra failure failure_class=%s %s",
-                short_name,
-                fc,
-                msg,
-            )
         else:
             out["error"] = str(scrape_err)
+        logger.exception(
+            "%s | company homepage scrape\n  %s: %s\n  Leaving homepage unread",
+            short_name,
+            type(scrape_err).__name__,
+            scrape_err,
+        )
         return out
     final_url = contract.get("final_url") or company_website
     if final_url and final_url != company_website:
@@ -1895,7 +1661,7 @@ async def scrape_company_homepage_content(
         out["enumerated_nav_links"] = enumerated
     nav_error = contract.get("nav_error")
     if nav_error:
-        logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): {nav_error}")
+        _warn_company(short_name, "-", f"nav_links extraction failed (non-fatal): {nav_error}")
     return out
 
 
@@ -1995,17 +1761,10 @@ def _apply_prefilter_decoded_company_outcome(
         data_to_save["culture_links_to_explore"] = flat.get("culture_links_to_explore") or []
     save_company_data(short_name, data_to_save)
     transition_company_state(short_name, new_state)
-    if debug:
-        logger.debug_index(
-            func="roster._apply_prefilter_decoded_company_outcome",
-            index=debug_index,
-            total=debug_total,
-            identifier=short_name,
-            outcome=f"prefilter routing short_name={short_name} -> {new_state}",
-        )
-        logger.debug_detail(
-            f"link_indices={link_indices!r} hydrated_count={len(pjl_urls)} decomposed={on_decomposed}"
-        )
+    logger.debug(
+        "Response from _apply_prefilter_decoded_company_outcome: %s -> %s link_indices=%r",
+        short_name, new_state, link_indices,
+    )
     return new_state
 
 
@@ -2052,6 +1811,8 @@ async def prefilter_company(
             "batch_size": 1,
             "vector_labels": _vector_labels_from_ctx(ctx),
         }
+        logger.debug("Calling agent.do_task: task_key=prefilter_company index=%s", short_name)
+        logger.debug("Calling agent.do_task live_content: %s", live_content)
         api_result = await do_task(
             task_key="prefilter_company",
             live_content=live_content,
@@ -2059,6 +1820,7 @@ async def prefilter_company(
             ctx=task_ctx,
             debug=debug,
         )
+        logger.debug("Response from agent.do_task: %s", api_result)
 
         cfg = ROSTER_CONFIG.get("prefilter", {})
 
@@ -2101,6 +1863,12 @@ async def prefilter_company(
         result["state"] = new_state
         result["notes"] = notes
     except Exception as e:
+        logger.exception(
+            "%s | company prefilter_company\n  %s: %s\n  Continuing without a prefilter decision",
+            short_name,
+            type(e).__name__,
+            e,
+        )
         error_state = ROSTER_CONFIG.get("prefilter", {}).get("error_state")
         if error_state:
             transition_company_state(short_name, error_state)
@@ -2133,6 +1901,7 @@ def _transition_prefilter_batch_failures(
     debug: bool = False,
     fail_class: str = "technical fail",
 ) -> None:
+    _ = debug
     by_dest: Dict[str, List[str]] = {}
     for company in companies:
         short_name = company.get("short_name")
@@ -2144,15 +1913,10 @@ def _transition_prefilter_batch_failures(
     for dest, names in by_dest.items():
         for i, short_name in enumerate(names, start=1):
             transition_company_state(short_name, dest)
-            if debug:
-                logger.debug_index(
-                    func="roster._run_batch_company_prefilter",
-                    index=i,
-                    total=len(names),
-                    identifier=short_name,
-                    outcome=f"{fail_class} -> {dest}",
-                )
-                logger.debug_detail(f"fail_class={fail_class}")
+            logger.debug(
+                "Response from _transition_prefilter_batch_failures: %s %s -> %s",
+                fail_class, short_name, dest,
+            )
 
 
 async def _run_batch_company_prefilter(
@@ -2183,18 +1947,10 @@ async def _run_batch_company_prefilter(
     input_by_id = {c["short_name"]: c for c in companies}
     short_names = [c["short_name"] for c in companies]
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_index(
-            func="roster._run_batch_company_prefilter",
-            index=1,
-            total=1,
-            identifier=batch_id,
-            outcome=f"batch start n={len(companies)}",
-        )
-        logger.debug_detail(
-            f"batch_id={batch_id} batch_chunk_index={batch_chunk_index!r} short_names={short_names}"
-        )
+    logger.debug(
+        "Beginning company prefilter loop on %s items batch_id=%s chunk=%r short_names=%s",
+        len(companies), batch_id, batch_chunk_index, short_names,
+    )
 
     def assemble(batch_companies: List[Dict[str, Any]]) -> str:
         blocks: List[str] = []
@@ -2226,6 +1982,8 @@ async def _run_batch_company_prefilter(
     do_index = f"prefilter_company_batch_{batch_id}"
     if batch_chunk_index is not None:
         do_index = f"{do_index}_c{batch_chunk_index}"
+    logger.debug("Calling agent.do_task: task_key=%s index=%s", agent_task_key, do_index)
+    logger.debug("Calling agent.do_task live_content: %s", assemble(companies))
     result = await do_task(
         task_key=agent_task_key,
         live_content=assemble(companies),
@@ -2233,20 +1991,14 @@ async def _run_batch_company_prefilter(
         ctx=task_ctx,
         debug=debug,
     )
+    logger.debug("Response from agent.do_task: %s", result)
 
     if not result.get("success"):
         if is_provider_balance_refusal(result):
-            if debug:
-                logger.debug_index(
-                    func="roster._run_batch_company_prefilter",
-                    index=1,
-                    total=1,
-                    identifier=batch_id,
-                    outcome="provider_balance_refusal — batch state held",
-                )
-                logger.debug_detail(
-                    f"error={result.get('error')!r} failure_class={result.get('failure_class')!r}"
-                )
+            logger.debug(
+                "Response from agent.do_task: provider_balance_refusal error=%r failure_class=%r",
+                result.get("error"), result.get("failure_class"),
+            )
             return {
                 "passed": 0,
                 "failed": 0,
@@ -2254,15 +2006,7 @@ async def _run_batch_company_prefilter(
                 "failure_class": result.get("failure_class"),
                 "state_held": True,
             }
-        if debug:
-            logger.debug_index(
-                func="roster._run_batch_company_prefilter",
-                index=1,
-                total=1,
-                identifier=batch_id,
-                outcome="do_task failed — batch error transition",
-            )
-            logger.debug_detail(f"error={result.get('error')!r}")
+        logger.debug("Response from agent.do_task: do_task failed error=%r", result.get("error"))
         _transition_prefilter_batch_failures(
             companies, cfg, debug=debug, fail_class="do_task",
         )
@@ -2273,7 +2017,12 @@ async def _run_batch_company_prefilter(
     try:
         _hydrate_response_jobs_grade_reasons(response_jobs, rubric_list)
     except ValueError as hydrate_err:
-        logger.error("[prefilter_company_batch] grade reason hydration failed: %s", hydrate_err)
+        logger.exception(
+            "%s | company prefilter hydrate\n  %s: %s\n  Continuing without this batch's grades",
+            batch_id,
+            type(hydrate_err).__name__,
+            hydrate_err,
+        )
         _transition_prefilter_batch_failures(
             companies, cfg, debug=debug, fail_class="hydrate",
         )
@@ -2286,10 +2035,8 @@ async def _run_batch_company_prefilter(
     missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
 
     if missing:
-        logger.warning(
-            "[prefilter_company_batch] batch incomplete: %d/%d IDs omitted: %s",
-            len(missing), len(sent_ids), sorted(missing),
-        )
+        for mid in sorted(missing):
+            _warn_company(mid, "-", "prefilter batch omitted this id")
         _transition_prefilter_batch_failures(
             missing_rows, cfg, debug=debug, fail_class="missing id",
         )
@@ -2316,19 +2063,13 @@ async def _run_batch_company_prefilter(
             )
         except Exception as e:
             bad_grades.add(aid)
-            if debug:
-                dest = _prefilter_batch_fail_dest(input_company.get("state"), cfg)
-                logger.debug_index(
-                    func="roster._run_batch_company_prefilter",
-                    index=job_idx,
-                    total=len(response_jobs),
-                    identifier=aid,
-                    outcome=f"process exception -> {dest or '?'}",
-                )
-                logger.debug_detail(
-                    f"short_name={aid} error={e!r} grades={response_job.get('grades')!r}"
-                )
-            logger.warning("[%s] prefilter batch process failed: %s | grades: %s", aid, e, response_job.get("grades"))
+            logger.exception(
+                "%s | company prefilter decode\n  %s: %s\n  Continuing to the next company",
+                aid,
+                type(e).__name__,
+                e,
+            )
+            logger.debug("Response from _apply_prefilter_decoded_company_outcome: grades=%s", response_job.get("grades"))
             continue
         if new_state in pass_states:
             passed += 1
@@ -2346,8 +2087,13 @@ async def _run_batch_company_prefilter(
         processed_ids = received_ids - fabricated - bad_grades
         try:
             ensure_batch_response_entity_ids(entity_type, list(processed_ids), agent_ref)
-        except Exception:
-            logger.debug("ensure_batch_response_entity_ids failed", exc_info=True)
+        except Exception as stamp_err:
+            logger.exception(
+                "%s | company ensure_batch_response_entity_ids\n  %s: %s\n  Continuing without stamping those entity ids",
+                batch_id,
+                type(stamp_err).__name__,
+                stamp_err,
+            )
 
     return {"passed": passed, "failed": failed, "total": len(companies)}
 
@@ -2368,11 +2114,10 @@ async def prefilter_company_batch(
         else:
             not_ready.append(company)
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_detail(
-            f"prefilter_company_batch batch_id={batch_id} ready={len(ready)} not_ready={len(not_ready)}"
-        )
+    logger.debug(
+        "Beginning prefilter_company_batch loop on %s items ready=%s not_ready=%s",
+        len(companies), len(ready), len(not_ready),
+    )
 
     # Not-ready WFR: leave for fetch_website scrape retry; do not CANNOT_READ.
     skipped = 0
@@ -2381,26 +2126,15 @@ async def prefilter_company_batch(
         st = (company.get("state") or "").strip()
         if st == cfg["retry_state"]:
             skipped += 1
-            if debug:
-                logger.debug_index(
-                    func="roster.prefilter_company_batch",
-                    index=ni,
-                    total=len(not_ready),
-                    identifier=short_name,
-                    outcome="readiness skip — leave WEBSITE_FOUND_RETRY for fetch_website",
-                )
+            logger.debug(
+                "End not_ready skip: %s leave WEBSITE_FOUND_RETRY for fetch_website",
+                short_name,
+            )
             continue
         transition_company_state(short_name, "CANNOT_READ_WEBSITE")
         save_company_data(short_name, {"prefilter_company_notes": "No homepage_text in company_data"})
         skipped += 1
-        if debug:
-            logger.debug_index(
-                func="roster.prefilter_company_batch",
-                index=ni,
-                total=len(not_ready),
-                identifier=short_name,
-                outcome="readiness skip -> CANNOT_READ_WEBSITE",
-            )
+        logger.debug("End not_ready skip: %s -> CANNOT_READ_WEBSITE", short_name)
 
     if not ready:
         return {
@@ -2437,8 +2171,7 @@ async def _find_job_page_from_assembled(
     """AST-469: shared select_job_page + optional TRY_LINK retry + run_next parse chain.
     chain_parse=False: select-only dispatch entry (AST-535) — no run_next parse resolver."""
 
-    if debug:
-        logger.set_debug_flag(True)
+    logger.debug("Beginning select_job_page loop on 1 items")
     live_sel = assembled_content
     res: Dict[str, Any] = {}
     parsed_top: Dict[str, Any] = {}
@@ -2449,6 +2182,8 @@ async def _find_job_page_from_assembled(
         merged_ctx = dict(ctx) if ctx else {}
         if chain_parse and rslv is not None:
             merged_ctx["resolve_run_next_live"] = rslv
+        logger.debug("Calling agent.do_task: task_key=select_job_page index=%s", short_name)
+        logger.debug("Calling agent.do_task live_content: %s", live_sel)
         res = await do_task(
             "select_job_page",
             live_content=live_sel,
@@ -2456,21 +2191,14 @@ async def _find_job_page_from_assembled(
             ctx=merged_ctx,
             debug=debug,
         )
+        logger.debug("Response from agent.do_task: %s", res)
         if not res.get("success"):  # pragma: no branch
             if is_provider_balance_refusal(res):
                 current_state = (get_company(short_name) or {}).get("state")
-                if debug:
-                    logger.debug_index(
-                        func="roster._find_job_page_from_assembled",
-                        index=1,
-                        total=1,
-                        identifier=short_name,
-                        outcome="provider_balance_refusal — state held",
-                    )
-                    logger.debug_detail(
-                        f"failure_class={res.get('failure_class')!r} error={res.get('error')!r} "
-                        f"current_state={current_state!r}"
-                    )
+                logger.debug(
+                    "Response from agent.do_task: provider_balance_refusal failure_class=%r error=%r current_state=%r",
+                    res.get("failure_class"), res.get("error"), current_state,
+                )
                 return {
                     "short_name": short_name,
                     "state": current_state,
@@ -2494,8 +2222,7 @@ async def _find_job_page_from_assembled(
 
         response_type = str(parsed_top.get("response_type") or "")
 
-        if debug:
-            logger.test(f"[find_job_page] select_job_page response_type={response_type}")
+        logger.debug("Response from select_job_page: response_type=%s", response_type)
 
         if response_type != "TRY_LINKS":
             break
@@ -2552,8 +2279,7 @@ async def _find_job_page_from_assembled(
                                state="NO_JOBLIST", page_option_url=company_website, raw_response=parsed_top)
             return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": company_website, "response_type": response_type}
 
-        if debug:
-            logger.test(f"[find_job_page] TRY_LINKS: scraping {len(try_links)} suggested URLs")
+        logger.debug("Beginning TRY_LINKS scrape loop on %s items", len(try_links))
         retry_content, retry_url_map, retry_dom_map, retry_visible = await _fetch_job_links_content(
             try_links, nav_links, browser_context, debug=debug,
         )
@@ -2613,7 +2339,12 @@ async def jobs_found_process_job_site(
     try:
         visible_text, final_url = await get_visible_text(job_site, return_final_url=True)
     except Exception as ex:
-        logger.warning("[%s] jobs_found: initial scrape failed: %s", short_name, ex)
+        logger.exception(
+            "%s | company jobs_found scrape\n  %s: %s\n  Leaving job_site unscanned",
+            short_name,
+            type(ex).__name__,
+            ex,
+        )
         err_st = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
         if err_st:
             transition_company_state(short_name, err_st)
@@ -2669,22 +2400,7 @@ async def _scrape_pjl_page(
         try:
             readiness_cfg = roster_scrape_readiness_config()
             ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-            if debug:
-                log = logger
-                log.set_debug_flag(True)
-                log.debug_index(
-                    func="roster._scrape_pjl_page.scrape_readiness",
-                    index=1,
-                    total=1,
-                    identifier=url,
-                    outcome=ready_meta.get("outcome")
-                    or ("ready" if ready_meta.get("ready") else "timeout"),
-                )
-                log.debug_detail(
-                    f"ready={ready_meta.get('ready')} visible_chars={ready_meta.get('visible_chars')} "
-                    f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
-                    f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
-                )
+            logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
             contract = await scrape_loaded_page_contract(pg, debug=debug)
             out["visible_text"] = (contract.get("visible_text") or "").strip()
             out["page_links"] = contract.get("nav_urls") or []
@@ -2696,6 +2412,12 @@ async def _scrape_pjl_page(
             await close_page(pg)
     except Exception as e:
         out["error"] = str(e)
+        logger.exception(
+            "%s | company PJL page scrape\n  %s: %s\n  Continuing to the next page",
+            fetch_url,
+            type(e).__name__,
+            e,
+        )
     return out
 
 
@@ -2837,6 +2559,7 @@ async def _fetch_job_links_content(
       - page_dom_map: {page_number: culled_dom_html}
       - page_visible_map: {page_number: stripped visible text for JOB_LIST_VISIBLE (AST-469)}
     """
+    _ = debug
     url_map = parse_enumerate_array(nav_links)
     nav_url_set = set(url_map.values())
 
@@ -2845,14 +2568,14 @@ async def _fetch_job_links_content(
     page_dom_map: Dict[int, str] = {}
     page_visible_map: Dict[int, str] = {}
 
+    logger.debug("Beginning PJL page loop on %s items", len(possible_job_links))
     for page_num, link_id in enumerate(possible_job_links, 1):
         try:
             url = url_map.get(int(link_id))
         except (ValueError, TypeError):
             url = str(link_id) if str(link_id).startswith("http") else None
         if not url:
-            if debug:
-                logger.test(f"  PJL #{page_num}: link_id={link_id} not found in nav_links, skipping")
+            logger.debug("PJL page skip: link_id=%s not found in nav_links", link_id)
             continue
         page_url_map[page_num] = url
         try:
@@ -2861,28 +2584,7 @@ async def _fetch_job_links_content(
             try:
                 readiness_cfg = roster_scrape_readiness_config()
                 ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-                if debug:
-                    log = logger
-                    log.set_debug_flag(True)
-                    total_pages = len(possible_job_links)
-                    log.debug_index(
-                        func="roster._fetch_job_links_content.scrape_readiness",
-                        index=page_num,
-                        total=total_pages,
-                        identifier=url,
-                        outcome=ready_meta.get("outcome")
-                        or ("ready" if ready_meta.get("ready") else "timeout"),
-                    )
-                    log.debug_detail(
-                        f"ready={ready_meta.get('ready')} visible_chars={ready_meta.get('visible_chars')} "
-                        f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
-                        f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
-                    )
-                    if not ready_meta.get("ready"):
-                        log.debug_detail(
-                            "readiness gate exhausted — proceeding with best-effort extract "
-                            "(AST-692 owns JOBSITE_SCRAPE_ISSUE)"
-                        )
+                logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
                 vt_result = await extract_visible_text(pg)
                 visible_text = vt_result.get("text", "") or ""
                 dom_html = await extract_page_dom(pg)
@@ -2904,13 +2606,20 @@ async def _fetch_job_links_content(
                 for i, lnk in enumerate(new_links, 1):
                     parts.append(f"{i}. {lnk}")
             sections.append("\n".join(parts))
-            if debug:
-                logger.test(f"  PJL #{page_num}: {url} — {len(visible_text)} chars, {len(new_links)} new links, dom={len(dom_html or '')} chars")
+            logger.debug(
+                "Response from PJL scrape: page=%s url=%s visible_text=%s new_links=%s dom_html=%s",
+                page_num, url, visible_text, new_links, dom_html,
+            )
         except Exception as e:
             sections.append(f"=== PAGE {page_num}: {url} ===\n(scrape failed: {e})")
-            if debug:
-                logger.test(f"  PJL #{page_num}: {url} — scrape failed: {e}")
+            logger.exception(
+                "%s | company PJL page scrape\n  %s: %s\n  Continuing to the next page",
+                url,
+                type(e).__name__,
+                e,
+            )
 
+    logger.debug("End PJL page loop after %s items", len(possible_job_links))
     return "\n\n".join(sections), page_url_map, page_dom_map, page_visible_map
 
 
@@ -2926,6 +2635,7 @@ async def _finalize_joblist_identified(
     ctx: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """AST-720: JOBLIST_TITLES on PJL_READY path — no parse, job_site column unset."""
+    _ = debug
     _ = ctx
     sel_cfg = ROSTER_CONFIG["select_job_page"]
     job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
@@ -2933,17 +2643,10 @@ async def _finalize_joblist_identified(
         "job_titles": job_titles,
         sel_cfg["selected_pjl_url_key"]: job_site_url,
     })
-    if debug:
-        log = logger
-        log.set_debug_flag(True)
-        log.debug_index(
-            func="roster._finalize_joblist_identified",
-            index=1,
-            total=1,
-            identifier=short_name,
-            outcome=f"titles={len(job_titles)} url={job_site_url}",
-        )
-        log.debug_detail(f"titles={job_titles!r}")
+    logger.debug(
+        "Response from _finalize_joblist_identified: titles=%r url=%s",
+        job_titles, job_site_url,
+    )
     vis_save = ""
     if selected_page is not None:
         try:
@@ -2957,11 +2660,7 @@ async def _finalize_joblist_identified(
         state=sel_cfg["identified_state"], page_option_url=job_site_url,
         raw_response=select_parsed, suppress_job_site=True,
     )
-    if debug:
-        logger.test(
-            f"index 1/1 | {short_name} | JOBLIST_IDENTIFIED | "
-            f"selected_url={job_site_url} titles={len(job_titles)}"
-        )
+    _entity_info(short_name, "company", "joblist identified", sel_cfg["identified_state"])
     return {
         "short_name": short_name,
         "state": sel_cfg["identified_state"],
@@ -2985,6 +2684,7 @@ async def _finalize_joblist_titles_after_chain(
     ctx: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:  # pragma: no cover — parse_job_list chained path §7.12
     """AST-469: parse_job_list already ran via run_next; validate and persist like legacy _check_parse_results."""
+    _ = debug
     job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
     save_company_data(short_name, {"job_titles": job_titles})
     parsed = chain_res.get("parsed_response") or {}
@@ -2996,8 +2696,7 @@ async def _finalize_joblist_titles_after_chain(
 
     dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
     if cull_outcome == "cull_miss" or not dom_joined.strip():
-        if debug:
-            logger.test(f"[find_job_page] DOM did not contain job titles — possible bot block")
+        logger.debug("Response from _culled_dom_for_parse: cull_miss possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
                            state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=select_parsed)
         return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
@@ -3052,8 +2751,7 @@ async def _finalize_joblist_titles_select_only(
     """AST-469: run_next suppressed (empty culled DOM) — validate with legacy _fetch_parse_job_list path."""
     job_titles = _normalize_job_titles(select_parsed.get("job_titles"))
     save_company_data(short_name, {"job_titles": job_titles})
-    if debug:
-        logger.test(f"[find_job_page] JOBLIST_TITLES (no chain): {len(job_titles)} titles, job_site={job_site_url}")
+    logger.debug("Calling _fetch_parse_job_list: titles=%s job_site=%s", job_titles, job_site_url)
 
     dom_html = page_dom_map.get(selected_page, "") if selected_page is not None else ""
     if not dom_html:
@@ -3063,8 +2761,7 @@ async def _finalize_joblist_titles_select_only(
 
     dom_joined, _, cull_outcome = _culled_dom_for_parse(dom_html, job_titles)
     if cull_outcome == "cull_miss" or not dom_joined.strip():
-        if debug:
-            logger.test(f"[find_job_page] DOM did not contain job titles — possible bot block")
+        logger.debug("Response from _culled_dom_for_parse: cull_miss possible bot block")
         _save_company(short_name=short_name, company_website=company_website,
                            state="CANNOT_PARSE_JOB_SITE", page_option_url=job_site_url, raw_response=select_parsed)
         return {"short_name": short_name, "state": "CANNOT_PARSE_JOB_SITE", "job_site": job_site_url, "response_type": response_type}
@@ -3108,7 +2805,11 @@ async def _fetch_select_job_page(
     assembled_content: str, short_name: str, debug: bool = False, ctx: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Call select_job_page AI task and return parsed response."""
+    _ = debug
+    logger.debug("Calling agent.do_task: task_key=select_job_page index=%s", short_name)
+    logger.debug("Calling agent.do_task live_content: %s", assembled_content)
     response = await do_task(task_key="select_job_page", live_content=assembled_content, index=short_name, ctx=ctx)
+    logger.debug("Response from agent.do_task: %s", response)
     parsed = response.get("parsed_response")
     if parsed is None:
         raise ValueError(f"select_job_page failed: {response.get('error', 'no parsed_response')}")
@@ -3139,8 +2840,7 @@ async def _check_parse_results(
                            state="NO_OPENINGS", page_option_url=job_site_url,
                            raw_response=result, no_jobs_message=no_jobs_msg,
                            suppress_job_site=suppress)
-        if debug:
-            logger.test(f"[find_job_page] JOBLIST_NO_JOBS: {no_jobs_msg}")
+        logger.debug("Response from select_job_page: JOBLIST_NO_JOBS %s", no_jobs_msg)
         return {"short_name": short_name, "state": "NO_OPENINGS", "job_site": "" if suppress else job_site_url, "response_type": response_type}
 
     if response_type == "JOBSITE_SCRAPE_ISSUE":
@@ -3157,10 +2857,10 @@ async def _check_parse_results(
             jobsite_scrape_issue_evidence=evidence or None,
             suppress_job_site=suppress,
         )
-        if debug:
-            logger.test(
-                f"[find_job_page] JOBSITE_SCRAPE_ISSUE: summary={summary!r} job_site={job_site_url}"
-            )
+        logger.debug(
+            "Response from select_job_page: JOBSITE_SCRAPE_ISSUE summary=%r job_site=%s",
+            summary, job_site_url,
+        )
         return {
             "short_name": short_name,
             "state": ROSTER_CONFIG["locate_job_page"]["scrape_issue_state"],
@@ -3311,21 +3011,27 @@ async def _fetch_nav_links(company: Dict[str, Any]) -> Optional[str]:
             "get_company_data: short_name and company_website (or job_site) required for fetch-on-missing nav_links"
         )
     try:
-        logger.info(f"[{short_name}] fetching nav_links from {company_website}")
+        logger.debug("Calling extract_site_page_list: url=%s", company_website)
         async with create_browser_context() as context:
             url_list = await extract_site_page_list(
                 company_website, max_depth=1, verify=False, context=context
             )
+        logger.debug("Response from extract_site_page_list: %s", url_list)
         if not url_list:
             return None
         nav_links = enumerate_array("", url_list)
         save_company_data(short_name, {"nav_links": nav_links})
-        logger.info(f"[{short_name}] saved {len(url_list)} nav_links")
+        _entity_info(short_name, "company", "nav_links saved", len(url_list))
         return nav_links
     except ValueError:
         raise
     except Exception as e:
-        logger.warning(f"[{short_name}] nav_links fetch failed: {e}")
+        logger.exception(
+            "%s | company nav_links fetch\n  %s: %s\n  Leaving nav_links unset",
+            short_name,
+            type(e).__name__,
+            e,
+        )
         return None
 
 
@@ -3339,8 +3045,9 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
     if not short_name or not company_website:
         return None
     try:
-        logger.info(f"[{short_name}] fetching prefilter_notes (scrape + AI)")
+        logger.debug("Calling get_visible_text: url=%s", company_website)
         visible_text = await get_visible_text(company_website)
+        logger.debug("Response from get_visible_text: %s", visible_text)
         if not visible_text or not visible_text.strip():
             return None
 
@@ -3352,8 +3059,13 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
             )
             if url_list:
                 enumerated_nav_links = enumerate_array("", url_list)
-        except Exception:
-            pass
+        except Exception as nav_err:
+            logger.exception(
+                "%s | company prefilter_notes nav_links\n  %s: %s\n  Continuing without nav_links",
+                short_name,
+                type(nav_err).__name__,
+                nav_err,
+            )
 
         parts = [f"[company_id={short_name}]", f"\n## Homepage Content\n{visible_text}"]
         if enumerated_nav_links:
@@ -3364,12 +3076,15 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
             "batch_size": 1,
             "vector_labels": _vector_labels_from_ctx(None),
         }
+        logger.debug("Calling agent.do_task: task_key=prefilter_company index=%s", short_name)
+        logger.debug("Calling agent.do_task live_content: %s", "\n".join(parts))
         api_result = await do_task(
             task_key="prefilter_company",
             live_content="\n".join(parts),
             index=short_name,
             ctx=task_ctx,
         )
+        logger.debug("Response from agent.do_task: %s", api_result)
         if not api_result.get("success"):
             return None
         parsed = api_result.get("parsed_response")
@@ -3416,10 +3131,15 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
         if culture_links:
             data_to_save["culture_links_to_explore"] = culture_links
         save_company_data(short_name, data_to_save)
-        logger.info(f"[{short_name}] saved prefilter_notes")
+        _entity_info(short_name, "company", "prefilter_notes saved", "ok")
         return notes
     except Exception as e:
-        logger.warning(f"[{short_name}] prefilter_notes fetch failed: {e}")
+        logger.exception(
+            "%s | company prefilter_notes fetch\n  %s: %s\n  Leaving prefilter_notes unset",
+            short_name,
+            type(e).__name__,
+            e,
+        )
         return None
 
 
@@ -3432,54 +3152,65 @@ async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
     if not short_name:
         return None
     try:
-        logger.info(f"[{short_name}] fetching website_content")
+        logger.debug("Calling _fetch_website_content for %s", short_name)
 
         nav_links = await get_company_data(company, "nav_links")
         if not nav_links:
-            logger.warning(f"[{short_name}] no nav_links available, cannot select pages")
+            _warn_company(short_name, "-", "no nav_links available, cannot select pages")
             return None
 
         cd = (company.get("company_data") or {})
         culture_link_ids = cd.get("culture_links_to_explore") or []
 
         if not culture_link_ids:
-            logger.info(f"[{short_name}] no culture pages selected")
+            _entity_info(short_name, "company", "website_content", "no culture pages selected")
             return None
 
         # Step 3: map selected IDs back to URLs
         url_map = parse_enumerate_array(nav_links)
         selected_urls = [url_map[int(sid)] for sid in culture_link_ids if url_map.get(int(sid))]
         if not selected_urls:
-            logger.warning(f"[{short_name}] no valid URLs from culture_link_ids")
+            _warn_company(short_name, "-", "no valid URLs from culture_link_ids")
             return None
 
         # Step 4: scrape each selected page
         max_pages = ROSTER_CONFIG.get("culture_pages", {}).get("max_pages", 6)
-        logger.info(f"[{short_name}] scraping {len(selected_urls)} culture pages")
+        logger.debug("Beginning culture page scrape loop on %s items", len(selected_urls))
         pages = []
         async with create_browser_context() as context:
             for url in selected_urls[:max_pages]:
                 try:
                     text = await get_visible_text(url=url, context=context)
+                    logger.debug("Response from get_visible_text: url=%s text=%s", url, text)
                     if text and text.strip():
                         pages.append({"url": url, "content": text.strip()})
-                        logger.info(f"[{short_name}] scraped {url} ({len(text.strip())} chars)")
                 except Exception as e:
-                    logger.warning(f"[{short_name}] scrape failed for {url}: {e}")
+                    logger.exception(
+                        "%s | company culture page scrape\n  %s: %s\n  Continuing to the next page",
+                        url,
+                        type(e).__name__,
+                        e,
+                    )
                     continue
 
+        logger.debug("End culture page scrape loop after %s items", len(pages))
         if not pages:
-            logger.warning(f"[{short_name}] all scrapes failed")
+            _warn_company(short_name, "-", "all culture page scrapes failed")
             return None
 
         # Step 5: save and return
         save_company_data(short_name, {"website_content": pages})
-        logger.info(f"[{short_name}] saved website_content ({len(pages)} pages)")
+        _entity_info(short_name, "company", "website_content saved", len(pages))
         return pages
     except ValueError:
         raise
     except Exception as e:
-        logger.warning(f"[{short_name}] website_content fetch failed: {e}")
+        logger.exception(
+            "%s | company website_content fetch\n  %s: %s\n  Leaving website_content unset",
+            short_name,
+            type(e).__name__,
+            e,
+        )
         return None
 
 
@@ -3537,15 +3268,19 @@ def _compute_container_index(full_dom: str, container_selector: str, job_titles:
 async def _fetch_parse_job_list(dom_html: str, short_name: str, debug: bool = False, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Call parse_job_list task: culled DOM only; returns container, job_tag, job_ids.
     Returns empty dict on failure so caller can fall through to CANNOT_PARSE_JOB_SITE."""
+    _ = debug
+    logger.debug("Calling agent.do_task: task_key=parse_job_list index=%s", short_name)
+    logger.debug("Calling agent.do_task live_content: %s", dom_html or "")
     response = await do_task(
         task_key="parse_job_list",
         live_content=dom_html or "",
         index=short_name,
         ctx=ctx,
     )
+    logger.debug("Response from agent.do_task: %s", response)
     if not response or not response.get("success"):
         err = (response or {}).get("error", "no parsed_response")
-        logger.error(f"[{short_name}] parse_job_list failed: {err}")
+        _warn_company(short_name, "-", f"parse_job_list failed: {err}")
         save_company_data(short_name, {"parse_job_list_notes": err})
         return {}
     return response.get("parsed_response") or {}
