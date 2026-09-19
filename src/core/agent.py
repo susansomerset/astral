@@ -95,7 +95,9 @@ def _with_log_debug(fn):
     async def wrapper(*args, **kwargs):
         bound = inspect.signature(fn).bind_partial(*args, **kwargs)
         bound.apply_defaults()
-        _dbg = log_debug.set(bool(bound.arguments.get("debug", False)))
+        _dbg = log_debug.set(
+            True if bound.arguments.get("debug", False) else log_debug.get()
+        )
         try:
             return await fn(*args, **kwargs)
         finally:

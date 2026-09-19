@@ -66,7 +66,9 @@ def _with_log_debug(fn):
         async def async_wrapper(*args, **kwargs):
             bound = inspect.signature(fn).bind_partial(*args, **kwargs)
             bound.apply_defaults()
-            token = log_debug.set(bool(bound.arguments.get("debug", False)))
+            token = log_debug.set(
+                True if bound.arguments.get("debug", False) else log_debug.get()
+            )
             try:
                 return await fn(*args, **kwargs)
             finally:
@@ -77,7 +79,9 @@ def _with_log_debug(fn):
     def wrapper(*args, **kwargs):
         bound = inspect.signature(fn).bind_partial(*args, **kwargs)
         bound.apply_defaults()
-        token = log_debug.set(bool(bound.arguments.get("debug", False)))
+        token = log_debug.set(
+            True if bound.arguments.get("debug", False) else log_debug.get()
+        )
         try:
             return fn(*args, **kwargs)
         finally:
