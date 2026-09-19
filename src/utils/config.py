@@ -2624,40 +2624,49 @@ assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 # METEORITE_* job lifecycle labels — core transitions decide targets; data accepts state as param.
 METEORITE_STATES = {
     "NEW": {
-        "prior_states": None,  # insert-only entry from classify fan-out
+        "prior_states": ["NEW_EMAIL_ERROR"],  # human reset from stage failure
     },
     "SCRAPE_LINK": {
-        "prior_states": ["NEW", "ERROR"],  # link outcomes; retry from ERROR
+        "prior_states": ["NEW", "SCRAPE_ERROR"],  # link outcomes; retry from SCRAPE_ERROR
     },
     "READY": {
-        # text fan-out from NEW; scrape success; Estelle paste recovery (sibling)
+        # text fan-out from NEW; scrape success; Estelle paste recovery
         "prior_states": ["NEW", "SCRAPE_LINK", "BOT_BLOCKED"],
     },
     "BOT_BLOCKED": {
         "prior_states": ["SCRAPE_LINK"],
     },
-    "ERROR": {
+    "SCRAPE_ERROR": {
         "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
+    },
+    "NOT_A_JOB": {
+        "prior_states": None,  # insert-legal; scheduled cleanup; not a dispatch trigger; not stale
+    },
+    "NEW_EMAIL_ERROR": {
+        "prior_states": None,  # insert-legal; not a dispatch trigger; human resets via NEW
     },
     "LANDED": {
         "prior_states": ["READY"],
     },
     "ABANDONED": {
-        "prior_states": ["BOT_BLOCKED", "ERROR"],  # nag limit / terminal stale
+        "prior_states": ["BOT_BLOCKED", "SCRAPE_ERROR"],  # nag limit / terminal stale
     },
 }
 
 # Retention partitions (state literals only — day cutoffs are caller/config for AST-1562).
 METEORITE_STATES_RETENTION = {
-    "purge_states": ("LANDED",),
-    "stale_list_states": ("ERROR", "BOT_BLOCKED", "ABANDONED"),
+    "purge_states": ("LANDED", "NOT_A_JOB"),
+    "stale_list_states": ("SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED"),
 }
 
 assert set(METEORITE_STATES) == {
-    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+    "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
 }
 assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
-assert METEORITE_STATES["NEW"]["prior_states"] is None
+assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+assert METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
+assert METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
 assert (
     set(METEORITE_STATES_RETENTION["purge_states"])
     | set(METEORITE_STATES_RETENTION["stale_list_states"])
@@ -2682,8 +2691,8 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
     "scrape_page_status_states": {
         "blocked": "BOT_BLOCKED",
         "ok": "READY",
-        "closed": "ERROR",
-        "missing": "ERROR",
+        "closed": "SCRAPE_ERROR",
+        "missing": "SCRAPE_ERROR",
     },
 }
 _mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -2697,7 +2706,7 @@ for _tk in ("stage_task_key", "scrape_task_key", "land_task_key"):
 for _tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
     assert _mid_ingress[_tr] in METEORITE_STATES
 assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
-    "READY", "BOT_BLOCKED", "ERROR",
+    "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
 }
 
 # AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
@@ -2727,7 +2736,7 @@ for _tpl_key in ("dm_first_template", "dm_nag_template"):
 assert "{nag_count}" in _mid_notify["dm_nag_template"]
 assert "{nag_limit}" in _mid_notify["dm_nag_template"]
 
-# AST-1562: scheduled retention — purge old LANDED; warn stale ERROR/BOT_BLOCKED/ABANDONED.
+# AST-1562: scheduled retention — purge old LANDED; warn stale SCRAPE_ERROR/BOT_BLOCKED/ABANDONED.
 METEORITE_RETENTION_CONFIG = {
     "task_key": "meteorite_retention",
     "landed_purge_days": 90,
@@ -2739,9 +2748,9 @@ assert isinstance(_mid_retention["task_key"], str) and _mid_retention["task_key"
 assert isinstance(_mid_retention["landed_purge_days"], int) and _mid_retention["landed_purge_days"] >= 1
 assert isinstance(_mid_retention["stale_list_days"], int) and _mid_retention["stale_list_days"] >= 1
 assert isinstance(_mid_retention["batch_size"], int) and _mid_retention["batch_size"] >= 1
-assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
+assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED", "NOT_A_JOB"}
 assert set(METEORITE_STATES_RETENTION["stale_list_states"]) == {
-    "ERROR", "BOT_BLOCKED", "ABANDONED",
+    "SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED",
 }
 
 # ---------------------------------------------------------------------------
