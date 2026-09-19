@@ -1122,7 +1122,7 @@ class TestAst1703EmailBreadcrumb:
         )
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
-        assert row["state"] == "ERROR"
+        assert row["state"] == "SCRAPE_ERROR"
         assert "breadcrumb" in (row.get("error") or "")
 
     def test_stage_meteorite_schema_accepts_breadcrumb_fields(self) -> None:
@@ -1223,7 +1223,7 @@ class TestAst1560RunStageMeteorite:
                 _ingress_task(batch_id="stage-batch-miss")
             )
         assert out["total_errors"] == 1
-        assert db.get_meteorite(row_id)["state"] == "ERROR"
+        assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
         assert any("missing classify_outcome" in r.message for r in caplog.records)
 
 
@@ -1334,7 +1334,7 @@ class TestAst1560RunScrapeMeteorite:
         assert out["total_processed"] == 2
         assert out["total_passed"] == 1
         assert out["total_errors"] == 1
-        assert db.get_meteorite(bad_id)["state"] == "ERROR"
+        assert db.get_meteorite(bad_id)["state"] == "SCRAPE_ERROR"
         assert db.get_meteorite(good_id)["state"] == "READY"
 
 
@@ -1403,7 +1403,7 @@ class TestAst1560RunLandMeteorite:
             )
         )
         assert out["total_errors"] == 1
-        assert db.get_meteorite(row_id)["state"] == "ERROR"
+        assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
 
 
 @pytest.mark.skipif(
@@ -1594,31 +1594,25 @@ class TestAst1562RunMeteoriteRetention:
 
     @pytest.mark.asyncio
     async def test_stale_rows_info_logged_not_deleted(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+        self, sqlite_in_memory, caplog: pytest.LogCaptureFixture
     ) -> None:
+        import logging
+
         db = sqlite_in_memory
         cid = "cand-retention-stale"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Stale"})
-        row_id = _insert_meteorite_row(db, cid, state="ERROR", link="https://jobs.example/e")
+        row_id = _insert_meteorite_row(db, cid, state="SCRAPE_ERROR", link="https://jobs.example/e")
         old = (datetime.now(timezone.utc) - timedelta(days=30)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
         _backdate_meteorite_state_changed(db, row_id, old)
-        log = MagicMock()
-        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.run_meteorite_retention({}, debug=False)
         assert out["total_processed"] >= 1
         assert out["total_passed"] >= 1
         assert db.get_meteorite(row_id) is not None
-        stale_calls = [
-            c
-            for c in log.info.call_args_list
-            if c.args and "meteorite retention stale" in str(c.args[0])
-        ]
-        assert stale_calls
-        line = str(stale_calls[0].args[0])
-        assert str(row_id) in line
-        assert "ERROR" in line
+        assert any("still SCRAPE_ERROR" in r.getMessage() for r in caplog.records)
+        assert any(str(row_id) in r.getMessage() for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_fresh_landed_not_purged(self, sqlite_in_memory) -> None:
@@ -2199,4 +2193,28 @@ class TestAst1693NotifySkipsContentful:
         row = db.get_meteorite(row_id)
         assert row["state"] == "BOT_BLOCKED" and not row.get("estelle_notified_at")
         post.assert_not_called()
+
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "run_meteorite_retention"),
+    reason="AST-1562 retention runner not on this publish tip",
+)
+class TestAst1712NotAJobPurge:
+    """AST-1712: NOT_A_JOB is on the scheduled cleanup selection."""
+
+    @pytest.mark.asyncio
+    async def test_purges_old_not_a_job(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-retention-not-a-job"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Skip"})
+        row_id = _insert_meteorite_row(db, cid, state="NOT_A_JOB")
+        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _backdate_meteorite_state_changed(db, row_id, old)
+        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        assert db.get_meteorite(row_id) is None
+        assert out["total_processed"] >= 1
+        assert out["total_passed"] >= 1
 
