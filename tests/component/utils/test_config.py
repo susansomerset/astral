@@ -3521,10 +3521,9 @@ class TestAst1071ContactSkillsConfig:
     def test_allowlisted_paths_no_slack_user_id(self) -> None:
         skills = cfg.CONTACT_CONFIG["skills"]
         assert skills["save_candidate_profile"]["allowed_paths"] == (
-            "profile.first",
-            "profile.last",
-            "profile.pronoun_preference",
-            "profile.contact_email",
+            "first",
+            "last",
+            "pronouns",
         )
         assert skills["save_candidate_contact"]["allowed_paths"] == (
             "contact.contact_email",
