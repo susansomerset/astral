@@ -147,6 +147,11 @@ Execute stages in order, steps in order. One commit per stage on this epic workt
 
 Confirm Chuckles estimate: 3 — agree
 
+## Review
+
+- **Build tip:** `origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map` @ `8827531f39ee9f94503ebffe52608eb8a7d37f01`
+- **Stages:** meteorite classify state registry → mailbox key `stage_email_meteorite`
+
 ## Joan validate
 
 [plan-rubric]
