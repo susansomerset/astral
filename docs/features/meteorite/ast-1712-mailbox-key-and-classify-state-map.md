@@ -13,12 +13,13 @@ Ticket **## Scope** (the files and the kind of change):
 - `src/utils/config.py` — mailbox task key string `meteorite_email` becomes `stage_email_meteorite`; debug runner points at `inbox.check_email`; meteorite state registry gains `NOT_A_JOB` and `NEW_EMAIL_ERROR` with the properties in the technical scope, and renames scrape-failure `ERROR` to `SCRAPE_ERROR` in that registry, its prior states, the scrape page-status map, and the stale list.
 - `data/admin/agent_task.json` — mailbox shell row `task_key` and `task_name` become `stage_email_meteorite`. Ruth's `stage_meteorite` row stays.
 - `src/core/agent.py` — legacy mailbox prompt fold keys off `stage_email_meteorite` instead of `meteorite_email`.
+- `src/core/meteorite.py` — existing failure writes `state="ERROR"` become `SCRAPE_ERROR`, including the scrape page-status fallback default. Do not add `NEW_EMAIL_ERROR` or `NOT_A_JOB` writes.
 
 All Files Changed / Stages stay inside that set.
 
 **Out of scope (siblings):**
 
-- `src/core/meteorite.py` writes, Ruth save, consult removal — **AST-1713**. Do not add `"SCRAPE_ERROR"` / `"NEW_EMAIL_ERROR"` / `"NOT_A_JOB"` there. AC2's `rg` of `config.py` and `meteorite.py` prints matches once `config.py` has the strings.
+- Ruth save, consult removal, insert-state, and `NEW_EMAIL_ERROR` / `NOT_A_JOB` row writes — **AST-1713**. Do not add those writes here. The `ERROR` → `SCRAPE_ERROR` literal retarget is Stage 3, not AST-1713.
 - `src/core/inbox.py` `check_email`, dispatcher mailbox branch, admin task-key checks — **AST-1714**. Those three files already contain no quoted `meteorite_email`. Do not edit them. Pointing `debug_func` at `inbox.check_email` is a config string only; do not create the function.
 
 ## Files Changed (planned)
@@ -28,6 +29,7 @@ All Files Changed / Stages stay inside that set.
 | `src/utils/config.py` | Rename scrape-failure `ERROR` to `SCRAPE_ERROR`; add `NOT_A_JOB` and `NEW_EMAIL_ERROR`; mailbox task key + debug runner | utils |
 | `data/admin/agent_task.json` | Mailbox shell row `task_key` and `task_name` | data |
 | `src/core/agent.py` | Legacy mailbox fold comment follows the renamed parse-config task key | core |
+| `src/core/meteorite.py` | Failure writes `state="ERROR"` become `SCRAPE_ERROR` | core |
 
 ## Stage 1: Meteorite state registry
 
@@ -139,9 +141,22 @@ assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
 
 ⚠️ **Decision:** The fold compares `content_key` to `METEORITE_EMAIL_PARSE_CONFIG["task_key"]`, which Stage 2 step 3 sets to `stage_email_meteorite`. A second literal in `agent.py` would drift. `parse_meteorite_email` stays the legacy row name; AC1 forbids the quoted key `meteorite_email` only.
 
+## Stage 3: Legalize failure writes as SCRAPE_ERROR
+
+**Done when:** `rg -n 'state="ERROR"' src/core/meteorite.py` prints nothing. `rg -n 'status_map.get(page_status, "ERROR")' src/core/meteorite.py` prints nothing. `python3 -m py_compile src/core/meteorite.py` succeeds. No other file changes. `tests/` unchanged. Log strings such as `This row is ERROR` stay.
+
+`update_meteorite` accepts any `METEORITE_STATES` key and does not check priors, so `SCRAPE_ERROR` written from `NEW` or `READY` is legal.
+
+1. In `run_stage_meteorite`, change every `update_meteorite(..., state="ERROR"` to `state="SCRAPE_ERROR"`: `missing classify_outcome`, `skip outcome on row`, `missing link`, `missing content`, `missing breadcrumb link`, and `unhandled classify_outcome`.
+2. In `run_scrape_meteorite`, same change for `missing link`, and change the fallback `status_map.get(page_status, "ERROR")` to `"SCRAPE_ERROR"`.
+3. In `run_land_meteorite`, same change for empty-content `READY` (`missing content`) and land-failed. Empty `BOT_BLOCKED` still skips; do not write a state on that path.
+4. Do not add `NEW_EMAIL_ERROR` or `NOT_A_JOB` writes. Do not call Ruth. Do not edit consult, database insert, inbox, or `tests/`. Do not change log lines that say `This row is ERROR`.
+
+⚠️ **Decision:** Component tests that assert `state == "ERROR"` on these paths will go red (`TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors` and the other meteorite assertions that hardcode `ERROR`). Do not put `ERROR` back to satisfy them. Betty updates those assertions on qa. This stage does not edit `tests/`.
+
 ## Execution contract
 
-Execute stages in order, steps in order. One commit per stage on this epic worktree, then `git push origin <sha>:sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map`. Do not add files. Do not edit `tests/` or `src/core/meteorite.py`. If a named symbol has moved, stop and comment on AST-1711. Do not adapt silently.
+Execute stages in order, steps in order. One commit per stage on this epic worktree, then `git push origin <sha>:sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map`. Do not add files. Do not edit `tests/`. Stage 3 is the only edit to `src/core/meteorite.py`, and only the state literals listed there. If a named symbol has moved, stop and comment on AST-1711. Do not adapt silently.
 
 ## Estimate
 
