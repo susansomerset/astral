@@ -4216,7 +4216,7 @@ Mailbox task key `meteorite_email` → `stage_email_meteorite`; `debug_func` →
   tests/component/core/test_meteorite.py::TestAst1712NotAJobPurge \
   tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs::test_count_inbox_bound_by_candidate_mailbox_map \
   tests/component/ui/api/test_api_admin.py::TestAst1135ListDtasksMeteoriteMailboxAvail \
-  tests/component/ui/api/test_api_admin.py::TestAst1214AdminCatalogAlphabeticalWritable::test_mailbox_trigger_null_or_candidate_state_and_unsupported_craft_wording \
+  tests/component/ui/api/test_api_admin.py::TestAst1214AdminCatalogAlphabeticalWritable::test_mailbox_trigger_null_only_and_unsupported_craft_wording \
   tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates \
   -q
 ```
