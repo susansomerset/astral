@@ -515,8 +515,8 @@ def _resolve_task_prompts(task_key: str):
     """
     content_key = resolve_task_key_for_content(task_key)
     agent_task_row = get_agent_task(content_key)
-    # AST-1212/1282: TASK_CONFIG key is meteorite_email; live Ruth prompts still on
-    # parse_meteorite_email until seed rename. Empty stub rows have no agent_id.
+    # Mailbox fold: empty agent_id on stage_email_meteorite falls back to
+    # legacy_agent_task_key parse_meteorite_email. Key lives on METEORITE_EMAIL_PARSE_CONFIG.
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     if content_key == cfg["task_key"] and (
         not agent_task_row or not (agent_task_row.get("agent_id") or "").strip()
