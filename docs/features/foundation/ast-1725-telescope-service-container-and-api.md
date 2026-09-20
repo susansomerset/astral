@@ -525,3 +525,7 @@ Update the Stage 3 contract note in this doc's table row for `/telescope/html` `
 - Explicit CSS selectors still return the first matching element's outerHTML.
 - `/telescope` text endpoint and multi-match text behavior unchanged.
 - Boundaries: no Railway/CI (#3), no Surfer-shared post-render helpers, no new service endpoints.
+
+## Radia review-fix (AST-1729)
+
+Overall: CLEAN. [bug-repro] OK; What must still hold OK. Clean-review shortcut → User Testing (resolve skipped).
