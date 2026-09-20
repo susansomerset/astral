@@ -448,7 +448,7 @@ Python/component modules locked at **100%** branches (enforced by `scripts/testi
 - `src/utils/formatting.py`
 - `src/external/anthropic.py`
 - `src/external/gmail.py`
-- `src/external/playwright.py`
+- `src/external/telescope.py` (was `playwright.py` through AST-1726)
 - `src/core/monitor.py`
 - `src/core/timesheets.py`
 - `src/core/tracker.py`

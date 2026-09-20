@@ -1442,7 +1442,7 @@ class TestAst701ScrapeCompanyHomepageContent:
     async def test_playwright_infra_error_prefixes_failure_class(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         session = MagicMock()
         monkeypatch.setattr(
@@ -5304,72 +5304,50 @@ class TestAst1674ResolveWebsiteApply:
 
 
 class TestAst689ScrapeReadiness:
-    """AST-689: careers-list scrape readiness gate before select_job_page extract."""
+    """AST-689 readiness (AST-1726: Telescope wait_ready — listing selectors unavailable remotely)."""
 
     @pytest.mark.asyncio
     async def test_wait_for_careers_list_readiness_ready_on_listing_hits(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.external import playwright as pw_mod
-        from src.external.playwright import wait_for_careers_list_readiness
+        from src.external import telescope as pw_mod
+        from src.external.telescope import wait_for_careers_list_readiness
 
-        poll_n = {"n": 0}
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
 
-        async def count_side_effect() -> int:
-            poll_n["n"] += 1
-            return 0 if poll_n["n"] == 1 else 2
+        async def ensure_text(p, links=False):
+            p._text = "x" * 200
 
-        locator = MagicMock()
-        locator.count = AsyncMock(side_effect=count_side_effect)
-        page = MagicMock()
-        page.locator = MagicMock(return_value=locator)
-        page.wait_for_timeout = AsyncMock()
-        monkeypatch.setattr(
-            pw_mod,
-            "extract_visible_text",
-            AsyncMock(side_effect=[{"text": "x" * 100}, {"text": "x" * 200}]),
-        )
+        monkeypatch.setattr(pw_mod, "_ensure_text", ensure_text)
 
         result = await wait_for_careers_list_readiness(
             page,
-            {
-                "max_wait_ms": 5000,
-                "poll_interval_ms": 10,
-                "min_listing_hits": 1,
-                "listing_selectors": ["a[href*='/job']"],
-                "run_load_all_jobs": False,
-            },
+            {"run_load_all_jobs": False},
         )
         assert result["ready"] is True
         assert result["outcome"] == "ready"
-        assert result["listing_hits"] >= 1
+        assert result["visible_chars"] >= 1
+        assert page.wait_ready is True
 
     @pytest.mark.asyncio
     async def test_wait_for_careers_list_readiness_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.external import playwright as pw_mod
-        from src.external.playwright import wait_for_careers_list_readiness
+        from src.external import telescope as pw_mod
+        from src.external.telescope import wait_for_careers_list_readiness
 
-        locator = MagicMock()
-        locator.count = AsyncMock(return_value=0)
-        page = MagicMock()
-        page.locator = MagicMock(return_value=locator)
-        page.wait_for_timeout = AsyncMock()
-        monkeypatch.setattr(pw_mod, "extract_visible_text", AsyncMock(return_value={"text": "short"}))
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
+
+        async def ensure_text(p, links=False):
+            p._text = ""
+
+        monkeypatch.setattr(pw_mod, "_ensure_text", ensure_text)
 
         result = await wait_for_careers_list_readiness(
             page,
-            {
-                "max_wait_ms": 100,
-                "poll_interval_ms": 50,
-                "stability_polls": 2,
-                "min_visible_chars": 400,
-                "min_listing_hits": 1,
-                "listing_selectors": ["a"],
-                "run_load_all_jobs": False,
-            },
+            {"run_load_all_jobs": False},
         )
+        # Empty visible text → outcome empty (not listing-selector timeout)
         assert result["ready"] is False
-        assert result["outcome"] == "timeout"
+        assert result["outcome"] == "empty"
 
     @pytest.mark.asyncio
     async def test_fetch_job_links_content_calls_readiness(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5664,7 +5642,7 @@ class TestAst891ScrapeListPageInfra:
     async def test_infra_error_raises_playwright_infra(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         session = MagicMock()
         monkeypatch.setattr(
@@ -5714,7 +5692,7 @@ class TestAst891ParseDispatchInfraAndBatchSession:
     async def test_infra_scrape_retries_from_identified(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         company = self._identified_company()
         monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
@@ -5743,7 +5721,7 @@ class TestAst891ParseDispatchInfraAndBatchSession:
     async def test_infra_scrape_terminal_on_retry_state(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         company = self._identified_company(state="JOBLIST_IDENTIFIED_RETRY")
         monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
