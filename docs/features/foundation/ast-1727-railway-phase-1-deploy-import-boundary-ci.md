@@ -257,7 +257,7 @@ context_tokens≈95000
 
 ## Review (build stub)
 
-**Built:** `origin/sub/AST-1721/AST-1727-railway-phase-1-deploy-import-boundary-ci` @ `209ce087`.
+**Built:** `origin/sub/AST-1721/AST-1727-railway-phase-1-deploy-import-boundary-ci` @ `29ea9c9d`.
 
 **Stages delivered:**
 - Stage 1: `service/telescope/railway.toml` (Dockerfile build, numReplicas=1, 2 GiB, ON_FAILURE) — `36ffc0ae`.
