@@ -517,6 +517,17 @@ def _ensure_jobs_astral_ids(jobs: list, batch_entities: list) -> None:
             job["astral_job_id"] = batch_entities[i].get("astral_job_id")
 
 
+def _ensure_companies_company_ids(companies: list, batch_entities: list) -> None:
+    """Fill missing company_id from batch_entities by position (AST-1723)."""
+    for i, company in enumerate(companies):
+        if not isinstance(company, dict):
+            continue
+        if company.get("company_id"):
+            continue
+        if i < len(batch_entities):
+            company["company_id"] = batch_entities[i].get("company_id")
+
+
 def _bind_response_jobs_to_claimed(response_jobs: list, claimed_jobs: list) -> None:
     """Rewrite placeholder / single-job mismatched astral_job_id to claimed ids (AST-1076).
 
@@ -685,10 +696,16 @@ def _job_from_letter_pipe(text: str, task_config: dict, ctx: dict) -> dict:
 
 
 def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: Any, ctx: dict) -> dict:
-    """Turn AST-602 repro shapes into response_schema jobs[] before validation."""
+    """Turn AST-602 repro shapes into response_schema jobs[]/companies[] before validation."""
     batch_entities = (ctx or {}).get("batch_entities") or []
+    company_entity = (task_config.get("entity_type") or "") == "company"
 
-    if isinstance(parsed, dict) and isinstance(parsed.get("jobs"), list) and parsed["jobs"]:
+    if company_entity:
+        if isinstance(parsed, dict) and isinstance(parsed.get("companies"), list) and parsed["companies"]:
+            out = dict(parsed)
+            _ensure_companies_company_ids(out["companies"], batch_entities)
+            return out
+    elif isinstance(parsed, dict) and isinstance(parsed.get("jobs"), list) and parsed["jobs"]:
         out = dict(parsed)
         _ensure_jobs_astral_ids(out["jobs"], batch_entities)
         return out
@@ -700,6 +717,13 @@ def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: An
             payload = "\n".join(str(item) for item in payload)
 
     if isinstance(payload, dict):
+        if company_entity:
+            if isinstance(payload.get("companies"), list) and payload["companies"]:
+                return _normalize_rubric_task_response(task_key, task_config, payload, ctx)
+            company = _job_from_rubric_json(payload, task_config, ctx)
+            if len(batch_entities) == 1 and not company.get("company_id"):
+                company["company_id"] = batch_entities[0].get("company_id")
+            return {"companies": [company]}
         if isinstance(payload.get("jobs"), list) and payload["jobs"]:
             return _normalize_rubric_task_response(task_key, task_config, payload, ctx)
         job = _job_from_rubric_json(payload, task_config, ctx)
@@ -724,12 +748,19 @@ def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: An
 
             output_type = task_config.get("output_type", "")
             decoded = _decode_payload(task_key, output_type, text, ctx or {})
-            _ensure_jobs_astral_ids(decoded.get("jobs") or [], batch_entities)
+            if company_entity:
+                _ensure_companies_company_ids(decoded.get("companies") or [], batch_entities)
+            else:
+                _ensure_jobs_astral_ids(decoded.get("jobs") or [], batch_entities)
             return decoded
-        job = _job_from_letter_pipe(text, task_config, ctx)
+        row = _job_from_letter_pipe(text, task_config, ctx)
+        if company_entity:
+            if len(batch_entities) == 1:
+                row["company_id"] = batch_entities[0].get("company_id")
+            return {"companies": [row]}
         if len(batch_entities) == 1:
-            job["astral_job_id"] = batch_entities[0].get("astral_job_id")
-        return {"jobs": [job]}
+            row["astral_job_id"] = batch_entities[0].get("astral_job_id")
+        return {"jobs": [row]}
 
     raise ValueError(f"[{task_key}] unrecognised rubric response shape: {type(parsed).__name__}")
 
