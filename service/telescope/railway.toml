@@ -13,8 +13,8 @@
 #   - Shared secret: set TELESCOPE_BEARER_TOKEN on Telescope *and* platform
 #     (same value; never commit the secret).
 #   - Optional fan-out: after 1-replica validation, raise replicas in the
-#     dashboard (Phase 1 fixed fleet). Do not add Judoscale / GraphQL
-#     serviceInstanceUpdate / autoscaler code (AC 13).
+#     dashboard (Phase 1 fixed fleet). Do not add Phase 2 autoscaler
+#     or third-party horizontal-scale hooks (AC 13).
 #   - /dev/shm: if Firefox flakes on shared memory, raise container disk or
 #     follow Railway shm guidance; Dockerfile documents --shm-size for local Docker.
 #   - Do NOT enable Railway healthcheckPath=/healthz — /healthz requires

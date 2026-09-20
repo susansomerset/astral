@@ -254,3 +254,14 @@ AC2→S2 `check-service-src-import-fence.sh` + `service-src-import-fence.yml` (a
 - **Recommendation:** N/A.
 
 context_tokens≈95000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1721/AST-1727-railway-phase-1-deploy-import-boundary-ci` @ `95f04c2f` (+ Stage 3 tip after this commit).
+
+**Stages delivered:**
+- Stage 1: `service/telescope/railway.toml` (Dockerfile build, numReplicas=1, 2 GiB, ON_FAILURE) — `36ffc0ae`.
+- Stage 2: `scripts/ci/check-service-src-import-fence.sh` + `.github/workflows/service-src-import-fence.yml` — `95f04c2f`.
+- Stage 3: AC13 comment cleanup + fence re-run green — (this commit).
+
+**Betty:** CI bidirectional fence (service/telescope ↔ src import lines); railway.toml Phase 1 deploy posture (no Phase 2 / Surfer). Live Railway attach is operator checklist in toml comments.
