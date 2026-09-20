@@ -58,17 +58,38 @@ async def capture_text(page, selector: str | None) -> Union[str, List[str]]:
     return _fold_blobs(blobs)
 
 
-async def capture_links(page) -> List[Dict[str, str]]:
+async def capture_links(page, selector: str | None = None) -> List[Dict[str, str]]:
+    sel = (selector or "").strip()
+    # Whole-page (omit / page / body) — unchanged document-wide collect
+    if not sel or sel.lower() in ("page", "body"):
+        return await page.evaluate(
+            """() => {
+                const links = Array.from(document.querySelectorAll('a[href]'));
+                return links
+                    .map(a => ({
+                        href: a.href,
+                        text: (a.innerText || '').trim(),
+                    }))
+                    .filter(item => item.href && item.href.startsWith('http'));
+            }"""
+        )
+    # Scoped: union under match roots, dedupe by href (first text wins) — AST-1732
     return await page.evaluate(
-        """() => {
-            const links = Array.from(document.querySelectorAll('a[href]'));
-            return links
-                .map(a => ({
-                    href: a.href,
-                    text: (a.innerText || '').trim(),
-                }))
-                .filter(item => item.href && item.href.startsWith('http'));
-        }"""
+        """(selector) => {
+            const roots = Array.from(document.querySelectorAll(selector));
+            const seen = new Set();
+            const out = [];
+            for (const root of roots) {
+                for (const a of Array.from(root.querySelectorAll('a[href]'))) {
+                    const href = a.href;
+                    if (!href || !href.startsWith('http') || seen.has(href)) continue;
+                    seen.add(href);
+                    out.push({ href, text: (a.innerText || '').trim() });
+                }
+            }
+            return out;
+        }""",
+        sel,
     )
 
 

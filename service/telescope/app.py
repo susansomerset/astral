@@ -140,7 +140,7 @@ async def post_telescope(request: Request, body: TelescopeRequest):
         final_url = page.url
         out: dict = {"final_url": final_url, "text": text}
         if body.links:
-            out["links"] = await capture_links(page)
+            out["links"] = await capture_links(page, body.selector)
         return out
 
     raw = await _run_browser_job(pool, url, body.expand, body.wait_ready, work)
