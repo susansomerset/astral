@@ -330,3 +330,92 @@ context_tokens≈78000
 - Stage 4: core import rewires + delete `playwright.py` — `52a77415`.
 
 **Betty:** drop-in surface parity (same public names), cull-default-on HTML path, pool failover/timeout → infra classes, no `src.external.playwright`, no platform Firefox install in build/dev/start scripts, `TELESCOPE_BASE_URL(S)` + bearer required for live scrapes.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1726
+**Publish ref:** `8fcb5cc6e4e085cec7955b7e9a0cb999009e7730` (`origin/sub/AST-1721/AST-1726-platform-telescope-py-drop-in-playwright-decommission`)
+**Corpus:** `751624d7ebdf9bc441fc3d08a51ae751ea8026af`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| stat.logging.error | B | | |
+| stat.logging.warning | B | | |
+| stat.logging.info | B | | |
+| stat.logging.debug | B | | |
+| patt.external.web-scraping-via-telescope | X | | pending Archie — id-only; not scoring law this pass |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Parent AC 6 vs retained `BatchBrowserSession` name
+
+- **Severity:** discuss
+- **Location:** `src/external/telescope.py` (`BatchBrowserSession`, `create_batch_browser_session`); parent AC 6
+- **Finding:** Plan retains public batch-session names for drop-in parity (AC 7). `rg BatchBrowserSession src/` will still match. No `async_playwright`, `firefox.launch`, or `playwright` package import anywhere under `src/`; platform Firefox is fully decommissioned.
+- **Recommendation:** UAT should verify launch-pattern grep, not class-name grep alone. Archie may narrow parent AC 6 if the literal `BatchBrowserSession` check is still in the parent checklist.
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Citations vs `stat.layers.import-rules` / service↔`src` fence
+- **Finding:** Bidirectional import fence plainly governs `telescope.py` but is not on this child’s frozen list. Implementation forbids `service.*` imports; no `service` import in `telescope.py`. CI enforcement remains AST-1727.
+- **Recommendation:** No code change on this tip.
+
+### discuss — pending pattern (do not score)
+
+- **Severity:** discuss
+- **Location:** Citations / `patt.external.web-scraping-via-telescope`
+- **Finding:** Id does not resolve in active corpus. Diff routes headless I/O through HTTP to the Telescope service and keeps post-render helpers local in `src/external/telescope.py` — consistent with plan deferral.
+- **Recommendation:** Remains id-only until Archie approves.
+
+### advisory — `per_node_max_in_flight` config unused
+
+- **Severity:** advisory
+- **Location:** `src/utils/config.py` `TELESCOPE_CONFIG["per_node_max_in_flight"]`; `src/external/telescope.py` `_TelescopePool`
+- **Finding:** Config key is present (plan Stage 1 table: “soft cap tracking per base_url”). Pool tracks `_in_flight` per base for retry sort preference but does not enforce the per-node cap value.
+- **Recommendation:** Optional follow-up to wire soft-cap rejection or document that sort-only is intentional; not a drop-in blocker.
+
+### advisory — out-of-scope scripts still reference deleted module
+
+- **Severity:** advisory
+- **Location:** `scripts/test_getVisibleText.py`, `scripts/spikes/*`, etc.
+- **Finding:** Multiple `scripts/` files still `from src.external.playwright import …`. Plan Stage 4 explicitly excludes scripts from Scope; `src/` compile path is clean.
+- **Recommendation:** Separate script-retarget ticket or spike cleanup; not AST-1726 fix-now.
+
+### advisory — `extract_site_page_list` progress gated on `debug` param
+
+- **Severity:** advisory
+- **Location:** `src/external/telescope.py` — `extract_site_page_list`
+- **Finding:** Crawl-depth `info` lines emit only when caller passes `debug=True` (ported from former module). Main scrape success paths log ungated `info` via `_post_telescope` / `_post_telescope_html`.
+- **Recommendation:** Acceptable B variance on deep-crawl diagnostics; optional ungate in a later logging pass.
+
+## What's solid
+
+- Full four-stage delivery on publish ref (`c177bea8` → `52a77415`) plus Betty `test` + `merge-tests` at tip `8fcb5cc6`.
+- `src/external/playwright.py` deleted; core rewires in `roster.py` / `gazer.py` / `meteorite.py` are import-path-only (verified diff).
+- `telescope.py` is HTTP client + local post-render port: `require_controlled_external_io`, bearer auth, round-robin pool with 5xx/timeout failover, `cull_html_default=True` on `extract_page_dom`, lazy fetch preserves expand/wait_ready ordering.
+- `requirements.txt`: `playwright` removed, `httpx` added; `build_railway.sh` / `setup_dev.sh` / `start_server.py` no longer install or seed Firefox.
+- `TELESCOPE_CONFIG` + trimmed `PLAYWRIGHT_CONFIG`; `playwright_browsers_path` gone from `RAILWAY_CONFIG`.
+- Component tests cover drop-in handles, pool failover/timeout/bearer, cull default, classifier + `telescope_timeout`, module-gone assertion; roster tests retargeted to `telescope`.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append this artifact to the issue doc, commit `docs(AST-1726): Radia review — clean`, push, post slim upshot `--as radia`, move to Review Posted.
+- datt: PROCEED → User Testing (no `resolve-child` round needed).
+- Optional later: script retarget sweep; wire or document `per_node_max_in_flight`; parent AC 6 grep clarification with Archie.
+
+context_tokens≈42000
