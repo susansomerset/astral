@@ -30,7 +30,7 @@ __all__ = [
 
 _log = logging.getLogger(__name__)
 
-TokenAuthenticator = Callable[[str], Mapping[str, Any]]
+TokenAuthenticator = Callable[..., Mapping[str, Any]]
 _authenticate: TokenAuthenticator | None = None
 
 
@@ -72,12 +72,15 @@ def local_auth_passthrough_payload() -> dict:
     return {"local_auth_passthrough": is_local_deploy_env()}
 
 
-def validate_bearer_token(raw_token: str) -> dict | None:
+def validate_bearer_token(raw_token: str, *, remote: bool = True) -> dict | None:
     token = (raw_token or "").strip()
     if not token or _authenticate is None:
         return None
     try:
-        session = _authenticate(token)
+        try:
+            session = _authenticate(token, remote=remote)
+        except TypeError:
+            session = _authenticate(token)
         return normalize_user(
             user_id=str(session["user_id"]),
             name=str(session.get("name") or ""),

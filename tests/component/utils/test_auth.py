@@ -103,6 +103,17 @@ class TestValidateBearerToken:
         out = auth_mod.validate_bearer_token("good-jwt")
         assert out == {"user_id": "uid-9", "name": "Ada", "is_admin": True}
 
+    def test_passes_remote_false_to_authenticator(self) -> None:
+        seen: list[bool] = []
+
+        def _auth(token: str, *, remote: bool = True) -> dict:
+            seen.append(remote)
+            return {"user_id": "uid-9", "name": "Ada", "email": None}
+
+        auth_mod.register_token_authenticator(_auth)
+        auth_mod.validate_bearer_token("good-jwt", remote=False)
+        assert seen == [False]
+
     def test_none_when_authenticator_raises(self) -> None:
         def _boom(_token: str) -> dict:
             raise RuntimeError("invalid jwt")
