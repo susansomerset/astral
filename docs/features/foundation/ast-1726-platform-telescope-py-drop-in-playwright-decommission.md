@@ -532,3 +532,76 @@ async def admin_telescope_scrape(
 ## Radia review-fix (AST-1728)
 
 Overall: CLEAN. [bug-repro] OK; What must still hold OK. Advisories only. Clean-review shortcut → User Testing (resolve skipped).
+
+## Bug: AST-1730 — Telescope admin response not scrollable / selectable
+
+UAT-batch fix against AST-1721 Component/Technical scope (`src/ui/frontend/` admin Telescope raw response pane). Sibling of AST-1728 on this doc; does not rewrite Stages 1–4 or the AST-1728 block.
+
+### As-is
+
+After a successful admin Telescope scrape, the raw response (and optional full JSON dump) render in an unbounded `<pre className="admin-telescope-pre">` with no wrap, no max-height, and no overflow scroll. The operator cannot scroll the full payload or treat it as a text field for select-all.
+
+### To-be
+
+The admin raw response (and the optional full JSON dump) each appear in a read-only, wrapping, scrollable text field so the operator can scroll the full payload and select-all / copy it.
+
+### Repro
+
+1. Sign in as admin; open `/admin/telescope`.
+2. Submit any URL that returns a multi-screen body (or toggle Show full JSON on a large scrape).
+3. Observe the Raw text|html pane: content expands the page with no inner scroll; long lines do not wrap; Ctrl/Cmd+A does not select the payload as a focused text field.
+
+### Root cause
+
+AST-1728 step 6 rendered results with bare `<pre>` elements and never defined `.admin-telescope-pre` styles (no `white-space` wrap, no `max-height` / `overflow`). A `<pre>` is also not a form text control, so select-all behavior is awkward for operators.
+
+### Proposed change
+
+⚠️ **Decision — read-only `<textarea>`, not styled `<pre>`:** Match existing admin read-only payload panes (`JobMeteoritePane`, `BatchAgentDataModal`): a focused text control gives native select-all / copy. Both the raw body pane and the optional full-JSON pane get the same control (both are response display).
+
+⚠️ **Decision — scroll viewport `maxHeight: "60vh"`:** Same bound as `AdminSessionResumePaste` / `AdminManageCandidates` JSON panes. Required for “scrollable”; not a content truncation — overflow is `auto`.
+
+1. **`src/ui/frontend/src/pages/AdminTelescope.tsx`** only:
+   - Replace the Raw `{responseType}` `<pre className="admin-telescope-pre">…</pre>` with:
+
+     ```tsx
+     <textarea
+       className="admin-telescope-pre"
+       readOnly
+       value={formatBody(result, responseType)}
+       spellCheck={false}
+       style={{
+         display: "block",
+         width: "100%",
+         boxSizing: "border-box",
+         minHeight: 200,
+         maxHeight: "60vh",
+         overflow: "auto",
+         whiteSpace: "pre-wrap",
+         wordBreak: "break-word",
+         fontFamily: "monospace",
+         fontSize: 12,
+         lineHeight: 1.5,
+         resize: "vertical",
+       }}
+     />
+     ```
+
+   - Replace the Show-full-JSON `<pre className="admin-telescope-pre">…</pre>` with the same `<textarea readOnly>` shape, `value={JSON.stringify(result, null, 2)}`.
+   - Keep `formatBody`, metadata list, form controls, and API call unchanged.
+   - No new CSS file required (inline styles, same as sibling admin tools); keep `className="admin-telescope-pre"` for a stable hook.
+
+**Out of this bug:** service / `telescope.py` / `api_admin` contract, scrape_meta shape, nav/routes, AST-1728 metadata behavior.
+
+### Blast radius
+
+- Admin Telescope UI only — candidates and core scrape callers untouched.
+- Existing AST-1728 vitest only asserts the page module exports a component; no `<pre>` DOM assert to break.
+- Optional: Betty may add a shallow assert that the raw pane is a `textarea[readonly]` — Betty owns tests.
+
+### What must still hold
+
+- Parent AC 14 / AST-1728 to-be: admin can submit URL + toggles and see raw body + scrape_meta (metadata list stays; only the body/JSON display widget changes).
+- No change to `/api/admin/telescope` request/response shape.
+- `service/*` ↔ `src/` import fence unchanged.
+- No depth/output limits on scrape content itself — only a scroll viewport on the display control.
