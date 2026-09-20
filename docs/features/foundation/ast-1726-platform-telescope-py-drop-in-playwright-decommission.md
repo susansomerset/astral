@@ -605,3 +605,7 @@ AST-1728 step 6 rendered results with bare `<pre>` elements and never defined `.
 - No change to `/api/admin/telescope` request/response shape.
 - `service/*` ↔ `src/` import fence unchanged.
 - No depth/output limits on scrape content itself — only a scroll viewport on the display control.
+
+## Radia review-fix (AST-1730)
+
+Overall: CLEAN. [bug-repro] OK; What must still hold OK. Clean-review shortcut → User Testing.
