@@ -43,7 +43,7 @@ Config sections:
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
-  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
+  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound stage_email_meteorite mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is inbox.check_email (AST-1559)
   STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529); electronic-contact response-key literal (AST-1688)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   SOURCE_ENTITY_TYPES — job ingest parent + track SoT company|meteorite (repurposed job.source; AST-1701); JOB_SOURCES aliases until sibling #2
@@ -405,9 +405,10 @@ TASK_CONFIG = {
         "pass_state": "PREFILTER_PASSED",
         "fail_state": "PREFILTER_FAILED",
         "response_schema": {
-            "jobs": {
+            "companies": {
                 "type": "list", "required": True,
                 "items_schema": {
+                    "company_id": {"type": "str", "required": True},
                     "grades": {
                         "type": "list", "required": True,
                         "items_schema": {
@@ -2348,20 +2349,25 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
         "importance": 8,
         "content": (
             "Reality Check — assess whether the company is real and operating as represented.\n"
-            "A = clearly real and verifiable\n"
-            "B = appears real with minor gaps\n"
-            "C = mixed signals; legitimacy uncertain\n"
-            "D = significant doubt about reality or representation\n"
-            "E = strong evidence of misrepresentation\n"
-            "F = not a real company or clearly fraudulent"
+            "A == clearly real and verifiable\n"
+            "B == appears real with minor gaps\n"
+            "C == mixed signals; legitimacy uncertain\n"
+            "D == significant doubt about reality or representation\n"
+            "E == strong evidence of misrepresentation\n"
+            "F == not a real company or clearly fraudulent\n"
+            "X == could not read the page (bot blocked or other network issue)"
         ),
         "grade_descriptions": [
-            {"grade": "A", "description": "Company is clearly real, active, and independently verifiable."},
-            {"grade": "B", "description": "Company appears real with minor verification gaps."},
-            {"grade": "C", "description": "Mixed signals; legitimacy uncertain."},
-            {"grade": "D", "description": "Significant doubt the company is real or operating as represented."},
-            {"grade": "E", "description": "Strong evidence of misrepresentation or shell entity."},
-            {"grade": "F", "description": "Not a real company or clearly fraudulent."},
+            {"grade": "A", "description": "clearly real and verifiable"},
+            {"grade": "B", "description": "appears real with minor gaps"},
+            {"grade": "C", "description": "mixed signals; legitimacy uncertain"},
+            {"grade": "D", "description": "significant doubt about reality or representation"},
+            {"grade": "E", "description": "strong evidence of misrepresentation"},
+            {"grade": "F", "description": "not a real company or clearly fraudulent"},
+            {
+                "grade": "X",
+                "description": "could not read the page (bot blocked or other network issue)",
+            },
         ],
     },
 )
@@ -2630,40 +2636,49 @@ assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 # METEORITE_* job lifecycle labels — core transitions decide targets; data accepts state as param.
 METEORITE_STATES = {
     "NEW": {
-        "prior_states": None,  # insert-only entry from classify fan-out
+        "prior_states": ["NEW_EMAIL_ERROR"],  # human reset from stage failure
     },
     "SCRAPE_LINK": {
-        "prior_states": ["NEW", "ERROR"],  # link outcomes; retry from ERROR
+        "prior_states": ["NEW", "SCRAPE_ERROR"],  # link outcomes; retry from SCRAPE_ERROR
     },
     "READY": {
-        # text fan-out from NEW; scrape success; Estelle paste recovery (sibling)
+        # text fan-out from NEW; scrape success; Estelle paste recovery
         "prior_states": ["NEW", "SCRAPE_LINK", "BOT_BLOCKED"],
     },
     "BOT_BLOCKED": {
         "prior_states": ["SCRAPE_LINK"],
     },
-    "ERROR": {
+    "SCRAPE_ERROR": {
         "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
+    },
+    "NOT_A_JOB": {
+        "prior_states": None,  # insert-legal; scheduled cleanup; not a dispatch trigger; not stale
+    },
+    "NEW_EMAIL_ERROR": {
+        "prior_states": None,  # insert-legal; not a dispatch trigger; human resets via NEW
     },
     "LANDED": {
         "prior_states": ["READY"],
     },
     "ABANDONED": {
-        "prior_states": ["BOT_BLOCKED", "ERROR"],  # nag limit / terminal stale
+        "prior_states": ["BOT_BLOCKED", "SCRAPE_ERROR"],  # nag limit / terminal stale
     },
 }
 
 # Retention partitions (state literals only — day cutoffs are caller/config for AST-1562).
 METEORITE_STATES_RETENTION = {
-    "purge_states": ("LANDED",),
-    "stale_list_states": ("ERROR", "BOT_BLOCKED", "ABANDONED"),
+    "purge_states": ("LANDED", "NOT_A_JOB"),
+    "stale_list_states": ("SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED"),
 }
 
 assert set(METEORITE_STATES) == {
-    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+    "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
 }
 assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
-assert METEORITE_STATES["NEW"]["prior_states"] is None
+assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+assert METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
+assert METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
 assert (
     set(METEORITE_STATES_RETENTION["purge_states"])
     | set(METEORITE_STATES_RETENTION["stale_list_states"])
@@ -2688,8 +2703,8 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
     "scrape_page_status_states": {
         "blocked": "BOT_BLOCKED",
         "ok": "READY",
-        "closed": "ERROR",
-        "missing": "ERROR",
+        "closed": "SCRAPE_ERROR",
+        "missing": "SCRAPE_ERROR",
     },
 }
 _mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -2703,7 +2718,7 @@ for _tk in ("stage_task_key", "scrape_task_key", "land_task_key"):
 for _tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
     assert _mid_ingress[_tr] in METEORITE_STATES
 assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
-    "READY", "BOT_BLOCKED", "ERROR",
+    "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
 }
 
 # AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
@@ -2733,7 +2748,7 @@ for _tpl_key in ("dm_first_template", "dm_nag_template"):
 assert "{nag_count}" in _mid_notify["dm_nag_template"]
 assert "{nag_limit}" in _mid_notify["dm_nag_template"]
 
-# AST-1562: scheduled retention — purge old LANDED; warn stale ERROR/BOT_BLOCKED/ABANDONED.
+# AST-1562: scheduled retention — purge old LANDED; warn stale SCRAPE_ERROR/BOT_BLOCKED/ABANDONED.
 METEORITE_RETENTION_CONFIG = {
     "task_key": "meteorite_retention",
     "landed_purge_days": 90,
@@ -2745,9 +2760,9 @@ assert isinstance(_mid_retention["task_key"], str) and _mid_retention["task_key"
 assert isinstance(_mid_retention["landed_purge_days"], int) and _mid_retention["landed_purge_days"] >= 1
 assert isinstance(_mid_retention["stale_list_days"], int) and _mid_retention["stale_list_days"] >= 1
 assert isinstance(_mid_retention["batch_size"], int) and _mid_retention["batch_size"] >= 1
-assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
+assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED", "NOT_A_JOB"}
 assert set(METEORITE_STATES_RETENTION["stale_list_states"]) == {
-    "ERROR", "BOT_BLOCKED", "ABANDONED",
+    "SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED",
 }
 
 # ---------------------------------------------------------------------------
@@ -2878,7 +2893,7 @@ assert isinstance(METEORITE_CONFIG["min_company_job_id_match_chars"], int)
 assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 
 
-# AST-1134/AST-1135 / AST-1466: candidate-bound meteorite_email mailbox dispatch rows
+# AST-1134/AST-1135 / AST-1466: candidate-bound stage_email_meteorite mailbox dispatch rows
 # (one per candidate; no null shell). Live mailbox identity remains GMAIL_USER environ;
 # account_address is the product expectation. entity_type/trigger_state stay None —
 # mailbox poller, not an ENTITY_TYPES claim queue. Runner is candidate-bound
@@ -2887,7 +2902,7 @@ assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 # (STAGE_METEORITE_CONFIG / AST-1529); METEORITE_EMAIL_PARSE_CONFIG is a fold stub only.
 # Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 METEORITE_EMAIL_MAILBOX_CONFIG = {
-    "task_key": "meteorite_email",
+    "task_key": "stage_email_meteorite",
     "account_address": "astral.career.match@gmail.com",
     "auto_mode": False,
     "min_count": 1,
@@ -2899,12 +2914,12 @@ METEORITE_EMAIL_MAILBOX_CONFIG = {
     # Runner — subject-is-URL detection (urlparse.scheme).
     "subject_url_schemes": ("http", "https"),
     # Style D func= string for the runner.
-    "debug_func": "meteorite.check_inbox",
+    "debug_func": "inbox.check_email",
 }
 
-assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "stage_email_meteorite"
 assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "https"}
-assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite.check_inbox"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "inbox.check_email"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
 # AST-1559: inbox already-ingested outcome (row/classify line templates retired).
@@ -3000,7 +3015,7 @@ assert TASK_CONFIG["stage_meteorite"]["scored"] is False
 assert list(TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"]) == list(
     STAGE_METEORITE_CONFIG["outcomes"]
 )
-assert "meteorite_email" not in TASK_CONFIG
+assert "stage_email_meteorite" not in TASK_CONFIG
 assert STAGE_METEORITE_CONFIG["electronic_contact_response_key"] == "electronic_contact"
 assert METEORITE_CONFIG["electronic_contact_column"] == STAGE_METEORITE_CONFIG[
     "electronic_contact_response_key"
@@ -3023,18 +3038,18 @@ assert "multi_jd_inline" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
 # Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
 # Historical: AST-1089/1212 parse_modes + shared mailbox↔parse task_key assert — do not restore.
 METEORITE_EMAIL_PARSE_CONFIG = {
-    "task_key": "meteorite_email",
+    "task_key": "stage_email_meteorite",
     "legacy_agent_task_key": "parse_meteorite_email",
     "admin_entity_type": "candidate",
 }
-assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "meteorite_email"
+assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "stage_email_meteorite"
 assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"] == "parse_meteorite_email"
 assert METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"] == "candidate"
 assert "parse_modes" not in METEORITE_EMAIL_PARSE_CONFIG
 
 
 def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
-    """True for meteorite_email or its live legacy agent_task key (AST-1214 fold)."""
+    """True for stage_email_meteorite or its legacy agent_task key parse_meteorite_email."""
     tk = (task_key or "").strip()
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
@@ -3699,7 +3714,7 @@ def dispatch_task_admin_defaults(
     if retired:
         raise KeyError(retired)
     # Meteorite mailbox fold (canonical + legacy agent_task key) — before TASK_CONFIG gate.
-    # Canonical meteorite_email: poller seed (MAILBOX_CONFIG entity_type None).
+    # Canonical stage_email_meteorite: poller seed (MAILBOX_CONFIG entity_type None).
     # Legacy parse_meteorite_email: AST-1214 admin form meta keeps admin_entity_type candidate.
     if is_meteorite_email_mailbox_task_key(tk):
         if tk == METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]:
@@ -4679,24 +4694,44 @@ def importance_multiplier(n: int) -> float:
 RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
-    "playwright_browsers_path": str(_PROJECT_ROOT / ".browsers"),
 }
 
 # ---------------------------------------------------------------------------
-# PLAYWRIGHT_CONFIG: browser launch, session recovery, scrape timeouts (AST-853).
+# PLAYWRIGHT_CONFIG: scrape timeouts still read by roster/gazer (AST-853 / AST-1726).
+# Launch/Firefox keys removed — platform browser I/O is Telescope HTTP.
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_CONFIG = {
-    "launch_timeout_ms": 60_000,
-    "launch_max_attempts": 3,
-    "launch_retry_delay_seconds": 2.0,
-    "page_goto_timeout_ms": 30_000,
-    "connectivity_timeout_ms": 10_000,
-    "context_recovery_max_attempts": 2,
     "company_scrape_timeout_seconds": 120,
-    "firefox_user_prefs": {
-        "security.sandbox.content.level": 0,
-    },
+    "context_recovery_max_attempts": 2,  # batch session recover retries (client-side)
 }
+
+# ---------------------------------------------------------------------------
+# TELESCOPE_CONFIG: platform HTTP client to Astral Telescope (AST-1726).
+# Bearer is env-only (never a code default secret).
+# ---------------------------------------------------------------------------
+TELESCOPE_CONFIG = {
+    "base_urls": [],  # filled below from TELESCOPE_BASE_URLS or TELESCOPE_BASE_URL
+    "bearer_env": "TELESCOPE_BEARER_TOKEN",
+    "client_timeout_seconds": 60,
+    "max_in_flight": 15,
+    "per_node_max_in_flight": 3,
+    "retry_other_node": True,
+    "max_node_attempts": 2,
+    "healthz_path": "/healthz",
+    "telescope_path": "/telescope",
+    "telescope_html_path": "/telescope/html",
+    "cull_html_default": True,
+    "default_expand": True,
+    "default_wait_ready": False,
+}
+
+_urls_csv = (os.environ.get("TELESCOPE_BASE_URLS") or "").strip()
+if _urls_csv:
+    TELESCOPE_CONFIG["base_urls"] = [u.strip() for u in _urls_csv.split(",") if u.strip()]
+else:
+    _single = (os.environ.get("TELESCOPE_BASE_URL") or "").strip()
+    if _single:
+        TELESCOPE_CONFIG["base_urls"] = [_single]
 
 # ---------------------------------------------------------------------------
 # Timesheet rows (database ledgers): provider string validated on insert.
@@ -5267,6 +5302,7 @@ NAV_CONFIG = [
         "items": [
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Telescope", "path": "/admin/telescope"},
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},

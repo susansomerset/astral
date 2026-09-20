@@ -437,7 +437,7 @@ Gazer passthrough: **`docs/test-bible/core/gazer.md`** (**AST-715**).
 | --- | --- | --- |
 | Infra error prefix via **`batch_session`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` |
 
-Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). External classifier: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). External classifier: **`docs/test-bible/external/telescope.md`** (**AST-853**).
 
 ---
 
@@ -451,8 +451,21 @@ Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). E
 | Fail-dest helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst702PrefilterBatchHelpers` |
 | Monolithic dispatch removed | `src/core/roster.py` | `tests/component/core/test_roster.py::TestRunCompanyTask::test_website_found_monolithic_dispatch_removed` |
 | Debug passthrough on batch | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough::test_prefilter_company_batch_forwards_debug_to_do_task` |
+| Company-batch identity (`company_id` / `companies`) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst1724CompanyBatchCompanyIdContract` (**[bug-repro]** AST-1724; green after AST-1723) |
+
+**Broken / obsolete (AST-1724):** fixtures that asserted company `batch_entities.astral_job_id` or `parsed_response.jobs` — revised to `company_id` / `companies` for AST-1723 to-be.
 
 Consult routing + config + dispatcher + database: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/utils/config.md`** (**AST-702**).
+
+**AST-1724** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1724CompanyBatchCompanyIdContract \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts \
+  tests/component/core/test_roster.py::TestAst880VetInflowEncoded::test_vet_passes_batch_entities_to_do_task \
+  -q
+```
 
 ---
 
@@ -634,6 +647,8 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 
 **Broken / obsolete (Betty revision):** **AST-776** / **AST-822** roster mocks using **`action: slug|ignore`** — revised to **`grade` + required **`website`** in **AST-880** pass.
 
+**AST-1724:** **`TestAst880VetInflowEncoded::test_vet_passes_batch_entities_to_do_task`** expects **`company_id`** on **`batch_entities`** (`results[]` unchanged).
+
 **AST-880** narrowed run:
 
 ```bash
@@ -780,3 +795,16 @@ Discovery lands **`DISCOVERED`**; CSE-only **`resolve_company_website`** (persis
   tests/component/utils/test_config.py::TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults \
   -q
 ```
+
+---
+
+### AST-1726 · AST-1721 (telescope drop-in — roster import / readiness)
+
+**Scope (Betty):** Retarget `src.external.playwright` imports → `telescope`; revise **AST-689** readiness asserts for Telescope `wait_ready` (empty text → `outcome=empty`, not listing-selector timeout). Infra error prefix `[playwright:…]` unchanged (drop-in public names).
+
+| Area | Component tests |
+| --- | --- |
+| Import + infra prefix | `TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` |
+| Readiness ready / empty | `TestAst689ScrapeReadiness` |
+
+Canonical external map: [`external/telescope.md`](../external/telescope.md).

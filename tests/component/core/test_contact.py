@@ -1778,6 +1778,7 @@ class TestAst1561ContactPasteRouting:
                     "source_kind": "email",
                     "source_id": "m1",
                     "link": "https://x/j",
+                    "state": "NEW",
                 }
             ]
         )[0]
@@ -1809,6 +1810,7 @@ class TestAst1561ContactPasteRouting:
                     "candidate_id": cid,
                     "source_kind": "paste",
                     "source_id": "blob-hook",
+                    "state": "NEW",
                 }
             ]
         )[0]
@@ -1861,6 +1863,7 @@ class TestAst1561ContactPasteRouting:
                     "candidate_id": cid,
                     "source_kind": "paste",
                     "source_id": "blob-turn",
+                    "state": "NEW",
                 }
             ]
         )[0]

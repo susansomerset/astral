@@ -674,7 +674,7 @@ Consult routing manifest: **`docs/test-bible/core/consult.md`** (**AST-863**).
 | --- | --- | --- |
 | Config literals | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` |
 
-External + gazer manifests: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+External + gazer manifests: **`docs/test-bible/external/telescope.md`** (**AST-853**).
 
 ---
 
@@ -4166,3 +4166,64 @@ See **`docs/test-bible/data/database/jobs.md`** § AST-1701 (shared numbered lis
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1712 · AST-1711
+
+**Parent:** [AST-1711](https://linear.app/astralcareermatch/issue/AST-1711). **Publish:** `origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map`.
+
+Mailbox task key `meteorite_email` → `stage_email_meteorite`; `debug_func` → `inbox.check_email`. `METEORITE_STATES` gains `NOT_A_JOB` and `NEW_EMAIL_ERROR`; scrape-failure `ERROR` becomes `SCRAPE_ERROR` in the registry, retention partitions, scrape page-status map, and `src/core/meteorite.py` failure writes. Log text `This row is ERROR` stays. Ruth save and `NEW_EMAIL_ERROR` / `NOT_A_JOB` row writes stay **AST-1713**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry + mailbox key | `src/utils/config.py` | **`TestAst1712MailboxKeyAndClassifyStates`** |
+| Catalog row rename | `data/admin/agent_task.json` | **`TestAst1712MailboxCatalogKey`** |
+| Failure writes `SCRAPE_ERROR` | `src/core/meteorite.py` | revised stage / scrape / land state asserts |
+| Stale list + `NOT_A_JOB` purge | retention | **`TestAst1562RunMeteoriteRetention::test_stale_rows_info_logged_not_deleted`**, **`TestAst1712NotAJobPurge`** |
+
+**Broken / obsolete:** mailbox key and `ERROR` registry asserts in **`TestAst1088GazeEmailConfig`**, **`TestAst1090GazeEmailRunnerConfig`**, **`TestAst1529StageMeteoriteConfig`**, **`TestAst1214DispatchAdminDefaultsWidened`**, **`TestAst1557MeteoriteStates`**, **`TestAst1560IngressDispatchConfig`**, **`TestAst1559MonitoringConfig`**, **`TestAst1562RetentionConfig`**, **`TestAst1467GazeEmailRetired`**, **`TestAst1529StageMeteoriteCatalogRow`**, **`TestAst786AgentTaskRepoJsonSeed`**, inbox bound-count fixture, **`TestAst1135ListDtasksMeteoriteMailboxAvail`**, **`TestAst1214AdminCatalogAlphabeticalWritable`**, dispatcher provision null-retire rows. AST-756 fixture mailbox row renamed. Whole-file catalog↔fixture byte lock prompt drift is pre-existing and not this ticket.
+
+**Integration:** none — no existing scenario names this key or `METEORITE_STATES`.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1557MeteoriteStates \
+  tests/component/utils/test_config.py::TestAst1559MonitoringConfig \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
+  tests/component/utils/test_config.py::TestAst1562RetentionConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst1712MailboxCatalogKey \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow::test_stage_meteorite_ruth_shell_and_outcomes \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_ast1467_gaze_email_retire.py::TestAst1467GazeEmailRetired \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_missing_content_errors \
+  tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention::test_stale_rows_info_logged_not_deleted \
+  tests/component/core/test_meteorite.py::TestAst1712NotAJobPurge \
+  tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs::test_count_inbox_bound_by_candidate_mailbox_map \
+  tests/component/ui/api/test_api_admin.py::TestAst1135ListDtasksMeteoriteMailboxAvail \
+  tests/component/ui/api/test_api_admin.py::TestAst1214AdminCatalogAlphabeticalWritable::test_mailbox_trigger_null_only_and_unsupported_craft_wording \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map:docs/test-bible/utils/config.md | shasum`
+
+---
+
+### AST-1726 · AST-1721 (TELESCOPE_CONFIG)
+
+**Scope:** `TELESCOPE_CONFIG` HTTP client knobs; trimmed `PLAYWRIGHT_CONFIG` (no Firefox launch keys); drop `RAILWAY_CONFIG["playwright_browsers_path"]`.
+
+| Area | Component tests |
+| --- | --- |
+| TELESCOPE_CONFIG defaults | `tests/component/utils/test_config.py::TestAst1726TelescopeConfig` |
+| Trimmed PLAYWRIGHT_CONFIG | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` (revised) |
+
+External map: [`docs/test-bible/external/telescope.md`](../external/telescope.md).

@@ -1,13 +1,14 @@
-"""Component tests for src/external/playwright.py (AST-391)."""
+"""Component tests for src/external/telescope.py (AST-391 + AST-1726 drop-in)."""
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
 import pytest
 
-from src.external import playwright as pw_mod
+from src.external import telescope as pw_mod
 
 
 # Branches: empty URL passthrough; scheme/path/query normalization.
@@ -38,7 +39,7 @@ class TestDetectVendor:
         artifacts = {
             "request_urls": [],
             "frame_urls": ["https://hs-sites.example/widget"],
-            "initial_html": "<div data-hubspot>jobs</div>",
+            "initial_html": '<div data-hubspot>jobs</div>',
         }
         out = pw_mod.detect_vendor(artifacts)
         assert out["vendor"] == "hubspot"
@@ -66,12 +67,16 @@ class TestDetectVendor:
 # Branches: canonical URL; iframe route; fallback.
 class TestRecommendRouting:
     def test_prefers_canonical_job_url(self) -> None:
-        out = pw_mod.recommend_routing({"canonical_job_url": "https://jobs.example.com"}, "https://corp.example.com")
+        out = pw_mod.recommend_routing(
+            {"canonical_job_url": "https://jobs.example.com"}, "https://corp.example.com"
+        )
         assert out["route_to_url"] == "https://jobs.example.com"
         assert out["fallback"] is False
 
     def test_routes_to_iframe_when_present(self) -> None:
-        out = pw_mod.recommend_routing({"iframe_urls": ["https://frame.example.com"]}, "https://corp.example.com")
+        out = pw_mod.recommend_routing(
+            {"iframe_urls": ["https://frame.example.com"]}, "https://corp.example.com"
+        )
         assert out["route_to_iframe"] == "https://frame.example.com"
 
     def test_falls_back_to_current_page(self) -> None:
@@ -128,19 +133,13 @@ class TestExtractRawJobListings:
         assert pw_mod.extract_raw_job_listings("<div></div>", "div", "[", 0) == []
 
 
-# Branches: page/frame URL helpers.
+# Branches: page URL helper; frame URLs empty on Telescope client (no live frames).
 class TestPageUrlHelpers:
-    def test_get_page_url_and_frame_urls(self) -> None:
-        page = SimpleNamespace(
-            url="https://example.com/jobs",
-            frames=[
-                SimpleNamespace(url="about:blank"),
-                SimpleNamespace(url="https://example.com/jobs"),
-                SimpleNamespace(url="https://frame.example.com"),
-            ],
-        )
-        assert pw_mod.get_page_url(page) == "https://example.com/jobs"
-        assert pw_mod.get_frame_urls(page) == ["https://frame.example.com"]
+    def test_get_page_url_prefers_final_url(self) -> None:
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
+        page._final_url = "https://example.com/final"
+        assert pw_mod.get_page_url(page) == "https://example.com/final"
+        assert pw_mod.get_frame_urls(page) == []
 
     def test_extract_tags_handles_nested_and_malformed_html(self) -> None:
         html = '<div class="posting"><div class="posting">inner</div></div><div class="posting">broken'
@@ -152,7 +151,7 @@ class TestPageUrlHelpers:
         assert pw_mod.extract_raw_job_listings(dom, "div.jobs", "a.posting", 2) == []
 
 
-# Branches: production log signatures → stable failure classes (AST-853).
+# Branches: production log signatures → stable failure classes (AST-853 + AST-1726 HTTP).
 class TestClassifyPlaywrightFailure:
     def test_channel_error_from_message(self) -> None:
         exc = RuntimeError("Exiting due to channel error")
@@ -172,10 +171,15 @@ class TestClassifyPlaywrightFailure:
             RuntimeError("could not launch firefox"),
         ) == "launch_failure"
 
-    def test_navigation_timeout_not_infra(self) -> None:
-        fc = pw_mod.classify_playwright_failure(TimeoutError("page.goto timeout"))
-        assert fc == "navigation_timeout"
-        assert not pw_mod.is_playwright_infra_failure(fc)
+    def test_telescope_timeout_is_infra(self) -> None:
+        fc = pw_mod.classify_playwright_failure(httpx.TimeoutException("telescope timeout"))
+        assert fc == "telescope_timeout"
+        assert pw_mod.is_playwright_infra_failure(fc)
+
+    def test_connectivity_failure(self) -> None:
+        fc = pw_mod.classify_playwright_failure(RuntimeError("connection refused"))
+        assert fc == "connectivity_failure"
+        assert pw_mod.is_playwright_infra_failure(fc)
 
 
 class TestPlaywrightInfraError:
@@ -186,54 +190,129 @@ class TestPlaywrightInfraError:
         assert str(err) == "[context_closed] browser dead"
 
 
-# Branches: batch session recovery on infra new_page failure (AST-853).
-class TestGetPageBatchRecovery:
+# Branches: get_page returns PageHandle (no Firefox); batch session wiring.
+class TestGetPageDropIn:
     @pytest.mark.asyncio
-    async def test_recovers_once_on_context_closed_then_succeeds(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        calls = {"new_page": 0}
-        page = MagicMock()
-        page.goto = AsyncMock()
-        page.wait_for_timeout = AsyncMock()
-        page.close = AsyncMock()
-        page.wait_for_load_state = AsyncMock()
-
-        ctx = MagicMock()
-
-        async def _new_page() -> MagicMock:
-            calls["new_page"] += 1
-            if calls["new_page"] == 1:
-                raise RuntimeError("Target page, context or browser has been closed")
-            return page
-
-        ctx.new_page = AsyncMock(side_effect=_new_page)
-
-        session = MagicMock()
-        session.ensure_context = AsyncMock(return_value=ctx)
-        session.recover = AsyncMock()
-        monkeypatch.setattr(pw_mod, "_try_dismiss_cookie_banner", AsyncMock(return_value=False))
-
-        result = await pw_mod.get_page(batch_session=session, url="https://example.com")
-        assert result is page
-        assert calls["new_page"] == 2
-        session.recover.assert_awaited_once()
+    async def test_get_page_from_batch_session(self) -> None:
+        session = pw_mod.BatchBrowserSession()
+        page = await pw_mod.get_page(batch_session=session, url="https://example.com")
+        assert isinstance(page, pw_mod.PageHandle)
+        assert page.url == "https://example.com"
+        await session.aclose()
 
     @pytest.mark.asyncio
-    async def test_raises_playwright_infra_error_when_recovery_exhausted(
+    async def test_get_page_requires_context_or_batch(self) -> None:
+        with pytest.raises(ValueError, match="requires context or batch_session"):
+            await pw_mod.get_page(url="https://example.com")
+
+
+# Branches: HTTP pool failover / timeout → PlaywrightInfraError (AST-1726).
+class TestTelescopePoolHttp:
+    @pytest.mark.asyncio
+    async def test_5xx_retries_other_node_then_ok(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        ctx = MagicMock()
-        ctx.new_page = AsyncMock(
-            side_effect=RuntimeError("Target page, context or browser has been closed"),
+        monkeypatch.setitem(
+            pw_mod.TELESCOPE_CONFIG,
+            "base_urls",
+            ["http://node-a.test", "http://node-b.test"],
         )
-        session = MagicMock()
-        session.ensure_context = AsyncMock(return_value=ctx)
-        session.recover = AsyncMock()
-        monkeypatch.setattr(pw_mod, "_try_dismiss_cookie_banner", AsyncMock(return_value=False))
-        monkeypatch.setitem(pw_mod.PLAYWRIGHT_CONFIG, "context_recovery_max_attempts", 0)
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "max_node_attempts", 2)
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "retry_other_node", True)
+        monkeypatch.setenv("TELESCOPE_BEARER_TOKEN", "tok")
+        monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
+
+        calls: list[str] = []
+
+        class _Resp:
+            def __init__(self, status: int, body: dict | None = None) -> None:
+                self.status_code = status
+                self._body = body or {}
+
+            def json(self) -> dict:
+                return self._body
+
+        async def fake_request(method, url, headers=None, json=None):
+            calls.append(url)
+            if "node-a" in url:
+                return _Resp(502)
+            return _Resp(200, {"ok": True})
+
+        client = MagicMock()
+        client.request = AsyncMock(side_effect=fake_request)
+        pool = pw_mod._TelescopePool()
+        pool._client = client
+        monkeypatch.setattr(pw_mod, "_pool", pool)
+
+        resp = await pool.request("GET", "/healthz")
+        assert resp.status_code == 200
+        assert any("node-a" in u for u in calls)
+        assert any("node-b" in u for u in calls)
+
+    @pytest.mark.asyncio
+    async def test_timeout_raises_telescope_timeout(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "base_urls", ["http://solo.test"])
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "max_node_attempts", 1)
+        monkeypatch.setenv("TELESCOPE_BEARER_TOKEN", "tok")
+        monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
+
+        client = MagicMock()
+        client.request = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
+        pool = pw_mod._TelescopePool()
+        pool._client = client
 
         with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
-            await pw_mod.get_page(batch_session=session, url="https://example.com")
-        assert exc_info.value.failure_class == "context_closed"
+            await pool.request("GET", "/healthz")
+        assert exc_info.value.failure_class == "telescope_timeout"
 
+    @pytest.mark.asyncio
+    async def test_missing_bearer_raises_connectivity(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "base_urls", ["http://solo.test"])
+        monkeypatch.delenv("TELESCOPE_BEARER_TOKEN", raising=False)
+        pool = pw_mod._TelescopePool()
+        with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
+            await pool.request("GET", "/healthz")
+        assert exc_info.value.failure_class == "connectivity_failure"
+
+
+# Branches: cull_html_default on extract_page_dom (AST-1726 / parent AC4).
+class TestCullHtmlDefault:
+    @pytest.mark.asyncio
+    async def test_extract_page_dom_culls_when_default_on(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "cull_html_default", True)
+        page = pw_mod.PageHandle(url="https://example.com")
+        monkeypatch.setattr(
+            pw_mod, "_ensure_html", AsyncMock(return_value="<html><script>x</script><body>hi</body></html>")
+        )
+        culled = MagicMock(return_value="<body>hi</body>")
+        monkeypatch.setattr(pw_mod, "_cull_html", culled)
+        out = await pw_mod.extract_page_dom(page)
+        assert out == "<body>hi</body>"
+        culled.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_extract_page_dom_skips_cull_when_default_off(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "cull_html_default", False)
+        raw = "<html><body>raw</body></html>"
+        page = pw_mod.PageHandle(url="https://example.com")
+        monkeypatch.setattr(pw_mod, "_ensure_html", AsyncMock(return_value=raw))
+        culled = MagicMock()
+        monkeypatch.setattr(pw_mod, "_cull_html", culled)
+        out = await pw_mod.extract_page_dom(page)
+        assert out == raw
+        culled.assert_not_called()
+
+
+# Branches: no platform playwright module (AST-1726 AC6).
+class TestPlaywrightModuleGone:
+    def test_src_external_playwright_import_fails(self) -> None:
+        with pytest.raises(ModuleNotFoundError):
+            __import__("src.external.playwright")

@@ -10,8 +10,6 @@ When TASK_CONFIG[task_key].scored, transitions persist latest_score only when a 
 _run_batch_consult: shared scaffolding for batch AI tasks (ID reconciliation, audit, error handling).
 qualify_job_listings: batch job list screen (Pattern A) — thin wrapper over _run_batch_consult.
 qualify_meteorite: meteorite pre-AI enrich (Pattern A, fields) — thin wrapper over _run_batch_consult.
-enrich_meteorite_land_packet: land pre-create packet enrich via same qualify_meteorite task_key (no claim/transition).
-invoke_stage_meteorite: ingress classify via stage_meteorite do_task (blob + source handle; no claim/land) (AST-1530).
 evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over _run_batch_consult.
 grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(task_key=grade_*).
 """
@@ -22,7 +20,6 @@ import inspect
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
-from uuid import uuid4
 
 from src.core import tracker
 from src.core.agent import do_task
@@ -53,7 +50,7 @@ from src.utils.config import (
     resolve_task_key_for_content,
     is_task_alias,
 )
-from src.utils.formatting import enumerate_array, normalize_link, uuid_path_segment_from_url
+from src.utils.formatting import enumerate_array, normalize_link
 from src.utils.logging import get_logger, log_batch_id, log_debug
 from src.utils.llm_external import is_provider_balance_refusal
 
@@ -107,13 +104,6 @@ def _job_consult_info(job_id: Any, to_state: Any) -> None:
 
 def _warn_job(aid: Any, dest: Any, reason: str) -> None:
     logger.warning("%s -> %s [%s]", aid, dest, reason)
-
-
-def _hold_log_batch(batch_id: str):
-    """Stamp log_batch_id only when a parent dispatch batch is not already set."""
-    if log_batch_id.get():
-        return None
-    return log_batch_id.set(batch_id)
 
 
 def _consult_job_identifier(job: Dict[str, Any]) -> str:
@@ -527,6 +517,17 @@ def _ensure_jobs_astral_ids(jobs: list, batch_entities: list) -> None:
             job["astral_job_id"] = batch_entities[i].get("astral_job_id")
 
 
+def _ensure_companies_company_ids(companies: list, batch_entities: list) -> None:
+    """Fill missing company_id from batch_entities by position (AST-1723)."""
+    for i, company in enumerate(companies):
+        if not isinstance(company, dict):
+            continue
+        if company.get("company_id"):
+            continue
+        if i < len(batch_entities):
+            company["company_id"] = batch_entities[i].get("company_id")
+
+
 def _bind_response_jobs_to_claimed(response_jobs: list, claimed_jobs: list) -> None:
     """Rewrite placeholder / single-job mismatched astral_job_id to claimed ids (AST-1076).
 
@@ -695,10 +696,16 @@ def _job_from_letter_pipe(text: str, task_config: dict, ctx: dict) -> dict:
 
 
 def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: Any, ctx: dict) -> dict:
-    """Turn AST-602 repro shapes into response_schema jobs[] before validation."""
+    """Turn AST-602 repro shapes into response_schema jobs[]/companies[] before validation."""
     batch_entities = (ctx or {}).get("batch_entities") or []
+    company_entity = (task_config.get("entity_type") or "") == "company"
 
-    if isinstance(parsed, dict) and isinstance(parsed.get("jobs"), list) and parsed["jobs"]:
+    if company_entity:
+        if isinstance(parsed, dict) and isinstance(parsed.get("companies"), list) and parsed["companies"]:
+            out = dict(parsed)
+            _ensure_companies_company_ids(out["companies"], batch_entities)
+            return out
+    elif isinstance(parsed, dict) and isinstance(parsed.get("jobs"), list) and parsed["jobs"]:
         out = dict(parsed)
         _ensure_jobs_astral_ids(out["jobs"], batch_entities)
         return out
@@ -710,6 +717,13 @@ def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: An
             payload = "\n".join(str(item) for item in payload)
 
     if isinstance(payload, dict):
+        if company_entity:
+            if isinstance(payload.get("companies"), list) and payload["companies"]:
+                return _normalize_rubric_task_response(task_key, task_config, payload, ctx)
+            company = _job_from_rubric_json(payload, task_config, ctx)
+            if len(batch_entities) == 1 and not company.get("company_id"):
+                company["company_id"] = batch_entities[0].get("company_id")
+            return {"companies": [company]}
         if isinstance(payload.get("jobs"), list) and payload["jobs"]:
             return _normalize_rubric_task_response(task_key, task_config, payload, ctx)
         job = _job_from_rubric_json(payload, task_config, ctx)
@@ -734,12 +748,19 @@ def _normalize_rubric_task_response(task_key: str, task_config: dict, parsed: An
 
             output_type = task_config.get("output_type", "")
             decoded = _decode_payload(task_key, output_type, text, ctx or {})
-            _ensure_jobs_astral_ids(decoded.get("jobs") or [], batch_entities)
+            if company_entity:
+                _ensure_companies_company_ids(decoded.get("companies") or [], batch_entities)
+            else:
+                _ensure_jobs_astral_ids(decoded.get("jobs") or [], batch_entities)
             return decoded
-        job = _job_from_letter_pipe(text, task_config, ctx)
+        row = _job_from_letter_pipe(text, task_config, ctx)
+        if company_entity:
+            if len(batch_entities) == 1:
+                row["company_id"] = batch_entities[0].get("company_id")
+            return {"companies": [row]}
         if len(batch_entities) == 1:
-            job["astral_job_id"] = batch_entities[0].get("astral_job_id")
-        return {"jobs": [job]}
+            row["astral_job_id"] = batch_entities[0].get("astral_job_id")
+        return {"jobs": [row]}
 
     raise ValueError(f"[{task_key}] unrecognised rubric response shape: {type(parsed).__name__}")
 
@@ -1921,247 +1942,6 @@ def _qualify_meteorite_title_source(job_title: str, subject: str) -> str:
     return "neither"
 
 
-def _land_scrap_body(scrap: Dict[str, Any]) -> str:
-    """First non-empty scrap body among content / text / html_body (AST-1470)."""
-    for key in ("content", "text", "html_body"):
-        val = scrap.get(key)
-        if isinstance(val, str) and val.strip():
-            return val.strip()
-    return ""
-
-
-@_with_log_debug
-async def enrich_meteorite_land_packet(
-    candidate_id: str,
-    scraps: List[Dict[str, Any]],
-    *,
-    ctx: Optional[Dict[str, Any]] = None,
-    debug: bool = False,
-) -> Dict[str, Any]:
-    """Pre-create land packet enrich via qualify_meteorite do_task (AST-1470).
-
-    No claim, no initialize_job, no state transition — dispatch qualify_meteorite
-    still owns METEORITE_NEW → METEORITE_QUALIFIED.
-    """
-    cid = (candidate_id or "").strip()
-    if not cid:
-        return {"success": False, "error": "candidate_id is required", "jobs": []}
-    if not isinstance(scraps, list) or not scraps:
-        return {"success": False, "error": "scraps is required", "jobs": []}
-
-    jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
-    rows: List[Dict[str, Any]] = []
-    for raw in scraps:
-        if not isinstance(raw, dict):
-            continue
-        link = (raw.get("job_link") or "").strip() if isinstance(raw.get("job_link"), str) else ""
-        body = _land_scrap_body(raw)
-        if not link and not body:
-            continue
-        emp = raw.get("employer_name")
-        emp_s = emp.strip() if isinstance(emp, str) else ""
-        rows.append({
-            "job_link": link,
-            "content": body,
-            "employer_name": emp_s,
-        })
-    if not rows:
-        return {"success": False, "error": "no usable scraps (need link or text)", "jobs": []}
-
-    task_key = "qualify_meteorite"
-    live_lines = [
-        f"{i:03d}: job_link: {r['job_link']}\nCONTENT:\n{r['content']}"
-        for i, r in enumerate(rows)
-    ]
-    live_content = "METEORITE JOBS:\n" + "\n".join(live_lines)
-
-    # Stub batch_entities (no astral_job_id) so decode helpers peeking ctx stay safe.
-    batch_entities = [
-        {"job_link": r["job_link"] or None, "job_data": {jd_key: r["content"]}}
-        for r in rows
-    ]
-    task_ctx: Dict[str, Any] = {
-        **(ctx or {}),
-        "astral_candidate_id": cid,
-        "batch_size": len(rows),
-        "batch_entities": batch_entities,
-    }
-    if ctx and ctx.get("candidate_data") is not None:
-        task_ctx["candidate_data"] = ctx["candidate_data"]
-
-    batch_id = f"{task_key}-land-{uuid4()}"
-    do_index = f"{task_key}_batch_{batch_id}"
-    token = _hold_log_batch(batch_id)
-    try:
-        logger.debug(
-            "Calling agent.do_task: [task_key=%s, index=%s, scraps=%s]",
-            task_key, do_index, len(rows),
-        )
-        result = await do_task(
-            task_key=task_key,
-            live_content=live_content,
-            index=do_index,
-            ctx=task_ctx,
-            debug=debug,
-        )
-        logger.debug("Response from agent.do_task: %s", result)
-
-        if not result.get("success"):
-            logger.debug("enrich_failed batch_id=%s error=%r", batch_id, result.get("error"))
-            logger.warning(
-                "%s — land packet enrich failed: %s\n  Jobs are not landing from this packet",
-                cid, result.get("error") or "do_task failed",
-            )
-            return {
-                "success": False,
-                "error": result.get("error") or "do_task failed",
-                "jobs": [],
-                "raw": result,
-                "batch_id": batch_id,
-            }
-
-        parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
-        response_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
-        out_jobs: List[Dict[str, Any]] = []
-        for i, scrap in enumerate(rows):
-            rj = response_jobs[i] if i < len(response_jobs) and isinstance(response_jobs[i], dict) else {}
-            ruth_link = (rj.get("job_link") or "").strip() if isinstance(rj.get("job_link"), str) else ""
-            job_link = ruth_link or scrap["job_link"]
-            ai_cid = (rj.get("company_job_id") or "").strip() if isinstance(rj.get("company_job_id"), str) else ""
-            company_job_id = _resolve_company_job_id(ai_cid, job_link)
-            job_title = (rj.get("job_title") or "").strip() if isinstance(rj.get("job_title"), str) else ""
-            jd_text = (rj.get("jd_text") or "").strip() if isinstance(rj.get("jd_text"), str) else ""
-            ruth_emp = (rj.get("employer_name") or "").strip() if isinstance(rj.get("employer_name"), str) else ""
-            employer_name = ruth_emp or scrap["employer_name"]
-            stem_key = TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"]
-            ruth_stem = (rj.get(stem_key) or "").strip() if isinstance(rj.get(stem_key), str) else ""
-            out_jobs.append({
-                "company_job_id": company_job_id,
-                "job_title": job_title,
-                "job_link": job_link,
-                "jd_text": jd_text,
-                "employer_name": employer_name,
-                "company_stem": ruth_stem,
-                "scrap_index": i,
-            })
-            logger.debug(
-                "enriched %s/%s link=%r content_chars_in=%s jd_chars=%s employer_name=%s company_stem=%r",
-                i + 1, len(rows), job_link, len(scrap["content"]), len(jd_text),
-                "yes" if employer_name else "no", ruth_stem,
-            )
-
-        return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
-    finally:
-        if token is not None:
-            log_batch_id.reset(token)
-
-
-@_with_log_debug
-async def invoke_stage_meteorite(
-    candidate_id: str,
-    blob: str,
-    *,
-    source_kind: str,
-    source_id: str,
-    ctx: Optional[Dict[str, Any]] = None,
-    debug: bool = False,
-) -> Dict[str, Any]:
-    """Ingress classify via stage_meteorite do_task (AST-1530). No claim, no land."""
-    empty = {"success": False, "outcome": None, "jobs": [], "batch_id": None}
-    cid = (candidate_id or "").strip()
-    if not cid:
-        return {**empty, "error": "candidate_id is required"}
-    kind = (source_kind or "").strip()
-    if kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"]:
-        return {**empty, "error": "invalid source_kind"}
-    sid = (source_id or "").strip()
-    if not sid:
-        return {**empty, "error": "source_id is required"}
-    body = blob if isinstance(blob, str) else ""
-    if not body.strip():
-        return {**empty, "error": "blob is required"}
-
-    # Source handle for core source-refs; Ruth classifies CONTENT.
-    live_content = f"SOURCE_KIND: {kind}\nSOURCE_ID: {sid}\nCONTENT:\n{body}"
-    task_key = STAGE_METEORITE_CONFIG["task_key"]
-    batch_id = f"{task_key}-stage-{uuid4()}"
-    do_index = f"{task_key}_batch_{batch_id}"
-    task_ctx: Dict[str, Any] = {**(ctx or {}), "astral_candidate_id": cid}
-    if ctx and ctx.get("candidate_data") is not None:
-        task_ctx["candidate_data"] = ctx["candidate_data"]
-    if ctx and ctx.get("candidate_api_key") is not None:
-        task_ctx["candidate_api_key"] = ctx["candidate_api_key"]
-
-    token = _hold_log_batch(batch_id)
-    try:
-        logger.debug(
-            "Calling agent.do_task: [task_key=%s, index=%s, source_kind=%s]",
-            task_key, do_index, kind,
-        )
-        result = await do_task(
-            task_key=task_key,
-            live_content=live_content,
-            index=do_index,
-            ctx=task_ctx,
-            debug=debug,
-        )
-        logger.debug("Response from agent.do_task: %s", result)
-
-        if not result.get("success"):
-            logger.debug("stage_failed batch_id=%s error=%r", batch_id, result.get("error"))
-            logger.warning(
-                "%s — stage_meteorite failed: %s\n  This blob is not classifying",
-                cid, result.get("error") or "do_task failed",
-            )
-            return {
-                "success": False,
-                "error": result.get("error") or "do_task failed",
-                "outcome": None,
-                "jobs": [],
-                "batch_id": batch_id,
-                "raw": result,
-            }
-
-        parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
-        raw_outcome = parsed.get("outcome")
-        outcome = raw_outcome.strip() if isinstance(raw_outcome, str) else ""
-        raw_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
-        jobs = [j for j in raw_jobs if isinstance(j, dict)]
-
-        if outcome not in STAGE_METEORITE_CONFIG["outcomes"]:
-            logger.warning(
-                "%s — invalid stage outcome %r\n  This blob is not classifying",
-                cid, outcome,
-            )
-            return {
-                "success": False,
-                "error": "invalid stage outcome",
-                "outcome": outcome or None,
-                "jobs": [],
-                "batch_id": batch_id,
-                "raw": result,
-            }
-        if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-            jobs = []
-
-        logger.debug(
-            "stage outcome=%s batch_id=%s job_count=%s source_kind=%s",
-            outcome, batch_id, len(jobs), kind,
-        )
-
-        return {
-            "success": True,
-            "outcome": outcome,
-            "jobs": jobs,
-            "error": None,
-            "batch_id": batch_id,
-            "raw": result,
-        }
-    finally:
-        if token is not None:
-            log_batch_id.reset(token)
-
-
 @_with_log_debug
 async def qualify_meteorite(
     batch_id: str,
@@ -2196,6 +1976,7 @@ async def qualify_meteorite(
         return "METEORITE JOBS:\n" + "\n".join(lines)
 
     def process(input_job, response_job, cfg):
+        from src.core.meteorite import _resolve_company_job_id
         aid = response_job["astral_job_id"]
         ai_company_job_id = (response_job.get("company_job_id") or "").strip()
         job_title = (response_job.get("job_title") or "").strip()
@@ -2293,18 +2074,6 @@ async def qualify_meteorite(
     return await _run_batch_consult(
         task_key, batch_id, jobs, assemble, process, ctx, debug, batch_chunk_index=batch_chunk_index,
     )
-
-
-def _resolve_company_job_id(ai_company_job_id: str, job_link: str) -> str:
-    """Prefer non-empty AI company_job_id; else UUID path segment from job_link; else ''."""
-    ai = (ai_company_job_id or "").strip()
-    if ai:
-        return ai
-    link = (job_link or "").strip()
-    if not link:
-        return ""
-    fallback = uuid_path_segment_from_url(link, TRACKER_CONFIG["uuid_path_segment_pattern"])
-    return fallback or ""
 
 
 def _jd_ready_for_evaluate(job: Dict[str, Any], min_chars: int) -> bool:

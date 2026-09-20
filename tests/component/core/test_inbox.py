@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -213,10 +213,10 @@ class TestAst1558CandidateInboxVerbs:
             "src.data.database.list_dispatch_tasks",
             MagicMock(
                 return_value=[
-                    {"candidate_id": "cand-ada", "task_key": "meteorite_email"},
-                    {"candidate_id": "cand-bob", "task_key": "meteorite_email"},
+                    {"candidate_id": "cand-ada", "task_key": "stage_email_meteorite"},
+                    {"candidate_id": "cand-bob", "task_key": "stage_email_meteorite"},
                     {"candidate_id": "cand-other", "task_key": "stage_meteorite"},
-                    {"candidate_id": "", "task_key": "meteorite_email"},
+                    {"candidate_id": "", "task_key": "stage_email_meteorite"},
                 ]
             ),
         )
@@ -242,3 +242,142 @@ class TestAst1558CandidateInboxVerbs:
             "_bind_inbox_message",
         ):
             assert not hasattr(inbox_mod, name), f"{name} should be removed"
+
+@pytest.mark.skipif(
+    not hasattr(inbox_mod, "check_email"),
+    reason="AST-1714 check_email not on this publish tip",
+)
+class TestAst1714CheckEmail:
+    """AST-1714: inbox.check_email stages full assembled message; dispatcher entrypoint."""
+
+    def _msg(self, mid: str = "m-1714") -> dict:
+        return {"id": mid, "from_address": "a@ex.com"}
+
+    @pytest.mark.asyncio
+    async def test_candidate_id_required(self) -> None:
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            await inbox_mod.check_email({}, debug=False)
+
+    @pytest.mark.asyncio
+    async def test_stages_assembled_html_and_archives(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1714"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "I"})
+        mid = "msg-1714"
+        assembled = "<html>From:a To:b\n<body>full</body></html>"
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate", lambda _c: ["a@ex.com"]
+        )
+        monkeypatch.setattr(
+            inbox_mod, "fetch_candidate_email", lambda _a, debug=False: [self._msg(mid)]
+        )
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_with_assembled_html",
+            lambda _m: {"assembled_html": assembled, "html_body": "<body>only</body>"},
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "archive_candidate_email", archive)
+        seen: dict = {}
+
+        async def _stage(candidate_id, blob, *, source_kind, source_id, debug=False):
+            seen.update(
+                candidate_id=candidate_id,
+                blob=blob,
+                source_kind=source_kind,
+                source_id=source_id,
+            )
+            return {
+                "outcome": "single_jd_no_link",
+                "stage_outcome": "single_jd_no_link",
+                "skipped": False,
+                "jobs": [],
+                "error": None,
+                "batch_id": "b",
+            }
+
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", _stage)
+        out = await inbox_mod.check_email({"candidate_id": cid}, debug=False)
+        assert out["total_passed"] == 1 and out["total_errors"] == 0
+        assert seen["blob"] == assembled
+        assert seen["blob"] != "<body>only</body>"
+        assert seen["source_kind"] == "email" and seen["source_id"] == mid
+        archive.assert_called_once_with(mid)
+        assert db.get_candidate(cid)["last_email_check"]
+
+    @pytest.mark.asyncio
+    async def test_stage_error_skips_archive(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1714-err"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
+        mid = "msg-err"
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate", lambda _c: ["a@ex.com"]
+        )
+        monkeypatch.setattr(
+            inbox_mod, "fetch_candidate_email", lambda _a, debug=False: [self._msg(mid)]
+        )
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_with_assembled_html",
+            lambda _m: {"assembled_html": "full", "html_body": "body"},
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "archive_candidate_email", archive)
+
+        async def _stage(*_a, **_k):
+            return {
+                "outcome": "error",
+                "stage_outcome": None,
+                "skipped": False,
+                "jobs": [],
+                "error": "boom",
+                "batch_id": None,
+            }
+
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", _stage)
+        out = await inbox_mod.check_email({"candidate_id": cid}, debug=False)
+        assert out["total_errors"] == 1
+        archive.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_already_ingested_archives_without_stage(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1714-dedup"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        mid = "msg-dedup"
+        db.insert_meteorite_rows([{
+            "candidate_id": cid,
+            "source_kind": "email",
+            "source_id": mid,
+            "state": "READY",
+            "link": "https://x/j",
+        }])
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate", lambda _c: ["a@ex.com"]
+        )
+        monkeypatch.setattr(
+            inbox_mod, "fetch_candidate_email", lambda _a, debug=False: [self._msg(mid)]
+        )
+        stage = AsyncMock()
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", stage)
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "archive_candidate_email", archive)
+        out = await inbox_mod.check_email({"candidate_id": cid}, debug=False)
+        assert out["total_passed"] == 1
+        stage.assert_not_awaited()
+        archive.assert_called_once_with(mid)
+
+    def test_dispatcher_has_no_check_inbox_call(self) -> None:
+        import inspect
+        from src.core import dispatcher as dispatcher_mod
+
+        src = inspect.getsource(dispatcher_mod)
+        assert "check_inbox" not in src
+        assert "check_email" in src

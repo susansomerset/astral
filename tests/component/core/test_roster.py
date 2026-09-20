@@ -98,10 +98,11 @@ def _ast603_prefilter_rubric_ctx() -> Dict[str, Any]:
     }
 
 
-def _encoded_prefilter_response(grades: List[Dict[str, Any]], **job_extra: Any) -> Dict[str, Any]:
-    job: Dict[str, Any] = {"grades": grades}
-    job.update(job_extra)
-    return {"jobs": [job]}
+def _encoded_prefilter_response(grades: List[Dict[str, Any]], **company_extra: Any) -> Dict[str, Any]:
+    # AST-1724: company-native payload (companies / company_id), not jobs / astral_job_id.
+    row: Dict[str, Any] = {"grades": grades}
+    row.update(company_extra)
+    return {"companies": [row]}
 
 
 _RC_VECTOR = "Reality Check"
@@ -1441,7 +1442,7 @@ class TestAst701ScrapeCompanyHomepageContent:
     async def test_playwright_infra_error_prefixes_failure_class(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         session = MagicMock()
         monkeypatch.setattr(
@@ -1807,16 +1808,16 @@ class TestAst718PrefilterPjlRouting:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "passco",
+                                "company_id": "passco",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
                                 "possible_job_links": [1],
                             },
                             {
-                                "astral_job_id": "nolinks",
+                                "company_id": "nolinks",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
@@ -1881,7 +1882,7 @@ class TestAst603ConsultParityHydration:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
                                 "grades": [
                                     {"vector": "Reality Check", "grade": "A", "confidence": 3},
@@ -2020,16 +2021,16 @@ class TestAst702PrefilterCompanyBatch:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "passco",
+                                "company_id": "passco",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
                                 "possible_job_links": [1],
                             },
                             {
-                                "astral_job_id": "failco",
+                                "company_id": "failco",
                                 "grades": _prefilter_grades(
                                     {"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"},
                                 ),
@@ -2208,9 +2209,9 @@ class TestAst707EmbeddedRcBatchHydration:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "acme",
+                                "company_id": "acme",
                                 "grades": [
                                     {"grade": "D", "vector": "Reality Check", "confidence": 3},
                                     {"grade": "B", "vector": "Mission & Product", "confidence": 3},
@@ -2247,6 +2248,127 @@ class TestAst707EmbeddedRcBatchHydration:
         saved_grades = save.call_args.args[1].get("prefilter_grades") or []
         rc_row = next(g for g in saved_grades if g.get("vector") == "Reality Check")
         assert rc_row.get("reason")
+
+
+class TestAst1724CompanyBatchCompanyIdContract:
+    """[bug-repro] AST-1724: company batch uses company_id / companies (not astral_job_id / jobs)."""
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_entities_use_company_id_not_astral_job_id(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "companies": [
+                        {
+                            "company_id": "acme",
+                            "grades": _prefilter_grades(
+                                {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
+                            ),
+                            "possible_job_links": [1],
+                        },
+                    ],
+                },
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        ctx = {**_prefilter_rubric_ctx(), "astral_candidate_id": "c1724"}
+        rubric = [
+            {
+                "code": "RC",
+                "label": "Reality Check",
+                "importance": 5,
+                "grade_descriptions": [{"grade": "A", "description": _RC_REASON}],
+            },
+            *ctx["candidate_data"]["artifacts"]["company_prefilter"],
+        ]
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            MagicMock(return_value=rubric),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {
+                    "homepage_text": "Acme homepage",
+                    "nav_links": "1: https://acme.com/careers",
+                },
+            },
+        ]
+        await roster_mod.prefilter_company_batch("batch-1724-ent", companies, ctx=ctx, debug=False)
+        ent = do_task.await_args.kwargs["ctx"]["batch_entities"][0]
+        assert ent["company_id"] == "acme"
+        assert ent["short_name"] == "acme"
+        assert "astral_job_id" not in ent
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_reconciles_companies_company_id(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "companies": [
+                            {
+                                "company_id": "acme",
+                                "grades": _prefilter_grades(
+                                    {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
+                                ),
+                                "possible_job_links": [1],
+                            },
+                        ],
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        ctx = {**_prefilter_rubric_ctx(), "astral_candidate_id": "c1724"}
+        rubric = [
+            {
+                "code": "RC",
+                "label": "Reality Check",
+                "importance": 5,
+                "grade_descriptions": [{"grade": "A", "description": _RC_REASON}],
+            },
+            *ctx["candidate_data"]["artifacts"]["company_prefilter"],
+        ]
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            MagicMock(return_value=rubric),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {
+                    "homepage_text": "Acme homepage",
+                    "nav_links": "1: https://acme.com/careers",
+                },
+            },
+        ]
+        out = await roster_mod.prefilter_company_batch(
+            "batch-1724-rec", companies, ctx=ctx, debug=False,
+        )
+        # Success must come from companies/company_id reconcile — not the old jobs shape.
+        assert out["passed"] == 1
+        assert out["failed"] == 0
+        assert out["total"] == 1
 
 
 @pytest.mark.skip(reason="AST-721: find_job_page monolith removed; covered by decomposed AST-718–721 tests")
@@ -4883,7 +5005,7 @@ class TestAst880VetInflowEncoded:
         out = await roster_mod.vet_inflow_discovery_company("co_d", entity, "batch-880", {}, False)
         assert out == {"success": True, "state": "WEBSITE_FOUND", "error": None}
         ctx = do_task.await_args.kwargs["ctx"]
-        assert ctx["batch_entities"] == [{"astral_job_id": "co_d", "short_name": "co_d"}]
+        assert ctx["batch_entities"] == [{"company_id": "co_d", "short_name": "co_d"}]
         assert ctx["batch_size"] == 1
 
     @pytest.mark.asyncio
@@ -5173,72 +5295,50 @@ class TestAst1674ResolveWebsiteApply:
 
 
 class TestAst689ScrapeReadiness:
-    """AST-689: careers-list scrape readiness gate before select_job_page extract."""
+    """AST-689 readiness (AST-1726: Telescope wait_ready — listing selectors unavailable remotely)."""
 
     @pytest.mark.asyncio
     async def test_wait_for_careers_list_readiness_ready_on_listing_hits(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.external import playwright as pw_mod
-        from src.external.playwright import wait_for_careers_list_readiness
+        from src.external import telescope as pw_mod
+        from src.external.telescope import wait_for_careers_list_readiness
 
-        poll_n = {"n": 0}
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
 
-        async def count_side_effect() -> int:
-            poll_n["n"] += 1
-            return 0 if poll_n["n"] == 1 else 2
+        async def ensure_text(p, links=False):
+            p._text = "x" * 200
 
-        locator = MagicMock()
-        locator.count = AsyncMock(side_effect=count_side_effect)
-        page = MagicMock()
-        page.locator = MagicMock(return_value=locator)
-        page.wait_for_timeout = AsyncMock()
-        monkeypatch.setattr(
-            pw_mod,
-            "extract_visible_text",
-            AsyncMock(side_effect=[{"text": "x" * 100}, {"text": "x" * 200}]),
-        )
+        monkeypatch.setattr(pw_mod, "_ensure_text", ensure_text)
 
         result = await wait_for_careers_list_readiness(
             page,
-            {
-                "max_wait_ms": 5000,
-                "poll_interval_ms": 10,
-                "min_listing_hits": 1,
-                "listing_selectors": ["a[href*='/job']"],
-                "run_load_all_jobs": False,
-            },
+            {"run_load_all_jobs": False},
         )
         assert result["ready"] is True
         assert result["outcome"] == "ready"
-        assert result["listing_hits"] >= 1
+        assert result["visible_chars"] >= 1
+        assert page.wait_ready is True
 
     @pytest.mark.asyncio
     async def test_wait_for_careers_list_readiness_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.external import playwright as pw_mod
-        from src.external.playwright import wait_for_careers_list_readiness
+        from src.external import telescope as pw_mod
+        from src.external.telescope import wait_for_careers_list_readiness
 
-        locator = MagicMock()
-        locator.count = AsyncMock(return_value=0)
-        page = MagicMock()
-        page.locator = MagicMock(return_value=locator)
-        page.wait_for_timeout = AsyncMock()
-        monkeypatch.setattr(pw_mod, "extract_visible_text", AsyncMock(return_value={"text": "short"}))
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
+
+        async def ensure_text(p, links=False):
+            p._text = ""
+
+        monkeypatch.setattr(pw_mod, "_ensure_text", ensure_text)
 
         result = await wait_for_careers_list_readiness(
             page,
-            {
-                "max_wait_ms": 100,
-                "poll_interval_ms": 50,
-                "stability_polls": 2,
-                "min_visible_chars": 400,
-                "min_listing_hits": 1,
-                "listing_selectors": ["a"],
-                "run_load_all_jobs": False,
-            },
+            {"run_load_all_jobs": False},
         )
+        # Empty visible text → outcome empty (not listing-selector timeout)
         assert result["ready"] is False
-        assert result["outcome"] == "timeout"
+        assert result["outcome"] == "empty"
 
     @pytest.mark.asyncio
     async def test_fetch_job_links_content_calls_readiness(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5532,7 +5632,7 @@ class TestAst891ScrapeListPageInfra:
     async def test_infra_error_raises_playwright_infra(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         session = MagicMock()
         monkeypatch.setattr(
@@ -5582,7 +5682,7 @@ class TestAst891ParseDispatchInfraAndBatchSession:
     async def test_infra_scrape_retries_from_identified(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         company = self._identified_company()
         monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
@@ -5611,7 +5711,7 @@ class TestAst891ParseDispatchInfraAndBatchSession:
     async def test_infra_scrape_terminal_on_retry_state(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         company = self._identified_company(state="JOBLIST_IDENTIFIED_RETRY")
         monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
