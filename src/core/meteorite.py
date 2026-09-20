@@ -1371,7 +1371,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
             try:
                 outcome = (row.get("classify_outcome") or "").strip()
                 if not outcome:
-                    update_meteorite(row_id, state="ERROR", error="missing classify_outcome")
+                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing classify_outcome")
                     _row_miss(
                         row_id, cid, "missing classify_outcome", "This row is ERROR",
                     )
@@ -1379,7 +1379,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     summary["total_errors"] += 1
                     continue
                 if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-                    update_meteorite(row_id, state="ERROR", error="skip outcome on row")
+                    update_meteorite(row_id, state="SCRAPE_ERROR", error="skip outcome on row")
                     _row_miss(
                         row_id, cid, "skip outcome on row", "This row is ERROR",
                     )
@@ -1389,7 +1389,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                 if outcome in STAGE_METEORITE_CONFIG["url_scrape_outcomes"]:
                     link = (row.get("link") or "").strip()
                     if not _is_http_url(link):
-                        update_meteorite(row_id, state="ERROR", error="missing link")
+                        update_meteorite(row_id, state="SCRAPE_ERROR", error="missing link")
                         _row_miss(row_id, cid, "missing link", "This row is ERROR")
                         summary["total_failed"] += 1
                         summary["total_errors"] += 1
@@ -1401,7 +1401,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                 if outcome in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]:
                     content = (row.get("content") or "").strip()
                     if not content:
-                        update_meteorite(row_id, state="ERROR", error="missing content")
+                        update_meteorite(row_id, state="SCRAPE_ERROR", error="missing content")
                         _row_miss(row_id, cid, "missing content", "This row is ERROR")
                         summary["total_failed"] += 1
                         summary["total_errors"] += 1
@@ -1411,7 +1411,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     link = (row.get("link") or "").strip()
                     if kind == "email" and not link:
                         update_meteorite(
-                            row_id, state="ERROR", error="missing breadcrumb link",
+                            row_id, state="SCRAPE_ERROR", error="missing breadcrumb link",
                         )
                         _row_miss(
                             row_id, cid, "missing breadcrumb link", "This row is ERROR",
@@ -1424,7 +1424,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     summary["total_passed"] += 1
                     continue
                 err = f"unhandled classify_outcome: {outcome}"
-                update_meteorite(row_id, state="ERROR", error=err)
+                update_meteorite(row_id, state="SCRAPE_ERROR", error=err)
                 _row_miss(row_id, cid, err, "This row is ERROR")
                 summary["total_failed"] += 1
                 summary["total_errors"] += 1
@@ -1473,7 +1473,7 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
             link = (row.get("link") or "").strip()
             try:
                 if not _is_http_url(link):
-                    update_meteorite(row_id, state="ERROR", error="missing link")
+                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing link")
                     _row_miss(row_id, cid, "missing link", "This row is ERROR")
                     summary["total_failed"] += 1
                     summary["total_errors"] += 1
@@ -1505,7 +1505,7 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                     continue
 
                 err = "empty visible text" if page_status == "ok" else f"scrape_{page_status}"
-                update_meteorite(row_id, state=status_map.get(page_status, "ERROR"), error=err)
+                update_meteorite(row_id, state=status_map.get(page_status, "SCRAPE_ERROR"), error=err)
                 _row_miss(row_id, cid, err, "This row is ERROR")
                 summary["total_failed"] += 1
                 summary["total_errors"] += 1
@@ -1571,7 +1571,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                             row_id,
                         )
                         continue
-                    update_meteorite(row_id, state="ERROR", error="missing content")
+                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing content")
                     _row_miss(row_id, cid, "missing content", "This row is ERROR")
                     summary["total_failed"] += 1
                     summary["total_errors"] += 1
@@ -1604,7 +1604,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     continue
 
                 err = str(save.get("error") or "land failed")
-                update_meteorite(row_id, state="ERROR", error=err)
+                update_meteorite(row_id, state="SCRAPE_ERROR", error=err)
                 _row_miss(row_id, cid, err, "This row is ERROR")
                 summary["total_failed"] += 1
                 summary["total_errors"] += 1

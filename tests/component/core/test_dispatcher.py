@@ -2501,8 +2501,8 @@ class TestAst1134MeteoriteEmailDispatchProvision:
             dispatcher_mod.database,
             "list_dispatch_tasks",
             lambda: [
-                {"id": 1, "task_key": "meteorite_email", "candidate_id": None},
-                {"id": 2, "task_key": "meteorite_email", "candidate_id": "keep"},
+                {"id": 1, "task_key": "stage_email_meteorite", "candidate_id": None},
+                {"id": 2, "task_key": "stage_email_meteorite", "candidate_id": "keep"},
                 {"id": 3, "task_key": "evaluate_jd", "candidate_id": None},
             ],
         )
