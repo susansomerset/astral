@@ -94,3 +94,22 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 ./scripts/testing/run_component_tests.sh \
   tests/component/service/test_telescope_capture.py::test_capture_html_omitted_selector_uses_document_element -q
 ```
+
+---
+
+### AST-1731 · AST-1721 (qa-fix bug-repro — bare class + multi-match html)
+
+**Board REVISE:** bare class token (e.g. `points-container` → `.class` retry) + multi-match `html` list asserts; AST-1725 only covers `#main` / `page` / `body`.
+
+| Area | Component tests |
+| --- | --- |
+| Bare class → `.class` retry on html | `test_telescope_capture.py::test_capture_html_bare_class_token_retries_as_class` (**bug-repro**, red pre-fix) |
+| Multi-match css → `list[str]` html | `test_telescope_capture.py::test_capture_html_multi_match_returns_list` (**bug-repro**, red pre-fix) |
+| Same bare→class retry on text | `test_telescope_capture.py::test_capture_text_bare_class_token_retries_as_class` (**bug-repro**, red pre-fix) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_capture_html_bare_class_token_retries_as_class \
+  tests/component/service/test_telescope_capture.py::test_capture_html_multi_match_returns_list \
+  tests/component/service/test_telescope_capture.py::test_capture_text_bare_class_token_retries_as_class -q
+```
