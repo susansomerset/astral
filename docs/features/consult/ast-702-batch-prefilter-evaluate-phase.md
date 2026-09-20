@@ -619,3 +619,25 @@ Product company_id/companies contract absorbed from `origin/ftr` (AST-1723). Gap
 ## Radia review (AST-1724)
 
 PROCEED — [bug-repro] OK; What must still hold OK; no fix-now.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/8f7e2fee9fe7991c89b41ee02450b2c9/c558735e-bec3-43a5-9671-27fa6518ee37/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/ab923be2-f864-4bda-82fb-09b37f023b47/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/8f7e2fee9fe7991c89b41ee02450b2c9/5e2c8ef5-d761-44f0-ba91-9c436b16875c/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1720 (parent) | ftr/AST-1720-company-entity-job-refs |
+| AST-1723 | sub/AST-1720/AST-1723-company-batch-refs-company-id |
+| AST-1724 | sub/AST-1720/AST-1724-company-batch-company-id-test-coverage |
+
+**Epic worktree:** `astral-AST-1720/` — one active sub checked out at a time.
