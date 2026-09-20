@@ -110,20 +110,26 @@ async def check_email(task: dict, *, debug: bool = False) -> dict[str, int]:
 
 ## Stage 2: Dispatcher — mailbox call + provision rewrite
 
-**Done when:** `rg -n check_inbox src/core/dispatcher.py` prints nothing. `rg -n check_email src/core/dispatcher.py` finds the mailbox call. After a provision run against a DB that still has retired-key rows, `SELECT COUNT(*) FROM dispatch_task WHERE task_key = 'meteorite_email'` is 0 and each candidate that had that key has a `stage_email_meteorite` row. `rg -n "['\"]meteorite_email['\"]" src/core/dispatcher.py` prints nothing. `python3 -m py_compile src/core/dispatcher.py` succeeds.
+**Done when:** `rg -n check_inbox src/core/dispatcher.py` prints nothing. `rg -n check_email src/core/dispatcher.py` finds the mailbox call. After a provision run against a DB that still has retired-key rows (bound and empty-`candidate_id` orphans), `SELECT COUNT(*) FROM dispatch_task WHERE task_key = 'meteorite_email'` is 0 and each candidate that had a bound retired-key row has a `stage_email_meteorite` row. `rg -n "['\"]meteorite_email['\"]" src/core/dispatcher.py` prints nothing. `python3 -m py_compile src/core/dispatcher.py` succeeds.
 
 1. In the mailbox branch of `_run_task` (the block gated by `_is_inbox_mailbox_task_key`):
    - Replace `from src.core.meteorite import check_inbox` with `from src.core.inbox import check_email`.
    - Replace Calling/Response debug strings and the `await check_inbox(task, debug=debug)` call with `check_email`. Leave ledger, trigger gate, cancel/exception handling, and summary accumulation unchanged.
 
-2. In `provision_meteorite_email_dispatch_tasks`, **before** the per-candidate `ensure_meteorite_email_dispatch_task` loop, rewrite retired mailbox rows onto the current key:
+2. In `provision_meteorite_email_dispatch_tasks`, **before** the per-candidate `ensure_meteorite_email_dispatch_task` loop, clear every retired mailbox `task_key` row (bound rewrite + orphan delete), then continue with today’s null-candidate cleanup for the current key:
 
    - `tk = str(METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]).strip()` (already present).
+   - `prior_mailbox_task_key = "meteorite" + "_email"` (see Decision below — never one contiguous quoted retired token).
    - Keep the existing `gaze_email` delete branch.
-   - Add a rewrite branch: for each `row` in `database.list_dispatch_tasks()`, if the row’s `task_key` is the retired mailbox identity and the row has a non-empty `candidate_id`, call `_db_update_dispatch_task(int(row["id"]), task_key=tk)` (or `database.update_dispatch_task` — same whitelist; `task_key` is already in `_DISPATCH_TASK_UPDATE_COLS`). Count rewrites in the returned stats dict under a new key `rewritten` (int).
-   - Then continue with today’s null-candidate cleanup for rows whose `task_key == tk`, then the ensure loop.
+   - In the same pre-ensure scan over `database.list_dispatch_tasks()`, for each row whose `task_key` equals `prior_mailbox_task_key`:
+     - If `candidate_id` is null or blank after strip: `database.delete_dispatch_task(int(row["id"]))` (mirror `gaze_email` / null-candidate purge). Count under returned stats key `retired_null` (reuse today’s counter or add to it — either is fine; do not leave the row).
+     - Else: `_db_update_dispatch_task(int(row["id"]), task_key=tk)` (or `database.update_dispatch_task` — same whitelist; `task_key` is already in `_DISPATCH_TASK_UPDATE_COLS`). Count under returned stats key `rewritten` (int).
+   - After that scan, continue with today’s null-candidate cleanup for rows whose `task_key == tk`, then the ensure loop.
+   - After provision, zero retired-key rows remain (parent AC5): bound rows were rewritten; orphan empty-`candidate_id` rows were deleted. Ensure then inserts/skips so every live candidate has one `tk` row.
 
    ⚠️ **Decision (parent AC1 / AST-1712 AC1):** Those greps forbid the contiguous quoted token `meteorite_email` in `dispatcher.py`. Name the retired key without that token, e.g. `prior_mailbox_task_key = "meteorite" + "_email"`, compare `row_tk == prior_mailbox_task_key`, and never write `"meteorite_email"` as one quoted string in this file. Comments may say “retired mailbox key” / “pre-rename mailbox task_key” without the forbidden token.
+
+   ⚠️ **Decision (Joan fix-now):** Parent AC5 is a COUNT on the retired key, not “bound rows only.” Empty-`candidate_id` retired-key rows cannot be rewritten onto a candidate-bound mailbox row; delete them in the same pre-ensure pass so the COUNT is 0.
 
 3. Scrub docstrings and comments in `ensure_meteorite_email_dispatch_task`, `provision_meteorite_email_dispatch_tasks`, `_meteorite_email_due_tasks`, and nearby AUTO comments so they name `stage_email_meteorite` or “mailbox” instead of the retired quoted key. Do **not** rename the Python functions (`ensure_meteorite_email_dispatch_task`, etc.) — names are unquoted and out of AC1’s `['\"]…['\"]` pattern; renaming would churn call sites outside Scope.
 
@@ -149,6 +155,12 @@ Preflight failure (Depends on) → stop; comment parent; do not start Stage 1.
 
 Confirm Chuckles estimate: 3 — agree
 
+## Revisions
+
+Revision 1 — 2026-09-20  
+Driven by: Joan fix-now on Stage 2 step 2 — rewrite skipped retired-key rows with null/empty `candidate_id`, so parent AC5 COUNT could stay non-zero.  
+Changes: Stage 2 step 2 now deletes orphan retired-key rows (empty `candidate_id`) in the same pre-ensure scan, and rewrites only bound retired-key rows to `tk`. Discuss item on `_entity_info` stamp left as-is (no change).
+
 ## Canon Scope (from ticket)
 
 Patterns: (none — logging statutes only)
@@ -170,7 +182,7 @@ stat.logging.info.dispatcher | A
 stat.logging.warning | A
 
 ## Traceability
-AC4 → Stage 1 (`check_email` full-message blob via `assembled_html` / `strip_extract_email_html`; Stage 2 dispatcher calls `inbox.check_email`); AC5 → Stage 2 step 2 (provision rewrite retired mailbox `task_key` → `METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]`)
+AC4 → Stage 1 (`check_email` full-message blob via `assembled_html` / `strip_extract_email_html`; Stage 2 dispatcher calls `inbox.check_email`); AC5 → Stage 2 step 2 (provision rewrite bound retired mailbox `task_key` → `METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]`; delete orphan empty-`candidate_id` retired-key rows)
 
 ## Findings
 
