@@ -219,3 +219,8 @@ AC4 → Stage 1 (`check_email` full-message blob via `assembled_html` / `strip_e
 None.
 
 context_tokens≈62000
+
+## Review stub (build-child)
+
+**Built:** `ccfcf671` on `sub/AST-1711/AST-1714-inbox-check-email-runner`
+
