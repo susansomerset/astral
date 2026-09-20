@@ -2907,3 +2907,19 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
 ```
+
+---
+
+### AST-1730 · AST-1721 (qa-fix bug-repro — scrollable selectable response)
+
+**Board REVISE:** raw / full-JSON panes must be read-only scrollable wrapping `<textarea className="admin-telescope-pre">` (`maxHeight: 60vh`, `overflow: auto`, `white-space: pre-wrap`).
+
+| Area | Component tests |
+| --- | --- |
+| Raw pane textarea + scroll/wrap styles | `test_AdminTelescope.test.tsx` — **`AST-1730: raw response is read-only scrollable wrapping textarea`** (**bug-repro**) |
+| Full JSON pane same shape | `test_AdminTelescope.test.tsx` — **`AST-1730: full JSON dump uses the same read-only textarea shape`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
+```
