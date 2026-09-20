@@ -195,3 +195,63 @@ context_tokens≈48000
 ## Review stub (build-child)
 
 **Built:** `4a51338b` on `sub/AST-1711/AST-1713-stage-meteorite-saves-the-ruth-row`
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1713
+**Publish ref:** `8a1490f098478d1589de476747dfea48c9fbb291` (`origin/sub/AST-1711/AST-1713-stage-meteorite-saves-the-ruth-row`)
+**Corpus:** `751624d7ebdf9bc441fc3d08a51ae751ea8026af`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+| stat.logging.info | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.warning | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored all six directives **A**; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Dispatch-runner vs ingest split** — `run_stage_meteorite` still maps skip outcomes on claimed `NEW` rows to `SCRAPE_ERROR` (AST-1712 retarget, unchanged by this slice). Email ingest now inserts `NOT_A_JOB` / `READY` / `SCRAPE_LINK` directly via `stage_meteorite`. Expected until a sibling retires or retargets the dispatch runner path; not a defect on this ticket.
+- **Stale module docstring** — `meteorite.py` header still says “warn stale ERROR” and “inline classify → fan-out staging rows”; behavior is `SCRAPE_ERROR` stale warn + single-pass `stage_meteorite` save. Cosmetic only.
+
+## What's solid
+
+- **Consult off the classify path** — `invoke_stage_meteorite` deleted; `enrich_meteorite_land_packet`, `_hold_log_batch`, and `_resolve_company_job_id` moved to `meteorite.py`; `qualify_meteorite` late-imports `_resolve_company_job_id`; AC2 greps clean (`invoke_stage_meteorite` absent repo-wide; no `consult` string in `meteorite.py`).
+- **Caller-state insert** — `insert_meteorite_rows` binds `row["state"]` with `job_title` / `employer_name`; migrate-if-missing columns; no `"NEW"` literal in the function body (AC3).
+- **Four classify outcomes** — `stage_meteorite` saves `NOT_A_JOB` (skip), `SCRAPE_LINK` (http link + Ruth fields), `READY` (non-http breadcrumb), `NEW_EMAIL_ERROR` (failures); `ingest_candidate_email_message` delegates to `stage_meteorite`; classify failure skips archive and inserts error row; skip archives after insert. `TestAst1713StageSavesRuthRow` + revised inbox tests cover AC4.
+- **Retention** — `run_meteorite_retention` reads `METEORITE_STATES_RETENTION["purge_states"]` (includes `NOT_A_JOB`); purge info lines use the row’s actual `from_state`.
+- **Dispatch-retry slice** — `NOT_A_JOB` and `NEW_EMAIL_ERROR` are insert-only terminal states with no dispatch `trigger_state`; scrape retry remains on `SCRAPE_ERROR` / `SCRAPE_LINK` (AST-1712 registry, not re-opened here).
+- **Logging** — New path uses Calling/Response debug pairs, loop begin/end on stage inserts, `_warn_item` per soft-fail, `logger.exception` with affirmative next-step on throws; `_meteorite_state_info` keeps entity pipe format. No `exc_info` on warnings; no logging in `database.py`.
+- **Scope** — Product edits limited to `meteorite.py`, `consult.py`, `database.py` for this slice; cumulative branch includes AST-1712 registry/key work as dependency; estimate **5** fits footprint.
+
+## Recommended actions
+
+Chuckles: append artifact, `docs(AST-1713): Radia review — clean`, push sub ref, post slim upshot `--as radia`, → **Review Posted**; datt **PROCEED** → User Testing (no `resolve-child` canon work).
+
+context_tokens≈52000
+
+[code-rubric] PROCEED (Commit: 8a1490f0) Ruth save path clean
