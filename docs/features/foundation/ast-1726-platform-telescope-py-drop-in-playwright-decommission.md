@@ -234,3 +234,87 @@ from src.external.telescope import (
 Confirm Chuckles estimate: 5 — agree
 
 Full drop-in of a ~2.5k-LOC scrape module onto HTTP handles + pool + Firefox uninstall is multi-component and not a known tiny pattern; 5 is the child max and matches the port risk.
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1726
+**Overall:** APPROVED
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref tip:** 0ee051dec110ebb320b024df35912f61af7c1290 (`origin/sub/AST-1721/AST-1726-platform-telescope-py-drop-in-playwright-decommission`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| stat.logging.error | B | | |
+| stat.logging.warning | B | | |
+| stat.logging.info | B | | |
+| stat.logging.debug | B | | |
+| patt.external.web-scraping-via-telescope | X | | pending Archie — id-only; not scoring law this pass |
+
+## Traceability
+
+AC4→S1 `cull_html_default` + S3 `extract_page_dom` local `_cull_html`; AC6→S1 Firefox uninstall scripts + drop `playwright` dep + S3 no `async_playwright`/`firefox.launch` + S4 delete `playwright.py` (see discuss: `BatchBrowserSession` name retained); AC7→S3 full public-surface port + S4 core import-path-only rewire; AC8→S3 post-render helpers local in `telescope.py`; AC9→S1 `TELESCOPE_CONFIG` env base URLs, no `service.*` import; AC13→Explicit scope gate (no Surfer).
+
+## Findings
+
+### discuss — Parent AC 6 literal grep vs drop-in class name
+
+- **Severity:** discuss
+- **Location:** Stage 2 `BatchBrowserSession`; parent AC 6
+- **Finding:** Plan keeps `class BatchBrowserSession` and `create_batch_browser_session` for drop-in parity (AC 7). Parent AC 6 also requires `rg BatchBrowserSession src/` → no matches. Intent is satisfied (no in-process Firefox); literal grep text conflicts with retained public batch-session API name.
+- **Recommendation:** Add a one-line ⚠️ Decision in Stage 2 naming the conflict and stating builder verifies **no** `async_playwright` / `firefox.launch` / Playwright package import — the AC 6 bar for this child. Archie may narrow parent AC 6 grep to launch patterns only if UAT will run the literal `BatchBrowserSession` check.
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Citations vs `astral.layers.import-direction`
+- **Finding:** `service/*`↔`src/` bidirectional fence plainly governs `telescope.py` imports but is not on this child’s frozen list (owned by AST-1727 CI + AST-1725 service side). Plan forbids `service.*` and `playwright` imports in Stage 2.
+- **Recommendation:** No plan change; AST-1727 lands CI enforcement.
+
+### acceptable — Scope gate resolved
+
+- **Severity:** acceptable
+- **Location:** `[scope-gate]` comment; Explicit scope gate; ticket ## Scope
+- **Finding:** Hedy’s scope-gate for `scripts/build_railway.sh`, `scripts/setup_dev.sh`, `scripts/start_server.py`, and `playwright_browsers_path` removal is reflected in ticket Scope, Files Changed, and Stage 1. Plan returned to Plan Ready.
+- **Recommendation:** None.
+
+### acceptable — Batch patterns
+
+- **Severity:** acceptable
+- **Location:** Canon notes; Stage 2 `_TelescopePool`
+- **Finding:** Plan does not invent claim/clear or criteria literals. Caller semaphores (`roster`/`gazer` `max_concurrent`, meteorite `playwright_concurrency`) stay untouched. `TELESCOPE_CONFIG.max_in_flight` is HTTP socket backpressure only — correct partition.
+- **Recommendation:** None.
+
+### acceptable — Lazy-fetch decision
+
+- **Severity:** acceptable
+- **Location:** Stage 2 lazy fetch; Stage 3 `load_all_jobs` / `wait_for_careers_list_readiness`
+- **Finding:** Deferred Telescope round-trip until extract, after `expand`/`wait_ready` flags are set, preserves gazer/roster call order without double-load. Aligns with AST-1725 service semantics.
+- **Recommendation:** None.
+
+### acceptable — Scripts / tests out of scope
+
+- **Severity:** acceptable
+- **Location:** Out-of-scope table; Stage 4 step 5
+- **Finding:** `scripts/` spikes and component tests still importing `playwright` are explicitly out of Scope; Betty owns test-tree updates. Core `src/` rewires are in Scope.
+- **Recommendation:** None.
+
+### acceptable — R6 definition fidelity
+
+- **Severity:** acceptable
+- **Location:** Explicit scope gate; Stages 1–4; `## Estimate`
+- **Finding:** Plan matches child Scope and parent platform drop-in slice. No `service/**`, Railway, or Surfer creep. Self-assessment (`Confirm Chuckles estimate: 5 — agree`) is honest for a ~2.5k-LOC HTTP port. No `!!-NONE` conf gaps.
+- **Recommendation:** None.
+
+### acceptable — Plan Discuss
+
+- **Severity:** acceptable
+- **Location:** Linear comments
+- **Finding:** Plan Discuss rounds completed: **0** (scope-gate was pre–Plan Ready resolution, not a `[plan-discuss] round=N` pair).
+- **Recommendation:** N/A.
+
+context_tokens≈78000
