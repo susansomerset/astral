@@ -284,3 +284,81 @@ The plan is binding. The builder:
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1725
+**Overall:** APPROVED
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref tip:** 18412e4794d31d71351f622883d9f9027a6c79a3 (`origin/sub/AST-1721/AST-1725-telescope-service-container-and-api`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.error | B | | |
+| stat.logging.warning | B | | |
+| stat.logging.info | B | | |
+| stat.logging.debug | B | | |
+| patt.external.web-scraping-via-telescope | X | | pending Archie — id-only; not scoring law this pass |
+| stat.layers.import-rules (amendment request) | B | | |
+
+## Traceability
+
+AC1→S1+S4; AC2→Explicit scope gate + S4§4 + Canon notes (service-side zero `src` imports; CI bidirectional fence AST-1727); AC3→S2 `/healthz` poke + S3 contract routes; AC4→S3 request defaults + no service cull (platform cull AST-1726); AC5→S3 `capture_text` multi-match; AC9→S4 Dockerfile/uvicorn separate process (platform base URL AST-1726); AC10→S1 `settings` + `auth.py`; AC11→S1 `logging_util.py` stdlib stdout only; AC12→S2 semaphore/recycle/timeout + S4 single-worker image.
+
+## Findings
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Parent Canon Scope vs frozen Citations
+- **Finding:** `astral.config.config-source-of-truth` plainly governs duplicated cookie selectors / firefox prefs in `settings.py` but is absent from the frozen list.
+- **Recommendation:** Archie may amend Canon Scope at Discussion for Radia comparability; plan’s duplicate-not-import Decision is explicit and fence-correct.
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Citations / `patt.external.web-scraping-via-telescope`
+- **Finding:** Pattern is pending Archie approval; plan correctly defers scoring and keeps browser I/O in `service/telescope/` only with no post-render fork.
+- **Recommendation:** No plan change; treat as id-only until Archie approves.
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Canon notes / logging statutes
+- **Finding:** Logging directives’ `applies_when.paths` are `src/**`; Telescope applies **semantic** via stdlib console logging (no `src.utils.logging` import). Intentional channel variance for process isolation.
+- **Recommendation:** None — B grades reflect documented variance, not violation.
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Out-of-scope table; AST-1726 / AST-1727
+- **Finding:** `railway.toml`, CI import fence, platform `telescope.py`, and config pool wiring correctly deferred to siblings; no scope creep in Files Changed.
+- **Recommendation:** None.
+
+### acceptable
+
+- **Severity:** acceptable
+- **Location:** Stage 1 `/healthz` stub → Stage 2 replacement
+- **Finding:** Transient `{"status":"starting"}` before Stage 2 is bounded by sequential stage contract; Stage 2 gate prevents shipping contract endpoints atop a stub health poke.
+- **Recommendation:** None.
+
+### acceptable — R6 definition fidelity
+
+- **Severity:** acceptable
+- **Location:** Explicit scope gate; Stages 1–4; `## Estimate`
+- **Finding:** Plan matches child Scope and parent slice for service container/API only. All Files Changed rows sit under ticket Scope. Self-assessment (`Confirm Chuckles estimate: 5 — agree`) is honest for four staged commits. No `!!-NONE` conf gaps.
+- **Recommendation:** None.
+
+### acceptable — Plan Discuss
+
+- **Severity:** acceptable
+- **Location:** Linear comments
+- **Finding:** Plan Discuss rounds completed: **0** (status Plan Ready; assignee Joan).
+- **Recommendation:** N/A.
+
+context_tokens≈52000
+
+[plan-rubric] PROCEED (Commit: 18412e4794d31d71351f622883d9f9027a6c79a3) Service container plan sound
