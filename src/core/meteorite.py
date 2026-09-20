@@ -52,7 +52,7 @@ from src.data.database import (
     update_candidate_last_email_check,
     update_meteorite,
 )
-from src.external.playwright import get_visible_text
+from src.external.telescope import get_visible_text
 from src.utils.config import (
     METEORITE_BOT_BLOCKED_NOTIFY_CONFIG,
     METEORITE_CONFIG,
