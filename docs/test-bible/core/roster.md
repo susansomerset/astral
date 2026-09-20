@@ -437,7 +437,7 @@ Gazer passthrough: **`docs/test-bible/core/gazer.md`** (**AST-715**).
 | --- | --- | --- |
 | Infra error prefix via **`batch_session`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` |
 
-Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). External classifier: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). External classifier: **`docs/test-bible/external/telescope.md`** (**AST-853**).
 
 ---
 
@@ -795,3 +795,16 @@ Discovery lands **`DISCOVERED`**; CSE-only **`resolve_company_website`** (persis
   tests/component/utils/test_config.py::TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults \
   -q
 ```
+
+---
+
+### AST-1726 · AST-1721 (telescope drop-in — roster import / readiness)
+
+**Scope (Betty):** Retarget `src.external.playwright` imports → `telescope`; revise **AST-689** readiness asserts for Telescope `wait_ready` (empty text → `outcome=empty`, not listing-selector timeout). Infra error prefix `[playwright:…]` unchanged (drop-in public names).
+
+| Area | Component tests |
+| --- | --- |
+| Import + infra prefix | `TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` |
+| Readiness ready / empty | `TestAst689ScrapeReadiness` |
+
+Canonical external map: [`external/telescope.md`](../external/telescope.md).

@@ -1483,13 +1483,27 @@ class TestAst854FetchWebsiteRetryConfig:
 
 
 class TestAst853PlaywrightConfig:
-    """AST-853: PLAYWRIGHT_CONFIG launch/recovery/scrape limits."""
+    """AST-853 scrape timeout + AST-1726 trimmed PLAYWRIGHT_CONFIG (no Firefox launch keys)."""
 
     def test_playwright_config_keys(self) -> None:
-        assert cfg.PLAYWRIGHT_CONFIG["launch_max_attempts"] == 3
         assert cfg.PLAYWRIGHT_CONFIG["context_recovery_max_attempts"] == 2
         assert cfg.PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"] == 120
-        assert cfg.PLAYWRIGHT_CONFIG["firefox_user_prefs"]["security.sandbox.content.level"] == 0
+        assert "launch_max_attempts" not in cfg.PLAYWRIGHT_CONFIG
+        assert "firefox_user_prefs" not in cfg.PLAYWRIGHT_CONFIG
+
+
+class TestAst1726TelescopeConfig:
+    """AST-1726: TELESCOPE_CONFIG HTTP client knobs + cull default on."""
+
+    def test_telescope_config_keys(self) -> None:
+        assert cfg.TELESCOPE_CONFIG["bearer_env"] == "TELESCOPE_BEARER_TOKEN"
+        assert cfg.TELESCOPE_CONFIG["client_timeout_seconds"] == 60
+        assert cfg.TELESCOPE_CONFIG["max_in_flight"] == 15
+        assert cfg.TELESCOPE_CONFIG["cull_html_default"] is True
+        assert cfg.TELESCOPE_CONFIG["default_expand"] is True
+        assert cfg.TELESCOPE_CONFIG["default_wait_ready"] is False
+        assert cfg.TELESCOPE_CONFIG["telescope_path"] == "/telescope"
+        assert "playwright_browsers_path" not in cfg.RAILWAY_CONFIG
 
 
 class TestAst507EncodedPrefilterConfig:

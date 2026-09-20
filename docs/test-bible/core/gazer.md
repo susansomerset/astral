@@ -186,7 +186,7 @@ Consult inline validate: **`docs/test-bible/core/consult.md`** (**AST-797**).
 | Batch session wiring + scrape errors / pass | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch` |
 | Scrape timeout labeled infra error | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_scrape_timeout_fails_with_labeled_infra_error` |
 
-External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/playwright.md`** (**AST-853**). Roster infra error prefix: **`docs/test-bible/core/roster.md`** (**AST-853**).
+External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/telescope.md`** (**AST-853**). Roster infra error prefix: **`docs/test-bible/core/roster.md`** (**AST-853**).
 
 **AST-853** narrowed run (gazer lines):
 

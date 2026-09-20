@@ -674,7 +674,7 @@ Consult routing manifest: **`docs/test-bible/core/consult.md`** (**AST-863**).
 | --- | --- | --- |
 | Config literals | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` |
 
-External + gazer manifests: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+External + gazer manifests: **`docs/test-bible/external/telescope.md`** (**AST-853**).
 
 ---
 
@@ -4214,3 +4214,16 @@ Mailbox task key `meteorite_email` → `stage_email_meteorite`; `debug_func` →
 ```
 
 **Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map:docs/test-bible/utils/config.md | shasum`
+
+---
+
+### AST-1726 · AST-1721 (TELESCOPE_CONFIG)
+
+**Scope:** `TELESCOPE_CONFIG` HTTP client knobs; trimmed `PLAYWRIGHT_CONFIG` (no Firefox launch keys); drop `RAILWAY_CONFIG["playwright_browsers_path"]`.
+
+| Area | Component tests |
+| --- | --- |
+| TELESCOPE_CONFIG defaults | `tests/component/utils/test_config.py::TestAst1726TelescopeConfig` |
+| Trimmed PLAYWRIGHT_CONFIG | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` (revised) |
+
+External map: [`docs/test-bible/external/telescope.md`](../external/telescope.md).
