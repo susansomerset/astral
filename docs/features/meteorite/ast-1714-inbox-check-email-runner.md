@@ -197,3 +197,25 @@ AC4 → Stage 1 (`check_email` full-message blob via `assembled_html` / `strip_e
 - **Recommendation:** No change required unless Susan wants the stamp visible at entity-info level in production logs.
 
 context_tokens≈58000
+
+## Joan validate (round 2)
+
+**Ticket:** AST-1714
+**Overall:** APPROVED
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref:** 132715f21fbdb7af2b23beb5fb07a196433d13ae
+
+## Canon scores
+stat.logging.debug | A
+stat.logging.error | A
+stat.logging.info | A
+stat.logging.info.dispatcher | A
+stat.logging.warning | A
+
+## Traceability
+AC4 → Stage 1 (`check_email` full-message blob via `assembled_html` / `strip_extract_email_html`; Stage 2 dispatcher calls `inbox.check_email`); AC5 → Stage 2 step 2 (rewrite bound retired-key rows to `tk`; delete orphan empty-`candidate_id` retired-key rows; ensure loop)
+
+## Findings
+None.
+
+context_tokens≈62000
