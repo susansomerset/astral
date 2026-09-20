@@ -1,10 +1,8 @@
-"""meteorite staging table + claim/insert/update/retention helpers (AST-1557)."""
+"""meteorite staging table + claim/insert/update helpers (AST-1557)."""
 
 from __future__ import annotations
 
 import pytest
-
-from src.utils.config import METEORITE_STATES, METEORITE_STATES_RETENTION
 
 
 class TestAst1557MeteoriteSchema:
@@ -189,41 +187,3 @@ class TestAst1557MeteoriteReadUpdate:
         with pytest.raises(ValueError, match="unknown meteorite fields"):
             db.update_meteorite(mid, batch_id="nope")
 
-
-class TestAst1557MeteoriteRetention:
-    """Retention select by states+cutoff; delete by ids (caller owns day math)."""
-
-    def test_list_for_retention_and_delete(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        mid = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "old"}]
-        )[0]
-        db.update_meteorite(mid, state="LANDED")
-        # Force an old state_changed_at so retention cutoff can match
-        conn = db._get_connection()
-        try:
-            conn.execute(
-                "UPDATE meteorite SET state_changed_at = ? WHERE id = ?",
-                ("2000-01-01T00:00:00+00:00", mid),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-        fresh = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "fresh"}]
-        )[0]
-        db.update_meteorite(fresh, state="LANDED")
-
-        purge_states = list(METEORITE_STATES_RETENTION["purge_states"])
-        assert set(purge_states) <= set(METEORITE_STATES)
-        hit = db.list_meteorites_for_retention(
-            states=purge_states,
-            older_than="2010-01-01T00:00:00+00:00",
-        )
-        assert [r["id"] for r in hit] == [mid]
-
-        assert db.delete_meteorites_by_ids([]) == 0
-        n = db.delete_meteorites_by_ids([mid])
-        assert n == 1
-        assert db.get_meteorite(mid) is None
-        assert db.get_meteorite(fresh) is not None

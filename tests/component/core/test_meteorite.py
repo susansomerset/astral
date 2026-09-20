@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.util
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,7 +14,6 @@ from src.utils.config import (
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
     METEORITE_MONITORING_CONFIG,
-    METEORITE_RETENTION_CONFIG,
 )
 
 
@@ -1555,169 +1553,6 @@ class TestAst1561RunNotifyBotBlocked:
         post.assert_not_called()
 
 
-def _backdate_meteorite_state_changed(db, row_id: int, iso: str) -> None:
-    conn = db._get_connection()
-    try:
-        conn.execute(
-            "UPDATE meteorite SET state_changed_at = ? WHERE id = ?",
-            (iso, row_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-@pytest.mark.skipif(
-    not hasattr(meteorite_mod, "run_meteorite_retention"),
-    reason="AST-1562 retention runner not on this publish tip",
-)
-class TestAst1562RunMeteoriteRetention:
-    """AST-1562: purge old LANDED; info-list stale rows; module retired."""
-
-    def test_meteorite_email_module_deleted(self) -> None:
-        assert importlib.util.find_spec("src.core.meteorite_email") is None
-
-    @pytest.mark.asyncio
-    async def test_purges_old_landed_rows(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        cid = "cand-retention-purge"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Purge"})
-        row_id = _insert_meteorite_row(db, cid, state="LANDED")
-        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        _backdate_meteorite_state_changed(db, row_id, old)
-        out = await meteorite_mod.run_meteorite_retention(
-            {"batch_size": METEORITE_RETENTION_CONFIG["batch_size"]},
-            debug=False,
-        )
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
-        assert db.get_meteorite(row_id) is None
-
-    @pytest.mark.asyncio
-    async def test_stale_rows_info_logged_not_deleted(
-        self, sqlite_in_memory, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        import logging
-
-        db = sqlite_in_memory
-        cid = "cand-retention-stale"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Stale"})
-        row_id = _insert_meteorite_row(db, cid, state="SCRAPE_ERROR", link="https://jobs.example/e")
-        old = (datetime.now(timezone.utc) - timedelta(days=30)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        _backdate_meteorite_state_changed(db, row_id, old)
-        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
-            out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
-        assert db.get_meteorite(row_id) is not None
-        assert any("still SCRAPE_ERROR" in r.getMessage() for r in caplog.records)
-        assert any(str(row_id) in r.getMessage() for r in caplog.records)
-
-    @pytest.mark.asyncio
-    async def test_fresh_landed_not_purged(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        cid = "cand-retention-fresh"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Fresh"})
-        row_id = _insert_meteorite_row(db, cid, state="LANDED")
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert out["total_processed"] == 0
-        assert db.get_meteorite(row_id) is not None
-
-
-@pytest.mark.skipif(
-    not hasattr(meteorite_mod, "run_meteorite_retention"),
-    reason="AST-1562 retention runner not on this publish tip",
-)
-class TestAst1690RetentionJobLinkedSkip:
-    """AST-1690: keep age-eligible LANDED when astral_job_id still hits a job."""
-
-    def _old_iso(self) -> str:
-        return (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-
-    @pytest.mark.asyncio
-    async def test_keeps_old_landed_when_job_exists(self, sqlite_in_memory) -> None:
-        # AC7 — job-linked LANDED past landed_purge_days must survive one retention run.
-        db = sqlite_in_memory
-        cid = "cand-ret-keep"
-        jid = "job-ret-keep-1"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Keep"})
-        db.save_company("co-ret-keep", state="IGNORE", candidate_id=cid)
-        db.save_job(jid, company="co-ret-keep", state="RECOMMENDED")
-        row_id = _insert_meteorite_row(
-            db, cid, state="LANDED", astral_job_id=jid
-        )
-        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(row_id) is not None
-        assert out["total_processed"] == 0
-        assert out["total_passed"] == 0
-
-    @pytest.mark.asyncio
-    async def test_purges_old_landed_when_job_missing(self, sqlite_in_memory) -> None:
-        # AC8 — orphan astral_job_id (no job row) stays age-purge eligible.
-        db = sqlite_in_memory
-        cid = "cand-ret-orphan"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Orphan"})
-        row_id = _insert_meteorite_row(
-            db, cid, state="LANDED", astral_job_id="job-ret-missing-xyz"
-        )
-        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(row_id) is None
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
-
-    @pytest.mark.asyncio
-    async def test_purges_old_landed_blank_astral_job_id(
-        self, sqlite_in_memory
-    ) -> None:
-        # AC8 — whitespace-only astral_job_id strips to empty → purge like null.
-        db = sqlite_in_memory
-        cid = "cand-ret-blank"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Blank"})
-        row_id = _insert_meteorite_row(
-            db, cid, state="LANDED", astral_job_id="   "
-        )
-        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(row_id) is None
-        assert out["total_processed"] >= 1
-
-    @pytest.mark.asyncio
-    async def test_mixed_batch_keeps_linked_purges_unlinked(
-        self, sqlite_in_memory
-    ) -> None:
-        # One run: linked keep + null-link purge (partition loop).
-        db = sqlite_in_memory
-        cid = "cand-ret-mix"
-        jid = "job-ret-mix-1"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Mix"})
-        db.save_company("co-ret-mix", state="IGNORE", candidate_id=cid)
-        db.save_job(jid, company="co-ret-mix", state="RECOMMENDED")
-        keep_id = _insert_meteorite_row(
-            db, cid, state="LANDED", astral_job_id=jid, source_id="mid-keep"
-        )
-        purge_id = _insert_meteorite_row(
-            db, cid, state="LANDED", source_id="mid-purge"
-        )
-        old = self._old_iso()
-        _backdate_meteorite_state_changed(db, keep_id, old)
-        _backdate_meteorite_state_changed(db, purge_id, old)
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(keep_id) is not None
-        assert db.get_meteorite(purge_id) is None
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
-
-
 def _check_inbox_msg(
     mid: str,
     *,
@@ -2217,29 +2052,6 @@ class TestAst1693NotifySkipsContentful:
         assert row["state"] == "BOT_BLOCKED" and not row.get("estelle_notified_at")
         post.assert_not_called()
 
-
-
-@pytest.mark.skipif(
-    not hasattr(meteorite_mod, "run_meteorite_retention"),
-    reason="AST-1562 retention runner not on this publish tip",
-)
-class TestAst1712NotAJobPurge:
-    """AST-1712: NOT_A_JOB is on the scheduled cleanup selection."""
-
-    @pytest.mark.asyncio
-    async def test_purges_old_not_a_job(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        cid = "cand-retention-not-a-job"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Skip"})
-        row_id = _insert_meteorite_row(db, cid, state="NOT_A_JOB")
-        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        _backdate_meteorite_state_changed(db, row_id, old)
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(row_id) is None
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
 
 
 @pytest.mark.skipif(
