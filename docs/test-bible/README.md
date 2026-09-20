@@ -44,6 +44,8 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 | Dev | [`dev/`](dev/) | `tests/component/dev/` |
 
+| Service | [`service/`](service/) | `tests/component/service/` |
+
 | Integration | [`integration/`](integration/) | `tests/integration/` |
 
 
@@ -380,7 +382,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ## 2. Where tests live
 
-- **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`; WXT extension under `tests/component/extension/`).
+- **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`; WXT extension under `tests/component/extension/`). **Service** microservices under `service/` map to `tests/component/service/` (see [`service/telescope.md`](service/telescope.md)).
 - **Integration tests:** `tests/integration/` — multi-layer in-process scenarios; see [`integration/README.md`](integration/README.md).
 - **Data layer carve-out (§4a):** `tests/component/data/database/` holds cluster files for `src/data/database.py`; see `tests/component/data/database/_README.md`.
 

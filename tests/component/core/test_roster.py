@@ -98,10 +98,11 @@ def _ast603_prefilter_rubric_ctx() -> Dict[str, Any]:
     }
 
 
-def _encoded_prefilter_response(grades: List[Dict[str, Any]], **job_extra: Any) -> Dict[str, Any]:
-    job: Dict[str, Any] = {"grades": grades}
-    job.update(job_extra)
-    return {"jobs": [job]}
+def _encoded_prefilter_response(grades: List[Dict[str, Any]], **company_extra: Any) -> Dict[str, Any]:
+    # AST-1724: company-native payload (companies / company_id), not jobs / astral_job_id.
+    row: Dict[str, Any] = {"grades": grades}
+    row.update(company_extra)
+    return {"companies": [row]}
 
 
 _RC_VECTOR = "Reality Check"
@@ -1807,16 +1808,16 @@ class TestAst718PrefilterPjlRouting:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "passco",
+                                "company_id": "passco",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
                                 "possible_job_links": [1],
                             },
                             {
-                                "astral_job_id": "nolinks",
+                                "company_id": "nolinks",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
@@ -1881,7 +1882,7 @@ class TestAst603ConsultParityHydration:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
                                 "grades": [
                                     {"vector": "Reality Check", "grade": "A", "confidence": 3},
@@ -2020,16 +2021,16 @@ class TestAst702PrefilterCompanyBatch:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "passco",
+                                "company_id": "passco",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
                                 "possible_job_links": [1],
                             },
                             {
-                                "astral_job_id": "failco",
+                                "company_id": "failco",
                                 "grades": _prefilter_grades(
                                     {"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"},
                                 ),
@@ -2208,9 +2209,9 @@ class TestAst707EmbeddedRcBatchHydration:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "acme",
+                                "company_id": "acme",
                                 "grades": [
                                     {"grade": "D", "vector": "Reality Check", "confidence": 3},
                                     {"grade": "B", "vector": "Mission & Product", "confidence": 3},
@@ -2247,6 +2248,127 @@ class TestAst707EmbeddedRcBatchHydration:
         saved_grades = save.call_args.args[1].get("prefilter_grades") or []
         rc_row = next(g for g in saved_grades if g.get("vector") == "Reality Check")
         assert rc_row.get("reason")
+
+
+class TestAst1724CompanyBatchCompanyIdContract:
+    """[bug-repro] AST-1724: company batch uses company_id / companies (not astral_job_id / jobs)."""
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_entities_use_company_id_not_astral_job_id(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "companies": [
+                        {
+                            "company_id": "acme",
+                            "grades": _prefilter_grades(
+                                {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
+                            ),
+                            "possible_job_links": [1],
+                        },
+                    ],
+                },
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        ctx = {**_prefilter_rubric_ctx(), "astral_candidate_id": "c1724"}
+        rubric = [
+            {
+                "code": "RC",
+                "label": "Reality Check",
+                "importance": 5,
+                "grade_descriptions": [{"grade": "A", "description": _RC_REASON}],
+            },
+            *ctx["candidate_data"]["artifacts"]["company_prefilter"],
+        ]
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            MagicMock(return_value=rubric),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {
+                    "homepage_text": "Acme homepage",
+                    "nav_links": "1: https://acme.com/careers",
+                },
+            },
+        ]
+        await roster_mod.prefilter_company_batch("batch-1724-ent", companies, ctx=ctx, debug=False)
+        ent = do_task.await_args.kwargs["ctx"]["batch_entities"][0]
+        assert ent["company_id"] == "acme"
+        assert ent["short_name"] == "acme"
+        assert "astral_job_id" not in ent
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_reconciles_companies_company_id(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "companies": [
+                            {
+                                "company_id": "acme",
+                                "grades": _prefilter_grades(
+                                    {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
+                                ),
+                                "possible_job_links": [1],
+                            },
+                        ],
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        ctx = {**_prefilter_rubric_ctx(), "astral_candidate_id": "c1724"}
+        rubric = [
+            {
+                "code": "RC",
+                "label": "Reality Check",
+                "importance": 5,
+                "grade_descriptions": [{"grade": "A", "description": _RC_REASON}],
+            },
+            *ctx["candidate_data"]["artifacts"]["company_prefilter"],
+        ]
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            MagicMock(return_value=rubric),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {
+                    "homepage_text": "Acme homepage",
+                    "nav_links": "1: https://acme.com/careers",
+                },
+            },
+        ]
+        out = await roster_mod.prefilter_company_batch(
+            "batch-1724-rec", companies, ctx=ctx, debug=False,
+        )
+        # Success must come from companies/company_id reconcile — not the old jobs shape.
+        assert out["passed"] == 1
+        assert out["failed"] == 0
+        assert out["total"] == 1
 
 
 @pytest.mark.skip(reason="AST-721: find_job_page monolith removed; covered by decomposed AST-718–721 tests")
@@ -4883,7 +5005,7 @@ class TestAst880VetInflowEncoded:
         out = await roster_mod.vet_inflow_discovery_company("co_d", entity, "batch-880", {}, False)
         assert out == {"success": True, "state": "WEBSITE_FOUND", "error": None}
         ctx = do_task.await_args.kwargs["ctx"]
-        assert ctx["batch_entities"] == [{"astral_job_id": "co_d", "short_name": "co_d"}]
+        assert ctx["batch_entities"] == [{"company_id": "co_d", "short_name": "co_d"}]
         assert ctx["batch_size"] == 1
 
     @pytest.mark.asyncio
