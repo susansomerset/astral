@@ -2181,6 +2181,9 @@ class TestAst1134MeteoriteEmailDispatchProvision:
     def test_ensure_adds_then_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
         existing: list[dict] = []
         saves: list[dict] = []
+        tk = dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        # Mailbox key is intentionally absent from live TASK_CONFIG; stub it for ensure insert path.
+        monkeypatch.setitem(dispatcher_mod.TASK_CONFIG, tk, {"task_key": tk})
         monkeypatch.setattr(
             dispatcher_mod.database,
             "list_dispatch_tasks_for_candidate",
@@ -2203,7 +2206,7 @@ class TestAst1134MeteoriteEmailDispatchProvision:
         assert first["candidate_id"] == "cand-a"
         assert first["id"] == 41
         assert saves[0]["candidate_id"] == "cand-a"
-        assert saves[0]["task_key"] == dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        assert saves[0]["task_key"] == tk
         assert saves[0]["auto_mode"] is False
         assert saves[0]["entity_type"] is None
         assert saves[0]["trigger_state"] is None
@@ -2229,20 +2232,30 @@ class TestAst1134MeteoriteEmailDispatchProvision:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         deleted: list[int] = []
+        rewritten: list[tuple[int, str]] = []
         ensured: list[str] = []
+        tk = dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        prior = "meteorite" + "_email"
         monkeypatch.setattr(
             dispatcher_mod.database,
             "list_dispatch_tasks",
             lambda: [
-                {"id": 1, "task_key": "stage_email_meteorite", "candidate_id": None},
-                {"id": 2, "task_key": "stage_email_meteorite", "candidate_id": "keep"},
+                {"id": 1, "task_key": tk, "candidate_id": None},
+                {"id": 2, "task_key": tk, "candidate_id": "keep"},
                 {"id": 3, "task_key": "evaluate_jd", "candidate_id": None},
+                {"id": 4, "task_key": prior, "candidate_id": "rewrite-me"},
+                {"id": 5, "task_key": prior, "candidate_id": None},
             ],
         )
         monkeypatch.setattr(
             dispatcher_mod.database,
             "delete_dispatch_task",
             lambda tid: deleted.append(int(tid)),
+        )
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "_db_update_dispatch_task",
+            lambda tid, **kw: rewritten.append((int(tid), str(kw.get("task_key") or ""))),
         )
         monkeypatch.setattr(
             dispatcher_mod.database,
@@ -2258,7 +2271,7 @@ class TestAst1134MeteoriteEmailDispatchProvision:
             ensured.append(cid)
             return {
                 "candidate_id": cid,
-                "task_key": "meteorite_email",
+                "task_key": tk,
                 "added": 1 if cid == "c1" else 0,
                 "skipped": 0 if cid == "c1" else 1,
                 "skipped_missing_config": 0,
@@ -2267,9 +2280,11 @@ class TestAst1134MeteoriteEmailDispatchProvision:
 
         monkeypatch.setattr(dispatcher_mod, "ensure_meteorite_email_dispatch_task", _ensure)
         out = dispatcher_mod.provision_meteorite_email_dispatch_tasks()
-        assert deleted == [1]
+        assert deleted == [1, 5]
+        assert rewritten == [(4, tk)]
         assert ensured == ["c1", "c2"]
-        assert out["retired_null"] == 1
+        assert out["retired_null"] == 2
+        assert out["rewritten"] == 1
         assert out["candidates_touched"] == 2
         assert out["added"] == 1
         assert out["skipped"] == 1
@@ -2483,7 +2498,7 @@ class TestAst1090GazeEmailDispatchOne:
     async def test_calls_runner_with_bound_ledger_cid(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.core import meteorite as meteorite_mod
+        from src.core import inbox as inbox_mod
 
         get_cand = MagicMock(side_effect=AssertionError("must not load candidate"))
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", get_cand)
@@ -2495,7 +2510,7 @@ class TestAst1090GazeEmailDispatchOne:
                 "total_errors": 0,
             }
         )
-        monkeypatch.setattr(meteorite_mod, "check_inbox", runner)
+        monkeypatch.setattr(inbox_mod, "check_email", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -2525,10 +2540,10 @@ class TestAst1090GazeEmailDispatchOne:
 
     @pytest.mark.asyncio
     async def test_skips_unbound_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.core import meteorite as meteorite_mod
+        from src.core import inbox as inbox_mod
 
         runner = AsyncMock()
-        monkeypatch.setattr(meteorite_mod, "check_inbox", runner)
+        monkeypatch.setattr(inbox_mod, "check_email", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
