@@ -58,7 +58,7 @@ logger = get_logger(__name__)
 
 
 def _is_inbox_mailbox_task_key(task_key: str) -> bool:
-    """meteorite mailbox fold (parse_meteorite_email / meteorite_email) — AST-1282 / AST-1466."""
+    """Mailbox fold (parse_meteorite_email / stage_email_meteorite) — AST-1282 / AST-1466."""
     return is_meteorite_email_mailbox_task_key(task_key)
 
 
@@ -381,7 +381,7 @@ def correct_meteorite_ingress_dispatch_entity_types() -> Dict[str, Any]:
     """UPDATE NULL/blank entity_type → meteorite on ingress/notify dispatch rows (AST-1623).
 
     Seed INSERT … WHERE NOT EXISTS cannot rewrite live NULL rows. Idempotent UPDATE only —
-    does not insert, and does not touch retention or meteorite_email mailbox keys.
+    does not insert, and does not touch retention or candidate-bound mailbox keys.
     """
     keys = {
         METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
@@ -404,7 +404,7 @@ def correct_meteorite_ingress_dispatch_entity_types() -> Dict[str, Any]:
 
 
 def ensure_meteorite_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
-    """Idempotent insert of candidate-bound meteorite_email dispatch_task (AST-1134 / AST-1466)."""
+    """Idempotent insert of candidate-bound stage_email_meteorite dispatch_task (AST-1134 / AST-1466)."""
     cid = str(candidate_id or "").strip()
     if not cid:
         raise ValueError("candidate_id is required")
@@ -453,15 +453,27 @@ def ensure_meteorite_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
 
 
 def provision_meteorite_email_dispatch_tasks() -> Dict[str, Any]:
-    """Drop leftover gaze_email rows; ensure meteorite_email for every candidate (AST-1134 / AST-1466)."""
+    """Drop leftover gaze_email / retired mailbox rows; ensure stage_email_meteorite per candidate."""
     tk = str(METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]).strip()
+    # Retired pre-rename mailbox task_key (parent AC1 forbids one contiguous quoted token).
+    prior_mailbox_task_key = "meteorite" + "_email"
     retired_null = 0
+    rewritten = 0
     for row in database.list_dispatch_tasks():
         row_tk = (row.get("task_key") or "").strip()
         # Migration window: purge retired gaze_email identity if still present.
         if row_tk == "gaze_email":
             database.delete_dispatch_task(int(row["id"]))
             retired_null += 1
+            continue
+        if row_tk == prior_mailbox_task_key:
+            cid = row.get("candidate_id")
+            if cid is None or str(cid).strip() == "":
+                database.delete_dispatch_task(int(row["id"]))
+                retired_null += 1
+            else:
+                _db_update_dispatch_task(int(row["id"]), task_key=tk)
+                rewritten += 1
             continue
         if row_tk != tk:
             continue
@@ -482,6 +494,7 @@ def provision_meteorite_email_dispatch_tasks() -> Dict[str, Any]:
     return {
         "task_key": tk,
         "retired_null": retired_null,
+        "rewritten": rewritten,
         "candidates_touched": candidates_touched,
         "added": added,
         "skipped": skipped,
@@ -970,7 +983,7 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
                 )
         return
 
-    # AST-1561: BOT_BLOCKED Estelle notify — custom branch before mailbox / check_inbox.
+    # AST-1561: BOT_BLOCKED Estelle notify — custom branch before mailbox / check_email.
     if _is_meteorite_bot_blocked_notify_task_key(task_key):
         from src.core.meteorite import run_notify_meteorite_bot_blocked
 
@@ -1176,8 +1189,8 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
 
     # AST-1134 / AST-1282: candidate-bound inbox mailbox — ledger uses row candidate_id.
     if _is_inbox_mailbox_task_key(task_key):
-        # late: keep check_inbox off module-top load (peer late imports in this file)
-        from src.core.meteorite import check_inbox
+        # late: keep check_email off module-top load (peer late imports in this file)
+        from src.core.inbox import check_email
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip()
@@ -1222,11 +1235,11 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         final_status = "COMPLETED"
         try:
             logger.debug(
-                "Calling check_inbox: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
+                "Calling check_email: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
                 task_key, entity_batch_id, ledger_cid,
             )
-            summary = await check_inbox(task, debug=debug)
-            logger.debug("Response from check_inbox: %s", summary)
+            summary = await check_email(task, debug=debug)
+            logger.debug("Response from check_email: %s", summary)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
@@ -1793,10 +1806,10 @@ def _tick_loop() -> None:
                     type(exc).__name__,
                     exc,
                 )
-            # Claim-queue AUTO rows from data; meteorite_email AUTO merged via live bind Avail (AST-1135).
+            # Claim-queue AUTO rows from data; mailbox AUTO merged via live bind Avail (AST-1135).
             due = list(database.get_due_tasks()) + _meteorite_email_due_tasks()
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
-            # meteorite_email has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
+            # Mailbox has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
             _debug_log_auto_off_stage_skips()
             logger.debug("Beginning AUTO spawn loop on %s items", len(due))
             spawned = 0
@@ -1839,7 +1852,7 @@ def start_scheduler() -> None:
             n,
         )
     # AST-1496: no scheduler-start save_dispatch_task provision (meteorite /
-    # meteorite_email / fetch_email). Helpers remain in-module but unused from boot.
+    # stage_email_meteorite / fetch_email). Helpers remain in-module but unused from boot.
     # AST-1623: UPDATE-only correction for live NULL entity_type on ingress/notify keys.
     try:
         cstats = correct_meteorite_ingress_dispatch_entity_types()

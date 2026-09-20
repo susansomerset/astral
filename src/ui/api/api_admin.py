@@ -921,7 +921,7 @@ def list_dtasks():
         try:
             bound_counts = count_inbox_bound_by_candidate()
         except Exception as exc:
-            logger.warning("list_dtasks: meteorite_email inbox bind counts failed: %s", exc)
+            logger.warning("list_dtasks: mailbox inbox bind counts failed: %s", exc)
             bound_counts = {}
     # Enrich each row with live available entity count
     for row in rows:
@@ -1162,7 +1162,7 @@ def _dispatch_task_key_trigger_error(
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    # meteorite_email is candidate-bound: empty trigger = no state gate; otherwise CANDIDATE_STATES.
+    # stage_email_meteorite mailbox fold is candidate-bound: empty trigger = no state gate; otherwise CANDIDATE_STATES.
     if is_meteorite_email_mailbox_task_key(tk):
         ts = (trigger_state or "").strip()
         if not ts:
