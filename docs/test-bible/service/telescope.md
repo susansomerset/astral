@@ -11,6 +11,7 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 | `service/telescope/capture.py` | `tests/component/service/test_telescope_capture.py` | no |
 | `service/telescope/app.py` + auth | `tests/component/service/test_telescope_app.py` | no |
 | Import fence + Dockerfile / requirements | `tests/component/service/test_telescope_fence.py` | no |
+| Railway Phase 1 + bidirectional CI fence | `tests/component/service/test_telescope_deploy_ci.py` | no |
 
 **Integration tier:** no existing `tests/integration/` scenario exercises Telescope (platform client is sibling **AST-1726**). No integration revision this pass.
 
@@ -40,3 +41,26 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 **Pass criterion:** pytest green on `tests/component/service/` — not zero-arg harness / branch-lock gate.
 
 **Out of scope for this manifest:** Railway/CI (**AST-1727**), platform `src/external/telescope.py` (**AST-1726**), live Firefox / Docker image build.
+
+---
+
+### AST-1727 · AST-1721 (Railway Phase 1 deploy + import-boundary CI)
+
+**Scope:** `service/telescope/railway.toml` (Phase 1 `numReplicas = 1`, Dockerfile builder, memory ceiling, no `healthcheckPath`); `scripts/ci/check-service-src-import-fence.sh` + `.github/workflows/service-src-import-fence.yml` — bidirectional anchored import fence (`service/telescope` ↔ `src`).
+
+| Area | Component tests |
+| --- | --- |
+| railway.toml Phase 1 contract | `test_telescope_deploy_ci.py::TestRailwayPhase1Toml` |
+| `src` → `service` import scan | `test_telescope_deploy_ci.py::TestBidirectionalImportFence::test_src_py_files_have_zero_service_imports` |
+| CI script green + catches service→src | `test_telescope_deploy_ci.py::TestBidirectionalImportFence` (script exit 0 + probe) |
+| Workflow wires script | `test_telescope_deploy_ci.py::…::test_workflow_invokes_fence_script` |
+
+**AST-1727** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh tests/component/service/test_telescope_deploy_ci.py -q
+```
+
+**Pass criterion:** pytest green on that path — not zero-arg harness / branch-lock gate.
+
+**Out of scope:** live Railway dashboard wiring (operator), statute amendment, Surfer / Phase 2 autoscaler, service app / platform client (AST-1725 / AST-1726).
