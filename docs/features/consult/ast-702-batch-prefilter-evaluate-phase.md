@@ -403,3 +403,65 @@ No conflicts requiring plan revision.
 **§9a dry-run:** `origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-700-prefilter-as-batch-process`**.
 
 **Manifest:** Betty manifest (15 tests) green @ **`ba3ccc9`** — no `[qa-handoff]`.
+
+## Bug: AST-1723 — Company batch refs use company_id not astral_job_id/jobs
+
+### As-is
+
+Company-entity encode/decode (prefilter single + batch, and company vet `batch_entities` builders) stuff each company's `short_name` into `astral_job_id` on `ctx["batch_entities"]`. Encoded decode in `agent._decode_payload` always emits `{"jobs": [{"astral_job_id": ..., "grades": ...}, ...]}`. Roster reconcile and `_flatten_prefilter_parsed` read `parsed["jobs"]` / `astral_job_id`. `TASK_CONFIG["prefilter_company"]["response_schema"]` still requires top-level `jobs`, so schema validation agrees with the job-shaped contract. Company work therefore surfaces as job references.
+
+### To-be
+
+Company-entity tasks identify companies as companies: batch entity id field is `company_id` (value = that company's `short_name` string — Susan: **USE `company_id` for identifiers, not `short_name` as the id field name**). Decoded / schema-validated payload is `{"companies": [{"company_id": ..., "grades": ...}, ...]}`. Downstream persistence and state transitions still key by `short_name`. Job-entity encode/decode that correctly uses `astral_job_id` / `jobs` is unchanged. Vet's `grades_encoded_vet_meta` → `results[]` shape stays; only its `batch_entities` id field switches off the fake `astral_job_id`.
+
+### Repro
+
+1. Claim or fixture two companies with `short_name` `"acme"` / `"beta"` in `HOMEPAGE_READY` with non-empty `company_data.homepage_text`.
+2. Run `prefilter_company_batch` (or single `prefilter_company`) through `do_task`.
+3. **As-is observe:** `task_ctx["batch_entities"]` rows contain `"astral_job_id": "acme"` (and `"short_name": "acme"`); `api_result["parsed_response"]` is shaped `{"jobs": [{"astral_job_id": "acme", "grades": [...], ...}, ...]}`.
+4. **To-be observe:** `batch_entities` rows contain `"company_id": "acme"` (plus `"short_name": "acme"` for persistence) and **no** `astral_job_id`; `parsed_response` is `{"companies": [{"company_id": "acme", "grades": [...], ...}, ...]}`.
+
+### Root cause
+
+AST-702 Stage 3 (and AST-507 / AST-880 reuse) deliberately normalized company rows onto the job batch contract (`astral_job_id: short_name` + decode via `jobs`) so company hops could share `_decode_payload` / job reconcile helpers. That encode trick is the defect relative to Susan's company-native contract — not a mis-wired single call site.
+
+### Proposed change
+
+1. **`src/utils/config.py`** — `TASK_CONFIG["prefilter_company"]["response_schema"]`: rename required top-level key `jobs` → `companies`; on each item, require `company_id` (`str`) alongside existing `grades` / link fields. Do **not** change job-entity task schemas (`qualify_job_listings`, `evaluate_jd`, etc.). If any other company-entity encoded task still declares a `jobs` top-level key for this hop family, retarget it the same way; `vet_inflow_discovery` already uses `results` — leave that schema.
+
+2. **`src/core/agent.py`** — `_decode_payload` (grades-encoded path after the existing `grades_encoded_vet_meta` early return):
+   - Resolve `entity_type` from `TASK_CONFIG[task_key]["entity_type"]`.
+   - When `entity_type == "company"`: map `pos → batch_entities[pos]["company_id"]` (raise/skip consistently with today's missing-key behavior if absent); build each row with `"company_id"` (not `astral_job_id`); return `{"companies": result_rows}`. Keep prefilter link-meta application on the row dict unchanged (`_apply_prefilter_encoded_link_meta`).
+   - When `entity_type != "company"`: keep today's `astral_job_id` + `{"jobs": ...}` path verbatim.
+   - `_validate_grade_confidence_in_payload`: walk `parsed["companies"]` the same way it walks `parsed["jobs"]`.
+   - `_extract_entity_segment` / company story filtering that today only matches `jobs` + `astral_job_id`: also match `companies` + `company_id == entity_id` so stored company batch RESPONSE blocks still segment correctly.
+
+3. **`src/core/roster.py`** — every company `batch_entities` builder that currently sets `astral_job_id: short_name`:
+   - `vet_inflow_discovery_company` (single) and `vet_inflow_discovery_company_batch` (`ready_for_decode`)
+   - `prefilter_company` task_ctx, `_run_batch_company_prefilter` normalize loop, and coat-check `_fetch_prefilter_notes` (or equivalent) task_ctx
+   - Shape: `{"company_id": <short_name str>, "short_name": <short_name str>, ...}` — drop `astral_job_id` on these company rows.
+   - `_run_batch_company_prefilter` decode/reconcile: read `parsed.get("companies")` (not `jobs`); set `received_ids` / row id from `company_id`; keep `input_by_id` keyed by `short_name` and pass `short_name` into `_apply_prefilter_decoded_company_outcome` / transitions / `ensure_batch_response_entity_ids` as today.
+   - `_flatten_prefilter_parsed`: if `parsed["companies"]` is a non-empty list, return `companies[0]`; retain existing `grades`-only fallback; stop requiring `jobs` for the happy path (optional brief compat read of `jobs[0]` only if make-fix finds a live coat-check still emitting it — prefer delete once callers are switched).
+
+4. **`src/core/consult.py`** — company-aware id fill / normalize:
+   - Add a company sibling to `_ensure_jobs_astral_ids` (e.g. `_ensure_companies_company_ids`) that fills missing `company_id` from `batch_entities[i]["company_id"]`.
+   - `_normalize_rubric_task_response`: when `task_config.get("entity_type") == "company"`, normalize to `{"companies": [...]}` and fill `company_id` (not `{"jobs": [...]}` / `astral_job_id`). Job entity_type path unchanged.
+   - Any other consult flatten used only by company prefilter that assumes `jobs` + `astral_job_id` follows the same branch (do not rewrite `_run_batch_consult` job reconcile).
+
+5. **`src/core/dispatcher.py`** — only if a company-entity log/claim path still prefers `ent.get("astral_job_id")` first: reorder identity pick to `company_id` then `short_name` then existing fallbacks (`_warm_then_gather` ~line 144 is the known candidate). No deeper dispatcher rewrite.
+
+### Blast radius
+
+- Shared `_decode_payload` — job tasks must keep emitting `jobs` / `astral_job_id`; regression surface is every grades-encoded job hop.
+- Company vet (AST-880) `batch_entities` shape change; decode still `results[]` / `hit_index`.
+- Coat-check / adhoc `prefilter_company` and `_flatten_prefilter_parsed` callers.
+- Tests and fixtures that assert company `batch_entities[*].astral_job_id` or `parsed_response["jobs"]` for prefilter (Betty / qa-fix territory — do not edit `tests/` here).
+- Agent story / `_extract_entity_segment` for company batch RESPONSE content.
+
+### What must still hold
+
+- AST-702 AC: batch prefilter outcomes, inflow vs legacy routing, retry/error destinations, readiness skip → `CANNOT_READ_WEBSITE`, pass_states counting, debug index lines keyed by `short_name`.
+- Job-entity batch consult encode/decode and `response_schema` unchanged.
+- Rubric / prompt assembly content unchanged aside from id field naming on `batch_entities` / decoded rows (assemble already uses `[company_id={sn}]`).
+- Persistence APIs (`save_company_data`, `transition_company_state`, `ensure_batch_response_entity_ids`) still receive `short_name` / company entity ids, not a new DB key.
+- Vet `results[]` contract and grade letters unchanged.
