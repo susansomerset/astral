@@ -460,3 +460,10 @@ context_tokens≈52000
 - datt: PROCEED → User Testing (no `resolve-child` round needed).
 
 context_tokens≈38000
+
+## Resolution
+
+**Date:** 2026-09-20  
+**Radia:** CLEAN / PROCEED — no fix-now; discuss + advisory only (config duplication Canon Scope gap, pending pattern id, logging channel variance, expand soft-fail debug, recover duplication). No product changes.
+
+**§9a:** Restacked publish ref onto `origin/dev` via `sync-child.sh` (no `origin/ftr/AST-1721` yet). Dry-run `merge-tree` vs `origin/dev` clean after publish.
