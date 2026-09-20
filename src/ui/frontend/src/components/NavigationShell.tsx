@@ -52,8 +52,8 @@ export default function NavigationShell() {
   useEffect(() => {
     if (authLoading) return
     const params = selectedId ? `?candidate_id=${encodeURIComponent(selectedId)}` : ""
-    const fetchNav = () =>
-      api(`/api/nav_config${params}`)
+    const fetchNav = (silent = false) =>
+      api(`/api/nav_config${params}`, silent ? { silent: true } : {})
         .then(r => {
           if (!r.ok) throw new Error(`${r.status}`)
           return r.json()
@@ -68,7 +68,7 @@ export default function NavigationShell() {
           setError(true)
         })
     fetchNav()
-    const interval = setInterval(fetchNav, 30_000)
+    const interval = setInterval(() => fetchNav(true), 30_000)
     return () => clearInterval(interval)
   }, [selectedId, authLoading])
 

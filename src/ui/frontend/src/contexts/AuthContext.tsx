@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loadMe()
   }, [localAuthPassthrough, sessionPresent, sessionJwt, loadMe])
 
-  // Config-backed Stytch session extend while a client session exists (AST-1374).
+  // Activity-driven Stytch session extend, throttled to policy interval (AST-1374).
   useEffect(() => {
     if (localAuthPassthrough !== false) return
     if (!sessionPresent) return
