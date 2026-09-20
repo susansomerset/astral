@@ -528,3 +528,7 @@ async def admin_telescope_scrape(
 - Platform cull default-on for **drop-in** HTML helpers (`cull_html_default`); admin cull toggle is separate and defaults off.
 - `service/*` ↔ `src/` never import either direction.
 - Telescope still console-only (no `app_log` / DB).
+
+## Radia review-fix (AST-1728)
+
+Overall: CLEAN. [bug-repro] OK; What must still hold OK. Advisories only. Clean-review shortcut → User Testing (resolve skipped).
