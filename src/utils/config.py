@@ -5302,6 +5302,7 @@ NAV_CONFIG = [
         "items": [
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Telescope", "path": "/admin/telescope"},
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},

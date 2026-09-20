@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, Tuple, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
@@ -15,6 +15,7 @@ from browser import BrowserPool
 from capture import capture_html, capture_links, capture_text
 from interact import dismiss_cookies, expand_page, navigate, wait_ready_generic
 from logging_util import configure_logging, get_logger
+from meta import build_scrape_meta
 from settings import settings
 
 configure_logging()
@@ -61,11 +62,14 @@ async def _run_browser_job(
     expand: bool,
     wait_ready: bool,
     work: WorkFn,
-) -> Any:
+) -> Tuple[Any, bool]:
+    cookies_dismissed = False
+
     async def _job() -> Any:
+        nonlocal cookies_dismissed
         async with pool.page() as page:
             await navigate(page, url)
-            await dismiss_cookies(page)
+            cookies_dismissed = await dismiss_cookies(page)
             if expand:
                 await expand_page(page)
             if wait_ready:
@@ -73,7 +77,7 @@ async def _run_browser_job(
             return await work(page)
 
     try:
-        return await asyncio.wait_for(
+        result = await asyncio.wait_for(
             _job(),
             timeout=settings.request_timeout_seconds,
         )
@@ -94,6 +98,16 @@ async def _run_browser_job(
             exc,
         )
         raise HTTPException(status_code=502, detail="scrape_failed") from None
+    return result, cookies_dismissed
+
+
+def _unwrap_job(
+    raw: Union[Tuple[Any, bool], Any],
+) -> Tuple[Any, bool]:
+    """Production returns (result, cookies_dismissed); test doubles may return result only."""
+    if isinstance(raw, tuple) and len(raw) == 2 and isinstance(raw[1], bool):
+        return raw[0], raw[1]
+    return raw, False
 
 
 @app.get("/healthz", dependencies=[Depends(require_bearer)])
@@ -129,8 +143,13 @@ async def post_telescope(request: Request, body: TelescopeRequest):
             out["links"] = await capture_links(page)
         return out
 
-    result = await _run_browser_job(
-        pool, url, body.expand, body.wait_ready, work
+    raw = await _run_browser_job(pool, url, body.expand, body.wait_ready, work)
+    result, cookies_dismissed = _unwrap_job(raw)
+    result["scrape_meta"] = build_scrape_meta(
+        requested_url=url,
+        final_url=result.get("final_url") or "",
+        text_or_html=result.get("text"),
+        cookies_dismissed=cookies_dismissed,
     )
     text = result.get("text")
     if isinstance(text, list):
@@ -156,8 +175,13 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
         html = await capture_html(page, body.selector)
         return {"final_url": page.url, "html": html}
 
-    result = await _run_browser_job(
-        pool, url, body.expand, body.wait_ready, work
+    raw = await _run_browser_job(pool, url, body.expand, body.wait_ready, work)
+    result, cookies_dismissed = _unwrap_job(raw)
+    result["scrape_meta"] = build_scrape_meta(
+        requested_url=url,
+        final_url=result.get("final_url") or "",
+        text_or_html=result.get("html"),
+        cookies_dismissed=cookies_dismissed,
     )
     _log.info(
         "telescope ok method=/telescope/html final_url=%s html_len=%d",

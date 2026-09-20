@@ -419,3 +419,116 @@ context_tokens≈78000
 - Optional later: script retarget sweep; wire or document `per_node_max_in_flight`; parent AC 6 grep clarification with Archie.
 
 context_tokens≈42000
+
+## Bug: AST-1728 — Telescope Admin page
+
+UAT-batch fix against amended AST-1721 Component/Technical scope (admin UI/API + scrape metadata). Lives on this plan doc because the admin proxy calls Telescope through `src/external/telescope.py` (platform seam). Does not rewrite Stages 1–4 above.
+
+### As-is
+
+No admin screen exists to call Telescope with a URL, response type (html vs text), and optional-parameter toggles, or to inspect the raw scrape payload and scrape health metadata.
+
+### To-be
+
+An admin-authenticated operator opens a Telescope admin page, submits a URL with html|text and toggles for optional Telescope parameters, and sees the raw response body plus scrape metadata (bot-block / cookies / other scrape failures when present) — parent AC 14.
+
+### Repro
+
+1. Sign in as admin on the platform SPA.
+2. Look for any Admin/Tools nav entry named Telescope (or route `/admin/telescope`) — absent.
+3. Confirm `rg -n "admin/telescope|/api/admin/telescope" src/ui/` returns no matches.
+4. Confirm `POST /telescope` / `/telescope/html` JSON has no `scrape_meta` (only `final_url` + `text`/`html`/`links`).
+
+### Root cause
+
+Epic ships service + platform client + CI, but no operator workbench. Responses also lack structured scrape-health metadata, so even a raw curl cannot show bot-block / cookie / unclean-scrape signals Susan asked for.
+
+### Proposed change
+
+⚠️ **Decision — metadata on the service, pass-through on the client:** Browser-visible facts (`bot_blocked`, cookie dismiss outcome, empty/short content) are computed in `service/telescope/` during the scrape. `src/external/telescope.py` forwards `scrape_meta` unchanged. Admin API does not invent heuristics that need a live page.
+
+⚠️ **Decision — admin shows service raw by default:** HTML `cull` is an optional admin toggle defaulting **off** so the pane shows service HTML; when on, apply platform `_cull_html` after the HTTP call (same helper as the drop-in). Core drop-in callers keep `cull_html_default=True` unchanged.
+
+⚠️ **Decision — additive JSON only:** Existing `/telescope` and `/telescope/html` fields stay; add sibling key `scrape_meta`. Drop-in callers that ignore unknown keys keep working.
+
+1. **`service/telescope/interact.py`** — Change `dismiss_cookies(page)` to return `bool` (`True` if any selector/fuzzy click succeeded; `False` otherwise). Keep always-run behavior.
+
+2. **`service/telescope/capture.py` (or new small helper in same package, e.g. `meta.py`)** — Add `build_scrape_meta(*, requested_url: str, final_url: str, text_or_html: str | list, cookies_dismissed: bool) -> dict` returning:
+
+```python
+{
+  "bot_blocked": bool,
+  "cookies_dismissed": bool,
+  "issues": list[str],  # subset of: "bot_blocked", "empty_content", "short_content"
+  "content_chars": int,  # sum of lengths for list text; len for str
+}
+```
+
+   - `bot_blocked`: case-insensitive substring match on concatenated visible text (or HTML) against this fixed list (service-owned constants, not imported from `src`): `cloudflare`, `attention required`, `just a moment`, `captcha`, `are you a robot`, `verify you are human`, `access denied`, `unusual traffic`, `enable javascript and cookies`.
+   - `empty_content`: content_chars == 0.
+   - `short_content`: 0 < content_chars < 80 (and not already empty).
+   - `issues` lists only the true flags (include `"bot_blocked"` when that bool is true).
+
+3. **`service/telescope/app.py`** — In both `post_telescope` and `post_telescope_html` work functions: capture `cookies_dismissed = await dismiss_cookies(page)` (today dismiss is inside `_run_browser_job` — **move** cookie dismiss into each route’s `work` closure **or** thread the bool out of `_run_browser_job` so meta can see it; prefer extending `_run_browser_job` to return `(result, cookies_dismissed)` so navigate/expand/wait_ready stay shared). Attach `result["scrape_meta"] = build_scrape_meta(...)`. Do not remove existing keys.
+
+4. **`src/external/telescope.py`** — `_post_telescope` / `_post_telescope_html` already `return data` from `resp.json()` — keep that (meta passes through). Add:
+
+```python
+async def admin_telescope_scrape(
+    url: str,
+    *,
+    response_type: str,  # "text" | "html"
+    expand: Optional[bool] = None,
+    wait_ready: Optional[bool] = None,
+    links: bool = True,
+    selector: Optional[str] = None,
+    cull: bool = False,
+) -> dict:
+```
+
+   - `response_type == "text"` → `_post_telescope(...)`; `"html"` → `_post_telescope_html(...)`.
+   - Invalid `response_type` → raise `ValueError("response_type must be text or html")`.
+   - If `response_type == "html"` and `cull` and `"html" in data`: `data = {**data, "html": _cull_html(data["html"])}` (copy dict; do not mutate shared state).
+   - Return the full JSON dict (content + `scrape_meta` + top-level fields).
+   - Log one succinct `info` on success: `telescope admin scrape type=%s final_url=%s` (stat.logging.info semantic via `get_logger`).
+
+5. **`src/ui/api/api_admin.py`** — Add `@admin_bp.route("/telescope", methods=["POST"])` + `@require_admin`:
+
+   - Body JSON keys: `url` (required non-empty str), `response_type` (`"text"`|`"html"`, required), `expand` (bool, default `True`), `wait_ready` (bool, default `False`), `links` (bool, default `True`, text only), `selector` (optional str), `cull` (bool, default `False`, html only).
+   - Call `asyncio.run(admin_telescope_scrape(...))` — same bridge as `adhoc` test in this file (`asyncio.run(run_adhoc_workbench_test(...))`).
+   - Success: `200` + JSON body = scrape dict.
+   - `PlaywrightInfraError` / connect failures: `502` `{"error": "<failure_class>", "detail": "<message>"}`.
+   - Validation errors: `400` `{"error": "..."}`.
+   - Never send candidate/Stytch credentials to Telescope; bearer stays env-only inside `telescope.py`.
+
+6. **`src/ui/frontend/src/pages/AdminTelescope.tsx`** — New page (AdminRoute child):
+   - Controls: URL text input; response type radio/select `text` | `html`; toggles `expand` (default on), `wait_ready` (default off), `links` (default on, disabled when html), `cull` (default off, disabled when text); optional selector text input; Submit button.
+   - On submit: `api("/api/admin/telescope", { method: "POST", body: JSON.stringify(...) })`.
+   - Display: (a) scrape metadata panel showing `scrape_meta` fields + HTTP/error state; (b) raw body pane — `text` (join list with `\n---\n` if array) or `html` string, plus a collapsible full JSON dump of the response.
+   - Loading + error toast/inline error; no cards beyond what’s needed for the form/result interaction.
+
+7. **`src/ui/frontend/src/routes.tsx`** — Import page; add `{ path: "admin/telescope", element: <AdminRoute><AdminTelescope /></AdminRoute> }` next to other admin tool routes.
+
+8. **`src/utils/config.py`** — In `NAV_CONFIG` Tools `admin_only` group, add `{"label": "Telescope", "path": "/admin/telescope"}` after Agent Ad Hoc (or at end of Tools items).
+
+**Out of this bug:** Phase 2 autoscaler, Surfer extension, changing core roster/gazer/meteorite call shapes, amending CI fence, rewriting Stages 1–4 of this doc.
+
+### Blast radius
+
+- Service JSON grows `scrape_meta` — Betty’s AST-1725 contract tests may need additive asserts (Betty owns tests).
+- Platform `_post_telescope*` return dicts may now include `scrape_meta`; drop-in helpers that only read `text`/`html`/`links`/`final_url` stay fine.
+- Admin nav / routes / `api_admin` surface — admin-only; candidates unaffected.
+- `dismiss_cookies` return-type change — only service callers (app.py).
+
+### What must still hold
+
+- Parent AC 2–13 unchanged (import fence, drop-in shapes, no platform Firefox, bearer env-only, no Phase 2 / Surfer).
+- Parent AC 3 field set remains; `scrape_meta` is additive.
+- Cookie dismiss still always runs; expand default on; wait_ready default off; links default on for text.
+- Platform cull default-on for **drop-in** HTML helpers (`cull_html_default`); admin cull toggle is separate and defaults off.
+- `service/*` ↔ `src/` never import either direction.
+- Telescope still console-only (no `app_log` / DB).
+
+## Radia review-fix (AST-1728)
+
+Overall: CLEAN. [bug-repro] OK; What must still hold OK. Advisories only. Clean-review shortcut → User Testing (resolve skipped).

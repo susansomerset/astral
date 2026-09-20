@@ -268,3 +268,66 @@ class TestRunBrowserJobErrors:
             )
         assert exc.value.status_code == 502
         assert exc.value.detail == "scrape_failed"
+
+
+class TestAst1728ScrapeMeta:
+    """AST-1728 bug-repro — additive scrape_meta on contract endpoints (pre-fix red)."""
+
+    def test_post_telescope_includes_scrape_meta(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        client, _pool, headers = telescope_app_client
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            page = MagicMock()
+            page.url = "https://example.com/final"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+        monkeypatch.setattr(
+            app_mod, "capture_text", AsyncMock(return_value="visible body text")
+        )
+        monkeypatch.setattr(
+            app_mod, "capture_links", AsyncMock(return_value=[])
+        )
+
+        resp = client.post(
+            "/telescope",
+            headers=headers,
+            json={"url": "https://example.com", "links": False},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "scrape_meta" in data, "AST-1728: service must attach scrape_meta"
+        meta = data["scrape_meta"]
+        for key in ("bot_blocked", "cookies_dismissed", "issues", "content_chars"):
+            assert key in meta, f"scrape_meta missing {key}"
+
+    def test_post_telescope_html_includes_scrape_meta(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        client, _pool, headers = telescope_app_client
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            page = MagicMock()
+            page.url = "https://example.com/h"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+        monkeypatch.setattr(
+            app_mod, "capture_html", AsyncMock(return_value="<html/>")
+        )
+
+        resp = client.post(
+            "/telescope/html",
+            headers=headers,
+            json={"url": "https://example.com"},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert "scrape_meta" in data, "AST-1728: html endpoint must attach scrape_meta"
+        assert "content_chars" in data["scrape_meta"]
