@@ -4,6 +4,42 @@ from __future__ import annotations
 
 from typing import Dict, List, Union
 
+# querySelectorAll; bare CSS ident with zero hits → retry as .{selector}.
+_BARE_CLASS_RETRY = """
+    const pick = (sel) => Array.from(document.querySelectorAll(sel));
+    let nodes = pick(selector);
+    if (nodes.length === 0 && /^[A-Za-z_][\\w-]*$/.test(selector)) {
+        nodes = pick('.' + selector);
+    }
+"""
+
+_QUERY_TEXT_JS = (
+    """(selector) => {"""
+    + _BARE_CLASS_RETRY
+    + """
+    return nodes.map(el => (el.innerText || '').trim());
+}"""
+)
+
+_QUERY_HTML_JS = (
+    """(selector) => {"""
+    + _BARE_CLASS_RETRY
+    + """
+    return nodes.map(el => el.outerHTML);
+}"""
+)
+
+
+def _fold_blobs(blobs) -> Union[str, List[str]]:
+    # Evaluate always returns a list from our JS; tolerate a bare str from older mocks.
+    if blobs is None or blobs == "" or blobs == []:
+        return ""
+    if isinstance(blobs, str):
+        return blobs
+    if len(blobs) == 1:
+        return blobs[0]
+    return list(blobs)
+
 
 async def capture_text(page, selector: str | None) -> Union[str, List[str]]:
     sel = (selector or "").strip()
@@ -18,18 +54,8 @@ async def capture_text(page, selector: str | None) -> Union[str, List[str]]:
             }"""
         )
 
-    blobs = await page.evaluate(
-        """(selector) => {
-            const nodes = Array.from(document.querySelectorAll(selector));
-            return nodes.map(el => (el.innerText || '').trim());
-        }""",
-        sel,
-    )
-    if not blobs:
-        return ""
-    if len(blobs) == 1:
-        return blobs[0]
-    return list(blobs)
+    blobs = await page.evaluate(_QUERY_TEXT_JS, sel)
+    return _fold_blobs(blobs)
 
 
 async def capture_links(page) -> List[Dict[str, str]]:
@@ -46,8 +72,9 @@ async def capture_links(page) -> List[Dict[str, str]]:
     )
 
 
-async def capture_html(page, selector: str | None) -> str:
+async def capture_html(page, selector: str | None) -> Union[str, List[str]]:
     sel = (selector or "").strip()
+    # body / page / empty: leave specials alone (AST-1729 owns empty→document).
     if not sel or sel.lower() == "body":
         return await page.evaluate(
             "() => document.body ? document.body.outerHTML : ''"
@@ -56,10 +83,5 @@ async def capture_html(page, selector: str | None) -> str:
         return await page.evaluate(
             "() => document.documentElement ? document.documentElement.outerHTML : ''"
         )
-    return await page.evaluate(
-        """(selector) => {
-            const el = document.querySelector(selector);
-            return el ? el.outerHTML : '';
-        }""",
-        sel,
-    )
+    blobs = await page.evaluate(_QUERY_HTML_JS, sel)
+    return _fold_blobs(blobs)

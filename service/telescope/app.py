@@ -183,9 +183,14 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
         text_or_html=result.get("html"),
         cookies_dismissed=cookies_dismissed,
     )
+    html = result.get("html")
+    if isinstance(html, list):
+        html_len = sum(len(h or "") for h in html)
+    else:
+        html_len = len(html or "")
     _log.info(
         "telescope ok method=/telescope/html final_url=%s html_len=%d",
         result.get("final_url"),
-        len(result.get("html") or ""),
+        html_len,
     )
     return result

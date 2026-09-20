@@ -19,7 +19,7 @@ type ScrapeMeta = {
 type ScrapeResult = {
   final_url?: string
   text?: string | string[]
-  html?: string
+  html?: string | string[]
   links?: unknown
   scrape_meta?: ScrapeMeta
   [key: string]: unknown
@@ -27,7 +27,11 @@ type ScrapeResult = {
 
 function formatBody(data: ScrapeResult | null, responseType: ResponseType): string {
   if (!data) return ""
-  if (responseType === "html") return typeof data.html === "string" ? data.html : ""
+  if (responseType === "html") {
+    const h = data.html
+    if (Array.isArray(h)) return h.join("\n---\n")
+    return typeof h === "string" ? h : ""
+  }
   const t = data.text
   if (Array.isArray(t)) return t.join("\n---\n")
   return typeof t === "string" ? t : ""
