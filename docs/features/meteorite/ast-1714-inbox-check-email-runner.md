@@ -154,3 +154,34 @@ Confirm Chuckles estimate: 3 — agree
 Patterns: (none — logging statutes only)
 
 Statutes (read at plan; expand at build): `stat.logging.debug`; `stat.logging.error`; `stat.logging.info`; `stat.logging.info.dispatcher`; `stat.logging.warning`.
+
+## Joan validate
+
+**Ticket:** AST-1714
+**Overall:** REVISE
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref:** a459ce8400c1cf801966d521c6bb831c4d657a30
+
+## Canon scores
+stat.logging.debug | A
+stat.logging.error | A
+stat.logging.info | A
+stat.logging.info.dispatcher | A
+stat.logging.warning | A
+
+## Traceability
+AC4 → Stage 1 (`check_email` full-message blob via `assembled_html` / `strip_extract_email_html`; Stage 2 dispatcher calls `inbox.check_email`); AC5 → Stage 2 step 2 (provision rewrite retired mailbox `task_key` → `METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]`)
+
+## Findings
+
+### fix-now
+- **Location:** Stage 2 step 2 — `provision_meteorite_email_dispatch_tasks` rewrite branch
+- **Finding:** Rewrite only runs when the retired-key row has a non-empty `candidate_id`. Rows still keyed to the retired mailbox identity with null/empty `candidate_id` are not rewritten and not deleted. Parent AC5 requires `SELECT COUNT(*) FROM dispatch_task WHERE task_key = 'meteorite_email'` = 0 — any such orphan row fails regardless of `candidate_id`.
+- **Recommendation:** In the same pre-ensure scan, delete retired-key rows with empty `candidate_id` (mirror the existing `gaze_email` purge / null-candidate cleanup pattern), or otherwise guarantee zero retired-key rows before the ensure loop.
+
+### discuss
+- **Location:** Stage 1 step 5f — `last_email_check` stamp
+- **Finding:** Plan drops `check_inbox`'s `_entity_info` stamp line; only debug + DB update remain. Acceptable because `stat.logging.info.entity` is not on this ticket's canon list and dispatcher rollup still emits `stat.logging.info.dispatcher` on task completion.
+- **Recommendation:** No change required unless Susan wants the stamp visible at entity-info level in production logs.
+
+context_tokens≈58000
