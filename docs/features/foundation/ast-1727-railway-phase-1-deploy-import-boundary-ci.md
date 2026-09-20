@@ -265,3 +265,67 @@ context_tokens≈95000
 - Stage 3: AC13 comment cleanup + fence re-run green — `209ce087`.
 
 **Betty:** CI bidirectional fence (service/telescope ↔ src import lines); railway.toml Phase 1 deploy posture (no Phase 2 / Surfer). Live Railway attach is operator checklist in toml comments.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1727
+**Publish ref:** `3bca16a2396e9534e715a18959d49feaf6b3fbd1` (`origin/sub/AST-1721/AST-1727-railway-phase-1-deploy-import-boundary-ci`)
+**Corpus:** `751624d7ebdf9bc441fc3d08a51ae751ea8026af`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.layers.import-rules (amendment request) | B | | |
+| stat.logging.info | B | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Parent AC 2 literal `rg` vs anchored CI regex
+
+- **Severity:** discuss
+- **Location:** `scripts/ci/check-service-src-import-fence.sh`; parent AC 2
+- **Finding:** Parent AC 2 quotes literal `rg "from src\.|import src"`. CI uses anchored import-line patterns (`^\s*(from|import)\s+src…` / `service…`) so docstrings like `settings.py` “Never import src.” do not false-positive. Measures real imports — amendment intent.
+- **Recommendation:** UAT should treat the CI script as AC 2 truth, not the parent’s literal grep strings.
+
+### discuss — Betty pytest covers `src→service` only directly
+
+- **Severity:** discuss
+- **Location:** `tests/component/service/test_telescope_deploy_ci.py`; `tests/component/service/test_telescope_fence.py`
+- **Finding:** Component test scans `src/**` for `service` imports and probes `service→src` via script side-effect. `test_telescope_fence.py` (AST-1725) still covers `service/telescope→src` only. CI script enforces both directions — stronger gate than either test alone.
+- **Recommendation:** Optional Betty follow-up to add explicit `service→src` pytest scan mirroring the script; out of AST-1727 scope.
+
+### advisory — Fence scope is `service/telescope/`, not all `service/*`
+
+- **Severity:** advisory
+- **Location:** `scripts/ci/check-service-src-import-fence.sh` line 9 vs amendment wording `service/*`↔`src/`
+- **Finding:** Service-side scan is `service/telescope` only; `src` scan is all of `src/**`. Matches ticket Scope and plan; a future `service/other/` tree would not be caught on the service→src leg until scope expands.
+- **Recommendation:** Document or extend when a second service package lands; not fix-now for Telescope-only Phase 1.
+
+### advisory — Workflow triggers exclude `sub/**` pushes
+
+- **Severity:** advisory
+- **Location:** `.github/workflows/service-src-import-fence.yml`
+- **Finding:** Runs on push to `dev` / `ftr/**` and PRs targeting `dev` — per plan. Child `sub/*` branch pushes do not invoke CI until PR/merge.
+- **Recommendation:** None required; standard epic workflow.
+
+## What's solid
+
+- Ticket-scoped diff is exactly six files (~520 LOC): `railway.toml`, fence script, workflow, deploy-ci tests, plan doc, bible § AST-1727.
+- `service/telescope/railway.toml` matches plan: Dockerfile builder from monorepo root, `numReplicas = 1`, 2 GiB `limitOverride`, `ON_FAILURE`, operator checklist (private DNS, bearer, no public domain, no `healthcheckPath`, no Phase 2 hooks).
+- `scripts/ci/check-service-src-import-fence.sh` is executable (`100755`), bidirectional, anchored-regex; current tree is clean (no real `service` imports in `src/**`; `settings.py` docstring does not trip the fence).
+- Workflow invokes the script on `dev` / `ftr/**` push and PR→`dev`; ripgrep install step present.
+- Betty tests cover toml contract, script exit 0, probe failure on injected `from src…`, workflow wiring, and direct `src→service` scan.
+- No `Judoscale`, `serviceInstanceUpdate`, or `healthcheckPath =` in deliverables; estimate **3** is honest for three focused stages.
+
+context_tokens≈28000
