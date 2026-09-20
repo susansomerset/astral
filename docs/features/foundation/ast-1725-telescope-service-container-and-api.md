@@ -362,3 +362,15 @@ AC1→S1+S4; AC2→Explicit scope gate + S4§4 + Canon notes (service-side zero 
 context_tokens≈52000
 
 [plan-rubric] PROCEED (Commit: 18412e4794d31d71351f622883d9f9027a6c79a3) Service container plan sound
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1721/AST-1725-telescope-service-container-and-api` @ `c00550bb`.
+
+**Stages delivered:**
+- Stage 1: package skeleton, settings, console logging, bearer auth — `4ddd4af6`.
+- Stage 2: one-Firefox `BrowserPool` + live `/healthz` poke — `7628e1a7`.
+- Stage 3: `/telescope` + `/telescope/html` (interact + capture, no cull) — `e544249b`.
+- Stage 4: `requirements.txt` + Dockerfile (Playwright `1.49.1-jammy`) — `c00550bb`.
+
+**Betty:** new service surface — contract defaults (expand/links/wait_ready), multi-match text, bearer 401, healthz browser poke, no-`src` import fence under `service/telescope/`, timeout/504 paths.
