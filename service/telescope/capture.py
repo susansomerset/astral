@@ -74,14 +74,15 @@ async def capture_links(page) -> List[Dict[str, str]]:
 
 async def capture_html(page, selector: str | None) -> Union[str, List[str]]:
     sel = (selector or "").strip()
-    # body / page / empty: leave specials alone (AST-1729 owns empty→document).
-    if not sel or sel.lower() == "body":
-        return await page.evaluate(
-            "() => document.body ? document.body.outerHTML : ''"
-        )
-    if sel.lower() == "page":
+    # Omitted / "page" → full document (AST-1729); explicit "body" stays body-only.
+    if not sel or sel.lower() == "page":
         return await page.evaluate(
             "() => document.documentElement ? document.documentElement.outerHTML : ''"
         )
+    if sel.lower() == "body":
+        return await page.evaluate(
+            "() => document.body ? document.body.outerHTML : ''"
+        )
+    # CSS path only: bare-class retry + multi-match list (AST-1731).
     blobs = await page.evaluate(_QUERY_HTML_JS, sel)
     return _fold_blobs(blobs)
