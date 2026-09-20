@@ -2348,20 +2348,25 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
         "importance": 8,
         "content": (
             "Reality Check — assess whether the company is real and operating as represented.\n"
-            "A = clearly real and verifiable\n"
-            "B = appears real with minor gaps\n"
-            "C = mixed signals; legitimacy uncertain\n"
-            "D = significant doubt about reality or representation\n"
-            "E = strong evidence of misrepresentation\n"
-            "F = not a real company or clearly fraudulent"
+            "A == clearly real and verifiable\n"
+            "B == appears real with minor gaps\n"
+            "C == mixed signals; legitimacy uncertain\n"
+            "D == significant doubt about reality or representation\n"
+            "E == strong evidence of misrepresentation\n"
+            "F == not a real company or clearly fraudulent\n"
+            "X == could not read the page (bot blocked or other network issue)"
         ),
         "grade_descriptions": [
-            {"grade": "A", "description": "Company is clearly real, active, and independently verifiable."},
-            {"grade": "B", "description": "Company appears real with minor verification gaps."},
-            {"grade": "C", "description": "Mixed signals; legitimacy uncertain."},
-            {"grade": "D", "description": "Significant doubt the company is real or operating as represented."},
-            {"grade": "E", "description": "Strong evidence of misrepresentation or shell entity."},
-            {"grade": "F", "description": "Not a real company or clearly fraudulent."},
+            {"grade": "A", "description": "clearly real and verifiable"},
+            {"grade": "B", "description": "appears real with minor gaps"},
+            {"grade": "C", "description": "mixed signals; legitimacy uncertain"},
+            {"grade": "D", "description": "significant doubt about reality or representation"},
+            {"grade": "E", "description": "strong evidence of misrepresentation"},
+            {"grade": "F", "description": "not a real company or clearly fraudulent"},
+            {
+                "grade": "X",
+                "description": "could not read the page (bot blocked or other network issue)",
+            },
         ],
     },
 )
