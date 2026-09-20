@@ -166,7 +166,7 @@ Response:
 | Field | Type | Default |
 |-------|------|---------|
 | `url` | `str` (required) | — |
-| `selector` | `str \| null` | `null` (= `body` outerHTML) |
+| `selector` | `str \| null` | `null` (= full document / `documentElement` outerHTML; `"body"` for body-only) |
 | `expand` | `bool` | `true` |
 | `wait_ready` | `bool` | `false` |
 
@@ -195,8 +195,8 @@ No `cull` field on the service (platform AST-1726 applies cull in `src/external/
    - `async def capture_links(page) -> list[dict]`:
      - Evaluate JS collecting `a[href]` where `href` starts with `http`; each item `{"href": a.href, "text": (a.innerText || "").trim()}`.
    - `async def capture_html(page, selector: str | None) -> str`:
-     - `None` / `""` / `"body"` → `document.body.outerHTML` (or `""` if no body).
-     - `"page"` → `document.documentElement.outerHTML`.
+     - `None` / `""` / `"page"` → `document.documentElement.outerHTML` (AST-1729).
+     - `"body"` → `document.body.outerHTML` (or `""` if no body).
      - Else → `querySelector(selector)?.outerHTML || ""` (single first match for HTML endpoint — multi-match array is text-endpoint only).
      - **Do not** call any cull/strip of tags beyond what the browser already rendered.
 

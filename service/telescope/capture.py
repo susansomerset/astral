@@ -48,13 +48,14 @@ async def capture_links(page) -> List[Dict[str, str]]:
 
 async def capture_html(page, selector: str | None) -> str:
     sel = (selector or "").strip()
-    if not sel or sel.lower() == "body":
-        return await page.evaluate(
-            "() => document.body ? document.body.outerHTML : ''"
-        )
-    if sel.lower() == "page":
+    # Omitted / "page" → full document (AST-1729); explicit "body" stays body-only
+    if not sel or sel.lower() == "page":
         return await page.evaluate(
             "() => document.documentElement ? document.documentElement.outerHTML : ''"
+        )
+    if sel.lower() == "body":
+        return await page.evaluate(
+            "() => document.body ? document.body.outerHTML : ''"
         )
     return await page.evaluate(
         """(selector) => {
