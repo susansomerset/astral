@@ -136,7 +136,7 @@ class TestTelescopeRoutes:
         async def capt_text(page, selector):
             return "body text"
 
-        async def capt_links(page):
+        async def capt_links(page, selector=None):
             return [{"href": "https://a.com", "text": "A"}]
 
         monkeypatch.setattr(app_mod, "capture_text", capt_text)
@@ -154,6 +154,46 @@ class TestTelescopeRoutes:
         assert data["links"] == [{"href": "https://a.com", "text": "A"}]
         assert calls["expand"] is True
         assert calls["wait_ready"] is False
+
+    def test_ast1732_post_telescope_passes_selector_to_capture_links(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        """AST-1732 bug-repro: app must forward body.selector into capture_links."""
+        client, _pool, headers = telescope_app_client
+        seen: dict[str, Any] = {}
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            page = MagicMock()
+            page.url = "https://example.com/jobs"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+
+        async def capt_text(page, selector):
+            return "scoped"
+
+        async def capt_links(page, selector=None):
+            seen["selector"] = selector
+            return [{"href": "https://example.com/in", "text": "In"}]
+
+        monkeypatch.setattr(app_mod, "capture_text", capt_text)
+        monkeypatch.setattr(app_mod, "capture_links", capt_links)
+
+        resp = client.post(
+            "/telescope",
+            headers=headers,
+            json={
+                "url": "https://example.com/jobs",
+                "selector": ".job-list",
+                "links": True,
+            },
+        )
+        assert resp.status_code == 200
+        assert seen.get("selector") == ".job-list", (
+            "AST-1732: POST /telescope must call capture_links(page, body.selector)"
+        )
 
     def test_post_telescope_links_false_omits_links(
         self, telescope_app_client, monkeypatch

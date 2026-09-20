@@ -1,7 +1,7 @@
 /**
  * AST-1728 — Admin Telescope workbench: URL + options → raw scrape + scrape_meta.
  */
-import { useCallback, useState, type FormEvent } from "react"
+import { useCallback, useState, type CSSProperties, type FormEvent } from "react"
 import Toast, { type ToastMessage } from "../components/Toast"
 import api from "../lib/api"
 
@@ -19,7 +19,7 @@ type ScrapeMeta = {
 type ScrapeResult = {
   final_url?: string
   text?: string | string[]
-  html?: string
+  html?: string | string[]
   links?: unknown
   scrape_meta?: ScrapeMeta
   [key: string]: unknown
@@ -27,10 +27,30 @@ type ScrapeResult = {
 
 function formatBody(data: ScrapeResult | null, responseType: ResponseType): string {
   if (!data) return ""
-  if (responseType === "html") return typeof data.html === "string" ? data.html : ""
+  if (responseType === "html") {
+    const h = data.html
+    if (Array.isArray(h)) return h.join("\n---\n")
+    return typeof h === "string" ? h : ""
+  }
   const t = data.text
   if (Array.isArray(t)) return t.join("\n---\n")
   return typeof t === "string" ? t : ""
+}
+
+/** AST-1730 — read-only scrollable wrapping pane (raw body + JSON dump). */
+const RESPONSE_PANE_STYLE: CSSProperties = {
+  display: "block",
+  width: "100%",
+  boxSizing: "border-box",
+  minHeight: 200,
+  maxHeight: "60vh",
+  overflow: "auto",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  fontFamily: "monospace",
+  fontSize: 12,
+  lineHeight: 1.5,
+  resize: "vertical",
 }
 
 export default function AdminTelescope() {
@@ -205,14 +225,24 @@ export default function AdminTelescope() {
       {result ? (
         <section className="admin-telescope-body">
           <h2>Raw {responseType}</h2>
-          <pre className="admin-telescope-pre">{formatBody(result, responseType)}</pre>
+          <textarea
+            className="admin-telescope-pre"
+            readOnly
+            value={formatBody(result, responseType)}
+            spellCheck={false}
+            style={RESPONSE_PANE_STYLE}
+          />
           <button type="button" onClick={() => setShowJson(v => !v)}>
             {showJson ? "Hide" : "Show"} full JSON
           </button>
           {showJson ? (
-            <pre className="admin-telescope-pre">
-              {JSON.stringify(result, null, 2)}
-            </pre>
+            <textarea
+              className="admin-telescope-pre"
+              readOnly
+              value={JSON.stringify(result, null, 2)}
+              spellCheck={false}
+              style={RESPONSE_PANE_STYLE}
+            />
           ) : null}
         </section>
       ) : null}

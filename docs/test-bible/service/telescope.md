@@ -79,3 +79,56 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 ./scripts/testing/run_component_tests.sh \
   tests/component/service/test_telescope_app.py::TestAst1728ScrapeMeta -q
 ```
+
+---
+
+### AST-1729 · AST-1721 (qa-fix bug-repro — html default full document)
+
+**Board REVISE:** omitted `selector` on `capture_html` / `POST /telescope/html` must use `documentElement` (same as `"page"`), not body.
+
+| Area | Component tests |
+| --- | --- |
+| None/`""` → documentElement path | `test_telescope_capture.py::test_capture_html_omitted_selector_uses_document_element` (**bug-repro**, red pre-fix) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_capture_html_omitted_selector_uses_document_element -q
+```
+
+---
+
+### AST-1731 · AST-1721 (qa-fix bug-repro — bare class + multi-match html)
+
+**Board REVISE:** bare class token (e.g. `points-container` → `.class` retry) + multi-match `html` list asserts; AST-1725 only covers `#main` / `page` / `body`.
+
+| Area | Component tests |
+| --- | --- |
+| Bare class → `.class` retry on html | `test_telescope_capture.py::test_capture_html_bare_class_token_retries_as_class` (**bug-repro**, red pre-fix) |
+| Multi-match css → `list[str]` html | `test_telescope_capture.py::test_capture_html_multi_match_returns_list` (**bug-repro**, red pre-fix) |
+| Same bare→class retry on text | `test_telescope_capture.py::test_capture_text_bare_class_token_retries_as_class` (**bug-repro**, red pre-fix) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_capture_html_bare_class_token_retries_as_class \
+  tests/component/service/test_telescope_capture.py::test_capture_html_multi_match_returns_list \
+  tests/component/service/test_telescope_capture.py::test_capture_text_bare_class_token_retries_as_class -q
+```
+
+---
+
+### AST-1732 · AST-1721 (qa-fix bug-repro — scoped capture_links)
+
+**Board REVISE:** `capture_links(page, selector)` scopes http(s) anchors under match roots; multi-match dedupe by href; `POST /telescope` forwards `body.selector`.
+
+| Area | Component tests |
+| --- | --- |
+| Scoped evaluate (not whole-page `a[href]`) | `test_telescope_capture.py::test_ast1732_capture_links_scoped_to_selector` (**bug-repro**) |
+| Multi-match href dedupe in script | `test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href` (**bug-repro**) |
+| App passes selector | `test_telescope_app.py::TestTelescopeRoutes::test_ast1732_post_telescope_passes_selector_to_capture_links` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_ast1732_capture_links_scoped_to_selector \
+  tests/component/service/test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1732_post_telescope_passes_selector_to_capture_links -q
+```

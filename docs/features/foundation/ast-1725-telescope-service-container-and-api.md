@@ -166,7 +166,7 @@ Response:
 | Field | Type | Default |
 |-------|------|---------|
 | `url` | `str` (required) | — |
-| `selector` | `str \| null` | `null` (= `body` outerHTML) |
+| `selector` | `str \| null` | `null` (= full document / `documentElement` outerHTML; `"body"` for body-only) |
 | `expand` | `bool` | `true` |
 | `wait_ready` | `bool` | `false` |
 
@@ -195,8 +195,8 @@ No `cull` field on the service (platform AST-1726 applies cull in `src/external/
    - `async def capture_links(page) -> list[dict]`:
      - Evaluate JS collecting `a[href]` where `href` starts with `http`; each item `{"href": a.href, "text": (a.innerText || "").trim()}`.
    - `async def capture_html(page, selector: str | None) -> str`:
-     - `None` / `""` / `"body"` → `document.body.outerHTML` (or `""` if no body).
-     - `"page"` → `document.documentElement.outerHTML`.
+     - `None` / `""` / `"page"` → `document.documentElement.outerHTML` (AST-1729).
+     - `"body"` → `document.body.outerHTML` (or `""` if no body).
      - Else → `querySelector(selector)?.outerHTML || ""` (single first match for HTML endpoint — multi-match array is text-endpoint only).
      - **Do not** call any cull/strip of tags beyond what the browser already rendered.
 
@@ -467,3 +467,221 @@ context_tokens≈38000
 **Radia:** CLEAN / PROCEED — no fix-now; discuss + advisory only (config duplication Canon Scope gap, pending pattern id, logging channel variance, expand soft-fail debug, recover duplication). No product changes.
 
 **§9a:** Restacked publish ref onto `origin/dev` via `sync-child.sh` (no `origin/ftr/AST-1721` yet). Dry-run `merge-tree` vs `origin/dev` clean after publish.
+
+## Bug: AST-1729 — Telescope HTML returns body-only when no selector set
+
+### As-is
+
+`POST /telescope/html` with `selector` omitted / `null` / `""` returns `document.body.outerHTML` only (no `<html>` / `<head>`).
+
+### To-be
+
+With no selector set (and with explicit `"page"`), Telescope HTML returns the full document (`document.documentElement.outerHTML`). Explicit `"body"` still returns body-only.
+
+### Repro
+
+1. Start Telescope with `TELESCOPE_BEARER_TOKEN` set; `POST /telescope/html` with bearer auth and body `{"url": "https://example.com"}` (no `selector`).
+2. Observe response `html` starts with `<body` (or body fragment) and lacks the outer `<html>` document wrapper / `<head>`.
+3. Same URL with `"selector": "page"` already returns full document HTML today — omitted selector should match that.
+
+Component-level (no live browser): call `capture_html(page, None)` / `capture_html(page, "")` and assert the evaluate script is the documentElement path (same as `"page"`), not the body path.
+
+### Root cause
+
+AST-1725 Stage 3 `capture_html` (and the plan contract table) treated omitted selector as equivalent to `"body"`:
+
+```python
+if not sel or sel.lower() == "body":
+    return … document.body.outerHTML …
+if sel.lower() == "page":
+    return … document.documentElement.outerHTML …
+```
+
+UAT expects the default (no selector) to be the full page, not the body fragment. The defect is the default branch grouping, not navigation or auth.
+
+### Proposed change
+
+In `service/telescope/capture.py`, change `capture_html` so:
+
+1. `selector` is `None`, `""`, or case-insensitive `"page"` → evaluate `document.documentElement ? document.documentElement.outerHTML : ''`.
+2. Case-insensitive `"body"` → keep `document.body ? document.body.outerHTML : ''`.
+3. Any other CSS selector → keep first-match `querySelector(…).outerHTML` (unchanged).
+
+Do **not** change `capture_text` defaults (visible text from body remains correct for `/telescope`). Do **not** touch `src/external/telescope.py`, Railway/CI, or Dockerfile.
+
+Update the Stage 3 contract note in this doc's table row for `/telescope/html` `selector` default from `null` (= `body` outerHTML) to `null` (= full document / `documentElement` outerHTML); `"body"` remains an explicit opt-in for body-only.
+
+### Blast radius
+
+- Callers of `POST /telescope/html` with no `selector` (or `null`/`""`) will start receiving a larger payload including `<head>` / doctype-level markup via `documentElement` — intentional UAT fix.
+- Callers that already pass `"selector": "body"` or a CSS selector are unchanged.
+- `tests/component/service/test_telescope_capture.py::test_capture_html_page_vs_body_vs_selector` covers `"page"` / `"body"` / CSS but does **not** assert the omitted-selector default; Betty may need a repro assertion that `None`/`""` use the documentElement path (fix-board TESTS signal).
+- Platform drop-in (`src/external/telescope.py`, AST-1726) if it assumes body-only HTML from the service default — verify during make-fix; out of this bug's file edit unless it hardcodes the old default locally.
+
+### What must still hold
+
+- Parent / AST-1725 AC: `/telescope/html` returns `final_url` + raw rendered HTML (no service-side cull); expand default on; wait_ready default off; bearer auth; console-only logs; zero `src` imports under `service/telescope/`.
+- Explicit `"body"` still returns body outerHTML only.
+- Explicit CSS selectors still return the first matching element's outerHTML.
+- `/telescope` text endpoint and multi-match text behavior unchanged.
+- Boundaries: no Railway/CI (#3), no Surfer-shared post-render helpers, no new service endpoints.
+
+## Radia review-fix (AST-1729)
+
+Overall: CLEAN. [bug-repro] OK; What must still hold OK. Clean-review shortcut → User Testing (resolve skipped).
+
+## Bug: AST-1731 — Telescope HTML class selector returns empty string
+
+### As-is
+
+`POST /telescope/html` with a bare class name (e.g. selector `points-container` against https://www.bing.com) returns `"html": ""` even though an element with that class is present in the rendered body.
+
+### To-be
+
+A class selector that matches rendered content returns that element’s outer HTML — and when multiple nodes share the class, an **array** of outer-HTML strings (any tag: `div`, `span`, `td`, …), mirroring multi-match `capture_text` shape (0 → `""`, 1 → `str`, 2+ → `list[str]`).
+
+### Repro
+
+Against a running Telescope node (bearer required), with expand off to keep the call short:
+
+```http
+POST /telescope/html
+Authorization: Bearer <TELESCOPE_BEARER_TOKEN>
+Content-Type: application/json
+
+{"url":"https://www.bing.com","selector":"points-container","expand":false}
+```
+
+**As-is:** `200` with `"html":""` (node exists under `document.body` with `class` containing `points-container`).
+
+**To-be:** `200` with `"html"` a non-empty string (single match) or a non-empty `list[str]` (multiple matches) of those elements’ `outerHTML`.
+
+Equivalent via Admin Telescope: response type html, selector `points-container`, URL bing.com — body pane must show the matched markup (not blank).
+
+### Root cause
+
+In `service/telescope/capture.py`, `capture_html` passes the caller’s selector straight into `document.querySelector(selector)`. A bare token like `points-container` is a **tag-name** selector in CSS (`<points-container>`), not a class selector (`.points-container`). Zero tag matches → `''`. Separately, HTML capture uses `querySelector` (first match only) and always returns a single string — Stage 3 of this plan explicitly kept multi-match arrays on the text endpoint only, which this bug’s to-be overturns for HTML class/CSS matches.
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture + route wiring; platform HTML post-process / admin display as needed for the new `html` shape).
+
+1. **`service/telescope/capture.py` — normalize bare class tokens; multi-match HTML**
+   - Add a private helper, e.g. `_css_selector_for_query(sel: str) -> str` (or inline the same rules once):
+     - If `sel` is a single bare CSS identifier (`^[A-Za-z_][\w-]*$`) **and** `document.querySelectorAll(sel)` returns **zero** nodes, retry the query with `.{sel}` (class). Do **not** rewrite tokens that already look like CSS (leading `.` / `#` / `[`, combinators, spaces, `tag.class`, etc.), and do **not** rewrite when the bare token already matched as a tag (`div`, `span`, …).
+     - Prefer one `page.evaluate` that tries the raw selector then the dotted class form when the raw form is a bare identifier with zero hits (avoids a tag-list hardcode and keeps custom elements that exist as tags working).
+   - Change `capture_html` return type to `str | list[str]`, parallel to `capture_text`:
+     - Keep existing `None` / `""` / `"body"` / `"page"` branches unchanged (AST-1729 owns empty-selector full-document semantics — do not absorb that bug here).
+     - Else: `querySelectorAll` (after the bare→class retry above); map each node to `outerHTML`; 0 → `""`; 1 → that string; 2+ → `list[str]`.
+   - Apply the **same** bare-identifier → class retry inside `capture_text`’s non-page/body path so text and HTML agree on class-name inputs (same root cause).
+   - Still no cull / Surfer helpers in the service.
+
+2. **`service/telescope/app.py` — HTML success log when `html` is a list**
+   - In `post_telescope_html`, `html_len=` must not call `len(result.get("html") or "")` on a list (that counts elements, not chars, and `or ""` is wrong). Mirror `/telescope` text: if list, sum of lengths; else `len(str)`.
+   - `build_scrape_meta` already accepts `str | list[str]` — no meta.py change required unless a type hint is stale.
+
+3. **`src/external/telescope.py` — platform consumers of `html`**
+   - `_post_telescope_html` info log: same list-safe length as (2).
+   - `admin_telescope_scrape`: when `cull` and `html` is a `list`, map `_cull_html` over each string; when `html` is a `str`, keep today’s single `_cull_html` call. Do not join list items into one string before cull.
+   - `_ensure_html` (drop-in path that feeds parsers expecting one DOM string): if service returns a `list`, unwrap `html[0]` when non-empty else `""` (preserves historical first-match behavior for roster/gazer helpers). Admin continues to receive the raw service payload (full array) via `admin_telescope_scrape`.
+
+4. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — display multi-match HTML**
+   - Widen `ScrapeResult.html` to `string | string[]`.
+   - In `formatBody`, when `html` is an array, join with the same `\n---\n` separator used for multi-match `text` (so a class that hits N nodes is visible in the pane, not coerced to `""`).
+
+### Blast radius
+
+- **AST-1725 Stage 3 decision** (“HTML endpoint = first match string only”) is superseded for non-`body`/`page` selectors by this bug’s to-be.
+- **AST-1729** (empty selector → full document): touches the same `capture_html` special-case branches — keep those branches out of this fix; merge order must not reintroduce body-only default for empty selector if 1729 lands first/second.
+- **AST-1726 / AST-1728** admin + platform cull path: list-shaped `html` breaks today’s `len(html)` / `_cull_html(str)` / Admin `typeof html === "string"` assumptions — covered in Proposed change (3)(4).
+- Betty tests/bible that assert `html` is always a string for CSS selectors will need qa-fix attention if fix-board flags TESTS: REVISE; do not edit `tests/` here.
+- Callers that pass a full CSS class selector already (`.points-container`) get correct matches today for the **first** node; after this fix they also get multi-match arrays when N≥2.
+
+### What must still hold
+
+- Parent AC 3 / AST-1725: `/telescope/html` still returns `final_url` + `html`; bearer required; no service-side cull.
+- Parent AC 5: multi-match **text** still `""` / `str` / `list[str]` — unchanged except bare class names now resolve.
+- `body` / `page` / empty-selector specials remain explicit branches (empty-selector document vs body owned by AST-1729, not this ticket).
+- Zero `src` imports under `service/telescope/`; capture stays browser-only.
+- Drop-in helpers that need a single HTML string via `_ensure_html` still get a string (first match when the service returns a list).
+- Cookie dismiss / expand / wait_ready defaults and pipeline order unchanged.
+
+## Resolution (AST-1731 resolve-child)
+
+**Date:** 2026-09-20  
+**Radia fix-now (review-fix):** AST-1729+1730 regressions on tip `67fd3bf5` — restack onto `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping`; restore omitted/`page` → `documentElement` and explicit `body` → body-only; keep AST-1731 bare-class retry + multi-match html list on the CSS path only; keep AST-1730 scrollable selectable AdminTelescope textareas.
+
+**Landed:**
+- Merged `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` into this sub (sync-child `--ftr AST-1721` alone skips the slug-suffixed ftr ref).
+- `capture_html`: AST-1729 specials restored; AST-1731 `_QUERY_HTML_JS` / `_fold_blobs` only after those branches.
+- `AdminTelescope.tsx`: AST-1730 `RESPONSE_PANE_STYLE` textareas + AST-1731 multi-match `html` formatting both present.
+
+## Radia review-fix (AST-1731)
+
+Overall: FIX-NOW addressed via resolve-child — restacked on ftr, AST-1729 empty-selector restored, AST-1730 UI panes kept, bare-class + multi-match html kept.
+
+## Bug: AST-1732 — Telescope links not scoped to class selector
+
+### As-is
+
+When `POST /telescope` includes a filtering `selector` (e.g. a class CSS selector) and `links` is true (default), the `links` array still contains every `a[href]` on the whole page.
+
+### To-be
+
+When any filtering selector is set, `links` only includes http(s) anchors found **inside** matching element(s). If the selector matches multiple nodes, return the **deduped** union of links found under any match. When no filtering selector is set (`null` / `""` / `"page"` / `"body"`), whole-page link collection stays as today.
+
+### Repro
+
+1. Page with links both inside and outside `.job-list` (e.g. nav + listing cards).
+2. `POST /telescope` with `{"url": "…", "selector": ".job-list", "links": true}` (bearer auth).
+3. As-is: `links` includes nav / footer URLs outside `.job-list`.
+4. To-be: every `links[].href` is an anchor under at least one `.job-list` match; duplicates across multiple matches appear once.
+
+Component (no live browser): `capture_links(page, ".job-list")` must evaluate a scoped script (not bare `document.querySelectorAll('a[href]')`); assert dedupe when two matches share an href.
+
+### Root cause
+
+AST-1725 Stage 3 implemented `capture_links(page)` as whole-document only:
+
+```python
+const links = Array.from(document.querySelectorAll('a[href]'));
+```
+
+`app.py` `POST /telescope` calls `await capture_links(page)` and never passes `body.selector`. Text capture is selector-aware; links are not — so a class/CSS filter scopes text but not links.
+
+### Proposed change
+
+1. In `service/telescope/capture.py`, change signature to `async def capture_links(page, selector: str | None = None) -> list[dict]`.
+2. Normalize `sel = (selector or "").strip()`.
+3. **Whole-page path** (unchanged collect shape): when `not sel` or `sel.lower() in ("page", "body")` — keep today’s evaluate that gathers `a[href]` with `href.startswith('http')` → `[{href, text}, …]` from the document.
+4. **Scoped path**: otherwise evaluate JS that:
+   - `querySelectorAll(sel)` for match roots;
+   - under each root, collect `a[href]` with http(s) `href` and trimmed `innerText`;
+   - **dedupe by `href`** (first occurrence wins for `text`);
+   - return the deduped list.
+5. In `service/telescope/app.py` `post_telescope` `work()`, change to `out["links"] = await capture_links(page, body.selector)` when `body.links` is true.
+
+Do **not** change `/telescope/html`, `capture_text`, auth, pool, Dockerfile, or `src/**`.
+
+### Blast radius
+
+- Clients that relied on whole-page links while also passing a text-scoping selector will see a smaller `links` array — intentional UAT fix.
+- `links: false` path unchanged (still omits the key / does not call capture).
+- `tests/component/service/test_telescope_capture.py::test_capture_links_filters_http` calls `capture_links(page)` with no selector — must keep passing (whole-page path). Betty may need a new assertion for scoped + multi-match dedupe (fix-board TESTS signal).
+- App route tests that monkeypatch `capture_links` keep working if the mock accepts an optional second arg.
+
+### What must still hold
+
+- AST-1725 AC: `links` defaults true; when false, omit `links`; http(s) filter; bearer; expand/wait_ready defaults; no service cull; zero `src` imports under `service/telescope/`.
+- Multi-match **text** behavior unchanged (string vs list).
+- Explicit `"page"` / `"body"` / omitted selector still return whole-page links.
+- Boundaries: no Railway/CI, no platform `telescope.py` drop-in edits unless it reimplements service link capture (it must not for this bug).
+
+## Resolution (AST-1732)
+
+**Date:** 2026-09-20  
+**Radia fix-now:** Restacked onto `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` so AST-1729 `capture_html` (documentElement default) and sibling ftr product are present; kept AST-1732 scoped `capture_links` + `app.py` selector wiring. Full `test_telescope_capture.py` verified green.
+
+## Radia review-fix (AST-1732)
+
+Restacked onto ftr after REVIEW; link-scoping + sibling capture_html/class fixes held. → User Testing.
