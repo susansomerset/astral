@@ -79,3 +79,18 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 ./scripts/testing/run_component_tests.sh \
   tests/component/service/test_telescope_app.py::TestAst1728ScrapeMeta -q
 ```
+
+---
+
+### AST-1729 · AST-1721 (qa-fix bug-repro — html default full document)
+
+**Board REVISE:** omitted `selector` on `capture_html` / `POST /telescope/html` must use `documentElement` (same as `"page"`), not body.
+
+| Area | Component tests |
+| --- | --- |
+| None/`""` → documentElement path | `test_telescope_capture.py::test_capture_html_omitted_selector_uses_document_element` (**bug-repro**, red pre-fix) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_capture_html_omitted_selector_uses_document_element -q
+```
