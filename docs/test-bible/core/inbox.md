@@ -292,3 +292,33 @@ cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/tes
 ```
 
 **Pass criterion (test-fix):** [bug-repro] nodes flip red→green after AST-1608 `make-fix` — not zero-arg harness / branch-lock gate.
+
+### AST-1714 · AST-1711
+
+**Parent:** [AST-1711](https://linear.app/astralcareermatch/issue/AST-1711). **Publish:** `origin/sub/AST-1711/AST-1714-inbox-check-email-runner`.
+
+`inbox.check_email` is the candidate-bound mailbox runner: full assembled message (`assembled_html`) to `stage_meteorite`, archive on non-error, stamp `last_email_check`. Dispatcher mailbox branch awaits `inbox.check_email` (no `check_inbox`). Provision rewrites bound retired `meteorite_email` rows to `stage_email_meteorite` and deletes orphan retired-key rows. Admin mailbox gates stay on `is_meteorite_email_mailbox_task_key` (AST-1712). Classify/save stays **AST-1713**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Full-message stage + archive + dedup | `src/core/inbox.py` | **`TestAst1714CheckEmail`** |
+| Dispatcher mailbox route | `src/core/dispatcher.py` | revised **`TestAst1090GazeEmailDispatchOne`** |
+| Provision rewrite / orphan purge | `src/core/dispatcher.py` | revised **`TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates`** |
+
+**Broken / obsolete this pass:** `_dispatch_one` patches of `meteorite.check_inbox`; provision fixture that ignored retired-key rewrite / orphan delete.
+
+**Integration:** none — no existing scenario asserts the mailbox runner name.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1714CheckEmail \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_ensure_adds_then_skips \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1714-inbox-check-email-runner:docs/test-bible/core/inbox.md | shasum`
+
