@@ -163,7 +163,7 @@ class TestAst1495LandStemAttach:
             }
 
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", _enrich
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
         )
         out = await meteorite_mod.land_meteorite(cid, text="z" * 50)
         assert out["outcome"] == METEORITE_CONFIG["land_outcome_created"]
@@ -201,7 +201,7 @@ class TestAst1495LandStemAttach:
             }
 
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", _enrich
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
         )
         out = await meteorite_mod.land_meteorite(cid, text="f" * 50)
         assert out["outcome"] == METEORITE_CONFIG["land_outcome_created"]
@@ -265,7 +265,7 @@ class TestAst1470LandMeteorite:
             return {"success": False, "error": "do_task failed", "jobs": []}
 
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", _enrich
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
         )
         out = await meteorite_mod.land_meteorite(cid, text="x" * 50)
         assert out["outcome"] == METEORITE_CONFIG["land_outcome_error"]
@@ -300,7 +300,7 @@ class TestAst1470LandMeteorite:
             }
 
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", _enrich
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
         )
         out = await meteorite_mod.land_meteorite(
             cid,
@@ -332,7 +332,7 @@ class TestAst1470LandMeteorite:
         cid = "cand-land-skip"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
         mids = db.insert_meteorite_rows(
-            [{"candidate_id": cid, "source_kind": "paste", "source_id": "skip-seed", "content": "old"}]
+            [{"candidate_id": cid, "source_kind": "paste", "source_id": "skip-seed", "content": "old", "state": "NEW"}]
         )
         mid = str(mids[0])
         db.save_job(
@@ -359,7 +359,7 @@ class TestAst1470LandMeteorite:
             }
 
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", _enrich
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
         )
         out = await meteorite_mod.land_meteorite(cid, text="z" * 50)
         assert out["outcome"] == METEORITE_CONFIG["land_outcome_duplicate_skip"]
@@ -403,7 +403,7 @@ class TestAst1470LandMeteorite:
             }
 
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", _enrich
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
         )
         out = await meteorite_mod.land_meteorite(
             cid, job_link="https://jobs.example.com/thin", text="short"
@@ -439,7 +439,7 @@ class TestAst1470LandMeteorite:
             }
 
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", _enrich
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
         )
         log = MagicMock()
         monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
@@ -484,7 +484,7 @@ class TestAst1702SourceEntityLand:
             job_title="Eng",
         ) is True
         mids = db.insert_meteorite_rows(
-            [{"candidate_id": cid, "source_kind": "email", "source_id": "m1702", "content": "jd"}]
+            [{"candidate_id": cid, "source_kind": "email", "source_id": "m1702", "content": "jd", "state": "NEW"}]
         )
         mid = mids[0]
         out = tracker_mod.save_meteorite_job(
@@ -513,7 +513,7 @@ class TestAst1702SourceEntityLand:
         cid = "cand-1702-skip"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "K"})
         mids = db.insert_meteorite_rows(
-            [{"candidate_id": cid, "source_kind": "paste", "source_id": "skip2", "content": "x"}]
+            [{"candidate_id": cid, "source_kind": "paste", "source_id": "skip2", "content": "x", "state": "NEW"}]
         )
         mid = str(mids[0])
         db.save_job(
@@ -547,6 +547,7 @@ class TestAst1702SourceEntityLand:
                 "source_id": "link1",
                 "content": "seed",
                 "link": "https://jobs.example/inherited",
+                "state": "NEW",
             }]
         )
         mid = mids[0]
@@ -565,7 +566,7 @@ class TestAst1702SourceEntityLand:
                 }],
             }
 
-        monkeypatch.setattr("src.core.consult.enrich_meteorite_land_packet", _enrich)
+        monkeypatch.setattr("src.core.meteorite.enrich_meteorite_land_packet", _enrich)
         out = await meteorite_mod.land_meteorite(
             cid, text="j" * 50, meteorite_id=mid
         )
@@ -608,7 +609,7 @@ class TestAst1702SourceEntityLand:
                 }],
             }
 
-        monkeypatch.setattr("src.core.consult.enrich_meteorite_land_packet", _enrich)
+        monkeypatch.setattr("src.core.meteorite.enrich_meteorite_land_packet", _enrich)
         out = await meteorite_mod.land_meteorite(
             cid, job_link="https://jobs.example.com/bot", text="short"
         )
@@ -641,7 +642,7 @@ class TestAst1702SourceEntityLand:
                 }],
             }
 
-        monkeypatch.setattr("src.core.consult.enrich_meteorite_land_packet", _enrich)
+        monkeypatch.setattr("src.core.meteorite.enrich_meteorite_land_packet", _enrich)
         out = await meteorite_mod.land_meteorite(cid, text="n" * 50)
         assert out["outcome"] == METEORITE_CONFIG["land_outcome_created"]
         ensure.assert_not_called()
@@ -866,7 +867,7 @@ class TestAst1530StageMeteorite:
             return {"outcome": "should-not-run"}
 
         monkeypatch.setattr(
-            "src.core.consult.invoke_stage_meteorite", _invoke
+            "src.core.meteorite._classify_stage_blob", _invoke
         )
         monkeypatch.setattr(meteorite_mod, "land_meteorite", _land)
         out = await meteorite_mod.stage_meteorite(
@@ -887,7 +888,12 @@ class TestAst1530StageMeteorite:
         db = sqlite_in_memory
         cid = "cand-stage-land"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
-        jobs = [{"jd_text": "Original JD " + ("z" * 40)}]
+        jobs = [{
+            "jd_text": "Original JD " + ("z" * 40),
+            "from_email": "recruiter@co.com",
+            "to_email": "me@ex.com",
+            "sent_at": "2026-09-17T18:05:00+00:00",
+        }]
 
         async def _invoke(*_a, **_k):
             return {
@@ -899,7 +905,7 @@ class TestAst1530StageMeteorite:
             }
 
         land = AsyncMock()
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", _invoke)
         monkeypatch.setattr(meteorite_mod, "land_meteorite", land)
         out = await meteorite_mod.stage_meteorite(
             cid, "blob", source_kind="email", source_id="msg-land", debug=False
@@ -913,8 +919,10 @@ class TestAst1530StageMeteorite:
 
     @pytest.mark.asyncio
     async def test_debug_true_emits_style_d_on_skip(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
+        import logging
+
         db = sqlite_in_memory
         cid = "cand-stage-dbg"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
@@ -931,19 +939,14 @@ class TestAst1530StageMeteorite:
         log = MagicMock()
         monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
         monkeypatch.setattr(
-            "src.core.consult.invoke_stage_meteorite", _invoke
+            "src.core.meteorite._classify_stage_blob", _invoke
         )
-        out = await meteorite_mod.stage_meteorite(
-            cid, "reply", source_kind="email", source_id="m", debug=True
-        )
+        with caplog.at_level(logging.DEBUG, logger="src.core.meteorite"):
+            out = await meteorite_mod.stage_meteorite(
+                cid, "reply", source_kind="email", source_id="m", debug=True
+            )
         assert out["skipped"] is True
-        stage_calls = [
-            c
-            for c in log.debug_index.call_args_list
-            if c.kwargs.get("func") == "meteorite.stage_meteorite"
-        ]
-        assert len(stage_calls) >= 1
-        assert stage_calls[0].kwargs.get("outcome") == "not_original_posting"
+        assert any("not_original_posting" in r.getMessage() for r in caplog.records)
 
 
 def _ingress_task(*, batch_id: str, task_key: str | None = None) -> dict:
@@ -965,6 +968,7 @@ def _insert_meteorite_row(db, cid: str, **fields: object) -> int:
                 "classify_outcome": fields.get("classify_outcome"),
                 "content": fields.get("content"),
                 "link": fields.get("link"),
+                "state": str(fields.get("state") or "NEW"),
             }
         ]
     )[0]
@@ -1122,7 +1126,7 @@ class TestAst1703EmailBreadcrumb:
         )
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
-        assert row["state"] == "ERROR"
+        assert row["state"] == "SCRAPE_ERROR"
         assert "breadcrumb" in (row.get("error") or "")
 
     def test_stage_meteorite_schema_accepts_breadcrumb_fields(self) -> None:
@@ -1223,7 +1227,7 @@ class TestAst1560RunStageMeteorite:
                 _ingress_task(batch_id="stage-batch-miss")
             )
         assert out["total_errors"] == 1
-        assert db.get_meteorite(row_id)["state"] == "ERROR"
+        assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
         assert any("missing classify_outcome" in r.message for r in caplog.records)
 
 
@@ -1334,7 +1338,7 @@ class TestAst1560RunScrapeMeteorite:
         assert out["total_processed"] == 2
         assert out["total_passed"] == 1
         assert out["total_errors"] == 1
-        assert db.get_meteorite(bad_id)["state"] == "ERROR"
+        assert db.get_meteorite(bad_id)["state"] == "SCRAPE_ERROR"
         assert db.get_meteorite(good_id)["state"] == "READY"
 
 
@@ -1347,8 +1351,10 @@ class TestAst1560RunLandMeteorite:
 
     @pytest.mark.asyncio
     async def test_ready_to_landed_without_enrich(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
+        import logging
+
         db = sqlite_in_memory
         cid = "cand-land-1"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
@@ -1370,16 +1376,15 @@ class TestAst1560RunLandMeteorite:
         enrich = AsyncMock()
         monkeypatch.setattr(meteorite_mod.tracker, "save_meteorite_job", _save)
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", enrich
+            "src.core.meteorite.enrich_meteorite_land_packet", enrich
         )
-        log = MagicMock()
-        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
-        out = await meteorite_mod.run_land_meteorite(
-            _ingress_task(
-                batch_id="land-batch-1",
-                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+        with caplog.at_level(logging.DEBUG, logger="src.core.meteorite"):
+            out = await meteorite_mod.run_land_meteorite(
+                _ingress_task(
+                    batch_id="land-batch-1",
+                    task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+                )
             )
-        )
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
         assert row["state"] == "LANDED"
@@ -1387,7 +1392,7 @@ class TestAst1560RunLandMeteorite:
         assert captured.get("job_link") is None
         assert captured.get("company_job_id") is None
         enrich.assert_not_awaited()
-        assert any("meteorite land id=" in c.args[0] for c in log.info.call_args_list)
+        assert any("READY -> LANDED" in r.getMessage() for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_missing_content_errors(self, sqlite_in_memory) -> None:
@@ -1403,7 +1408,7 @@ class TestAst1560RunLandMeteorite:
             )
         )
         assert out["total_errors"] == 1
-        assert db.get_meteorite(row_id)["state"] == "ERROR"
+        assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
 
 
 @pytest.mark.skipif(
@@ -1594,31 +1599,25 @@ class TestAst1562RunMeteoriteRetention:
 
     @pytest.mark.asyncio
     async def test_stale_rows_info_logged_not_deleted(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+        self, sqlite_in_memory, caplog: pytest.LogCaptureFixture
     ) -> None:
+        import logging
+
         db = sqlite_in_memory
         cid = "cand-retention-stale"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Stale"})
-        row_id = _insert_meteorite_row(db, cid, state="ERROR", link="https://jobs.example/e")
+        row_id = _insert_meteorite_row(db, cid, state="SCRAPE_ERROR", link="https://jobs.example/e")
         old = (datetime.now(timezone.utc) - timedelta(days=30)).strftime(
             "%Y-%m-%dT%H:%M:%SZ"
         )
         _backdate_meteorite_state_changed(db, row_id, old)
-        log = MagicMock()
-        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.run_meteorite_retention({}, debug=False)
         assert out["total_processed"] >= 1
         assert out["total_passed"] >= 1
         assert db.get_meteorite(row_id) is not None
-        stale_calls = [
-            c
-            for c in log.info.call_args_list
-            if c.args and "meteorite retention stale" in str(c.args[0])
-        ]
-        assert stale_calls
-        line = str(stale_calls[0].args[0])
-        assert str(row_id) in line
-        assert "ERROR" in line
+        assert any("still SCRAPE_ERROR" in r.getMessage() for r in caplog.records)
+        assert any(str(row_id) in r.getMessage() for r in caplog.records)
 
     @pytest.mark.asyncio
     async def test_fresh_landed_not_purged(self, sqlite_in_memory) -> None:
@@ -1779,7 +1778,7 @@ class TestAst1559CheckInbox:
                 "batch_id": "b",
             }
 
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", _invoke)
         out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
         assert out["total_passed"] == 1
         assert len(db.list_meteorites_by_source("email", mid)) == 2
@@ -1808,10 +1807,12 @@ class TestAst1559CheckInbox:
         async def _invoke(*_a, **_k):
             return {"success": False, "outcome": "", "jobs": [], "error": "llm timeout", "batch_id": None}
 
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", _invoke)
         out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
         assert out["total_errors"] == 1
-        assert db.list_meteorites_by_source("email", mid) == []
+        rows = db.list_meteorites_by_source("email", mid)
+        assert len(rows) == 1
+        assert rows[0]["state"] == "NEW_EMAIL_ERROR"
         archive.assert_not_called()
 
     @pytest.mark.asyncio
@@ -1836,10 +1837,12 @@ class TestAst1559CheckInbox:
         async def _invoke(*_a, **_k):
             return {"success": True, "outcome": "not_job_content", "jobs": [], "error": None, "batch_id": "b"}
 
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", _invoke)
         out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
         assert out["total_passed"] == 1
-        assert db.list_meteorites_by_source("email", mid) == []
+        rows = db.list_meteorites_by_source("email", mid)
+        assert len(rows) == 1
+        assert rows[0]["state"] == "NOT_A_JOB"
         archive.assert_called_once_with(mid)
 
     @pytest.mark.asyncio
@@ -1851,10 +1854,10 @@ class TestAst1559CheckInbox:
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Dedup"})
         mid = "msg-dedup"
         db.insert_meteorite_rows(
-            [{"candidate_id": cid, "source_kind": "email", "source_id": mid, "link": "https://x/j"}]
+            [{"candidate_id": cid, "source_kind": "email", "source_id": mid, "link": "https://x/j", "state": "NEW"}]
         )
         invoke = AsyncMock()
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", invoke)
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", invoke)
         monkeypatch.setattr(meteorite_mod, "email_aliases_for_candidate", lambda _c: ["x@y.z"])
         monkeypatch.setattr(
             meteorite_mod, "fetch_candidate_email", lambda _a, debug=False: [_check_inbox_msg(mid)]
@@ -1917,6 +1920,9 @@ class TestAst1689ElectronicContactMapPersist:
                 "jobs": [
                     {
                         "jd_text": "Full JD body " + ("x" * 40),
+                        "from_email": "recruiter@co.com",
+                        "to_email": "me@ex.com",
+                        "sent_at": "2026-09-17T18:05:00+00:00",
                         "electronic_contact": "hiring@example.com",
                     }
                 ],
@@ -1924,13 +1930,13 @@ class TestAst1689ElectronicContactMapPersist:
                 "batch_id": "b",
             }
 
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", _invoke)
         out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
         assert out["total_passed"] == 1
         rows = db.list_meteorites_by_source("email", mid)
         assert len(rows) == 1
         assert rows[0][col] == "hiring@example.com"
-        assert rows[0]["state"] == "NEW"
+        assert rows[0]["state"] == "READY"
 
     @pytest.mark.asyncio
     async def test_empty_contact_still_ingests(
@@ -1957,16 +1963,21 @@ class TestAst1689ElectronicContactMapPersist:
             return {
                 "success": True,
                 "outcome": "single_jd_no_link",
-                "jobs": [{"jd_text": "Full JD body " + ("y" * 40)}],
+                "jobs": [{
+                    "jd_text": "Full JD body " + ("y" * 40),
+                    "from_email": "recruiter@co.com",
+                    "to_email": "me@ex.com",
+                    "sent_at": "2026-09-17T18:05:00+00:00",
+                }],
                 "error": None,
                 "batch_id": "b",
             }
 
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", _invoke)
         out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
         assert out["total_passed"] == 1
         row = db.list_meteorites_by_source("email", mid)[0]
-        assert row["state"] == "NEW"
+        assert row["state"] == "READY"
         assert row.get(col) in (None, "")
 
     @pytest.mark.asyncio
@@ -1999,6 +2010,9 @@ class TestAst1689ElectronicContactMapPersist:
                 "jobs": [
                     {
                         "jd_text": "Full JD body " + ("z" * 40),
+                        "from_email": "recruiter@co.com",
+                        "to_email": "me@ex.com",
+                        "sent_at": "2026-09-17T18:05:00+00:00",
                         "electronic_contact": "soft@example.com",
                     }
                 ],
@@ -2006,7 +2020,7 @@ class TestAst1689ElectronicContactMapPersist:
                 "batch_id": "b",
             }
 
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", _invoke)
         real_update = meteorite_mod.update_meteorite
 
         def _boom(mid_arg, **kwargs):
@@ -2019,8 +2033,8 @@ class TestAst1689ElectronicContactMapPersist:
             out = await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
         assert out["total_passed"] == 1
         row = db.list_meteorites_by_source("email", mid)[0]
-        assert row["state"] == "NEW"
-        assert "persist failed" in caplog.text or "contact persist boom" in caplog.text
+        assert row["state"] == "READY"
+        assert row[col] == "soft@example.com"
 
     @pytest.mark.asyncio
     async def test_bot_blocked_preserves_contact(
@@ -2080,7 +2094,7 @@ class TestAst1689ElectronicContactMapPersist:
 
         monkeypatch.setattr(meteorite_mod.tracker, "save_meteorite_job", _save)
         monkeypatch.setattr(
-            "src.core.consult.enrich_meteorite_land_packet", AsyncMock()
+            "src.core.meteorite.enrich_meteorite_land_packet", AsyncMock()
         )
         out = await meteorite_mod.run_land_meteorite(
             _ingress_task(
@@ -2125,6 +2139,9 @@ class TestAst1689ElectronicContactMapPersist:
                 "jobs": [
                     {
                         "jd_text": "Full JD body " + ("d" * 40),
+                        "from_email": "recruiter@co.com",
+                        "to_email": "me@ex.com",
+                        "sent_at": "2026-09-17T18:05:00+00:00",
                         "electronic_contact": "debug@example.com",
                     }
                 ],
@@ -2132,20 +2149,20 @@ class TestAst1689ElectronicContactMapPersist:
                 "batch_id": "b",
             }
 
-        monkeypatch.setattr("src.core.consult.invoke_stage_meteorite", _invoke)
-        with caplog.at_level(logging.DEBUG):
-            await meteorite_mod.check_inbox({"candidate_id": cid}, debug=True)
-        assert "electronic_contact returned=" in caplog.text
-        assert "recorded=" in caplog.text
+        monkeypatch.setattr("src.core.meteorite._classify_stage_blob", _invoke)
+        col = METEORITE_CONFIG["electronic_contact_column"]
+        await meteorite_mod.check_inbox({"candidate_id": cid}, debug=True)
+        row = db.list_meteorites_by_source("email", mid)[0]
+        assert row["state"] == "READY"
+        assert row[col] == "debug@example.com"
 
-        caplog.clear()
         mid2 = "msg-1689-nodbg"
         monkeypatch.setattr(
             meteorite_mod, "fetch_candidate_email", lambda _a, debug=False: [_check_inbox_msg(mid2)]
         )
-        with caplog.at_level(logging.DEBUG):
-            await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
-        assert "electronic_contact returned=" not in caplog.text
+        await meteorite_mod.check_inbox({"candidate_id": cid}, debug=False)
+        row2 = db.list_meteorites_by_source("email", mid2)[0]
+        assert row2[col] == "debug@example.com"
 
 @pytest.mark.skipif(not hasattr(meteorite_mod, "run_land_meteorite"), reason="AST-1560 land runner not on this publish tip")
 class TestAst1693RunLandBotBlocked:
@@ -2199,4 +2216,176 @@ class TestAst1693NotifySkipsContentful:
         row = db.get_meteorite(row_id)
         assert row["state"] == "BOT_BLOCKED" and not row.get("estelle_notified_at")
         post.assert_not_called()
+
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "run_meteorite_retention"),
+    reason="AST-1562 retention runner not on this publish tip",
+)
+class TestAst1712NotAJobPurge:
+    """AST-1712: NOT_A_JOB is on the scheduled cleanup selection."""
+
+    @pytest.mark.asyncio
+    async def test_purges_old_not_a_job(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-retention-not-a-job"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Skip"})
+        row_id = _insert_meteorite_row(db, cid, state="NOT_A_JOB")
+        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ"
+        )
+        _backdate_meteorite_state_changed(db, row_id, old)
+        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
+        assert db.get_meteorite(row_id) is None
+        assert out["total_processed"] >= 1
+        assert out["total_passed"] >= 1
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "_classify_stage_blob"),
+    reason="AST-1713 stage save not on this publish tip",
+)
+class TestAst1713StageSavesRuthRow:
+    """AST-1713: stage_meteorite inserts the Ruth row; consult is off this path."""
+
+    def _save(self, db, cid: str) -> None:
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "R"})
+
+    def _patch(self, monkeypatch: pytest.MonkeyPatch, payload: dict) -> None:
+        async def _classify(*_a, **_k):
+            return payload
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify)
+
+    @pytest.mark.asyncio
+    async def test_not_a_job_inserts_one_row(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "cand-1713-skip"
+        self._save(db, cid)
+        outcome = STAGE_METEORITE_CONFIG["skip_outcomes"][0]
+        self._patch(monkeypatch, {
+            "success": True,
+            "outcome": outcome,
+            "jobs": [],
+            "error": None,
+            "batch_id": "b-skip",
+        })
+        out = await meteorite_mod.stage_meteorite(
+            cid, "noise", source_kind="email", source_id="mid-skip",
+        )
+        assert out["skipped"] is True
+        assert out["outcome"] == outcome
+        rows = db.list_meteorites_by_source("email", "mid-skip")
+        assert len(rows) == 1
+        assert rows[0]["state"] == "NOT_A_JOB"
+        assert rows[0]["classify_outcome"] == outcome
+
+    @pytest.mark.asyncio
+    async def test_scrape_link_http_and_ruth_fields(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "cand-1713-url"
+        self._save(db, cid)
+        outcome = STAGE_METEORITE_CONFIG["url_scrape_outcomes"][0]
+        self._patch(monkeypatch, {
+            "success": True,
+            "outcome": outcome,
+            "jobs": [{
+                "job_link": "https://jobs.example/role",
+                "jd_text": "JD " + ("u" * 40),
+                "job_title": "Engineer",
+                "employer_name": "Acme",
+            }],
+            "error": None,
+            "batch_id": "b-url",
+        })
+        out = await meteorite_mod.stage_meteorite(
+            cid, "blob", source_kind="email", source_id="mid-url",
+        )
+        assert out["skipped"] is False
+        assert out["error"] is None
+        rows = db.list_meteorites_by_source("email", "mid-url")
+        assert len(rows) == 1
+        assert rows[0]["state"] == "SCRAPE_LINK"
+        assert str(rows[0]["link"]).startswith("https://")
+        assert rows[0]["job_title"] == "Engineer"
+        assert rows[0]["employer_name"] == "Acme"
+
+    @pytest.mark.asyncio
+    async def test_ready_breadcrumb_is_not_http(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "cand-1713-text"
+        self._save(db, cid)
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        self._patch(monkeypatch, {
+            "success": True,
+            "outcome": outcome,
+            "jobs": [{
+                "jd_text": "JD " + ("t" * 40),
+                "from_email": "recruiter@co.com",
+                "to_email": "me@ex.com",
+                "sent_at": "2026-09-17T18:05:00+00:00",
+            }],
+            "error": None,
+            "batch_id": "b-text",
+        })
+        out = await meteorite_mod.stage_meteorite(
+            cid, "blob", source_kind="email", source_id="mid-text",
+        )
+        assert out["error"] is None
+        rows = db.list_meteorites_by_source("email", "mid-text")
+        assert len(rows) == 1
+        link = rows[0]["link"] or ""
+        assert rows[0]["state"] == "READY"
+        assert link and not link.startswith("http")
+
+    @pytest.mark.asyncio
+    async def test_missing_candidate_inserts_new_email_error(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        out = await meteorite_mod.stage_meteorite(
+            "missing-1713", "blob", source_kind="email", source_id="mid-miss",
+        )
+        assert out["error"] and "candidate not found" in out["error"]
+        rows = db.list_meteorites_by_source("email", "mid-miss")
+        assert len(rows) == 1
+        assert rows[0]["state"] == "NEW_EMAIL_ERROR"
+
+    def test_insert_binds_caller_state(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1713-ins"
+        self._save(db, cid)
+        row_id = db.insert_meteorite_rows([{
+            "candidate_id": cid,
+            "source_kind": "paste",
+            "source_id": "ins-1",
+            "state": "READY",
+            "job_title": "Title",
+            "employer_name": "Emp",
+        }])[0]
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "READY"
+        assert row["job_title"] == "Title"
+        assert row["employer_name"] == "Emp"
+
+    def test_stage_invoke_and_consult_import_gone(self) -> None:
+        import inspect
+        import src.core.consult as consult_mod
+
+        assert not hasattr(consult_mod, "invoke_stage_meteorite")
+        assert not hasattr(consult_mod, "enrich_meteorite_land_packet")
+        assert "consult" not in inspect.getsource(meteorite_mod)
 
