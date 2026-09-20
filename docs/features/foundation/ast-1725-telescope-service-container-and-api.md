@@ -615,3 +615,7 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 - Merged `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` into this sub (sync-child `--ftr AST-1721` alone skips the slug-suffixed ftr ref).
 - `capture_html`: AST-1729 specials restored; AST-1731 `_QUERY_HTML_JS` / `_fold_blobs` only after those branches.
 - `AdminTelescope.tsx`: AST-1730 `RESPONSE_PANE_STYLE` textareas + AST-1731 multi-match `html` formatting both present.
+
+## Radia review-fix (AST-1731)
+
+Overall: FIX-NOW addressed via resolve-child — restacked on ftr, AST-1729 empty-selector restored, AST-1730 UI panes kept, bare-class + multi-match html kept.
