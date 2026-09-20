@@ -467,3 +467,60 @@ context_tokens≈38000
 **Radia:** CLEAN / PROCEED — no fix-now; discuss + advisory only (config duplication Canon Scope gap, pending pattern id, logging channel variance, expand soft-fail debug, recover duplication). No product changes.
 
 **§9a:** Restacked publish ref onto `origin/dev` via `sync-child.sh` (no `origin/ftr/AST-1721` yet). Dry-run `merge-tree` vs `origin/dev` clean after publish.
+
+## Bug: AST-1732 — Telescope links not scoped to class selector
+
+### As-is
+
+When `POST /telescope` includes a filtering `selector` (e.g. a class CSS selector) and `links` is true (default), the `links` array still contains every `a[href]` on the whole page.
+
+### To-be
+
+When any filtering selector is set, `links` only includes http(s) anchors found **inside** matching element(s). If the selector matches multiple nodes, return the **deduped** union of links found under any match. When no filtering selector is set (`null` / `""` / `"page"` / `"body"`), whole-page link collection stays as today.
+
+### Repro
+
+1. Page with links both inside and outside `.job-list` (e.g. nav + listing cards).
+2. `POST /telescope` with `{"url": "…", "selector": ".job-list", "links": true}` (bearer auth).
+3. As-is: `links` includes nav / footer URLs outside `.job-list`.
+4. To-be: every `links[].href` is an anchor under at least one `.job-list` match; duplicates across multiple matches appear once.
+
+Component (no live browser): `capture_links(page, ".job-list")` must evaluate a scoped script (not bare `document.querySelectorAll('a[href]')`); assert dedupe when two matches share an href.
+
+### Root cause
+
+AST-1725 Stage 3 implemented `capture_links(page)` as whole-document only:
+
+```python
+const links = Array.from(document.querySelectorAll('a[href]'));
+```
+
+`app.py` `POST /telescope` calls `await capture_links(page)` and never passes `body.selector`. Text capture is selector-aware; links are not — so a class/CSS filter scopes text but not links.
+
+### Proposed change
+
+1. In `service/telescope/capture.py`, change signature to `async def capture_links(page, selector: str | None = None) -> list[dict]`.
+2. Normalize `sel = (selector or "").strip()`.
+3. **Whole-page path** (unchanged collect shape): when `not sel` or `sel.lower() in ("page", "body")` — keep today’s evaluate that gathers `a[href]` with `href.startswith('http')` → `[{href, text}, …]` from the document.
+4. **Scoped path**: otherwise evaluate JS that:
+   - `querySelectorAll(sel)` for match roots;
+   - under each root, collect `a[href]` with http(s) `href` and trimmed `innerText`;
+   - **dedupe by `href`** (first occurrence wins for `text`);
+   - return the deduped list.
+5. In `service/telescope/app.py` `post_telescope` `work()`, change to `out["links"] = await capture_links(page, body.selector)` when `body.links` is true.
+
+Do **not** change `/telescope/html`, `capture_text`, auth, pool, Dockerfile, or `src/**`.
+
+### Blast radius
+
+- Clients that relied on whole-page links while also passing a text-scoping selector will see a smaller `links` array — intentional UAT fix.
+- `links: false` path unchanged (still omits the key / does not call capture).
+- `tests/component/service/test_telescope_capture.py::test_capture_links_filters_http` calls `capture_links(page)` with no selector — must keep passing (whole-page path). Betty may need a new assertion for scoped + multi-match dedupe (fix-board TESTS signal).
+- App route tests that monkeypatch `capture_links` keep working if the mock accepts an optional second arg.
+
+### What must still hold
+
+- AST-1725 AC: `links` defaults true; when false, omit `links`; http(s) filter; bearer; expand/wait_ready defaults; no service cull; zero `src` imports under `service/telescope/`.
+- Multi-match **text** behavior unchanged (string vs list).
+- Explicit `"page"` / `"body"` / omitted selector still return whole-page links.
+- Boundaries: no Railway/CI, no platform `telescope.py` drop-in edits unless it reimplements service link capture (it must not for this bug).
