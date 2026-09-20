@@ -318,3 +318,15 @@ AC4→S1 `cull_html_default` + S3 `extract_page_dom` local `_cull_html`; AC6→S
 - **Recommendation:** N/A.
 
 context_tokens≈78000
+
+## Review (build stub)
+
+**Built:** `origin/sub/AST-1721/AST-1726-platform-telescope-py-drop-in-playwright-decommission` @ `52a77415`.
+
+**Stages delivered:**
+- Stage 1: `TELESCOPE_CONFIG` + httpx pin + Firefox uninstall scripts — `c177bea8`.
+- Stage 2: HTTP pool + client `BrowserSession`/`PageHandle`/`BatchBrowserSession` — `f2e942fa`.
+- Stage 3: scrape via Telescope HTTP + local post-render helpers (cull default on) — `b8e6c3d8`.
+- Stage 4: core import rewires + delete `playwright.py` — `52a77415`.
+
+**Betty:** drop-in surface parity (same public names), cull-default-on HTML path, pool failover/timeout → infra classes, no `src.external.playwright`, no platform Firefox install in build/dev/start scripts, `TELESCOPE_BASE_URL(S)` + bearer required for live scrapes.
