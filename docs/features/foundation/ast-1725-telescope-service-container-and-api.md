@@ -166,7 +166,7 @@ Response:
 | Field | Type | Default |
 |-------|------|---------|
 | `url` | `str` (required) | — |
-| `selector` | `str \| null` | `null` (= `body` outerHTML) |
+| `selector` | `str \| null` | `null` (= full document / `documentElement` outerHTML; `"body"` for body-only) |
 | `expand` | `bool` | `true` |
 | `wait_ready` | `bool` | `false` |
 
@@ -195,8 +195,8 @@ No `cull` field on the service (platform AST-1726 applies cull in `src/external/
    - `async def capture_links(page) -> list[dict]`:
      - Evaluate JS collecting `a[href]` where `href` starts with `http`; each item `{"href": a.href, "text": (a.innerText || "").trim()}`.
    - `async def capture_html(page, selector: str | None) -> str`:
-     - `None` / `""` / `"body"` → `document.body.outerHTML` (or `""` if no body).
-     - `"page"` → `document.documentElement.outerHTML`.
+     - `None` / `""` / `"page"` → `document.documentElement.outerHTML` (AST-1729).
+     - `"body"` → `document.body.outerHTML` (or `""` if no body).
      - Else → `querySelector(selector)?.outerHTML || ""` (single first match for HTML endpoint — multi-match array is text-endpoint only).
      - **Do not** call any cull/strip of tags beyond what the browser already rendered.
 
@@ -468,6 +468,68 @@ context_tokens≈38000
 
 **§9a:** Restacked publish ref onto `origin/dev` via `sync-child.sh` (no `origin/ftr/AST-1721` yet). Dry-run `merge-tree` vs `origin/dev` clean after publish.
 
+## Bug: AST-1729 — Telescope HTML returns body-only when no selector set
+
+### As-is
+
+`POST /telescope/html` with `selector` omitted / `null` / `""` returns `document.body.outerHTML` only (no `<html>` / `<head>`).
+
+### To-be
+
+With no selector set (and with explicit `"page"`), Telescope HTML returns the full document (`document.documentElement.outerHTML`). Explicit `"body"` still returns body-only.
+
+### Repro
+
+1. Start Telescope with `TELESCOPE_BEARER_TOKEN` set; `POST /telescope/html` with bearer auth and body `{"url": "https://example.com"}` (no `selector`).
+2. Observe response `html` starts with `<body` (or body fragment) and lacks the outer `<html>` document wrapper / `<head>`.
+3. Same URL with `"selector": "page"` already returns full document HTML today — omitted selector should match that.
+
+Component-level (no live browser): call `capture_html(page, None)` / `capture_html(page, "")` and assert the evaluate script is the documentElement path (same as `"page"`), not the body path.
+
+### Root cause
+
+AST-1725 Stage 3 `capture_html` (and the plan contract table) treated omitted selector as equivalent to `"body"`:
+
+```python
+if not sel or sel.lower() == "body":
+    return … document.body.outerHTML …
+if sel.lower() == "page":
+    return … document.documentElement.outerHTML …
+```
+
+UAT expects the default (no selector) to be the full page, not the body fragment. The defect is the default branch grouping, not navigation or auth.
+
+### Proposed change
+
+In `service/telescope/capture.py`, change `capture_html` so:
+
+1. `selector` is `None`, `""`, or case-insensitive `"page"` → evaluate `document.documentElement ? document.documentElement.outerHTML : ''`.
+2. Case-insensitive `"body"` → keep `document.body ? document.body.outerHTML : ''`.
+3. Any other CSS selector → keep first-match `querySelector(…).outerHTML` (unchanged).
+
+Do **not** change `capture_text` defaults (visible text from body remains correct for `/telescope`). Do **not** touch `src/external/telescope.py`, Railway/CI, or Dockerfile.
+
+Update the Stage 3 contract note in this doc's table row for `/telescope/html` `selector` default from `null` (= `body` outerHTML) to `null` (= full document / `documentElement` outerHTML); `"body"` remains an explicit opt-in for body-only.
+
+### Blast radius
+
+- Callers of `POST /telescope/html` with no `selector` (or `null`/`""`) will start receiving a larger payload including `<head>` / doctype-level markup via `documentElement` — intentional UAT fix.
+- Callers that already pass `"selector": "body"` or a CSS selector are unchanged.
+- `tests/component/service/test_telescope_capture.py::test_capture_html_page_vs_body_vs_selector` covers `"page"` / `"body"` / CSS but does **not** assert the omitted-selector default; Betty may need a repro assertion that `None`/`""` use the documentElement path (fix-board TESTS signal).
+- Platform drop-in (`src/external/telescope.py`, AST-1726) if it assumes body-only HTML from the service default — verify during make-fix; out of this bug's file edit unless it hardcodes the old default locally.
+
+### What must still hold
+
+- Parent / AST-1725 AC: `/telescope/html` returns `final_url` + raw rendered HTML (no service-side cull); expand default on; wait_ready default off; bearer auth; console-only logs; zero `src` imports under `service/telescope/`.
+- Explicit `"body"` still returns body outerHTML only.
+- Explicit CSS selectors still return the first matching element's outerHTML.
+- `/telescope` text endpoint and multi-match text behavior unchanged.
+- Boundaries: no Railway/CI (#3), no Surfer-shared post-render helpers, no new service endpoints.
+
+## Radia review-fix (AST-1729)
+
+Overall: CLEAN. [bug-repro] OK; What must still hold OK. Clean-review shortcut → User Testing (resolve skipped).
+
 ## Bug: AST-1732 — Telescope links not scoped to class selector
 
 ### As-is
@@ -524,3 +586,8 @@ Do **not** change `/telescope/html`, `capture_text`, auth, pool, Dockerfile, or 
 - Multi-match **text** behavior unchanged (string vs list).
 - Explicit `"page"` / `"body"` / omitted selector still return whole-page links.
 - Boundaries: no Railway/CI, no platform `telescope.py` drop-in edits unless it reimplements service link capture (it must not for this bug).
+
+## Resolution (AST-1732)
+
+**Date:** 2026-09-20  
+**Radia fix-now:** Restacked onto `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` so AST-1729 `capture_html` (documentElement default) and sibling ftr product are present; kept AST-1732 scoped `capture_links` + `app.py` selector wiring. Full `test_telescope_capture.py` verified green.
