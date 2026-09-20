@@ -521,3 +521,19 @@ AST-702 Stage 3 (and AST-507 / AST-880 reuse) deliberately normalized company ro
 |------|--------------|-------------|
 | **REVIEW** (findings, artifact complete except canon table) | Normal (AST-1720 In Progress) | → **Review Posted** → `resolve-child` → **User Testing** when clean |
 | Orphaned | N/A | Not applicable |
+
+## Resolution (`resolve-child` AST-1723)
+
+**Date:** 2026-09-20
+
+**Against:** Radia `review-fix` on `origin/sub/AST-1720/AST-1723-company-batch-refs-company-id` @ **`0402c75e`** (findings appended @ **`4999492c`**).
+
+**Product / plan**
+
+- **fix-now #1 (`[bug-repro]` / qa-fix bar):** Accepted as owned by sibling gap **AST-1724** (orphaned fix-board `TESTS: REVISE` → gap child). No product code change on this tip; do not regress AST-1723 to wait on Betty here. Coverage + `[bug-repro]` land on AST-1724’s publish ref.
+- **fix-now #2 (Canon Scope process gap):** Process/intake — no product fix. Left for Chuckles/Archie; does not block User Testing on this ticket.
+- **discuss / advisory:** No code. Product diff already matches Proposed change; job path gated.
+
+**§9a dry-run:** recorded in resolve commit comment / Linear only if non-trivial — see publish tip after `resolve(AST-1723)`.
+
+**Manifest:** No qa-fix on this ticket (board REVISE spun to AST-1724). Lighter test-fix compile/sanity already **Tests Passed** @ **`0402c75e`**.
