@@ -604,3 +604,8 @@ fix-board `[board-betty] TESTS: REVISE` on AST-1723: fixtures and bible were wri
 - Persistence and transitions still keyed by `short_name`.
 - Job-entity tests elsewhere remain on `astral_job_id` / `jobs`.
 
+
+
+## Review-fix findings (AST-1724)
+
+PROCEED — [bug-repro] OK; What must still hold OK; no fix-now.
