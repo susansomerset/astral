@@ -20,6 +20,7 @@ from src.utils.auth import local_operator_user, validate_bearer_token
 from src.utils.deploy_status import is_local_deploy_env
 
 _STYTCH_JWT_COOKIE = "stytch_session_jwt"
+_SILENT_AUTH_HEADER = "X-Astral-Silent-Auth"
 
 _ALLOWED_IPS: set[str] = set()
 
@@ -85,7 +86,8 @@ def require_auth(f):
         token = _session_jwt_from_request()
         if not token:
             return jsonify({"error": "Missing or invalid session credentials"}), 401
-        user = validate_bearer_token(token)
+        remote = request.headers.get(_SILENT_AUTH_HEADER) != "1"
+        user = validate_bearer_token(token, remote=remote)
         if user is None:
             return jsonify({"error": "Invalid or expired token"}), 401
         g.user = user
