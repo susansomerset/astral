@@ -403,3 +403,64 @@ No conflicts requiring plan revision.
 **§9a dry-run:** `origin/sub/AST-700/AST-702-batch-prefilter-evaluate-phase` merges cleanly into **`origin/dev`** and **`origin/ftr/AST-700-prefilter-as-batch-process`**.
 
 **Manifest:** Betty manifest (15 tests) green @ **`ba3ccc9`** — no `[qa-handoff]`.
+
+## Bug: AST-1724 — Gap: company batch company_id/companies test coverage
+
+### As-is
+
+Component fixtures in `tests/component/core/test_roster.py` still feed and assert the pre-AST-1723 job vocabulary for company hops: `parsed_response["jobs"]` + row `astral_job_id`, and vet `batch_entities` with `astral_job_id: short_name`. `docs/test-bible/core/roster.md` (AST-702 / AST-880) documents those suites without noting the company-native `company_id` / `companies` contract. No `[bug-repro]` asserts the to-be shape.
+
+### To-be
+
+Roster component coverage matches sibling **AST-1723** product contract: company `batch_entities` use `company_id` (value = short_name string) + `short_name` (no `astral_job_id`); prefilter `parsed_response` uses `companies` keyed by `company_id`. Vet still returns `results[]`, but its `batch_entities` assert `company_id`. Bible AST-702 / AST-880 entries name the revised / new node ids. A `[bug-repro]` test is red against pre-AST-1723 product and green once AST-1723 is on the tree.
+
+### Repro
+
+Against a tree **without** AST-1723 product (company encode still `astral_job_id` / decode still `jobs`):
+
+1. Run a batch prefilter fixture that only supplies `parsed_response.companies[{company_id: "passco", ...}]` and asserts `do_task` ctx `batch_entities[0]["company_id"] == "passco"` with no `astral_job_id`.
+2. **Pre-fix:** reconcile finds no rows / KeyError on `company_id` / assert fails on `batch_entities` shape.
+3. **Post-AST-1723:** same test green; pass/fail counts and state transitions still match today's suite expectations.
+
+### Root cause
+
+fix-board `[board-betty] TESTS: REVISE` on AST-1723: fixtures and bible were written to the AST-702 encode trick (`astral_job_id: short_name` + `jobs`). Product moved; coverage did not. This gap ticket owns test + bible only — product is AST-1723.
+
+### Proposed change
+
+1. **`tests/component/core/test_roster.py` — shared helper**
+   - Change `_encoded_prefilter_response(...)` to return `{"companies": [row]}` (not `{"jobs": [row]}`). When callers pass an id, use key `company_id` (never `astral_job_id`).
+
+2. **`tests/component/core/test_roster.py` — revise existing fixtures that hard-code `jobs` / `astral_job_id`**
+   - `TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts` — mock `parsed_response` → `companies` with `company_id` `"passco"` / `"failco"`.
+   - Batch PJL / homepage-ready case that currently embeds `"jobs": [{"astral_job_id": "passco"|"nolinks", ...}]` (same file, ~`test_batch_homepage_ready_pass_requires_hydrated_pjl`) — same rewrite.
+   - `TestAst707EmbeddedRcBatchHydration::test_batch_prefilter_hydrates_embedded_rc_when_missing_from_artifact` — `jobs`/`astral_job_id: "acme"` → `companies`/`company_id: "acme"`.
+   - `TestAst603ConsultParityHydration` (and any other roster prefilter mock in this file) whose `parsed_response` uses a `jobs` list without ids — switch list key to `companies` so `_flatten_prefilter_parsed` / batch reconcile still see the row.
+   - `TestAst880VetInflowEncoded::test_vet_passes_batch_entities_to_do_task` — assert  
+     `ctx["batch_entities"] == [{"company_id": "co_d", "short_name": "co_d"}]`  
+     (drop `astral_job_id`). Leave `results[]` / grade outcomes unchanged.
+   - Do **not** invent coverage outside `test_roster.py` (agent/consult/config tests are out of **## Scope**).
+
+3. **`tests/component/core/test_roster.py` — new `[bug-repro]` class**
+   - Add `TestAst1724CompanyBatchCompanyIdContract` with at least:
+     - `test_prefilter_batch_entities_use_company_id_not_astral_job_id` — mock successful `do_task`; call `prefilter_company_batch` with one ready company `short_name="acme"`; assert `do_task` kwargs `ctx["batch_entities"][0]["company_id"] == "acme"`, `"short_name" == "acme"`, and `"astral_job_id" not in ctx["batch_entities"][0]`.
+     - `test_prefilter_batch_reconciles_companies_company_id` — mock `parsed_response={"companies":[{"company_id":"acme","grades": <passing grades with reasons>}]}`; assert batch returns a pass count / transition for `acme` (same pass_states semantics as `TestAst702PrefilterCompanyBatch`). Feeding only the old `jobs`/`astral_job_id` shape must **not** be what this repro asserts as success.
+   - These two (or one combined) are the `[bug-repro]` Betty/qa-fix tags: red on pre-AST-1723 product, green after AST-1723 merge onto the gap branch.
+
+4. **`docs/test-bible/core/roster.md`**
+   - Under **### AST-702 · AST-700**: add a row for company-batch identity (`company_id` / `companies`) pointing at `TestAst1724CompanyBatchCompanyIdContract`; note **Broken / obsolete:** fixtures that asserted company `batch_entities.astral_job_id` or `parsed_response.jobs` (revised by AST-1724 for AST-1723 to-be).
+   - Under **### AST-880 · AST-879**: note `TestAst880VetInflowEncoded::test_vet_passes_batch_entities_to_do_task` now expects `company_id` on `batch_entities` (results[] unchanged).
+   - Optional one-line narrowed run listing the AST-1724 class + revised AST-702 / AST-880 nodes.
+
+### Blast radius
+
+- Any roster test still depending on `_encoded_prefilter_response` returning `jobs` will flip when the helper changes — revise those call sites in the same pass (all in `test_roster.py`).
+- Sibling product AST-1723 must be present on the tree when the repro is expected green; gap branch should sync/merge sibling product before claiming Tests Passed.
+- Out of scope: `test_agent.py` AST-603 normalize (`out["jobs"]`), `test_config.py` schema stringify — Betty may open follow-ons if those break after ftr rollup; do not expand this ticket.
+
+### What must still hold
+
+- AST-702 pass/fail/skip counts, readiness → `CANNOT_READ_WEBSITE`, PJL / embedded-RC hydration outcomes.
+- AST-880 vet `results[]` grade → `WEBSITE_FOUND` / `VET_FAILED` mapping and website persistence rules.
+- Persistence and transitions still keyed by `short_name`.
+- Job-entity tests elsewhere remain on `astral_job_id` / `jobs`.
