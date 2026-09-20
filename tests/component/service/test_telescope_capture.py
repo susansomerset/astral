@@ -58,6 +58,49 @@ async def test_capture_links_filters_http() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ast1732_capture_links_scoped_to_selector() -> None:
+    """AST-1732 bug-repro: filtering selector scopes links (not whole-page a[href])."""
+    page = MagicMock()
+    page.evaluate = AsyncMock(
+        return_value=[{"href": "https://in.example/job", "text": "Job"}]
+    )
+    out = await capture_mod.capture_links(page, ".job-list")
+    assert out == [{"href": "https://in.example/job", "text": "Job"}]
+    call = page.evaluate.await_args
+    js = call.args[0]
+    whole_page_only = (
+        "querySelectorAll('a[href]')" in js.replace('"', "'")
+        and "querySelectorAll(sel" not in js
+        and "querySelectorAll(selector" not in js
+    )
+    assert not whole_page_only, (
+        "AST-1732: capture_links with selector must scope under match roots, "
+        "not document.querySelectorAll('a[href]') alone"
+    )
+    has_sel_arg = len(call.args) > 1 and call.args[1] == ".job-list"
+    assert has_sel_arg or "job-list" in js, (
+        "AST-1732: scoped capture_links must receive the CSS selector"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ast1732_capture_links_multi_match_dedupes_by_href() -> None:
+    """AST-1732 bug-repro: multi-root link union dedupes by href."""
+    page = MagicMock()
+    page.evaluate = AsyncMock(
+        return_value=[{"href": "https://ex.com/a", "text": "first"}]
+    )
+    await capture_mod.capture_links(page, ".card")
+    js = page.evaluate.await_args.args[0]
+    assert any(
+        tok in js
+        for tok in ("seen", "Set(", "Map(", "dedup", "href] =", "by href", "unique")
+    ), (
+        "AST-1732: scoped multi-match links must dedupe by href in the evaluate script"
+    )
+
+
+@pytest.mark.asyncio
 async def test_capture_html_page_vs_body_vs_selector() -> None:
     page = MagicMock()
     page.evaluate = AsyncMock(side_effect=["<html/>", "<body/>", "<div/>"])
