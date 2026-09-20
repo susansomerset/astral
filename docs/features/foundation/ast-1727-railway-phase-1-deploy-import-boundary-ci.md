@@ -175,3 +175,82 @@ jobs:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1727
+**Overall:** APPROVED
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref tip:** b7d41e9426848c73a9d5d2c14c1b658f98ef9379 (`origin/sub/AST-1721/AST-1727-railway-phase-1-deploy-import-boundary-ci`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.layers.import-rules (amendment request) | B | | |
+| stat.logging.info | B | | |
+
+## Traceability
+
+AC2→S2 `check-service-src-import-fence.sh` + `service-src-import-fence.yml` (anchored import-line regex both directions); AC9→S1 `railway.toml` separate-service checklist + private DNS + platform `TELESCOPE_BASE_URL(S)` (operator wiring post-land); AC12→S1 `numReplicas=1`, 2 GiB `limitOverride`, `ON_FAILURE` restart (semaphore on AST-1725/1726); AC13→S3 `Judoscale`/`serviceInstanceUpdate` rg gate + explicit non-goals.
+
+## Findings
+
+### discuss — Parent AC 2 literal `rg` vs anchored CI regex
+
+- **Severity:** discuss
+- **Location:** Stage 2 ⚠️ Decision; parent AC 2
+- **Finding:** Parent AC 2 quotes literal `rg "from src\\.|import src"` / `from service\\.|import service`. Plan uses anchored import-line patterns (aligned with `tests/component/service/test_telescope_fence.py`) to avoid docstring false positives (e.g. settings.py “Never import src.”). Measures **imports**, which is the amendment intent.
+- **Recommendation:** No plan change required; note in build/UAT that AC 2’s literal grep is superseded by the anchored fence for CI truth.
+
+### discuss — Betty component test is one-way only
+
+- **Severity:** discuss
+- **Location:** Stage 2 script; `tests/component/service/test_telescope_fence.py`
+- **Finding:** Betty’s fence test covers `service/telescope` → `src` only. CI script adds `src` → `service` (required for bidirectional AC 2). Not a plan defect — CI is the stronger gate.
+- **Recommendation:** Optional Betty follow-up to mirror `SERVICE_IN_SRC` check; out of AST-1727 Scope.
+
+### acceptable — Scope gate / lint script path
+
+- **Severity:** acceptable
+- **Location:** Explicit scope gate; Files Changed
+- **Finding:** `scripts/ci/check-service-src-import-fence.sh` is authorized by ticket Scope (“or a tracked lint script invoked by CI”). No `service/telescope/*.py`, `src/**`, or root `railway.toml` edits.
+- **Recommendation:** None.
+
+### acceptable — `stat.logging.info` on bash deliverables
+
+- **Severity:** acceptable
+- **Location:** Canon notes; Stage 2 script
+- **Finding:** Statute `applies_when.paths` is `src/**`; this ticket is toml + bash. Plan applies semantic (succinct operator-readable stdout on failure; no payload spam) to the fence script — appropriate variance for CI.
+- **Recommendation:** None.
+
+### acceptable — Railway operator steps
+
+- **Severity:** acceptable
+- **Location:** Stage 1 comment block; Stage 3 step 3
+- **Finding:** Live Railway service creation, private networking, bearer secret, and platform env vars are dashboard/operator steps after land — correctly excluded from build-child `railway up`. AC 9 satisfied via config-as-code + checklist, not in-process import.
+- **Recommendation:** None.
+
+### acceptable — No `healthcheckPath`
+
+- **Severity:** acceptable
+- **Location:** Stage 1 ⚠️ Decision
+- **Finding:** Omitting Railway HTTP healthcheck avoids false deploy failures against bearer-gated `/healthz` (AST-1725). `restartPolicyType = ON_FAILURE` + operator authenticated curl documented.
+- **Recommendation:** None.
+
+### acceptable — R6 definition fidelity
+
+- **Severity:** acceptable
+- **Location:** Explicit scope gate; Stages 1–3; `## Estimate`
+- **Finding:** Plan matches child Scope (railway.toml + CI only). No Phase 2 autoscaler, Surfer, or sibling product code. Self-assessment (`Confirm Chuckles estimate: 3 — agree`) is honest for three focused stages. No `!!-NONE` conf gaps.
+- **Recommendation:** None.
+
+### acceptable — Plan Discuss
+
+- **Severity:** acceptable
+- **Location:** Linear comments
+- **Finding:** Plan Discuss rounds completed: **0** (status Plan Ready; assignee Joan).
+- **Recommendation:** N/A.
+
+context_tokens≈95000
