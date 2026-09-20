@@ -537,3 +537,8 @@ AST-702 Stage 3 (and AST-507 / AST-880 reuse) deliberately normalized company ro
 **§9a dry-run:** recorded in resolve commit comment / Linear only if non-trivial — see publish tip after `resolve(AST-1723)`.
 
 **Manifest:** No qa-fix on this ticket (board REVISE spun to AST-1724). Lighter test-fix compile/sanity already **Tests Passed** @ **`0402c75e`**.
+
+
+## Docs-acceptance (AST-1723)
+
+Repro / fixture coverage for company_id/companies is owned by sibling gap **AST-1724** (orphaned fix-board TESTS:REVISE path). No test() on this tip.
