@@ -1268,8 +1268,25 @@ class TestAst707EmbeddedPrefilterConfig:
         assert rc["code"] == "RC"
         assert rc["label"] == "Reality Check"
         assert rc["importance"] == 8
-        grades = {g["grade"] for g in rc["grade_descriptions"]}
-        assert grades == {"A", "B", "C", "D", "E", "F"}
+        assert rc["content"] == (
+            "Reality Check — assess whether the company is real and operating as represented.\n"
+            "A == clearly real and verifiable\n"
+            "B == appears real with minor gaps\n"
+            "C == mixed signals; legitimacy uncertain\n"
+            "D == significant doubt about reality or representation\n"
+            "E == strong evidence of misrepresentation\n"
+            "F == not a real company or clearly fraudulent\n"
+            "X == could not read the page (bot blocked or other network issue)"
+        )
+        by_grade = {g["grade"]: g["description"] for g in rc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "D", "E", "F", "X"]
+        assert by_grade["A"] == "clearly real and verifiable"
+        assert by_grade["B"] == "appears real with minor gaps"
+        assert by_grade["C"] == "mixed signals; legitimacy uncertain"
+        assert by_grade["D"] == "significant doubt about reality or representation"
+        assert by_grade["E"] == "strong evidence of misrepresentation"
+        assert by_grade["F"] == "not a real company or clearly fraudulent"
+        assert by_grade["X"] == "could not read the page (bot blocked or other network issue)"
 
 
 class TestAst721ParseJobListConfig:
