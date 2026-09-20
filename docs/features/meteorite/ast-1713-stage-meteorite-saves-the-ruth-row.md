@@ -165,3 +165,29 @@ Run the AST-1712 preflight in **Depends on** first. Stop if it fails.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1713
+**Overall:** APPROVED
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref:** 9aa2a45b3acda54d5a33a5c731ebbdc5523d4434
+
+## Canon scores
+patt.task.dispatch-retry | A
+stat.logging.debug | A
+stat.logging.error | A
+stat.logging.info | A
+stat.logging.info.entity | A
+stat.logging.warning | A
+
+## Traceability
+AC2 → Stage 2 (delete `invoke_stage_meteorite`, move land enrich + helpers, no `consult` in `meteorite.py`); AC3 → Stage 1 (`insert_meteorite_rows` binds `row["state"]`, no `"NEW"` literal in function body); AC4 → Stage 2 steps 15–16 (`NOT_A_JOB` / `SCRAPE_LINK` / `READY` row saves with link rules)
+
+## Findings
+None.
+
+context_tokens≈48000
+
+[plan-rubric] PROCEED (Commit: 9aa2a45b3acda54d5a33a5c731ebbdc5523d4434) Ruth save path ready
