@@ -14,7 +14,7 @@ interface CompanyDetail {
   job_site?: string
   state: string
   last_scan_at?: string | null
-  state_updated_at?: string | null
+  state_changed_at?: string | null
   prefilter_company_notes?: string
   originating_search_term?: string | null
   state_history: Array<{ to_state?: string; timestamp?: string }>

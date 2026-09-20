@@ -851,12 +851,12 @@ def apply_config_table_upsert(
 
 # Company batch primitives (prefilter, locate job page, parse job page, gazer)
 # Allowed ORDER BY columns for company batch claims (set_company_batch / roster).
-COMPANY_BATCH_SORT_COLUMNS = frozenset({"rowid", "updated_at", "created_at", "state_updated_at", "last_scan_at"})
+COMPANY_BATCH_SORT_COLUMNS = frozenset({"rowid", "updated_at", "created_at", "state_changed_at", "last_scan_at"})
 
 BOARD_SEARCH_BATCH_SORT_COLUMNS = frozenset({"rowid", "updated_at", "created_at", "last_scan_at"})
 _UPDATE_COMPANY_ALLOWED = frozenset({
     "state", "company_name", "company_website", "job_site", "batch_id", "batch_created_at",
-    "company_data", "state_history", "last_scan_at", "updated_at", "state_updated_at",
+    "company_data", "state_history", "last_scan_at", "updated_at", "state_changed_at",
     "candidate_id",
 })
 
@@ -883,7 +883,7 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
                 state_history TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                state_updated_at TIMESTAMP,
+                state_changed_at TIMESTAMP,
                 originating_search_term TEXT
             )
         """)
@@ -931,6 +931,14 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
         if "originating_search_term" not in cols:
             try:
                 conn.execute("ALTER TABLE company ADD COLUMN originating_search_term TEXT")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+        # stat.entity.required-metadata: state_updated_at -> state_changed_at (naming parity w/ job/candidate).
+        if "state_updated_at" in cols and "state_changed_at" not in cols:
+            try:
+                conn.execute("ALTER TABLE company RENAME COLUMN state_updated_at TO state_changed_at")
                 conn.commit()
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
@@ -1162,7 +1170,7 @@ def save_company(
                 (short_name, state, company_name, company_website, job_site, batch_id, batch_created_at,
                  last_scan_at, company_data, state_history, candidate_id,
                  originating_search_term,
-                 created_at, updated_at, state_updated_at)
+                 created_at, updated_at, state_changed_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM company WHERE short_name = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """, (
                 short_name,
@@ -1195,7 +1203,7 @@ def save_company(
 def update_company(short_name: str, **kwargs: Any) -> int:
     """Partial UPDATE: set only the columns passed. Allowlist enforced.
     company_data/state_history: dict/list serialized to JSON.
-    updated_at auto-set to now if not in kwargs; state_updated_at set when state changes.
+    updated_at auto-set to now if not in kwargs; state_changed_at set when state changes.
     Returns rowcount (0 or 1).
     """
     if not short_name or not short_name.strip():
@@ -1207,9 +1215,9 @@ def update_company(short_name: str, **kwargs: Any) -> int:
     if "updated_at" not in kwargs:
         cols.append("updated_at")
         kwargs["updated_at"] = now
-    if "state" in kwargs and "state_updated_at" not in kwargs:
-        cols.append("state_updated_at")
-        kwargs["state_updated_at"] = now
+    if "state" in kwargs and "state_changed_at" not in kwargs:
+        cols.append("state_changed_at")
+        kwargs["state_changed_at"] = now
     pairs = []
     params: List[Any] = []
     for c in cols:
@@ -3752,11 +3760,21 @@ def _ensure_meteorite_schema(conn: sqlite3.Connection) -> None:
                 batch_created_at TIMESTAMP,
                 created_at TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP NOT NULL,
-                state_changed_at TIMESTAMP NOT NULL
+                state_changed_at TIMESTAMP NOT NULL,
+                state_history TEXT DEFAULT '[]'
             )
             """
         )
         conn.commit()
+    # stat.entity.required-metadata: migrate existing DBs missing state_history (parity with job/company/candidate).
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(meteorite)").fetchall()}
+    if "state_history" not in cols:
+        try:
+            conn.execute("ALTER TABLE meteorite ADD COLUMN state_history TEXT DEFAULT '[]'")
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
     # AST-1689: migrate existing DBs — column name from METEORITE_CONFIG (AST-1688 literal).
     _ec_col = METEORITE_CONFIG["electronic_contact_column"]
     cols = {row[1] for row in conn.execute("PRAGMA table_info(meteorite)").fetchall()}
@@ -3788,7 +3806,15 @@ def _ensure_meteorite_schema(conn: sqlite3.Connection) -> None:
 
 
 def _meteorite_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    return _row_to_dict(row)
+    d = _row_to_dict(row)
+    if d.get("state_history"):
+        try:
+            d["state_history"] = json.loads(d["state_history"])
+        except (TypeError, ValueError):
+            d["state_history"] = []
+    else:
+        d["state_history"] = []
+    return d
 
 
 def claim_meteorite_batch(
@@ -3905,13 +3931,14 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                 source_kind = row["source_kind"]
                 source_id = row["source_id"]
                 _ec_col = METEORITE_CONFIG["electronic_contact_column"]
+                history = json.dumps([{"to_state": row["state"], "timestamp": now}])
                 cur = conn.execute(
                     f"""INSERT INTO meteorite (
                         candidate_id, source_kind, source_id, source_ref, state,
                         content, classify_outcome, link, {_ec_col}, job_title,
                         employer_name, nag_count,
-                        error, created_at, updated_at, state_changed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)""",
+                        error, created_at, updated_at, state_changed_at, state_history
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)""",
                     (
                         candidate_id,
                         source_kind,
@@ -3928,6 +3955,7 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                         now,
                         now,
                         now,
+                        history,
                     ),
                 )
                 ids.append(int(cur.lastrowid))
@@ -4079,6 +4107,17 @@ def update_meteorite(meteorite_id: int, **fields: Any) -> None:
             if "state" in fields:
                 sets.append("state_changed_at = ?")
                 params.append(now)
+                # stat.entity.required-metadata: append transition, mirror job/company/candidate history shape.
+                existing = conn.execute(
+                    "SELECT state_history FROM meteorite WHERE id = ?", (int(meteorite_id),)
+                ).fetchone()
+                try:
+                    history = json.loads(existing["state_history"]) if existing and existing["state_history"] else []
+                except (TypeError, ValueError):
+                    history = []
+                history.append({"to_state": fields["state"], "timestamp": now})
+                sets.append("state_history = ?")
+                params.append(json.dumps(history))
             params.append(int(meteorite_id))
             conn.execute(
                 f"UPDATE meteorite SET {', '.join(sets)} WHERE id = ?",

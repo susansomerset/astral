@@ -17,7 +17,7 @@ const companies = [
     short_name: "acme",
     company_name: "Acme Corp",
     state: "INACTIVE",
-    state_updated_at: "2026-01-01T00:00:00Z",
+    state_changed_at: "2026-01-01T00:00:00Z",
     state_history: [],
   },
 ]

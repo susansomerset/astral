@@ -466,6 +466,8 @@ class TestAst637CompanyUpsertSchemaEnsure:
             cols = db.table_columns(learn, "company")
             assert "candidate_id" in cols
             assert "agent_responses_legacy" in cols
+            assert "state_changed_at" in cols
+            assert "state_updated_at" not in cols
         finally:
             learn.close()
 
