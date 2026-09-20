@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from src.core import consult as consult_mod
+from src.core import meteorite as meteorite_mod
 from src.utils import config as cfg
 from src.utils import rubric_text
 from src.utils.config import ASTRAL_CONFIG, JOB_STATES, TASK_CONFIG, importance_multiplier
@@ -4577,20 +4578,23 @@ class TestAst1120CompanyJobIdFallback:
         return base
 
     def test_resolve_helper_ai_wins_and_fallbacks(self) -> None:
-        if not hasattr(consult_mod, "_resolve_company_job_id"):
+        resolver = getattr(consult_mod, "_resolve_company_job_id", None) or getattr(
+            meteorite_mod, "_resolve_company_job_id", None
+        )
+        if resolver is None:
             pytest.skip("AST-1120 resolve helper not on tip")
         other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
-        assert consult_mod._resolve_company_job_id(
+        assert resolver(
             "AI-KEEP", f"https://example.com/{other}"
         ) == "AI-KEEP"
-        assert consult_mod._resolve_company_job_id("", self._DICE_URL) == self._DICE_UUID
-        assert consult_mod._resolve_company_job_id(None, self._DICE_URL) == self._DICE_UUID  # type: ignore[arg-type]
-        assert consult_mod._resolve_company_job_id("", "https://example.com/jobs/no-uuid") == ""
-        assert consult_mod._resolve_company_job_id("", "") == ""
-        assert consult_mod._resolve_company_job_id("  ", None) == ""  # type: ignore[arg-type]
+        assert resolver("", self._DICE_URL) == self._DICE_UUID
+        assert resolver(None, self._DICE_URL) == self._DICE_UUID  # type: ignore[arg-type]
+        assert resolver("", "https://example.com/jobs/no-uuid") == ""
+        assert resolver("", "") == ""
+        assert resolver("  ", None) == ""  # type: ignore[arg-type]
         # process link_for_id: empty response job_link → input row link
         link_for_id = "" or self._DICE_URL
-        assert consult_mod._resolve_company_job_id("", link_for_id) == self._DICE_UUID
+        assert resolver("", link_for_id) == self._DICE_UUID
 
     @pytest.mark.asyncio
     async def test_ai_id_unchanged_when_link_has_different_uuid(
@@ -4600,7 +4604,9 @@ class TestAst1120CompanyJobIdFallback:
 
         if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
             pytest.skip("qualify_meteorite not on tip")
-        if not hasattr(consult_mod, "_resolve_company_job_id"):
+        if not hasattr(consult_mod, "_resolve_company_job_id") and not hasattr(
+            meteorite_mod, "_resolve_company_job_id"
+        ):
             pytest.skip("AST-1120 resolve helper not on tip")
         transition = MagicMock()
         initialize = MagicMock(return_value=True)
@@ -4643,7 +4649,9 @@ class TestAst1120CompanyJobIdFallback:
 
         if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
             pytest.skip("qualify_meteorite not on tip")
-        if not hasattr(consult_mod, "_resolve_company_job_id"):
+        if not hasattr(consult_mod, "_resolve_company_job_id") and not hasattr(
+            meteorite_mod, "_resolve_company_job_id"
+        ):
             pytest.skip("AST-1120 resolve helper not on tip")
         transition = MagicMock()
         initialize = MagicMock(return_value=True)
@@ -4690,7 +4698,9 @@ class TestAst1120CompanyJobIdFallback:
 
         if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
             pytest.skip("qualify_meteorite not on tip")
-        if not hasattr(consult_mod, "_resolve_company_job_id"):
+        if not hasattr(consult_mod, "_resolve_company_job_id") and not hasattr(
+            meteorite_mod, "_resolve_company_job_id"
+        ):
             pytest.skip("AST-1120 resolve helper not on tip")
         fail = TASK_CONFIG["qualify_meteorite"]["fail_state"]
         transition = MagicMock()
@@ -4818,7 +4828,9 @@ class TestAst1121CompanyJobIdDebugSource:
 
         if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
             pytest.skip("qualify_meteorite not on tip")
-        if not hasattr(consult_mod, "_resolve_company_job_id"):
+        if not hasattr(consult_mod, "_resolve_company_job_id") and not hasattr(
+            meteorite_mod, "_resolve_company_job_id"
+        ):
             pytest.skip("AST-1120 resolve helper not on tip")
         jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
@@ -4973,7 +4985,9 @@ class TestAst1127QualifyMeteoriteOmitCompanyJobId:
 
         if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
             pytest.skip("qualify_meteorite not on tip")
-        if not hasattr(consult_mod, "_resolve_company_job_id"):
+        if not hasattr(consult_mod, "_resolve_company_job_id") and not hasattr(
+            meteorite_mod, "_resolve_company_job_id"
+        ):
             pytest.skip("AST-1120 resolve helper not on tip")
         jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
         transition = MagicMock()
@@ -5627,8 +5641,8 @@ class TestAst1494EnrichMeteoriteCompanyStem:
                 "parsed_response": {"jobs": [self._ruth_job(company_stem="alice@example.com")]},
             }
 
-        monkeypatch.setattr(consult_mod, "do_task", _do_task)
-        out = await consult_mod.enrich_meteorite_land_packet(
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.enrich_meteorite_land_packet(
             "somerset", [self._scrap()], debug=False,
         )
         assert out["success"] is True
@@ -5644,8 +5658,8 @@ class TestAst1494EnrichMeteoriteCompanyStem:
                 "parsed_response": {"jobs": [self._ruth_job()]},
             }
 
-        monkeypatch.setattr(consult_mod, "do_task", _do_task)
-        out = await consult_mod.enrich_meteorite_land_packet(
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.enrich_meteorite_land_packet(
             "somerset", [self._scrap()], debug=False,
         )
         assert out["jobs"][0]["company_stem"] == ""
@@ -5662,16 +5676,17 @@ class TestAst1494EnrichMeteoriteCompanyStem:
                 },
             }
 
-        monkeypatch.setattr(consult_mod, "do_task", _do_task)
-        out = await consult_mod.enrich_meteorite_land_packet(
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.enrich_meteorite_land_packet(
             "somerset", [self._scrap()], debug=False,
         )
         assert out["jobs"][0]["company_stem"] == "meteorite-self"
 
     @pytest.mark.asyncio
     async def test_enrich_debug_detail_includes_company_stem(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
     ) -> None:
+        import logging
         async def _do_task(**_kwargs):
             return {
                 "success": True,
@@ -5680,19 +5695,13 @@ class TestAst1494EnrichMeteoriteCompanyStem:
                 },
             }
 
-        dbg_d = MagicMock()
-        monkeypatch.setattr(consult_mod, "do_task", _do_task)
-        monkeypatch.setattr(consult_mod.logger, "set_debug_flag", MagicMock())
-        monkeypatch.setattr(consult_mod.logger, "debug_index", MagicMock())
-        monkeypatch.setattr(consult_mod.logger, "debug_detail", dbg_d)
-        out = await consult_mod.enrich_meteorite_land_packet(
-            "somerset", [self._scrap()], debug=True,
-        )
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        with caplog.at_level(logging.DEBUG, logger="src.core.meteorite"):
+            out = await meteorite_mod.enrich_meteorite_land_packet(
+                "somerset", [self._scrap()], debug=True,
+            )
         assert out["success"] is True
-        detail = " ".join(
-            str(c.args[0]) if c.args else str(c.kwargs) for c in dbg_d.call_args_list
-        )
-        assert "company_stem='acme-careers'" in detail
+        assert "company_stem='acme-careers'" in caplog.text
 
     @pytest.mark.asyncio
     async def test_dispatch_debug_logs_company_stem_when_present(
