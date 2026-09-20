@@ -64,14 +64,17 @@ async def _try_dismiss_cookie_banner_fuzzy(page) -> bool:
     return bool(result)
 
 
-async def dismiss_cookies(page) -> None:
+async def dismiss_cookies(page) -> bool:
+    """Always attempt dismiss; return True if a click succeeded."""
     try:
         clicked = await _try_dismiss_cookie_banner(page)
         if not clicked:
             clicked = await _try_dismiss_cookie_banner_fuzzy(page)
         _log.debug("cookie dismiss result clicked=%s", clicked)
+        return bool(clicked)
     except Exception as exc:
         _log.debug("cookie dismiss soft-fail %s: %s", type(exc).__name__, exc)
+        return False
 
 
 async def expand_page(page) -> None:

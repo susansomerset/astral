@@ -383,6 +383,45 @@ async def _get_healthz() -> bool:
         return False
 
 
+async def admin_telescope_scrape(
+    url: str,
+    *,
+    response_type: str,
+    expand: Optional[bool] = None,
+    wait_ready: Optional[bool] = None,
+    links: bool = True,
+    selector: Optional[str] = None,
+    cull: bool = False,
+) -> dict:
+    """Admin workbench scrape — returns full Telescope JSON (incl. scrape_meta)."""
+    rt = (response_type or "").strip().lower()
+    if rt not in ("text", "html"):
+        raise ValueError("response_type must be text or html")
+    if rt == "text":
+        data = await _post_telescope(
+            url,
+            selector=selector,
+            expand=expand,
+            wait_ready=wait_ready,
+            links=links,
+        )
+    else:
+        data = await _post_telescope_html(
+            url,
+            selector=selector,
+            expand=expand,
+            wait_ready=wait_ready,
+        )
+        if cull and "html" in data:
+            data = {**data, "html": _cull_html(data["html"] or "")}
+    _log.info(
+        "telescope admin scrape type=%s final_url=%s",
+        rt,
+        data.get("final_url"),
+    )
+    return data
+
+
 async def _ensure_text(page: PageHandle, *, links: bool = False) -> None:
     if page._closed:
         raise PlaywrightInfraError("context_closed", "page is closed")

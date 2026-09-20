@@ -26,6 +26,7 @@ from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
 from src.utils.cost_calculator import sum_calc_cost_components
+from src.external.telescope import PlaywrightInfraError, admin_telescope_scrape
 from src.core.dispatcher import (
     list_dispatch_ledger, get_dispatch_ledger, list_log_entries,
     list_dispatch_tasks, save_dispatch_task, update_dispatch_task,
@@ -2066,3 +2067,42 @@ def download_db():
     """Send the raw SQLite file as a binary download."""
     db_path = ASTRAL_CONFIG["db_dir"] / "astral.db"
     return send_file(str(db_path), mimetype="application/octet-stream", as_attachment=True, download_name="astral.db")
+
+
+@admin_bp.route("/telescope", methods=["POST"])
+@require_admin
+def admin_telescope():
+    """Operator workbench — proxy to Telescope with scrape_meta (AST-1728)."""
+    body = request.get_json(silent=True) or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "url required"}), 400
+    response_type = (body.get("response_type") or "").strip().lower()
+    if response_type not in ("text", "html"):
+        return jsonify({"error": "response_type must be text or html"}), 400
+    expand = body.get("expand", True)
+    wait_ready = body.get("wait_ready", False)
+    links = body.get("links", True)
+    cull = body.get("cull", False)
+    selector = body.get("selector")
+    if selector is not None:
+        selector = str(selector).strip() or None
+    try:
+        data = asyncio.run(
+            admin_telescope_scrape(
+                url,
+                response_type=response_type,
+                expand=bool(expand),
+                wait_ready=bool(wait_ready),
+                links=bool(links),
+                selector=selector,
+                cull=bool(cull),
+            )
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except PlaywrightInfraError as e:
+        return jsonify({"error": e.failure_class, "detail": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": "telescope_error", "detail": str(e)}), 502
+    return jsonify(data)
