@@ -609,3 +609,8 @@ fix-board `[board-betty] TESTS: REVISE` on AST-1723: fixtures and bible were wri
 ## Review-fix findings (AST-1724)
 
 PROCEED — [bug-repro] OK; What must still hold OK; no fix-now.
+
+
+## Make-fix note (AST-1724)
+
+Product company_id/companies contract absorbed from `origin/ftr` (AST-1723). Gap tip only owns tests/bible.
