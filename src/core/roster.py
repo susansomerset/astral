@@ -19,7 +19,7 @@ from pathlib import Path
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.external.playwright import (
+from src.external.telescope import (
     extract_page_scrape_contract,
     extract_site_page_list,
     extract_visible_text,

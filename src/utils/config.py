@@ -4694,24 +4694,44 @@ def importance_multiplier(n: int) -> float:
 RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
-    "playwright_browsers_path": str(_PROJECT_ROOT / ".browsers"),
 }
 
 # ---------------------------------------------------------------------------
-# PLAYWRIGHT_CONFIG: browser launch, session recovery, scrape timeouts (AST-853).
+# PLAYWRIGHT_CONFIG: scrape timeouts still read by roster/gazer (AST-853 / AST-1726).
+# Launch/Firefox keys removed — platform browser I/O is Telescope HTTP.
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_CONFIG = {
-    "launch_timeout_ms": 60_000,
-    "launch_max_attempts": 3,
-    "launch_retry_delay_seconds": 2.0,
-    "page_goto_timeout_ms": 30_000,
-    "connectivity_timeout_ms": 10_000,
-    "context_recovery_max_attempts": 2,
     "company_scrape_timeout_seconds": 120,
-    "firefox_user_prefs": {
-        "security.sandbox.content.level": 0,
-    },
+    "context_recovery_max_attempts": 2,  # batch session recover retries (client-side)
 }
+
+# ---------------------------------------------------------------------------
+# TELESCOPE_CONFIG: platform HTTP client to Astral Telescope (AST-1726).
+# Bearer is env-only (never a code default secret).
+# ---------------------------------------------------------------------------
+TELESCOPE_CONFIG = {
+    "base_urls": [],  # filled below from TELESCOPE_BASE_URLS or TELESCOPE_BASE_URL
+    "bearer_env": "TELESCOPE_BEARER_TOKEN",
+    "client_timeout_seconds": 60,
+    "max_in_flight": 15,
+    "per_node_max_in_flight": 3,
+    "retry_other_node": True,
+    "max_node_attempts": 2,
+    "healthz_path": "/healthz",
+    "telescope_path": "/telescope",
+    "telescope_html_path": "/telescope/html",
+    "cull_html_default": True,
+    "default_expand": True,
+    "default_wait_ready": False,
+}
+
+_urls_csv = (os.environ.get("TELESCOPE_BASE_URLS") or "").strip()
+if _urls_csv:
+    TELESCOPE_CONFIG["base_urls"] = [u.strip() for u in _urls_csv.split(",") if u.strip()]
+else:
+    _single = (os.environ.get("TELESCOPE_BASE_URL") or "").strip()
+    if _single:
+        TELESCOPE_CONFIG["base_urls"] = [_single]
 
 # ---------------------------------------------------------------------------
 # Timesheet rows (database ledgers): provider string validated on insert.

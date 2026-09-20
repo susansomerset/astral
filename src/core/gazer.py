@@ -48,7 +48,7 @@ from src.data.database import (
     text_matches_known_company_job_id_for_candidate,
     update_company_last_scan_at,
 )
-from src.external.playwright import (
+from src.external.telescope import (
     create_browser_context,
     create_batch_browser_session,
     get_page,
