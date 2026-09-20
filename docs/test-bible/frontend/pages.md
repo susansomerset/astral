@@ -2893,3 +2893,17 @@ cd src/ui/frontend && npm run test:component -- \
 **Broken / obsolete this pass:** none.
 
 **Integration:** none.
+
+---
+
+### AST-1728 · AST-1721 (qa-fix bug-repro — AdminTelescope §6c)
+
+| Area | Component tests |
+| --- | --- |
+| Page module exists / loads | `tests/component/frontend/pages/test_AdminTelescope.test.tsx` — **`AST-1728: AdminTelescope page module exports a component`** (**bug-repro**) |
+| Path / file presence (py) | `test_api_admin_telescope.py::test_admin_telescope_page_module_exists` + `test_routes_register_admin_telescope` |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
+```

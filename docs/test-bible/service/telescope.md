@@ -64,3 +64,18 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 **Pass criterion:** pytest green on that path — not zero-arg harness / branch-lock gate.
 
 **Out of scope:** live Railway dashboard wiring (operator), statute amendment, Surfer / Phase 2 autoscaler, service app / platform client (AST-1725 / AST-1726).
+
+---
+
+### AST-1728 · AST-1721 (qa-fix bug-repro — scrape_meta)
+
+**Board REVISE:** additive `scrape_meta` on `/telescope` + `/telescope/html`.
+
+| Area | Component tests |
+| --- | --- |
+| scrape_meta keys on text/html POST | `test_telescope_app.py::TestAst1728ScrapeMeta` (**bug-repro**, red pre-fix) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_app.py::TestAst1728ScrapeMeta -q
+```
