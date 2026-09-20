@@ -591,3 +591,7 @@ Do **not** change `/telescope/html`, `capture_text`, auth, pool, Dockerfile, or 
 
 **Date:** 2026-09-20  
 **Radia fix-now:** Restacked onto `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` so AST-1729 `capture_html` (documentElement default) and sibling ftr product are present; kept AST-1732 scoped `capture_links` + `app.py` selector wiring. Full `test_telescope_capture.py` verified green.
+
+## Radia review-fix (AST-1732)
+
+Restacked onto ftr after REVIEW; link-scoping + sibling capture_html/class fixes held. → User Testing.
