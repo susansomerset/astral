@@ -405,9 +405,10 @@ TASK_CONFIG = {
         "pass_state": "PREFILTER_PASSED",
         "fail_state": "PREFILTER_FAILED",
         "response_schema": {
-            "jobs": {
+            "companies": {
                 "type": "list", "required": True,
                 "items_schema": {
+                    "company_id": {"type": "str", "required": True},
                     "grades": {
                         "type": "list", "required": True,
                         "items_schema": {

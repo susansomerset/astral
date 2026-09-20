@@ -508,7 +508,7 @@ async def vet_inflow_discovery_company(
         index=short_name,
         ctx={
             **(ctx or {}),
-            "batch_entities": [{"astral_job_id": short_name, "short_name": short_name}],
+            "batch_entities": [{"company_id": short_name, "short_name": short_name}],
             "batch_size": 1,
         },
         debug=debug,
@@ -574,7 +574,7 @@ async def vet_inflow_discovery_company_batch(
     logger.debug("Calling agent.do_task live_content: %s", live_content)
     ready_for_decode = [
         {
-            "astral_job_id": c.get("short_name") or "?",
+            "company_id": c.get("short_name") or "?",
             "short_name": c.get("short_name") or "?",
             "company_data": c.get("company_data") or {},
             "state": c.get("state"),
@@ -1474,8 +1474,8 @@ def _vector_labels_from_ctx(ctx: Optional[Dict[str, Any]]) -> Dict[str, str]:
 
 
 def _flatten_prefilter_parsed(parsed: Any) -> Dict[str, Any]:
-    if isinstance(parsed, dict) and isinstance(parsed.get("jobs"), list) and parsed["jobs"]:
-        first = parsed["jobs"][0]
+    if isinstance(parsed, dict) and isinstance(parsed.get("companies"), list) and parsed["companies"]:
+        first = parsed["companies"][0]
         if isinstance(first, dict):
             return first
     if isinstance(parsed, dict) and isinstance(parsed.get("grades"), list):
@@ -1807,7 +1807,7 @@ async def prefilter_company(
 
         task_ctx = {
             **(ctx or {}),
-            "batch_entities": [{"astral_job_id": short_name}],
+            "batch_entities": [{"company_id": short_name, "short_name": short_name}],
             "batch_size": 1,
             "vector_labels": _vector_labels_from_ctx(ctx),
         }
@@ -1938,7 +1938,7 @@ async def _run_batch_company_prefilter(
     for company in companies:
         short_name = company["short_name"]
         normalized.append({
-            "astral_job_id": short_name,
+            "company_id": short_name,
             "short_name": short_name,
             "state": company.get("state"),
             "company_data": company.get("company_data") or {},
@@ -2013,9 +2013,9 @@ async def _run_batch_company_prefilter(
         return {"passed": 0, "failed": 0, "total": len(companies)}
 
     parsed = result.get("parsed_response") or {}
-    response_jobs = parsed.get("jobs") or []
+    response_companies = parsed.get("companies") or []
     try:
-        _hydrate_response_jobs_grade_reasons(response_jobs, rubric_list)
+        _hydrate_response_jobs_grade_reasons(response_companies, rubric_list)
     except ValueError as hydrate_err:
         logger.exception(
             "%s | company prefilter hydrate\n  %s: %s\n  Continuing without this batch's grades",
@@ -2029,7 +2029,7 @@ async def _run_batch_company_prefilter(
         return {"passed": 0, "failed": 0, "total": len(companies)}
 
     sent_ids = set(input_by_id.keys())
-    received_ids = {rj["astral_job_id"] for rj in response_jobs}
+    received_ids = {rc["company_id"] for rc in response_companies}
     missing = sent_ids - received_ids
     fabricated = received_ids - sent_ids
     missing_rows = [input_by_id[mid] for mid in missing if mid in input_by_id]
@@ -2044,32 +2044,35 @@ async def _run_batch_company_prefilter(
     passed = failed = 0
     bad_grades: Set[str] = set()
 
-    for job_idx, response_job in enumerate(response_jobs, start=1):
-        aid = response_job["astral_job_id"]
-        if aid in fabricated:
+    for row_idx, response_company in enumerate(response_companies, start=1):
+        cid = response_company["company_id"]
+        if cid in fabricated:
             continue
-        input_company = input_by_id[aid]
+        input_company = input_by_id[cid]
         nav_links = (input_company.get("company_data") or {}).get("nav_links") or ""
         try:
             new_state = _apply_prefilter_decoded_company_outcome(
-                aid,
-                response_job,
+                cid,
+                response_company,
                 cfg,
                 ctx,
                 nav_links_from_data=nav_links,
                 debug=debug,
-                debug_index=job_idx,
-                debug_total=len(response_jobs),
+                debug_index=row_idx,
+                debug_total=len(response_companies),
             )
         except Exception as e:
-            bad_grades.add(aid)
+            bad_grades.add(cid)
             logger.exception(
                 "%s | company prefilter decode\n  %s: %s\n  Continuing to the next company",
-                aid,
+                cid,
                 type(e).__name__,
                 e,
             )
-            logger.debug("Response from _apply_prefilter_decoded_company_outcome: grades=%s", response_job.get("grades"))
+            logger.debug(
+                "Response from _apply_prefilter_decoded_company_outcome: grades=%s",
+                response_company.get("grades"),
+            )
             continue
         if new_state in pass_states:
             passed += 1
@@ -2077,7 +2080,7 @@ async def _run_batch_company_prefilter(
             failed += 1
 
     if bad_grades:
-        bad_rows = [input_by_id[aid] for aid in bad_grades if aid in input_by_id]
+        bad_rows = [input_by_id[cid] for cid in bad_grades if cid in input_by_id]
         # Per-company debug already emitted in the process-exception loop above.
         _transition_prefilter_batch_failures(bad_rows, cfg)
 
@@ -3072,7 +3075,7 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
             parts.append(f"\n## Navigation Links\n{enumerated_nav_links}")
 
         task_ctx = {
-            "batch_entities": [{"astral_job_id": short_name}],
+            "batch_entities": [{"company_id": short_name, "short_name": short_name}],
             "batch_size": 1,
             "vector_labels": _vector_labels_from_ctx(None),
         }

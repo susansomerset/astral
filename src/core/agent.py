@@ -215,19 +215,22 @@ def _effective_entity_type(task_config: Dict[str, Any], index: Optional[str]) ->
 
 
 def _validate_grade_confidence_in_payload(parsed: Any, task_key: str) -> Optional[str]:
-    """Walk decoded payload for grades[] or jobs[].grades[] and validate confidence rules."""
+    """Walk decoded payload for grades[] or jobs/companies[].grades[] and validate confidence rules."""
     if not isinstance(parsed, dict):
         return None
-    jobs = parsed.get("jobs")
-    if isinstance(jobs, list):
-        for ji, job in enumerate(jobs):
-            if not isinstance(job, dict):
-                continue
-            glist = job.get("grades")
-            if isinstance(glist, list) and glist:
-                err = _validate_grade_confidence_list(glist, f"{task_key} jobs[{ji}].grades")
-                if err:
-                    return err
+    for arr_key in ("jobs", "companies"):
+        rows = parsed.get(arr_key)
+        if isinstance(rows, list):
+            for ji, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    continue
+                glist = row.get("grades")
+                if isinstance(glist, list) and glist:
+                    err = _validate_grade_confidence_list(
+                        glist, f"{task_key} {arr_key}[{ji}].grades"
+                    )
+                    if err:
+                        return err
     glist = parsed.get("grades")
     if isinstance(glist, list) and glist:
         return _validate_grade_confidence_list(glist, f"{task_key} grades")
@@ -238,7 +241,7 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     """Parse compact pipe-delimited agent_payload string into response_schema shape.
 
     Grade segments: _GRADE_SEG = 2-char code + grade letter + confidence digit (AST-357).
-    pos → astral_job_id via ctx["batch_entities"].
+    pos → astral_job_id (job) or company_id (company entity_type) via ctx["batch_entities"].
     Vector names: ctx["vector_labels"] maps 2-char codes to full rubric labels; falls back to
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
@@ -297,8 +300,14 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
         logger.debug("End decode loop after %s items", len(result_rows))
         return {"results": result_rows}
 
+    # Company vs job id field / result array (AST-1723) — job path unchanged.
+    entity_type = (TASK_CONFIG.get(task_key) or {}).get("entity_type") or ""
+    company_decode = entity_type == "company"
+    id_key = "company_id" if company_decode else "astral_job_id"
+    array_key = "companies" if company_decode else "jobs"
+
     vector_labels: Dict[str, str] = (ctx or {}).get("vector_labels") or {}
-    result_jobs = []
+    result_rows: List[Dict[str, Any]] = []
     logger.debug("Beginning decode loop on %s items", len(lines))
     for line in lines:
         fields = [f.strip() for f in line.split("|")]
@@ -352,22 +361,22 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
                 {"vector": vector_labels.get(code, code), "grade": letter, "confidence": conf_d}
             )
 
-        job: Dict[str, Any] = {
-            "astral_job_id": batch_entities[pos]["astral_job_id"],
+        row: Dict[str, Any] = {
+            id_key: batch_entities[pos][id_key],
             "grades": grade_rows,
         }
         if with_meta:
             if output_type == "grades_encoded_prefilter_links":
                 from src.core.consult import _apply_prefilter_encoded_link_meta
 
-                _apply_prefilter_encoded_link_meta(job, meta)
+                _apply_prefilter_encoded_link_meta(row, meta)
             else:
                 for i, key in enumerate(("company_job_id", "job_title", "job_link")):
                     if i < len(meta):
-                        job[key] = meta[i] or None
+                        row[key] = meta[i] or None
                 # key:value extras → job_data dict (location, salary_range, company name, etc.)
                 if meta[3:]:
-                    job["job_data"] = {
+                    row["job_data"] = {
                         k.strip(): (v.strip() or None)
                         for field in meta[3:] if ":" in field
                         for k, v in [field.split(":", 1)]
@@ -375,12 +384,12 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
         elif with_notes and meta:
             joined = "|".join(meta).strip()
             if joined:
-                job["notes"] = joined
+                row["notes"] = joined
 
-        result_jobs.append(job)
+        result_rows.append(row)
 
-    logger.debug("End decode loop after %s items", len(result_jobs))
-    return {"jobs": result_jobs}
+    logger.debug("End decode loop after %s items", len(result_rows))
+    return {array_key: result_rows}
 
 
 # ---------------------------------------------------------------------------
@@ -3376,7 +3385,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
                 exc,
             )
 
-    entity_job_id = entity.get("astral_job_id")  # None for companies
+    entity_ref_id = entity.get("astral_job_id") or entity.get("short_name")
 
     enriched = []
     for e in entries:
@@ -3395,8 +3404,8 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
             label = btype if type_counts[btype] == 1 else f"{btype} ({type_counts[btype]})"
             content = data_map.get(bid, {}).get("block_data", "") or ""
 
-            if is_scored and btype == "RESPONSE" and entity_job_id:
-                content = _filter_response_block(content, entity_job_id)
+            if is_scored and btype == "RESPONSE" and entity_ref_id:
+                content = _filter_response_block(content, entity_ref_id)
 
             blocks.append({"type": label, "id": bid, "content": content})
 
@@ -3419,26 +3428,33 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     return enriched
 
 
-def _filter_response_block(content: str, astral_job_id: str) -> str:
-    """For batch task RESPONSE blocks: filter the jobs array to the matching job.
+def _filter_response_block(content: str, entity_id: str) -> str:
+    """For batch task RESPONSE blocks: filter jobs/companies array to the matching entity.
 
-    Returns the matching job entry as pretty JSON, empty string for old encoded
-    data (no astral_job_id present), or the original content for non-batch responses.
+    Returns the matching entry as pretty JSON, empty string for old encoded
+    data (no id present), or the original content for non-batch responses.
     """
     try:
         parsed = json.loads(content)
     except (json.JSONDecodeError, TypeError):
         return content  # not JSON — leave as-is
 
-    jobs = parsed.get("jobs") if isinstance(parsed, dict) else None
-    if jobs is None:
-        return content  # single-job response — show as-is
+    if not isinstance(parsed, dict):
+        return content
 
-    # Check if any entry has astral_job_id (i.e. decoded, not old encoded data)
-    if not any(isinstance(j, dict) and j.get("astral_job_id") for j in jobs):
+    # Prefer companies when present (AST-1723); else jobs.
+    rows = parsed.get("companies")
+    id_key = "company_id"
+    if not isinstance(rows, list):
+        rows = parsed.get("jobs")
+        id_key = "astral_job_id"
+    if rows is None:
+        return content  # single-entity response — show as-is
+
+    if not any(isinstance(j, dict) and j.get(id_key) for j in rows):
         return ""  # old encoded payload — skip
 
-    match = next((j for j in jobs if isinstance(j, dict) and j.get("astral_job_id") == astral_job_id), None)
+    match = next((j for j in rows if isinstance(j, dict) and j.get(id_key) == entity_id), None)
     return json.dumps(match, indent=2) if match else ""
 
 
@@ -3523,21 +3539,34 @@ def get_entity_response(batch_id: str, entity_id: str) -> Optional[Dict[str, Any
 
 def _extract_entity_segment(content: str, entity_id: str) -> Optional[str]:
     """Pull the entity-specific section out of a batch response string.
-    Tries JSON first (looks for entity_id key in a 'jobs' list or top-level dict).
+    Tries JSON first (jobs/companies/results lists keyed by astral_job_id or company_id).
     Falls back to None (caller keeps full content)."""
     if not content or not entity_id:
         return None
     try:
         data = json.loads(content)
-        # Batch responses are typically {"jobs": [{astral_job_id: ..., ...}, ...]}
+        # Batch responses: jobs[{astral_job_id}], companies[{company_id}], results[], entities[]
         if isinstance(data, dict):
-            jobs = data.get("jobs") or data.get("results") or data.get("entities")
-            if isinstance(jobs, list):
-                for item in jobs:
-                    if isinstance(item, dict) and item.get("astral_job_id") == entity_id:
+            for arr_key, id_key in (
+                ("companies", "company_id"),
+                ("jobs", "astral_job_id"),
+                ("results", "astral_job_id"),
+                ("entities", "astral_job_id"),
+            ):
+                rows = data.get(arr_key)
+                if not isinstance(rows, list):
+                    continue
+                for item in rows:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get(id_key) == entity_id or item.get("company_id") == entity_id:
                         return json.dumps(item)
             # Flat single-entity response
-            if data.get("astral_job_id") == entity_id or len(data) > 0:
+            if (
+                data.get("astral_job_id") == entity_id
+                or data.get("company_id") == entity_id
+                or len(data) > 0
+            ):
                 return content
     except (json.JSONDecodeError, TypeError):
         pass

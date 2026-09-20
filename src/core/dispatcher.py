@@ -141,8 +141,9 @@ async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
         if isinstance(r, BaseException):
             ent = entities[i + 1]
             ident = (
-                (ent.get("astral_job_id") or ent.get("short_name")
-                 or ent.get("astral_candidate_id") or ent.get("id") or "?")
+                (ent.get("company_id") or ent.get("short_name")
+                 or ent.get("astral_job_id") or ent.get("astral_candidate_id")
+                 or ent.get("id") or "?")
                 if isinstance(ent, dict) else str(ent)
             )
             logger.exception(
