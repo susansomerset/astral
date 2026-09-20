@@ -467,3 +467,79 @@ context_tokens≈38000
 **Radia:** CLEAN / PROCEED — no fix-now; discuss + advisory only (config duplication Canon Scope gap, pending pattern id, logging channel variance, expand soft-fail debug, recover duplication). No product changes.
 
 **§9a:** Restacked publish ref onto `origin/dev` via `sync-child.sh` (no `origin/ftr/AST-1721` yet). Dry-run `merge-tree` vs `origin/dev` clean after publish.
+
+## Bug: AST-1731 — Telescope HTML class selector returns empty string
+
+### As-is
+
+`POST /telescope/html` with a bare class name (e.g. selector `points-container` against https://www.bing.com) returns `"html": ""` even though an element with that class is present in the rendered body.
+
+### To-be
+
+A class selector that matches rendered content returns that element’s outer HTML — and when multiple nodes share the class, an **array** of outer-HTML strings (any tag: `div`, `span`, `td`, …), mirroring multi-match `capture_text` shape (0 → `""`, 1 → `str`, 2+ → `list[str]`).
+
+### Repro
+
+Against a running Telescope node (bearer required), with expand off to keep the call short:
+
+```http
+POST /telescope/html
+Authorization: Bearer <TELESCOPE_BEARER_TOKEN>
+Content-Type: application/json
+
+{"url":"https://www.bing.com","selector":"points-container","expand":false}
+```
+
+**As-is:** `200` with `"html":""` (node exists under `document.body` with `class` containing `points-container`).
+
+**To-be:** `200` with `"html"` a non-empty string (single match) or a non-empty `list[str]` (multiple matches) of those elements’ `outerHTML`.
+
+Equivalent via Admin Telescope: response type html, selector `points-container`, URL bing.com — body pane must show the matched markup (not blank).
+
+### Root cause
+
+In `service/telescope/capture.py`, `capture_html` passes the caller’s selector straight into `document.querySelector(selector)`. A bare token like `points-container` is a **tag-name** selector in CSS (`<points-container>`), not a class selector (`.points-container`). Zero tag matches → `''`. Separately, HTML capture uses `querySelector` (first match only) and always returns a single string — Stage 3 of this plan explicitly kept multi-match arrays on the text endpoint only, which this bug’s to-be overturns for HTML class/CSS matches.
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture + route wiring; platform HTML post-process / admin display as needed for the new `html` shape).
+
+1. **`service/telescope/capture.py` — normalize bare class tokens; multi-match HTML**
+   - Add a private helper, e.g. `_css_selector_for_query(sel: str) -> str` (or inline the same rules once):
+     - If `sel` is a single bare CSS identifier (`^[A-Za-z_][\w-]*$`) **and** `document.querySelectorAll(sel)` returns **zero** nodes, retry the query with `.{sel}` (class). Do **not** rewrite tokens that already look like CSS (leading `.` / `#` / `[`, combinators, spaces, `tag.class`, etc.), and do **not** rewrite when the bare token already matched as a tag (`div`, `span`, …).
+     - Prefer one `page.evaluate` that tries the raw selector then the dotted class form when the raw form is a bare identifier with zero hits (avoids a tag-list hardcode and keeps custom elements that exist as tags working).
+   - Change `capture_html` return type to `str | list[str]`, parallel to `capture_text`:
+     - Keep existing `None` / `""` / `"body"` / `"page"` branches unchanged (AST-1729 owns empty-selector full-document semantics — do not absorb that bug here).
+     - Else: `querySelectorAll` (after the bare→class retry above); map each node to `outerHTML`; 0 → `""`; 1 → that string; 2+ → `list[str]`.
+   - Apply the **same** bare-identifier → class retry inside `capture_text`’s non-page/body path so text and HTML agree on class-name inputs (same root cause).
+   - Still no cull / Surfer helpers in the service.
+
+2. **`service/telescope/app.py` — HTML success log when `html` is a list**
+   - In `post_telescope_html`, `html_len=` must not call `len(result.get("html") or "")` on a list (that counts elements, not chars, and `or ""` is wrong). Mirror `/telescope` text: if list, sum of lengths; else `len(str)`.
+   - `build_scrape_meta` already accepts `str | list[str]` — no meta.py change required unless a type hint is stale.
+
+3. **`src/external/telescope.py` — platform consumers of `html`**
+   - `_post_telescope_html` info log: same list-safe length as (2).
+   - `admin_telescope_scrape`: when `cull` and `html` is a `list`, map `_cull_html` over each string; when `html` is a `str`, keep today’s single `_cull_html` call. Do not join list items into one string before cull.
+   - `_ensure_html` (drop-in path that feeds parsers expecting one DOM string): if service returns a `list`, unwrap `html[0]` when non-empty else `""` (preserves historical first-match behavior for roster/gazer helpers). Admin continues to receive the raw service payload (full array) via `admin_telescope_scrape`.
+
+4. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — display multi-match HTML**
+   - Widen `ScrapeResult.html` to `string | string[]`.
+   - In `formatBody`, when `html` is an array, join with the same `\n---\n` separator used for multi-match `text` (so a class that hits N nodes is visible in the pane, not coerced to `""`).
+
+### Blast radius
+
+- **AST-1725 Stage 3 decision** (“HTML endpoint = first match string only”) is superseded for non-`body`/`page` selectors by this bug’s to-be.
+- **AST-1729** (empty selector → full document): touches the same `capture_html` special-case branches — keep those branches out of this fix; merge order must not reintroduce body-only default for empty selector if 1729 lands first/second.
+- **AST-1726 / AST-1728** admin + platform cull path: list-shaped `html` breaks today’s `len(html)` / `_cull_html(str)` / Admin `typeof html === "string"` assumptions — covered in Proposed change (3)(4).
+- Betty tests/bible that assert `html` is always a string for CSS selectors will need qa-fix attention if fix-board flags TESTS: REVISE; do not edit `tests/` here.
+- Callers that pass a full CSS class selector already (`.points-container`) get correct matches today for the **first** node; after this fix they also get multi-match arrays when N≥2.
+
+### What must still hold
+
+- Parent AC 3 / AST-1725: `/telescope/html` still returns `final_url` + `html`; bearer required; no service-side cull.
+- Parent AC 5: multi-match **text** still `""` / `str` / `list[str]` — unchanged except bare class names now resolve.
+- `body` / `page` / empty-selector specials remain explicit branches (empty-selector document vs body owned by AST-1729, not this ticket).
+- Zero `src` imports under `service/telescope/`; capture stays browser-only.
+- Drop-in helpers that need a single HTML string via `_ensure_html` still get a string (first match when the service returns a list).
+- Cookie dismiss / expand / wait_ready defaults and pipeline order unchanged.
