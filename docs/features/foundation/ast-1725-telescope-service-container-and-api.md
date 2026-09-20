@@ -374,3 +374,89 @@ context_tokens≈52000
 - Stage 4: `requirements.txt` + Dockerfile (Playwright `1.49.1-jammy`) — `c00550bb`.
 
 **Betty:** new service surface — contract defaults (expand/links/wait_ready), multi-match text, bearer 401, healthz browser poke, no-`src` import fence under `service/telescope/`, timeout/504 paths.
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1725
+**Publish ref:** `3a1cce4b7bf91d73776616c50678082c8679ebcc` (`origin/sub/AST-1721/AST-1725-telescope-service-container-and-api`)
+**Corpus:** `751624d7ebdf9bc441fc3d08a51ae751ea8026af`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.error | B | | |
+| stat.logging.warning | B | | |
+| stat.logging.info | B | | |
+| stat.logging.debug | B | | |
+| patt.external.web-scraping-via-telescope | X | | pending Archie — id-only; not scoring law this pass |
+| stat.layers.import-rules (amendment request) | B | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Parent Canon Scope vs frozen Citations; `service/telescope/settings.py` duplicated cookie selectors / firefox prefs
+- **Finding:** `stat.config.config-source-of-truth` plainly governs duplicated platform config in `settings.py` but is absent from the frozen list. Implementation matches the plan’s explicit duplicate-not-import Decision and service-side import fence.
+- **Recommendation:** Archie may amend Canon Scope at Discussion for future comparability; no code change required on this tip.
+
+### discuss — pending pattern (do not score)
+
+- **Severity:** discuss
+- **Location:** Citations / `patt.external.web-scraping-via-telescope`
+- **Finding:** Pattern id does not resolve in active corpus (`canon_clerk expand` → unknown). Diff keeps browser I/O under `service/telescope/` with no post-render cull fork — consistent with plan deferral.
+- **Recommendation:** Remains id-only until Archie approves the pattern.
+
+### advisory — logging semantic variance (channel)
+
+- **Severity:** advisory
+- **Location:** `service/telescope/logging_util.py`; all `_log.*` call sites
+- **Finding:** Logging statutes’ `applies_when.paths` are `src/**` and channel is `src.utils.logging.get_logger`. Telescope applies semantics via stdlib `logging` to stdout — intentional process isolation per plan Canon notes. Exception bodies omit an explicit product next-step line (e.g. “returning 502”) though handlers do return structured HTTP errors.
+- **Recommendation:** Acceptable B variance; optional polish in a later logging pass if Telescope gets its own surface statute.
+
+### advisory — silent soft-fail in expand
+
+- **Severity:** advisory
+- **Location:** `service/telescope/interact.py` — `expand_page` load-more loop
+- **Finding:** `except Exception: break` swallows load-more click failures with no warning/debug line.
+- **Recommendation:** Optional `debug` on break for operability; not a canon violation given expand is best-effort.
+
+### advisory — recover duplication
+
+- **Severity:** advisory
+- **Location:** `service/telescope/browser.py` — `page()` vs `recover()`
+- **Finding:** Recycle/disconnect path inlines close+relaunch; `recover()` exists but is unused from `page()`.
+- **Recommendation:** Mechanical refactor only; behavior matches plan.
+
+### advisory — branch diff carry
+
+- **Severity:** advisory
+- **Location:** `origin/dev...origin/sub/AST-1721/AST-1725-telescope-service-container-and-api` (full three-dot diff)
+- **Finding:** Ticket-scoped product surface is 18 files (~1.5k LOC: `service/telescope/`, `tests/component/service/`, bible row, harness tweak, plan doc). Full branch diff also carries large `canon/` migration and unrelated test-bible reshuffles from epic line — outside AST-1725 Files Changed.
+- **Recommendation:** No action on AST-1725 product; parent merge hygiene only.
+
+## What's solid
+
+- All four plan stages landed on publish ref (`4ddd4af6` → `c00550bb`) plus Betty `test` + `merge-tests` at tip.
+- Contract endpoints match plan: bearer on `/healthz`, `/telescope`, `/telescope/html`; defaults `expand=true`, `links=true`, `wait_ready=false`; links key omitted when `links=false`; empty url → 400; timeout → 504 warning + 502 exception-once paths.
+- `BrowserPool`: one Firefox, fresh context per URL, semaphore, recycle-after-N, authenticated health poke.
+- Zero `src` imports under `service/telescope/`; Dockerfile pins Playwright `1.49.1-jammy`, `USER pwuser`, single uvicorn worker, copies package only.
+- Component tests + `docs/test-bible/service/telescope.md` align with Betty manifest; estimate **5** footprint is honest.
+
+## Recommended actions (downstream only — not executed here)
+
+- Chuckles: append this artifact to the issue doc, commit `docs(AST-1725): Radia review — clean`, push, post slim upshot `--as radia`, move to Review Posted.
+- datt: PROCEED → User Testing (no `resolve-child` round needed).
+
+context_tokens≈38000
