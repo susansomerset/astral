@@ -224,3 +224,53 @@ context_tokens≈62000
 
 **Built:** `ccfcf671` on `sub/AST-1711/AST-1714-inbox-check-email-runner`
 
+## Radia review
+
+**Ticket:** AST-1714
+**Publish ref:** `b90b86fd640fc159f93935ae2517b2e41cb18f82` (`origin/sub/AST-1711/AST-1714-inbox-check-email-runner`)
+**Corpus:** `751624d7ebdf9bc441fc3d08a51ae751ea8026af`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+| stat.logging.info | A | | |
+| stat.logging.info.dispatcher | A | | |
+| stat.logging.warning | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan round 2 scored all five directives **A**; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Parallel ingest paths** — `inbox.check_email` and `meteorite.ingest_candidate_email_message` now share the same dedup / stage / archive rules by design (mailbox vs Land). Expected until a future consolidation ticket; not a defect on this slice.
+- **Joan round-1 gap closed** — Revision 1 orphan-delete for retired-key rows with empty `candidate_id` is implemented in `provision_meteorite_email_dispatch_tasks`.
+
+## What's solid
+
+- **`check_email` runner** — assembled_html to stage_meteorite; dedup; archive; last_email_check; summary.
+- **Dispatcher** — mailbox awaits inbox.check_email; no check_inbox.
+- **Provision AC5** — rewrite bound retired-key rows; delete orphans.
+- **Admin** — mailbox gates on is_meteorite_email_mailbox_task_key.
+- **Boundaries** — no classify/state; delegates to AST-1713 stage_meteorite.
+- **Logging** — debug pairs, warnings with next_step; no entity-info stamp per plan.
+
+context_tokens≈55000
