@@ -3,7 +3,8 @@ import { startSessionExtendLoop } from "../../../../src/ui/frontend/src/lib/sess
 
 describe("startSessionExtendLoop (AST-1374)", () => {
   beforeEach(() => {
-    vi.useFakeTimers()
+    vi.useFakeTimers({ toFake: ["Date"] })
+    vi.setSystemTime(new Date("2026-09-19T17:00:00Z"))
   })
 
   afterEach(() => {
@@ -11,7 +12,7 @@ describe("startSessionExtendLoop (AST-1374)", () => {
     vi.restoreAllMocks()
   })
 
-  it("does not fire immediately; authenticates on cadence while session exists", async () => {
+  it("authenticates on first pointerdown; throttles until the policy interval", () => {
     const authenticate = vi.fn(async () => ({}))
     const getSync = vi.fn(() => ({ user_id: "u1" }))
     const clear = startSessionExtendLoop(
@@ -23,16 +24,24 @@ describe("startSessionExtendLoop (AST-1374)", () => {
     )
 
     expect(authenticate).not.toHaveBeenCalled()
-    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    window.dispatchEvent(new Event("pointerdown", { bubbles: true }))
     expect(authenticate).toHaveBeenCalledTimes(1)
     expect(authenticate).toHaveBeenCalledWith({ session_duration_minutes: 20 })
 
-    clear()
-    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    window.dispatchEvent(new Event("pointerdown", { bubbles: true }))
     expect(authenticate).toHaveBeenCalledTimes(1)
+
+    vi.setSystemTime(new Date("2026-09-19T17:10:00Z"))
+    window.dispatchEvent(new Event("keydown", { bubbles: true }))
+    expect(authenticate).toHaveBeenCalledTimes(2)
+
+    clear()
+    vi.setSystemTime(new Date("2026-09-19T17:20:00Z"))
+    window.dispatchEvent(new Event("pointerdown", { bubbles: true }))
+    expect(authenticate).toHaveBeenCalledTimes(2)
   })
 
-  it("skips authenticate when getSync is falsy", async () => {
+  it("skips authenticate when getSync is falsy", () => {
     const authenticate = vi.fn(async () => ({}))
     startSessionExtendLoop(
       { session: { getSync: () => null, authenticate } },
@@ -41,11 +50,11 @@ describe("startSessionExtendLoop (AST-1374)", () => {
         activity_extension_interval_minutes: 10,
       },
     )
-    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    window.dispatchEvent(new Event("pointerdown", { bubbles: true }))
     expect(authenticate).not.toHaveBeenCalled()
   })
 
-  it("swallows authenticate rejection without throwing", async () => {
+  it("swallows authenticate rejection without throwing", () => {
     const authenticate = vi.fn(async () => {
       throw new Error("extend failed")
     })
@@ -56,7 +65,9 @@ describe("startSessionExtendLoop (AST-1374)", () => {
         activity_extension_interval_minutes: 10,
       },
     )
-    await vi.advanceTimersByTimeAsync(10 * 60_000)
+    expect(() => {
+      window.dispatchEvent(new Event("pointerdown", { bubbles: true }))
+    }).not.toThrow()
     expect(authenticate).toHaveBeenCalledTimes(1)
   })
 })

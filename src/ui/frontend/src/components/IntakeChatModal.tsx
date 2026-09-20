@@ -167,7 +167,7 @@ export default function IntakeChatModal({
   }, [candidateId, freshStart])
 
   const pollActiveSession = useCallback(() => {
-    void api(`/api/candidates/${candidateId}/intake/sessions/active`)
+    void api(`/api/candidates/${candidateId}/intake/sessions/active`, { silent: true })
       .then(async r => {
         if (!r.ok) return
         const body = (await r.json()) as IntakeSessionDto
