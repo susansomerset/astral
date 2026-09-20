@@ -465,3 +465,59 @@ AST-702 Stage 3 (and AST-507 / AST-880 reuse) deliberately normalized company ro
 - Rubric / prompt assembly content unchanged aside from id field naming on `batch_entities` / decoded rows (assemble already uses `[company_id={sn}]`).
 - Persistence APIs (`save_company_data`, `transition_company_state`, `ensure_batch_response_entity_ids`) still receive `short_name` / company entity ids, not a new DB key.
 - Vet `results[]` contract and grade letters unchanged.
+
+
+## Review-fix findings (AST-1723)
+
+## Fix-specific checks
+
+**[bug-repro]:** FIX-NOW — Betty `[board-betty] TESTS: REVISE` (2026-09-20) requires a `[bug-repro]` test pinning `company_id`/`companies` to-be behavior. No `qa-fix` comment thread, no test changes in the fix diff (`git diff origin/ftr/AST-1720-company-entity-job-refs...origin/sub/AST-1720/AST-1723-company-batch-refs-company-id -- tests/` is empty). Existing fixtures still mock/assert job shape, e.g. `TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts` returns `parsed_response["jobs"]` with `astral_job_id`, and `TestAst880VetInflowEncoded::test_vet_passes_batch_entities_to_do_task` asserts `batch_entities` with `astral_job_id`. Against tip product code (`_run_batch_company_prefilter` reads `parsed.get("companies")`; `_flatten_prefilter_parsed` requires `companies`), those mocks would not exercise or pass the to-be contract. Repro-first gate not cleared.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| AST-702 batch prefilter outcomes / inflow vs legacy / retry / readiness skip / pass_states / debug keyed by `short_name` | OK — roster reconcile still keys `input_by_id` by `short_name`; pass/fail counting and failure transitions unchanged; only id field and parsed array name moved |
+| Job-entity encode/decode and schemas unchanged | OK — `_decode_payload` branches on `TASK_CONFIG[task_key]["entity_type"] == "company"`; job path keeps `astral_job_id` + `jobs` |
+| Rubric / prompt assembly unchanged aside from id naming | OK — no rubric or assemble changes in diff |
+| Persistence APIs still receive `short_name` | OK — `company_id` value is the `short_name` string; `_apply_prefilter_decoded_company_outcome(cid, …)` unchanged semantically |
+| Vet `results[]` contract unchanged | OK — vet decode still `grades_encoded_vet_meta` → `results[]`; only `batch_entities` id field switched |
+
+## Findings
+
+### fix-now
+
+1. **`tests/` / qa-fix bar (F4→F6)** — Board REVISE with no resulting `[bug-repro]` test or fixture updates on the publish ref. Tip at `0402c75e` cannot be trusted green on company prefilter/vet contract tests; `Tests Passed` without qa-fix/test-fix evidence on Linear is premature.
+
+2. **Canon Scope process gap** — AST-1723 has no frozen directive list for F7 scoring. Fix-lane still expects a scoreable list per `review-fix` / `review-child`. Chuckles/Archie should confirm whether UAT-batch bugs inherit parent canon at intake or need a Scope amendment before a clean F7 can run a full table.
+
+### discuss
+
+1. **Incomplete canon artifact section** — Until Canon Scope is frozen on the bug (or intake rule is documented), Radia F7 canon table stays omitted; do not treat `[board-joan] CANON: OK` as plan-stage column scores.
+
+### advisory
+
+1. **Product diff vs plan-fix** — Implements all five Proposed-change bullets: `config.py` schema `companies`/`company_id`; `agent.py` company decode branch + grade validation + `_filter_response_block` / `_extract_entity_segment`; `roster.py` all known company `batch_entities` sites + batch reconcile; `consult.py` `_ensure_companies_company_ids` + company branch in `_normalize_rubric_task_response`; `dispatcher.py` `_warm_then_gather` identity order. Scope gate on `config.py` was correctly resolved before make-fix.
+
+2. **`_flatten_prefilter_parsed`** — Dropped `jobs[0]` compat per plan preference; correct for product once callers/tests use `companies`.
+
+3. **`get_entity_agent_story`** — Uses `entity.get("astral_job_id") or entity.get("short_name")` for RESPONSE filtering; works today because `company_id` value equals `short_name`, but explicit `company_id` on entity dict would be clearer later.
+
+## What's solid
+
+- Focused diff (6 files, ~200 LOC) isolated to company entity_type encode/decode; job batch path explicitly preserved behind `entity_type` gate.
+- Schema validation and decode shape aligned (`TASK_CONFIG["prefilter_company"]["response_schema"]` matches `_decode_payload` output).
+- Batch processing pattern intact: claim/process/release and missing/fabricated id reconciliation preserved with `company_id` vocabulary.
+
+## Recommended actions
+
+1. **Chuckles:** Route **REVIEW** → **Review Posted** → `resolve-child` (normal parent AST-1720, not orphaned).
+2. **Hedy/Betty:** Run qa-fix (or equivalent): land `[bug-repro]` test(s) asserting `batch_entities[].company_id` and `parsed_response.companies[]`; revise AST-702/880 roster fixtures off `jobs`/`astral_job_id`.
+3. **Chuckles/Archie:** Clarify fix-lane Canon Scope intake for UAT-batch bugs so a future F7 can populate `## Canon scores`.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (findings, artifact complete except canon table) | Normal (AST-1720 In Progress) | → **Review Posted** → `resolve-child` → **User Testing** when clean |
+| Orphaned | N/A | Not applicable |
