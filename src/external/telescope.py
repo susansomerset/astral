@@ -176,6 +176,10 @@ class _TelescopePool:
         self._sem = asyncio.Semaphore(int(TELESCOPE_CONFIG["max_in_flight"]))
         self._in_flight: Dict[str, int] = {}
         self._client: Optional[httpx.AsyncClient] = None
+        # Loop-bound resources (client/lock/sem) must be rebuilt when the running
+        # loop changes — admin uses asyncio.run() per request (fresh loop each time),
+        # which otherwise reuses a client tied to a closed loop → "Event loop is closed".
+        self._loop: Optional[asyncio.AbstractEventLoop] = None
 
     def _bases(self) -> List[str]:
         return list(TELESCOPE_CONFIG.get("base_urls") or [])
@@ -189,11 +193,30 @@ class _TelescopePool:
             )
         return tok
 
+    def _ensure_loop(self) -> None:
+        loop = asyncio.get_running_loop()
+        if self._loop is None:
+            # First use — adopt this loop; keep any preexisting client (incl. injected).
+            self._loop = loop
+            if self._client is None:
+                self._client = httpx.AsyncClient(
+                    timeout=float(TELESCOPE_CONFIG["client_timeout_seconds"])
+                )
+            return
+        if self._loop is loop:
+            return
+        # Loop actually changed (e.g. new asyncio.run) → rebuild loop-bound state.
+        self._loop = loop
+        self._client = httpx.AsyncClient(
+            timeout=float(TELESCOPE_CONFIG["client_timeout_seconds"])
+        )
+        self._lock = asyncio.Lock()
+        self._sem = asyncio.Semaphore(int(TELESCOPE_CONFIG["max_in_flight"]))
+        self._in_flight = {}
+
     async def _get_client(self) -> httpx.AsyncClient:
-        if self._client is None:
-            self._client = httpx.AsyncClient(
-                timeout=float(TELESCOPE_CONFIG["client_timeout_seconds"])
-            )
+        self._ensure_loop()
+        assert self._client is not None
         return self._client
 
     async def _pick_bases(self) -> List[str]:
@@ -222,6 +245,7 @@ class _TelescopePool:
         json_body: Optional[dict] = None,
     ) -> httpx.Response:
         require_controlled_external_io("telescope.request")
+        self._ensure_loop()  # rebuild loop-bound client/lock/sem before use
         bases = await self._pick_bases()
         token = self._bearer()
         headers = {"Authorization": f"Bearer {token}"}
