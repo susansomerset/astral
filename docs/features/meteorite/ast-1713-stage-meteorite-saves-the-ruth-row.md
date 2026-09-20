@@ -191,3 +191,7 @@ None.
 context_tokens≈48000
 
 [plan-rubric] PROCEED (Commit: 9aa2a45b3acda54d5a33a5c731ebbdc5523d4434) Ruth save path ready
+
+## Review stub (build-child)
+
+**Built:** `4a51338b` on `sub/AST-1711/AST-1713-stage-meteorite-saves-the-ruth-row`
