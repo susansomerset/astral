@@ -20,6 +20,7 @@ from src.utils.integration_io import require_controlled_external_io
 __all__ = ["authenticate_session_jwt", "log_stytch_project_env", "StytchAuthError"]
 
 _client = None
+_profile_by_user_id: dict[str, dict] = {}
 _log = logging.getLogger(__name__)
 
 
@@ -82,34 +83,48 @@ def _display_name(user: Any, email: str | None, user_id: str) -> str:
     return email or user_id
 
 
-def authenticate_session_jwt(session_jwt: str) -> dict:
-    """Validate a Stytch session JWT; return user_id, email, name dict."""
+def authenticate_session_jwt(session_jwt: str, *, remote: bool = True) -> dict:
+    """Validate a Stytch session JWT; return user_id, email, name dict.
+
+    remote=True (user-initiated): force SessionsAuthenticate + users.get, cache profile.
+    remote=False (silent poll): local JWT only; reuse cached profile; never users.get.
+    """
     require_controlled_external_io("stytch.authenticate_session_jwt")
     token = (session_jwt or "").strip()
     if not token:
         raise StytchAuthError("missing session JWT")
     try:
         client = _get_client()
-        resp = client.sessions.authenticate_jwt(
-            session_jwt=token,
-            max_token_age_seconds=0,
-        )
-        # authenticate_jwt returns AuthenticateJWTLocalResponse: session + session_jwt, no user.
+        jwt_kwargs: dict[str, Any] = {"session_jwt": token}
+        if remote:
+            jwt_kwargs["max_token_age_seconds"] = 0
+        resp = client.sessions.authenticate_jwt(**jwt_kwargs)
         user = getattr(resp, "user", None)
+        session = getattr(resp, "session", None)
+        user_id = str(
+            getattr(user, "user_id", None)
+            or getattr(session, "user_id", None)
+            or ""
+        )
+        if not user_id:
+            raise StytchAuthError("missing session user_id in JWT response")
+        if not remote:
+            cached = _profile_by_user_id.get(user_id)
+            if cached is not None:
+                return dict(cached)
+            return {"user_id": user_id, "email": None, "name": user_id}
         if user is None:
-            session = getattr(resp, "session", None)
-            if session is None or not getattr(session, "user_id", None):
-                raise StytchAuthError("missing session user_id in JWT response")
             # users.get returns GetResponse — user fields live on the response itself.
-            user = client.users.get(user_id=session.user_id)
+            user = client.users.get(user_id=user_id)
     except StytchAuthError:
         raise
     except Exception as exc:
         raise StytchAuthError(str(exc)) from exc
-    user_id = str(user.user_id)
     email = _primary_email(user)
-    return {
-        "user_id": user_id,
+    profile = {
+        "user_id": str(user.user_id),
         "email": email,
-        "name": _display_name(user, email, user_id),
+        "name": _display_name(user, email, str(user.user_id)),
     }
+    _profile_by_user_id[profile["user_id"]] = profile
+    return dict(profile)

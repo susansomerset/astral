@@ -42,8 +42,8 @@ const candidateFixture = [
 ]
 
 const adminCandidates = [
-  { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" }, first: "Ada" } },
-  { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" }, first: "Betty" } },
+  { astral_candidate_id: "c1", state: "ACTIVE", first: "Ada", candidate_data: { profile: { timezone: "America/Los_Angeles" } } },
+  { astral_candidate_id: "c2", state: "ACTIVE", first: "Betty", candidate_data: { profile: { timezone: "America/Los_Angeles" } } },
 ]
 
 /** AST-634: urlPresentDisablesSync needs candidate_id on mount or RTL hangs on nav sync. */
@@ -106,7 +106,7 @@ describe("AdminPerformanceMonitor", () => {
         return { json: async () => [] } as Response
       }
       if (url.startsWith("/api/admin/dispatch_ledger/batch-1/logs")) {
-        return { json: async () => [{ id: "log-1", level: "ERROR", logger_name: "core", message: "failed", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" }] } as Response
+        return { json: async () => [{ id: 1, level: "ERROR", logger_name: "core", message: "failed", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" }] } as Response
       }
       if (url.startsWith("/api/admin/dispatch_ledger")) {
         return { json: async () => [ledgerRow] } as Response
@@ -250,10 +250,10 @@ describe("AdminPerformanceMonitor", () => {
     function mockChainList(rows: typeof ledgerRow[]) {
       installBaseApiMocks(mockedApi, async (url: string) => {
         if (url.startsWith("/api/admin/dispatch_ledger/anticipate_scan-uuid-1/logs")) {
-          return { json: async () => [{ id: "l1", level: "INFO", logger_name: "core", message: "hop-one-log", batch_id: "anticipate_scan-uuid-1", created_at: "2026-05-01T10:00:01Z" }] } as Response
+          return { json: async () => [{ id: 1, level: "INFO", logger_name: "core", message: "hop-one-log", batch_id: "anticipate_scan-uuid-1", created_at: "2026-05-01T10:00:01Z" }] } as Response
         }
         if (url.startsWith("/api/admin/dispatch_ledger/contemplate_job-uuid-2/logs")) {
-          return { json: async () => [{ id: "l2", level: "INFO", logger_name: "core", message: "hop-two-log", batch_id: "contemplate_job-uuid-2", created_at: "2026-05-01T10:00:02Z" }] } as Response
+          return { json: async () => [{ id: 2, level: "INFO", logger_name: "core", message: "hop-two-log", batch_id: "contemplate_job-uuid-2", created_at: "2026-05-01T10:00:02Z" }] } as Response
         }
         if (url.startsWith("/api/agent_data/anticipate_scan-uuid-1")) {
           return { json: async () => [{ agent_data_id: "a1", block_type: "RESPONSE", block_data: "\"hop-one-response\"", token_size: 1, task_key: "anticipate_scan", created_at: "2026-05-01T10:00:01Z" }] } as Response
@@ -387,8 +387,8 @@ describe("AdminPerformanceMonitor", () => {
   // AST-840 — client-side log level filter on expanded batch logs (parent AST-838).
   describe("AST-840 log level filter", () => {
     const mixedLogs = [
-      { id: "log-info", level: "INFO", logger_name: "core", message: "verbose info line", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" },
-      { id: "log-error", level: "ERROR", logger_name: "core", message: "failure detail", batch_id: "batch-1", created_at: "2026-05-01T10:00:02Z" },
+      { id: 10, level: "INFO", logger_name: "core", message: "verbose info line", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" },
+      { id: 11, level: "ERROR", logger_name: "core", message: "failure detail", batch_id: "batch-1", created_at: "2026-05-01T10:00:02Z" },
     ]
 
     function mockMixedLogsApi(extraLedgerRows: typeof ledgerRow[] = [ledgerRow]) {
@@ -512,6 +512,39 @@ describe("AdminPerformanceMonitor", () => {
       expect(screen.queryByText("verbose info line")).not.toBeInTheDocument()
       expect(logCalls.length).toBe(before)
     }, 20000)
+
+    it("renders and copies log rows oldest-first by created_at", async () => {
+      const newestFirst = [
+        { id: 12, level: "INFO", logger_name: "core", message: "later line", batch_id: "batch-1", created_at: "2026-05-01T10:00:02Z" },
+        { id: 11, level: "INFO", logger_name: "core", message: "earlier line", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" },
+      ]
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger/batch-1/logs")) {
+          return { json: async () => newestFirst } as Response
+        }
+        if (url.startsWith("/api/agent_data/")) return { json: async () => [] } as Response
+        if (url.startsWith("/api/admin/timesheets?batch_id=")) return { json: async () => [] } as Response
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [ledgerRow] } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => candidateFixture } as Response
+        }
+      })
+      renderPerformanceMonitor()
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      await userEvent.click(within(screen.getByRole("table")).getByText("task_a"))
+      await waitFor(() => expect(screen.getByText("earlier line")).toBeInTheDocument())
+      const messages = [...document.querySelectorAll(".dispatch-log-msg")].map(el => el.textContent)
+      expect(messages).toEqual(["earlier line", "later line"])
+      await userEvent.click(screen.getByTitle("Copy logs to clipboard"))
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        [
+          "[2026-05-01T10:00:01Z] INFO core: earlier line",
+          "[2026-05-01T10:00:02Z] INFO core: later line",
+        ].join("\n"),
+      )
+    }, 15000)
   })
 
   describe("AST-634 admin candidate filter", () => {
@@ -577,6 +610,33 @@ describe("AdminPerformanceMonitor", () => {
       await waitFor(() => expect(within(screen.getByRole("table")).getByText("task_c2")).toBeInTheDocument())
       expect(within(screen.getByRole("table")).queryByText("task_c1")).not.toBeInTheDocument()
       expect(candidateSelect.value).toBe("c2")
+    }, 20000)
+  })
+
+  describe("AST-1410 silent refetch", () => {
+    it("15s poll while batch overlay is open keeps the overlay and skips Loading...", async () => {
+      mockApi()
+      renderPerformanceMonitor("/admin/performance?task_key=task_a&status=COMPLETED")
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      const table = screen.getByRole("table")
+      await userEvent.click(within(table).getByText("task_a"))
+      await userEvent.click(screen.getByTitle("View agent data for this batch"))
+      await waitFor(() => expect(screen.getByText("No agent data blocks recorded for this batch.")).toBeInTheDocument())
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.startsWith("/api/admin/dispatch_ledger?") && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(screen.getByText("No agent data blocks recorded for this batch.")).toBeInTheDocument()
+      expect(screen.getByText("Execution History")).toBeInTheDocument()
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      release({ ok: true, json: async () => [ledgerRow] } as Response)
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      expect(screen.getByText("No agent data blocks recorded for this batch.")).toBeInTheDocument()
     }, 20000)
   })
 })

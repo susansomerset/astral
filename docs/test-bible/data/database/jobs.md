@@ -122,3 +122,93 @@ Global dedupe helpers for meteorite email ingest: `text_matches_known_company_jo
   -q
 ```
 
+---
+
+### AST-1598 · AST-1594
+
+**Parent:** [AST-1594 — Add candidate_id to artifact, app_log, and job](https://linear.app/astralcareermatch/issue/AST-1594). **Publish:** `origin/sub/AST-1594/AST-1598-job-and-app-log-candidate-id`.
+
+Required `job.candidate_id` (ensure + company backfill; guard when company table absent — `aff5678f`); `save_job` resolves ownership; `list_jobs` / `claim_job_batch` / `count_jobs` fail loud on omit and filter via `job.candidate_id` (no company subquery). Sibling artifact rename is **AST-1597**. Logging stamp: `docs/test-bible/utils/logging_batch.md` + `data/database/app_log.md`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inventory + ensure column + no-company guard | `src/data/database.py` | **`TestAst1598JobCandidateId::test_inventory_lists_job_candidate_id`**, **`…::test_ensure_adds_candidate_id_and_guards_without_company`** |
+| Backfill from company | `src/data/database.py` | **`…::test_ensure_backfills_from_company_when_present`** |
+| save_job resolve / explicit / unresolved | `src/data/database.py` | **`…::test_save_job_resolves_cid_from_company_and_returns_on_read`**, **`…::test_save_job_explicit_cid_and_unresolved_raises`** |
+| Fail-loud list/claim/count + scope | `src/data/database.py` | **`…::test_list_claim_count_fail_loud_on_omit`**, **`…::test_list_and_claim_scope_via_job_candidate_id`** |
+
+**Broken / obsolete this pass:** `test_jobs.py` company seeds without `candidate_id` (revised); `test_surfer.py` claim/save without cid (revised when file present).
+
+**Integration:** none — no existing integration scenario asserts `job.candidate_id` scope.
+
+## QA test manifest (AST-1598)
+
+1. Job suite: `tests/component/data/database/test_jobs.py::TestAst1598JobCandidateId`
+2. Job regression: `tests/component/data/database/test_jobs.py`
+3. App log cid: `tests/component/data/database/test_app_log.py::TestAst1598AppLogCandidateId`
+4. App log regression: `tests/component/data/database/test_app_log.py`
+5. Logging stamp: `tests/component/utils/test_logging_batch.py::TestAst1598LogCandidateId`
+6. Logging regression: `tests/component/utils/test_logging_batch.py`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py \
+  tests/component/data/database/test_app_log.py \
+  tests/component/utils/test_logging_batch.py \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–6 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/data/database/jobs.md`
+- `docs/test-bible/data/database/app_log.md`
+- `docs/test-bible/utils/logging_batch.md`
+
+### AST-1701 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql`.
+
+Job table reshape: nullable `company_id` (employer), repurposed `source` ∈ {`company`,`meteorite`}, required `source_entity_id` on insert (company-parent bridge from `company=` / `company_id`); meteorite parent resolves `candidate_id` from meteorite row; ensure is DDL-only (no parent content UPDATE); operator SQL `data/sql/ast_1701_job_source_entity_backfill.sql` not in `SEED_CONFIG`. Config SSOT: **`docs/test-bible/utils/config.md`** § AST-1701.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema + identity index on company_id | `src/data/database.py` | **`TestAst1701SourceEntitySchema::test_schema_company_id_nullable_and_source_entity_id`** |
+| Company alias bridge + read shape | `src/data/database.py` | **`…::test_company_alias_bridges_source_entity_id_and_defaults_type`** |
+| Meteorite parent cid + nullable employer | `src/data/database.py` | **`…::test_meteorite_parent_resolves_cid_nullable_employer`** |
+| Reject gazed / blank parent | `src/data/database.py` | **`…::test_rejects_gazed_and_blank_parent`** |
+| Ensure DDL-only (no parent rewrite) | `src/data/database.py` | **`…::test_ensure_does_not_rewrite_parent_fields`** |
+| Operator SQL not seeded | `data/sql/…` + `SEED_CONFIG` | **`…::test_operator_sql_artifact_not_in_seed_config`** |
+| Insert gate (revised) | `src/data/database.py` | **`TestSaveJob::test_insert_requires_state_and_parent`** |
+
+**Broken / obsolete this pass:** `TestSaveJob::test_insert_requires_company_and_state` (message → `source_entity_id required`); AST-1598 inventory assert dropped stale “denormalized from company.candidate_id” (inventory now names `company_id` / `source_entity_id`).
+
+**Integration:** none — no existing integration scenario asserts `job.source` / `source_entity_id` parent fields.
+
+## QA test manifest (AST-1701)
+
+1. Config SSOT: `tests/component/utils/test_config.py::TestAst1701SourceEntityTypes`
+2. Job schema/writers: `tests/component/data/database/test_jobs.py::TestAst1701SourceEntitySchema`
+3. Job regression: `tests/component/data/database/test_jobs.py`
+4. Insert gate + cid inventory (revised): `TestSaveJob` + `TestAst1598JobCandidateId` (same file)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1701SourceEntityTypes \
+  tests/component/data/database/test_jobs.py \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–4 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/data/database/jobs.md`
+- `docs/test-bible/utils/config.md`
+
+### AST-1706 · AST-1705 (bug) — docs-acceptance
+
+**Publish:** `origin/sub/AST-1705/AST-1706-fix-get-job-batch-company-id`.
+
+One-line `get_job_batch` JOIN rename (`j.company` → `j.company_id`) after AST-1701. **fix-board** `[board-betty] TESTS: OK` — existing `get_job_batch` callers already exercise the path; **no new component test** on this ticket.
+
+**Integration:** none.
