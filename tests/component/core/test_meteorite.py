@@ -1422,6 +1422,7 @@ class TestAst1560RunScrapeMeteorite:
             out = await meteorite_mod.run_scrape_meteorite(
                 _ingress_task(
                     batch_id="scrape-batch-closed",
+                    candidate_id=cid,
                     task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
                 ),
                 debug=True,
