@@ -754,3 +754,12 @@ Meteorite dispatch runners (AST-1560 era) hard-coded ERROR-family branches as `t
 - AST-1742: inbox / ingest `NOT_A_JOB` / skip → fail; ERROR-family → error — do not regress.
 - Telescope HTTP contract and import-path-only rewires for roster/gazer stay out of this bug.
 - No depth/output limits or new fail classes invented in Telescope responses.
+
+## Radia review (AST-1751)
+
+**Overall:** CLEAN — `[code-rubric] PROCEED` @ `d892d7e3`.
+
+- **[bug-repro] OK** — ERROR-only batch + BOT_BLOCKED→fail; qa-handoff fixture fixes included.
+- **What must still hold — OK** — four-key summary; AST-1689/1742 holds; meteorite.py only.
+- **§3h:** resolve-child skipped (clean review).
+
