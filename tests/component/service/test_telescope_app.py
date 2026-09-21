@@ -406,6 +406,7 @@ class TestTelescopeRoutes:
             "AST-1744: complex CSS selector + class_name must still 400"
         )
 
+
 class TestRunBrowserJobErrors:
     @pytest.mark.asyncio
     async def test_timeout_raises_504(self, monkeypatch) -> None:
