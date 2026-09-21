@@ -449,4 +449,24 @@ Statutes: (none — no product files; inherit AST-1714 logging ids only if a fut
 
 **PROCEED** — [bug-repro] skip→failed nodes OK (check_email / ingest / _land_all). Tests+bible only; product delta is sibling AST-1742. Clean §3h shortcut.
 
- 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/2b690ec06bb10a9982ab1285fb07492a/90b9fb71-6c0a-46f8-800c-c0bb1e8eb7b3/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/d9ff7aef-6c0a-42a5-abd7-3bd2d1463a27/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/2b690ec06bb10a9982ab1285fb07492a/c2a3507a-a81c-4339-b045-ca83ff33e071/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1740 (parent) | ftr/AST-1740-meteorites-not-a-job-should-be-fails |
+| AST-1742 | sub/AST-1740/AST-1742-fix-not-a-job-rollup-counts |
+| AST-1743 | sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests |
+
+**Epic worktree:** `astral-AST-1740/` — one active sub checked out at a time.
