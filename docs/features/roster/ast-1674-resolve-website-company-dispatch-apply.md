@@ -348,3 +348,5 @@ AST-1761 `## Scope` gate: **only** `src/core/consult.py` / `run_consult_task` â€
 ## Review-fix findings (AST-1761)
 
 PROCEED â€” CLEAN; [bug-repro] N/A (board TESTS: OK); What must still hold OK; no fix-now.
+
+<!-- AST-1761 docs-acceptance: fix-board TESTS: OK; no qa-fix / no test tree -->
