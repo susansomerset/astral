@@ -7,6 +7,7 @@ import CandidateJobRowActions from "../components/CandidateJobRowActions"
 import JobAnalysisReportModal from "../components/JobAnalysisReportModal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidateJobActions } from "../hooks/useCandidateJobActions"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import Time from "../components/Time"
 
@@ -39,6 +40,8 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
       cmp = a.company.localeCompare(b.company)
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "state") {
+      cmp = (a.state || "").localeCompare(b.state || "")
     } else if (phaseFields.includes(col)) {
       const av = a[col]
       const bv = b[col]
@@ -57,21 +60,21 @@ export default function Recommended() {
   const { manifest, loadState } = useStateUi()
   const { selectedId } = useCandidate()
   const [rows, setRows] = useState<Job[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [reportId, setReportId] = useState<string | null>(null)
   // AST-587 / AST-565: row click opens Job Analysis Report only (not Job Detail)
   const openJobReport = useCallback((jobId: string) => setReportId(jobId), [])
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [sorts, setSorts] = useState<Record<string, SortState>>({})
 
-  const load = useCallback(() => {
+  const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
-    setLoading(true)
+    beginRefresh(showSpinner)
     api(`/api/jobs?view=recommended&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
       .then(data => setRows(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false))
-  }, [selectedId])
+      .finally(() => endRefresh())
+  }, [selectedId, beginRefresh, endRefresh])
 
   const actions = useCandidateJobActions(load)
 
@@ -79,7 +82,7 @@ export default function Recommended() {
     if (actions.error) setToast({ text: actions.error, variant: "error" })
   }, [actions.error])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(true) }, [load])
 
   const phaseFields = useMemo(
     () => manifest?.jobs.recommended.phase_score_columns.map(c => c.field) ?? [],
@@ -90,7 +93,9 @@ export default function Recommended() {
     if (!manifest) return []
     const meteoriteSection = manifest.jobs.recommended.meteorite_section
     const prefix = meteoriteSection?.company_prefix ?? ""
-    const isMeteoriteJob = (job: Job) => Boolean(prefix) && job.company.startsWith(prefix)
+    // Null company is not a meteorite-prefix match (runtime JSON can be null).
+    const isMeteoriteJob = (job: Job) =>
+      Boolean(prefix) && (job.company ?? "").startsWith(prefix)
     const meteoriteRows = rows.filter(isMeteoriteJob)
     const normalRows = rows.filter(job => !isMeteoriteJob(job))
     const byState: Record<string, Job[]> = {}
@@ -175,6 +180,9 @@ export default function Recommended() {
                       <th className="sortable" onClick={() => handleSort(sec.state, "company")}>
                         Company{sortIndicator(sec.state, "company")}
                       </th>
+                      <th className="sortable" onClick={() => handleSort(sec.state, "state")}>
+                        State{sortIndicator(sec.state, "state")}
+                      </th>
                       {manifest.jobs.recommended.phase_score_columns.map(col => (
                         <th
                           key={col.field}
@@ -203,6 +211,7 @@ export default function Recommended() {
                         </td>
                         <td>{job.job_title || "\u2014"}</td>
                         <td>{job.company}</td>
+                        <td>{job.state || "\u2014"}</td>
                         {manifest.jobs.recommended.phase_score_columns.map(col => (
                           <td key={col.field} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
                             {formatPhaseScore(job[col.field])}

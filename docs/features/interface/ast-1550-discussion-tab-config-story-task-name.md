@@ -1,0 +1,638 @@
+<!-- linear-archive: AST-1550 archived 2026-09-09 -->
+
+## Linear archive (AST-1550)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1550/discussion-tab-config-story-task-name-add-discussion-tab-to  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1541 — Add "Discussion" tab to Recommended Job modal  
+**Blocked by / blocks / related:** parent: AST-1541; blocks: AST-1551
+
+### Description
+
+## What this implements
+
+Register Discussion on `JOBS_RECOMMENDED_REPORT_TOP_TABS`, expose the ordered nine-hop section list (keys + `task_name` labels, all `default_expanded: false`) on the UI manifest, and enrich `get_entity_agent_story` with `task_name`. Does not own the React Discussion pane (#2).
+
+## Citations
+
+`astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`, `astral.config.config-source-of-truth`.
+
+## Scope
+
+`src/utils/config.py` (Discussion top tab + hop-order source); `src/ui/api/api_system.py` (manifest Discussion sections); `src/core/agent.py` (`task_name` on story entries).
+
+## Acceptance criteria
+
+1. Opening a Recommended job shows top tabs Summary | Analysis | Artifacts | **Discussion** (Discussion immediately after Artifacts).
+2. Each header displays that hop’s `agent_task.task_name` when set; otherwise `task_key`.
+   (Partial — this child delivers the config/manifest/`task_name` data the UI consumes.)
+
+## Boundaries
+
+Does not own the React Discussion pane (#2). Does not change Job Detail / Company Detail Agent Story tabs, artifact generation, or Analysis/Summary bodies.
+
+## Notes for planning
+
+Citations as above. Domain: config + api_system + agent story enrichment.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1541-discussion-tab-recommended-job-modal`, child `sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` at dispatch-parent.
+
+## QA test manifest
+
+1. Config tabs + hop walk: `tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys`
+2. Revised report tabs (AST-948→1550): `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`
+3. Manifest Discussion sections: `tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections`
+4. Story `task_name`: `tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
+  tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`):
+
+* `docs/test-bible/utils/config.md` — `77ae16f020017456850494ea0a35c9bce4a0194a2daa554e25f3cfa2b0383c3b`
+* `docs/test-bible/ui/api/api_system.md` — `51c73a48f1b0fba90d014929571dc4ec91a6f53b3aff572bac299dee07b72143`
+* `docs/test-bible/core/agent.md` — `4feac54b2ba1c856d89af3902f9b4c10b07e16c79f5eb3687fcd05981ef45d84`
+
+### Comments
+
+#### chuckles — 2026-08-31T21:22:05.638Z
+[merge-child] blocked: git pull merge on sub — `Merge remote-tracking branch 'origin/dev' into sub/AST-1541/AST-1550-…` @ 25b54b38 — @Ada Lovelace please drop that merge and merge origin/ftr/AST-1541-discussion-tab-recommended-job-modal instead, then republish.
+
+#### chuckles — 2026-08-31T21:21:31.703Z
+[merge-child] blocked: git pull merge on sub — `Merge remote-tracking branch 'origin/dev' into sub/AST-1541/AST-1550-…` @ 25b54b38 — @Ada Lovelace please drop that merge and merge origin/ftr/AST-1541-discussion-tab-recommended-job-modal instead, then republish.
+
+#### betty — 2026-08-31T21:18:20.695Z
+`origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `9d57e822` · Toast bleed dropped
+
+#### radia — 2026-08-31T21:16:32.882Z
+[code-rubric] REVIEW (Commit: 814c237c) Sibling Toast tests orphan
+
+#### betty — 2026-08-31T21:11:16.339Z
+`origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `814c237c` · Discussion QA ready
+
+#### joan — 2026-08-31T21:01:58.076Z
+[plan-rubric] PROCEED (Commit: 6a05e07) config manifest task_name
+
+#### ada — 2026-08-31T20:59:31.751Z
+`origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `6a05e07e893fa93469e42cb0547da4b277711981` · plan ready
+
+---
+
+# AST-1550 — Discussion tab config + story task_name
+
+**Linear:** [AST-1550](https://linear.app/astralcareermatch/issue/AST-1550/discussion-tab-config-story-task-name-add-discussion-tab-to-recommended)  
+**Parent:** [AST-1541 — Add "Discussion" tab to Recommended Job modal](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal)  
+**Publish ref (origin):** `sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`
+
+Register **Discussion** on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (immediately after Artifacts), expose an ordered nine-hop Discussion section list (keys + `task_name` labels, all `default_expanded: false`) on the recommended-report UI manifest, and enrich `get_entity_agent_story` entries with `task_name` from the live `agent_task` row. Does **not** own the React Discussion pane (sibling AST-1551 / child #2).
+
+---
+
+## Explicit scope gate
+
+Ticket **## Scope** (only surfaces this plan may touch):
+
+- `src/utils/config.py` — Discussion top tab + hop-order source
+- `src/ui/api/api_system.py` — manifest Discussion sections
+- `src/core/agent.py` — `task_name` on story entries
+
+Every **Files Changed** row and every Stage step names only those files / that kind of change. No React, no `api_jobs.py`, no Job Detail Agent Story UI, no artifact generation.
+
+---
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/utils/config.py` | Append Discussion to `JOBS_RECOMMENDED_REPORT_TOP_TABS`; add public hop-order walk from `BUILD_CONFIG["resume_artifact_chain"]["first_task_key"]` via live `agent_task.run_next` | utils |
+| `src/ui/api/api_system.py` | On `GET /api/state_ui_manifest`, attach `jobs.recommended.report_discussion_sections` (nine section defs from the walk + `task_name` / `task_key` labels, `default_expanded: false`) | ui |
+| `src/core/agent.py` | In `get_entity_agent_story`, attach `task_name` from the current `agent_task` row when non-empty | core |
+
+**Out of scope:** `JobAnalysisReportModal.tsx` / `JobDiscussionPane.tsx` / `App.css` / `AgentStoryTab.tsx` (sibling #2); Job Detail / Company Detail Agent Story behavior; artifact generation; Analysis / Summary bodies; `tests/` / bible (Betty).
+
+**Sibling consume contract (AST-1551 — do not implement here):**
+
+| Manifest / API field | Shape | UI use |
+|----------------------|-------|--------|
+| `jobs.recommended.report_top_tabs` | includes `{tab_id: "discussion", nav_label: "Discussion"}` after Artifacts | top-tab chrome (already driven by `report_top_tabs`) |
+| `jobs.recommended.report_discussion_sections` | `[{section_id, nav_label, default_expanded}, …]` length 9 | Discussion pane section list |
+| `agent_story[].task_name` | optional string | header label when present; else `task_key` |
+
+---
+
+## Stage 1: Config — Discussion top tab + hop-order walk
+
+**Done when:** `JOBS_RECOMMENDED_REPORT_TOP_TABS` ends with Summary → Analysis → Artifacts → **Discussion**; a public config helper returns the live BUILD_ARTIFACTS daisy-chain task_keys starting at `BUILD_CONFIG["resume_artifact_chain"]["first_task_key"]` (`contemplate_job`) and ending when `run_next` is empty (today: nine keys through `propose_application_responses`). No API or story behavior change yet.
+
+1. In `src/utils/config.py`, immediately after the existing Artifacts entry in `JOBS_RECOMMENDED_REPORT_TOP_TABS`, append:
+
+   ```python
+   {"tab_id": "discussion", "nav_label": "Discussion"},
+   ```
+
+   Do **not** reorder Summary / Analysis / Artifacts. Comment the block as AST-1550 (Discussion after Artifacts).
+
+2. In `src/utils/config.py`, near the other BUILD_ARTIFACTS / `resume_artifact_chain` helpers (after `is_build_artifacts_in_progress` / the `_rac` assert block is fine — same concern area), add a **public** function:
+
+   ```python
+   def build_artifacts_discussion_hop_task_keys() -> list[str]:
+       """Live run_next walk for Recommended Job Report Discussion sections (AST-1550).
+
+       Starts at BUILD_CONFIG['resume_artifact_chain']['first_task_key'] (contemplate_job).
+       Follows current agent_task.run_next until empty. Cycle → RuntimeError.
+       Does not include anticipate_scan (not on this chain).
+       """
+   ```
+
+   Implementation rules (literal):
+
+   - Late-import `get_agent_task` from `src.data.database` inside the function (same pattern as `_agent_task_parents_with_run_next` — utils must not import data at module load).
+   - `start = (BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key")` stripped; if empty, return `[]`.
+   - Walk: append key → read `(get_agent_task(key) or {}).get("run_next")` stripped → next key; stop when next is empty.
+   - If a key repeats, `raise RuntimeError(f"build_artifacts discussion run_next cycle at {key!r}")` (same discipline as `_walk_requested_artifacts_chain_task_keys` in `candidate.py`).
+   - Do **not** hardcode the nine task_key strings in a list. Do **not** add a parallel `hop_task_keys` array under `BUILD_CONFIG["resume_artifact_chain"]` (that list was retired; membership is live `run_next`).
+
+⚠️ **Decision:** Walk from `first_task_key` via live `run_next` rather than a static nine-key list — satisfies `astral.standards.no-hardcoded-sets` / parent Technical scope. Starting at `resume_artifact_chain.first_task_key` excludes `anticipate_scan` without naming it. Terminal is empty `run_next` (today `propose_application_responses`); do not special-case that key unless the walk would otherwise continue past it.
+
+---
+
+## Stage 2: api_system — attach Discussion section defs on the recommended manifest
+
+**Done when:** `GET /api/state_ui_manifest` includes `jobs.recommended.report_discussion_sections` as an ordered list of nine `{section_id, nav_label, default_expanded: false}` objects where `section_id` is the hop `task_key` and `nav_label` is that hop’s `agent_task.task_name` when non-empty, else `task_key`. Walk/DB failure degrades to `[]` with a warning (rest of manifest still 200). Discussion already appears in `report_top_tabs` via Stage 1’s `list(JOBS_RECOMMENDED_REPORT_TOP_TABS)` inside `build_state_ui_manifest()` — do not duplicate the top-tab entry here.
+
+1. In `src/ui/api/api_system.py`, import `build_artifacts_discussion_hop_task_keys` from `src.utils.config` (add to the existing config import block).
+
+2. Import `get_agent_task` from `src.data.database` (UI → data is allowed; `api_admin` already uses it). Prefer a top-level import next to other data/core imports, or a late import inside the try block if that keeps the module header cleaner — either is fine; pick one and stay consistent with nearby code in this file.
+
+3. In `state_ui_manifest()`, after `manifest = build_state_ui_manifest()` and **before** `return jsonify(manifest)`, attach Discussion sections. Mirror the AST-1253 soft-fail pattern used for `artifacts_chain_*` on the same endpoint:
+
+   ```python
+   try:
+       sections = []
+       for task_key in build_artifacts_discussion_hop_task_keys():
+           row = get_agent_task(task_key) or {}
+           name = (row.get("task_name") or "").strip()
+           sections.append({
+               "section_id": task_key,
+               "nav_label": name or task_key,
+               "default_expanded": False,
+           })
+       manifest.setdefault("jobs", {}).setdefault("recommended", {})[
+           "report_discussion_sections"
+       ] = sections
+   except Exception as exc:
+       _log.warning("discussion sections manifest walk failed: %s", exc)
+       manifest.setdefault("jobs", {}).setdefault("recommended", {})[
+           "report_discussion_sections"
+       ] = []
+   ```
+
+4. Do **not** put `report_discussion_sections` inside `build_state_ui_manifest()` in config — ticket Scope assigns manifest Discussion sections to `api_system.py` (live `task_name` at request time, same reason AST-1253 enriches outside the pure config builder).
+
+5. Do **not** change frontend TypeScript types in this ticket (sibling #2 / Katherine). Backend key name is exactly `report_discussion_sections`.
+
+⚠️ **Decision:** Soft-fail to `[]` on walk failure so a broken `agent_task` chain cannot 500 the whole state-UI manifest (matches AST-1253). Healthy DB today yields exactly nine sections; Betty owns asserting that count.
+
+---
+
+## Stage 3: agent — `task_name` on `get_entity_agent_story` entries
+
+**Done when:** Each enriched story entry from `get_entity_agent_story` includes `task_name` when the current `agent_task` row for that entry’s `task_key` has a non-empty `task_name`; when blank/missing, the key is **omitted** (UI falls back to `task_key`). Applies to job / company / candidate stories alike (additive field; Agent Story tabs unchanged). No change to block filtering, scored-task enrichment, or soft-fail behavior.
+
+1. In `src/core/agent.py`, inside `get_entity_agent_story`, in the loop that builds each `entry` (after `task_key = e.get("task_key", "")` is known, and when assembling `entry = {**e, "blocks": blocks}` / before `enriched.append(entry)`):
+
+   - Call `get_agent_task(task_key)` (already imported at module top from `src.data.database`).
+   - `name = ((get_agent_task(task_key) or {}).get("task_name") or "").strip()`
+   - If `name`: set `entry["task_name"] = name`.
+   - If not `name`: do **not** set `task_name` to `""` — omit the key.
+
+2. Prefer a single `get_agent_task` call per entry (reuse the row if you already fetch it for something else in the same iteration — today you do not). Do **not** batch-load all tasks unless an existing helper already does that; N is small (latest-per-task refs).
+
+3. Do **not** change `_filter_response_block`, scored `vector_grades` / `rubric_artifact` attachment, or the soft-fail paths around `list_entity_latest_agent_refs` / `get_agent_data`.
+
+⚠️ **Decision:** Omit empty `task_name` rather than sending `""` — matches parent Technical (“empty → omit / UI falls back to `task_key`”) and keeps payloads clean for siblings that check truthiness.
+
+---
+
+## Execution contract
+
+- Execute stages in order; one commit per stage on the epic worktree; publish each to `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`.
+- Do not add files, modules, or frontend edits not listed above.
+- Ambiguity / drift → comment on **parent** AST-1541 with the Stage blocked template; stop.
+
+---
+
+## Estimate
+
+Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1550
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `6a05e07e893fa93469e42cb0547da4b277711981`
+
+## Traceability
+AC1 → Stage 1 (`JOBS_RECOMMENDED_REPORT_TOP_TABS` → `build_state_ui_manifest` `report_top_tabs`); AC2 → Stages 2–3 (`report_discussion_sections` manifest labels + `get_entity_agent_story` `task_name` enrichment). Parent AC2/4–7 N/A — sibling AST-1551 (React pane / RESPONSE bodies).
+
+## Findings
+
+### acceptable — `astral.standards.utils-data-late-import-only` vs in-tree precedent
+**Location:** Stage 1 (`build_artifacts_discussion_hop_task_keys` late-imports `get_agent_task` in `config.py`)
+**Finding:** Statute text forbids utils→data late-import outside `logging.py`; the same file already uses that pattern in `_agent_task_parents_with_run_next` / `dispatch_chain_row_matches_job`. Parent Component/Technical scope assigns the hop walk to `config.py`; core’s `_current_agent_task_run_next` is not importable from utils.
+**Recommendation:** Proceed as planned — matches parent definition and existing config chain helpers. Not a plan defect.
+
+context_tokens≈52000
+```
+
+---
+
+## Self-Assessment
+
+**Scope:** `Single-Component` — config top tab + hop walk, api_system Discussion sections, agent story `task_name`; no React pane.
+
+**Conf:** `High` — live `run_next` walk mirrors AST-1253; nine hops verified against DB; additive `task_name` field.
+
+**Risk:** `Low` — soft-fail empty sections if walk fails; empty `task_name` omitted (UI falls back to `task_key`).
+
+---
+
+## Review
+
+**Built:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `7b103e5a6be93581bff8a1d6f69d2df77281d497`
+
+Stages 1–3: Discussion on `JOBS_RECOMMENDED_REPORT_TOP_TABS`; `build_artifacts_discussion_hop_task_keys`; `report_discussion_sections` on `state_ui_manifest`; `task_name` on `get_entity_agent_story`. Tests deferred to Betty.
+
+## Radia review
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1550
+**Publish ref:** `sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` @ `814c237ca81681a24d2eea0153e19277bc074e84`
+**Overall:** FIX-NOW
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name` (12 files; product: `src/utils/config.py`, `src/ui/api/api_system.py`, `src/core/agent.py`)
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match plan literally |
+| orch.roles.archie-approves-statutes | universal | conforms | N/A to diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1550)` @ `814c237c` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests` prefixes used |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub-branch publish ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1541/AST-1550-…` |
+| orch.git.merge-on-checkout | universal | conforms | N/A to review |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No evidence in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | Sub publish ref only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree AST-1541 |
+| orch.git.three-permanent-branches | universal | conforms | Sub topology correct |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No product-policy drift |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A |
+| orch.pipeline.status-gates-skill-entry | universal | needs-discussion | Tests Passed but Toast cases appear red on tip (see fix-now) |
+| orch.roles.archie-approves-statutes | universal | conforms | — |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible edits on Betty path |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook violations visible |
+| astral.agent.confidence-bounds | scoped | not-applicable | No agent confidence paths touched |
+| astral.agent.do-task-delegation | scoped | not-applicable | No do_task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | Story enrichment only; no grade logic change |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | No dispatcher/claim changes |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No batch read path changes |
+| astral.config.config-source-of-truth | scoped | conforms | Tabs/sections sourced from config + live agent_task |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets/env changes |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spikes |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | Hop walk follows live `run_next` |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No seed/dispatch rows |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single plan doc for AST-1550 |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Engineer src only; Betty test tree |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | Engineer did not land tests |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | No coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `state_ui_manifest` remains `@require_auth` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | No external layer |
+| astral.layers.import-direction | scoped | conforms | ui→data allowed; utils late-import matches file precedent |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Discussion chrome config-driven |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON edits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No catalog conflict |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | Request-time manifest enrichment only |
+| astral.seed.define-approved | scoped | not-applicable | Post-plan build |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage join |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | No data layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | No DB schema/SQL |
+| astral.standards.debug-contract-gated | scoped | not-applicable | No debug= emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Focused helpers; walk parallels existing chain walkers |
+| astral.standards.in-scope-only | scoped | conforms | Src touches limited to plan’s three files |
+| astral.standards.logging-via-utils | scoped | conforms | `_log.warning` via `get_logger` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Public names domain-shaped |
+| astral.standards.no-cross-contamination | scoped | conforms | No out-of-layer src deps |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Nine-hop list from live `run_next`, not static array |
+| astral.standards.public-then-helpers | scoped | conforms | `build_artifacts_discussion_hop_task_keys` public |
+| astral.standards.utils-data-late-import-only | scoped | conforms | Late-import in `config.py` — Joan-approved + `_agent_task_parents_with_run_next` precedent |
+| astral.state.core-decides-transitions | scoped | not-applicable | No state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | Manifest walk only; no run loop |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No frontend src in diff |
+| astral.ui.naming-conventions | scoped | not-applicable | No frontend src |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server config |
+
+**Active set scored:** 64 statute ids from registry (excludes namespace path rows). **0 violates** in product `src/`. **1 needs-discussion** (status gate vs Toast red tests).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan/parent cite no `canon/patterns/**` ids; AST-1253 soft-fail shape reused by convention |
+
+## Plan adherence
+
+Stages 1–3 land as specified:
+
+- **Stage 1:** `JOBS_RECOMMENDED_REPORT_TOP_TABS` gains Discussion after Artifacts; `build_artifacts_discussion_hop_task_keys()` walks `resume_artifact_chain.first_task_key` via live `run_next` with cycle guard.
+- **Stage 2:** `state_ui_manifest()` attaches `jobs.recommended.report_discussion_sections` outside `build_state_ui_manifest()`, soft-fails to `[]` on walk/DB error (AST-1253 mirror).
+- **Stage 3:** `get_entity_agent_story` adds optional `task_name` when non-empty; omits key when blank.
+
+Estimate **3** still fits the real footprint. Scope gate honored for **product** `src/`. **Test-tree scope bleed** from sibling AST-1549/AST-1553 (below) is outside the plan gate.
+
+Joan plan-rubric **APPROVED** @ `6a05e07e`; `astral.standards.utils-data-late-import-only` flagged acceptable there — justification chain satisfied by existing `config.py` chain helpers. No straggler excluded statute scored in-scope.
+
+## Findings
+
+### fix-now — Sibling Toast tests on AST-1550 publish ref without product code
+
+**Location:** `tests/component/frontend/components/test_Toast.test.tsx` (in diff; commit `72b918e3` `test(AST-1553)` on sub)
+
+**Finding:** Three test cases assert AST-1549/AST-1553 Toast behavior (`\u26A0` error glyph, `.toast-copy-target`, `Dismiss` button / no-copy-on-dismiss). `src/ui/frontend/src/components/Toast.tsx` is **unchanged** on tip `814c237c` vs `origin/dev` — still uses `\u2717`, whole-toast click, no Dismiss. Static review: at least `shows success, error, and default info variants`, `error toast is clickable and copies diagnostic bundle`, and `AST-1553: dismiss closes error toast without copying` will fail if the frontend component suite runs on this ref.
+
+**Why fix-now:** Publish ref is not self-consistent; `Tests Passed` is misleading for anyone running `test_Toast.test.tsx`. Not AST-1550 product scope — Betty/Chuckles should revert or relocate these deltas to the AST-1553/1549 sub (or land sibling product first), not route to Ada via `resolve-child`.
+
+### discuss — Cross-ticket test commit on child sub
+
+**Location:** Branch history: `72b918e3 test(AST-1553)` precedes `merge-tests(AST-1550)`
+
+**Finding:** AST-1553 test work sits on the AST-1550 publish ref alongside Betty’s AST-1550 manifest. `orch.git.betty-merge-tests-one-sha` is satisfied (one merge-tests), but the direct `test(AST-1553)` commit blurs sibling boundaries under parent AST-1541.
+
+**Question:** Was Tests Passed gated on a manifest that excluded `test_Toast.test.tsx`? If yes, document manifest scope on the issue; if no, status should not have advanced.
+
+### advisory — Duplicate walk pattern
+
+**Location:** `src/utils/config.py` `build_artifacts_discussion_hop_task_keys` vs `src/core/candidate.py` `_walk_requested_artifacts_chain_task_keys`
+
+**Finding:** Same run_next-walk shape, different start keys/layers. Layer law prevents utils→core import; duplication is bounded and acceptable. Optional future consolidation if a shared utils walker emerges.
+
+### advisory — Per-hop double `get_agent_task` in manifest path
+
+**Location:** `src/ui/api/api_system.py` `state_ui_manifest` loop + internal walk in `build_artifacts_discussion_hop_task_keys`
+
+**Finding:** ~2 DB reads per hop (N≤9). Within plan’s “N is small” allowance; optimize only if profiling warrants.
+
+## What’s solid
+
+- Product implementation is plan-faithful and ready for sibling AST-1551 consume contract.
+- Cycle detection and empty-`first_task_key` → `[]` behavior tested.
+- `task_name` omission-on-blank matches parent Technical and keeps payloads clean.
+- AST-1550-scoped tests (`test_config`, `test_api_system`, `test_agent`) align with manifest intent.
+- Soft-fail manifest enrichment preserves 200 on broken chains.
+
+## Frame diff
+
+- `JOBS_RECOMMENDED_REPORT_TOP_TABS`: +`discussion` tab after `artifacts`
+- `GET /api/state_ui_manifest`: +`jobs.recommended.report_discussion_sections` `[{section_id, nav_label, default_expanded}]`
+- `get_entity_agent_story` entries: +optional `task_name` string
+- **Out of frame (on diff):** `test_Toast.test.tsx` AST-1549/1553 expectations — sibling tickets, no matching `Toast.tsx` change
+
+## Recommended actions (downstream — not Radia)
+
+1. **Betty/Chuckles:** Remove or relocate `test_Toast.test.tsx` AST-1549/1553 deltas from `sub/AST-1541/AST-1550-…`; keep AST-1550 tests only on this ref.
+2. **Chuckles:** Confirm Tests Passed manifest excluded Toast; if not, regress status until test tree is green on tip.
+3. **Ada / resolve-child:** No product `src/` fixes required for AST-1550 scope once test-tree fix-now is handled separately.
+
+**Notes:** Joan validate artifact attached; no excluded statute straggler. Product `src/` alone would be **CLEAN / PROCEED**.
+
+context_tokens≈72000
+
+---
+
+[code-rubric] REVIEW (Commit: 814c237c) Sibling Toast tests orphan
+```
+
+---
+
+## Resolution
+
+**Date:** 2026-08-31  
+**Resolve tip (pre-push):** Betty Toast restore `9d57e822` on `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`; product `src/` unchanged for review findings.
+
+### fix-now — Sibling Toast tests
+
+**Handled by Betty** (not Ada product): `9d57e822 test(AST-1550): restore Toast tests to origin/dev — drop sibling bleed`. `tests/component/frontend/components/test_Toast.test.tsx` matches `origin/dev` (empty diff). No `src/` fix-now required (spawn + Radia recommended action #3).
+
+### discuss — Cross-ticket test commit / Tests Passed gate
+
+**Answer:** Yes — Tests Passed was gated on Betty’s AST-1550 manifest only (bible `docs/test-bible/utils/config.md` § AST-1550 / Linear “Discussion QA ready”):
+
+1. `tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys`
+2. `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`
+3. `tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections`
+4. `tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName`
+
+`test_Toast.test.tsx` was **not** on that manifest. Toast bleed is now restored to `origin/dev` on this publish ref.
+
+### advisory — Duplicate walk pattern
+
+**Deferred:** Bounded utils vs core duplication; layer law blocks utils→core. No change this pass.
+
+### advisory — Per-hop double `get_agent_task`
+
+**Deferred:** N≤9; within plan allowance. No change this pass.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/81753492fa55c6a6a65968555e8f5c14/46b16373-da34-4f04-969b-131d1152b981/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/81753492fa55c6a6a65968555e8f5c14/c4f93f7e-ea37-43b5-a6fa-25c31c425e47/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/f9e04fce-94bf-4b71-92a7-cbbe544ee513/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/81753492fa55c6a6a65968555e8f5c14/f48c9428-ac74-4cbe-b103-23a94ed994d1/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1541 (parent) | ftr/AST-1541-discussion-tab-recommended-job-modal |
+| AST-1550 | sub/AST-1541/AST-1550-discussion-tab-config-story-task-name |
+| AST-1551 | sub/AST-1541/AST-1551-discussion-pane-recommended-job-report |
+
+**Epic worktree:** `astral-AST-1541/` — one active sub checked out at a time.
+
+---
+
+## Bug: AST-1609 — fix artifacts discussion incomplete
+
+Orphaned bug-fix child of **AST-1607** (Related → AST-1541). This doc owns the hop-walk / manifest half; pane header filtering is on **AST-1551** under the same bug heading.
+
+### As-is
+
+`build_artifacts_discussion_hop_task_keys()` starts at `BUILD_CONFIG["resume_artifact_chain"]["first_task_key"]` (`contemplate_job`) and walks `run_next` forward. That deliberately omits `anticipate_scan` (its live `run_next` points *at* `first_task_key`, so it never appears on a forward walk from `first`). `GET /api/state_ui_manifest` therefore never emits an `anticipate_scan` row in `jobs.recommended.report_discussion_sections`.
+
+### To-be
+
+The Discussion hop catalog includes `anticipate_scan` when it is the live `run_next` parent of `first_task_key` (membership from DB `agent_task.run_next`, not a hardcoded key list or a static “always nine” length). Manifest soft-fail to `[]` on walk failure is unchanged.
+
+### Repro
+
+1. Open Recommended Job Report → Discussion for a job whose `agent_story` includes a non-empty RESPONSE for `anticipate_scan` (and fewer than the full forward chain for later hops).
+2. Observe: no `anticipate_scan` section in the catalog/headers sourced from `report_discussion_sections` (AST-1550 half). Empty always-on later hop headers are the AST-1551 half of the same bug.
+
+### Root cause
+
+AST-1550 Stage 1 **Decision** fixed the walk start at `resume_artifact_chain.first_task_key` and documented “Does not include anticipate_scan (not on this chain).” That start is the dispatch *mid-chain* resume entry, not the optional pre-`first` hop whose `run_next` feeds into it. The helper never consults `_agent_task_parents_with_run_next` (already used for BUILD_ARTIFACTS claim-state expansion in the same module).
+
+### Proposed change
+
+**`src/utils/config.py` — `build_artifacts_discussion_hop_task_keys` only**
+
+1. Keep late-import `get_agent_task` and the forward `run_next` walk + cycle `RuntimeError` as today.
+2. After resolving `first = (BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key")` stripped (empty → `[]`), resolve the walk **start** as follows — do **not** hardcode `"anticipate_scan"`:
+   - `parents = _agent_task_parents_with_run_next(first)` (existing helper; live TASK_CONFIG scan of `agent_task.run_next == first`).
+   - If `len(parents) == 1`: `start = parents[0]` (today: `anticipate_scan` when its row’s `run_next` is `contemplate_job`).
+   - If `len(parents) == 0` or `len(parents) > 1`: `start = first` (same as today’s walk; ambiguous multi-parent matches `_parent_hop_task_key_for_child` caution — do not invent which parent to prepend).
+3. Walk forward from `start` exactly as today (append key → next `run_next` → stop on empty; cycle → `RuntimeError`).
+4. Update the docstring: remove “Does not include anticipate_scan”; state that when exactly one live `run_next` parent of `first_task_key` exists, the walk begins at that parent, then follows `run_next` to empty.
+5. Do **not** add a parallel hop-key array under `BUILD_CONFIG`. Do **not** rename the function unless make-fix finds a call-site reason (keep the name).
+
+**`src/ui/api/api_system.py` — no behavior change expected**
+
+The existing `state_ui_manifest` soft-fail attach loop already iterates `build_artifacts_discussion_hop_task_keys()` and builds `{section_id, nav_label, default_expanded: false}` from live `task_name`. Leave it alone unless the helper signature changes (it should not). Still soft-fail to `[]` with a warning on walk failure. Do **not** hardcode section count (was “nine” in AST-1550 docs/tests; product emits whatever the walk returns — Betty owns assertion updates).
+
+**Out of this doc’s patch:** `JobDiscussionPane.tsx` / `JobAnalysisReportModal.tsx` (see AST-1551 bug section). No `agent.py` change (task_name enrichment already shipped).
+
+⚠️ **Decision:** Prefer “start walk at the unique live parent of `first_task_key`” over prepending parents onto a walk that still starts at `first` — one ordered walk, same cycle discipline, no duplicate keys. Prefer unique-parent only (not “prepend all parents”) so ambiguous graphs do not invent an order among siblings.
+
+### Blast radius
+
+- Manifest `report_discussion_sections` length becomes 10 when `anticipate_scan.run_next == contemplate_job` (today’s healthy DB), else unchanged when no unique parent.
+- AST-1551 pane + Betty fixtures/tests that lock `NINE` / length-9 (`test_config.py` `TestAst1550DiscussionHopKeys`, `test_api_system.py` `TestAst1550ReportDiscussionSections`, frontend `NINE` / `stateUiManifestFixture`) will need Betty’s fix-board / qa-fix pass — engineer does not touch `tests/` or bible.
+- Dispatch / claim / BUILD_ARTIFACTS runtime paths that call `_agent_task_parents_with_run_next` for other reasons are unchanged; only the Discussion helper’s start selection changes.
+- Jobs with no `anticipate_scan` story still get the catalog row from the global manifest; per-job header hiding is the AST-1551 filter (do not filter in `api_system` — manifest is not per-job).
+
+### What must still hold
+
+- Discussion still appears on `JOBS_RECOMMENDED_REPORT_TOP_TABS` after Artifacts (untouched).
+- Section `section_id` = task_key; `nav_label` = non-empty `agent_task.task_name` else `task_key`; `default_expanded: false`.
+- No hardcoded task_key list in config for Discussion membership; membership remains live `run_next`.
+- Walk cycle still raises `RuntimeError`; manifest attach still soft-fails to `[]` without 500ing the whole state-UI manifest.
+- `get_entity_agent_story` `task_name` enrichment (AST-1550 Stage 3) unchanged.
+- Summary / Analysis / Artifacts tabs and artifact generation unchanged.
+
+---
+
+## Bug: AST-1612 — gap revise discussion tests (anticipate_scan + empty headers)
+
+Sibling **gap** child of AST-1607 from `[board-betty] TESTS: REVISE` on **AST-1609**. Product hop-walk / pane filter lands on AST-1609; this ticket owns bible + component-test revision only (no `src/` product edits).
+
+### As-is
+
+`TestAst1550DiscussionHopKeys::test_hop_walk_follows_run_next` asserts `"anticipate_scan" not in keys`. Bible `docs/test-bible/utils/config.md` § AST-1550 documents the walk as excluding `anticipate_scan`. Frontend: `test_JobDiscussionPane` “renders nine collapsed sections…” and JAR “Discussion tab shows nine collapsed hop labels…” / “partial agent_story still nine slots…” assert nine headers when `agentStory` is empty or partial. Bible § AST-1551 says empty hops stay panels.
+
+### To-be
+
+Tests and bible match AST-1609: unique-parent walk can include `anticipate_scan` (~10 keys when that parent’s `run_next` points at `first_task_key`); Discussion headers only for hops with non-empty RESPONSE — `agentStory=[]` → **0** headers; coverage when story has `anticipate_scan` RESPONSE.
+
+### Repro
+
+Against AST-1609 product (unique-parent start + pane filter):
+
+1. `TestAst1550DiscussionHopKeys::test_hop_walk_follows_run_next` — the `"anticipate_scan" not in keys` line is obsolete as a product invariant (short-chain monkeypatch with no unique parent still omits it by accident; need an explicit unique-parent case that **includes** it).
+2. `JobDiscussionPane — AST-1551` / JAR Discussion tab — empty or partial story still expects length-9 Expand buttons → fail once headers are filtered.
+
+### Root cause
+
+AST-1550/1551 tests and bible locked the original “start at `first_task_key`, always nine empty-capable panels” contract. AST-1609 changed both behaviors; Betty’s board REVISE flags the obsolete asserts / missing coverage.
+
+### Proposed change
+
+**Scope gate (this ticket only):** bible + tests. No `src/utils/config.py`, no `JobDiscussionPane.tsx` product edits (those are AST-1609).
+
+**`docs/test-bible/utils/config.md` § AST-1550**
+
+1. Rewrite the hop-walk blurb: walk begins at the unique live `run_next` parent of `resume_artifact_chain.first_task_key` when exactly one parent exists (today `anticipate_scan`), else at `first_task_key`; cycle → `RuntimeError`. Drop “excludes `anticipate_scan`.”
+2. Note healthy-chain length is live (~10 when unique parent present), not a hard-coded nine.
+3. Keep existing QA manifest paths; add the new unique-parent test name once landed.
+
+**`docs/test-bible/frontend/components.md` § AST-1551**
+
+1. Replace “empty hops stay panels” / “nine-hop stack” visibility language with: pane filters to sections with non-empty RESPONSE; empty `agentStory` → **0** headers.
+2. Document coverage for `anticipate_scan` when story has RESPONSE (section present in passed `sections` + matching story entry).
+3. JAR: Discussion header count follows filtered pane, not raw `report_discussion_sections.length`.
+4. Clear the obsolete “Product gap (empty RESPONSE)” note if that fix already shipped; do not reintroduce it as open.
+
+**`tests/component/utils/test_config.py` — `TestAst1550DiscussionHopKeys`**
+
+1. In `test_hop_walk_follows_run_next`: **remove** `assert "anticipate_scan" not in keys` (or replace with a comment that this monkeypatch has zero parents of `first`, so start remains `contemplate_job` — do not treat exclusion as the AST-1609 contract).
+2. **Add** `test_hop_walk_unique_parent_includes_anticipate_scan` (name flexible): monkeypatch `get_agent_task` so exactly one parent has `run_next == first_task_key` (use live parent key from DB/TASK_CONFIG — typically `anticipate_scan` — without hardcoding a parallel hop list for the whole chain). Assert walk **starts** with that parent, then continues through `first` via `run_next`. Optionally assert length ≥ 2.
+3. Leave empty-first / cycle tests intact unless they break under the new start rule.
+
+**`tests/component/ui/api/test_api_system.py` — `TestAst1550ReportDiscussionSections`**
+
+- Keep soft-fail + attach-shape tests. If any assert hard-codes “product walk excludes anticipate_scan” or forces live length==9 without mocking the helper, revise to mock the helper (current `_NINE` mock pattern is fine) or accept live unique-parent length. Do not invent product changes.
+
+**`tests/component/frontend/components/test_JobDiscussionPane.test.tsx`**
+
+1. Revise “renders nine collapsed sections from manifest labels” → empty `agentStory={[]}` expects **0** Expand-section buttons and **no** hop `nav_label` text from the passed catalog (or rename to “hides all headers when agentStory is empty”).
+2. Revise “missing hop stays empty after expand” — with filter, a missing/empty hop is **not rendered**; assert the hop label is absent (no Expand click). Drop or rewrite the expand-empty-body case.
+3. **Add** coverage: `sections` includes an `anticipate_scan` def + `agentStory` with non-empty RESPONSE for `anticipate_scan` → exactly that header appears and expand shows the body.
+4. Keep RESPONSE-only / JSON / `RESPONSE (2)` / empty-RESPONSE-skip cases; adjust section counts to the filtered set (e.g. one section with story → length 1).
+
+**`tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — AST-1551 Discussion tab**
+
+1. “Discussion tab shows nine collapsed hop labels…” — with default job `agent_story` empty/absent: expect **0** Expand-section buttons after opening Discussion (top tabs Summary→…→Discussion still hold). Do not require Contemplate/Propose labels when story is empty.
+2. “partial agent_story still nine slots…” → expect **1** Expand button (only `contemplate_job`); expand still shows RESPONSE body; PROMPT hidden.
+3. Optionally add anticipate_scan RESPONSE coverage at modal level if fixture gains that section; pane-level add in (3) above is sufficient if JAR only consumes fixture sections.
+
+**`tests/component/frontend/fixtures/stateUiManifestFixture.ts`**
+
+- Update only if JAR/pane tests need `anticipate_scan` in `report_discussion_sections` for the new coverage. Prefer prepending `{ section_id: "anticipate_scan", nav_label: <live task_name or "Anticipate Scan">, default_expanded: false }` to stay aligned with unique-parent walk order; keep remaining hops lockstep with whatever `TestAst1550ReportDiscussionSections` mock list Betty uses. If pane test passes local `sections` for anticipate_scan, fixture change is optional.
+
+⚠️ **Decision:** No product `src/` on this gap branch. Engineer make-fix on AST-1609 owns code; this plan is for Betty’s test/bible land (or whoever runs the gap’s test-tree work). Do not hardcode a static ten-key list as the sole source of truth — assert unique-parent behavior via monkeypatch / filtered UI counts.
+
+### Blast radius
+
+- AST-1609 product must be on the tree under test (merge/ftr) or unique-parent + filter asserts stay red for the right reason until then.
+- Any other consumers of `NINE` / length-9 Discussion assumptions in astral-tests.
+- Canon unchanged (Joan OK axis).
+
+### What must still hold
+
+- Discussion still last on `report_top_tabs` (Summary → Analysis → Artifacts → Discussion).
+- Manifest attach soft-fail to `[]` still covered.
+- RESPONSE-only bodies; no PROMPT in Discussion.
+- No hardcoded always-visible hop set in product or as a test requirement for empty story.
+- AST-1609 What must still hold (labels from `task_name`/`task_key`, cycle RuntimeError) not contradicted by revised tests.

@@ -6,6 +6,8 @@ import Toast, { type ToastMessage } from "./Toast"
 interface ContextTextPageProps {
   title: string
   contextKey: string
+  /** Catalog body_shape (ARTIFACT_CONFIG / BUILD_CONFIG artifact_shapes). Strengths: plain_text. Omit for legacy blob context pages. AST-1634 / patt.artifact.ui-consistency */
+  bodyShape?: string
 }
 
 // Gracefully handle pre-migration data: arrays of objects → readable text
@@ -26,13 +28,15 @@ function coerceToString(val: unknown): string {
   }).join("\n\n")
 }
 
-export default function ContextTextPage({ title, contextKey }: ContextTextPageProps) {
+export default function ContextTextPage({ title, contextKey, bodyShape }: ContextTextPageProps) {
   const { selectedId } = useCandidate()
   const [saved, setSaved] = useState("")
   const [draft, setDraft] = useState("")
   const [loading, setLoading] = useState(true)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
+  // plain_text (Strengths): refuse empty save — matches operative validation (AST-1634)
+  const plainTextEmpty = bodyShape === "plain_text" && !draft.trim()
 
   useEffect(() => {
     if (!selectedId) return
@@ -50,6 +54,10 @@ export default function ContextTextPage({ title, contextKey }: ContextTextPagePr
   function handleSave() {
     /* v8 ignore next -- @preserve */
     if (!selectedId) return
+    if (bodyShape === "plain_text" && !draft.trim()) {
+      setToast({ text: `${title} cannot be empty`, variant: "error" })
+      return
+    }
     api(`/api/candidates/${selectedId}/data`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -81,8 +89,8 @@ export default function ContextTextPage({ title, contextKey }: ContextTextPagePr
         <div className="dep-header">
           <h1 className="dep-title">{title}</h1>
           <div className="dep-actions">
-            <button className="dep-btn cancel" onClick={handleCancel}>Cancel</button>
-            <button className="dep-btn save" onClick={handleSave}>Save</button>
+            <button className="btn secondary" onClick={handleCancel}>Cancel</button>
+            <button className="btn primary" onClick={handleSave} disabled={plainTextEmpty}>Save</button>
           </div>
         </div>
         <div className="dep-body">

@@ -1,3 +1,312 @@
+<!-- linear-archive: AST-1080 archived 2026-08-11 -->
+
+## Linear archive (AST-1080)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1080/enforce-uniqueness-on-candidate-contact-save-verify-unique-contact  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1045 — Verify unique contact info  
+**Blocked by / blocks / related:** parent: AST-1045
+
+### Description
+
+## What this implements
+
+On the candidate contact save path: apply within-candidate dedupe and cross-candidate uniqueness per the config contract sibling; hard-fail collisions (toast-ready clear domain error for callers); emit Style D debug on touched `debug=True` paths. After AST-1079. Does **not** own config vocabulary (AST-1079), library schema (AST-1014), or Profile/Admin contact UI (AST-1065).
+
+## Acceptance criteria
+
+- [X] 1. Saving contact data for a candidate that would duplicate a uniqueness-scoped contact value already held by a **different** candidate is refused (hard-fail); the other candidate’s data is unchanged.
+- [X] 2. Saving contact data that contains within-candidate duplicates among uniqueness-scoped values avoids adding the same contact info twice for that candidate (no residual duplicate list entries / dual-field copies for scoped fields).
+- [X] 3. A refused uniqueness save surfaces a clear error to the save caller suitable for UI/API display (toast); success path still persists normalized contact as today.
+- [X] 4. Touched backend `debug=True` uniqueness/save paths emit per-step found/recorded Style D lines (index header + `|` detail; long content truncated).
+- [X] 5. After enforcement, two live candidates cannot both hold the same uniqueness-scoped email going forward.
+
+## Boundaries
+
+- [X] Does **not** own config vocabulary (AST-1079).
+- [X] Does **not** own library schema (AST-1014).
+- [X] Does **not** own Profile/Admin contact UI (AST-1065).
+- [X] Does **not** silently merge candidate records on collision.
+
+## In scope
+
+- [X] new contact uniqueness gate on save (proposed) — `_enforce_contact_uniqueness` in `src/core/candidate.py` on `save_candidate_data` / initiate paths
+- [X] `astral.standards.data-raises-caller-logs` — core raises toast-ready `ValueError`; UI already surfaces
+- [X] `astral.standards.debug-contract-gated` — Style D on uniqueness steps when `debug=True`
+- [X] `astral.layers.import-direction` — gate in core; reads `CANDIDATE_CONTACT_UNIQUENESS_CONFIG` from utils
+- [X] `astral.layers.core-vs-external-bright-line` — no external I/O in uniqueness gate
+- [X] `astral.standards.no-hardcoded-sets` — path/compare vocabulary only from AST-1079 config
+- [X] `astral.docs.features-single-file-per-ticket` — plan at `docs/features/candidate/ast-1080-enforce-uniqueness-on-candidate-contact-save.md`
+
+## Considered but excluded
+
+- [X] `CANDIDATE_CONTACT_UNIQUENESS_CONFIG` vocabulary — AST-1079 (`src/utils/config.py`)
+- [X] Contact library schema / name columns — AST-1014
+- [X] Profile / Admin contact UI / toast component redesign — AST-1065 (`src/ui/`)
+- [X] `get_candidate_id_for_query` match-semantics rework — AST-1047 (Done); this ticket only scans live candidates for collisions
+- [X] Legacy duplicate cleanup / migration — parent OQ#4 locked “there won’t be duplicates”
+- [X] Batch claim/process, candidate state machine, dispatcher — N/A
+
+## Notes for planning
+
+After #1 (AST-1079). Hard-fail on cross-candidate collision. All contact info in uniqueness scope per parent open answers.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1045-verify-unique-contact-info`, child `sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-31T00:23:07.240Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/<parent-segment>
+
+Offending tip ancestry includes `39cb7ffa Merge remote-tracking branch 'origin/dev' into sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save` (from publish-ref refresh). validate-sub-log refuses that shape.
+
+@Ada Lovelace — rebuild `origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save` so AST-1080 commits sit on current `origin/ftr/AST-1045-verify-unique-contact-info` (and absorb `origin/dev` via ftr, not a `Merge remote-tracking branch 'origin/dev'` commit). Keep plan/code/merge-tests/test/docs/resolve sequence. Force-with-lease republish only if history rewrite is required.
+
+— Chuckles
+
+#### radia — 2026-07-31T00:21:25.758Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1080
+**Publish ref:** `6ebd64574c2590f396d508064fb1972486fb2b26` (`origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save`)
+**Overall:** DISCUSS
+
+Diff: `origin/dev...origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save` — paths: `src/core/candidate.py` (modify), `src/utils/config.py` (modify; AST-1079 ancestry), `docs/features/candidate/ast-1080-….md` (add), `docs/features/candidate/ast-1079-….md` (add; ancestry), `docs/test-bible/core/candidate.md` (modify), `tests/component/core/test_candidate.py` (modify). Layers: `core`, `utils`, `docs`. Change types: `add`, `modify`.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | No graded-confidence / consult work |
+| astral.agent.do-task-delegation | scoped | conforms | No do_task / agent_task changes |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade validation work |
+| astral.batch.batch-id-first | scoped | conforms | No batch claim API changes |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id work |
+| astral.batch.claim-process-release | scoped | conforms | No batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | No agent_data RESPONSE work |
+| astral.config.config-source-of-truth | scoped | conforms | Paths/compare only from AST-1079 config; no new hardcoded sets |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | No scoring/dispatch floor changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths {artifacts/**,scripts/spikes/**} no match |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Feature plan docs only; no spike notes under docs/features |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One plan file per ticket under docs/features/candidate/ |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits only test-tree + merge-tests |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer `code()` only `src/core/candidate.py`; Betty owns tests/bible |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Gate in core; no external I/O |
+| astral.layers.import-direction | scoped | conforms | Core → utils config + existing database; no UI |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers {scripts} ∩ {core,utils,docs}=∅ |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | No UI; toast via existing API ValueError→400 |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | No consult/render_verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers {ui} ∩ {core,utils,docs}=∅ |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Core raises toast-ready ValueError; data not inventing uniqueness |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers {data} ∩ {core,utils,docs}=∅ |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D index/detail only when debug=True on save gate |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Shared token collect/compare; one enforce helper for save+initiate |
+| astral.standards.in-scope-only | scoped | conforms | This ticket’s code() is candidate.py only; config ancestry is AST-1079 |
+| astral.standards.logging-via-utils | scoped | conforms | get_logger + truncate_debug_content; no stdlib logger |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays on candidate contact write path |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Uniqueness vocabulary only from CANDIDATE_CONTACT_UNIQUENESS_CONFIG |
+| astral.standards.public-then-helpers | scoped | conforms | Helpers placed after normalize_contact_urls matching file org |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No new utils→data import (config ancestry only) |
+| astral.state.core-decides-transitions | scoped | conforms | No candidate state transitions |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job-state work |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No dispatch daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers {ui} ∩ {core,utils,docs}=∅ |
+| astral.ui.naming-conventions | scoped | not-applicable | layers {ui} ∩ {core,utils,docs}=∅ |
+| astral.ui.single-gunicorn-worker | scoped | conforms | No gunicorn/worker changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single merge-tests(AST-1080) SHA lands Betty tip |
+| orch.git.commit-vocabulary | universal | conforms | plan/docs/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Publish only to origin/sub/AST-1045/AST-1080-… |
+| orch.git.ftr-sub-topology | universal | conforms | Matches parent Git table child ref |
+| orch.git.merge-on-checkout | universal | conforms | Worktree merge of origin/ftr clean before docs() |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None on publish tip |
+| orch.git.no-dev-agent-branches | universal | conforms | Uses sub/AST-1045/AST-1080-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree astral-AST-1045 |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Collapse vs hard-fail cite locked parent OQs |
+| orch.pipeline.plan-is-bible | universal | conforms | Diff matches Stage 1 helpers + wire points |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-child review scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | test() + merge-tests only on test-tree paths |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer Ada stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Role hooks respected on publish path |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| contact uniqueness gate on save (proposed) | conforms | `_enforce_contact_uniqueness` on save + initiate paths |
+
+Active `astral.patterns.*` covered in statutes table.
+
+## Plan adherence
+
+Stage 1 delivered as planned: helpers after `normalize_contact_urls`; within collapse + cross hard-fail; toast-ready `ValueError` shape; Style D on `save_candidate_data(debug=True)`; initiate/prospect gated with `debug=False`; proposed-contact inline merge + `blob["contact"] = proposed` per plan (no private `_deep_merge`). Self-Assessment **Single-Component / high / Medium** matches footprint. Boundaries held vs AST-1079 / AST-1065 / AST-1014. No `conf-!!-NONE`.
+
+## Findings
+
+**discuss (straggler):** Joan plan-rubric Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.utils-data-late-import-only`, `astral.ui.single-gunicorn-worker` (plan Files Changed = core only). Three-dot vs `origin/dev` (docs/features + Betty test-tree + AST-1079 `config.py` ancestry) puts them in scope. All six score **conforms** — no product fix.
+
+No fix-now.
+
+## What’s solid
+
+Config-driven token collection; within-candidate collapse before cross scan; raise before persist; Style D uses `debug_index` / `debug_detail` / `truncate_debug_content` under `func=enforce_contact_uniqueness`.
+
+## Notes
+
+Joan plan-rubric verdict attached (APPROVED). Joan’s non-blocking discusses (inline merge parity; `list_candidates` scan cost) remain acceptable — implementation matches the plan’s prescribed inline merge comment.
+
+context_tokens≈48000
+
+#### betty — 2026-07-31T00:17:20.980Z
+## QA test manifest
+
+`origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save` @ `24fe2c56` (`merge-tests(AST-1080): origin/tests 30daab9a`).
+
+1. `tests/component/core/test_candidate.py::TestAst1080ContactUniqueness` — within-candidate collapse (reply email / websites); cross-candidate casefold hard-fail; same-candidate keep; initiate collision; Style D debug outcomes
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1080ContactUniqueness \
+  -q
+```
+
+**Bible sha256** (`git show origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save:docs/test-bible/core/candidate.md`):
+- `docs/test-bible/core/candidate.md` `068ca45dc364db9a6020687f848d13868229c00514b36a0b91af482bedd4d339`
+
+— Betty
+
+#### joan — 2026-07-31T00:07:11.504Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1080
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 cross-candidate collision hard-fail; other unchanged | Stage 1 — `_find_cross_candidate_contact_collision` + `ValueError`; no persist after raise |
+| AC2 within-candidate avoid duplicate contact info | Stage 1 — `_dedupe_contact_within` collapse (not hard-fail) |
+| AC3 fields/compare in config | N/A — boundary (AST-1079); this child only reads `CANDIDATE_CONTACT_UNIQUENESS_CONFIG` |
+| AC4 clear error to save caller (toast) | Stage 1 — toast-ready `ValueError` message; API→400 pattern cited |
+| AC5 Style D debug on touched uniqueness/save paths | Stage 1 — `_enforce_contact_uniqueness` Style D when `debug=True` on `save_candidate_data` |
+| AC6 two live candidates cannot share uniqueness-scoped email going forward | Stage 1 — cross-candidate gate on save + initiate paths |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 helpers + wire save/initiate | Purpose/Functional scope uniqueness gate on save; new pattern “contact uniqueness gate on save”; child AC1–5; parent OQ#2 collapse / OQ#3 hard-fail |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Sub publish path only |
+| orch.git.flow-direction-inviolable | conforms | Publish origin/sub/… only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-1045/AST-1080-… |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree astral-AST-1045 |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Collapse vs hard-fail cite locked parent OQs |
+| orch.pipeline.plan-is-bible | conforms | Binding Files Changed + Done-when + Decisions |
+| orch.pipeline.project-scoped-queues | conforms | Single-child scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate gate only |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/ edits; Betty owns formal tests |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Ada) owns build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Implementer path after Plan Approved |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded consult confidence work |
+| astral.agent.do-task-delegation | conforms | No do_task / agent_task changes |
+| astral.agent.grade-vector-validation | conforms | No grade validation work |
+| astral.batch.batch-id-first | conforms | No batch claim API changes |
+| astral.batch.batch-id-format | conforms | No batch_id work |
+| astral.batch.claim-process-release | conforms | No batch processing |
+| astral.batch.entity-agent-responses-latest-only | conforms | No agent_data RESPONSE work |
+| astral.config.config-source-of-truth | conforms | Paths/compare only from AST-1079 config; no new hardcoded sets |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring/dispatch floor changes |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src; Betty excluded |
+| astral.layers.core-vs-external-bright-line | conforms | Gate in core; no external I/O |
+| astral.layers.import-direction | conforms | Core → utils config + database; no UI |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult/render_verdict |
+| astral.standards.data-raises-caller-logs | conforms | Core raises `ValueError`; UI/API surfaces; data not inventing uniqueness |
+| astral.standards.debug-contract-gated | conforms | Style D only when `debug=True` on save gate |
+| astral.standards.dry-and-focused-functions | conforms | Shared token collect/compare; wire initiate+save via one enforce helper |
+| astral.standards.in-scope-only | conforms | candidate.py only; config/UI/schema/legacy cleanup excluded |
+| astral.standards.logging-via-utils | conforms | Uses existing get_logger / truncate_debug_content |
+| astral.standards.no-cross-contamination | conforms | Stays on candidate contact write path |
+| astral.standards.no-hardcoded-sets | conforms | Uniqueness vocabulary only from config |
+| astral.standards.public-then-helpers | conforms | Helpers placed after existing `normalize_contact_urls` matching file org |
+| astral.state.core-decides-transitions | conforms | No candidate state transitions |
+| astral.state.job-prior-states-enforced | conforms | No job-state work |
+| astral.state.no-daisy-chain-in-run | conforms | No dispatch daisy-chain |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — layers {docs} ∩ plan {core} empty
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers ∩ plan {core} empty
+- astral.layers.ui-config-driven-business-logic — layers ∩ plan {core} empty
+- astral.patterns.require-auth-on-protected-endpoints — layers ∩ plan {core} empty
+- astral.standards.database-header-inventory — layers ∩ plan {core} empty
+- astral.standards.utils-data-late-import-only — layers ∩ plan {core} empty
+- astral.ui.frontend-file-placement — layers ∩ plan {core} empty
+- astral.ui.naming-conventions — layers ∩ plan {core} empty
+- astral.ui.single-gunicorn-worker — layers ∩ plan {core} empty
+
+## Findings
+
+None fix-now.
+
+**discuss (non-blocking):** `save_candidate_data` rebuilds proposed contact with an inline merge instead of `database._deep_merge` (private). Plan requires matching overwrite/list-replace semantics — engineer must keep that parity or stop on parent if the live merge helper diverges.
+
+**discuss (non-blocking):** Cross-candidate check scans all live candidates via `list_candidates` — same family as existing lookup scans; acceptable for this epic; not a plan defect.
+
+**acceptable:** Self-assessment Single-Component / Conf high / Risk Medium honest; initiate paths gated with `debug=False` (no debug kwarg today) while Style D is on `save_candidate_data(debug=True)`.
+
+**R6:** Definition fidelity pass (enforce only). Layer/import pass. Config consume-only pass. Within=collapse / cross=hard-fail matches OQs. No UI/schema/legacy cleanup creep.
+
+context_tokens≈42000
+
+— Joan
+
+#### ada — 2026-07-31T00:04:47.922Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save/docs/features/candidate/ast-1080-enforce-uniqueness-on-candidate-contact-save.md
+
+`origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save` @ `6311223e`
+
+**Scope:** Single-Component — uniqueness gate helpers + wire into `save_candidate_data` / `initiate_candidate` / `initiate_prospect_candidate` in `src/core/candidate.py` only.
+
+**Conf:** high — AST-1079 config is on ftr; API already maps `ValueError` → 400; `list_candidates` + path resolve patterns exist from lookup.
+
+**Risk:** Medium — collapse/collision mistakes can block good saves or miss cross-candidate leaks; limited to contact write paths.
+
+---
+
 # AST-1080 — Enforce uniqueness on candidate contact save
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-1080/enforce-uniqueness-on-candidate-contact-save-verify-unique-contact  
