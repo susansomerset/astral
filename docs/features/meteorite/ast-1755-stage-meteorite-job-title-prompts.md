@@ -152,3 +152,63 @@ context_tokens≈18500
 | 1 | `bdc024c5` | `stage_meteorite` cache/user prompts: optional subject-prefer `job_title`; no `$RESPONSE_SCHEMA` |
 
 **Betty note:** Prompt-only; AC4 relies on existing `_stage_field(job, "job_title")` map — no `meteorite.py` edit in this child.
+
+## Radia review
+
+**Ticket:** AST-1755
+**Publish ref:** `8a33800380d51d618efaba96c549f9b4ce4b5511` (`origin/sub/AST-1753/AST-1755-stage-meteorite-job-title-prompts`)
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`
+**Overall:** CLEAN
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | X | | catalog-only; no `src/**` edits |
+| stat.logging.info.entity | X | | no `src/core/meteorite.py` edits |
+
+### Column diff vs plan stage
+
+(aligned) — Joan scored **A** / **X** / **X**; same on diff review.
+
+### Frame diff
+
+(none)
+
+### Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+- **Location:** `data/admin/agent_task.json` (whole-file diff vs `origin/dev`)
+- **Finding:** Plan scoped Stage 1 to `stage_meteorite` `cache_prompt` append + `user_prompt` replace only. The diff also normalizes Unicode em-dashes (`\u2014`) to ASCII hyphens (`-`) across ~46 unrelated prompt strings (intake, contact, qualify, roster vet, etc.) so the AST-756 whole-file fixture twin stays byte-lockstep. Cosmetic and semantically neutral, but blast radius is the full catalog, not one task row.
+- **Recommendation:** Accept as merge/fixture side effect or narrow in a follow-up if Susan wants prompt-only diffs on catalog tickets; not blocking AC1–AC4.
+
+- **Location:** `tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback`, `docs/features/meteorite/ast-1756-*.md`, `docs/test-bible/core/meteorite.md` § AST-1756
+- **Finding:** Sibling **AST-1756** artifacts ride this publish ref via `merge-tests`, but `src/core/meteorite.py` on this tip has no `ingress_blob` — those tests would `TypeError` if run outside the AST-1755 manifest. AST-1755 manifest correctly omits them; **Tests Passed** is valid.
+- **Recommendation:** No action on AST-1755; ensure AST-1756 product tip lands on its own ref before that manifest runs end-to-end.
+
+#### advisory
+
+- **Location:** `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+- **Finding:** Grouping asserts revised (`Meteorite Review` / `4500` / `2.0` → `Land Meteorite` / `4200` / `1`) to match live catalog already on `origin/dev`; bible documents the revision. Necessary test hygiene, not AST-1755 product scope.
+- **Recommendation:** None.
+
+- **Location:** `docs/test-bible/core/repo_admin_json.md` § AST-1755
+- **Finding:** Bible shasum lines still say “record after publish.”
+- **Recommendation:** Chuckles stamps on doc writeback.
+
+### What's solid
+
+- `stage_meteorite` prompts match plan literals: `## JOB TITLE (optional)` appended after electronic-contact section; `user_prompt` exact match; all six closed outcomes + breadcrumb + electronic-contact blocks preserved.
+- No `$RESPONSE_SCHEMA` in `cache_prompt`, `user_prompt`, or `nocache_prompt`.
+- Schema confirm holds: `job_title` `required: False` in `TASK_CONFIG` (no `config.py` edit).
+- `TestAst1755StageMeteoriteJobTitlePrompts` locks prompt text + AST-756 whole-file twin; manifest reuses `TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields` for AC4 row persist without touching `meteorite.py`.
+- No `src/core/meteorite.py` changes — sibling **AST-1756** / **AST-1757** boundaries respected.
+- `patt.task.daisy-chain` scope met: teaches optional `job_title` at classify stage for same-pass row carry-through; no parallel extract path.
+
+context_tokens≈32000
