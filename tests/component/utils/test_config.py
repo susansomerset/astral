@@ -5542,10 +5542,11 @@ class TestAst1557MeteoriteStates:
     def test_seven_keys_and_new_entry(self) -> None:
         assert set(cfg.METEORITE_STATES) == {
             "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-            "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
+            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
         }
         assert "ERROR" not in cfg.METEORITE_STATES
         assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+        assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
         assert all("prior_states" in entry for entry in cfg.METEORITE_STATES.values())
 
     def test_distinct_from_job_states_meteorite_labels(self) -> None:
@@ -5582,7 +5583,13 @@ class TestAst1560IngressDispatchConfig:
             "READY",
             "BOT_BLOCKED",
             "SCRAPE_ERROR",
+            "LINK_EXPIRED",
         }
+        page = ingress["scrape_page_status_states"]
+        assert page["closed"] == "LINK_EXPIRED"
+        assert page["missing"] == "LINK_EXPIRED"
+        assert page["blocked"] == "BOT_BLOCKED"
+        assert page["ok"] == "READY"
 
     def test_seed_catalog_has_ingress_dispatch_rows(self) -> None:
         assert "dispatch_task-meteorite-ingress" in cfg.SEED_CONFIG
@@ -6641,16 +6648,17 @@ class TestAst1712MailboxKeyAndClassifyStates:
     def test_classify_states_and_no_dispatch_triggers(self) -> None:
         assert set(cfg.METEORITE_STATES) == {
             "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-            "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
+            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
         }
         assert "ERROR" not in cfg.METEORITE_STATES
         assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
         assert cfg.METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
         assert cfg.METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
         assert cfg.METEORITE_STATES["SCRAPE_LINK"]["prior_states"] == ["NEW", "SCRAPE_ERROR"]
+        assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
         page = cfg.METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]
-        assert page["closed"] == "SCRAPE_ERROR"
-        assert page["missing"] == "SCRAPE_ERROR"
+        assert page["closed"] == "LINK_EXPIRED"
+        assert page["missing"] == "LINK_EXPIRED"
         forbidden = {"NEW_EMAIL_ERROR", "NOT_A_JOB"}
         for entry in cfg.METEORITE_DISPATCH_TASKS:
             assert entry.get("trigger_state") not in forbidden

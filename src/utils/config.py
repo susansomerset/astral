@@ -2647,6 +2647,9 @@ METEORITE_STATES = {
     "BOT_BLOCKED": {
         "prior_states": ["SCRAPE_LINK"],
     },
+    "LINK_EXPIRED": {
+        "prior_states": ["SCRAPE_LINK"],  # closed/missing content; not a scrape retry
+    },
     "SCRAPE_ERROR": {
         "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
     },
@@ -2666,7 +2669,7 @@ METEORITE_STATES = {
 
 assert set(METEORITE_STATES) == {
     "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-    "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
+    "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
 }
 assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
 assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
@@ -2689,8 +2692,8 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
     "scrape_page_status_states": {
         "blocked": "BOT_BLOCKED",
         "ok": "READY",
-        "closed": "SCRAPE_ERROR",
-        "missing": "SCRAPE_ERROR",
+        "closed": "LINK_EXPIRED",
+        "missing": "LINK_EXPIRED",
     },
 }
 _mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -2704,7 +2707,7 @@ for _tk in ("stage_task_key", "scrape_task_key", "land_task_key"):
 for _tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
     assert _mid_ingress[_tr] in METEORITE_STATES
 assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
-    "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+    "READY", "BOT_BLOCKED", "SCRAPE_ERROR", "LINK_EXPIRED",
 }
 
 # AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
