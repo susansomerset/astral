@@ -3956,7 +3956,10 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                 source_kind = row["source_kind"]
                 source_id = row["source_id"]
                 _ec_col = METEORITE_CONFIG["electronic_contact_column"]
-                history = json.dumps([{"to_state": row["state"], "timestamp": now}])
+                # state defaults to NEW when omitted, but a caller-supplied state (e.g.
+                # NEW_EMAIL_ERROR from _new_email_error_row) is respected, not overridden.
+                row_state = row.get("state") or "NEW"
+                history = json.dumps([{"to_state": row_state, "timestamp": now}])
                 cur = conn.execute(
                     f"""INSERT INTO meteorite (
                         candidate_id, source_kind, source_id, source_ref, state,
@@ -3969,7 +3972,7 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                         source_kind,
                         source_id,
                         row.get("source_ref"),
-                        row["state"],
+                        row_state,
                         row.get("content"),
                         row.get("classify_outcome"),
                         row.get("link"),
