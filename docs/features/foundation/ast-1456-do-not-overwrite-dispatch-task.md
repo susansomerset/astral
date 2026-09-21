@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-1456 archived 2026-09-09 -->
+
+## Linear archive (AST-1456)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1456/do-not-overwrite-dispatch-task-in-any-environment-ever  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** chuckles  
+**Priority / estimate:** Urgent / —  
+**Parent:** —  
+**Blocked by / blocks / related:** —
+
+### Description
+
+## As-is
+
+Automatic paths (scheduler-start provision catalogs, seed/upsert scripts, and any remaining ensure-time writers) still insert or update live `dispatch_task` rows. Operator-curated schedule rows have been overwritten or recreated incorrectly across environments, and Susan has already lost real work from a bad auto-update.
+
+## To-be
+
+Nothing in product code, boot, scheduler start, or seed/upsert scripts may create, update, or recreate `dispatch_task` rows in any environment. When new schedule rows are genuinely needed, the only delivery mechanism is SQL statements posted in a Linear comment for Susan to run herself after restart — no seed scripts, no silent provision, no table push/upsert of `dispatch_task`.
+
+## Proposed steps
+
+1. Remove or hard-disable every automatic `dispatch_task` writer that still runs on scheduler start or boot — starting with `provision_meteorite_dispatch_tasks` / `provision_meteorite_email_dispatch_tasks` (and any sibling provision/ensure that calls `save_dispatch_task` without an operator action).
+2. Ban `dispatch_task` as a target of seed/upsert/push scripts (`scripts/push_tables_to_prod.py`, `scripts/upsert_tables_from_prod.py`, and any other table-copy path that upserts that table).
+3. Leave schema DDL alone; stop content-mutating ensure/backfill that rewrites live schedule fields. Refresh `debug/startup_db_inventory.md` so the automatic column for `dispatch_task` is empty (operator + runtime bookkeeping only).
+4. Retire in-repo `SEED_CONFIG` / catalog-driven seed for `dispatch_task-*` as an executable path; when rows must be added, post the SQL in the Linear ticket comment for Susan — do not ship a script that runs it.
+5. Smoke: restart local (and staging once landed) and confirm curated `dispatch_task` rows are byte-stable across restart with no new inserts/updates from provision or seed.
+
+## Component scope
+
+* `src/core/dispatcher.py` — modified: remove/disable scheduler-start provision that inserts `dispatch_task` rows via `save_dispatch_task`.
+* `src/data/database.py` — modified: keep schema ensure; stop any remaining automatic content INSERT/UPDATE of live `dispatch_task` rows beyond operator APIs and harmless runtime bookkeeping (`last_run_at` / max_runs disable).
+* `src/utils/config.py` — modified: retire or clearly demote `SEED_CONFIG` `dispatch_task-*` and Python meteorite dispatch catalogs so they are not an executable seed path.
+* `scripts/push_tables_to_prod.py` — modified: refuse `dispatch_task` (or remove as a supported table) so push never overwrites schedule rows.
+* `scripts/upsert_tables_from_prod.py` — modified: same ban for `dispatch_task`.
+* `debug/startup_db_inventory.md` — modified: document the ban and remaining writers so the inventory matches reality.
+
+## Technical scope
+
+* `src/core/dispatcher.py` — modified function(s): `start_scheduler` and/or `provision_meteorite_dispatch_tasks` / `provision_meteorite_email_dispatch_tasks` — stop calling `database.save_dispatch_task` on tick-daemon start so restart cannot invent or alter schedule rows.
+* `src/data/database.py` — modified function(s): `_ensure_dispatch_task_schema` and any sibling ensure helpers — no recurring content seed/upsert of `dispatch_task`; operator `save_dispatch_task` / `update_dispatch_task` and dispatcher bookkeeping remain.
+* `src/utils/config.py` — modified catalog/register: `SEED_CONFIG` entries keyed `dispatch_task-*` and related provision catalogs — not wired for auto-execution; SQL text may live only as copy-paste material for Linear comments, not as a boot path.
+* `scripts/push_tables_to_prod.py` / `scripts/upsert_tables_from_prod.py` — modified CLI/table gate: hard-fail or skip when the table is `dispatch_task`.
+* `debug/startup_db_inventory.md` — modified doc: automatic `dispatch_task` writer list emptied / marked removed so future audits do not miss a path.
+
+## Ancestor candidates
+
+- [ ] AST-741 — Stop rebuilding unnecessary dispatch_task data (`docs/features/roster/ast-741-stop-rebuilding-unnecessary-dispatch-task-data.md`) — parent epic whose purpose was exactly "automatic writers must not override Susan's dispatch curation"
+- [ ] AST-745 — Stop dispatch retry auto-seed and startup DB inventory (`docs/features/roster/ast-745-stop-dispatch-retry-auto-seed-and-startup-db-inventory.md`) — child that removed `*_RETRY` / `gaze_board` auto-INSERT and produced `debug/startup_db_inventory.md`
+- [ ] AST-1108 — Fix broken seed data (`docs/features/foundation/ast-1108-fix-broken-seed-data.md`) — seed-policy home; SQL-first `SEED_CONFIG` for non-JSON tables including `dispatch_task`, with deferred Track 1 audit of remaining ensure-time writers
+
+## Original report
+
+OH MY GOD I HAVE LOST WORK BECAUSE WE AUTO UPDATED RECORDS IN DISPATCH TASKS AND DID IT WRONG ON TOP OF THAT.
+
+NO MORE SEED SCRIPTS.  ONLY SQL COMMANDS IN THE LINEAR COMMENT WITH SEED  CONTENT FOR SUSAN TO RUN AFTER RESTART.  DO NOT TOUCH IT AGAIN.  EVER.
+
+ARE WE CLEAR?
+
+### Comments
+
+#### chuckles — 2026-08-19T20:52:04.810Z
+[thread-missing] Cursor chat `6cb67498-3fd6-4fee-9d87-5e679e4e1a9d` has no local `store.db` on **chuckles** (expected `/home/susan/.cursor/chats/40f37617870e538aada0246cb9f8c346/6cb67498-3fd6-4fee-9d87-5e679e4e1a9d/store.db`; blob-search also empty).
+
+Minting a **new** conversation on this host and continuing (history from the old UUID is not recovered).
+
+Replacement UUID: `4347aade-434b-4e37-bb53-2b209272c13a`.
+
+Watcher rule `bug-find` on `AST-1456` (Thread owner `AST-1456`).
+
+---
+
 # AST-1456 — Do not overwrite dispatch_task in any environment ever
 
 Orphaned Bug mini-epic. Stub authorized by Chuckles at bug-fix so plan-fix has a doc to patch (no ancestor checkbox approved; plan-fix never creates a new plan doc).

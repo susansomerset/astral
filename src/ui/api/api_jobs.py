@@ -21,14 +21,16 @@ from src.core.tracker import (
     list_jobs,
     list_jobs_below_dispatch_score_floor,
     persist_skipped_job_edits,
-    save_job_artifact_cover_letter,
-    save_job_artifact_job_resume_body,
-    save_job_artifact_resume_content,
+    save_job_artifact,
     save_job_data,
     score_floor_by_trigger_for_candidate,
     set_candidate_result,
     start_artifact_build,
     transition_job_state,
+)
+from src.data.database import (
+    get_meteorite_by_astral_job_id,
+    get_meteorite_link_by_astral_job_id,
 )
 from src.utils.config import (
     APPLIED_JOB_STATES,
@@ -43,6 +45,16 @@ from src.utils.logging import get_logger
 
 jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
 logger = get_logger(__name__)
+
+
+def _http_listing_url(raw) -> Optional[str]:
+    """Return stripped http(s) URL, else None. Non-http breadcrumbs → None."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    return None
 
 
 def _flatten_grades(job: dict) -> dict:
@@ -203,9 +215,12 @@ def detail(astral_job_id):
         return jsonify({"error": "Not found"}), 404
     job = _flatten_grades(job)
     _attach_skipped_edit_meta(job)
-    # AST-1100: pin-slot strings → resolved bodies for JAR / ArtifactEditor (no persist).
+    # AST-1100/1592: pin-resolve proposed_answers; re-hydrate with job id for catalog current-read.
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
-    art = hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))
+    art = hydrate_job_artifacts_for_display(
+        get_job_artifacts(job) or jd.get("artifacts"),
+        astral_job_id=astral_job_id,
+    )
     job["job_data"] = {**jd, "artifacts": art}
     # AST-1274/AST-1354: secondary soft-fail — no stacktrace for expected missing pieces.
     try:
@@ -217,6 +232,70 @@ def detail(astral_job_id):
             exc,
         )
         job["agent_story"] = []
+    # AST-1704: parent/track fields + employer for Job Detail consumers
+    job["company_id"] = job.get("company_id")
+    job["source"] = job.get("source")
+    job["source_entity_id"] = job.get("source_entity_id")
+    # AST-1691: reverse-link meteorite provenance for Recommended report pane.
+    try:
+        logger.debug(
+            "Calling get_meteorite_by_astral_job_id: [astral_job_id=%s]",
+            astral_job_id,
+        )
+        row = get_meteorite_by_astral_job_id(astral_job_id)
+        # Full row — stat.logging.debug: no truncation of callee response.
+        logger.debug("Response from get_meteorite_by_astral_job_id: %s", row)
+        if row is None:
+            job["related_meteorite"] = None
+        else:
+            job["related_meteorite"] = {
+                "id": row.get("id"),
+                "created_at": row.get("created_at"),
+                "updated_at": row.get("updated_at"),
+                "state_changed_at": row.get("state_changed_at"),
+                "estelle_notified_at": row.get("estelle_notified_at"),
+                "link": row.get("link"),
+                "classify_outcome": row.get("classify_outcome"),
+                "content": row.get("content"),
+                "state": row.get("state"),
+                "source_kind": row.get("source_kind"),
+                "source_id": row.get("source_id"),
+                "error": row.get("error"),
+            }
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s related_meteorite lookup failed\n  %s: %s\n  Returning related_meteorite=null",
+            job.get("candidate_id") or "-",
+            f"/api/jobs/{astral_job_id}",
+            type(exc).__name__,
+            exc,
+        )
+        job["related_meteorite"] = None
+    # AST-1694: resolved http(s) listing href (job.job_link else meteorite.link).
+    listing = _http_listing_url(job.get("job_link"))
+    if listing is None:
+        try:
+            logger.debug(
+                "Calling get_meteorite_link_by_astral_job_id: [astral_job_id=%s]",
+                astral_job_id,
+            )
+            meta_link = get_meteorite_link_by_astral_job_id(astral_job_id)
+            logger.debug(
+                "Response from get_meteorite_link_by_astral_job_id: %s",
+                meta_link,
+            )
+            listing = _http_listing_url(meta_link)
+        except Exception as exc:
+            logger.exception(
+                "%s | api %s listing_href meteorite lookup failed\n  %s: %s\n"
+                "  Continuing with listing_href from job.job_link only",
+                job.get("candidate_id") or "-",
+                f"/api/jobs/{astral_job_id}",
+                type(exc).__name__,
+                exc,
+            )
+            listing = None
+    job["listing_href"] = listing
     return jsonify(job)
 
 
@@ -273,7 +352,7 @@ def copy_snapshot(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/artifacts/resume_content", methods=["PUT"])
 @require_auth
 def put_job_resume_content(astral_job_id):
-    """Merge section-keyed resume draft into job_data.artifacts.resume_content (AST-553)."""
+    """AST-1556/1592: legacy URL → catalog job_resume write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -281,14 +360,14 @@ def put_job_resume_content(astral_job_id):
     body = data.get("resume_content")
     if not isinstance(body, dict):
         return jsonify({"error": "resume_content must be a dict"}), 400
-    save_job_artifact_resume_content(astral_job_id, body)
+    save_job_artifact(astral_job_id, "job.artifacts.job_resume", body)
     return jsonify({"ok": True})
 
 
 @jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
 @require_auth
 def put_job_resume_pin_key(astral_job_id):
-    """AST-1548: ArtifactEditor PUTs job_resume; body dual-writes job_resume + resume_content."""
+    """AST-1556/1592: ArtifactEditor PUTs job_resume via catalog write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -296,14 +375,14 @@ def put_job_resume_pin_key(astral_job_id):
     body = data.get("job_resume")
     if not isinstance(body, dict):
         return jsonify({"error": "job_resume must be a dict"}), 400
-    save_job_artifact_job_resume_body(astral_job_id, body)
+    save_job_artifact(astral_job_id, "job.artifacts.job_resume", body)
     return jsonify({"ok": True})
 
 
 @jobs_bp.route("/<astral_job_id>/artifacts/cover_letter", methods=["PUT"])
 @require_auth
 def put_job_cover_letter(astral_job_id):
-    """Merge cover letter artifact into job_data.artifacts.cover_letter (AST-565)."""
+    """AST-1556/1592: persist cover letter via catalog write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -311,7 +390,7 @@ def put_job_cover_letter(astral_job_id):
     body = data.get("cover_letter")
     if not isinstance(body, dict):
         return jsonify({"error": "cover_letter must be a dict"}), 400
-    save_job_artifact_cover_letter(astral_job_id, body)
+    save_job_artifact(astral_job_id, "job.artifacts.cover_letter", body)
     return jsonify({"ok": True})
 
 

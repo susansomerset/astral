@@ -2,7 +2,8 @@
 Core tracker: job lifecycle management (AST-75).
 
 In-scope: ingest_jobs, save_meteorite_job, save_job_data, get_job_data, initialize_job,
-transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot.
+transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot,
+save_job_artifact, get_job_current (AST-1592 catalog write/current-read for job keys).
 All writes go through database.save_job (upsert); state transition logic lives here, not in data layer.
 get_job_data: coat-check pattern — return value if present, self-heal if missing (e.g. fetch JD via playwright).
 AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no coat-check scrape).
@@ -10,38 +11,42 @@ AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no 
 
 from __future__ import annotations
 
+import json
 import sqlite3
 import uuid
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.core import candidate as candidate_mod
 from src.data import database
 from src.utils.config import (
+    ARTIFACT_CONFIG,
     BLOCK_TYPES,
     BUILD_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
-    JOB_SOURCE_DEFAULT,
-    JOB_SOURCE_METEORITE,
+    JOB_ARTIFACT_ENTITY_TYPE,
+    JOB_EDITABLE_ARTIFACT_TYPES,
     JOB_STATES,
     METEORITE_CONFIG,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     SKIPPED_STATES,
+    SOURCE_ENTITY_TYPE_COMPANY,
+    SOURCE_ENTITY_TYPE_METEORITE,
     TASK_CONFIG,
     TRACKER_CONFIG,
     dispatch_chain_graduation_target,
     dispatch_hop_label,
-    job_source_transition_allowed,
     parse_dispatch_hop_label,
     is_build_artifacts_in_progress,
     is_valid_job_batch_claim_state,
     legacy_build_artifacts_hop,
-    validate_job_source,
+    source_entity_type_transition_allowed,
+    validate_source_entity_type,
     validate_value,
 )
 from src.utils.logging import get_logger, truncate_debug_content
-from src.utils.formatting import parse_text
+from src.utils.formatting import _strip_json_markdown_fences, parse_text
 
 logger = get_logger(__name__)
 
@@ -105,10 +110,14 @@ def ingest_jobs(
             title_mismatch_count += 1
             continue
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        # AST-1704: gazed ingest writes company parent SoT + employer company_id.
         inserted = database.save_job(
             str(uuid.uuid4()),
             job_title=parse_text(raw_job_listing),
             company=company,
+            company_id=company,
+            source=SOURCE_ENTITY_TYPE_COMPANY,
+            source_entity_id=company,
             state=initial_state,
             job_data={"raw_job_listing": raw_job_listing},
             state_history=[{"to_state": initial_state, "timestamp": now, "batch_id": batch_id}],
@@ -126,29 +135,47 @@ def ingest_jobs(
     }
 
 
-def _assert_job_source_write(current: Optional[str], new: str) -> None:
-    """Validate one-way job source write (AST-1469): meteorite → gazed forbidden."""
-    validate_job_source(new)
-    if not job_source_transition_allowed(current, new):
+def _assert_source_entity_type_write(current: Optional[str], new: str) -> None:
+    """Validate one-way source_entity_type write (AST-1702): meteorite → company forbidden."""
+    validate_source_entity_type(new)
+    if not source_entity_type_transition_allowed(current, new):
         raise ValueError(
-            f"Invalid job source transition: {current!r} -> {new!r} "
-            f"(meteorite → gazed forbidden)"
+            f"Invalid source_entity_type transition: {current!r} -> {new!r} "
+            f"(meteorite → company forbidden)"
         )
 
 
 def set_job_source(astral_job_id: str, source: str) -> None:
-    """Admin/core helper: validate one-way source write on an existing job (AST-1469)."""
+    """Admin/core helper: validate one-way source write on an existing job (AST-1469 / AST-1702)."""
     job = database.get_job(astral_job_id)
     if not job:
         raise ValueError(f"Job not found: {astral_job_id}")
-    _assert_job_source_write(job.get("source"), source)
+    _assert_source_entity_type_write(job.get("source"), source)
     database.save_job(astral_job_id, source=source)
+
+
+def _strip_placeholder_company_id(company_id: Optional[str], candidate_id: str) -> Optional[str]:
+    """Null fake meteorite-* / default-stem placeholders; keep real employer short_names."""
+    emp = (company_id or "").strip() or None
+    if not emp:
+        return None
+    prefix = METEORITE_CONFIG["short_name_prefix"]
+    if emp.startswith(prefix):
+        return None
+    default_placeholder = METEORITE_CONFIG["stem_short_name_template"].format(
+        stem=METEORITE_CONFIG["default_stem"],
+        candidate_id=candidate_id,
+    )
+    if emp == default_placeholder:
+        return None
+    return emp
 
 
 def save_meteorite_job(
     candidate_id: str,
     *,
-    company: str,
+    meteorite_id: Any,
+    company_id: Optional[str] = None,
     company_job_id: Optional[str] = None,
     job_title: Optional[str] = None,
     job_link: Optional[str] = None,
@@ -156,27 +183,28 @@ def save_meteorite_job(
     employer_name: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Tracker meteorite save: dedupe before write; create / gazed-supersede / never clobber (AST-1469).
+    """Tracker meteorite save: dedupe; create / company→meteorite supersede / never clobber (AST-1702).
 
-    Caller supplies already-ensured meteorite company short_name (land owns ensure).
-    Supersede uses direct save_job into job_create_state (METEORITE_NEW) — carve-out twin of
-    create_meteorite_job; does not gate on the gazed job's prior state (parent AC2).
+    Parent is the meteorite row id (source=meteorite + source_entity_id). Optional company_id is a
+    real employer only. Company-parented (incl. legacy gazed) match flips parent to meteorite,
+    keeps company_id, state METEORITE_NEW, appends history — same astral_job_id, no second row.
     """
     cid = (candidate_id or "").strip()
-    company_key = (company or "").strip()
+    mid = str(meteorite_id).strip() if meteorite_id is not None else ""
     if not cid:
         raise ValueError("candidate_id is required")
-    if not company_key:
-        raise ValueError("company is required")
+    if not mid:
+        raise ValueError("meteorite_id is required")
 
     log = get_logger(__name__)
     log.set_debug_flag(debug)
 
     prepared: Dict[str, Any] = dict(job_data or {})
-    emp = (employer_name or "").strip() if employer_name is not None else ""
-    if emp:
-        prepared[METEORITE_CONFIG["employer_name_job_data_key"]] = emp
+    emp_name = (employer_name or "").strip() if employer_name is not None else ""
+    if emp_name:
+        prepared[METEORITE_CONFIG["employer_name_job_data_key"]] = emp_name
 
+    emp = _strip_placeholder_company_id(company_id, cid)
     cid_job = (company_job_id or "").strip() or None
     title = (job_title or "").strip() or None
     link = (job_link or "").strip() or None
@@ -199,18 +227,30 @@ def save_meteorite_job(
             outcome=outcome,
         )
         log.debug_detail(f"candidate_id={cid}")
-        log.debug_detail(f"company={company_key}")
+        log.debug_detail(f"meteorite_id={mid}")
+        log.debug_detail(f"company_id={emp!r}")
+        log.debug_detail(f"source_entity_id={mid}")
         if matched_id:
             log.debug_detail(f"matched_id={matched_id}")
         if src_before is not None:
-            log.debug_detail(f"source_before={src_before!r} source_after={JOB_SOURCE_METEORITE!r}")
+            log.debug_detail(
+                f"source_before={src_before!r} source_after={SOURCE_ENTITY_TYPE_METEORITE!r}"
+            )
 
     if match is not None:
-        match_source = (match.get("source") or "").strip() or JOB_SOURCE_DEFAULT
+        match_source = (match.get("source") or "").strip()
         match_id = match["astral_job_id"]
 
-        # Branch A — existing meteorite: never clobber
-        if match_source == JOB_SOURCE_METEORITE:
+        # Branch A — existing meteorite parent: never clobber (AST-1693: backfill empty job_link only)
+        if match_source == SOURCE_ENTITY_TYPE_METEORITE:
+            row_out = match
+            if (
+                link
+                and (link.startswith("http://") or link.startswith("https://"))
+                and not (match.get("job_link") or "").strip()
+            ):
+                database.save_job(match_id, job_link=link)
+                row_out = database.get_job(match_id) or match
             _debug(
                 METEORITE_CONFIG["land_outcome_duplicate_skip"],
                 match_id,
@@ -220,56 +260,66 @@ def save_meteorite_job(
             return {
                 "outcome": METEORITE_CONFIG["land_outcome_duplicate_skip"],
                 "astral_job_id": match_id,
-                "job": match,
-                "source": JOB_SOURCE_METEORITE,
+                "job": row_out,
+                "source": SOURCE_ENTITY_TYPE_METEORITE,
             }
 
-        # Branch B — gazed supersede (any prior job state; keep company)
-        if match_source == JOB_SOURCE_DEFAULT:
-            _assert_job_source_write(match.get("source"), JOB_SOURCE_METEORITE)
-            history = list(match.get("state_history") or [])
-            history.append({"to_state": state, "timestamp": now, "score": score})
-            save_kwargs: Dict[str, Any] = {
-                "state": state,
-                "source": JOB_SOURCE_METEORITE,
-                "job_data": prepared if prepared else None,
-                "state_history": history,
-                "state_changed_at": now,
-                "latest_score": score,
-                "merge": True,
-            }
-            if cid_job is not None:
-                save_kwargs["company_job_id"] = cid_job
-            if title is not None:
-                save_kwargs["job_title"] = title
-            if link is not None:
-                save_kwargs["job_link"] = link
-            database.save_job(match_id, **save_kwargs)
-            row = database.get_job(match_id)
-            if row is None:
-                raise RuntimeError(f"meteorite supersede missing after save: {match_id}")
-            _debug(
-                METEORITE_CONFIG["land_outcome_superseded"],
-                match_id,
-                matched_id=match_id,
-                src_before=match_source,
+        # Branch B — company / legacy gazed / other non-meteorite: supersede in place
+        # Legacy "gazed" is not in SOURCE_ENTITY_TYPES — treat as company for the one-way gate.
+        from_type = match.get("source")
+        if (from_type or "").strip() == "gazed":
+            from_type = SOURCE_ENTITY_TYPE_COMPANY
+        _assert_source_entity_type_write(from_type, SOURCE_ENTITY_TYPE_METEORITE)
+        history = list(match.get("state_history") or [])
+        history.append({"to_state": state, "timestamp": now, "score": score})
+        keep_emp = emp
+        if keep_emp is None:
+            keep_emp = _strip_placeholder_company_id(
+                match.get("company_id") or match.get("company"), cid
             )
-            return {
-                "outcome": METEORITE_CONFIG["land_outcome_superseded"],
-                "astral_job_id": match_id,
-                "job": row,
-                "source": JOB_SOURCE_METEORITE,
-            }
+        save_kwargs: Dict[str, Any] = {
+            "state": state,
+            "source": SOURCE_ENTITY_TYPE_METEORITE,
+            "source_entity_id": mid,
+            "company_id": keep_emp,
+            "job_data": prepared if prepared else None,
+            "state_history": history,
+            "state_changed_at": now,
+            "latest_score": score,
+            "merge": True,
+        }
+        if cid_job is not None:
+            save_kwargs["company_job_id"] = cid_job
+        if title is not None:
+            save_kwargs["job_title"] = title
+        if link is not None:
+            save_kwargs["job_link"] = link
+        database.save_job(match_id, **save_kwargs)
+        row = database.get_job(match_id)
+        if row is None:
+            raise RuntimeError(f"meteorite supersede missing after save: {match_id}")
+        _debug(
+            METEORITE_CONFIG["land_outcome_superseded"],
+            match_id,
+            matched_id=match_id,
+            src_before=match_source,
+        )
+        return {
+            "outcome": METEORITE_CONFIG["land_outcome_superseded"],
+            "astral_job_id": match_id,
+            "job": row,
+            "source": SOURCE_ENTITY_TYPE_METEORITE,
+        }
 
-        raise ValueError(f"Unexpected job source on dedupe match: {match_source!r}")
-
-    # Branch C — create under caller-supplied meteorite company
+    # Branch C — create under meteorite row parent
     astral_job_id = str(uuid.uuid4())
     inserted = database.save_job(
         astral_job_id,
-        company=company_key,
+        company_id=emp,
+        candidate_id=cid,
         state=state,
-        source=JOB_SOURCE_METEORITE,
+        source=SOURCE_ENTITY_TYPE_METEORITE,
+        source_entity_id=mid,
         company_job_id=cid_job,
         job_title=title,
         job_link=link,
@@ -279,12 +329,11 @@ def save_meteorite_job(
         merge=False,
     )
     if not inserted:
-        # Identity unique bounce — treat as duplicate when re-findable
         bounced = database.find_meteorite_dedupe_match(
             cid, company_job_id=cid_job, job_link=link
         )
-        if bounced is None and cid_job and title:
-            bounced_id = database.get_job_id_by_identity(company_key, title, cid_job)
+        if bounced is None and emp and cid_job and title:
+            bounced_id = database.get_job_id_by_identity(emp, title, cid_job)
             bounced = database.get_job(bounced_id) if bounced_id else None
         if bounced is not None:
             _debug(
@@ -297,11 +346,10 @@ def save_meteorite_job(
                 "outcome": METEORITE_CONFIG["land_outcome_duplicate_skip"],
                 "astral_job_id": bounced["astral_job_id"],
                 "job": bounced,
-                "source": (bounced.get("source") or JOB_SOURCE_METEORITE),
+                "source": (bounced.get("source") or SOURCE_ENTITY_TYPE_METEORITE),
             }
         raise RuntimeError(f"meteorite job insert failed: {astral_job_id}")
 
-    # INSERT path omits latest_score — update column explicitly (create carve-out twin)
     database.save_job(astral_job_id, latest_score=score)
     row = database.get_job(astral_job_id)
     if row is None:
@@ -311,7 +359,7 @@ def save_meteorite_job(
         "outcome": METEORITE_CONFIG["land_outcome_created"],
         "astral_job_id": astral_job_id,
         "job": row,
-        "source": JOB_SOURCE_METEORITE,
+        "source": SOURCE_ENTITY_TYPE_METEORITE,
     }
 
 
@@ -324,21 +372,33 @@ def get_job_artifacts(job: Dict[str, Any]) -> Dict[str, Any]:
     return art if isinstance(art, dict) else {}
 
 
-def _candidate_data_for_job(astral_job_id: str) -> dict:
-    """Inner candidate_data blob for the job's owning candidate, or {}."""
-    job = get_job(astral_job_id)
+def _candidate_id_for_job(astral_job_id: str) -> Optional[str]:
+    """Owning candidate_id for a job. Prefer denormalized job.candidate_id (AST-1598/1600)."""
+    job = database.get_job(astral_job_id)
     if not job:
-        return {}
+        return None
+    direct = job.get("candidate_id")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
     company_key = job.get("company")
     if not isinstance(company_key, str) or not company_key.strip():
-        return {}
+        return None
     company = get_company(company_key.strip())
     if not company:
-        return {}
+        return None
     candidate_id = company.get("candidate_id")
     if not candidate_id:
+        return None
+    cid = str(candidate_id).strip()
+    return cid or None
+
+
+def _candidate_data_for_job(astral_job_id: str) -> dict:
+    """Inner candidate_data blob for the job's owning candidate, or {}."""
+    cid = _candidate_id_for_job(astral_job_id)
+    if not cid:
         return {}
-    row = candidate_mod.get_candidate(str(candidate_id))
+    row = candidate_mod.get_candidate(cid)
     if not row:
         return {}
     cd = row.get("candidate_data")
@@ -347,13 +407,18 @@ def _candidate_data_for_job(astral_job_id: str) -> dict:
 
 def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: dict) -> Dict[str, Any]:
     """Filter to candidate catalog; snapshot contact sections from payload or base_resume."""
-    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    cd = dict(candidate_data) if isinstance(candidate_data, dict) else {}
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: same hydrate→resolve SoT as consult job drafting tokens.
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
+    structure = candidate_mod.resolve_resume_structure(cd)
     filtered = candidate_mod.filter_content_to_resume_structure(
         resume_content if isinstance(resume_content, dict) else {},
         structure,
         allow_contact=False,
     )
-    allowed = set(candidate_mod.draft_job_resume_allowed_section_keys(candidate_data))
+    allowed = set(candidate_mod.draft_job_resume_allowed_section_keys(cd))
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     for sid, val in (resume_content or {}).items():
         if sid in allowed and sid not in filtered and sid not in contact:
@@ -361,7 +426,7 @@ def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: 
                 filtered[sid] = val
             elif isinstance(val, str) and val.strip():
                 filtered[sid] = val
-    artifacts = candidate_data.get("artifacts") if isinstance(candidate_data.get("artifacts"), dict) else {}
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
     base_resume = artifacts.get("base_resume") if isinstance(artifacts.get("base_resume"), dict) else {}
     snapshot: Dict[str, str] = {}
     for sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
@@ -377,6 +442,114 @@ def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: 
     merged: Dict[str, Any] = dict(filtered)
     merged.update(snapshot)
     return merged
+
+
+def get_job_current(
+    astral_job_id: str,
+    artifact_key: str,
+    *,
+    debug: bool = False,
+) -> Optional[Any]:
+    """Current-read body for a job catalog artifact key (patt.artifact.read-current / AST-1592).
+
+    Resolves ARTIFACT_CONFIG, calls database.get_current_artifact for the job + leaf
+    artifact_type. Returns deserialized artifact_data, or None on miss. Never reads
+    job_data blobs. No coat-check.
+    """
+    _ = debug
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if entry.get("entity_type") != JOB_ARTIFACT_ENTITY_TYPE:
+        raise ValueError(f"catalog key not job-scoped: {key!r}")
+    jid = (astral_job_id or "").strip()
+    if not jid:
+        raise ValueError("astral_job_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], jid, artifact_type)
+    if row is None:
+        return None
+    return row.get("artifact_data")
+
+
+def save_job_artifact(
+    astral_job_id: str,
+    artifact_key: str,
+    blob: Any,
+    source_artifact_ids: Optional[Sequence[str]] = None,
+    *,
+    debug: bool = False,
+) -> Optional[str]:
+    """Operative catalog write for a job artifact key (patt.artifact.write-operative / AST-1592).
+
+    Same calling shape as candidate catalog str-path save, plus optional source ids.
+    For job.artifacts.job_resume, always cites the owning candidate's then-current
+    base_resume artifact_uuid (or [] if none) — patt.artifacts.traceability.
+    """
+    _ = debug
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if entry.get("entity_type") != JOB_ARTIFACT_ENTITY_TYPE:
+        raise ValueError(f"catalog key not job-scoped: {key!r}")
+    jid = (astral_job_id or "").strip()
+    if not jid:
+        raise ValueError("astral_job_id required")
+    if blob is None:
+        raise ValueError("artifact body required")
+
+    shape_name = entry["body_shape"]
+    shape = BUILD_CONFIG["artifact_shapes"][shape_name]
+    artifact_type = key.rsplit(".", 1)[-1]
+
+    # Prepare body by catalog key (retain existing prepare/normalize; no new gates).
+    if key == "job.artifacts.job_resume":
+        if not isinstance(blob, dict):
+            raise ValueError("job_resume body must be a dict")
+        prepared: Any = _prepare_job_resume_content(blob, _candidate_data_for_job(jid))
+        if not any(_resume_section_has_body(sid, val) for sid, val in prepared.items()):
+            return None
+    elif key == "job.artifacts.cover_letter":
+        prepared = normalize_cover_letter_artifact(blob)
+        if not _cover_letter_display_nonempty(prepared):
+            return None
+    elif shape_name == "resume_content":
+        if not isinstance(blob, dict) or not blob:
+            raise ValueError("resume_content body must be a non-empty dict")
+        for req_key, spec in shape.items():
+            if isinstance(spec, dict) and spec.get("required") and req_key not in blob:
+                raise ValueError(f"resume_content missing required key: {req_key!r}")
+        prepared = blob
+    else:
+        prepared = blob
+
+    # job_resume always auto-cites current base_resume; other keys pass sources through.
+    cid = _candidate_id_for_job(jid)
+    if not cid:
+        raise ValueError("candidate_id required")
+    if key == "job.artifacts.job_resume":
+        sources: Optional[Sequence[str]] = []
+        base_row = database.get_current_artifact("candidate", cid, "base_resume")
+        base_uuid = (base_row or {}).get("artifact_uuid") if base_row else None
+        if isinstance(base_uuid, str) and base_uuid.strip():
+            sources = [base_uuid.strip()]
+    else:
+        sources = source_artifact_ids
+
+    return database.save_artifact(
+        entry["entity_type"],
+        jid,
+        artifact_type,
+        prepared,
+        source_artifact_ids=sources,
+        candidate_id=cid,
+    )
 
 
 def save_job_artifact_resume_content(astral_job_id: str, resume_content: Dict[str, Any]) -> None:
@@ -440,22 +613,6 @@ def cover_letter_artifact_for_display(
     return normalized
 
 
-def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, Any]) -> None:
-    """Merge cover_letter object into job_data.artifacts. AST-309."""
-    save_job_data(astral_job_id, {"artifacts": {"cover_letter": normalize_cover_letter_artifact(cover_letter)}})
-
-
-def save_job_artifact_job_resume_body(astral_job_id: str, resume_body: Dict[str, Any]) -> None:
-    """AST-1548: operator job_resume replica + compat dual-write to resume_content."""
-    cd = _candidate_data_for_job(astral_job_id)
-    prepared = _prepare_job_resume_content(resume_body, cd)
-    save_job_data(
-        astral_job_id,
-        {"artifacts": {"job_resume": prepared, "resume_content": prepared}},
-    )
-
-
-
 def extract_draft_job_resume_notes(parsed: Any) -> Optional[List[str]]:
     """Normalize notes from nested or flat draft payload; None if key absent."""
     if not isinstance(parsed, dict):
@@ -496,27 +653,55 @@ def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
     return True
 
 
-def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1548: copy unwrapped finalize resume onto job_resume (+ resume_content dual-write)."""
-    if not parsed_matches_job_resume_content(astral_job_id, parsed):
-        return False
-    save_job_artifact_job_resume_body(astral_job_id, _resume_payload_body(parsed))
-    return True
+def _coerce_job_replica_parsed(parsed: Any) -> Any:
+    """Decode text-format finalize JSON string to dict for catalog land (AST-1613)."""
+    if isinstance(parsed, dict):
+        return parsed
+    if not isinstance(parsed, str):
+        return parsed
+    stripped = parsed.strip()
+    if not stripped:
+        return parsed
+    cleaned = _strip_json_markdown_fences(stripped)
+    if not cleaned or cleaned[0] not in "{[":
+        return parsed
+    try:
+        obj = json.loads(cleaned)
+    except json.JSONDecodeError:
+        return parsed
+    return obj if isinstance(obj, dict) else parsed
 
 
-def persist_finalize_cover_letter_content(astral_job_id: str, parsed: Any) -> bool:
-    """AST-1548: copy normalized cover fields onto artifacts.cover_letter; coat-check empty."""
-    if not isinstance(parsed, dict):
-        return False
-    body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
-    if not isinstance(body, dict):
-        return False
-    source = _cover_letter_dict_for_normalize(body)
-    normalized = normalize_cover_letter_artifact(source)
-    if not _cover_letter_display_nonempty(normalized):
-        return False
-    save_job_artifact_cover_letter(astral_job_id, normalized)
-    return True
+def _prepare_job_replica_body(
+    catalog_key: str,
+    parsed: Any,
+    *,
+    astral_job_id: str,
+) -> Optional[Any]:
+    """Private helper: unwrap finalize hop payload for a job catalog key; None if no landable body (AST-1592 / AST-1603)."""
+    parsed = _coerce_job_replica_parsed(parsed)
+    key = (catalog_key or "").strip()
+    if key == "job.artifacts.job_resume":
+        if not parsed_matches_job_resume_content(astral_job_id, parsed):
+            return None
+        return _resume_payload_body(parsed)
+    if key == "job.artifacts.cover_letter":
+        if not isinstance(parsed, dict):
+            return None
+        body: Any = (
+            parsed.get("agent_payload")
+            if isinstance(parsed.get("agent_payload"), dict)
+            else parsed
+        )
+        if not isinstance(body, dict):
+            return None
+        normalized = normalize_cover_letter_artifact(
+            _cover_letter_dict_for_normalize(body)
+        )
+        if not _cover_letter_display_nonempty(normalized):
+            return None
+        return normalized
+    return None
 
 
 def pin_job_artifact_agent_data_id(
@@ -547,7 +732,7 @@ def pin_job_artifact_agent_data_id(
     return True
 
 
-_JOB_ARTIFACT_PIN_KEYS = ("job_resume", "cover_letter", "proposed_answers")
+_JOB_ARTIFACT_PIN_KEYS = ("proposed_answers",)
 
 
 def resolve_job_artifact_agent_data_body(
@@ -586,23 +771,38 @@ def resolve_job_artifact_agent_data_body(
 def hydrate_job_artifacts_for_display(
     artifacts: Any,
     *,
+    astral_job_id: Optional[str] = None,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """AST-1100/1548: shallow-copy; operator job_resume/cover from job body only; pin-resolve proposed_answers."""
+    """AST-1100/1548/1556/1592: shallow-copy; overlay catalog current-reads for job_resume/cover."""
     if not isinstance(artifacts, dict):
-        return {}
-    out = dict(artifacts)
-    rc = out.get("resume_content")
-    sibling_resume = rc if isinstance(rc, dict) and rc else None
-    jr = out.get("job_resume")
-    # AST-1548: job body dict first; legacy resume_content overlay; never pin→agent_data for operators.
-    if isinstance(jr, dict) and jr:
-        out["job_resume"] = dict(jr)
-    elif sibling_resume is not None:
-        out["job_resume"] = dict(sibling_resume)
+        out: Dict[str, Any] = {}
+    else:
+        out = dict(artifacts)
+    # AST-1592: operator SoT is get_job_current when job id is known.
+    if astral_job_id and str(astral_job_id).strip():
+        jid = str(astral_job_id).strip()
+        jr = get_job_current(jid, "job.artifacts.job_resume", debug=debug)
+        if isinstance(jr, dict) and jr:
+            out["job_resume"] = dict(jr)
+        cover_raw = get_job_current(jid, "job.artifacts.cover_letter", debug=debug)
+        if isinstance(cover_raw, dict):
+            display_cover = cover_letter_artifact_for_display(cover_raw, debug=debug)
+            if display_cover is not None:
+                out["cover_letter"] = display_cover
+    else:
+        rc = out.get("resume_content")
+        sibling_resume = rc if isinstance(rc, dict) and rc else None
+        jr = out.get("job_resume")
+        # Legacy blob path when no job id (tests without table overlay).
+        if isinstance(jr, dict) and jr:
+            out["job_resume"] = dict(jr)
+        elif sibling_resume is not None:
+            out["job_resume"] = dict(sibling_resume)
+        display_cover = cover_letter_artifact_for_display(out.get("cover_letter"), debug=debug)
+        if display_cover is not None:
+            out["cover_letter"] = display_cover
     for key in _JOB_ARTIFACT_PIN_KEYS:
-        if key in ("job_resume", "cover_letter"):
-            continue
         raw = out.get(key)
         if not isinstance(raw, str) or not raw.strip():
             continue
@@ -610,10 +810,6 @@ def hydrate_job_artifacts_for_display(
         if body is None:
             continue
         out[key] = body
-    # AST-1116/1499/1548: cover overlay from job dict only (pin strings → no overlay).
-    display_cover = cover_letter_artifact_for_display(out.get("cover_letter"), debug=debug)
-    if display_cover is not None:
-        out["cover_letter"] = display_cover
     return out
 
 
@@ -659,7 +855,12 @@ def _resume_payload_body(parsed: Any) -> Dict[str, Any]:
 
 def parsed_matches_resume_content_shape(parsed: Any, candidate_data: dict) -> bool:
     """True when at least one enabled catalog section has body content (AST-551)."""
-    structure = candidate_mod.resolve_resume_structure(candidate_data)
+    cd = dict(candidate_data) if isinstance(candidate_data, dict) else {}
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (no blob-only bypass).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
+    structure = candidate_mod.resolve_resume_structure(cd)
     enabled = set(candidate_mod.enabled_resume_section_ids(structure))
     if not enabled:
         return False
@@ -672,6 +873,10 @@ def parsed_matches_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
     if not isinstance(parsed, dict):
         return False
     cd = _candidate_data_for_job(astral_job_id)
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (idempotent if get_candidate already overlaid).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
     structure = candidate_mod.resolve_resume_structure(cd)
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     body = _resume_payload_body(parsed)
@@ -684,14 +889,22 @@ def parsed_matches_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
 
 
 def job_has_persisted_resume_body(astral_job_id: str, job: Optional[Dict[str, Any]] = None) -> bool:
-    """Non-empty resume_content for an enabled non-contact section (post-persist gate)."""
-    row = job if job is not None else get_job(astral_job_id)
-    if not row:
-        return False
-    rc = get_job_artifacts(row).get("resume_content")
+    """Non-empty job_resume body for an enabled non-contact section (AST-1556/1592 table SoT)."""
+    rc = get_job_current(astral_job_id, "job.artifacts.job_resume")
     if not isinstance(rc, dict) or not rc:
-        return False
+        # Legacy blob fallback for pre-migration rows.
+        job_row = job if job is not None else database.get_job(astral_job_id)
+        if not job_row:
+            return False
+        legacy = get_job_artifacts(job_row)
+        rc = legacy.get("resume_content") or legacy.get("job_resume")
+        if not isinstance(rc, dict) or not rc:
+            return False
     cd = _candidate_data_for_job(astral_job_id)
+    cid = candidate_mod.candidate_id_for_current_read(cd)
+    if cid:
+        # AST-1680: hydrate→resolve SoT (idempotent if get_candidate already overlaid).
+        candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
     structure = candidate_mod.resolve_resume_structure(cd)
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     for sid in candidate_mod.enabled_resume_section_ids(structure):
@@ -746,23 +959,31 @@ def persist_job_artifact_from_parsed(
     allow_resume: bool = True,
     allow_cover_letter: bool = True,
 ) -> bool:
-    """AST-369/371: merge parsed task JSON into job_data.artifacts when shape matches."""
+    """AST-369/371/1592: land matching shapes via catalog write (not job_data SoT)."""
     if not astral_job_id or not isinstance(parsed, dict):
         return False
     wrote = False
     if allow_cover_letter and parsed_matches_artifact_shape(parsed, "cover_letter"):
-        save_job_artifact_cover_letter(astral_job_id, slice_parsed_for_artifact_shape(parsed, "cover_letter"))
-        wrote = True
+        if save_job_artifact(
+            astral_job_id,
+            "job.artifacts.cover_letter",
+            slice_parsed_for_artifact_shape(parsed, "cover_letter"),
+        ):
+            wrote = True
     if allow_resume:
         cd = _candidate_data_for_job(astral_job_id)
         if parsed_matches_job_resume_content(astral_job_id, parsed):
+            cid = candidate_mod.candidate_id_for_current_read(cd)
+            if cid:
+                # AST-1680: hydrate→resolve before filter (idempotent with get_candidate).
+                candidate_mod.hydrate_operative_resume_structure_for_response(cid, cd)
             structure = candidate_mod.resolve_resume_structure(cd)
             body = _resume_payload_body(parsed)
             filtered = candidate_mod.filter_content_to_resume_structure(
                 body, structure, allow_contact=True,
             )
-            save_job_artifact_resume_content(astral_job_id, filtered)
-            wrote = True
+            if save_job_artifact(astral_job_id, "job.artifacts.job_resume", filtered):
+                wrote = True
     # AST-1523: sibling notes metadata (manual/API defense-in-depth; live path is do_task).
     if persist_draft_job_resume_notes(astral_job_id, parsed):
         wrote = True
@@ -770,10 +991,13 @@ def persist_job_artifact_from_parsed(
 
 
 def clear_job_build_artifacts(astral_job_id: str) -> None:
-    """Remove partial build artifact keys on cancel (AST-552 replace-merge pattern). AST-562."""
+    """Remove partial build artifact keys on cancel; retire table currents (AST-552/1556)."""
     job = get_job(astral_job_id)
     if not job:
         raise ValueError(f"Job not found: {astral_job_id}")
+    # AST-1556: retire artifacts-table currents for editable job types (SoT).
+    for atype in JOB_EDITABLE_ARTIFACT_TYPES:
+        database.retire_current_artifact(JOB_ARTIFACT_ENTITY_TYPE, astral_job_id, atype)
     jd = job.get("job_data")
     if not isinstance(jd, dict):
         return
@@ -892,8 +1116,17 @@ async def get_job_data(job: Dict[str, Any], key: str) -> Any:
 
 def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
     """Job-by-ID for render and id-only callers; not ``get_job_batch`` (dispatch-scoped).
-    Thin delegate to the data layer. Consult should migrate off ``database.get_job`` per AST-372."""
-    return database.get_job(astral_job_id)
+    Thin delegate to the data layer. AST-1556: overlay artifacts-table currents in-memory."""
+    job = database.get_job(astral_job_id)
+    if not job:
+        return None
+    jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
+    art = jd.get("artifacts") if isinstance(jd.get("artifacts"), dict) else {}
+    overlaid = hydrate_job_artifacts_for_display(art, astral_job_id=astral_job_id)
+    # Shallow copy so overlay never writes back as SoT.
+    out = dict(job)
+    out["job_data"] = {**jd, "artifacts": overlaid}
+    return out
 
 
 def assemble_job_copy_snapshot(
@@ -1040,6 +1273,17 @@ def _hop_blocks_for_batch(batch_rows: List[Dict[str, Any]]) -> Dict[str, Dict[st
             "content": last.get("block_data") or "",
         }
     return blocks
+
+
+def persist_http_job_link(astral_job_id: str, job_link: str) -> None:
+    """Write job.job_link when the URL is http(s); no-op for non-http breadcrumbs (AST-1693).
+
+    Link-only column update — does not call initialize_job or require job_title.
+    """
+    link = (job_link or "").strip()
+    if not (link.startswith("http://") or link.startswith("https://")):
+        return
+    save_job(astral_job_id, job_link=link)
 
 
 def initialize_job(

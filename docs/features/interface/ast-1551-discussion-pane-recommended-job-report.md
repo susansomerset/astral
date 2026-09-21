@@ -1,3 +1,133 @@
+<!-- linear-archive: AST-1551 archived 2026-09-09 -->
+
+## Linear archive (AST-1551)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1551/discussion-pane-on-recommended-job-report-add-discussion-tab-to  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1541 — Add "Discussion" tab to Recommended Job modal  
+**Blocked by / blocks / related:** parent: AST-1541
+
+### Description
+
+## What this implements
+
+After #1: render the Discussion top-tab pane in `JobAnalysisReportModal` via a new `JobDiscussionPane` using ReportSectionList / CollapsiblePanel — RESPONSE-only, readable formatting, nine collapsed slots from the manifest + `agent_story`. Does not change Job Detail Agent Story.
+
+## Citations
+
+`astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`.
+
+## Scope
+
+`src/ui/frontend/src/components/JobAnalysisReportModal.tsx` (Discussion pane wire-up + `agent_story` on job type); `src/ui/frontend/src/components/JobDiscussionPane.tsx` (**new**); `src/ui/frontend/src/App.css` only if report-local chrome is required beyond existing classes.
+
+## Acceptance criteria
+
+- [X] 1. Opening a Recommended job shows top tabs Summary | Analysis | Artifacts | **Discussion** (Discussion immediately after Artifacts).
+- [X] 2. Discussion shows exactly **nine** collapsible sections for the BUILD_ARTIFACTS daisy-chain hops from `contemplate_job` through `propose_application_responses`; all start collapsed.
+- [X] 3. Each header displays that hop’s `agent_task.task_name` when set; otherwise `task_key`.
+- [X] 4. Expanding a section shows only that hop’s **RESPONSE** body — no prompt/cache/system blocks — and the control is read-only.
+- [X] 5. JSON RESPONSE bodies are pretty-printed; text bodies show real line breaks (no visible `\n` escape runs).
+- [X] 6. Jobs with partial chain progress still show nine slots; hops without a RESPONSE are empty collapsed sections.
+- [X] 7. Job Detail / Company Detail Agent Story tabs and Artifacts generation / editing behavior are unchanged.
+
+## Boundaries
+
+- [X] Does not own config/manifest/`task_name` enrichment (#1). Does not change Job Detail Agent Story.
+
+## Notes for planning
+
+After #AST-1550. Reuse ReportSectionList / CollapsiblePanel.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1541-discussion-tab-recommended-job-modal`, child `sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` at dispatch-parent.
+
+## QA test manifest
+
+1. Pane: `tests/component/frontend/components/test_JobDiscussionPane.test.tsx`
+2. Modal Discussion + revised AST-948 tabs: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1551|AST-948 horizontal shell"`
+3. Toast align (with product on tip): `tests/component/frontend/components/test_Toast.test.tsx`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDiscussionPane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx \
+  --testNamePattern="AST-1551|AST-948 horizontal shell|Toast"
+```
+
+**Product gap (test-child): **`JobDiscussionPane` `responseBodyForTask` takes the first `RESPONSE*` even when `content === ""`, hiding a later non-empty RESPONSE. Match AgentStoryTab (skip empty). Repro (red until fixed): `skips empty RESPONSE and shows the next RESPONSE body (Agent Story parity)`.
+
+**Bible shasum** (`origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report`):
+
+* `docs/test-bible/frontend/components.md` — `3e656c22b6fd9490963a38db3ac262f2c5defebc166d8d42f45538e50a5062b2`
+
+### Comments
+
+#### chuckles — 2026-08-31T21:49:09.397Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/AST-1541-discussion-tab-recommended-job-modal
+
+`validate-sub-log` failed on `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report`: `ftr..sub` includes `Merge remote-tracking branch` subjects via `be32ae71 sync(dev): origin/dev` second parent (ftr behind origin/dev):
+- `02c11e58 Merge remote-tracking branch 'origin/ftr/AST-1543-…' into dev`
+- `bc514d6b Merge remote-tracking branch 'origin/ftr/AST-1547-…' into dev`
+
+@Katherine Johnson — rebuild publish tip stacked on `origin/ftr/AST-1541-discussion-tab-recommended-job-modal` with only the AST-1551 sequence (plan/code/merge-tests/test/docs/resolve) — no `sync(dev)` / no `Merge remote-tracking branch` subjects in the validate range. Use `git fetch && git merge origin/ftr/<parent-segment>` (not merge origin/dev / pull). Force-push publish ref if needed to drop the pollution, then Chuckles retries merge-child. Stay User Testing.
+
+#### chuckles — 2026-08-31T21:49:01.401Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/AST-1541-discussion-tab-recommended-job-modal
+
+`validate-sub-log` failed on `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report`: `ftr..sub` includes `Merge remote-tracking branch` subjects via `be32ae71 sync(dev): origin/dev` second parent (ftr behind origin/dev):
+- `02c11e58 Merge remote-tracking branch 'origin/ftr/AST-1543-…' into dev`
+- `bc514d6b Merge remote-tracking branch 'origin/ftr/AST-1547-…' into dev`
+
+@Katherine Johnson — rebuild publish tip stacked on `origin/ftr/AST-1541-discussion-tab-recommended-job-modal` with only the AST-1551 sequence (plan/code/merge-tests/test/docs/resolve) — no `sync(dev)` / no `Merge remote-tracking branch` subjects in the validate range. Use `git fetch && git merge origin/ftr/<parent-segment>` (not merge origin/dev / pull). Force-push publish ref if needed to drop the pollution, then Chuckles retries merge-child. Stay User Testing.
+
+#### betty — 2026-08-31T21:46:40.895Z
+[check-linear] Fixture + pane NINE hop keys aligned to AST-1550 `_NINE` (`contemplate_job`→`propose_application_responses`). `origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `9b60edd7`. Reassigned Katherine — stay Review Posted.
+
+#### katherine — 2026-08-31T21:43:50.739Z
+[qa-handoff]
+@Betty White
+
+Radia DISCUSS: `stateUiManifestFixture.ts` `report_discussion_sections` and `test_JobDiscussionPane.test.tsx` `NINE` use hop keys (`advise_job_resume`, `finalize_job_resume`, `finalize_cover_letter`, …) that drift from AST-1550 live walk / `TestAst1550ReportDiscussionSections._NINE`:
+
+`contemplate_job` → `draft_job_resume` → `check_job_resume` → `draft_cover_letter` → `check_cover_letter` → `draft_application_responses` → `check_application_responses` → `polish_application_package` → `propose_application_responses`
+
+Product TSX is manifest-driven (no engineer product fix). Please align fixture + pane unit `NINE` keys/labels with AST-1550 `_NINE` before UAT. Stay Tests Ready / reassign Katherine when landed.
+
+`origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `bd5e0fb3`
+
+#### radia — 2026-08-31T21:42:49.404Z
+[code-rubric] REVIEW (Commit: 9fab6df2) Fixture hop keys drift
+
+#### katherine — 2026-08-31T21:40:52.934Z
+`origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `9fab6df296e63a2f64c008bf174a3af7e01ddef2`
+
+```
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobDiscussionPane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx \
+  --testNamePattern="AST-1551|AST-948 horizontal shell|Toast"
+```
+25 passed | 24 skipped — empty-RESPONSE skip fix
+
+#### betty — 2026-08-31T21:39:09.183Z
+`origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `38a0b42d` · Discussion QA + empty-RESPONSE gap
+
+#### joan — 2026-08-31T21:30:23.826Z
+[plan-rubric] PROCEED (Commit: 313778b) Discussion pane manifest-driven
+
+#### katherine — 2026-08-31T21:28:38.842Z
+`origin/sub/AST-1541/AST-1551-discussion-pane-recommended-job-report` @ `313778b1e6574bc034bf9b6856c324b3b2a43021` · plan ready
+
+---
+
 # AST-1551 — Discussion pane on Recommended Job Report
 
 **Linear:** [AST-1551](https://linear.app/astralcareermatch/issue/AST-1551/discussion-pane-on-recommended-job-report-add-discussion-tab-to)  
@@ -377,3 +507,110 @@ context_tokens≈58000
 - **discuss — fixture hop keys:** test-tree only. Routed **`[qa-handoff]`** @Betty White. Betty landed align @ `9b60edd7` (`contemplate_job`→`propose_application_responses` matches AST-1550 `_NINE`). Manifest re-run green (25 passed | 24 skipped). Discuss closed.
 - **advisory:** AST-1550 backend rollup + `formatDiscussionContent` duplication — no action.
 - **Outcome:** User Testing; assignee remains Katherine.
+
+---
+
+## Bug: AST-1609 — fix artifacts discussion incomplete
+
+Orphaned bug-fix child of **AST-1607** (Related → AST-1541). This doc owns the per-job header filter; hop catalog / `anticipate_scan` membership is on **AST-1550** under the same bug heading.
+
+### As-is
+
+`JobDiscussionPane` passes the full `sections` array from `report_discussion_sections` into `ReportSectionList`. `ReportSectionList` renders a `CollapsiblePanel` header for **every** section. `renderSection` returns `null` when there is no non-empty RESPONSE, so the body is empty but the **header still shows**. That matches the original AST-1551 Stage 1 Done when (“empty body — still a collapsed panel”) and produces always-on empty hop slots for hops the job has not run.
+
+### To-be
+
+Discussion shows a section header only for hops that have actually run for **this** job — i.e. a matching `agent_story` entry with a non-empty RESPONSE (same `responseBodyForTask` rules already used for the body). Unrun hops do not appear as headers. Order and labels still come from the filtered subset of `report_discussion_sections` (preserve manifest order; do not re-sort by `created_at`). No hardcoded hop-key allowlist in TSX.
+
+### Repro
+
+1. Open Recommended Job Report → Discussion on a job mid-chain (e.g. story has RESPONSE for `contemplate_job` + maybe `anticipate_scan`, but not yet for later hops such as `propose_application_responses`).
+2. Observe: collapsed headers for hops with no usable RESPONSE (empty always-on slots).
+
+### Root cause
+
+AST-1551 deliberately rendered the full nine-slot catalog and treated missing RESPONSE as an empty panel body, not as “omit the section.” Visibility was catalog-driven, not story-driven. The bug asks for story-driven appearance without hardcoding which hops are visible.
+
+### Proposed change
+
+**`src/ui/frontend/src/components/JobDiscussionPane.tsx`**
+
+1. Keep props `{ sections, agentStory }` and helpers `formatDiscussionContent` / `responseBodyForTask` (including empty-RESPONSE skip / `RESPONSE*` prefix parity).
+2. Before `ReportSectionList`, derive the visible list (preserve order):
+
+   ```tsx
+   const visibleSections = sections.filter(
+     (s) => responseBodyForTask(agentStory, s.section_id) !== "",
+   )
+   ```
+
+3. Pass `sections={visibleSections}` to `ReportSectionList` (not the raw prop).
+4. `renderSection` may keep calling `responseBodyForTask` (bodies are non-empty for visible ids) or simplify — either is fine; do **not** change RESPONSE selection rules.
+5. When `visibleSections` is empty, `ReportSectionList` renders an empty stack (no fake placeholder section, no hardcoded “no discussion yet” copy unless existing chrome already does — do not invent copy).
+
+**`src/ui/frontend/src/components/JobAnalysisReportModal.tsx` — no change**
+
+Keep wiring: pass full `discussionSections` from the manifest + `job?.agent_story ?? []` into `JobDiscussionPane`. Filtering lives in the pane (ticket Scope prefers the pane; modal “only if” the filter is at wire-up — it is not).
+
+**Out of this doc’s patch:** `src/utils/config.py` / `api_system.py` hop start (see AST-1550 bug section). No `App.css`, no `AgentStoryTab.tsx`, no `StateUiContext.tsx`.
+
+⚠️ **Decision:** Filter in the pane via existing `responseBodyForTask` (non-empty RESPONSE) rather than “any `agent_story` entry for that `task_key` regardless of blocks.” A hop that ran but left only empty RESPONSE stays hidden — same signal the body already uses. Do not hardcode task keys. Do not filter in `api_system` (manifest is global, not per-job).
+
+### Blast radius
+
+- Modal integration / pane tests that assert nine collapsed slots with empty story will fail until Betty revises them (expected headers → 0 when `agentStory` is `[]`).
+- Jobs with a full story still show every hop that has RESPONSE, including `anticipate_scan` once AST-1550’s walk emits it and the story has that body.
+- Expand-All / `default_expanded` behavior unchanged for the filtered set.
+- Job Detail / Company Detail Agent Story tabs untouched.
+
+### What must still hold
+
+- Section order and labels still originate from `report_discussion_sections` (filtered subset; no TSX hop-key list; no `created_at` re-sort).
+- Bodies remain RESPONSE-only, read-only `entity-story-content`, JSON pretty-print / raw text via `formatDiscussionContent`.
+- Match story → section by `task_key === section_id`.
+- Discussion top tab still from `report_top_tabs` (no hardcode).
+- No edits to Summary / Analysis / Artifacts pane bodies or Generate chrome.
+
+---
+
+## Bug: AST-1612 — gap revise discussion tests (anticipate_scan + empty headers)
+
+Sibling **gap** child of AST-1607 from `[board-betty] TESTS: REVISE` on **AST-1609**. Pane/JAR assertion revision lives here; hop-walk bible/tests primarily on the AST-1550 bug section for the same id. No product `src/` on this gap.
+
+### As-is
+
+`JobDiscussionPane` / JAR AST-1551 tests assert nine collapsed headers for empty or partial `agent_story`. Bible § AST-1551: “empty hops stay panels.” No case requiring an `anticipate_scan` header when story has that RESPONSE.
+
+### To-be
+
+Empty `agentStory` → **0** Discussion headers. Partial story → header count equals hops with non-empty RESPONSE (not manifest length). Coverage: `anticipate_scan` header + body when sections + story include that RESPONSE. Bible language matches.
+
+### Repro
+
+Render Discussion with `agentStory={[]}` (pane) or default job without story (JAR) against AST-1609 filter → 0 Expand buttons; current tests still expect 9.
+
+### Root cause
+
+AST-1551 Stage 1 Done when required empty hops to remain collapsed panels. AST-1609 filters those away; tests/bible were not updated (Betty REVISE).
+
+### Proposed change
+
+See **AST-1550** doc `## Bug: AST-1612` for the full file-level list (bible § AST-1551 + `test_JobDiscussionPane.test.tsx` + JAR AST-1551 describe + optional fixture). Execute the frontend/bible bullets there; do not duplicate product work from AST-1609’s AST-1551 bug section.
+
+Concrete UI-test bar (repeat for make/qa clarity):
+
+1. `agentStory=[]` + full catalog `sections` → `getAllByRole("button", { name: "Expand section" })` length **0**.
+2. One hop with non-empty RESPONSE → length **1**; expand shows body.
+3. `anticipate_scan` in `sections` + matching RESPONSE in story → that `nav_label` present and expandable.
+4. JAR partial-story case → length **1**, not 9.
+
+### Blast radius
+
+Vitest Discussion suite + `stateUiManifestFixture` consumers. Pair with AST-1550-side pytest hop-key revisions so lockstep comments (`_NINE`) do not re-teach “always nine empty panels.”
+
+### What must still hold
+
+- Top-tab Discussion chrome from `report_top_tabs` (not hardcoded).
+- RESPONSE-only; PROMPT never shown.
+- Section order/labels still from manifest defs for the **visible** subset; no `created_at` re-sort.
+- No product edits in this gap child.

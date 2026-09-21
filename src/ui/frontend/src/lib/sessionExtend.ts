@@ -7,7 +7,9 @@ export interface StytchSessionExtendClient {
   }
 }
 
-/** Returns clear() for the interval. Does not fire immediately — first tick after intervalMs. */
+const ACTIVITY_EVENTS = ["pointerdown", "keydown"] as const
+
+/** Activity-driven extend, throttled to intervalMs. First qualifying event fires immediately. */
 export function startSessionExtendLoop(
   stytch: StytchSessionExtendClient,
   opts: {
@@ -16,8 +18,12 @@ export function startSessionExtendLoop(
   },
 ): () => void {
   const intervalMs = opts.activity_extension_interval_minutes * 60_000
-  const tick = () => {
+  let lastExtendAt = 0
+  const onActivity = () => {
     if (!stytch.session.getSync()) return
+    const now = Date.now()
+    if (lastExtendAt !== 0 && now - lastExtendAt < intervalMs) return
+    lastExtendAt = now
     void stytch.session
       .authenticate({
         session_duration_minutes: opts.session_duration_minutes,
@@ -26,6 +32,12 @@ export function startSessionExtendLoop(
         /* leave session as-is; natural expiry → existing log-off path */
       })
   }
-  const id = window.setInterval(tick, intervalMs)
-  return () => window.clearInterval(id)
+  for (const type of ACTIVITY_EVENTS) {
+    window.addEventListener(type, onActivity, true)
+  }
+  return () => {
+    for (const type of ACTIVITY_EVENTS) {
+      window.removeEventListener(type, onActivity, true)
+    }
+  }
 }

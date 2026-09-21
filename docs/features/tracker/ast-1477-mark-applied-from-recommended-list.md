@@ -1,3 +1,159 @@
+<!-- linear-archive: AST-1477 archived 2026-09-09 -->
+
+## Linear archive (AST-1477)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1477/mark-applied-from-recommended-list-add-means-to-mark-job-as-applied  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1464 — Add means to mark job as applied for  
+**Blocked by / blocks / related:** parent: AST-1464
+
+### Description
+
+## What this implements
+
+Add the Applied icon-control on Recommended list rows for legal `CANDIDATE_APPLIED` priors; wire through existing `useCandidateJobActions` / `CandidateActionNotesModal` / `candidate_action`. Does not own report Applied/Skip (sibling Report Applied and Skip) or the Applied list page (sibling Applied jobs list home).
+
+## Citations
+
+`pattern.ui.icon-control`; `astral.state.core-decides-transitions`; `astral.state.job-prior-states-enforced`; `astral.ui.naming-conventions`
+
+## Scope
+
+`src/ui/frontend/src/components/CandidateJobRowActions.tsx` (modified — Applied icon on legal pre-applied states); `src/ui/frontend/src/pages/JobsRecommended.tsx` (modified — list Applied via shared requestAction/notes path and list refresh; may pass action handlers through to the report modal for sibling Report Applied and Skip)
+
+## Acceptance criteria
+
+1. On Recommended, a job in a legal prior for `CANDIDATE_APPLIED` shows an Applied list-row icon-control; confirming with optional notes transitions to `CANDIDATE_APPLIED` and writes `candidate_results.applied`.
+2. After mark-applied, the job no longer appears on Recommended and does appear on `/jobs/applied` for that candidate. (list home is sibling — this child owns the mark control that starts the transition)
+3. Illegal transitions still fail with a visible error (no silent no-op).
+
+## Boundaries
+
+Does not add Applied/Skip on Job Analysis Report. Does not implement Applied list API/page/nav.
+
+## Notes for planning
+
+Reuse existing `onAction("applied")` / notes modal; legal priors only per `CANDIDATE_APPLIED.prior_states`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Row Applied icon-control: `tests/component/frontend/components/test_CandidateJobRowActions.test.tsx` — `--testNamePattern="AST-1477"`
+2. Recommended list Applied path (§6c): `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1477"`
+3. Regression: AST-1302 + AST-1410 only — **do not** use bare `Skip` in the Vitest pattern (matches sibling AST-1478 report cases)
+
+**Narrowed run** (from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1477|AST-1302|AST-1410"
+```
+
+**Publish:** `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `44fa5b67` · `merge-tests(AST-1477): origin/tests 4d9f85ba`
+
+### Comments
+
+#### betty — 2026-08-25T02:36:43.826Z
+[check-linear] ftr merge clean — AST-1477+1478 bible/nests; PRE_APPLIED restored @ 37350c11
+
+#### chuckles — 2026-08-25T02:32:41.953Z
+[merge-child] blocked: docs/test-bible/frontend/components.md; tests/component/frontend/pages/test_JobsRecommended.test.tsx — @Betty White (keep AST-1477 + AST-1478 manifests/nests).
+
+#### chuckles — 2026-08-25T02:20:50.808Z
+[merge-child] blocked: `validate-sub-log.sh` — missing `plan(AST-1477):` `code(AST-1477):` in `origin/ftr/AST-1464-add-means-to-mark-job-as-applied-for..origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` range.
+
+Those commits are already ancestors of ftr (via AST-1478 `sync(publish-ref)` of this sub) and of this tip (`docs(AST-1477): plan —` @ `06a60cc2`, `code(AST-1477):` @ `d47122f2`). Residual range still has resolve / merge-tests / test / docs; merge-tree into ftr is clean @ `f150463f`.
+
+@Katherine Johnson — same tip-marker pattern as AST-1222: empty tip commits `plan(AST-1477): — tip marker for merge-child validate-sub-log` and `code(AST-1477): — tip marker for merge-child validate-sub-log` on `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list`, force-with-lease push, stay **User Testing**. Chuckles will re-run merge-child after.
+
+#### betty — 2026-08-25T01:39:10.759Z
+[check-linear] Cleared ftr dry-run block: merged origin/ftr into sub; kept both plans; components.md has AST-1477 + AST-1478 manifests; JobsRecommended nests AST-1478 + AST-1057 + AST-1477. `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `f150463f` · assignee Katherine for resolve-child §9a.
+
+#### katherine — 2026-08-25T01:30:24.797Z
+[check-linear] blocked: §9a ftr dry-run conflicts
+
+@Betty White @Chuckles Cursor
+
+`origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `5cfa9cd8` merges cleanly into `origin/dev`, but **not** into `origin/ftr/AST-1464-add-means-to-mark-job-as-applied-for`.
+
+Attempted `git merge origin/ftr/AST-1464-add-means-to-mark-job-as-applied-for` on this sub — aborted. Conflict files:
+
+- `docs/features/tracker/ast-1477-mark-applied-from-recommended-list.md` (modify/delete — keep on sub)
+- `docs/features/tracker/ast-1478-report-applied-and-skip.md` (modify/delete — sibling plan on ftr)
+- `docs/test-bible/frontend/components.md` (AST-1477 vs AST-1478 QA manifest patterns)
+- `tests/component/frontend/pages/test_JobsRecommended.test.tsx` (AST-1477 nesting vs AST-1478 report describe)
+
+Radia FIX-NOW nesting is cleared (Betty `0fc2059d`); resolve doc pushed. Staying **Review Posted** until ftr↔sub test/bible merge is reconciled (Betty test-tree / Chuckles epic orchestration). Cannot advance to User Testing while §9a ftr dry-run is blocked.
+
+#### betty — 2026-08-25T00:51:29.352Z
+[check-linear] Cleared [qa-handoff]: nested AST-1057 + AST-1477 inside `describe("JobsRecommended")` so suite `beforeEach` applies. `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `0fc2059d` · assignee Katherine for resolve-child.
+
+#### katherine — 2026-08-25T00:44:12.660Z
+[qa-handoff]
+@Betty White
+
+Radia **FIX-NOW** (`docs(AST-1477): Radia review — FIX-NOW describe nesting` @ `fbdb4432`):
+
+**`tests/component/frontend/pages/test_JobsRecommended.test.tsx`** — `describe("JobsRecommended")` closes at line 229; AST-1057 `it` blocks (and the AST-1477 describe) sit outside the suite and lose shared `beforeEach` (`localStorage.clear` / `mockedApi.mockReset()`).
+
+**Fix (test-tree only):** move the closing `})` to after AST-1057 + AST-1477 (or nest those describes inside the main suite). Engineer cannot patch `tests/` — please land on this publish ref and reassign Katherine.
+
+No product delta for this finding. Discuss/advisory items need no engineer code change.
+
+`origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `fbdb4432`
+
+#### radia — 2026-08-25T00:39:27.474Z
+[code-rubric] REVIEW (Commit: 44fa5b67)
+
+#### chuckles — 2026-08-25T00:37:39.449Z
+[agent-busy-timeout] blocked: Cursor conversation still busy after 20m call-wait (spawn=`79e2a573`, attempts=12).
+- parent: `AST-1464`
+- agent: **Radia** role=review `review-child` on `AST-1477`
+- AGENT_SESSION: `c1844f96-104a-48a9-9d58-26432f33d87d`
+
+Do **not** `agent create-chat` and do **not** treat this as `[thread-missing]` — the Thread UUID is fine; another run held it.
+
+#### betty — 2026-08-25T00:06:29.792Z
+[check-linear] Cleared [qa-handoff]: narrowed AST-1477 Vitest pattern to `AST-1477|AST-1302|AST-1410` (dropped bare `Skip` so sibling AST-1478 report cases are not selected); stripped AST-1478 page describe from this tip’s JobsRecommended tests. `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `44fa5b67` · assignee Katherine for test-child.
+
+#### katherine — 2026-08-24T23:57:40.916Z
+[qa-handoff]
+@Betty White
+
+Manifest command from `docs/test-bible/frontend/components.md` (AST-1477):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1477|AST-1302|AST-1410|Skip"
+```
+
+**Product / this ticket:** all `AST-1477` cases pass (narrow `--testNamePattern="AST-1477"` is green). Applied mark + notes → `candidate_action` + 409 toast behave as planned.
+
+**Manifest defect:** `|Skip` also matches sibling describe **`AST-1478 report Applied and Skip`** in the same `test_JobsRecommended.test.tsx`. Those three tests fail here (`reportStrip()` null) because report Applied/Skip is **out of scope** for AST-1477 (AST-1478 owns `JobAnalysisReportModal` props).
+
+Please narrow the Vitest pattern (e.g. drop bare `Skip`, or exclude `AST-1478`) so the AST-1477 run does not require sibling report controls. Stay Tests Ready after you republish.
+
+`origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `151a8ef2` (Betty merge-tests `3c065946` is ancestor)
+
+#### betty — 2026-08-24T23:52:05.584Z
+`origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `3c065946` · Applied mark ready
+
+#### katherine — 2026-08-24T23:08:40.299Z
+`origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `06a60cc2023dea7c92a9b34e045db976ccaa2f0d` · plan ready
+
+---
+
 # AST-1477 — Mark applied from Recommended list
 
 **Linear:** [AST-1477](https://linear.app/astral-tracker/issue/AST-1477)

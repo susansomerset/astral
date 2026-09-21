@@ -32,6 +32,8 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
+  ARTIFACT_CONFIG — versioned artifact registry keyed by entity._data path (entity, candidate_scoped, body_shape, ingestion_owner); keys = candidate.artifacts.base_resume, candidate.artifacts.resume_structure, job.artifacts.job_resume, job.artifacts.cover_letter, candidate.context.strengths, candidate.context.priorities, candidate.context.deal_breakers, candidate.context.bio_summary, candidate.context.backstory, candidate.context.ideal_day, candidate.context.writing_preferences; SoT in config — callers import ARTIFACT_CONFIG (AST-1573 / AST-1575 / AST-1576 / AST-1590 / AST-1632 / AST-1648 / AST-1651 / AST-1654 / AST-1658 / AST-1661 / AST-1664 / AST-1678)
+  TOKEN_SOURCES — prompt {$TOKEN} registry with required source_type (data_field / artifact / special_case); artifact rows carry artifact_key into ARTIFACT_CONFIG (AST-1596 / AST-1578)
   AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
@@ -41,16 +43,16 @@ Config sections:
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
-  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
-  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529)
+  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound stage_email_meteorite mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is inbox.check_email (AST-1559)
+  STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529); electronic-contact response-key literal (AST-1688)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
-  JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
-  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
+  SOURCE_ENTITY_TYPES — job ingest parent + track SoT company|meteorite (repurposed job.source; AST-1701); JOB_SOURCES aliases until sibling #2
+  JOB_LINK_BREADCRUMB_FORMAT / CONTACT_TIMEZONE_CLOCK_LABELS — email breadcrumb + timezone clock helpers (AST-1701; authored by sibling #3)
+  METEORITE_CONFIG — placeholder employer templates (not job parents after AST-1640) + job-create defaults + land/source_entity_type/dedupe (AST-1469 / AST-1701); meteorite-row electronic-contact column literal (AST-1688)
   METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
-  METEORITE_MONITORING_CONFIG — always-on info inbox classify + row-transition line formats (AST-1559 / AST-1560); not Style D
+  METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
-  METEORITE_RETENTION_CONFIG — scheduled LANDED purge + stale-row info list + day cutoffs (AST-1562)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -59,8 +61,10 @@ Config sections:
 import json
 import os
 import re
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, FrozenSet, List, Optional
+from typing import Any, Dict, FrozenSet, List, Optional, Union
+from zoneinfo import ZoneInfo
 
 from dotenv import load_dotenv
 
@@ -200,6 +204,7 @@ TASK_CONFIG = {
         "entity_type": None,
         "requires_candidate_key": True,
         "trigger_state": None,
+        "artifact_key": "candidate.artifacts.base_resume",
     },
     # SIMPLE RESUME PARSE - Ruth / Little (AST-1037); Admin session wire = AST-1038
     "simple_resume_parse": {
@@ -375,6 +380,21 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-1672: company SA for AI website select on WEBSITE_REVIEW (agent identity stays find_company_website).
+    "resolve_website": {
+        "response_schema": {
+            "task_success": {"type": "bool", "required": True},
+            "website": {"type": "str", "required": True},
+        },
+        "response_format": "json",
+        "context_format": "find_company_website_{index}",  # reuse existing prompt indexing
+        "entity_type": "company",
+        "requires_candidate_key": True,
+        "trigger_state": "WEBSITE_REVIEW",
+        "agent_task": "find_company_website",
+        "pass_state": "WEBSITE_FOUND",
+        "fail_state": "NO_WEBSITE",
+    },
     "prefilter_company": {
         "response_format": "json",
         "output_type": "grades_encoded_prefilter_links",
@@ -384,9 +404,10 @@ TASK_CONFIG = {
         "pass_state": "PREFILTER_PASSED",
         "fail_state": "PREFILTER_FAILED",
         "response_schema": {
-            "jobs": {
+            "companies": {
                 "type": "list", "required": True,
                 "items_schema": {
+                    "company_id": {"type": "str", "required": True},
                     "grades": {
                         "type": "list", "required": True,
                         "items_schema": {
@@ -452,7 +473,7 @@ TASK_CONFIG = {
         "context_format": "vet_inflow_discovery_{index}",
         "entity_type": "company",
         "requires_candidate_key": True,
-        "trigger_state": "NEW",
+        "trigger_state": "DISCOVERED",
     },
     # Phase D. Run Time Job Analysis
     # RUNTIME JOB VETTING PROMPTS - Ruth 1
@@ -521,7 +542,7 @@ TASK_CONFIG = {
         "pass_state": "METEORITE_QUALIFIED",
         "fail_state": "METEORITE_FAILED_QUALIFY",
         "error_state": "METEORITE_ERROR_QUALIFY",
-        "email_link_prefix": "email-",  # AST-1197: synthesized link; waive http + empty company_job_id gates
+        "email_link_prefix": "email-",  # AST-1197: synthesized job_link token when there is no ATS URL
         "bot_blocked_state": "BOT_BLOCKED",  # AST-1197: challenge/Cloudflare JD → universal bot state (AST-1195)
         "company_stem_response_key": "company_stem",  # AST-1494: RESPONSE + enrich map key
         "context_format": "qualify_meteorite_{index}",
@@ -550,6 +571,12 @@ TASK_CONFIG = {
                     "company_job_id": {"type": "str", "required": False},
                     "jd_text": {"type": "str", "required": False},
                     "employer_name": {"type": "str", "required": False},
+                    # AST-1703: email breadcrumb inputs for text outcomes (Python formats clock).
+                    "from_email": {"type": "str", "required": False},
+                    "to_email": {"type": "str", "required": False},
+                    "sent_at": {"type": "str", "required": False},
+                    # AST-1688: best electronic contact to send the resume (metadata-first; optional)
+                    "electronic_contact": {"type": "str", "required": False},
                 },
             },
         },
@@ -963,6 +990,7 @@ TASK_CONFIG = {
         "trigger_state": None,
         "task_type": "CHAIN",
         "error_state": ERROR_BUILD_ARTIFACTS_STATE,
+        "artifact_key": "job.artifacts.job_resume",
     },
     "draft_cover_letter": {
         "nocache_prompt": (
@@ -1001,6 +1029,7 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+        "artifact_key": "job.artifacts.cover_letter",
     },
     "propose_application_responses": {
         "response_schema": {
@@ -1129,7 +1158,7 @@ BLOCK_TYPES = [
 # (AST-975); entity-row JSON agent_responses columns retired (AST-984).
 # Single source of truth — add new types here.
 # ---------------------------------------------------------------------------
-ENTITY_TYPES = ["candidate", "company", "job"]
+ENTITY_TYPES = ["candidate", "company", "job", "meteorite"]
 
 
 # ---------------------------------------------------------------------------
@@ -1153,6 +1182,8 @@ GRADE_COLORS = {
 COMPANY_STATES = {
     "IMPORTED": {},
     "NEW": {"batch_criteria": {"sort_by": "updated_at"}},
+    # AST-1672: pre-vet inflow land state (discovery → DISCOVERED; vet/CSE claim here).
+    "DISCOVERED": {"batch_criteria": {"sort_by": "updated_at"}},
     "WEBSITE_FOUND": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     # Dual ownership (AST-892): empty homepage_text → fetch_website scrape retry; non-empty → prefilter second strike.
     "WEBSITE_FOUND_RETRY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -1161,7 +1192,8 @@ COMPANY_STATES = {
         "retry_state": "WEBSITE_FOUND_RETRY",
     },
     "NO_WEBSITE": {},
-    "WEBSITE_REVIEW": {},
+    # AST-1672: waiting between CSE fetch and resolve_website AI hop — need sort_by for admin defaults.
+    "WEBSITE_REVIEW": {"batch_criteria": {"sort_by": "updated_at"}},
     "PREFILTER_PASSED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "PJL_READY": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "JOBLIST_IDENTIFIED": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
@@ -1793,6 +1825,9 @@ CONTACT_CONFIG = {
     "non_production_reply_prefix_template": "[{environment}] ",
     # AST-1101: fallback Slack text when Contact accepts @/DM but Estelle turn posts nothing.
     "hear_ack_reply_text": "Heard you — Estelle is listening.",
+    # AST-1668: recognition replies after resolve (known bind vs unbound Slack user).
+    "known_recognition_reply_text": "I know who that is",
+    "unknown_recognition_reply_text": "I don't recognize you",
     # Environ name contracts — readers use os.environ[CONTACT_CONFIG["…_env"]] (no .get).
     "bot_token_env": "SLACK_BOT_TOKEN",
     "signing_secret_env": "SLACK_SIGNING_SECRET",
@@ -1803,15 +1838,14 @@ CONTACT_CONFIG = {
             "entity": "candidate",
             "write": True,
             "description": (
-                "Merge allowlisted profile fields into candidate_data.profile "
+                "Merge allowlisted name columns (first/last/pronouns) "
                 "for Slack Contact intake."
             ),
-            # Dotted paths under candidate_data. Payload field keys must match exactly.
+            # AST-1014 name columns — not candidate_data.profile (refused on save).
             "allowed_paths": (
-                "profile.first",
-                "profile.last",
-                "profile.pronoun_preference",
-                "profile.contact_email",
+                "first",
+                "last",
+                "pronouns",
             ),
         },
         "save_candidate_contact": {
@@ -1852,6 +1886,8 @@ assert isinstance(CONTACT_CONFIG["debug_state_filename"], str) and CONTACT_CONFI
 assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["known_recognition_reply_text"], str) and CONTACT_CONFIG["known_recognition_reply_text"].strip()
+assert isinstance(CONTACT_CONFIG["unknown_recognition_reply_text"], str) and CONTACT_CONFIG["unknown_recognition_reply_text"].strip()
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
 assert CONTACT_CONFIG["signing_secret_env"] == "SLACK_SIGNING_SECRET"
@@ -1879,8 +1915,15 @@ for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
     assert isinstance(_skill_meta.get("description"), str) and _skill_meta["description"].strip(), _skill_key
     _paths = _skill_meta.get("allowed_paths")
     assert isinstance(_paths, tuple) and len(_paths) > 0, _skill_key
+    _name_cols = set(CANDIDATE_LIBRARY_CONFIG["name_columns"])
     for _p in _paths:
-        assert isinstance(_p, str) and "." in _p, (_skill_key, _p)
+        assert isinstance(_p, str) and _p, (_skill_key, _p)
+        if _p in _name_cols:
+            continue
+        assert "." in _p, (_skill_key, _p)
+assert set(CONTACT_CONFIG["skills"]["save_candidate_profile"]["allowed_paths"]).issubset(
+    CANDIDATE_LIBRARY_CONFIG["name_columns"]
+)
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {
@@ -2048,6 +2091,8 @@ ROSTER_CONFIG = {
         "prefilter_score": "prefilter_score",
         # AST-469: persisted job-list visible text (select confirm path). No coat-check handler — explicit storage only.
         "job_list_visible": "job_list_visible",
+        # AST-1672: CSE hit list for inflow_resolve_website → resolve_website. Explicit storage only.
+        "inflow_resolve_website_hits": "inflow_resolve_website_hits",
         "jobsite_scrape_issue_summary": "jobsite_scrape_issue_summary",
         "jobsite_scrape_issue_evidence": "jobsite_scrape_issue_evidence",
         "possible_joblist_links": "possible_joblist_links",
@@ -2091,6 +2136,7 @@ def roster_scrape_readiness_config() -> Dict[str, Any]:
 
 
 # Phase 1 roster inflow discovery (AST-505): CSE search limits, vet task keys, weekly cadence.
+# AST-1672: DISCOVERED land/vet; resolve block is CSE-only fetch (no inline AI key).
 INFLOW_CONFIG = {
     "discovery": {
         "max_results_per_query": 100,
@@ -2098,18 +2144,22 @@ INFLOW_CONFIG = {
         "dispatch_trigger_state": "ACTIVE_SEARCH",
         "task_key": "inflow_discovery",
         "vet_task_key": "vet_inflow_discovery",
-        "vet_dispatch_trigger_state": "NEW",
+        "vet_dispatch_trigger_state": "DISCOVERED",
+        "land_state": "DISCOVERED",
     },
     "resolve": {
         "max_results": 20,
         "date_restrict_days": None,
         "task_key": "inflow_resolve_website",
-        "ai_task_key": "find_company_website",
-        "dispatch_trigger_state": "NEW",
+        "dispatch_trigger_state": "DISCOVERED",
+        "waiting_state": "WEBSITE_REVIEW",
+        "pass_state": "WEBSITE_REVIEW",  # ≥1 CSE hit → waiting
+        "fail_state": "NO_WEBSITE",  # zero CSE hits → terminal
+        "hit_list_data_key": "inflow_resolve_website_hits",
     },
     "vet": {
         "task_key": "vet_inflow_discovery",
-        "dispatch_trigger_state": "NEW",
+        "dispatch_trigger_state": "DISCOVERED",
         "pass_state": "WEBSITE_FOUND",
         "fail_state": "VET_FAILED",
         "blurb_data_key": "inflow_discovery_blurb",
@@ -2118,6 +2168,22 @@ INFLOW_CONFIG = {
         "grade_vector_code": "LT",  # fixed 2-char segment code in encoded lines
     },
 }
+
+# AST-1672: lock DISCOVERED / CSE-only resolve / resolve_website SA cutover.
+assert "DISCOVERED" in COMPANY_STATES
+assert COMPANY_STATES["DISCOVERED"]["batch_criteria"]["sort_by"] == "updated_at"
+assert COMPANY_STATES["WEBSITE_REVIEW"]["batch_criteria"]["sort_by"] == "updated_at"
+assert INFLOW_CONFIG["discovery"]["land_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["discovery"]["vet_dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["vet"]["dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["resolve"]["dispatch_trigger_state"] == "DISCOVERED"
+assert INFLOW_CONFIG["resolve"]["waiting_state"] == "WEBSITE_REVIEW"
+assert INFLOW_CONFIG["resolve"]["hit_list_data_key"] == "inflow_resolve_website_hits"
+assert "ai_task_key" not in INFLOW_CONFIG["resolve"]
+assert ROSTER_CONFIG["company_data_keys"]["inflow_resolve_website_hits"] == INFLOW_CONFIG["resolve"]["hit_list_data_key"]
+assert TASK_CONFIG["resolve_website"]["agent_task"] == "find_company_website"
+assert TASK_CONFIG["resolve_website"]["trigger_state"] == "WEBSITE_REVIEW"
+assert TASK_CONFIG["vet_inflow_discovery"]["trigger_state"] == "DISCOVERED"
 
 # AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
 # task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
@@ -2282,20 +2348,25 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
         "importance": 8,
         "content": (
             "Reality Check — assess whether the company is real and operating as represented.\n"
-            "A = clearly real and verifiable\n"
-            "B = appears real with minor gaps\n"
-            "C = mixed signals; legitimacy uncertain\n"
-            "D = significant doubt about reality or representation\n"
-            "E = strong evidence of misrepresentation\n"
-            "F = not a real company or clearly fraudulent"
+            "A == clearly real and verifiable\n"
+            "B == appears real with minor gaps\n"
+            "C == mixed signals; legitimacy uncertain\n"
+            "D == significant doubt about reality or representation\n"
+            "E == strong evidence of misrepresentation\n"
+            "F == not a real company or clearly fraudulent\n"
+            "X == could not read the page (bot blocked or other network issue)"
         ),
         "grade_descriptions": [
-            {"grade": "A", "description": "Company is clearly real, active, and independently verifiable."},
-            {"grade": "B", "description": "Company appears real with minor verification gaps."},
-            {"grade": "C", "description": "Mixed signals; legitimacy uncertain."},
-            {"grade": "D", "description": "Significant doubt the company is real or operating as represented."},
-            {"grade": "E", "description": "Strong evidence of misrepresentation or shell entity."},
-            {"grade": "F", "description": "Not a real company or clearly fraudulent."},
+            {"grade": "A", "description": "clearly real and verifiable"},
+            {"grade": "B", "description": "appears real with minor gaps"},
+            {"grade": "C", "description": "mixed signals; legitimacy uncertain"},
+            {"grade": "D", "description": "significant doubt about reality or representation"},
+            {"grade": "E", "description": "strong evidence of misrepresentation"},
+            {"grade": "F", "description": "not a real company or clearly fraudulent"},
+            {
+                "grade": "X",
+                "description": "could not read the page (bot blocked or other network issue)",
+            },
         ],
     },
 )
@@ -2469,23 +2540,46 @@ JOB_STATES = {
 }
 
 # ---------------------------------------------------------------------------
-# AST-1469: durable job provenance. gazed = roster/gazer ingest path; meteorite = land path.
-# One-way promotion only: gazed → meteorite allowed; meteorite → gazed forbidden (enforced in tracker).
+# AST-1701: job ingest parent + analysis track SoT (repurposed job.source column).
+# company = gazer/employer parent; meteorite = meteorite staging-row parent.
 # ---------------------------------------------------------------------------
-JOB_SOURCES = ["gazed", "meteorite"]
-JOB_SOURCE_DEFAULT = "gazed"       # backfill + insert default when caller omits source
-JOB_SOURCE_METEORITE = "meteorite"
+SOURCE_ENTITY_TYPES = ["company", "meteorite"]
+SOURCE_ENTITY_TYPE_COMPANY = "company"
+SOURCE_ENTITY_TYPE_METEORITE = "meteorite"
+SOURCE_ENTITY_TYPE_DEFAULT = SOURCE_ENTITY_TYPE_COMPANY  # insert default when caller omits type
 
-assert JOB_SOURCE_DEFAULT in JOB_SOURCES
-assert JOB_SOURCE_METEORITE in JOB_SOURCES
+assert SOURCE_ENTITY_TYPE_DEFAULT in SOURCE_ENTITY_TYPES
+assert SOURCE_ENTITY_TYPE_METEORITE in SOURCE_ENTITY_TYPES
+
+# Temporary aliases for pre-AST-1702 callers (tracker still imports JOB_SOURCE_* until sibling #2).
+# Do not add "gazed" back — writers emit company|meteorite only.
+JOB_SOURCES = SOURCE_ENTITY_TYPES
+JOB_SOURCE_DEFAULT = SOURCE_ENTITY_TYPE_DEFAULT
+JOB_SOURCE_METEORITE = SOURCE_ENTITY_TYPE_METEORITE
+
+# AST-1701: email breadcrumb for no-URL meteorite.link outcomes (authored by sibling #3).
+# Shape: From:<email> M/D H:MM <timezone> To:<email>
+JOB_LINK_BREADCRUMB_FORMAT = "From:{from_email} {clock} To:{to_email}"
+# IANA zone → short label for the clock segment (Manage Candidate contact.timezone options).
+CONTACT_TIMEZONE_CLOCK_LABELS = {
+    "": "UTC",
+    "America/New_York": "Eastern",
+    "America/Chicago": "Central",
+    "America/Denver": "Mountain",
+    "America/Los_Angeles": "Pacific",
+    "America/Anchorage": "Alaska",
+    "Pacific/Honolulu": "Hawaii",
+}
 
 # ---------------------------------------------------------------------------
 # METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
 # Lazy-ensure inserts on demand — never bulk at server start.
 # AST-1493: company_state METEORITE + stem-keyed short_names ({stem}-{candidate_id}).
+# short_name_* templates are NOT job source_entity_id / parent after AST-1640 —
+# meteorite-track job parent is the meteorite row id (sibling #2 stops ensure-as-parent).
 # Job-create defaults (METEORITE_NEW + score) are consumed by create_meteorite_job
 # (AST-1042 / AST-1056); literals stay config-owned (parent Architectural definition).
-# AST-1469: land outcomes, source, dedupe match order, employer_name job_data key.
+# AST-1469 / AST-1701: land outcomes, source_entity_type, dedupe match order, employer_name key.
 # ---------------------------------------------------------------------------
 METEORITE_CONFIG = {
     "short_name_prefix": "meteorite-",
@@ -2504,14 +2598,16 @@ METEORITE_CONFIG = {
     # AST-1042 / AST-1056 job-create defaults (consumed by create_meteorite_job)
     "job_create_state": "METEORITE_NEW",
     "job_create_latest_score": 10.0,
-    # AST-1469 Tracker land / source
-    "job_source": JOB_SOURCE_METEORITE,
+    # AST-1701 Tracker land / parent type (was job_source)
+    "source_entity_type": SOURCE_ENTITY_TYPE_METEORITE,
     "land_outcome_created": "created",
     "land_outcome_duplicate_skip": "duplicate_skip",
     "land_outcome_superseded": "superseded",
     "land_outcome_error": "error",
     "employer_name_job_data_key": "employer_name",
     "dedupe_match_order": ("company_job_id", "job_link"),
+    # AST-1688: meteorite-row column for best electronic resume contact (sibling AST-1689 writes it).
+    "electronic_contact_column": "electronic_contact",
     # min_company_job_id_match_chars assigned after METEORITE_EMAIL_INGEST_CONFIG (same int).
 }
 
@@ -2526,7 +2622,7 @@ assert isinstance(METEORITE_CONFIG["default_stem"], str) and METEORITE_CONFIG["d
 assert "METEORITE" in COMPANY_STATES
 assert COMPANY_STATES["METEORITE"] == {}
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
-assert METEORITE_CONFIG["job_source"] == JOB_SOURCE_METEORITE
+assert METEORITE_CONFIG["source_entity_type"] == SOURCE_ENTITY_TYPE_METEORITE
 assert METEORITE_CONFIG["dedupe_match_order"] == ("company_job_id", "job_link")
 assert isinstance(METEORITE_CONFIG["land_outcome_created"], str) and METEORITE_CONFIG["land_outcome_created"]
 assert isinstance(METEORITE_CONFIG["land_outcome_duplicate_skip"], str) and METEORITE_CONFIG["land_outcome_duplicate_skip"]
@@ -2539,47 +2635,46 @@ assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 # METEORITE_* job lifecycle labels — core transitions decide targets; data accepts state as param.
 METEORITE_STATES = {
     "NEW": {
-        "prior_states": None,  # insert-only entry from classify fan-out
+        "prior_states": ["NEW_EMAIL_ERROR"],  # human reset from stage failure
     },
     "SCRAPE_LINK": {
-        "prior_states": ["NEW", "ERROR"],  # link outcomes; retry from ERROR
+        "prior_states": ["NEW", "SCRAPE_ERROR"],  # link outcomes; retry from SCRAPE_ERROR
     },
     "READY": {
-        # text fan-out from NEW; scrape success; Estelle paste recovery (sibling)
+        # text fan-out from NEW; scrape success; Estelle paste recovery
         "prior_states": ["NEW", "SCRAPE_LINK", "BOT_BLOCKED"],
     },
     "BOT_BLOCKED": {
         "prior_states": ["SCRAPE_LINK"],
     },
-    "ERROR": {
+    "LINK_EXPIRED": {
+        "prior_states": ["SCRAPE_LINK"],  # closed/missing content; not a scrape retry
+    },
+    "SCRAPE_ERROR": {
         "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
+    },
+    "NOT_A_JOB": {
+        "prior_states": None,  # insert-legal; scheduled cleanup; not a dispatch trigger; not stale
+    },
+    "NEW_EMAIL_ERROR": {
+        "prior_states": None,  # insert-legal; not a dispatch trigger; human resets via NEW
     },
     "LANDED": {
         "prior_states": ["READY"],
     },
     "ABANDONED": {
-        "prior_states": ["BOT_BLOCKED", "ERROR"],  # nag limit / terminal stale
+        "prior_states": ["BOT_BLOCKED", "SCRAPE_ERROR"],  # nag limit / terminal stale
     },
 }
 
-# Retention partitions (state literals only — day cutoffs are caller/config for AST-1562).
-METEORITE_STATES_RETENTION = {
-    "purge_states": ("LANDED",),
-    "stale_list_states": ("ERROR", "BOT_BLOCKED", "ABANDONED"),
-}
-
 assert set(METEORITE_STATES) == {
-    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+    "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
 }
 assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
-assert METEORITE_STATES["NEW"]["prior_states"] is None
-assert (
-    set(METEORITE_STATES_RETENTION["purge_states"])
-    | set(METEORITE_STATES_RETENTION["stale_list_states"])
-) <= set(METEORITE_STATES)
-assert set(METEORITE_STATES_RETENTION["purge_states"]).isdisjoint(
-    METEORITE_STATES_RETENTION["stale_list_states"]
-)
+assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+assert METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
+assert METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
 for _ms, _mcfg in METEORITE_STATES.items():
     _priors = _mcfg["prior_states"]
     if _priors is not None:
@@ -2594,14 +2689,11 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
     "scrape_trigger_state": "SCRAPE_LINK",
     "land_trigger_state": "READY",
     "batch_size": 10,
-    "debug_func_stage": "meteorite.run_stage_meteorite",
-    "debug_func_scrape": "meteorite.run_scrape_meteorite",
-    "debug_func_land": "meteorite.run_land_meteorite",
     "scrape_page_status_states": {
         "blocked": "BOT_BLOCKED",
         "ok": "READY",
-        "closed": "ERROR",
-        "missing": "ERROR",
+        "closed": "LINK_EXPIRED",
+        "missing": "LINK_EXPIRED",
     },
 }
 _mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -2615,7 +2707,7 @@ for _tk in ("stage_task_key", "scrape_task_key", "land_task_key"):
 for _tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
     assert _mid_ingress[_tr] in METEORITE_STATES
 assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
-    "READY", "BOT_BLOCKED", "ERROR",
+    "READY", "BOT_BLOCKED", "SCRAPE_ERROR", "LINK_EXPIRED",
 }
 
 # AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
@@ -2624,7 +2716,6 @@ METEORITE_BOT_BLOCKED_NOTIFY_CONFIG = {
     "trigger_state": "BOT_BLOCKED",
     "batch_size": 10,
     "nag_limit": 3,
-    "debug_func": "meteorite.run_notify_meteorite_bot_blocked",
     "dm_first_template": (
         "That job link hit a bot block. Please paste the full job description text here "
         "(copy from the listing page). Blocked link: {link}"
@@ -2640,38 +2731,11 @@ assert _mid_notify["trigger_state"] == "BOT_BLOCKED"
 assert _mid_notify["trigger_state"] in METEORITE_STATES
 assert isinstance(_mid_notify["batch_size"], int) and _mid_notify["batch_size"] >= 1
 assert isinstance(_mid_notify["nag_limit"], int) and _mid_notify["nag_limit"] >= 1
-assert isinstance(_mid_notify["debug_func"], str) and _mid_notify["debug_func"]
 for _tpl_key in ("dm_first_template", "dm_nag_template"):
     _tpl = _mid_notify[_tpl_key]
     assert isinstance(_tpl, str) and _tpl and "{link}" in _tpl
 assert "{nag_count}" in _mid_notify["dm_nag_template"]
 assert "{nag_limit}" in _mid_notify["dm_nag_template"]
-
-# AST-1562: scheduled retention — purge old LANDED; info-list stale ERROR/BOT_BLOCKED/ABANDONED.
-METEORITE_RETENTION_CONFIG = {
-    "task_key": "meteorite_retention",
-    "landed_purge_days": 90,
-    "stale_list_days": 14,
-    "batch_size": 200,
-    "debug_func": "meteorite.run_meteorite_retention",
-    "stale_list_line": (
-        "meteorite retention stale id={row_id} state={state} candidate={candidate_id} "
-        "changed={state_changed_at}"
-    ),
-}
-_mid_retention = METEORITE_RETENTION_CONFIG
-assert isinstance(_mid_retention["task_key"], str) and _mid_retention["task_key"]
-assert isinstance(_mid_retention["debug_func"], str) and _mid_retention["debug_func"]
-assert isinstance(_mid_retention["stale_list_line"], str) and _mid_retention["stale_list_line"]
-assert isinstance(_mid_retention["landed_purge_days"], int) and _mid_retention["landed_purge_days"] >= 1
-assert isinstance(_mid_retention["stale_list_days"], int) and _mid_retention["stale_list_days"] >= 1
-assert isinstance(_mid_retention["batch_size"], int) and _mid_retention["batch_size"] >= 1
-for _ph in ("{row_id}", "{state}", "{candidate_id}", "{state_changed_at}"):
-    assert _ph in _mid_retention["stale_list_line"]
-assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
-assert set(METEORITE_STATES_RETENTION["stale_list_states"]) == {
-    "ERROR", "BOT_BLOCKED", "ABANDONED",
-}
 
 # ---------------------------------------------------------------------------
 # SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
@@ -2801,7 +2865,7 @@ assert isinstance(METEORITE_CONFIG["min_company_job_id_match_chars"], int)
 assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 
 
-# AST-1134/AST-1135 / AST-1466: candidate-bound meteorite_email mailbox dispatch rows
+# AST-1134/AST-1135 / AST-1466: candidate-bound stage_email_meteorite mailbox dispatch rows
 # (one per candidate; no null shell). Live mailbox identity remains GMAIL_USER environ;
 # account_address is the product expectation. entity_type/trigger_state stay None —
 # mailbox poller, not an ENTITY_TYPES claim queue. Runner is candidate-bound
@@ -2810,7 +2874,7 @@ assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 # (STAGE_METEORITE_CONFIG / AST-1529); METEORITE_EMAIL_PARSE_CONFIG is a fold stub only.
 # Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 METEORITE_EMAIL_MAILBOX_CONFIG = {
-    "task_key": "meteorite_email",
+    "task_key": "stage_email_meteorite",
     "account_address": "astral.career.match@gmail.com",
     "auto_mode": False,
     "min_count": 1,
@@ -2822,58 +2886,23 @@ METEORITE_EMAIL_MAILBOX_CONFIG = {
     # Runner — subject-is-URL detection (urlparse.scheme).
     "subject_url_schemes": ("http", "https"),
     # Style D func= string for the runner.
-    "debug_func": "meteorite.check_inbox",
+    "debug_func": "inbox.check_email",
 }
 
-assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "stage_email_meteorite"
 assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "https"}
-assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite.check_inbox"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "inbox.check_email"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
-# AST-1559: always-on info monitoring for meteorite ingress (not Style D).
+# AST-1559: inbox already-ingested outcome (row/classify line templates retired).
 METEORITE_MONITORING_CONFIG = {
-    "subject_max_len": 120,
     "outcome_already_ingested": "already_ingested",
-    "inbox_classify_line": (
-        "meteorite inbox classify from={from_address} mid={message_id} ts={internal_date_ms} "
-        "subj={subject} candidate={candidate_id} outcome={classify_outcome} jobs={job_count}"
-    ),
-    # AST-1560: always-on info row-transition lines (not inbox classify — AST-1559).
-    "row_bot_blocked_line": (
-        "meteorite scrape blocked id={row_id} candidate={candidate_id} link={link}"
-    ),
-    "row_error_line": (
-        "meteorite row error id={row_id} candidate={candidate_id} task={task_key} error={error}"
-    ),
-    "row_landed_line": (
-        "meteorite land id={row_id} candidate={candidate_id} job={astral_job_id}"
-    ),
 }
 
-assert isinstance(METEORITE_MONITORING_CONFIG["subject_max_len"], int)
-assert METEORITE_MONITORING_CONFIG["subject_max_len"] > 0
 assert (
     isinstance(METEORITE_MONITORING_CONFIG["outcome_already_ingested"], str)
     and METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
 )
-_inbox_line = METEORITE_MONITORING_CONFIG["inbox_classify_line"]
-for _placeholder in (
-    "{from_address}",
-    "{message_id}",
-    "{candidate_id}",
-    "{classify_outcome}",
-    "{job_count}",
-):
-    assert _placeholder in _inbox_line
-for _row_key, _row_placeholders in (
-    ("row_bot_blocked_line", ("{row_id}", "{candidate_id}", "{link}")),
-    ("row_error_line", ("{row_id}", "{candidate_id}", "{task_key}", "{error}")),
-    ("row_landed_line", ("{row_id}", "{candidate_id}", "{astral_job_id}")),
-):
-    _row_line = METEORITE_MONITORING_CONFIG[_row_key]
-    assert isinstance(_row_line, str) and _row_line
-    for _ph in _row_placeholders:
-        assert _ph in _row_line
 
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(
@@ -2919,6 +2948,8 @@ STAGE_METEORITE_CONFIG = {
         "not_job_content",
         "not_original_posting",
     ),
+    # AST-1688: Ruth jobs[] JSON key for best electronic resume contact (lockstep with items_schema).
+    "electronic_contact_response_key": "electronic_contact",
 }
 assert STAGE_METEORITE_CONFIG["task_key"] == "stage_meteorite"
 assert METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"] == STAGE_METEORITE_CONFIG["task_key"]
@@ -2956,24 +2987,41 @@ assert TASK_CONFIG["stage_meteorite"]["scored"] is False
 assert list(TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"]) == list(
     STAGE_METEORITE_CONFIG["outcomes"]
 )
-assert "meteorite_email" not in TASK_CONFIG
+assert "stage_email_meteorite" not in TASK_CONFIG
+assert STAGE_METEORITE_CONFIG["electronic_contact_response_key"] == "electronic_contact"
+assert METEORITE_CONFIG["electronic_contact_column"] == STAGE_METEORITE_CONFIG[
+    "electronic_contact_response_key"
+]
+assert (
+    STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    in TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+)
+assert (
+    TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"][
+        STAGE_METEORITE_CONFIG["electronic_contact_response_key"]
+    ]["required"]
+    is False
+)
+# Outcome vocabulary and text source-ref partition unchanged (AST-1529).
+assert "single_jd_no_link" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
+assert "multi_jd_inline" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
 
 # AST-1529: parse_modes Ruth classify RETIRED — live classify is stage_meteorite.
 # Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
 # Historical: AST-1089/1212 parse_modes + shared mailbox↔parse task_key assert — do not restore.
 METEORITE_EMAIL_PARSE_CONFIG = {
-    "task_key": "meteorite_email",
+    "task_key": "stage_email_meteorite",
     "legacy_agent_task_key": "parse_meteorite_email",
     "admin_entity_type": "candidate",
 }
-assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "meteorite_email"
+assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "stage_email_meteorite"
 assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"] == "parse_meteorite_email"
 assert METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"] == "candidate"
 assert "parse_modes" not in METEORITE_EMAIL_PARSE_CONFIG
 
 
 def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
-    """True for meteorite_email or its live legacy agent_task key (AST-1214 fold)."""
+    """True for stage_email_meteorite or its legacy agent_task key parse_meteorite_email."""
     tk = (task_key or "").strip()
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
@@ -3131,67 +3179,70 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
         ")",
     ),
-    # AST-1560: global meteorite ingress transition runners (NULL candidate_id pool).
+    # stat.dispatch.entity-state-bound: per-candidate meteorite ingress transition runners
+    # (was NULL candidate_id global pool pre-remediation; candidate_id now required to claim).
     "dispatch_task-meteorite-ingress": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'stage_meteorite', NULL, 'NEW', 'updated_at', "
+        ") SELECT c.candidate_id, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'stage_meteorite' "
         "    AND d.trigger_state = 'NEW'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'scrape_meteorite', NULL, 'SCRAPE_LINK', 'updated_at', "
+        ") SELECT c.candidate_id, 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'scrape_meteorite' "
         "    AND d.trigger_state = 'SCRAPE_LINK'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'land_meteorite', NULL, 'READY', 'updated_at', "
+        ") SELECT c.candidate_id, 'land_meteorite', 'meteorite', 'READY', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'land_meteorite' "
         "    AND d.trigger_state = 'READY'"
         ")",
     ),
-    # AST-1561: global BOT_BLOCKED Estelle notify runner (NULL candidate_id pool).
+    # stat.dispatch.entity-state-bound: per-candidate BOT_BLOCKED Estelle notify runner
+    # (was NULL candidate_id global pool pre-remediation).
     "dispatch_task-meteorite-bot-blocked-notify": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'meteorite_bot_blocked_notify', NULL, 'BOT_BLOCKED', 'updated_at', "
+        ") SELECT c.candidate_id, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_bot_blocked_notify' "
         "    AND d.trigger_state = 'BOT_BLOCKED'"
         ")",
     ),
-    # AST-1562: global meteorite retention runner (NULL candidate_id; daily hygiene).
-    "dispatch_task-meteorite-retention": (
-        "INSERT INTO dispatch_task ("
-        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
-        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'meteorite_retention', NULL, NULL, 'updated_at', "
-        "0, 24, 0, 200, 0, NULL "
-        "WHERE NOT EXISTS ("
-        "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
-        "    AND d.task_key = 'meteorite_retention'"
+    # stat.dispatch.entity-state-bound: one-time operator cleanup for legacy NULL-candidate_id
+    # rows from the pre-remediation global pool. Linear paste only, run once per environment
+    # AFTER the per-candidate rows above have been seeded — never auto-executed (AST-1496).
+    "dispatch_task-meteorite-ingress-retire-null-pool": (
+        "DELETE FROM dispatch_task "
+        "WHERE candidate_id IS NULL "
+        "  AND task_key IN ("
+        "'stage_meteorite', 'scrape_meteorite', 'land_meteorite', 'meteorite_bot_blocked_notify'"
         ")",
     ),
 }
@@ -3230,14 +3281,13 @@ JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
     "propose_application_responses": "proposed_answers",
 }
 
-# AST-1548: finalize hops write unwrapped body onto the operator artifact slot (base_resume pattern).
-JOB_ARTIFACT_BODY_REPLICA_BY_TASK = {
-    "finalize_job_resume": "job_resume",
-    "finalize_cover_letter": "cover_letter",
-}
-assert not (
-    set(JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK) & set(JOB_ARTIFACT_BODY_REPLICA_BY_TASK)
+# AST-1556 / AST-1602: editable job catalog leaf types from TASK_CONFIG.artifact_key (not body-replica).
+JOB_EDITABLE_ARTIFACT_TYPES = tuple(
+    TASK_CONFIG[task_key]["artifact_key"].rsplit(".", 1)[-1]
+    for task_key in ("finalize_job_resume", "finalize_cover_letter")
 )
+JOB_ARTIFACT_ENTITY_TYPE = "job"
+
 
 _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION = {
     "action_key": "cancel_build",
@@ -3270,12 +3320,13 @@ JOBS_RECOMMENDED_PRIMARY_ACTIONS = {
 
 assert all(state in RECOMMENDED_JOB_STATES for state in JOBS_RECOMMENDED_PRIMARY_ACTIONS)
 
-# AST-948 / AST-1550: top-level Recommended report tabs (Discussion after Artifacts).
+# AST-948 / AST-1550 / AST-1691: top-level Recommended report tabs (Meteorite after Discussion).
 JOBS_RECOMMENDED_REPORT_TOP_TABS = [
     {"tab_id": "summary", "nav_label": "Summary"},
     {"tab_id": "analysis", "nav_label": "Analysis"},
     {"tab_id": "artifacts", "nav_label": "Artifacts"},
     {"tab_id": "discussion", "nav_label": "Discussion"},
+    {"tab_id": "meteorite", "nav_label": "Meteorite"},
 ]
 
 JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
@@ -3284,6 +3335,51 @@ JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS = [
     {"section_id": "caveats", "nav_label": "Noteworthy Caveats", "default_expanded": True},
     {"section_id": "questions", "nav_label": "Questions to Ask", "default_expanded": True},
     {"section_id": "raw_jd", "nav_label": "Raw Job Description", "default_expanded": False},
+]
+
+# AST-1691: Recommended report Meteorite pane sections (config → manifest; React must not invent order).
+JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS = [
+    {"section_id": "meteorite_timestamps", "nav_label": "Timestamps", "default_expanded": True},
+    {"section_id": "meteorite_link", "nav_label": "Link", "default_expanded": True},
+    {"section_id": "meteorite_ai", "nav_label": "AI Content", "default_expanded": True},
+    {
+        "section_id": "meteorite_provenance",
+        "nav_label": "Provenance",
+        "default_expanded": False,
+    },
+]
+
+# AST-1748: Jobs → Meteorites list columns + detail modal sections (config → API; React must not invent order).
+JOBS_METEORITES_LIST_COLUMNS = [
+    {"key": "state", "label": "State", "sortable": True},
+    {"key": "job_title", "label": "Title", "sortable": True},
+    {"key": "employer_name", "label": "Employer", "sortable": True},
+    {"key": "classify_outcome", "label": "Classify", "sortable": True},
+    {"key": "link", "label": "Link", "sortable": True},
+    {"key": "astral_job_id", "label": "Job", "sortable": True},
+    {
+        "key": "state_changed_at",
+        "label": "State Changed",
+        "sortable": True,
+        "defaultDesc": True,
+        "type": "datetime",
+    },
+]
+
+JOBS_METEORITES_MODAL_SECTIONS = [
+    {"section_id": "meteorite_timestamps", "nav_label": "Timestamps", "default_expanded": True},
+    {"section_id": "meteorite_link", "nav_label": "Link", "default_expanded": True},
+    {"section_id": "meteorite_content", "nav_label": "Content", "default_expanded": True},
+    {
+        "section_id": "meteorite_provenance",
+        "nav_label": "Provenance",
+        "default_expanded": False,
+    },
+    {
+        "section_id": "meteorite_job",
+        "nav_label": "Linked Job",
+        "default_expanded": True,
+    },
 ]
 
 # Phase rows are Analysis-tab sections (not top tabs) after AST-948.
@@ -3395,7 +3491,9 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
         return [ts]
     registry = JOB_STATES if entity_type == "job" else (
         COMPANY_STATES if entity_type == "company" else (
-            CANDIDATE_STATES if entity_type == "candidate" else None
+            CANDIDATE_STATES if entity_type == "candidate" else (
+                METEORITE_STATES if entity_type == "meteorite" else None
+            )
         )
     )
     if registry is not None:
@@ -3427,14 +3525,15 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
+    "prefilter_company", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
     "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
     "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
-    "prefilter", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
+    "prefilter_company", "fetch_website", "fetch_job_pages", "select_job_page", "parse_job_list",
     "recheck_no_openings", "gaze", "inflow_resolve_website", "vet_inflow_discovery",
+    "resolve_website",
 })
 
 def resolve_dispatch_task_config_key(task_key: str) -> str:
@@ -3442,29 +3541,8 @@ def resolve_dispatch_task_config_key(task_key: str) -> str:
     return (task_key or "").strip()
 
 
-def dispatch_task_grouping_catalog_key(task_key: str) -> str:
-    """Agent_task row key for admin grouping metadata when dispatch key differs from consult key."""
-    tk = (task_key or "").strip()
-    if tk == "prefilter":
-        return ROSTER_CONFIG["prefilter"]["task_key"]
-    return tk
-
-
-def dispatch_row_task_key(task_key: str) -> str:
-    """Map consult/catalog task_key to dispatch_task.task_key when they differ.
-
-    ROSTER_CONFIG['prefilter']['task_key'] (`prefilter_company`) and the bare
-    dispatch key `prefilter` both resolve to `prefilter` (AST-823 migrated rows).
-    All other keys (including meteorite_grade_* aliases) are identity.
-    """
-    tk = (task_key or "").strip()
-    if tk == "prefilter" or tk == ROSTER_CONFIG["prefilter"]["task_key"]:
-        return "prefilter"
-    return tk
-
-
 def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
-    if task_key == "prefilter":
+    if task_key == "prefilter_company":
         return ROSTER_CONFIG["prefilter"]["input_state"]
     if task_key == "parse_job_list":
         return ROSTER_CONFIG["parse_job_list"]["dispatch_trigger_state"]
@@ -3480,6 +3558,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
     if task_key == "inflow_resolve_website":
         return INFLOW_CONFIG["resolve"]["dispatch_trigger_state"]
+    if task_key == "resolve_website":
+        return "WEBSITE_REVIEW"
     if task_key == "vet_inflow_discovery":
         return INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
     if task_key == "qualify_job_listings":
@@ -3499,6 +3579,14 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "JD_READY"
     if task_key == "evaluate_meteorite":
         return "METEORITE_QUALIFIED"
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["stage_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["scrape_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["land_trigger_state"]
+    if task_key == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]:
+        return METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"]
     if task_key == "grade_do":
         return "PASSED_JD"
     if task_key == "grade_get":
@@ -3534,10 +3622,18 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 
 
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
-    if task_key == "prefilter" or task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
+    if task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
     if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"
+    # stat.dispatch.entity-state-bound: ingress/notify rows now per-candidate meteorite (was global NULL pool).
+    if task_key in (
+        METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+        METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],
+    ):
+        return "meteorite"
     cfg = TASK_CONFIG.get(task_key) or TASK_CONFIG.get(resolve_dispatch_task_config_key(task_key)) or {}
     et = cfg.get("entity_type")
     if isinstance(et, str) and et.strip():
@@ -3569,6 +3665,8 @@ def _dispatch_sort_by_for(entity_type: str, trigger_state: str) -> str:
             raise KeyError(f"dispatch sort_by: company state {trigger_state!r} missing batch_criteria.sort_by")
         return str(sort_by)
     if entity_type == "candidate":
+        return "updated_at"
+    if entity_type == "meteorite":
         return "updated_at"
     raise KeyError(f"dispatch sort_by: unknown entity_type {entity_type!r}")
 
@@ -3619,6 +3717,7 @@ def dispatch_entity_state_registry(entity_type: str) -> Dict[str, Any]:
         "job": JOB_STATES,
         "company": COMPANY_STATES,
         "candidate": CANDIDATE_STATES,
+        "meteorite": METEORITE_STATES,
     }
     if entity_type not in registries:
         raise KeyError(f"unknown dispatch entity_type: {entity_type!r}")
@@ -3639,7 +3738,7 @@ def dispatch_task_admin_defaults(
     if retired:
         raise KeyError(retired)
     # Meteorite mailbox fold (canonical + legacy agent_task key) — before TASK_CONFIG gate.
-    # Canonical meteorite_email: poller seed (MAILBOX_CONFIG entity_type None).
+    # Canonical stage_email_meteorite: poller seed (MAILBOX_CONFIG entity_type None).
     # Legacy parse_meteorite_email: AST-1214 admin form meta keeps admin_entity_type candidate.
     if is_meteorite_email_mailbox_task_key(tk):
         if tk == METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]:
@@ -4308,9 +4407,13 @@ ASTRAL_CONFIG = {
         ("IMPORTED", "WEBSITE_FOUND"),
         ("IMPORTED", "NO_WEBSITE"),
         ("IMPORTED", "WEBSITE_REVIEW"),
-        ("NEW", "WEBSITE_FOUND"),
-        ("NEW", "NO_WEBSITE"),
-        ("NEW", "VET_FAILED"),
+        # AST-1672: inflow leaves NEW; DISCOVERED owns vet + CSE; WEBSITE_REVIEW owns AI apply.
+        ("DISCOVERED", "WEBSITE_FOUND"),
+        ("DISCOVERED", "VET_FAILED"),
+        ("DISCOVERED", "WEBSITE_REVIEW"),
+        ("DISCOVERED", "NO_WEBSITE"),
+        ("WEBSITE_REVIEW", "WEBSITE_FOUND"),
+        ("WEBSITE_REVIEW", "NO_WEBSITE"),
         ("WEBSITE_FOUND", "TO_WATCH"),
         ("WEBSITE_FOUND", "IGNORE"),
         ("WEBSITE_FOUND", "PREFILTER_PASSED"),
@@ -4615,24 +4718,44 @@ def importance_multiplier(n: int) -> float:
 RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
-    "playwright_browsers_path": str(_PROJECT_ROOT / ".browsers"),
 }
 
 # ---------------------------------------------------------------------------
-# PLAYWRIGHT_CONFIG: browser launch, session recovery, scrape timeouts (AST-853).
+# PLAYWRIGHT_CONFIG: scrape timeouts still read by roster/gazer (AST-853 / AST-1726).
+# Launch/Firefox keys removed — platform browser I/O is Telescope HTTP.
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_CONFIG = {
-    "launch_timeout_ms": 60_000,
-    "launch_max_attempts": 3,
-    "launch_retry_delay_seconds": 2.0,
-    "page_goto_timeout_ms": 30_000,
-    "connectivity_timeout_ms": 10_000,
-    "context_recovery_max_attempts": 2,
     "company_scrape_timeout_seconds": 120,
-    "firefox_user_prefs": {
-        "security.sandbox.content.level": 0,
-    },
+    "context_recovery_max_attempts": 2,  # batch session recover retries (client-side)
 }
+
+# ---------------------------------------------------------------------------
+# TELESCOPE_CONFIG: platform HTTP client to Astral Telescope (AST-1726).
+# Bearer is env-only (never a code default secret).
+# ---------------------------------------------------------------------------
+TELESCOPE_CONFIG = {
+    "base_urls": [],  # filled below from TELESCOPE_BASE_URLS or TELESCOPE_BASE_URL
+    "bearer_env": "TELESCOPE_BEARER_TOKEN",
+    "client_timeout_seconds": 60,
+    "max_in_flight": 15,
+    "per_node_max_in_flight": 3,
+    "retry_other_node": True,
+    "max_node_attempts": 2,
+    "healthz_path": "/healthz",
+    "telescope_path": "/telescope",
+    "telescope_html_path": "/telescope/html",
+    "cull_html_default": True,
+    "default_expand": True,
+    "default_wait_ready": False,
+}
+
+_urls_csv = (os.environ.get("TELESCOPE_BASE_URLS") or "").strip()
+if _urls_csv:
+    TELESCOPE_CONFIG["base_urls"] = [u.strip() for u in _urls_csv.split(",") if u.strip()]
+else:
+    _single = (os.environ.get("TELESCOPE_BASE_URL") or "").strip()
+    if _single:
+        TELESCOPE_CONFIG["base_urls"] = [_single]
 
 # ---------------------------------------------------------------------------
 # Timesheet rows (database ledgers): provider string validated on insert.
@@ -5131,6 +5254,7 @@ NAV_CONFIG = [
             {"label": "Skipped", "path": "/jobs/skipped"},
             {"label": "Recommended", "path": "/jobs/recommended"},
             {"label": "Applied", "path": "/jobs/applied"},
+            {"label": "Meteorites", "path": "/jobs/meteorites"},
             {"label": "Responded", "path": "/jobs/responded", "enabled": False},
         ],
     },
@@ -5166,6 +5290,7 @@ NAV_CONFIG = [
             {"label": "Profile", "path": "/candidate/profile"},
             {"label": "Surfer", "path": "/candidate/surfer"},
             {"label": "Strengths", "path": "/candidate/strengths"},
+            {"label": "Bio Summary", "path": "/candidate/bio_summary"},
             {"label": "Priorities", "path": "/candidate/priorities"},
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
@@ -5202,6 +5327,7 @@ NAV_CONFIG = [
         "items": [
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Telescope", "path": "/admin/telescope"},
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
@@ -5288,12 +5414,6 @@ DATA_SHAPES = {
                             {"value": "e/eir", "label": "e/eir"},
                         ]},
                         {"key": "contact.reason_codes", "label": "Reason Codes", "type": "textarea"},
-                    ],
-                },
-                {
-                    "label": "Bio Summary",
-                    "fields": [
-                        {"key": "context.bio_summary", "label": "Bio Summary", "type": "textarea"},
                     ],
                 },
                 {
@@ -5387,7 +5507,7 @@ DATA_SHAPES = {
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "company_website", "label": "Website", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
-                {"key": "state_updated_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
                 {"key": "batch_id", "label": "Batch ID", "sortable": True},
                 {"key": "created_at", "label": "Created", "sortable": True, "type": "datetime"},
             ],
@@ -5396,14 +5516,14 @@ DATA_SHAPES = {
                 {"key": "short_name", "label": "Short Name", "sortable": True},
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
-                {"key": "state_updated_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
             ],
             "ignored": [
                 {"key": "company_name", "label": "Company", "sortable": True},
                 {"key": "short_name", "label": "Short Name", "sortable": True},
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "prefilter_company_notes", "label": "Ignore Reason", "sortable": True, "expandable": True},
-                {"key": "state_updated_at", "label": "Ignored At", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "Ignored At", "sortable": True, "defaultDesc": True, "type": "datetime"},
             ],
             "watch_history": [
                 {"key": "company_name", "label": "Company", "sortable": True},
@@ -5670,6 +5790,14 @@ BUILD_CONFIG = {
             "Letter": {"type": "str", "required": True},
             "signature": {"type": "str", "required": False},
         },
+        # AST-1632: raw string body — value is NOT a field-keyed schema (unlike resume_content / cover_letter).
+        # Operative validation (sibling) gates on body_shape == "plain_text", not shape.items().
+        "plain_text": "raw_string",
+        # AST-1678: structure dict body — sections catalog + optional accent_color.
+        # Value is NOT a field-keyed schema (unlike resume_content / cover_letter) and NOT plain_text.
+        # Operative validation (sibling AST-1679) gates on body_shape == "resume_structure"
+        # and reuses normalize_resume_structure — not shape.items().
+        "resume_structure": "structure_dict",
     },
     # AST-1350: Print / Open HTML when experience is non-array — exact operator toast.
     "unsupported_resume_structure_message": (
@@ -5725,6 +5853,334 @@ BUILD_CONFIG = {
         },
     },
 }
+
+
+# AST-1573 / AST-1575 / AST-1590: authoritative artifact registry (patt.artifact.manage-catalog register half).
+# Key = entity._data path. Pilot + job editable keys.
+ARTIFACT_CONFIG = {
+    "candidate.artifacts.base_resume": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"] (resume section contract).
+        "body_shape": "resume_content",
+        # Core component that owns first-row ingestion for this key (UI save / snapshot today).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.artifacts.resume_structure": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["resume_structure"] (structure dict contract).
+        "body_shape": "resume_structure",
+        # Candidate owns first-row ingestion for structure (UI/API operative save — sibling AST-1679).
+        "ingestion_owner": "candidate",
+    },
+    "job.artifacts.job_resume": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # Same resume section contract as candidate base_resume / JAR use_resume_structure.
+        "body_shape": "resume_content",
+        # Tracker owns first-row ingestion for job editable bodies today (AST-1556).
+        "ingestion_owner": "tracker",
+    },
+    "job.artifacts.cover_letter": {
+        "entity_type": "job",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["cover_letter"] (JAR shapes_key).
+        "body_shape": "cover_letter",
+        "ingestion_owner": "tracker",
+    },
+    "candidate.context.strengths": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Strengths (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.priorities": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Priorities (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+"candidate.context.deal_breakers": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Deal Breakers (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.bio_summary": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Reuse BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string) — do not invent a second shape.
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Bio Summary (UI/API operative save — sibling AST-1649).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.backstory": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Backstory (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.ideal_day": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Reuse BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string) — do not invent a second shape.
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Ideal Day (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+    "candidate.context.writing_preferences": {
+        "entity_type": "candidate",
+        "candidate_scoped": True,
+        # Name into BUILD_CONFIG["artifact_shapes"]["plain_text"] (raw string body).
+        "body_shape": "plain_text",
+        # Candidate owns first-row ingestion for Writing Preferences (UI/API operative save — sibling).
+        "ingestion_owner": "candidate",
+    },
+}
+
+assert set(ARTIFACT_CONFIG.keys()) == {
+    "candidate.artifacts.base_resume",
+    "candidate.artifacts.resume_structure",
+    "job.artifacts.job_resume",
+    "job.artifacts.cover_letter",
+    "candidate.context.strengths",
+    "candidate.context.priorities",
+    "candidate.context.deal_breakers",
+    "candidate.context.bio_summary",
+    "candidate.context.backstory",
+    "candidate.context.ideal_day",
+    "candidate.context.writing_preferences",
+}
+# Sibling job blob keys stay out of the catalog (parent AC / AST-1590 AC2 / AST-1678 AC3).
+for _sibling in (
+    "notes",
+    "resume_content",
+    "proposed_answers",
+    "application_responses",
+    "job.artifacts.notes",
+    "job.artifacts.resume_content",
+    "job.artifacts.proposed_answers",
+    "job.artifacts.application_responses",
+    "job.artifacts.resume_structure",
+):
+    assert _sibling not in ARTIFACT_CONFIG
+
+# Sibling context leaves stay out of the catalog until their own epics.
+# Backstory + Ideal Day registered above — no longer asserted absent.
+# priorities / deal_breakers / bio_summary already registered by prior epics — do not re-freeze them.
+for _ctx_sibling in (
+):
+    assert _ctx_sibling not in ARTIFACT_CONFIG
+
+_br = ARTIFACT_CONFIG["candidate.artifacts.base_resume"]
+assert _br["entity_type"] == "candidate"
+assert _br["entity_type"] in ENTITY_TYPES
+assert _br["candidate_scoped"] is True
+assert isinstance(_br["candidate_scoped"], bool)
+assert _br["body_shape"] == "resume_content"
+assert _br["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _br["ingestion_owner"] == "candidate"
+assert set(_br.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+assert TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"
+assert TASK_CONFIG["craft_resume_base"]["artifact_key"] in ARTIFACT_CONFIG
+
+_rs = ARTIFACT_CONFIG["candidate.artifacts.resume_structure"]
+assert _rs["entity_type"] == "candidate"
+assert _rs["entity_type"] in ENTITY_TYPES
+assert _rs["candidate_scoped"] is True
+assert isinstance(_rs["candidate_scoped"], bool)
+assert _rs["body_shape"] == "resume_structure"
+assert _rs["body_shape"] not in ("resume_content", "plain_text", "cover_letter")
+assert _rs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["resume_structure"] == "structure_dict"
+assert _rs["ingestion_owner"] == "candidate"
+assert set(_rs.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_jr = ARTIFACT_CONFIG["job.artifacts.job_resume"]
+assert _jr["entity_type"] == "job"
+assert _jr["entity_type"] in ENTITY_TYPES
+assert _jr["candidate_scoped"] is True
+assert isinstance(_jr["candidate_scoped"], bool)
+assert _jr["body_shape"] == "resume_content"
+assert _jr["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _jr["ingestion_owner"] == "tracker"
+assert set(_jr.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_cl = ARTIFACT_CONFIG["job.artifacts.cover_letter"]
+assert _cl["entity_type"] == "job"
+assert _cl["entity_type"] in ENTITY_TYPES
+assert _cl["candidate_scoped"] is True
+assert isinstance(_cl["candidate_scoped"], bool)
+assert _cl["body_shape"] == "cover_letter"
+assert _cl["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert _cl["ingestion_owner"] == "tracker"
+assert set(_cl.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_st = ARTIFACT_CONFIG["candidate.context.strengths"]
+assert _st["entity_type"] == "candidate"
+assert _st["entity_type"] in ENTITY_TYPES
+assert _st["candidate_scoped"] is True
+assert isinstance(_st["candidate_scoped"], bool)
+assert _st["body_shape"] == "plain_text"
+assert _st["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _st["ingestion_owner"] == "candidate"
+assert set(_st.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_pr = ARTIFACT_CONFIG["candidate.context.priorities"]
+assert _pr["entity_type"] == "candidate"
+assert _pr["entity_type"] in ENTITY_TYPES
+assert _pr["candidate_scoped"] is True
+assert isinstance(_pr["candidate_scoped"], bool)
+assert _pr["body_shape"] == "plain_text"
+assert _pr["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _pr["ingestion_owner"] == "candidate"
+
+_db = ARTIFACT_CONFIG["candidate.context.deal_breakers"]
+assert _db["entity_type"] == "candidate"
+assert _db["entity_type"] in ENTITY_TYPES
+assert _db["candidate_scoped"] is True
+assert isinstance(_db["candidate_scoped"], bool)
+assert _db["body_shape"] == "plain_text"
+assert _db["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _db["ingestion_owner"] == "candidate"
+assert set(_pr.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_bs = ARTIFACT_CONFIG["candidate.context.bio_summary"]
+assert _bs["entity_type"] == "candidate"
+assert _bs["entity_type"] in ENTITY_TYPES
+assert _bs["candidate_scoped"] is True
+assert isinstance(_bs["candidate_scoped"], bool)
+assert _bs["body_shape"] == "plain_text"
+assert _bs["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _bs["ingestion_owner"] == "candidate"
+assert set(_bs.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_bk = ARTIFACT_CONFIG["candidate.context.backstory"]
+assert _bk["entity_type"] == "candidate"
+assert _bk["entity_type"] in ENTITY_TYPES
+assert _bk["candidate_scoped"] is True
+assert isinstance(_bk["candidate_scoped"], bool)
+assert _bk["body_shape"] == "plain_text"
+assert _bk["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _bk["ingestion_owner"] == "candidate"
+assert set(_bk.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+_wp = ARTIFACT_CONFIG["candidate.context.writing_preferences"]
+assert _wp["entity_type"] == "candidate"
+assert _wp["entity_type"] in ENTITY_TYPES
+assert _wp["candidate_scoped"] is True
+assert isinstance(_wp["candidate_scoped"], bool)
+assert _wp["body_shape"] == "plain_text"
+assert _wp["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _wp["ingestion_owner"] == "candidate"
+assert set(_wp.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+_id = ARTIFACT_CONFIG["candidate.context.ideal_day"]
+assert _id["entity_type"] == "candidate"
+assert _id["entity_type"] in ENTITY_TYPES
+assert _id["candidate_scoped"] is True
+assert isinstance(_id["candidate_scoped"], bool)
+assert _id["body_shape"] == "plain_text"
+assert _id["body_shape"] in BUILD_CONFIG["artifact_shapes"]
+assert BUILD_CONFIG["artifact_shapes"]["plain_text"] == "raw_string"
+assert _id["ingestion_owner"] == "candidate"
+assert set(_id.keys()) == {
+    "entity_type",
+    "candidate_scoped",
+    "body_shape",
+    "ingestion_owner",
+}
+
+# Finalize hops bind to catalog keys via TASK_CONFIG.artifact_key (AST-1602).
+assert TASK_CONFIG["finalize_job_resume"]["artifact_key"] == "job.artifacts.job_resume"
+assert TASK_CONFIG["finalize_job_resume"]["artifact_key"] in ARTIFACT_CONFIG
+assert TASK_CONFIG["finalize_cover_letter"]["artifact_key"] == "job.artifacts.cover_letter"
+assert TASK_CONFIG["finalize_cover_letter"]["artifact_key"] in ARTIFACT_CONFIG
+
+# Editable leaf types are exactly the catalog job-key leaves (order = finalize task keys above).
+assert JOB_EDITABLE_ARTIFACT_TYPES == ("job_resume", "cover_letter")
+assert all(
+    ARTIFACT_CONFIG[TASK_CONFIG[task_key]["artifact_key"]]["entity_type"]
+    == JOB_ARTIFACT_ENTITY_TYPE
+    for task_key in ("finalize_job_resume", "finalize_cover_letter")
+)
+
+# JAR resume/cover tabs: 1:1 leaf map to catalog keys; shapes_key matches body_shape when set.
+_jar_by_id = {t["tab_id"]: t for t in JOBS_RECOMMENDED_ARTIFACT_TABS}
+assert _jar_by_id["artifact_resume"]["artifact_key"] == "job_resume"
+assert _jar_by_id["artifact_resume"]["artifact_key"] == (
+    "job.artifacts.job_resume".rsplit(".", 1)[-1]
+)
+assert ARTIFACT_CONFIG["job.artifacts.job_resume"]["body_shape"] == "resume_content"
+assert _jar_by_id["artifact_cover"]["artifact_key"] == "cover_letter"
+assert _jar_by_id["artifact_cover"]["artifact_key"] == (
+    "job.artifacts.cover_letter".rsplit(".", 1)[-1]
+)
+assert _jar_by_id["artifact_cover"]["shapes_key"] == (
+    ARTIFACT_CONFIG["job.artifacts.cover_letter"]["body_shape"]
+)
+# proposed_answers remains a non-catalog pin/blob slot.
+assert _jar_by_id["artifact_application"]["artifact_key"] == "proposed_answers"
+assert "job.artifacts.proposed_answers" not in ARTIFACT_CONFIG
 
 
 def get_cover_letter_render_token(name: str) -> dict:
@@ -5899,17 +6355,20 @@ is_resume_artifact_in_progress = is_build_artifacts_in_progress
 
 
 def build_artifacts_discussion_hop_task_keys() -> list[str]:
-    """Live run_next walk for Recommended Job Report Discussion sections (AST-1550).
+    """Live run_next walk for Recommended Job Report Discussion sections (AST-1550 / AST-1609).
 
-    Starts at BUILD_CONFIG['resume_artifact_chain']['first_task_key'] (contemplate_job).
-    Follows current agent_task.run_next until empty. Cycle → RuntimeError.
-    Does not include anticipate_scan (not on this chain).
+    first = resume_artifact_chain.first_task_key. When exactly one live agent_task
+    run_next parent of first exists, walk starts there (today: anticipate_scan →
+    contemplate_job); otherwise starts at first. Follows run_next until empty.
+    Cycle → RuntimeError. No hardcoded hop-key list.
     """
     from src.data.database import get_agent_task
 
-    start = ((BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key") or "").strip()
-    if not start:
+    first = ((BUILD_CONFIG.get("resume_artifact_chain") or {}).get("first_task_key") or "").strip()
+    if not first:
         return []
+    parents = _agent_task_parents_with_run_next(first)
+    start = parents[0] if len(parents) == 1 else first
     out: list[str] = []
     seen: set[str] = set()
     key = start
@@ -5965,7 +6424,9 @@ for _alias_key, _alias_cfg in TASK_CONFIG.items():
                 )
 
 # Per-candidate resume section catalog (AST-517 / AST-1303).
-# Persistence: artifacts.resume_structure. Extra ids are per-candidate;
+# Persistence SoT after AST-1677 catalog cutover: candidate.artifacts.resume_structure
+# (ARTIFACT_CONFIG — registered AST-1678). Library blob artifacts.resume_structure remains
+# interim until sibling operative save/hydrate (AST-1679). Extra ids are per-candidate;
 # this list is not a closed extra catalog.
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (
     "candidate_name",
@@ -6152,81 +6613,181 @@ PRONOUN_FORMS: dict[str, dict[str, str]] = {
     "e/eir": {"THEY": "e", "THEIR": "eir", "THEIRS": "eirs", "THEM": "em", "THEMSELF": "emself"},
 }
 
+# AST-1596: closed set of TOKEN_SOURCES["source_type"] values (not redefined in callers).
+TOKEN_SOURCE_TYPES = frozenset({"data_field", "artifact", "special_case"})
+
 # ---------------------------------------------------------------------------
 # TOKEN_SOURCES: authoritative registry of tokens available in prompt content.
 # Prompt authors use {$TOKEN_NAME} syntax; resolve_tokens() replaces them at runtime.
 # Adding a new token = adding one entry here, no code change needed.
+# AST-1596 / AST-1578: every entry requires source_type in TOKEN_SOURCE_TYPES.
+#   data_field  — live blob / overlay field (no versioning / pin)
+#   artifact    — ARTIFACT_CONFIG key via artifact_key (pinnable later; resolve path unchanged here)
+#   special_case — non-data (chain / pronoun / rubric / config / output_type / job)
+# TOKEN_SOURCES and ARTIFACT_CONFIG stay separate registries; artifact tokens reference keys.
 # ---------------------------------------------------------------------------
 TOKEN_SOURCES = {
     # name columns + contact blob (AST-1014)
-    "FIRST_NAME":           {"source": "candidate", "path": "first"},
-    "LAST_NAME":            {"source": "candidate", "path": "last"},
-    "FULL_NAME":            {"source": "candidate", "path": "full"},
-    "CONTACT_EMAIL":        {"source": "candidate", "path": "contact.contact_email"},
-    "REPLY_EMAIL":          {"source": "candidate", "path": "contact.reply_email"},
-    "PHONE":                {"source": "candidate", "path": "contact.phone"},
-    "LOCATION":             {"source": "candidate", "path": "contact.location"},
-    "GITHUB":               {"source": "candidate", "path": "contact.github"},
-    "LINKEDIN_URL":         {"source": "candidate", "path": "contact.linkedin_url"},
+    "FIRST_NAME":           {"source": "candidate", "path": "first", "source_type": "data_field"},
+    "LAST_NAME":            {"source": "candidate", "path": "last", "source_type": "data_field"},
+    "FULL_NAME":            {"source": "candidate", "path": "full", "source_type": "data_field"},
+    "CONTACT_EMAIL":        {"source": "candidate", "path": "contact.contact_email", "source_type": "data_field"},
+    "REPLY_EMAIL":          {"source": "candidate", "path": "contact.reply_email", "source_type": "data_field"},
+    "PHONE":                {"source": "candidate", "path": "contact.phone", "source_type": "data_field"},
+    "LOCATION":             {"source": "candidate", "path": "contact.location", "source_type": "data_field"},
+    "GITHUB":               {"source": "candidate", "path": "contact.github", "source_type": "data_field"},
+    "LINKEDIN_URL":         {"source": "candidate", "path": "contact.linkedin_url", "source_type": "data_field"},
 
     # context (candidate-provided, unaltered)
-    "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.raw_resume"},
-    "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.raw_profile"},
-    "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.raw_sample"},
-    "STRENGTHS":            {"source": "candidate", "path": "context.strengths"},
-    "PRIORITIES":           {"source": "candidate", "path": "context.priorities"},
-    "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers"},
-    "BACKSTORY":            {"source": "candidate", "path": "context.backstory"},
-    "IDEAL_DAY":            {"source": "candidate", "path": "context.ideal_day"},
-    "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences"},
-    "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns"},
-    "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes"},
-    "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "contact.cover_letter_signature"},
-    "THEY":     {"source": "pronoun"},
-    "THEIR":    {"source": "pronoun"},
-    "THEIRS":   {"source": "pronoun"},
-    "THEM":     {"source": "pronoun"},
-    "THEMSELF": {"source": "pronoun"},
+    "STARTING_RESUME_TEXT": {"source": "candidate", "path": "context.raw_resume", "source_type": "data_field"},
+    "LINKEDIN_PROFILE_TEXT": {"source": "candidate", "path": "context.raw_profile", "source_type": "data_field"},
+    "SAMPLE_COVER_TEXT":    {"source": "candidate", "path": "context.raw_sample", "source_type": "data_field"},
+    "STRENGTHS": {
+        "source": "candidate",
+        "path": "context.strengths",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.strengths",
+    },
+    "PRIORITIES": {
+        "source": "candidate",
+        "path": "context.priorities",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.priorities",
+    },
+    "DEAL_BREAKERS": {
+        "source": "candidate",
+        "path": "context.deal_breakers",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.deal_breakers",
+    },
+    "BACKSTORY": {
+        "source": "candidate",
+        "path": "context.backstory",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.backstory",
+    },
+    "IDEAL_DAY": {
+        "source": "candidate",
+        "path": "context.ideal_day",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.ideal_day",
+    },
+    "WRITING_PREFERENCES": {
+        "source": "candidate",
+        "path": "context.writing_preferences",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.writing_preferences",
+    },
+    "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns", "source_type": "data_field"},
+    "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes", "source_type": "data_field"},
+    "COVER_LETTER_SIGNATURE": {"source": "candidate", "path": "contact.cover_letter_signature", "source_type": "data_field"},
+    "THEY":     {"source": "pronoun", "source_type": "special_case"},
+    "THEIR":    {"source": "pronoun", "source_type": "special_case"},
+    "THEIRS":   {"source": "pronoun", "source_type": "special_case"},
+    "THEM":     {"source": "pronoun", "source_type": "special_case"},
+    "THEMSELF": {"source": "pronoun", "source_type": "special_case"},
 
     # artifacts (AI-produced / human-revised)
-    "BASE_RESUME":          {"source": "candidate", "path": "artifacts.base_resume", "serialize": "resume_sections_json"},
-    "BIO_SUMMARY":          {"source": "candidate", "path": "context.bio_summary"},
+    "BASE_RESUME": {
+        "source": "candidate",
+        "path": "artifacts.base_resume",
+        "serialize": "resume_sections_json",
+        "source_type": "artifact",
+        "artifact_key": "candidate.artifacts.base_resume",
+    },
+    "BIO_SUMMARY": {
+        "source": "candidate",
+        "path": "context.bio_summary",
+        "source_type": "artifact",
+        "artifact_key": "candidate.context.bio_summary",
+    },
     # Resolved from company_search_terms table via agent overlay (AST-525); path kept for registry.
-    "COMPANY_SEARCH_TERMS": {"source": "candidate", "path": "artifacts.company_search_terms"},
+    "COMPANY_SEARCH_TERMS": {"source": "candidate", "path": "artifacts.company_search_terms", "source_type": "data_field"},
     # Resolved from rubric_vector rows for active task owner (AST-723).
-    "RUBRIC_VECTORS":       {"source": "rubric"},
+    "RUBRIC_VECTORS":       {"source": "rubric", "source_type": "special_case"},
     # AST-1405: named pins — same serialize path as RUBRIC_VECTORS; owner is the pin, not the running task.
-    "GET_RUBRIC":           {"source": "rubric", "owner_task_key": "grade_get"},
-    "DO_RUBRIC":            {"source": "rubric", "owner_task_key": "grade_do"},
-    "LIKE_RUBRIC":          {"source": "rubric", "owner_task_key": "grade_like"},
-    "JD_RUBRIC":            {"source": "rubric", "owner_task_key": "evaluate_jd"},
-    "PREFILTER_RUBRIC":     {"source": "rubric", "owner_task_key": "prefilter_company"},
+    "GET_RUBRIC":           {"source": "rubric", "owner_task_key": "grade_get", "source_type": "special_case"},
+    "DO_RUBRIC":            {"source": "rubric", "owner_task_key": "grade_do", "source_type": "special_case"},
+    "LIKE_RUBRIC":          {"source": "rubric", "owner_task_key": "grade_like", "source_type": "special_case"},
+    "JD_RUBRIC":            {"source": "rubric", "owner_task_key": "evaluate_jd", "source_type": "special_case"},
+    "PREFILTER_RUBRIC":     {"source": "rubric", "owner_task_key": "prefilter_company", "source_type": "special_case"},
 
     # config-driven (resolved via named function, not dot-path)
-    "RESPONSE_SCHEMA":      {"source": "config", "resolver": "stringify_response_schema"},
+    "RESPONSE_SCHEMA":      {"source": "config", "resolver": "stringify_response_schema", "source_type": "special_case"},
 
     # output-type-driven (resolved from ASTRAL_CONFIG["output_types"][task output_type])
-    "OUTPUT_INSTRUCTIONS":  {"source": "output_type", "field": "payload_instructions"},
+    "OUTPUT_INSTRUCTIONS":  {"source": "output_type", "field": "payload_instructions", "source_type": "special_case"},
 
     # chain/runtime — values from resolve_tokens(..., chain_context=); AST-303 / AST-455
     # Caller-prefixed keys pass resolved segment text hop-to-hop (replaces CACHE_BLOCK_* / AST-304).
-    "CALLER_RESPONSE":    {"source": "chain"},
-    "CALLER_SYSTEM":      {"source": "chain"},
-    "CALLER_CACHE_A":    {"source": "chain"},
-    "CALLER_CACHE_B":    {"source": "chain"},
-    "CALLER_CACHE_C":    {"source": "chain"},
-    "CALLER_CACHE_D":    {"source": "chain"},
-    "SELECTED_AGENT":     {"source": "chain"},
+    "CALLER_RESPONSE":    {"source": "chain", "source_type": "special_case"},
+    "CALLER_SYSTEM":      {"source": "chain", "source_type": "special_case"},
+    "CALLER_CACHE_A":    {"source": "chain", "source_type": "special_case"},
+    "CALLER_CACHE_B":    {"source": "chain", "source_type": "special_case"},
+    "CALLER_CACHE_C":    {"source": "chain", "source_type": "special_case"},
+    "CALLER_CACHE_D":    {"source": "chain", "source_type": "special_case"},
+    "SELECTED_AGENT":     {"source": "chain", "source_type": "special_case"},
     # AST-469: visible listing text from locate hop → parse_job_list (chain_context).
-    "JOB_LIST_VISIBLE": {"source": "chain"},
+    "JOB_LIST_VISIBLE": {"source": "chain", "source_type": "special_case"},
 
     # AST-513: job-scoped artifact prompt tokens (values from job_context dict).
-    "VISIBLE_JD":    {"source": "job"},
-    "ANALYSIS_JD":   {"source": "job"},
-    "ANALYSIS_DO":   {"source": "job"},
-    "ANALYSIS_GET":  {"source": "job"},
-    "ANALYSIS_LIKE": {"source": "job"},
-    "RESUME_SECTION_CATALOG": {"source": "job"},
+    "VISIBLE_JD":    {"source": "job", "source_type": "special_case"},
+    "ANALYSIS_JD":   {"source": "job", "source_type": "special_case"},
+    "ANALYSIS_DO":   {"source": "job", "source_type": "special_case"},
+    "ANALYSIS_GET":  {"source": "job", "source_type": "special_case"},
+    "ANALYSIS_LIKE": {"source": "job", "source_type": "special_case"},
+    "RESUME_SECTION_CATALOG": {"source": "job", "source_type": "special_case"},
+}
+
+# AST-1596: reject half-typed / invalid TOKEN_SOURCES catalogs at import.
+for _token_name, _spec in TOKEN_SOURCES.items():
+    assert isinstance(_spec, dict), _token_name
+    assert "source_type" in _spec, f"TOKEN_SOURCES[{_token_name!r}] missing source_type"
+    assert _spec["source_type"] in TOKEN_SOURCE_TYPES, (
+        f"TOKEN_SOURCES[{_token_name!r}] invalid source_type={_spec['source_type']!r}"
+    )
+    if _spec["source_type"] == "artifact":
+        assert "artifact_key" in _spec, (
+            f"TOKEN_SOURCES[{_token_name!r}] artifact missing artifact_key"
+        )
+        assert _spec["artifact_key"] in ARTIFACT_CONFIG, (
+            f"TOKEN_SOURCES[{_token_name!r}] artifact_key "
+            f"{_spec['artifact_key']!r} not in ARTIFACT_CONFIG"
+        )
+    else:
+        assert "artifact_key" not in _spec, (
+            f"TOKEN_SOURCES[{_token_name!r}] non-artifact must not carry artifact_key"
+        )
+
+assert TOKEN_SOURCES["BASE_RESUME"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["BASE_RESUME"]["artifact_key"] == "candidate.artifacts.base_resume"
+assert TOKEN_SOURCES["STRENGTHS"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["STRENGTHS"]["artifact_key"] == "candidate.context.strengths"
+assert TOKEN_SOURCES["PRIORITIES"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["PRIORITIES"]["artifact_key"] == "candidate.context.priorities"
+assert TOKEN_SOURCES["DEAL_BREAKERS"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["DEAL_BREAKERS"]["artifact_key"] == "candidate.context.deal_breakers"
+assert TOKEN_SOURCES["BIO_SUMMARY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["BIO_SUMMARY"]["artifact_key"] == "candidate.context.bio_summary"
+assert TOKEN_SOURCES["BACKSTORY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["BACKSTORY"]["artifact_key"] == "candidate.context.backstory"
+assert TOKEN_SOURCES["WRITING_PREFERENCES"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["WRITING_PREFERENCES"]["artifact_key"] == "candidate.context.writing_preferences"
+assert TOKEN_SOURCES["IDEAL_DAY"]["source_type"] == "artifact"
+assert TOKEN_SOURCES["IDEAL_DAY"]["artifact_key"] == "candidate.context.ideal_day"
+_artifact_tokens = {
+    name for name, spec in TOKEN_SOURCES.items() if spec["source_type"] == "artifact"
+}
+assert _artifact_tokens == {
+    "BASE_RESUME",
+    "STRENGTHS",
+    "PRIORITIES",
+    "DEAL_BREAKERS",
+    "BIO_SUMMARY",
+    "BACKSTORY",
+    "IDEAL_DAY",
+    "BACKSTORY",
+    "WRITING_PREFERENCES",
 }
 
 # AST-513: phase token → persisted job_data grades_key + rubric artifact key.
@@ -6262,6 +6823,61 @@ def get_manage_agents_tokens() -> list:
     """Sorted Manage Agents picker tokens — registry minus chain/hop tokens (AST-632)."""
     chain = set(get_manage_tasks_chain_tokens())
     return sorted(k for k in get_tokens() if k not in chain)
+
+
+def get_tokens_by_source_type(source_type: str) -> list:
+    """Sorted TOKEN_SOURCES names whose source_type matches ``source_type``.
+
+    ``source_type`` must be a member of TOKEN_SOURCE_TYPES; raises ValueError otherwise.
+    """
+    if source_type not in TOKEN_SOURCE_TYPES:
+        raise ValueError(f"invalid source_type: {source_type!r}")
+    return sorted(
+        name
+        for name, spec in TOKEN_SOURCES.items()
+        if spec.get("source_type") == source_type
+    )
+
+
+def get_artifact_key_for_token(token_name: str) -> str:
+    """Return ARTIFACT_CONFIG key for an artifact-typed TOKEN_SOURCES name.
+
+    Raises ValueError if the name is missing, not artifact-typed, or lacks artifact_key.
+    """
+    spec = TOKEN_SOURCES.get(token_name)
+    if spec is None:
+        raise ValueError(f"unknown token: {token_name!r}")
+    if spec.get("source_type") != "artifact":
+        raise ValueError(f"token is not artifact-typed: {token_name!r}")
+    key = spec.get("artifact_key")
+    if not isinstance(key, str) or not key:
+        raise ValueError(f"artifact token missing artifact_key: {token_name!r}")
+    return key
+
+
+def list_artifact_keys_in_prompt_texts(*texts: str) -> list[str]:
+    """Return ordered-unique ARTIFACT_CONFIG keys for {$TOKEN} names in ``texts``.
+
+    Uses ``_TOKEN_RE`` and ``TOKEN_SOURCES`` / ``get_artifact_key_for_token`` —
+    no hard-coded pinnable-token allowlist. Non-artifact and unknown names are
+    skipped. Empty / None texts are ignored.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        if not isinstance(text, str) or not text:
+            continue
+        for match in _TOKEN_RE.finditer(text):
+            name = match.group(1)
+            spec = TOKEN_SOURCES.get(name)
+            if spec is None or spec.get("source_type") != "artifact":
+                continue
+            key = get_artifact_key_for_token(name)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+    return out
 
 
 CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(
@@ -6467,29 +7083,79 @@ def validate_value(allowed_list: list, value: object) -> None:
         raise ValueError(f"Value {value!r} not in allowed list: {allowed_list}")
 
 
+def is_valid_source_entity_type(value: object) -> bool:
+    """True when value is a SOURCE_ENTITY_TYPES member (AST-1701)."""
+    return isinstance(value, str) and value in SOURCE_ENTITY_TYPES
+
+
+def validate_source_entity_type(value: object) -> None:
+    """Raise ValueError if value is not in SOURCE_ENTITY_TYPES (AST-1701)."""
+    validate_value(SOURCE_ENTITY_TYPES, value)
+
+
+def source_entity_type_transition_allowed(from_type: Optional[str], to_type: str) -> bool:
+    """True when writing to_type is legal given current from_type (AST-1701).
+
+    unset/blank → any SOURCE_ENTITY_TYPES value OK; same value OK; company → meteorite OK;
+    meteorite → company forbidden.
+    """
+    if not is_valid_source_entity_type(to_type):
+        return False
+    cur = (from_type or "").strip()
+    if not cur:
+        return True
+    if cur == to_type:
+        return True
+    if cur == SOURCE_ENTITY_TYPE_COMPANY and to_type == SOURCE_ENTITY_TYPE_METEORITE:
+        return True
+    return False
+
+
 def is_valid_job_source(value: object) -> bool:
-    """True when value is a JOB_SOURCES member (AST-1469)."""
-    return isinstance(value, str) and value in JOB_SOURCES
+    """Alias for is_valid_source_entity_type (pre-#2 callers)."""
+    return is_valid_source_entity_type(value)
 
 
 def validate_job_source(value: object) -> None:
-    """Raise ValueError if value is not in JOB_SOURCES (AST-1469)."""
-    validate_value(JOB_SOURCES, value)
+    """Alias for validate_source_entity_type (pre-#2 callers)."""
+    validate_source_entity_type(value)
 
 
 def job_source_transition_allowed(from_source: Optional[str], to_source: str) -> bool:
-    """True when writing to_source is legal given current from_source (AST-1469).
+    """Alias for source_entity_type_transition_allowed (pre-#2 callers)."""
+    return source_entity_type_transition_allowed(from_source, to_source)
 
-    unset/blank → any JOB_SOURCES value OK; same value OK; gazed → meteorite OK;
-    meteorite → gazed forbidden.
+
+def format_contact_timezone_clock(
+    dt: Union[datetime, None], timezone_key: Optional[str]
+) -> str:
+    """Format dt as ``M/D H:MM <label>`` in contact.timezone (AST-1701).
+
+    Naive dt treated as UTC. Empty/None timezone_key → UTC. Unknown IANA uses the
+    raw zone string as the label.
     """
-    if not is_valid_job_source(to_source):
-        return False
-    cur = (from_source or "").strip()
-    if not cur:
-        return True
-    if cur == to_source:
-        return True
-    if cur == JOB_SOURCE_DEFAULT and to_source == JOB_SOURCE_METEORITE:
-        return True
-    return False
+    if dt is None:
+        raise ValueError("dt required")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    key = (timezone_key or "").strip()
+    try:
+        zone = ZoneInfo(key) if key else ZoneInfo("UTC")
+    except Exception:
+        zone = ZoneInfo("UTC")
+        key = key or ""
+    local = dt.astimezone(zone)
+    label = CONTACT_TIMEZONE_CLOCK_LABELS.get(key)
+    if label is None:
+        label = key if key else "UTC"
+    # M/D H:MM — no leading zeros on month/day; 24-hour clock zero-padded minutes
+    return f"{local.month}/{local.day} {local.hour:02d}:{local.minute:02d} {label}"
+
+
+def format_job_link_breadcrumb(from_email: str, to_email: str, clock: str) -> str:
+    """Assemble JOB_LINK_BREADCRUMB_FORMAT (AST-1701)."""
+    return JOB_LINK_BREADCRUMB_FORMAT.format(
+        from_email=from_email, clock=clock, to_email=to_email
+    )

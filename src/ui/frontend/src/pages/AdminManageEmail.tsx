@@ -20,6 +20,8 @@ type LandMeteoriteResultRow = {
   message_id: string
   outcome: string
   astral_candidate_id: string | null
+  error?: string
+  job_count?: number
 }
 
 type LandMeteoriteResponse = {
@@ -189,7 +191,13 @@ export default function AdminManageEmail() {
         typeof data.total_errors === "number" ? `errors ${data.total_errors}` : null,
       ].filter(Boolean)
       if (parts.length > 0) {
-        setToast({ text: `Land Meteorite: ${parts.join(", ")}`, variant: "success" })
+        const failN =
+          (typeof data.total_failed === "number" ? data.total_failed : 0) +
+          (typeof data.total_errors === "number" ? data.total_errors : 0)
+        setToast({
+          text: `Land Meteorite: ${parts.join(", ")}`,
+          variant: failN > 0 ? "error" : "success",
+        })
       }
       await loadMessages()
     } catch (err) {
@@ -268,6 +276,7 @@ export default function AdminManageEmail() {
                     >
                       {subject} — {row.outcome}
                       {cid ? ` (${cid})` : ""}
+                      {row.error ? ` — ${row.error}` : ""}
                     </li>
                   )
                 })}

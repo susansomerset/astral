@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-1508 archived 2026-09-09 -->
+
+## Linear archive (AST-1508)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1508/judith-per-code-advice-adherence-advise-resume-needs-a-coded-list-for  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1460 — Advise resume needs a coded list for clear adherence  
+**Blocked by / blocks / related:** parent: AST-1460
+
+### Description
+
+## What this implements
+
+Owns `draft_job_resume` answering every Estelle code (applied how / skipped why), config metadata/artifact keys for adherence, normalize so adherence never becomes resume body, and persist/clear beside resume content. After #1. Does **not** re-author Estelle's coded-list emit.
+
+## Citations
+
+`pattern.config.config-block`; `astral.config.config-source-of-truth`; `astral.seed.agent-tables-in-repo-json`; `astral.seed.archie-catalog-wins`; `astral.seed.define-approved`; `astral.agent.do-task-delegation`; `astral.standards.no-hardcoded-sets`; `astral.standards.in-scope-only`; `astral.standards.debug-contract-gated`; `astral.git.engineer-test-tree-ban`; new-pattern flag (coded advice → per-code adherence) if Archie approves.
+
+## Scope
+
+`data/admin/agent_task.json` (draft row/prompt only); `docs/uat-fixtures/AST-756/expected-agent_task.json` (draft row twin); `src/utils/config.py` (`TASK_CONFIG["draft_job_resume"]` adherence metadata / artifact / clear-key extensions); `src/core/candidate.py` (draft per-code adherence normalize/validate; keep resume-body whitelist clean); `src/core/tracker.py` (persist adherence metadata; cancel clear); `src/core/agent.py` (wire draft adherence validate/normalize/persist on existing `do_task` / draft success path).
+
+## Acceptance criteria
+
+- [X] 2. After a successful `draft_job_resume` hop, Judith's payload includes one adherence answer per advise code: either how that item was incorporated, or why it was not.
+- [X] 3. Resume section bodies used for render/persist do not contain the coded-advice or adherence structures (metadata only).
+- [X] 4. COVER LETTER DIRECTION and ASK CANDIDATE behavior is unchanged from today's prompts (no coded adherence required for those sections).
+- [X] 5. A chain run with `debug=True` on touched backend normalize/persist paths logs what coded items were found and what adherence/metadata was recorded (Style D), without requiring UI debug work.
+- [X] 6. Existing job-array / nested `agent_payload.resume` contracts (AST-1270 family) remain valid; this epic does not regress experience shape or nest unwrap.
+
+## Boundaries
+
+- [X] Does not re-author Estelle's coded-list emit (sibling child #1). Does not own Approve Artifacts UI (AST-1205), Resume upshot (AST-1461), or hop-order rewiring. Stack/merge carefully with AST-1465 (User Testing) which also edits `draft_job_resume` prompt wording.
+
+## Notes for planning
+
+Per-code adherence **replaces** today's freeform `deviations: string[]` sibling (AST-1270/1271). Consumer of daisy-chain coded-advice → per-code adherence shape.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1460-advise-resume-coded-list`, child `sub/AST-1460/<child-id>-judith-per-code-advice-adherence`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-26T18:40:01.544Z
+[merge-child] blocked: validate-sub-log — `aa00c3a9 Merge remote-tracking branch 'origin/ftr/AST-1423-…' into dev` in sub-not-ftr range via `3872e476 sync(dev)`. @Hedy Lamarr republish from `origin/ftr/AST-1460-advise-resume-coded-list` via sync-child (fetch + merge ftr, no git pull on sub).
+
+#### radia — 2026-08-26T18:38:49.390Z
+[code-rubric] REVIEW (Commit: 8b4c20b6) adherence replace clean; sibling tests bundled
+
+#### betty — 2026-08-26T18:34:55.495Z
+`origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence` @ `8b4c20b6` · advice adherence manifest
+
+#### joan — 2026-08-26T18:28:49.823Z
+[plan-rubric] PROCEED (Commit: a138e5a) per-code adherence plan
+
+#### hedy — 2026-08-26T18:26:56.941Z
+`origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence` @ `a138e5a70c41efc96ae4dd46fba9181c4372928e` · per-code adherence plan
+
+---
+
 # Judith per-code advice adherence (Advise resume needs a coded list for clear adherence)
 
 **Linear:** [AST-1508](https://linear.app/astralcareermatch/issue/AST-1508/judith-per-code-advice-adherence-advise-resume-needs-a-coded-list-for)

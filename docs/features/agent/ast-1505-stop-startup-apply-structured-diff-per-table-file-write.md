@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-1505 archived 2026-09-09 -->
+
+## Linear archive (AST-1505)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1505/stop-startup-apply-structured-diff-and-per-table-file-write-add-show  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1455 — Add "Show Differences" and "Update file with table version"  
+**Blocked by / blocks / related:** parent: AST-1455; blocks: AST-1506
+
+### Description
+
+## What this implements
+
+Owns removing automatic JSON→database apply at boot, computing the structured row/field comparison with the same normalization as divergence, and writing one table's current rows to that table's JSON only. Exposes admin-authenticated read of the comparison and write of the file. Does not own banner chrome. Does not write the sibling table. Does not amend the statute file itself — cites the Archie-requested change.
+
+## Citations
+
+`pattern.ui.admin-endpoint`, `astral.seed.agent-tables-in-repo-json` (startup-removal request), `astral.standards.dry-and-focused-functions`, `astral.standards.no-hardcoded-sets`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.config.config-source-of-truth`
+
+## Scope
+
+`src/core/repo_admin_json.py` — **modified** — structured row/field comparison for one table; write one table's current rows to that table's JSON only; stop automatic startup apply. `src/core/bootstrap.py` — **modified** — drop or no-op the boot-time call that applied repo admin JSON before serving traffic. `src/ui/api/api_admin.py` — **modified** — authenticated admin read of one table's comparison; authenticated admin write of one table's JSON file. `src/utils/config.py` — **modified** — only the `REPO_ADMIN_JSON_CONFIG` (and related helper comments) so config text no longer describes unconditional startup apply as the seed path. `src/core/repo_admin_json.py` — new comparison helper for one table key that returns rows only in the database, rows only in the file, and per shared row the fields whose normalized file value differs from the normalized table value, reusing the existing normalize/sort path so status and diff cannot disagree. `src/core/repo_admin_json.py` — new or narrowed export helper that writes current database export rows for exactly one table key to that table's configured JSON path (sibling file untouched). `src/core/repo_admin_json.py` — change `apply_repo_admin_json_at_startup` so it never applies repo-wins rows (always no-op), or remove that entry point once bootstrap no longer calls it; keep `revert_repo_admin_json_table` as the explicit JSON→database path. `src/core/bootstrap.py` — stop invoking startup repo-JSON apply in the runtime bootstrap order (or leave a documented no-op call only if removal would confuse callers — prefer removal). `src/ui/api/api_admin.py` — new admin GET that returns the structured comparison for one `agent` / `agent_task` key; new admin POST that writes that one table's file via the core helper and returns success metadata. `src/utils/config.py` — update the repo-admin JSON config block comments (and any operator-facing path description tied to startup apply) so they match "files are durable seed; apply is Revert-only," without changing table keys or paths.
+
+## Acceptance criteria
+
+- [X] After **Update file with table version** on Manage Agents (via API), the personas JSON matches the live personas table; sibling task JSON unchanged when tasks still diverge.
+- [X] After **Update file with table version** on Manage Tasks (via API), the task JSON matches the live task table; sibling personas JSON unchanged when personas still diverge.
+- [ ] Cancel on the Update confirm does not write the file; divergence stays. (AST-1506 UI confirm — API is POST-only on explicit call.)
+- [X] **Revert to file** still restores the database from the file after confirm, without requiring a restart.
+- [X] After a successful database edit that diverges from the file, restarting the server (any deploy env) leaves the live table as edited — it is **not** overwritten from the JSON file.
+
+## Boundaries
+
+- [X] Does not own banner chrome (sibling #2 Katherine). Does not write the sibling table's JSON when updating one page. Does not amend `astral.seed.agent-tables-in-repo-json` statute file — cites Archie-requested change only.
+
+## Notes for planning
+
+Parent AST-1455 definition is authoritative. Statute startup-removal needs Archie approval before implementers treat canon as amended.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1455-show-differences-update-file`, child `sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write`. Created at dispatch-parent.
+
+### Comments
+
+#### ada — 2026-08-26T18:18:47.781Z
+[check-linear] republished sub @ `5051a019` — ftr-base linear history, no sync(dev)/Merge remote-tracking; validate-sub-log ok
+
+#### radia — 2026-08-26T18:16:18.019Z
+[code-rubric] REVIEW (Commit: c4936837) statute corpus lag on parent
+
+#### betty — 2026-08-26T18:12:31.049Z
+`origin/sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write` @ `c4936837` · compare write manifest
+
+#### joan — 2026-08-26T18:06:09.879Z
+[plan-rubric] PROCEED (Commit: b14c091c) core compare write APIs
+
+#### ada — 2026-08-26T18:03:32.667Z
+origin/sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write @ `b14c091c45a50a4969c535660728f817cccd3c48` · three-stage core+API plan
+
+---
+
 # AST-1505 — Stop startup apply, structured diff, and per-table file write
 
 **Linear (this ticket):** [AST-1505](https://linear.app/astralcareermatch/issue/AST-1505/stop-startup-apply-structured-diff-and-per-table-file-write)  

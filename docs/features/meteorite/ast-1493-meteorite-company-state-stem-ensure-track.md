@@ -1,3 +1,101 @@
+<!-- linear-archive: AST-1493 archived 2026-09-09 -->
+
+## Linear archive (AST-1493)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1493/meteorite-company-state-stem-ensure-track-detection-create-meteorite  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1484 — Create meteorite companies per email address  
+**Blocked by / blocks / related:** parent: AST-1484; blocks: AST-1494
+
+### Description
+
+## What this implements
+
+Register `COMPANY_STATES["METEORITE"]`; flip METEORITE_CONFIG company_state; ensure `{stem}-{candidate}` idempotently; track predicate via company state (+ legacy prefix); Style D on ensure. Does **not** own Ruth prompts or inbox wiring.
+
+## Citations
+
+pattern.config.config-block, pattern.state.entity-state-transitions; astral.config.config-source-of-truth, astral.standards.no-hardcoded-sets, astral.standards.debug-contract-gated, astral.state.core-decides-transitions, astral.standards.dry-and-focused-functions.
+
+## Scope
+
+- [X] `src/utils/config.py` — modified — COMPANY_STATES METEORITE; METEORITE_CONFIG company_state + stem templates + meteorite-self literal.
+- [X] `src/core/meteorite.py` — modified — ensure by stem+candidate into METEORITE; broaden track detection via company state (+ legacy prefix); Style D on ensure.
+
+## Acceptance criteria
+
+- [X] 1. `METEORITE` exists in COMPANY_STATES; new meteorite placeholder companies are created in **METEORITE**, not IGNORE.
+- [X] 2. Ruth-discerned stem `alice@example.com` for candidate `somerset` ensures company `alice@example.com-somerset` (or the config-normalized form of that template) in METEORITE; idempotent on repeat.
+- [X] 3. When Ruth returns `meteorite-self`, the company short_name is `meteorite-self-{candidate_id}` in METEORITE.
+- [X] 4. When Ruth returns a job-link slug stem, the company short_name is `{slug}-{candidate_id}` in METEORITE.
+- [X] 5. Meteorite-track carve-outs treat METEORITE-state companies (and METEORITE_* jobs) as meteorite track; legacy `meteorite-{candidate}` rows still work until restated.
+- [X] 6. Slack/Contact lands without email sender still use `meteorite-{candidate_id}` in METEORITE.
+- [X] 7. Existing jobs under old IGNORE placeholders are not bulk-migrated in this epic (optional leave-in-place); new ensures use METEORITE.
+- [X] 8. With `debug=True`, ensure/land emit Style D for stem and company; with `debug=False`, no new debug-contract noise.
+
+## Boundaries
+
+- [X] Does not own Ruth prompts or inbox/gaze land wiring (siblings #2 / #3).
+
+## Notes for planning
+
+Estimate 5. Bang !! — blocks later blockers. After #1 for siblings.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent ftr/AST-1484-create-meteorite-companies-per-email-address, child sub/AST-1484/<this-id>-meteorite-company-state-stem-ensure-track. Created at dispatch-parent.
+
+## QA test manifest
+
+`origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track` @ `cedbfa68` (`merge-tests(AST-1493): origin/tests be1dc566`)
+
+1. `tests/component/utils/test_config.py::TestAst1041MeteoriteConfig` — revised: `company_state == "METEORITE"` (was IGNORE).
+2. `tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig` — `COMPANY_STATES["METEORITE"] == {}`; stem template / default_stem / meteorite_self_stem; default stem + template == legacy short_name_template.
+3. `tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany` — revised Style D multi-detail (`candidate_id=` / `stem=` / `company_state=`).
+4. `tests/component/core/test_meteorite.py::TestAst1493StemEnsureAndTrack` — email / meteorite-self / slug / default stem ensure into METEORITE; leave-in-place IGNORE; `is_meteorite_company` prefix + state; Style D stem.
+5. `tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob` — revised ensured company state METEORITE (was hard IGNORE).
+
+**Broken / obsolete (this pass):** AST-1041 `company_state == "IGNORE"`; AST-1041 Style D last-`call_args` `candidate_id=`; AST-1042 hard `state == "IGNORE"`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
+  tests/component/core/test_meteorite.py::TestAst1493StemEnsureAndTrack \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  -q
+```
+
+**Bible (on publish-ref):**
+
+* `docs/test-bible/core/meteorite.md` `c75b1f4688067367463cdeb1b40bdcd4df2854647e4be4990034ed50dbadcafe`
+* `docs/test-bible/utils/config.md` `f4eae909f641c1c8d2bd698bfb1f91567c5e1c7ef2acdf2edb3bfd20ec65ddcc`
+
+— Betty
+
+### Comments
+
+#### radia — 2026-08-26T16:01:08.700Z
+[code-rubric] PROCEED (Commit: cedbfa68) METEORITE stem ensure clean
+
+#### betty — 2026-08-26T15:54:52.618Z
+`origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track` @ `cedbfa68` · stem ensure coverage
+
+#### joan — 2026-08-26T15:43:12.876Z
+[plan-rubric] PROCEED (Commit: fc70680fd29b42cbd8230c109cfba5d211c4a026) config ensure track sound
+
+#### ada — 2026-08-26T15:39:36.814Z
+`origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track` @ `fc70680fd29b42cbd8230c109cfba5d211c4a026` · plan ready
+
+---
+
 # AST-1493 — METEORITE company state + stem ensure + track detection
 
 **Linear:** [AST-1493](https://linear.app/astralcareermatch/issue/AST-1493/meteorite-company-state-stem-ensure-track-detection-create-meteorite)  

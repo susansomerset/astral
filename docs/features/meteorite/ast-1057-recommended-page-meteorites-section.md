@@ -475,3 +475,251 @@ meteorite_section?: {
 
 No product changes. Acknowledged discuss stragglers as plan-time Joan exclusions that became in-scope on the three-dot vs `origin/dev` (stacked siblings + Betty tests/docs) — no code delta. Advanced to **User Testing**.
 
+## Bug: AST-1708 — Null-guard Recommended list startsWith
+
+### As-is
+
+Opening **Recommended Jobs** throws `TypeError: Cannot read properties of null (reading 'startsWith')` inside the `sections` `useMemo` → `rows.filter(isMeteoriteJob)` path in `JobsRecommended.tsx`, and React Router’s error boundary replaces the page.
+
+### To-be
+
+Recommended Jobs loads and partitions meteorite vs normal rows without throwing when a job row’s `company` is `null` (or otherwise non-string). Null/empty `company` is treated as not a meteorite-prefix match and stays in the normal state-section path.
+
+### Repro
+
+1. Have at least one job on the Recommended surface (`RECOMMENDED` / `BUILD_ARTIFACTS` / `CANDIDATE_REVIEW`) whose API/list payload includes `"company": null` (TypeScript `Job.company` is typed `string`, but runtime JSON can be null — e.g. after nullable company linkage).
+2. Navigate to `/jobs/recommended` with a loaded state-UI manifest that includes `jobs.recommended.meteorite_section.company_prefix` (e.g. `"meteorite-"`).
+3. Observe: client throws at `job.company.startsWith(prefix)` during `Array.filter` inside `useMemo`; error boundary.
+
+Fixture-shaped predicate input (enough for a component test):
+
+```ts
+const rows = [
+  { astral_job_id: "j1", company: null as unknown as string, state: "RECOMMENDED", /* … */ },
+  { astral_job_id: "j2", company: "meteorite-acme", state: "RECOMMENDED", /* … */ },
+  { astral_job_id: "j3", company: "Acme Corp", state: "RECOMMENDED", /* … */ },
+]
+// After fix: no throw; j2 → Meteorites; j1 and j3 → normal Recommended section.
+```
+
+### Root cause
+
+AST-1057 Stage 2 defined membership as:
+
+`isMeteoriteJob(job) => Boolean(prefix) && job.company.startsWith(prefix)`
+
+That assumes `job.company` is always a string. When `company` is `null`, `Boolean(prefix)` is true (prefix non-empty) and evaluation reaches `null.startsWith(...)`, which throws. The call sits inside `rows.filter` in a `useMemo`, matching the live stack.
+
+Sibling Recommended-surface http(s) helpers (`JobMeteoritePane.isNavigableHttpLink`, `RecommendedJobReportHeader` title-link coerce, `JobAnalysisReportModal.httpListingHref`) already null-guard before `.startsWith` and are **not** the list crash site.
+
+### Proposed change
+
+**File (in scope):** `src/ui/frontend/src/pages/JobsRecommended.tsx` only.
+
+In the `sections` `useMemo` (current tip ~L92–129), change the meteorite membership predicate from:
+
+```ts
+const isMeteoriteJob = (job: Job) => Boolean(prefix) && job.company.startsWith(prefix)
+```
+
+to:
+
+```ts
+const isMeteoriteJob = (job: Job) =>
+  Boolean(prefix) && (job.company ?? "").startsWith(prefix)
+```
+
+Behavior:
+
+- `company` null/undefined → `""` → does not start with a non-empty prefix → **not** meteorite; row stays in `normalRows` and is grouped by `job.state` as today.
+- `company` string (including `""`) → same as today.
+- Do **not** change prefix sourcing (`meteorite_section?.company_prefix ?? ""`), section prepend rules, normal/legacy grouping, table markup, or `/api/jobs` payload shape.
+- Do **not** edit `JobMeteoritePane.tsx`, `RecommendedJobReportHeader.tsx`, or `JobAnalysisReportModal.tsx` on this ticket (already null-safe; stack is list partition only).
+- Do **not** widen into `sortJobs` `company.localeCompare` or other list pages — out of AST-1708 `## Scope`.
+
+Optional type honesty (same file, only if `tsc` complains after the nullish coalesce): widen local `Job.company` to `string | null` so the interface matches runtime; not required if the coalesce alone typechecks.
+
+### Blast radius
+
+- **Same path:** `meteoriteRows` / `normalRows` filters and Meteorites prepend — null-company jobs that previously crashed the page will now appear under normal state sections (not Meteorites).
+- **Tests:** Betty’s AST-1057 Vitest `tests/component/frontend/pages/test_JobsRecommended.test.tsx` assumes string companies; may need a null-company case later (qa-fix / Betty) — engineer does not edit `tests/`.
+- **Sibling tickets:** AST-1692 / AST-1695 / AST-1704 link helpers already guard; no product change expected there.
+- **Out of scope adjacent:** `sortJobs` still calls `a.company.localeCompare` — could throw if the user sorts by Company on a null-company row; not this bug’s `startsWith` scope.
+
+### What must still hold
+
+- Manifest-driven membership only: prefix from `manifest.jobs.recommended.meteorite_section.company_prefix`; no hardcoded `"meteorite-"` in the page (`astral.standards.no-hardcoded-sets` / Stage 2).
+- Non-meteorite Recommended / In Progress / Ready sections still iterate **`normalRows` only**; meteorite-prefix jobs still excluded from those sections when `company` matches prefix.
+- Meteorites section still prepends only when `meteoriteRows.length > 0` and `meteorite_section` is present.
+- Empty/missing prefix still disables meteorite partition (`Boolean(prefix)` false) — all rows stay normal.
+- No new Recommended job state; no config/manifest contract change; no GDL / dispatch / Create edits.
+
+
+
+## Review-fix findings (AST-1708)
+
+| Item | Verdict |
+|------|---------|
+| Prefix from `manifest.jobs.recommended.meteorite_section.company_prefix` only; no hardcoded `"meteorite-"` | **holds** — `meteoriteSection?.company_prefix ?? ""` unchanged |
+| Normal Recommended / In Progress / Ready iterate `normalRows` only; prefix matches excluded | **holds** — `normalRows` / `meteoriteRows` split unchanged |
+| Meteorites prepends only when `meteoriteRows.length > 0` && `meteorite_section` present | **holds** — `out.unshift` guard unchanged |
+| Empty/missing prefix disables partition (`Boolean(prefix)` false) | **holds** — short-circuit before `.startsWith` |
+| No new state, no config/manifest/GDL/dispatch/Create edits | **holds** — single predicate nullish-coalesce only |
+
+## Findings
+
+### fix-now
+
+**Location:** test bar — `TESTS: REVISE` with no `qa-fix` / `[bug-repro]` delivery  
+**Finding:** Board raised the repro-first bar; tip has product fix only (`JobsRecommended.tsx` `(job.company ?? "").startsWith(prefix)`). No regression test pins null-`company` partition behavior. `test-fix` gate was bypassed.  
+**Recommendation:** Route through `resolve-child`: spawn `qa-fix` (Betty lands `[bug-repro]` + bible node), then re-run `test-fix` for red→green. Do **not** advance to User Testing on product-only tip.
+
+### discuss
+
+**Location:** AST-1708 Linear description — Canon Scope  
+**Finding:** No frozen directive list on the bug ticket (parent AST-1707 also none). Fix-board Joan pass was `CANON: OK`; product change is a one-line null guard inside existing AST-1057 manifest partition — no canon edit implied. Process gap vs validate-plan §4a empty-list rule, but not blocking product review given board + ancestor context.  
+**Recommendation:** Archie/Chuckles: consider adding explicit `Citations: none` or minimal scope ids on future UAT-batch bugs for Radia comparability.
+
+### advisory
+
+**Location:** `JobsRecommended.tsx` `sortRecommendedJobs` L39–40  
+**Finding:** `a.company.localeCompare(b.company)` can still throw if user sorts by Company on a null-company row. Plan-fix explicitly excludes this (`## Blast radius` / `## Proposed change`).  
+**Recommendation:** Accept for AST-1708 scope; file separately if Susan hits it in UAT.
+
+## What's solid
+
+- Product fix matches `plan-fix` `## Proposed change` exactly — minimal `(job.company ?? "").startsWith(prefix)` in `isMeteoriteJob`.
+- Scope discipline: only `JobsRecommended.tsx` touched; sibling components correctly left alone.
+- Null/empty `company` → not meteorite-prefix match → `normalRows` path — correct `## To-be` semantics.
+- `## What must still hold` invariants intact on publish ref.
+
+## Notes for Chuckles
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (findings, C7 complete) | Normal AST-1707 UAT-batch | → **Review Posted** → `resolve-child` → **User Testing** after `[bug-repro]` bar cleared |
+
+context_tokens≈28000
+
+## Resolution (AST-1708 — resolve-child)
+
+**Date:** 2026-09-18  
+**Publish tip at resolve:** `origin/sub/AST-1707/AST-1708-null-guard-recommended-startswith` (product @ `4e8a88bd`; review-fix append @ `746dce2e`)
+
+| Finding | Disposition |
+|---------|-------------|
+| **fix-now** — missing `[bug-repro]` / bible after board `TESTS: REVISE` | **No product change on this tip.** Coverage is sibling gap **AST-1709** (orphaned fix-board path: TESTS:REVISE → gap child, not `qa-fix` on AST-1708). Do not regress this ticket to wait on Betty here. |
+| **discuss** — no frozen Canon Scope on bug | Accepted as process note; no code. |
+| **advisory** — `sortRecommendedJobs` `localeCompare` still null-unsafe | Out of AST-1708 scope per plan-fix; no code. |
+
+Product null-guard `(job.company ?? "").startsWith(prefix)` unchanged. Advanced to **User Testing**; assignee remains Katherine.
+```
+
+
+## Docs-acceptance (AST-1708)
+
+`docs-acceptance` — product tip; null-company partition Vitest/bible owned by sibling gap **AST-1709** (orphaned fix-board TESTS:REVISE path).
+
+## Bug: AST-1709 — Gap: null-company Recommended partition test coverage
+
+### As-is
+
+`tests/component/frontend/pages/test_JobsRecommended.test.tsx` AST-1057 cases only use string `company` values (`"meteorite-cand-1"`, vetted names). Nothing asserts that a recommended-list row with `company: null` renders without throw or partitions as non-meteorite when `meteorite_section.company_prefix` is set. The AST-1707 production crash (`null.startsWith`) was therefore unreproed in suite. Sibling product fix AST-1708 already null-guards `(job.company ?? "").startsWith(prefix)` on `JobsRecommended.tsx`.
+
+### To-be
+
+The JobsRecommended Vitest suite includes an explicit null-`company` partition case (prefix present): page does not throw; null-company job is **not** under Meteorites; it remains in the normal state section. `docs/test-bible/frontend/pages.md` records that coverage next to the AST-1057 / JobsRecommended entry.
+
+### Repro (pre-coverage gap)
+
+Against product **without** AST-1708’s null-guard, this fixture shape throws inside `sections` `useMemo` → `filter(isMeteoriteJob)`:
+
+```ts
+const rows = [
+  ...sectionedJobs, // existing string-company fixtures
+  {
+    astral_job_id: "j-null-co",
+    job_title: "Null Company Rec",
+    company: null,
+    state: "RECOMMENDED",
+    state_changed_at: "2026-01-06T00:00:00Z",
+    jd_score: 1, do_score: 1, get_score: 1, like_score: 1,
+  },
+]
+// installBaseApiMocks + renderWithProviders(<JobsRecommended />)
+// → TypeError: Cannot read properties of null (reading 'startsWith')
+```
+
+With AST-1708 landed, the same fixture must stay green and assert partition (this ticket’s job).
+
+### Root cause
+
+Board `[board-betty] TESTS: REVISE` on AST-1708: AST-1057 bible/`test_JobsRecommended` coverage never exercised null `company` through `isMeteoriteJob`, so the guard could regress without a red suite. Gap child AST-1709 owns test + bible only — no further product change.
+
+### Proposed change
+
+**In scope (test-tree / bible only — no `src/`):**
+
+1. **`tests/component/frontend/pages/test_JobsRecommended.test.tsx`** — add one `it` adjacent to the existing AST-1057 Meteorites cases (after “omits Meteorites when no meteorite- company jobs” is fine):
+
+   - Title pattern: `AST-1708/AST-1709: null company does not throw; stays out of Meteorites` (or equivalent stable node id Betty prefers).
+   - Build `mixed = [...sectionedJobs, nullCompanyRow, oneMeteoriteRow]` where:
+     - `nullCompanyRow`: `company: null`, `state: "RECOMMENDED"`, distinct `job_title` e.g. `"Null Company Rec"`.
+     - `oneMeteoriteRow`: `company: "meteorite-cand-1"` (or any string matching fixture `meteorite_section.company_prefix`), `state: "RECOMMENDED"`, distinct title e.g. `"Meteorite Rec"`.
+   - `installBaseApiMocks(mockedApi, jobsViewHandler("recommended", mixed))` + `renderWithProviders(<JobsRecommended />)` — same harness as AST-1057 cases (fixture already supplies `meteorite_section`).
+   - Assert:
+     - `waitFor` finds `"Null Company Rec"` (proves no throw / page rendered).
+     - Meteorites heading count is **1** (only the meteorite-prefix job): `/Meteorites \(1\)/`.
+     - Within Meteorites section: meteorite title present; `"Null Company Rec"` **absent**.
+     - Recommended heading includes the null-company job with the prior two vetted RECOMMENDED rows → `/Recommended \(3\)/`; within that section, `"Null Company Rec"` present.
+   - Do **not** rewrite existing AST-1057 cases; do **not** add product assertions beyond partition/render.
+
+2. **`docs/test-bible/frontend/pages.md`** — under the existing **`### AST-1057 · AST-1052`** block (or a short sibling **`### AST-1709 · AST-1707`** pointing at the same suite), record:
+   - Coverage: null `company` through Recommended meteorite partition (`isMeteoriteJob` / sections `useMemo`).
+   - File + node id / title pattern from (1).
+   - Command unchanged:
+     `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx`
+   - Note dependency: product null-guard is sibling **AST-1708** (`(job.company ?? "").startsWith(prefix)`); this gap does not re-edit `JobsRecommended.tsx`.
+
+**Out of scope:** any `src/ui/**` / config / manifest change; sibling link-helper startsWith tests; `sortJobs` null-`company` localeCompare coverage.
+
+### Blast radius
+
+- Extends only the JobsRecommended Vitest file + frontend pages bible entry for AST-1057 lineage.
+- Existing AST-1057 prepend/omit cases and non-meteorite section/sort/Skip cases must stay green.
+- Against a tree **missing** AST-1708’s product guard, the new case is the repro (red); against AST-1708 tip / rolled `ftr`, green.
+
+### What must still hold
+
+- Manifest-driven prefix only — tests continue to use fixture `meteorite_section.company_prefix`, not a hardcoded membership set in production code (`astral.standards.no-hardcoded-sets`).
+- Meteorites still prepends only when meteorite-prefix rows exist; vetted Recommended / In Progress / Ready counts for string-company fixtures unchanged.
+- Empty/missing prefix behavior of AST-1057 “omits Meteorites” case unchanged.
+- Engineer test-tree ban: landing of (1)/(2) is Betty / qa-fix (or test-tree owner) — not a product `code()` commit on this gap.
+
+
+
+## Radia review (AST-1709)
+
+PROCEED — [bug-repro] OK; What must still hold OK. §3h shortcut to User Testing.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/37a416c61e4d353a48369a20a3dd4eb7/23ddf91e-cdb4-4f49-8cf7-18ebdcfcb95a/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/468ea701-db85-4c2b-88c1-4515876133ef/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/37a416c61e4d353a48369a20a3dd4eb7/4fd8705f-cc22-4841-ad57-14d90886bc56/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1707 (parent) | ftr/AST-1707-recommended-jobs-startswith-null |
+| AST-1708 | sub/AST-1707/AST-1708-null-guard-recommended-startswith |
+| AST-1709 | sub/AST-1707/AST-1709-null-company-recommended-partition-test |
+
+**Epic worktree:** `astral-AST-1707/` — one active sub checked out at a time.

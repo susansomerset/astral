@@ -1,3 +1,100 @@
+<!-- linear-archive: AST-1410 archived 2026-09-09 -->
+
+## Linear archive (AST-1410)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1410/apply-silent-refetch-on-remaining-loading-gate-surfaces-page-refreshes  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1406 — Page refreshes and modals are closed (lost!)  
+**Blocked by / blocks / related:** parent: AST-1406
+
+### Description
+
+## What this implements
+
+After #2. Same in-place rule on the other authenticated surfaces that currently replace themselves with a loading state on refetch after first paint, including Manage Tasks (the overlay in this ticket’s log). Operator Cancel/reset that currently reloads the browser (when there is no snapshot to restore) becomes an in-place reset instead. Does not invent a push channel. Does not retouch Scheduled Actions except to consume the shared shape.
+
+## Citations
+
+`pattern.ui.in-place-live-refresh`, `astral.standards.dry-and-focused-functions`, `astral.standards.in-scope-only`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`.
+
+## Acceptance criteria
+
+- [X] 4. A background poll that fires while an overlay is open does not close the overlay or wipe its draft.
+- [X] 5. Manage Tasks (the overlay in this ticket’s log) and other authenticated list surfaces that currently replace themselves with a loading state on refetch after first paint follow the same in-place rule.
+- [X] 6. Log-off still clears the session. Vite still reloads when frontend source files change.
+
+## Boundaries
+
+- [X] Does not invent a push channel. Does not retouch Scheduled Actions except to consume the shared shape (sibling #2). Does not disable Vite live-reload when frontend source files change. Does not persist overlay drafts across intentional close or log-off.
+
+## Notes for planning
+
+Consumes `pattern.ui.in-place-live-refresh` from #2. After #2.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1406-page-refreshes-and-modals-are-closed`, child `sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces`. Created at dispatch-parent.
+
+## QA test manifest
+
+Vitest silent-refetch coverage for remaining loading-gate surfaces (Manage Tasks overlay, other admin/job lists, ArtifactEditor no-snapshot Cancel). Hook contract stays AST-1409. No integration revision.
+
+ 1. Hook (existing): `tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx`
+ 2. Manage Tasks: `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` — `--testNamePattern="AST-1410"`
+ 3. Manage Agents: `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — `--testNamePattern="AST-1410"`
+ 4. Scheduled Queries: `tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx`
+ 5. Manage Email: `tests/component/frontend/pages/test_AdminManageEmail.test.tsx` — `--testNamePattern="AST-1410"`
+ 6. Performance Monitor: `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — `--testNamePattern="AST-1410"`
+ 7. Recommended: `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1410"`
+ 8. In Review: `tests/component/frontend/pages/test_JobsInReview.test.tsx` — `--testNamePattern="AST-1410"`
+ 9. Skipped: `tests/component/frontend/pages/test_JobsSkipped.test.tsx` — `--testNamePattern="AST-1410"`
+10. ArtifactEditor Cancel: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1410"`
+11. Search Terms first paint: `tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx`
+
+Narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  --testNamePattern="AST-1410|useInPlaceLiveRefresh|renders company search terms page"
+```
+
+Bible shasums (`origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces`):
+
+* `docs/test-bible/frontend/pages.md` `02af0e1cd84fb2230248480f0ef0303f7c2811bb`
+* `docs/test-bible/frontend/hooks.md` `48b9e465d6d8112340019d5c4a53140ad82b1e51`
+* `docs/test-bible/frontend/components.md` `87a53c54540dd55d5446001f2d5bca043cccbbd8`
+
+### Comments
+
+#### radia — 2026-08-17T06:43:23.168Z
+[code-rubric] REVIEW (Commit: 1e6970bc) sibling scope on publish ref
+
+#### betty — 2026-08-17T06:34:12.328Z
+`origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces` @ `b4ffa3a6` · silent refetch tests
+
+#### joan — 2026-08-17T06:07:21.515Z
+[plan-rubric] PROCEED (Commit: 49c4a4e2) remaining gates silent
+
+#### katherine — 2026-08-17T05:58:32.490Z
+`origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces` @ `49c4a4e2` · remaining gates planned
+
+---
+
 # Apply silent refetch on remaining loading-gate surfaces
 
 **Linear:** [AST-1410](https://linear.app/astralcareermatch/issue/AST-1410)

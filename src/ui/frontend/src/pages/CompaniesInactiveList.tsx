@@ -11,7 +11,7 @@ interface Company {
   short_name: string
   company_name: string
   state: string
-  state_updated_at: string | null
+  state_changed_at: string | null
   state_history: Array<{ to_state?: string; timestamp?: string }>
   [key: string]: unknown
 }

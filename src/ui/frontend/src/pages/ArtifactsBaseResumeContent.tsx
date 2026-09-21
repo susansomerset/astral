@@ -231,7 +231,7 @@ export default function BaseResumeContent() {
         title="Base Resume Content"
         artifactKey="base_resume"
         taskKey="craft_resume_base"
-        useCandidateResumeStructure
+        bodyShape="resume_content"
         structureSections={structureSections}
         structureCatalog={catalog}
         structureRows={allSections}

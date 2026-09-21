@@ -1,3 +1,67 @@
+<!-- linear-archive: AST-1531 archived 2026-09-09 -->
+
+## Linear archive (AST-1531)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1531/caller-cutover-mailbox-inbox-contact-generalize-meteorite-ingress  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1527 — Generalize Meteorite Ingress Point  
+**Blocked by / blocks / related:** parent: AST-1527
+
+### Description
+
+## What this implements
+
+Wire `meteorite_email` `_handle_bound`, inbox `_land_bound_inbox_message` / `fetch_email` / admin Land, and `contact_land_meteorite` through the public stage entry; keep hygiene/archive in callers. Does not own catalog (#1) or stage core (#2). After #2.
+
+## Citations
+
+`pattern.layers.import-discipline`, `astral.standards.in-scope-only`, `astral.layers.import-direction`
+
+## Scope
+
+- [X] `src/core/meteorite_email.py` — **modified** — `_handle_bound` drops mechanical classify tree; bind → stage → archive/skip from stage outcomes; mailbox hygiene stays here.
+- [X] `src/core/inbox.py` — **modified** — `_land_bound_inbox_message` / `fetch_email` / admin Land paths call stage instead of raw HTML → `land_meteorite`.
+- [X] `src/core/contact.py` — **modified** — `contact_land_meteorite` (and paste/Slack scrap callers on this path) send blob + source handle through stage before land.
+- [X] `src/core/meteorite_email.py` — **major modified **`_handle_bound`: remove subject/href/inspector heuristic tree; call stage; drive archive-on-success / leave-in-inbox from stage+land outcomes; keep unbound trash / `last_email_check`.
+- [X] `src/core/inbox.py` — **modified **`_land_bound_inbox_message` and selected-ids / `run_fetch_email` land path: stage then land; preserve bind/strip ownership in inbox.
+- [X] `src/core/contact.py` — **modified **`contact_land_meteorite`: pass source handle + scrap body into stage; do not call `land_meteorite` with unclassified blobs.
+
+## Acceptance criteria
+
+- [X] 6. Mailbox `meteorite_email`, inbox Land/`fetch_email`, and Contact land paths each invoke stage before land; mechanical subject/href/inspector classify is gone from `_handle_bound`.
+
+## Boundaries
+
+- [X] Does not own catalog (#1) or stage core (#2). After #2.
+
+## Notes for planning
+
+Citations above. Parent AST-1527.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1527-generalize-meteorite-ingress-point`, child `sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-29T18:31:40.289Z
+[code-rubric] PROCEED (Commit: 3afaf3e8) caller cutover clean
+
+#### betty — 2026-08-29T18:27:48.600Z
+`origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact` @ `3afaf3e853bc1efdb948b2c74c19753ac9cc8f00` · caller cutover tests ready
+
+#### joan — 2026-08-29T18:17:17.474Z
+[plan-rubric] PROCEED (Commit: 54754e3328e39f5a839e45cf3df12e6c9f3dae93) caller cutover ready
+
+#### katherine — 2026-08-29T18:15:32.615Z
+`origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact` @ `54754e3328e39f5a839e45cf3df12e6c9f3dae93` · plan ready for Joan
+
+---
+
 # AST-1531 — Caller cutover (mailbox, inbox, Contact)
 
 **Linear:** [AST-1531](https://linear.app/astralcareermatch/issue/AST-1531/caller-cutover-mailbox-inbox-contact-generalize-meteorite-ingress)  

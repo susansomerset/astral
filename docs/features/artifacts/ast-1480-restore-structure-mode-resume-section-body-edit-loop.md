@@ -1,3 +1,96 @@
+<!-- linear-archive: AST-1480 archived 2026-09-09 -->
+
+## Linear archive (AST-1480)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1480/restore-structure-mode-resume-section-body-edit-loop-resume-editor-is  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1459 — Resume editor is not working properly  
+**Blocked by / blocks / related:** parent: AST-1459
+
+### Description
+
+## What this implements
+
+Delivers loaded, editable, savable section bodies on Base Resume Content and JAR Job Resume through shared ArtifactEditor structure mode. Does **not** own craft-base generation, Print HTML, builder emit, or resume_structure catalog schema changes.
+
+## Citations
+
+`pattern.ui.admin-endpoint`, `pattern.ui.in-place-live-refresh`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only`.
+
+## Scope
+
+`ArtifactEditor.tsx` (structure-mode load through `tabs[].content`, body edit gating, Save payload); conditional touch `LabeledTextArea.tsx`, `ExperienceJobsEditor.tsx`, `ArtifactsBaseResumeContent.tsx`, `JobAnalysisReportModal.tsx`, `App.css` only if needed for the repro; `test_ArtifactEditor.test.tsx` + `test_ArtifactsBaseResumeContent.test.tsx` if page wiring touched.
+
+## Acceptance criteria
+
+- [X] 1. **Base Resume Content** — with a candidate that has non-empty `artifacts.base_resume` section values, expanding each enabled structure section shows the saved text (or populated Experience job-array UI) and allows editing; Save persists changes visible after page reload.
+- [X] 2. **JAR Job Resume** — with a recommended job that has non-empty `job_data.artifacts.resume_content`, expanding structure sections shows saved text, allows editing, and Save persists via job artifact PUT visible after modal re-open.
+- [X] 3. **Structure headers unchanged** — AST-1323 header authoring controls (name, format, Enabled, Job Edit, Up/Down, Remove) still render and Save sections still writes `resume_structure` independently of body Save.
+- [X] 4. **Experience path** — valid job-array Experience sections remain editable via ExperienceJobsEditor; unsupported legacy shapes still show the configured unsupported message (not silent blank panels).
+- [X] 5. **Component tests** — `test_ArtifactEditor.test.tsx` structure-mode + jobPersistence cases pass on publish ref; any new repro case added for the reported failure shape is green.
+- [X] 6. **No backend scope creep** — if the fix is frontend-only, no changes under `src/core/` or `src/ui/api/` unless Susan confirms a separate API hydration bug.
+
+## Boundaries
+
+Does not own craft-base generation, Print HTML, builder emit, or resume_structure catalog schema changes.
+
+## Notes for planning
+
+Estimate 3. Single vertical slice — load/edit/save share one hydration/editability gate.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1459-resume-editor-is-not-working-properly`, child `sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop`. Created at dispatch-parent.
+
+### Comments
+
+#### betty — 2026-08-25T19:11:58.654Z
+`origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `eaed624f` · single merge-tests
+
+#### chuckles — 2026-08-25T19:08:28.965Z
+[merge-child] blocked: duplicate merge-tests(AST-1480) on sub — count=2 (amend on tests, one merge-tests only). @Betty White please squash to a single merge-tests on the publish ref.
+
+#### ada — 2026-08-25T19:07:49.257Z
+`origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `b188744d` · §9a clean
+
+#### betty — 2026-08-25T19:05:57.604Z
+`origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `c109a45d` · rubric body edit locked
+
+#### ada — 2026-08-25T19:02:19.708Z
+[qa-handoff]
+@Betty White
+
+Radia fix-now on AST-1480: product `bodiesEditable` gate is fixed on
+`origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `b8ea1761`
+(`!inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)`).
+
+Still need a **test/manifest** lock (engineer cannot touch `tests/`):
+- Extend `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — type into a **rubric** (free-form) criterion body and assert the candidate artifact PUT payload includes the edited content (regression Radia called out; existing "edits rubric artifacts" path only Regenerate→Save).
+- Update `docs/test-bible/frontend/components.md` ### AST-1480 manifest with that case.
+
+Stay Review Posted until you land merge-tests and reassign Ada.
+
+#### radia — 2026-08-25T19:00:40.329Z
+[code-rubric] REVIEW (Commit: bcc05032) rubric bodiesEditable regression
+
+#### betty — 2026-08-25T18:56:15.445Z
+`origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `bcc05032` · structure body tests ready
+
+#### ada — 2026-08-25T18:50:54.782Z
+`origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `1ca41eaa` · Stage2 skip; mode A+B
+
+#### joan — 2026-08-25T18:44:37.219Z
+[plan-rubric] PROCEED (Commit: 9ca35357) Scope-faithful hydration slice
+
+#### ada — 2026-08-25T18:41:00.965Z
+`origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `9ca35357` · plan ready
+
+---
+
 # AST-1480 — Restore structure-mode resume section body edit loop
 
 **Linear:** [AST-1480](https://linear.app/astralcareermatch/issue/AST-1480/restore-structure-mode-resume-section-body-edit-loop-resume-editor-is) (child of [AST-1459](https://linear.app/astralcareermatch/issue/AST-1459/resume-editor-is-not-working-properly))

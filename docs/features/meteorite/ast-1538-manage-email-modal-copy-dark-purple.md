@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1538 archived 2026-09-09 -->
+
+## Linear archive (AST-1538)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1538/manage-email-modal-copy-dark-purple-manage-email-gives-html-for-the  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.  
+**Blocked by / blocks / related:** parent: AST-1533
+
+### Description
+
+## What this implements
+
+Owns the Manage Email popup: render the assembled header+body HTML from the inbox get API, add the copy control, and set the reading-surface background to dark purple theme tokens. Does not own land/qualify blob assembly (after #1).
+
+## Citations
+
+`pattern.ui.admin-endpoint`, `pattern.ui.shared-button-roles`, `astral.layers.ui-config-driven-business-logic`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.in-scope-only`
+
+## Scope
+
+`src/ui/frontend/src/pages/AdminManageEmail.tsx` (render assembled HTML; copy control); `src/ui/frontend/src/App.css` (dark purple email popup reading surface)
+
+## Acceptance criteria
+
+- [X] 1. Opening a message on Manage Email shows HTML that includes From, To, Subject, and Date when present, plus the body — not body-only.
+- [X] 2. A copy control on that popup puts the same header+body HTML on the clipboard.
+- [X] 3. The popup’s email reading surface uses the dark purple admin background (not white).
+- [X] 4. Land Meteorite multi-select behavior on Manage Email remains available and is not regressed by the popup/copy work.
+
+## Boundaries
+
+- [X] Does not own land/qualify blob assembly or Gmail/inbox strip paths (sibling #1). After #1.
+
+## Notes for planning
+
+Unmarked — after sibling #1. Parent AST-1533.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1533-manage-email-header-html`, child `sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-29T20:52:11.917Z
+[code-rubric] REVIEW (Commit: 759f8508) modal assembled HTML; 1534 tests bundled
+
+#### betty — 2026-08-29T20:49:07.284Z
+`origin/sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple` @ 759f8508 · modal copy purple coverage
+
+#### joan — 2026-08-29T20:43:23.404Z
+[plan-rubric] PROCEED (Commit: 93cf11e0ee366120490c72e5b15e69f0cf8f051c) modal copy dark purple
+
+#### katherine — 2026-08-29T20:41:39.981Z
+`origin/sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple` @ `93cf11e0ee366120490c72e5b15e69f0cf8f051c` · plan ready
+
+---
+
 # AST-1538 — Manage Email modal copy + dark purple
 
 **Linear:** [AST-1538](https://linear.app/astralcareermatch/issue/AST-1538/manage-email-modal-copy-dark-purple-manage-email-gives-html-for-the)  

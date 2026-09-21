@@ -1,3 +1,80 @@
+<!-- linear-archive: AST-1470 archived 2026-09-09 -->
+
+## Linear archive (AST-1470)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1470/land-meteorite-qualify-meteorite-enrichment-meteorite-component  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1457 — Meteorite component  
+**Blocked by / blocks / related:** parent: AST-1457; blocks: AST-1472; blocks: AST-1471
+
+### Description
+
+## What this implements
+
+Public land_meteorite: scraps in → agent + gazer flesh-out via repurposed qualify_meteorite → Tracker save from sibling #1; placeholder company; known-company metadata; Style D. After #1.
+
+## Citations
+
+pattern.agent.prompt-persist-before-provider, pattern.batch.entity-agent-responses, pattern.layers.import-discipline; astral.agent.do-task-delegation, astral.standards.debug-contract-gated, astral.standards.data-raises-caller-logs, astral.state.no-daisy-chain-in-run.
+
+## Scope
+
+- [X] `src/core/meteorite.py` (`land_meteorite`, no Gmail)
+- [X] `src/core/agent.py` / `src/core/consult.py` (invoke repurposed `qualify_meteorite`)
+- [ ] `tests/component/core/test_meteorite.py` — Betty / qa-child
+
+## Acceptance criteria
+
+- [X] 1. Callable `land_meteorite` with scraps (link-only, text-only, or both) returns created / duplicate-skip / superseded / error — never a silent no-op. (Contact/inbox wiring → AST-1471/1472.)
+- [X] 2. When intake learns an employer name, the job remains on meteorite-{candidate_id} with the name in job metadata.
+- [X] 3. `src/core/meteorite.py` has no Gmail/mailbox imports. (inbox fetch_email and Contact call land_meteorite → siblings.)
+- [X] 4. Packet→job enrichment uses repurposed `qualify_meteorite`; AST-1320 meteorite_email empty-jobs quality is not required for this epic to pass UAT.
+- [X] 5. With debug=True, each packet/job shows Style D found→recorded; with debug=False, no new debug-contract noise on touched paths.
+
+## Boundaries
+
+- [X] Does not own job source column (#1), intake API/Contact (#3), or inbox fetch_email/gaze_email retarget (#4).
+
+## Notes for planning
+
+Estimate 5. Bang !! — after #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent ftr/AST-1457-meteorite-component, child sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-25T14:43:20.842Z
+[code-rubric] PROCEED (Commit: b3a236ce) Land enrich clean; Betty tests landed
+
+#### betty — 2026-08-25T04:00:45.280Z
+`origin/sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment` @ `b3a236ce6e2f99dbbaa3e5be14ca519149ef4449` · land enrich Tracker tests
+
+#### joan — 2026-08-25T03:44:45.111Z
+[plan-rubric] PROCEED (Commit: 26de05c1) land enrich plan ready
+
+#### hedy — 2026-08-25T03:43:30.884Z
+[plan-discuss] round=1 reply
+
+`origin/sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment` @ `26de05c1`
+
+- Stage 1: mint `qualify_meteorite-land-{uuid}`, `log_batch_id.set`/`finally` clear, `index=do_index` like `_run_batch_consult`; audit-only entity_id
+- Stage 3: late-import `enrich_meteorite_land_packet` inside `land_meteorite` only
+- Scope gate: AC1/AC3 callable vs wired note
+
+#### joan — 2026-08-25T03:41:18.443Z
+[plan-rubric] REVIEW (Commit: b1bc838) land do_task batch_id gap
+
+#### hedy — 2026-08-25T03:38:18.308Z
+`origin/sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment` @ `b1bc8382` · plan ready for Joan
+
+---
+
 # AST-1470 — land_meteorite + qualify_meteorite enrichment
 
 **Linear:** [AST-1470](https://linear.app/astralcareermatch/issue/AST-1470/land-meteorite-qualify-meteorite-enrichment-meteorite-component)  

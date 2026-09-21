@@ -34,11 +34,12 @@ from src.utils.config import (
     GAZER_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
     ROSTER_CONFIG,
+    SOURCE_ENTITY_TYPE_METEORITE,
     TRACKER_CONFIG,
     PLAYWRIGHT_CONFIG,
 )
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
-from src.core.meteorite import create_meteorite_job, is_meteorite_company
+from src.core.meteorite import create_meteorite_job
 from src.data.database import (
     get_company,
     job_link_exists_for_candidate,
@@ -47,7 +48,7 @@ from src.data.database import (
     text_matches_known_company_job_id_for_candidate,
     update_company_last_scan_at,
 )
-from src.external.playwright import (
+from src.external.telescope import (
     create_browser_context,
     create_batch_browser_session,
     get_page,
@@ -876,8 +877,8 @@ async def validate_title_batch(
     passed = failed = 0
     for ji, job in enumerate(jobs, start=1):
         aid = job.get("astral_job_id", "")
-        # AST-1152: meteorite track never gets roster title-pattern outcomes.
-        if is_meteorite_company(job.get("company")):
+        # AST-1152 / AST-1704: meteorite track (source SoT) never gets roster title-pattern outcomes.
+        if (job.get("source") or "").strip() == SOURCE_ENTITY_TYPE_METEORITE:
             if debug:
                 _log.debug_index(
                     func="gazer.validate_title_batch",

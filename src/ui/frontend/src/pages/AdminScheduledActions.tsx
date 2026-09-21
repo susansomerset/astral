@@ -51,6 +51,16 @@ function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMe
   }
 }
 
+function inputStatesForEntity(
+  entityType: string,
+  options: { job: string[]; company: string[]; candidate: string[] },
+): string[] {
+  if (Object.prototype.hasOwnProperty.call(options, entityType)) {
+    return options[entityType as keyof typeof options]
+  }
+  return []
+}
+
 interface DispatchTask {
   id: number
   candidate_id: string | null
@@ -174,7 +184,7 @@ function ScheduledPhaseTable({
             const isRunning = thread?.running ?? false
             const isDraining = thread?.draining ?? false
             const avail = row.available_count ?? 0
-            const isSweep = avail > 0
+            const isSweep = !!row.auto_mode && avail > 0
             const sweepDisabled = !!row.auto_mode && avail >= (row.min_count || 1)
             return (
               <tr
@@ -302,14 +312,14 @@ export default function ScheduledActions() {
   const frozenN = resolveFrozenDataColumns(uiConfig, FROZEN_DATA_COLUMNS)
   const truncateChars = resolveCellTruncateChars(uiConfig)
 
-  const loadThreadStatus = useCallback(async () => {
-    const res = await api("/api/admin/scheduler/thread_status")
+  const loadThreadStatus = useCallback(async (silent = false) => {
+    const res = await api("/api/admin/scheduler/thread_status", silent ? { silent: true } : {})
     if (res.ok) setThreadStatus(await res.json())
   }, [])
 
   useEffect(() => {
     loadThreadStatus()
-    pollRef.current = setInterval(loadThreadStatus, 5_000)
+    pollRef.current = setInterval(() => { void loadThreadStatus(true) }, 5_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [loadThreadStatus])
 
@@ -325,13 +335,7 @@ export default function ScheduledActions() {
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
   const [maxRunsFilter, setMaxRunsFilter] = useState("")
   const inputStateOptions = useMemo(
-    () => (
-      form.entity_type === "company"
-        ? stateOptions.company
-        : form.entity_type === "candidate"
-          ? stateOptions.candidate
-          : stateOptions.job
-    ),
+    () => inputStatesForEntity(form.entity_type, stateOptions),
     [form.entity_type, stateOptions],
   )
 
@@ -556,7 +560,27 @@ export default function ScheduledActions() {
       }
       return
     }
-    setTimeout(loadThreadStatus, 500)
+    const body = await res.json().catch(() => ({ started: true }))
+    if (body.started !== false) {
+      setThreadStatus(prev => ({
+        ...prev,
+        [row.id]: {
+          running: true,
+          draining: false,
+          task_key: row.task_key,
+          candidate_id: row.candidate_id ?? "",
+          is_auto: !!row.auto_mode,
+        },
+      }))
+    }
+    const watch = async () => {
+      const res = await api("/api/admin/scheduler/thread_status", { silent: true })
+      if (!res.ok) return
+      const next = await res.json() as Record<number, ThreadEntry>
+      setThreadStatus(next)
+      if (next[row.id]?.running) setTimeout(watch, 500)
+    }
+    setTimeout(watch, 500)
   }
 
   const handleStop = async (e: React.MouseEvent, row: DispatchTask) => {
@@ -623,6 +647,7 @@ export default function ScheduledActions() {
             min_count: parseInt(form.min_count, 10),
             trigger_state: form.trigger_state,
             task_key: form.task_key,
+            entity_type: form.entity_type,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
             score_floor: form.is_scored
@@ -652,6 +677,7 @@ export default function ScheduledActions() {
             candidate_id: form.candidate_id,
             task_key: form.task_key,
             trigger_state: form.trigger_state,
+            entity_type: form.entity_type,
             freq_hrs: parseFloat(form.freq_hrs) || 0,
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
@@ -907,7 +933,23 @@ export default function ScheduledActions() {
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Entity Type</span>
-                <input type="text" value={form.entity_type} readOnly style={{ opacity: 0.7 }} />
+                <select
+                  value={form.entity_type}
+                  onChange={e => {
+                    const next = e.target.value
+                    const nextStates = inputStatesForEntity(next, stateOptions)
+                    setForm({
+                      ...form,
+                      entity_type: next,
+                      trigger_state: nextStates.includes(form.trigger_state) ? form.trigger_state : "",
+                    })
+                  }}
+                >
+                  <option value="">Select…</option>
+                  {Object.keys(stateOptions).map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Input State</span>

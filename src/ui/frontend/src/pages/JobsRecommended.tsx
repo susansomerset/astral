@@ -93,7 +93,9 @@ export default function Recommended() {
     if (!manifest) return []
     const meteoriteSection = manifest.jobs.recommended.meteorite_section
     const prefix = meteoriteSection?.company_prefix ?? ""
-    const isMeteoriteJob = (job: Job) => Boolean(prefix) && job.company.startsWith(prefix)
+    // Null company is not a meteorite-prefix match (runtime JSON can be null).
+    const isMeteoriteJob = (job: Job) =>
+      Boolean(prefix) && (job.company ?? "").startsWith(prefix)
     const meteoriteRows = rows.filter(isMeteoriteJob)
     const normalRows = rows.filter(job => !isMeteoriteJob(job))
     const byState: Record<string, Job[]> = {}

@@ -45,6 +45,12 @@ export interface StateUiManifest {
         shapes_key: string | null
         use_resume_structure: boolean
       }>
+      // AST-1692: Meteorite pane sections from AST-1691 config → manifest.
+      report_meteorite_sections?: Array<{
+        section_id: string
+        nav_label: string
+        default_expanded: boolean
+      }>
       // AST-1057: partition by METEORITE_CONFIG company prefix (manifest-driven).
       meteorite_section?: {
         section_id: string

@@ -1,3 +1,100 @@
+<!-- linear-archive: AST-1411 archived 2026-09-09 -->
+
+## Linear archive (AST-1411)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1411/ad-hoc-seven-segment-resolve-assemble-persist-update-adhoc-agent-to  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1403 — Update Adhoc Agent to mirror new task structure  
+**Blocked by / blocks / related:** parent: AST-1403; blocks: AST-1412
+
+### Description
+
+## What this implements
+
+Own the backend path: preview and test accept all seven segments; token-resolve each; assemble and send Cache A–D as separate cached blocks (empty omitted); workbench Test stores those blocks plus No Cache / Task / Response; Test response includes enough identity for the workbench to load that run’s agent_data panes. Save As already has columns — this child must not drop B–D on the way through preview/test/store. Does **not** own React editors, the preview modal, or the on-page agent_data panes (those are #2 / #3).
+
+## Citations
+
+`pattern.ui.admin-endpoint`, `pattern.layers.import-discipline`, `pattern.config.config-block`, `astral.agent.do-task-delegation`, `astral.standards.debug-contract-gated`, `astral.config.config-source-of-truth`, `astral.standards.dry-and-focused-functions`
+
+## Acceptance criteria
+
+- [X] 5. For a Test whose editors have System + Cache A + Cache C + User populated (B and D empty), `agent_data` for that batch contains SYSTEM, CACHE_A, CACHE_C, TASK, and RESPONSE, and does not contain empty CACHE_B or CACHE_D rows. Opening the same batch from Execution History shows the same blocks.
+- [X] 6. Empty System in the editors still sends the selected agent’s content at Preview and Test (production fallback); Save As with empty System leaves `system_prompt` empty on the row.
+- [X] 7. When `debug=True` on a Test that stores multiple blocks, logs show a per-block index header plus found → recorded detail; when `debug=False`, that Test adds no new debug-contract lines.
+
+(Parent AC 3–4 modal/panes belong to later siblings. This child supplies the preview/test payload shape and stored blocks those siblings display.)
+
+## Boundaries
+
+- [X] Does **not** own React editors, the preview modal, or the on-page agent_data panes (siblings #2 / #3).
+- [X] Does **not** change Manage Tasks, production `do_task` assembly, dispatch, or `run_next`.
+- [X] Does **not** re-do AST-1392 / AST-1393 / AST-1394 success-body stringify.
+
+## Notes for planning
+
+Reuse the seven-segment assemble/store helper production already uses. Empty cache slots omitted. When `debug=True`, found → recorded per stored block (AST-538). Estimate: 5
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1403-update-adhoc-agent-to-mirror-new-task-structure`, child `sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist` @ `11477b6c6664e3f60c9fe23519e86e40d6b0f5c7`
+
+**Bible shasums** (on publish ref):
+
+* `docs/test-bible/core/agent.md` `090e04d0088f720b5433d78f4476ab816aeb8542`
+* `docs/test-bible/ui/api/api_admin.md` `f0912468fc3fa9d50db062364a0383f44bf69e8f`
+
+1. Existing workbench ledger + `batch_id` / four-slot store kwargs: `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
+2. RESPONSE stringify regression: `tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody`
+3. Seven-segment persist / assemble / Style D: `tests/component/core/test_agent.py::TestAst1411AdhocSevenSegment`
+4. Existing preview/test envelopes (revised mocks): `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test`
+5. Preview still ledger-free: `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_does_not_create_dispatch_ledger`
+6. Stringify HTTP regression: `tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText`
+7. Seven-segment resolve/preview + Test identity: `tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody \
+  tests/component/core/test_agent.py::TestAst1411AdhocSevenSegment \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_does_not_create_dispatch_ledger \
+  tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
+  tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Comments
+
+#### radia — 2026-08-17T05:11:04.595Z
+[code-rubric] PROCEED (Commit: 11477b6c) seven-segment adhoc wired
+
+#### betty — 2026-08-17T05:06:16.607Z
+`origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist` @ `11477b6c6664e3f60c9fe23519e86e40d6b0f5c7` · seven-segment workbench tests
+
+#### ada — 2026-08-17T04:50:57.434Z
+`origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist` @ `803d535c34aa93c33c6448cc6e0c75001105c55c`
+
+Betty: `_store_prompt_blocks` debug is Style D index + found→recorded (replaces `agent_data_write` on prompt blocks only).
+
+#### joan — 2026-08-17T04:46:57.170Z
+[plan-rubric] PROCEED (Commit: acf80f98) seven-segment backend wiring
+
+#### ada — 2026-08-17T04:43:31.613Z
+`origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist` @ `acf80f98461d696f7a421a177df9198945357780` · seven-segment workbench plan
+
+---
+
 # AST-1411 — Ad Hoc seven-segment resolve, assemble, persist
 
 - **Linear:** [AST-1411](https://linear.app/astralcareermatch/issue/AST-1411)

@@ -1,3 +1,79 @@
+<!-- linear-archive: AST-1528 archived 2026-09-09 -->
+
+## Linear archive (AST-1528)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1528/word-cloud-nbsp-bullet-glue-resume-word-clouds-need-non-breaking  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1526 — Resume word clouds need non-breaking spaces  
+**Blocked by / blocks / related:** parent: AST-1526
+
+### Description
+
+## What this implements
+
+Restore non-breaking spaces before each cloud `•` and between cloud items (old `__` equivalence) on the shared resume marker / `word_cloud` emit path so Print and Open HTML never wrap onto a leading bullet. Does **not** own cover from-block, new digraphs, or experience-array work.
+
+## Citations
+
+`pattern.config.config-block`, `pattern.layers.import-discipline`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.git.engineer-test-tree-ban`.
+
+## Scope
+
+`src/core/builder.py` — **modified **`_resume_site_markers` and/or `word_cloud` body emit so space-bullet-space becomes NBSP-bullet-NBSP for cloud (and any text already on that expand path); no new files.
+
+## Acceptance criteria
+
+- [X] 1. A `word_cloud` section authored with `|` between items (e.g. Core Competencies) prints/Open-HTMLs with `\u00a0` immediately before each `•` and `\u00a0` between items — not a regular space after the bullet that allows wrap to start with `•`.
+- [X] 2. The same section authored with the old `__•__` digraphs still expands to the same NBSP-bullet-NBSP shape (no regression vs AST-1027).
+- [X] 3. Base resume Print, session Open HTML, and job resume Print that emit `word_cloud` all show the glued separators (shared builder path).
+- [X] 4. Non-`word_cloud` formats are unchanged in intent (no new digraphs, no cloud typography redesign); cover-letter from-block is untouched unless it already shared this exact helper call and the glue change is inseparable (prefer leave cover alone).
+
+## Boundaries
+
+- [X] Does not own cover from-block, new digraphs, or experience-array work (AST-1381). Does not redesign word_cloud typography beyond separator whitespace.
+
+## Notes for planning
+
+Citations as above. Prefer one expand path in `_resume_site_markers` (DRY) over a forked cloud-only helper.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1526-resume-word-clouds-need-non-breaking-spaces`, child `sub/AST-1526/<this-id>-word-cloud-nbsp-bullet-glue`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Glue lock (pipe / space / digraph + education + session cloud): `tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue`
+2. Digraph regression: `tests/component/core/test_builder.py::TestAst1027UatMarkerExpand`
+3. Nested markers + compact-title / edu / meta / competencies flips: `TestAst1007NestedTypographyMarkers`, `TestAst998ExperienceJobRender`, `TestAst1008ExperienceGoldenLayout`, `TestAst1009EducationSkillsPrior::test_emit_education_list_html_splits_post_marker_bullet`, `TestAst1010HeaderContactMetaStyles`, `TestAst1021DocumentTitleChrome`, `TestAst1029UatCompetenciesBulletsEmit`, `TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+4. Cover emit_separator still `" • "`: config CoverFromBlock / candidate expand_cover (AST-1147 / AST-1148)
+
+**Narrowed run:** see `docs/test-bible/core/builder.md` § AST-1528.
+
+**Bible shasums** (`origin/sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue` @ `93939313`):
+
+* `docs/test-bible/core/builder.md` — `3865dcc3d0a28f52cbeed981efaebe264dbff577`
+* `tests/component/core/test_builder.py` — `c08459275bb371520a64ef304eca491fc903dec6`
+
+### Comments
+
+#### radia — 2026-08-29T17:30:18.307Z
+[code-rubric] PROCEED (Commit: 93939313) NBSP bullet glue clean
+
+#### betty — 2026-08-29T17:27:00.680Z
+`origin/sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue` @ `93939313` · NBSP glue locked
+
+#### joan — 2026-08-29T17:18:42.361Z
+[plan-rubric] PROCEED (Commit: caf38f385447f6ddb72dc0809b458fe798977bc2) NBSP glue path clear
+
+#### katherine — 2026-08-29T17:16:26.617Z
+`origin/sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue` @ `caf38f385447f6ddb72dc0809b458fe798977bc2` · plan ready
+
+---
+
 # AST-1528 — Word-cloud NBSP bullet glue
 
 **Linear:** [AST-1528](https://linear.app/astralcareermatch/issue/AST-1528/word-cloud-nbsp-bullet-glue-resume-word-clouds-need-non-breaking)  

@@ -5,8 +5,30 @@ In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
 contact uniqueness enforcement on save (AST-1080),
 get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
-snapshot_saved_base_resume_artifact (AST-1353; rename AST-1364).
-All writes go through database.save_candidate (upsert); state transition logic lives here.
+operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
+get_current_artifact (AST-1576).
+get_operative_base_resume(artifact_uuid) pin→body for pilot
+candidate.artifacts.base_resume (AST-1584 / patt.artifact.read-operative).
+get_candidate_current(candidate_id, artifact_key) current-read by catalog key
+(AST-1586 / patt.artifact.read-current).
+Strengths (candidate.context.strengths) uses the same operative save +
+get_candidate_current hydrate path (AST-1633).
+Priorities (candidate.context.priorities) uses the same operative save +
+get_candidate_current hydrate path (AST-1652).
+Deal Breakers (candidate.context.deal_breakers) uses the same operative save +
+get_candidate_current hydrate path (AST-1655).
+Bio summary (candidate.context.bio_summary) uses the same operative save +
+get_candidate_current hydrate path (AST-1649).
+Ideal Day (candidate.context.ideal_day) uses the same operative save +
+get_candidate_current hydrate path (AST-1659).
+Backstory (candidate.context.backstory) uses the same operative save +
+get_candidate_current hydrate path (AST-1662).
+Writing Preferences (candidate.context.writing_preferences) uses the same
+operative save + get_candidate_current hydrate path (AST-1665).
+Resume structure (candidate.artifacts.resume_structure) uses the same
+operative save + get_candidate_current hydrate path (AST-1679).
+All writes go through database.save_candidate (upsert) or save_artifact (operative);
+state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
 never from Flask request handlers — AI calls don't belong in synchronous web requests.
@@ -19,7 +41,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.data import database
 from src.core.agent import (
@@ -34,6 +56,7 @@ from src.core import dispatcher as _dispatcher
 from src.utils import rubric_text
 from src.utils.config import (
     ASTRAL_CONFIG,
+    ARTIFACT_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
@@ -103,8 +126,14 @@ def build_candidate_token_view(candidate: dict) -> dict:
 
 
 def is_candidate_token_view(obj: object) -> bool:
-    """True when obj matches build_candidate_token_view output (not a DB row/raft)."""
+    """True when obj matches build_candidate_token_view output (not a DB row/raft).
+
+    Requires ``_astral_candidate_id`` key present so raw library ``candidate_data``
+    (contact/context/artifacts only) is not mistaken for a finished token view.
+    """
     if not isinstance(obj, dict) or "candidate_data" in obj:
+        return False
+    if "_astral_candidate_id" not in obj:
         return False
     return "first" in obj or "last" in obj or "full" in obj or "contact" in obj
 
@@ -752,26 +781,140 @@ def initiate_prospect_candidate(
 
 def save_candidate_data(
     candidate_id: str,
-    data: Dict[str, Any],
+    data_or_artifact_key: Any,
+    blob: Any = None,
     replace: bool = False,
     *,
+    source_artifact_ids: Optional[Sequence[str]] = None,
     debug: bool = False,
-) -> None:
-    """Merge (or replace) library blobs + optional name columns (AST-1014).
-    Pure data persistence — no AI calls. Rejects legacy ``profile`` writes."""
+) -> Optional[str]:
+    """Library merge (dict) or operative artifact write (artifact_key str) — AST-1576.
+
+    Dict path: merge/replace library blobs + optional name columns (AST-1014); returns None.
+    Str path: ARTIFACT_CONFIG → validate body_shape → save_artifact; returns new uuid.
+    Optional source_artifact_ids applies on the str path only (generative seed pins).
+    """
+    # Operative write-operative path (pilot: candidate.artifacts.base_resume).
+    if isinstance(data_or_artifact_key, str):
+        artifact_key = data_or_artifact_key.strip()
+        if not artifact_key:
+            raise ValueError("artifact_key required")
+        entry = ARTIFACT_CONFIG.get(artifact_key)
+        if entry is None:
+            raise ValueError(f"unknown catalog key: {artifact_key!r}")
+        if blob is None:
+            raise ValueError("artifact body required")
+        shape = BUILD_CONFIG["artifact_shapes"][entry["body_shape"]]
+        if entry["body_shape"] == "resume_content":
+            if not isinstance(blob, dict) or not blob:
+                raise ValueError("resume_content body must be a non-empty dict")
+            for key, spec in shape.items():
+                if isinstance(spec, dict) and spec.get("required") and key not in blob:
+                    raise ValueError(f"resume_content missing required key: {key!r}")
+        elif entry["body_shape"] == "plain_text":
+            # AST-1633: raw string body (BUILD_CONFIG sentinel "raw_string" — validate type here).
+            if not isinstance(blob, str) or not blob.strip():
+                raise ValueError("plain_text body must be a non-empty string")
+        elif entry["body_shape"] == "resume_structure":
+            # AST-1679: structure dict — BUILD_CONFIG sentinel "structure_dict"; validate via normalize.
+            if not isinstance(blob, dict) or not blob:
+                raise ValueError("resume_structure body must be a non-empty dict")
+            blob = normalize_resume_structure(blob)
+        artifact_type = artifact_key.rsplit(".", 1)[-1]
+        # AST-1635: identical-to-current → return existing pin; no retire+insert.
+        current_row = database.get_current_artifact(
+            entry["entity_type"], candidate_id, artifact_type
+        )
+        if current_row is not None and current_row.get("artifact_data") == blob:
+            return current_row.get("artifact_uuid")
+        new_uuid = database.save_artifact(
+            entry["entity_type"],
+            candidate_id,
+            artifact_type,
+            blob,
+            source_artifact_ids=source_artifact_ids,
+        )
+        if artifact_key == _STRENGTHS_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "strengths artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _PRIORITIES_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "priorities artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _DEAL_BREAKERS_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "deal_breakers artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _BIO_SUMMARY_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "bio_summary artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _IDEAL_DAY_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "ideal_day artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _BACKSTORY_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "backstory artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _WRITING_PREFERENCES_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "writing_preferences artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _RESUME_STRUCTURE_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "resume_structure artifact saved",
+                new_uuid,
+                "-",
+            )
+        return new_uuid
+
+    if not isinstance(data_or_artifact_key, dict):
+        raise ValueError("candidate data must be a dict or artifact_key str")
+    data = data_or_artifact_key
+
     logger.set_debug_flag(debug)
-    if not isinstance(data, dict):
-        raise ValueError("candidate data must be a dict")
     if "profile" in data:
         raise ValueError("profile was renamed to contact; refuse shadow write")
 
     col_kwargs: Dict[str, Any] = {}
-    blob: Dict[str, Any] = {}
+    blob_merge: Dict[str, Any] = {}
     for key, val in data.items():
         if key in _NAME_COLUMNS:
             col_kwargs[key] = "" if val is None else str(val)
         else:
-            blob[key] = val
+            blob_merge[key] = val
 
     # Empty/whitespace full → library join; omit full when first/last change → same
     if "full" in col_kwargs:
@@ -794,7 +937,7 @@ def save_candidate_data(
         if pref and pref not in PRONOUN_PREFERENCE_OPTIONS:
             raise ValueError(f"Invalid pronouns value: {pref!r}")
 
-    contact = blob.get("contact")
+    contact = blob_merge.get("contact")
     if isinstance(contact, dict):
         _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
@@ -825,15 +968,35 @@ def save_candidate_data(
         else:
             proposed = copy.deepcopy(contact)
         _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
-        blob["contact"] = proposed
+        blob_merge["contact"] = proposed
+
+    # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659: catalog owns these context leaves — never library-merge SoT.
+    ctx = blob_merge.get("context")
+    if isinstance(ctx, dict):
+        cleaned = {k: v for k, v in ctx.items() if k not in _CONTEXT_OPERATIVE_LEAVES}
+        if cleaned:
+            blob_merge["context"] = cleaned
+        else:
+            blob_merge.pop("context", None)
+
+    # AST-1679: catalog owns artifacts.resume_structure — never library-merge that leaf.
+    arts = blob_merge.get("artifacts")
+    if isinstance(arts, dict):
+        cleaned_arts = {
+            k: v for k, v in arts.items() if k not in _ARTIFACTS_OPERATIVE_LEAVES
+        }
+        if cleaned_arts:
+            blob_merge["artifacts"] = cleaned_arts
+        else:
+            blob_merge.pop("artifacts", None)
 
     steps = []
     if col_kwargs:
         steps.append(("columns", sorted(col_kwargs.keys())))
     for bk in _LIBRARY_BLOB_KEYS:
-        if bk in blob:
+        if bk in blob_merge:
             steps.append((bk, "recorded"))
-    meta_keys = [k for k in blob if k not in _LIBRARY_BLOB_KEYS]
+    meta_keys = [k for k in blob_merge if k not in _LIBRARY_BLOB_KEYS]
     if meta_keys:
         steps.append(("meta", meta_keys))
 
@@ -850,14 +1013,15 @@ def save_candidate_data(
             logger.debug_detail(f"{label}={detail!r}")
 
     save_kwargs: Dict[str, Any] = dict(col_kwargs)
-    if blob:
-        save_kwargs["candidate_data"] = blob
+    if blob_merge:
+        save_kwargs["candidate_data"] = blob_merge
         save_kwargs["merge"] = not replace
     elif col_kwargs:
         pass
     else:
-        return
+        return None
     database.save_candidate(candidate_id, **save_kwargs)
+    return None
 
 
 def _topic_menu_key() -> str:
@@ -1349,28 +1513,6 @@ def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
     return rubric_criteria_for_task(candidate_id, owner_task_key)
 
 
-def snapshot_saved_base_resume_artifact(candidate_id: str) -> str:
-    """Record live artifacts.base_resume into artifacts after Save Base Resume.
-
-    Reads the post-persist candidate blob so the snapshot matches deep-merged
-    candidate_data (AC2). Returns the new artifact_uuid from the data layer.
-    """
-    candidate = database.get_candidate(candidate_id)
-    if not candidate:
-        raise ValueError(f"Candidate not found: {candidate_id}")
-    cd = candidate.get("candidate_data") or {}
-    if not isinstance(cd, dict):
-        cd = {}
-    arts = cd.get("artifacts") or {}
-    if not isinstance(arts, dict):
-        arts = {}
-    base = arts.get("base_resume")
-    if base is None:
-        raise ValueError("artifacts.base_resume missing after save")
-    # Literal artifact_type matches AST-1352 Save Base Resume contract
-    return database.save_artifact("candidate", candidate_id, "base_resume", base)
-
-
 def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
     """Sync rubric criteria artifacts to rubric_vector; drop keys from artifacts blob (AST-723).
 
@@ -1407,6 +1549,283 @@ def hydrate_rubric_artifacts_for_response(candidate_id: str, cd: dict) -> None:
         cd["artifacts"] = arts
     for artifact_key, owner in RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.items():
         arts[artifact_key] = rubric_criteria_for_task(candidate_id, owner)
+
+
+def get_operative_base_resume(artifact_uuid: str) -> Optional[Any]:
+    """Pin→body for pilot candidate.artifacts.base_resume (patt.artifact.read-operative).
+
+    Returns deserialized artifact_data, or None on miss / non-pilot row.
+    No coat-check; no candidate_data blob fallback.
+    """
+    row = database.get_artifact(artifact_uuid)
+    if row is None:
+        return None
+    pilot_key = "candidate.artifacts.base_resume"
+    entry = ARTIFACT_CONFIG[pilot_key]
+    artifact_type = pilot_key.rsplit(".", 1)[-1]
+    if row.get("entity_type") != entry["entity_type"]:
+        return None
+    if row.get("artifact_type") != artifact_type:
+        return None
+    return row.get("artifact_data")
+
+
+def get_candidate_current(candidate_id: str, artifact_key: str) -> Optional[Any]:
+    """Current-read body for a catalog artifact key (patt.artifact.read-current).
+
+    Resolves ARTIFACT_CONFIG, calls database.get_current_artifact for the scoped
+    entity + leaf artifact_type. Returns deserialized artifact_data, or None on
+    miss. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    return row.get("artifact_data")
+
+
+def get_candidate_current_artifact_uuid(
+    candidate_id: str, artifact_key: str
+) -> Optional[str]:
+    """Current-read ``artifact_uuid`` for a catalog key (patt.artifact.read-current).
+
+    Same ARTIFACT_CONFIG / candidate_scoped / entity resolve as
+    ``get_candidate_current``, but returns ``artifact_uuid`` (or None on miss)
+    instead of ``artifact_data``. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    uuid = row.get("artifact_uuid")
+    if not isinstance(uuid, str) or not uuid.strip():
+        return None
+    return uuid
+
+
+def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current base_resume into candidate_data (display only)."""
+    if not isinstance(cd, dict):
+        return
+    pilot_key = "candidate.artifacts.base_resume"
+    body = get_candidate_current(candidate_id, pilot_key)
+    arts = cd.get("artifacts")
+    if body is None:
+        if isinstance(arts, dict) and "base_resume" in arts:
+            arts.pop("base_resume")
+        return
+    if not isinstance(arts, dict):
+        arts = {}
+        cd["artifacts"] = arts
+    arts["base_resume"] = body
+
+
+def hydrate_operative_resume_structure_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current resume_structure into candidate_data.artifacts (display only).
+
+    Miss → leave legacy artifacts.resume_structure blob untouched (parent AC7 migration window).
+    Hit → write current dict onto artifacts.resume_structure for the editor / resolve contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, dict):
+        return
+    arts = cd.get("artifacts")
+    if not isinstance(arts, dict):
+        arts = {}
+        cd["artifacts"] = arts
+    arts["resume_structure"] = body
+
+
+_STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
+_BIO_SUMMARY_ARTIFACT_KEY = "candidate.context.bio_summary"
+_IDEAL_DAY_ARTIFACT_KEY = "candidate.context.ideal_day"
+_BACKSTORY_ARTIFACT_KEY = "candidate.context.backstory"
+_WRITING_PREFERENCES_ARTIFACT_KEY = "candidate.context.writing_preferences"
+_RESUME_STRUCTURE_ARTIFACT_KEY = "candidate.artifacts.resume_structure"
+# Catalog-owned context leaves — never durable library-merge SoT (AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1662 / AST-1665).
+_CONTEXT_OPERATIVE_LEAVES = frozenset(
+    {
+        "strengths",
+        "bio_summary",
+        "priorities",
+        "deal_breakers",
+        "ideal_day",
+        "backstory",
+        "writing_preferences",
+    }
+)
+# Catalog-owned artifacts leaf — never durable library-merge SoT (AST-1679).
+_ARTIFACTS_OPERATIVE_LEAVES = frozenset({"resume_structure"})
+
+
+def hydrate_operative_strengths_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Strengths into candidate_data.context (display only).
+
+    Miss → leave legacy context.strengths blob untouched (parent AC7 migration window).
+    Hit → write current string onto context.strengths for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _STRENGTHS_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["strengths"] = body
+
+
+_PRIORITIES_ARTIFACT_KEY = "candidate.context.priorities"
+_DEAL_BREAKERS_ARTIFACT_KEY = "candidate.context.deal_breakers"
+
+
+def hydrate_operative_priorities_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Priorities into candidate_data.context (display only).
+
+    Miss → leave legacy context.priorities blob untouched (parent AC7 / ticket AC6 migration window).
+    Hit → write current string onto context.priorities for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _PRIORITIES_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["priorities"] = body
+
+
+def hydrate_operative_deal_breakers_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Deal Breakers into candidate_data.context (display only).
+
+    Miss → leave legacy context.deal_breakers blob untouched (parent AC6 migration window).
+    Hit → write current string onto context.deal_breakers for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _DEAL_BREAKERS_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["deal_breakers"] = body
+
+
+def hydrate_operative_bio_summary_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current bio summary into candidate_data.context (display only).
+
+    Miss → leave legacy context.bio_summary blob untouched (parent AC8 / ticket AC6 migration window).
+    Hit → write current string onto context.bio_summary for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _BIO_SUMMARY_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["bio_summary"] = body
+
+
+def hydrate_operative_ideal_day_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Ideal Day into candidate_data.context (display only).
+
+    Miss → leave legacy context.ideal_day blob untouched (parent AC6 / ticket AC6 migration window).
+    Hit → write current string onto context.ideal_day for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _IDEAL_DAY_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["ideal_day"] = body
+
+
+def hydrate_operative_backstory_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Backstory into candidate_data.context (display only).
+
+    Miss → leave legacy context.backstory blob untouched (parent AC6 / ticket AC6 migration window).
+    Hit → write current string onto context.backstory for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _BACKSTORY_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["backstory"] = body
+
+
+def hydrate_operative_writing_preferences_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Writing Preferences into candidate_data.context (display only).
+
+    Miss → leave legacy context.writing_preferences blob untouched (parent AC6 migration window).
+    Hit → write current string onto context.writing_preferences for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _WRITING_PREFERENCES_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["writing_preferences"] = body
 
 
 def _normalize_search_term_lines(val: str) -> list[str]:
@@ -1492,7 +1911,23 @@ def apply_company_search_terms_save(candidate_id: str, artifacts: dict) -> None:
 
 def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
     """Fetch candidate by ID. Needed because the API layer can't import database directly."""
-    return database.get_candidate(candidate_id)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return None
+    cd = candidate.get("candidate_data")
+    if not isinstance(cd, dict):
+        cd = {}
+    hydrate_operative_base_resume_for_response(candidate_id, cd)
+    hydrate_operative_resume_structure_for_response(candidate_id, cd)
+    hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_priorities_for_response(candidate_id, cd)
+    hydrate_operative_deal_breakers_for_response(candidate_id, cd)
+    hydrate_operative_bio_summary_for_response(candidate_id, cd)
+    hydrate_operative_ideal_day_for_response(candidate_id, cd)
+    hydrate_operative_backstory_for_response(candidate_id, cd)
+    hydrate_operative_writing_preferences_for_response(candidate_id, cd)
+    candidate["candidate_data"] = cd
+    return candidate
 
 
 def list_candidates(include_deleted: bool = False) -> list:
@@ -1510,12 +1945,14 @@ def get_new_candidate_batch(
     sort_by: Optional[str] = None,
     batch_id: Optional[str] = None,
     context: Optional[str] = None,
+    candidate_id: Optional[str] = None,
     *,
     states: Optional[List[str]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Claim candidates for batch processing. Returns (batch_id, candidates).
 
-    Cross-candidate pool (AST-1258/1259) — no candidate_id / score_floor scope.
+    candidate_id: required; scopes the claim to that one candidate's own row
+    (stat.dispatch.entity-state-bound — no cross-candidate pool; was AST-1258/1259).
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
@@ -1533,7 +1970,9 @@ def get_new_candidate_batch(
     if not batch_id and not context:
         raise ValueError("batch_id or context is required for batch_id generation")
     bid = batch_id or f"{context}-{uuid.uuid4()}"
-    database.claim_candidate_batch(bid, state, limit_val, sort_by=sort_by, states=states)
+    database.claim_candidate_batch(
+        bid, state, limit_val, sort_by=sort_by, candidate_id=candidate_id, states=states
+    )
     return (bid, database.get_candidate_batch(bid))
 
 
@@ -2382,11 +2821,30 @@ def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
     return out
 
 
+_PILOT_BASE_RESUME_ARTIFACT_KEY = "candidate.artifacts.base_resume"
+
+
+def candidate_id_for_current_read(cd: dict) -> Optional[str]:
+    """Extract candidate id from token view or inner candidate_data for current-read."""
+    if not isinstance(cd, dict):
+        return None
+    cid = (cd.get("_astral_candidate_id") or cd.get("astral_candidate_id") or "").strip()
+    return cid or None
+
+
+def load_pilot_base_resume_for_candidate(candidate_id: str) -> Optional[Any]:
+    """Current-read pilot base_resume body for live/builder consumers (AST-1587)."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return None
+    return get_candidate_current(cid, _PILOT_BASE_RESUME_ARTIFACT_KEY)
+
+
 def format_base_resume_for_token(candidate_data: dict) -> str:
     """{$BASE_RESUME}: section-id-keyed JSON for agent prompts (AST-607), never markdown."""
     cd = candidate_data if isinstance(candidate_data, dict) else {}
-    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
-    raw = artifacts.get("base_resume")
+    cid = candidate_id_for_current_read(cd)
+    raw = load_pilot_base_resume_for_candidate(cid) if cid else None
     structure = resolve_resume_structure(cd)
     content, _struct = ingest_legacy_label_content_base_resume(raw, structure)
     section_ids = {
@@ -2409,7 +2867,8 @@ def resolve_resume_structure(candidate_data: dict) -> dict:
             # Corrupt or legacy blob: bounded fallback to default (see test_resolve_falls_back_to_default_when_invalid).
             pass
     resolved = default_resume_structure()
-    br = artifacts.get("base_resume")
+    cid = candidate_id_for_current_read(cd)
+    br = load_pilot_base_resume_for_candidate(cid) if cid else None
     if isinstance(br, dict):
         ac = br.get("accent_color")
         if isinstance(ac, str) and ac.strip():
@@ -2633,8 +3092,8 @@ _DRAFT_JOB_RESUME_SECTION_ALIASES = {
 def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
     """Section keys from artifacts.base_resume (including extras); not ∩ KNOWN."""
     cd = candidate_data if isinstance(candidate_data, dict) else {}
-    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
-    base = artifacts.get("base_resume")
+    cid = candidate_id_for_current_read(cd)
+    base = load_pilot_base_resume_for_candidate(cid) if cid else None
     if not isinstance(base, (dict, list)):
         return []
     structure = resolve_resume_structure(cd)
@@ -2716,8 +3175,8 @@ def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> N
     """Restore company/title/dates/location from base jobs matched by (company, title)."""
     if not isinstance(payload, dict) or not isinstance(candidate_data, dict):
         return
-    artifacts = candidate_data.get("artifacts")
-    base = artifacts.get("base_resume") if isinstance(artifacts, dict) else None
+    cid = candidate_id_for_current_read(candidate_data)
+    base = load_pilot_base_resume_for_candidate(cid) if cid else None
     if not isinstance(base, dict):
         return
     base_exp = base.get("experience")
@@ -2857,7 +3316,8 @@ def validate_draft_job_resume_payload(
             outcome=outcome,
         )
         logger.debug_detail(
-            f"found whitelist_source=base_resume keys={sorted(allowed)}"
+            f"found whitelist_source=get_candidate_current "
+            f"artifact_key={_PILOT_BASE_RESUME_ARTIFACT_KEY!r} keys={sorted(allowed)}"
         )
         logger.debug_detail(f"recorded accepted_keys={sorted(accepted)}")
         logger.debug_detail(f"recorded rejected_keys={sorted(rejected)}")
@@ -2978,10 +3438,11 @@ async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> D
         return {"success": False, "error": "parse_resume returned None parsed_response"}
 
     structure, content = split_craft_resume_base_payload(parsed)
-    database.save_candidate(
+    save_candidate_data(candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY, structure)
+    save_candidate_data(
         candidate_id,
-        candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-        merge=True,
+        TASK_CONFIG["craft_resume_base"]["artifact_key"],
+        content,
     )
     if debug:
         logger.debug_index(
@@ -3111,16 +3572,6 @@ def get_pending_craft_generation(
 
 def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: Any) -> None:
     """Persist craft success for REQUESTED_* dispatch (AST-972) — no nested ledger."""
-    if task_key == "craft_resume_base":
-        if not isinstance(parsed, dict):
-            raise ValueError("craft_resume_base parsed_response must be a dict")
-        structure, content = split_craft_resume_base_payload(parsed)
-        database.save_candidate(
-            candidate_id,
-            candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-            merge=True,
-        )
-        return
     if task_key == "craft_company_search_terms":
         if not isinstance(parsed, dict):
             raise ValueError("craft_company_search_terms parsed_response must be a dict")
@@ -3596,10 +4047,13 @@ def run_candidate_artifact_generation(
                 )
         if task_key == "craft_resume_base" and parsed_response is not None:
             structure, content = split_craft_resume_base_payload(parsed_response)
-            database.save_candidate(
+            save_candidate_data(
+                candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY, structure
+            )
+            save_candidate_data(
                 candidate_id,
-                candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-                merge=True,
+                TASK_CONFIG["craft_resume_base"]["artifact_key"],
+                content,
             )
             if debug:
                 logger.debug_index(

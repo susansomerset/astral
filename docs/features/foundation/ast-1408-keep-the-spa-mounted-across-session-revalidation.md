@@ -1,3 +1,85 @@
+<!-- linear-archive: AST-1408 archived 2026-09-09 -->
+
+## Linear archive (AST-1408)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1408/keep-the-spa-mounted-across-session-revalidation-page-refreshes-and  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1406 — Page refreshes and modals are closed (lost!)  
+**Blocked by / blocks / related:** parent: AST-1406; blocks: AST-1409
+
+### Description
+
+## What this implements
+
+When the client session is extended or identity is re-read in the background, the authenticated tree stays mounted. Loading placeholders are only for first session resolution, not for later revalidation. Open overlays and in-progress edits survive the activity-extension cadence. Does not own list/toggle live update (that is siblings #2 and #3). Does not change session duration or cadence values.
+
+## Citations
+
+`pattern.ui.in-place-live-refresh` (proposed; this child is the session-shell half), `astral.idioms.require-auth-on-protected-endpoints`, `astral.ui.frontend-file-placement`, `astral.standards.dry-and-focused-functions`.
+
+## Acceptance criteria
+
+- [X] With the server running, an overlay open for longer than the activity-extension cadence still has its in-progress edits after that cadence fires. The page is not replaced by a loading placeholder.
+- [X] Log-off still clears the session. Vite still reloads when frontend source files change.
+
+## Boundaries
+
+- [X] Does not own list/toggle live update (siblings #2 and #3).
+- [X] Does not change Stytch session duration or activity-extension cadence.
+- [X] Does not change log-off.
+- [X] Does not add a websocket or persist overlay drafts across intentional close.
+
+## Notes for planning
+
+Citations as above. Session-shell half of proposed `pattern.ui.in-place-live-refresh`. After #1 for bang sequencing of siblings.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1406-page-refreshes-and-modals-are-closed`, child `sub/AST-1406/AST-1408-keep-the-spa-mounted-across-session-revalidation`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. AuthContext silent JWT revalidation + extend-loop identity + session-loss loading: `tests/component/frontend/contexts/test_AuthContext.test.tsx`
+2. RequireAuth first-boot Loading vs keep-mounted: `tests/component/frontend/components/test_RequireAuth.test.tsx`
+3. AdminRoute keep-mounted + known non-admin redirect while loading: `tests/component/frontend/components/test_AdminRoute.test.tsx`
+
+Narrowed run (from `src/ui/frontend/`):
+
+```
+npm run test:component -- \
+  ../../../tests/component/frontend/contexts/test_AuthContext.test.tsx \
+  ../../../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../../../tests/component/frontend/components/test_AdminRoute.test.tsx
+```
+
+Pass criterion: Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+Bible shasums (`origin/sub/AST-1406/AST-1408-keep-the-spa-mounted-across-session-revalidation`):
+
+* `docs/test-bible/frontend/contexts.md` `b9955dda36fe4101f43ddf9156840bf2295c0535`
+* `docs/test-bible/frontend/lib.md` `0b5bf0ffbd73286f2e4bb955a69569aa847015f4`
+* `docs/test-bible/frontend/components.md` `862603098f55199b02c238aa8c0999194f426e57`
+
+### Comments
+
+#### radia — 2026-08-17T05:00:09.296Z
+[code-rubric] PROCEED (Commit: d3381158) session shell stays mounted
+
+#### betty — 2026-08-17T04:55:12.164Z
+`origin/sub/AST-1406/AST-1408-keep-the-spa-mounted-across-session-revalidation` @ `d3381158` · session shell stays mounted
+
+#### joan — 2026-08-17T04:42:43.271Z
+[plan-rubric] PROCEED (Commit: f894f2d5) session shell stays mounted
+
+#### ada — 2026-08-17T04:36:46.261Z
+`origin/sub/AST-1406/AST-1408-keep-the-spa-mounted-across-session-revalidation` @ `f894f2d5` · session shell stays mounted
+
+---
+
 # Keep the SPA mounted across session revalidation
 
 **Linear:** [AST-1408](https://linear.app/astralcareermatch/issue/AST-1408)

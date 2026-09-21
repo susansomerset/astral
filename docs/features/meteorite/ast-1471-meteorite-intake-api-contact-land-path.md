@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1471 archived 2026-09-09 -->
+
+## Linear archive (AST-1471)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1471/meteorite-intake-api-contact-land-path-meteorite-component  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1457 — Meteorite component  
+**Blocked by / blocks / related:** parent: AST-1457
+
+### Description
+
+## What this implements
+
+Authenticated listing API wrapping land_meteorite; Contact/Estelle scrap path calls land_meteorite. After #2.
+
+## Citations
+
+pattern.ui.admin-endpoint; astral.layers.ui-config-driven-business-logic, astral.patterns.require-auth-on-protected-endpoints.
+
+## Scope
+
+- [X] src/ui/api/api_meteorite.py (listing intake)
+- [X] src/core/contact.py (call land_meteorite)
+- [ ] tests/component/ui/api/test_api_meteorite.py (Betty / qa-child)
+
+## Acceptance criteria
+
+- [X] 1. Contact (Estelle/Slack) or inbox can call land_meteorite with scraps … (Contact path portion).
+- [X] 2. Authenticated listing intake API wraps land_meteorite and returns the same outcome shape.
+
+## Boundaries
+
+- [X] Does not implement land_meteorite core (#2) or inbox fetch_email (#4).
+
+## Notes for planning
+
+Estimate 3. Bang ! — after #2.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent ftr/AST-1457-meteorite-component, child sub/AST-1457/AST-1471-meteorite-intake-api-contact-land-path. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-25T16:04:51.582Z
+[code-rubric] PROCEED (Commit: 733dcda8) Intake API Contact land clean
+
+#### betty — 2026-08-25T16:01:25.052Z
+`origin/sub/AST-1457/AST-1471-meteorite-intake-api-contact-land-path` @ `733dcda87f562458111d68bb6680d575271c0bfc` · intake API Contact tests
+
+#### joan — 2026-08-25T15:54:43.635Z
+[plan-rubric] PROCEED (Commit: 58c33ff) intake API Contact land
+
+#### katherine — 2026-08-25T15:01:18.162Z
+`origin/sub/AST-1457/AST-1471-meteorite-intake-api-contact-land-path` @ `58c33ffc407f421d891bd40cfb23f242c85b1923` · plan ready
+
+---
+
 # AST-1471 — Meteorite intake API + Contact land path
 
 **Linear:** [AST-1471](https://linear.app/astralcareermatch/issue/AST-1471/meteorite-intake-api-contact-land-path-meteorite-component)  

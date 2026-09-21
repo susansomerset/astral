@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1475 archived 2026-09-09 -->
+
+## Linear archive (AST-1475)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1475/builder-print-css-from-structure-page-break-policies-create-and  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1462 — Create and position page break  
+**Blocked by / blocks / related:** parent: AST-1462; blocks: AST-1476
+
+### Description
+
+## What this implements
+
+Maps resolved per-section policies to embedded print `@media` rules on base, session-base, and job resume builders; always keeps experience `.role` chunks together; gates legacy hard-coded `#prior-experience` always-break so structure policy wins. Does **not** own React editor controls.
+
+## Citations
+
+`pattern.config.config-block`, new `pattern.artifacts.resume-section-print-policy` (introduce), `astral.standards.in-scope-only`.
+
+## Scope
+
+- [X] `src/core/builder.py` (print CSS from structure + mandatory role keep-together)
+- [ ] `tests/component/core/test_builder.py` (Betty at qa-child)
+- [ ] `docs/test-bible/core/builder.md` manifest touch at qa-child
+
+## Acceptance criteria
+
+- [X] **Defaults** — a candidate with no explicit page-break overrides gets keep-block-together for every section in print CSS; prior experience does **not** force a new page unless the operator set that policy.
+- [X] **Explicit break** — setting "new page before" on a section causes that section to start on a new printed page in base and job resume print HTML; reverting to flow or keep-together removes the forced break.
+- [X] **Keep together** — keep-block-together on a prose section prevents the section block from splitting across pages; every experience role chunk always has `page-break-inside: avoid` (or equivalent) even without an operator toggle per role.
+- [ ] **Tests** — builder component tests and ArtifactEditor structure-mode tests (base + job paths) pass on publish ref for the scenarios above. (Builder tests → Betty qa-child; ArtifactEditor → AST-1476.)
+
+## Boundaries
+
+- [X] Does not own React editor controls — sibling #3. After #1 schema.
+
+## Notes for planning
+
+Estimate 3. Bang ! — after #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1462-create-and-position-page-break`, child `sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Default avoid_split / role keep / no forced prior: `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_default_avoid_split_and_role_keep_no_forced_prior_break`
+2. `page_break_before` + `normal`: `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_page_break_before_and_normal_on_session_base`
+3. Missing policy soft-default + job path: `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_missing_policy_soft_defaults_and_job_resume_path`
+4. Golden three surfaces (revised): `tests/component/core/test_builder.py::TestAst1020GoldenStylesheet`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss \
+  tests/component/core/test_builder.py::TestAst1020GoldenStylesheet \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies`):
+
+* `docs/test-bible/core/builder.md` `1ca3bc14404585fbab5bae47a05c5199be578f17`
+
+### Comments
+
+#### radia — 2026-08-25T01:08:46.131Z
+[code-rubric] PROCEED (Commit: b9307d4a) structure policy print CSS
+
+#### betty — 2026-08-25T01:01:18.905Z
+`origin/sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies` @ `b9307d4a` · print CSS tests ready
+
+#### betty — 2026-08-25T01:01:00.022Z
+`origin/sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies` @ `b9307d4a` · print CSS tests ready
+
+#### joan — 2026-08-25T00:39:12.902Z
+[plan-rubric] PROCEED (Commit: 740acbe2) builder print CSS
+
+#### hedy — 2026-08-25T00:28:26.746Z
+`origin/sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies` @ `740acbe2` · plan ready
+
+---
+
 # AST-1475 — Builder print CSS from structure page-break policies
 
 **Linear:** [AST-1475](https://linear.app/astralcareermatch/issue/AST-1475)
