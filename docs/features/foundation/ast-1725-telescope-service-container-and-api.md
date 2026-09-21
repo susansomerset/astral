@@ -948,3 +948,7 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 - AST-1732: when a filter matches, links stay scoped under match roots (dedupe by href).
 - Zero `src` imports under `service/telescope/`; capture stays browser-only.
 - Drop-in `_ensure_html` first-match unwrap for list html unchanged.
+
+## Radia review-fix (AST-1746)
+
+Overall: CLEAN / PROCEED — optional id filter; resolve-child skipped.
