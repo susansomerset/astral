@@ -114,8 +114,9 @@ export default function AdminTelescope() {
 
   const meta = result?.scrape_meta
 
+  // AST-1734 — unlock page scroll; keep list-page card chrome (do not touch global CSS).
   return (
-    <div className="list-page">
+    <div className="list-page" style={{ height: "auto", overflow: "visible" }}>
       <h1 className="list-page-title">Telescope</h1>
       <p className="list-page-subtitle">
         Call the Telescope service and inspect raw content plus scrape metadata.
