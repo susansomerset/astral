@@ -334,3 +334,9 @@ The unbound list that feeds the dropdown includes workspace members/guests who a
 - After bind, that user disappears from a subsequent unbound GET (AST-1669 still stamps both contact fields).
 - No Slack Web API URLs/tokens from React (parent AC 7).
 - Lookup-only resolve + known/unknown recognition (AST-1668 AC 1–3) unchanged.
+
+## Bug AST-1738 — Radia review (clean)
+
+**Publish tip:** `60c2c4f2` on `origin/sub/AST-1636/AST-1738-manage-candidates-slack-dropdown-empty`
+**Overall:** CLEAN — unbound pool uses `list_workspace_members` (users.list members/guests), not posters; `[bug-repro]` OK; What must still hold OK.
+
