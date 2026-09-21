@@ -138,3 +138,16 @@ AC7→Stage 1 §1–2 ( `run_land_meteorite` passes `job_title=staged_title` int
 context_tokens≈26500
 
 [plan-rubric] PROCEED (Commit: b51b33a346838be6f0e90ac481a3f315b5b10260) Land staged job_title wiring
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1753/AST-1757-land-staged-job-title-onto-job`  
+**Plan path:** `docs/features/meteorite/ast-1757-land-staged-job-title-onto-job.md`
+
+**Built tip:** `079c0593f92903988ca4db83620725901a09902d` (`079c0593`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | `079c0593` | `run_land_meteorite` + `land_meteorite` pass staged/enrich-preferred `job_title=` |
+
+**Betty note:** AC8/AC9 land preference cases deferred to qa-child (engineer test-tree ban).
