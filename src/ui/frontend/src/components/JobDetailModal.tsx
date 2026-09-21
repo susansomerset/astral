@@ -5,19 +5,49 @@ import StateTimeline from "./StateTimeline"
 import AgentStoryTab, { type AgentStoryEntry } from "./AgentStoryTab"
 import Time from "./Time"
 import api from "../lib/api"
+import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { useStateUi } from "../contexts/StateUiContext"
+
+/** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
+function httpListingHref(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (s.startsWith("http://") || s.startsWith("https://")) return s
+  return null
+}
 
 interface JobDetail {
   astral_job_id: string
   job_title: string | null
   company: string
   job_link: string | null
+  listing_href?: string | null
   state: string
   state_changed_at: string | null
   created_at: string | null
   state_history?: Array<{ to_state?: string; timestamp?: string }>
   job_data?: Record<string, unknown>
   agent_story?: AgentStoryEntry[]
+  fields_editable?: boolean
+  legal_next_states?: string[]
+}
+
+type FieldDraft = {
+  job_title: string
+  job_link: string
+  job_description: string
+  state: string
+}
+
+function draftFromJob(j: JobDetail): FieldDraft {
+  return {
+    job_title: j.job_title ?? "",
+    job_link: j.job_link ?? "",
+    job_description: String(
+      ((j.job_data as Record<string, unknown> | undefined)?.job_description) ?? ""
+    ),
+    state: j.state,
+  }
 }
 
 interface Props {
@@ -30,19 +60,101 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   const [job, setJob] = useState<JobDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [skipping, setSkipping] = useState(false)
+  const [snapshotCopied, setSnapshotCopied] = useState(false)
+  const [snapshotCopying, setSnapshotCopying] = useState(false)
+  const [draft, setDraft] = useState<FieldDraft | null>(null)
+  const [baseline, setBaseline] = useState<FieldDraft | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     if (!jobId) return
     setLoading(true)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
-      if (res.ok) setJob(await res.json())
+      if (res.ok) {
+        const data = (await res.json()) as JobDetail
+        setJob(data)
+        const d = draftFromJob(data)
+        setDraft(d)
+        setBaseline(d)
+        setSaveError(null)
+      }
     } finally {
       setLoading(false)
     }
   }, [jobId])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { setSnapshotCopied(false) }, [jobId])
+
+  const fieldsEditable = Boolean(job?.fields_editable)
+  const isDraftDirty = Boolean(
+    fieldsEditable
+    && draft
+    && baseline
+    && (
+      draft.job_title !== baseline.job_title
+      || draft.job_link !== baseline.job_link
+      || draft.job_description !== baseline.job_description
+      || draft.state !== baseline.state
+    )
+  )
+
+  async function handleSave() {
+    if (!jobId || !draft || !fieldsEditable || saving) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const payload: Record<string, string> = {
+        job_title: draft.job_title,
+        job_link: draft.job_link,
+        job_description: draft.job_description,
+      }
+      if (draft.state !== (job?.state ?? "")) {
+        payload.state = draft.state
+      }
+      const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      })
+      const body = (await res.json().catch(() => ({}))) as Record<string, unknown>
+      if (res.ok) {
+        const saved = body as unknown as JobDetail
+        setJob(saved)
+        const d = draftFromJob(saved)
+        setDraft(d)
+        setBaseline(d)
+        onRefresh?.()
+        return
+      }
+      const msg = typeof body.error === "string" ? body.error : "Save failed"
+      if (
+        msg.startsWith("Invalid transition")
+        || msg.includes("not in allowed list")
+        || msg === "Job is not in a skipped state"
+      ) {
+        await load()
+        onRefresh?.()
+        setSaveError(msg)
+      } else {
+        setSaveError(msg)
+      }
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleCopySnapshot() {
+    if (!jobId || snapshotCopying) return
+    setSnapshotCopying(true)
+    const ok = await copyJobSnapshotToClipboard(jobId)
+    setSnapshotCopying(false)
+    if (!ok) return
+    setSnapshotCopied(true)
+    window.setTimeout(() => setSnapshotCopied(false), 2000)
+  }
 
   async function handleSkip() {
     if (!jobId || skipping) return
@@ -58,9 +170,10 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
 
   const agentStory = job?.agent_story ?? []
   const hasJD = Boolean((job?.job_data as Record<string, unknown>)?.job_description)
+  const showJdTab = fieldsEditable || hasJD
   const sideTabs: SideTab[] = [
     { id: "__info__", label: "Info", content: "" },
-    ...(hasJD ? [{ id: "__jd__", label: "Job Description", content: "" }] : []),
+    ...(showJdTab ? [{ id: "__jd__", label: "Job Description", content: "" }] : []),
     ...agentStory.map((entry, i) => ({
       id: `story_${i}`,
       label: entry.task_key,
@@ -73,18 +186,43 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
       return (
         <InfoTab
           job={job}
+          fieldsEditable={fieldsEditable}
+          draft={draft}
+          legalNextStates={job?.legal_next_states ?? []}
+          saveError={saveError}
+          onDraftChange={(patch) => {
+            setDraft((prev) => (prev ? { ...prev, ...patch } : prev))
+          }}
           onSkip={handleSkip}
           skipping={skipping}
+          onCopy={handleCopySnapshot}
+          copied={snapshotCopied}
+          copying={snapshotCopying}
         />
       )
     }
     if (tabId === "__jd__") {
+      if (fieldsEditable && draft) {
+        return (
+          <textarea
+            className="dep-input dep-textarea"
+            value={draft.job_description}
+            onChange={(e) =>
+              setDraft((prev) =>
+                prev ? { ...prev, job_description: e.target.value } : prev
+              )
+            }
+            rows={16}
+            style={{ width: "100%", minHeight: 240 }}
+          />
+        )
+      }
       const jd = ((job?.job_data as Record<string, unknown>)?.job_description as string) ?? ""
       // Collapse runs of 3+ newlines to 2, trim leading/trailing whitespace
       const normalized = jd.trim().replace(/\n{3,}/g, "\n\n")
       return <div className="entity-jd-content">{normalized}</div>
     }
-    const storyOffset = hasJD ? 2 : 1
+    const storyOffset = showJdTab ? 2 : 1
     const idx = sideTabs.findIndex(t => t.id === tabId) - storyOffset
     const entry = agentStory[idx]
     if (!entry) return null
@@ -97,6 +235,8 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
       onClose={onClose}
       title={job?.job_title || job?.company || "Job Detail"}
       size="wide"
+      dirty={isDraftDirty}
+      onSave={fieldsEditable ? () => { void handleSave() } : undefined}
     >
       {loading && <p className="entity-loading">Loading…</p>}
       {job && (
@@ -113,12 +253,28 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
 // ---- Info tab ----
 function InfoTab({
   job,
+  fieldsEditable,
+  draft,
+  legalNextStates,
+  saveError,
+  onDraftChange,
   onSkip,
   skipping,
+  onCopy,
+  copied,
+  copying,
 }: {
   job: JobDetail | null
+  fieldsEditable: boolean
+  draft: FieldDraft | null
+  legalNextStates: string[]
+  saveError: string | null
+  onDraftChange: (patch: Partial<FieldDraft>) => void
   onSkip: () => void
   skipping: boolean
+  onCopy: () => void
+  copied: boolean
+  copying: boolean
 }) {
   const { manifest, loadState } = useStateUi()
   if (!job) return null
@@ -126,6 +282,7 @@ function InfoTab({
   const legacyState = loadState === "ready" && manifest
     && !Object.prototype.hasOwnProperty.call(manifest.jobs.grade_field_by_job_state, job.state)
     && job.state !== manifest.jobs.detail.already_skipped_state
+  const listingHref = httpListingHref(job.listing_href)
 
   return (
     <div className="entity-summary">
@@ -133,7 +290,18 @@ function InfoTab({
         {/* Left column: metadata + skip */}
         <div className="entity-summary-col">
           <div className="modal-detail-row"><span className="modal-detail-label">Company</span><span>{job.company}</span></div>
-          <div className="modal-detail-row"><span className="modal-detail-label">Title</span><span>{job.job_title || "—"}</span></div>
+          <div className="modal-detail-row">
+            <span className="modal-detail-label">Title</span>
+            {fieldsEditable && draft ? (
+              <input
+                className="dep-input"
+                value={draft.job_title}
+                onChange={(e) => onDraftChange({ job_title: e.target.value })}
+              />
+            ) : (
+              <span>{job.job_title || "—"}</span>
+            )}
+          </div>
           <div className="modal-detail-row">
             <span className="modal-detail-label">State</span>
             <span>
@@ -143,18 +311,80 @@ function InfoTab({
               )}
             </span>
           </div>
-          {job.job_link && (
+          {fieldsEditable && draft && (
             <div className="modal-detail-row">
-              <span className="modal-detail-label">Link</span>
-              <span><a href={job.job_link} target="_blank" rel="noreferrer">{job.job_link}</a></span>
+              <span className="modal-detail-label">Change to</span>
+              <select
+                className="dep-input"
+                value={draft.state === job.state ? "" : draft.state}
+                onChange={(e) => onDraftChange({ state: e.target.value || job.state })}
+              >
+                <option value="">No change</option>
+                {[...legalNextStates].sort((a, b) => a.localeCompare(b)).map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
             </div>
+          )}
+          {fieldsEditable && draft ? (
+            <>
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Link</span>
+                <input
+                  className="dep-input"
+                  value={draft.job_link}
+                  onChange={(e) => onDraftChange({ job_link: e.target.value })}
+                />
+              </div>
+              {listingHref && (
+                <div className="modal-detail-row">
+                  <span className="modal-detail-label">Open listing</span>
+                  <span>
+                    <a href={listingHref} target="_blank" rel="noopener noreferrer">{listingHref}</a>
+                  </span>
+                </div>
+              )}
+            </>
+          ) : (
+            (listingHref || job.job_link) && (
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Link</span>
+                {listingHref ? (
+                  <span>
+                    <a href={listingHref} target="_blank" rel="noopener noreferrer">{listingHref}</a>
+                  </span>
+                ) : (
+                  (() => {
+                    const link = (job.job_link ?? "").trim()
+                    const http = link.toLowerCase().startsWith("http://") || link.toLowerCase().startsWith("https://")
+                    return http ? (
+                      <span><a href={link} target="_blank" rel="noreferrer">{link}</a></span>
+                    ) : (
+                      <span>{link}</span>
+                    )
+                  })()
+                )}
+              </div>
+            )
           )}
           <div className="modal-detail-row"><span className="modal-detail-label">Created</span><span><Time value={job.created_at} /></span></div>
           <div className="modal-detail-row"><span className="modal-detail-label">Last Transition</span><span><Time value={job.state_changed_at} /></span></div>
 
+          {saveError && <p className="entity-error">{saveError}</p>}
+
+          <div className="entity-summary-actions">
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={onCopy}
+              disabled={copying}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
           <div style={{ marginTop: 20 }}>
             <button
-              className="entity-skip-btn"
+              className="btn secondary"
               onClick={onSkip}
               disabled={skipping || alreadySkipped}
             >

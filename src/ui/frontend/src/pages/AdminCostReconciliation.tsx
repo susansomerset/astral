@@ -229,7 +229,7 @@ export default function CostReconciliation() {
       <div className="list-page-header">
         <h1 className="list-page-title">Cost Reconciliation</h1>
         {csvRows && csvRows.length > 0 && (
-          <button className="timesheet-export-btn" onClick={handleExport}>Export CSV</button>
+          <button className="btn primary" onClick={handleExport}>Export CSV</button>
         )}
       </div>
 

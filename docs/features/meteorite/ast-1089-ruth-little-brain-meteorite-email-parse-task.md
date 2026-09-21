@@ -1,3 +1,312 @@
+<!-- linear-archive: AST-1089 archived 2026-08-11 -->
+
+## Linear archive (AST-1089)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1089/ruth-little-brain-meteorite-email-parse-task-add-gaze-email-as-a  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1087 — Add gaze_email as a dispatch task  
+**Blocked by / blocks / related:** parent: AST-1087; blocks: AST-1090
+
+### Description
+
+## What this implements
+
+Owns the Ruth TASK_CONFIG / agent-task slice that accepts email HTML (and related shape inputs) and returns meteorite job links/metadata and/or a likely JD link + content hints for the subject+body path. **Must use the bound candidate’s API key** for the consult. Does **not** scrape URLs, create jobs, or mutate Gmail (sibling #3).
+
+## In scope
+
+- [X] `pattern.config.config-block` — `METEORITE_EMAIL_PARSE_CONFIG` + `TASK_CONFIG["parse_meteorite_email"]`
+- [X] `astral.config.config-source-of-truth` — task key + `parse_modes` literals in config only
+- [X] `astral.config.secrets-and-env-specific-from-environ` — no Gmail secrets; candidate API key via `requires_candidate_key` / `ctx` at call time
+- [X] `astral.standards.in-scope-only` — TASK_CONFIG + Ruth `agent_task` + AST-756 fixture only
+- [X] `astral.standards.no-hardcoded-sets` — parse modes / task key not inlined in prompts as a second source of truth beyond config literals documented for the caller
+
+## Considered but excluded
+
+- [X] `astral.layers.core-vs-external-bright-line` — no Gmail I/O or core runner in this ticket (AST-1088 / AST-1090)
+- [X] `pattern.state.entity-state-transitions` / `astral.state.no-daisy-chain-in-run` — no job state transitions here
+- [X] `astral.standards.debug-contract-gated` — no new debug paths in this ticket (runner owns Style D)
+- [X] Dispatch shell / null `candidate_id` / archive+trash — AST-1088
+- [X] Bind / route / scrape / dedupe / create / mailbox outcomes — AST-1090
+
+## Acceptance criteria
+
+- [X] 6. Ruth invocations for bound mail use the bound candidate’s API key (`TASK_CONFIG["parse_meteorite_email"]["requires_candidate_key"]` is True; callers supply `ctx["candidate_api_key"]`). Account address / unbound retention / Gmail secrets remain sibling #1 (AST-1088).
+
+## Boundaries
+
+Does **not** scrape URLs, create jobs, or mutate Gmail (sibling #3). Does **not** own dispatch shell (sibling #1).
+
+## Notes for planning
+
+Plan: `docs/features/meteorite/ast-1089-ruth-little-brain-meteorite-email-parse-task.md` on `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1087-add-gaze-email-as-a-dispatch-task`, child `sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-31T02:10:00.656Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1089
+**Publish ref:** `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task` tip `6509f2bf921fdb111be352ec86cfc8739fdab278` (product tip reviewed `1ae256ab`; docs() `6509f2bf`)
+**Overall:** FIX-NOW
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-1089): origin/tests be56df6d…` on sub |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/docs/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | Published to origin/sub only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1087/AST-1089-…` under parent ftr |
+| orch.git.merge-on-checkout | universal | conforms | No illegal merge recipe in commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None in history |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named epic branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review in astral-AST-1087 |
+| orch.git.three-permanent-branches | universal | conforms | No permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions documented in plan; no new product ambiguity |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages + Files Changed followed except shell creep below |
+| orch.pipeline.project-scoped-queues | universal | conforms | Meteorite child only |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests/bible via Betty test + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Role path bans respected on commit authorship |
+| astral.agent.confidence-bounds | scoped | conforms | `scored: False`; no grade/confidence vectors |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers {core} ∩ {docs,utils}=∅ |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers {core} ∩ {docs,utils}=∅ |
+| astral.batch.batch-id-first | scoped | not-applicable | layers {data,core} ∩ {docs,utils}=∅ |
+| astral.batch.batch-id-format | scoped | not-applicable | layers {core,data} ∩ {docs,utils}=∅ |
+| astral.batch.claim-process-release | scoped | not-applicable | layers {core,data} ∩ {docs,utils}=∅ |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | layers {core,data} ∩ {docs,utils}=∅ |
+| astral.config.config-source-of-truth | scoped | conforms | Task key + parse_modes in METEORITE_EMAIL_PARSE_CONFIG / TASK_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | Not scored; no score_floor / pass_threshold path |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No Gmail secrets; candidate key via requires_candidate_key + ctx |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths {artifacts/**,scripts/spikes/**} no match |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Feature plan docs, not spike findings under docs/features |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | AST-1089 plan file present; sibling AST-1088 plan is separate ticket file |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits touch tests/bible only; merge-tests merge ok |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer code commits omit tests/bible |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers {core,external} ∩ {docs,utils}=∅ |
+| astral.layers.import-direction | scoped | conforms | No new cross-layer imports; utils/config only in src |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers {scripts} ∩ {docs,utils}=∅ |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | No React; catalog registration only |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | layers {core} ∩ {docs,utils}=∅ |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | layers {core} ∩ {docs,utils}=∅ |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers {ui} ∩ {docs,utils}=∅ |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | layers {data,core,ui} ∩ {docs,utils}=∅ |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers {data} ∩ {docs,utils}=∅ |
+| astral.standards.debug-contract-gated | scoped | conforms | No new debug emission paths |
+| astral.standards.dry-and-focused-functions | scoped | conforms | One task × two parse modes; no duplicate Ruth keys |
+| astral.standards.in-scope-only | scoped | violates | `dispatch_task_admin_defaults` GAZE_EMAIL_CONFIG early-return is AST-1088 shell; undefined on this tip |
+| astral.standards.logging-via-utils | scoped | conforms | No new logging surface |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays in utils + admin seed + fixture (+ Betty tests) |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Modes/task key live in named config; prompts reference literals |
+| astral.standards.public-then-helpers | scoped | conforms | Catalog registration only |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No utils→data module-load import |
+| astral.state.core-decides-transitions | scoped | not-applicable | layers {core,data} ∩ {docs,utils}=∅ |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job state transitions |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers {core} ∩ {docs,utils}=∅ |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers {ui} ∩ {docs,utils}=∅ |
+| astral.ui.naming-conventions | scoped | not-applicable | layers {ui} ∩ {docs,utils}=∅ |
+| astral.ui.single-gunicorn-worker | scoped | conforms | No gunicorn/worker changes |
+
+## Pattern conformance
+
+- `pattern.config.config-block` — **conforms** (`METEORITE_EMAIL_PARSE_CONFIG` named block)
+- Active `astral.patterns.*` — covered via statutes table (none applicable on this diff)
+
+## Plan adherence
+
+Self-Assessment Scope `Single-Component` matches intended Ruth catalog footprint. Stages 1–2 delivered. **Breach:** plan Out of scope / Boundaries exclude gaze_email dispatch shell (AST-1088), but `8d6eefe7` added `dispatch_task_admin_defaults` early-return on `GAZE_EMAIL_CONFIG` without defining that config or `TASK_CONFIG["gaze_email"]` on this tip → runtime `NameError` on every successful `dispatch_task_admin_defaults` call. Cross-ticket boundary violation + broken reference.
+
+## Findings
+
+**fix-now:** `src/utils/config.py` ≈L2672–2679 — `if tk == GAZE_EMAIL_CONFIG["task_key"]:` early-return. `GAZE_EMAIL_CONFIG` is **not assigned** on publish tip (`assigned False`, 1 ref). Remove this hunk from AST-1089 (leave shell on AST-1088 with the definition). Statute: `astral.standards.in-scope-only`; plan Out of scope.
+
+**discuss (straggler):** Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`; tip three-dot includes `docs/features/**` + Betty test-tree so sweep scores them in-scope (all still **conforms**). Note: Joan artifact present.
+
+**advisory:** Three-dot vs `origin/dev` also includes sibling `docs/features/meteorite/ast-1088-…md` (ftr-lineage docs) — not product smuggling by itself.
+
+### What’s solid
+
+Ruth `parse_meteorite_email` TASK_CONFIG + `METEORITE_EMAIL_PARSE_CONFIG` + agent_task prompts + AST-756 sync match plan Decisions; `requires_candidate_key: True`; not on `METEORITE_DISPATCH_TASKS`.
+
+### Recommended actions
+
+1. Delete the `GAZE_EMAIL_CONFIG` early-return from this sub.
+2. Smoke `dispatch_task_admin_defaults` for an existing dispatch key after the delete.
+3. No product change required for straggler discuss rows.
+
+context_tokens≈52000
+
+#### betty — 2026-07-31T02:06:30.980Z
+## QA test manifest
+
+`origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task` @ `1ae256ab` (`merge-tests(AST-1089): origin/tests be56df6d79d821b5cd83e99325ef8e17d6237fe4`)
+
+### Gaps (new)
+1. `tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig` — `METEORITE_EMAIL_PARSE_CONFIG` modes/task_key; `TASK_CONFIG["parse_meteorite_email"]` schema + `requires_candidate_key`; not in `METEORITE_DISPATCH_TASKS` / batch-mode-one; trigger helper KeyError
+2. `tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow` — Ruth Job Review row (`task_seq` 2.4), both parse modes in cache_prompt
+
+### Broken / obsolete (revised)
+3. `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` — catalog **46 → 47** + `parse_meteorite_email` in frozenset / UAT byte lock
+
+### Existing coverage (bible-backed)
+- Candidate API key path for `requires_candidate_key` remains covered by existing `do_task` tests in `tests/component/core/test_agent.py` (no new agent call-site in this ticket)
+
+### Run
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  -q
+```
+
+### Bible shasums on publish-ref
+- `docs/test-bible/utils/config.md` `e46d071c475f8788cabd033d1639570ed6743591`
+- `docs/test-bible/core/repo_admin_json.md` `3f81fc608ca9095810c5a0d3092630dcfc3d2239`
+
+**Integration:** none revised (no existing scenarios assert this parse task).
+
+— Betty
+
+#### joan — 2026-07-31T01:58:54.980Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1089
+**Overall:** APPROVED
+
+**Notes:** Files Changed layer cell `data/admin` is unrecognized by plan-rubric layer enum → treated as `docs` for matching only (path still `data/admin/agent_task.json`).
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 bound shapes → METEORITE_NEW + archive | N/A — boundary (AST-1090 runner) |
+| AC2 ignore non-URL subject / empty body | N/A — boundary (AST-1090) |
+| AC3 unbound newer stays in inbox | N/A — boundary (AST-1088 retention config + AST-1090 policy) |
+| AC4 unbound older → Trash, no job | N/A — boundary (AST-1088 trash API + AST-1090) |
+| AC5 per-candidate dedupe / all-duplicate archive | N/A — boundary (AST-1090) |
+| AC6 config account/retention + environ secrets + Ruth bound-candidate API key | Stage 1–2: `requires_candidate_key: True` + Ruth catalog; account/retention/Gmail secrets N/A — AST-1088 |
+| AC7 no qualify/GDL in same hop | N/A — boundary (AST-1090; this key is not a dispatch claim task) |
+| AC8 Style D debug on runner | N/A — boundary (AST-1090); plan adds no new debug paths |
+| AC9 null `candidate_id` dispatch schema | N/A — boundary (AST-1088) |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 METEORITE_EMAIL_PARSE_CONFIG + TASK_CONFIG | Parent Functional scope Ruth parse of email HTML / subject+body; Architectural `pattern.config.config-block`; child AC (parent AC6 Ruth key slice) |
+| Stage 2 agent_task.json + AST-756 fixture | Ruth agent_task row for parse modes; parent Applicable statutes config-source-of-truth / in-scope-only |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Plan/publish on sub ref only |
+| orch.git.flow-direction-inviolable | conforms | Publish to origin/sub/… only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-1087/AST-1089-… |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree astral-AST-1087 |
+| orch.git.three-permanent-branches | conforms | No permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Decisions documented; no product ambiguity blocking review |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed present |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Meteorite scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate-plan only |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/bible; Betty after Code Complete |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Katherine) owns build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer implementer path |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | `scored: False`; no grade/confidence vectors |
+| astral.config.config-source-of-truth | conforms | Task key + parse_modes in named config; prompts in agent_task.json |
+| astral.config.pass-threshold-vs-score-floor | conforms | Not a scored consult; no score_floor path |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No Gmail secrets; candidate API key via requires_candidate_key + ctx |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src + admin seed; Betty excluded |
+| astral.layers.import-direction | conforms | No new cross-layer imports; utils/config only in src |
+| astral.layers.ui-config-driven-business-logic | conforms | No React; config catalog only |
+| astral.standards.debug-contract-gated | conforms | No new debug paths; runner owns Style D |
+| astral.standards.dry-and-focused-functions | conforms | One task + two parse modes; no duplicate Ruth keys |
+| astral.standards.in-scope-only | conforms | Explicitly excludes 1088 shell and 1090 runner |
+| astral.standards.logging-via-utils | conforms | No new logging surface |
+| astral.standards.no-cross-contamination | conforms | Stays in config + admin seed + UAT fixture |
+| astral.standards.no-hardcoded-sets | conforms | Modes/task key in METEORITE_EMAIL_PARSE_CONFIG / TASK_CONFIG |
+| astral.standards.public-then-helpers | conforms | No scattered public API; catalog registration only |
+| astral.standards.utils-data-late-import-only | conforms | No utils→data module-load import added |
+| astral.state.job-prior-states-enforced | conforms | No job state transitions |
+| astral.ui.single-gunicorn-worker | conforms | No gunicorn/worker changes |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.job-prior-states-enforced, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.agent.do-task-delegation — layers {core} ∩ plan {docs, utils} empty
+- astral.agent.grade-vector-validation — layers {core} ∩ plan empty
+- astral.batch.batch-id-first — layers ∩ plan empty
+- astral.batch.batch-id-format — layers ∩ plan empty
+- astral.batch.claim-process-release — layers ∩ plan empty
+- astral.batch.entity-agent-responses-latest-only — layers ∩ plan empty
+- astral.debug.no-repo-root-artifacts-dir — paths match none
+- astral.debug.spikes-under-debug-dir — paths match none
+- astral.docs.features-single-file-per-ticket — paths {docs/features/**} match none of plan paths
+- astral.git.engineer-test-tree-ban — paths match none
+- astral.layers.core-vs-external-bright-line — layers ∩ plan empty
+- astral.layers.scripts-exempt-from-layer-rules — layers ∩ plan empty
+- astral.patterns.coat-check-never-store-empty — layers ∩ plan empty
+- astral.patterns.render-verdict-orchestrates-consult — layers ∩ plan empty
+- astral.patterns.require-auth-on-protected-endpoints — layers ∩ plan empty
+- astral.standards.data-raises-caller-logs — layers ∩ plan empty
+- astral.standards.database-header-inventory — layers ∩ plan empty
+- astral.state.core-decides-transitions — layers ∩ plan empty
+- astral.state.no-daisy-chain-in-run — layers ∩ plan empty
+- astral.ui.frontend-file-placement — layers ∩ plan empty
+- astral.ui.naming-conventions — layers ∩ plan empty
+
+## Findings
+
+None fix-now.
+
+**acceptable:** Self-assessment Single-Component / Conf high / Risk low matches catalog-only scope; Decisions (one task × two modes, requires_candidate_key, not a dispatch claim) are specific and sibling-handoff ready.
+
+**R6:** Definition fidelity pass for child #2 Ruth slice. Config/secrets pass. No runner/Gmail/shell creep. DRY one-task design pass.
+
+context_tokens≈48000
+
+— Joan
+
+#### katherine — 2026-07-31T01:56:35.398Z
+Plan published.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task/docs/features/meteorite/ast-1089-ruth-little-brain-meteorite-email-parse-task.md
+
+**Self-assessment**
+- **Scope:** Single-Component — `config.py` TASK_CONFIG + `METEORITE_EMAIL_PARSE_CONFIG`, one Ruth `agent_task.json` row, AST-756 fixture sync; no core runner / Gmail / dispatch shell.
+- **Conf:** high — mirrors AST-1037 / AST-1060 Ruth catalog patterns; candidate API key via existing `requires_candidate_key` + `ctx["candidate_api_key"]`.
+- **Risk:** low — catalog-only until AST-1090 calls it; wrong schema would block the runner, not mutate mailbox or jobs here.
+
+#### chuckles — 2026-07-31T01:53:29.381Z
+[thread-missing] Katherine Team store.db missing for prior UUID on this host; minted new session `1a68210c-fddf-49fe-91e9-fbe4cfeb0b8f` under epic workspace hash. Parent ## Team Katherine row updated.
+
+— Chuckles
+
+---
+
 # AST-1089 — Ruth little-brain meteorite email parse task
 
 **Linear:** [AST-1089](https://linear.app/astralcareermatch/issue/AST-1089/ruth-little-brain-meteorite-email-parse-task-add-gaze-email-as-a)

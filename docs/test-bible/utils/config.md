@@ -10,6 +10,22 @@
 
 ---
 
+### AST-1348 · AST-1346
+
+**`PHASE_SCORE_HEADER_TITLE_TEMPLATE`** + `build_state_ui_manifest()["jobs"]["recommended"]["phase_score_header_title_template"]`. Base `report_phase_tabs` `nav_label`s unchanged. Breakdown persist: **AST-1347**. Chrome: **`docs/test-bible/frontend/`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Template constant + manifest | `src/utils/config.py` | **`TestAst1348PhaseScoreHeaderTitleConfig`** |
+
+### AST-1347 · AST-1346
+
+**`PHASE_SCORE_BREAKDOWN_KEY_SUFFIX`** (`score_breakdown`) + **`PHASE_SCORE_BREAKDOWN_FIELDS`** (`earned`, `possible`, `max`). Not added to **`JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS`** (list Score columns stay 0–10). Persist/lift: **`docs/test-bible/core/consult.md`** / **`docs/test-bible/ui/api/api_jobs.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Breakdown constants + list columns | `src/utils/config.py` | **`TestAst1347PhaseScoreBreakdownConfig`** |
+
 ### AST-428 · AST-358
 
 **`GRADE_VALUES`**, **`RUBRIC_TOTAL`**, **`grade_value()`** in `config.py`; graded consult tasks use encoded batch shapes — **`draft_job_resume`** is structure-keyed per **AST-594** (no `grades` / vectors on that hop).
@@ -22,7 +38,7 @@
 
 ### AST-468 · AST-376
 
-**`resolve_dispatch_task_config_key`**, **`dispatch_task_key_is_scored`**, **`dispatch_claim_uses_score_floor`**, **`trigger_state_used_by_scored_dispatch_task`**, **`dispatch_task_admin_defaults`** centralize **`consult_*` → `grade_*`** indirection and admin form defaults for **`dispatcher.py`**, **`database.py`**, and **`api_admin.py`**. **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — catalog membership is **`TASK_CONFIG`** only (gazer/roster/inflow gap keys stay on derivation helpers, not admin defaults). **`pass_threshold`** vs **`score_floor`**: **`docs/ASTRAL_CODE_RULES.md`** subsection under §2.1; claim gating vs grading metadata: **§7.13zv** (**AST-586**).
+**`resolve_dispatch_task_config_key`**, **`dispatch_task_key_is_scored`**, **`dispatch_claim_uses_score_floor`**, **`trigger_state_used_by_scored_dispatch_task`**, **`dispatch_task_admin_defaults`** centralize **`consult_*` → `grade_*`** indirection and admin form defaults for **`dispatcher.py`**, **`database.py`**, and **`api_admin.py`**. **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — catalog membership is **`TASK_CONFIG`** only (gazer/roster/inflow gap keys stay on derivation helpers, not admin defaults). **AST-1277:** **`pass_threshold`** stripped from **`TASK_CONFIG`**; **`effective_dispatch_score_floor`** + **`dispatch_row_task_key`** shared by claim + scored verdict (primary: **`docs/test-bible/core/consult.md`** § AST-1277). Claim gating vs grading metadata: **§7.13zv** (**AST-586**). Law authority: **`pattern.dispatch.score-floor`** / CODE_RULES §2.1 (**AST-1279** — docs-acceptance in **`docs/test-bible/README.md`**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -438,7 +454,7 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 
 ### AST-723 · AST-378
 
-**`RUBRIC_VECTORS`** token registry; legacy per-artifact rubric tokens removed from **`TOKEN_SOURCES`**; **`rubric_owner_task_key`** + **`JOB_TOKEN_CONFIG["analysis_phases"].rubric_owner_task_key`**.
+**`RUBRIC_VECTORS`** token registry; legacy per-artifact rubric tokens removed from **`TOKEN_SOURCES`**; **`rubric_owner_task_key`** + **`JOB_TOKEN_CONFIG["analysis_phases"].rubric_owner_task_key`**. **AST-1405** restores **`GET_RUBRIC` / `DO_RUBRIC` / `LIKE_RUBRIC`** (plus **`JD_RUBRIC` / `PREFILTER_RUBRIC`**) as pinned names — `TestAst723RubricVectorsToken.test_legacy_per_artifact_rubric_tokens_removed` now asserts only **`COMPANY_PREFILTER` / `JOBLIST_RUBRIC` / `JOBDESC_RUBRIC`** stay absent.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -535,24 +551,25 @@ Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry. **AST-740** origi
 
 ### AST-750 · AST-743
 
-**`DISPATCH_SCORE_FLOOR_VALUES`** (0.0–10.0 in 0.5 steps) and **`dispatch_score_floor_option_labels()`** are the single source of truth for the admin Edit Dispatch Task **Score Floor** `<select>`. **`GET /api/admin/dispatch_tasks/score_floor_options`** exposes the label list; **`AdminScheduledActions.tsx`** fetches options on load and persists **0.00** via `Number.isFinite` save coercion (not `parseFloat(...) || 1`).
+**`DISPATCH_SCORE_FLOOR_VALUES`** (0.0–10.0 in 0.5 steps) and **`dispatch_score_floor_option_labels()`** are the single source of truth for the admin Edit Dispatch Task **Score Floor** `<select>`. **`GET /api/admin/dispatch_tasks/score_floor_options`** exposes the label list; **`AdminScheduledActions.tsx`** fetches options on load and persists **0.00** via `Number.isFinite` save coercion (not falsy `parseFloat` → **1**). §6c zero-save case restored under **AST-1278**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Catalog tuple + label helper | `src/utils/config.py` | `TestAst750DispatchScoreFloorCatalog` (`test_config.py`) |
 | Admin metadata endpoint | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_scheduler_and_run_controls` (score_floor_options assertion) |
-| Scheduled Actions modal (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `test_AdminScheduledActions.test.tsx` — **`AST-750: edit save sends score_floor 0 when 0.00 selected`** |
+| Scheduled Actions modal (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `test_AdminScheduledActions.test.tsx` — **`AST-1278: edit save sends score_floor 0 when 0.00 selected`** |
 
-**AST-750** narrowed run:
+**AST-750** / **AST-1278** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog \
   tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor \
   -q
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
-  -t "AST-750"
+  -t "AST-1278"
 ```
 
 
@@ -657,7 +674,7 @@ Consult routing manifest: **`docs/test-bible/core/consult.md`** (**AST-863**).
 | --- | --- | --- |
 | Config literals | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` |
 
-External + gazer manifests: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+External + gazer manifests: **`docs/test-bible/external/telescope.md`** (**AST-853**).
 
 ---
 
@@ -755,6 +772,35 @@ Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**
 
 Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
 
+### AST-1339 · AST-1319 (gap — tests)
+
+**Parent:** [AST-1319 — Implement retry for NEW meteorite states](https://linear.app/astralcareermatch/issue/AST-1319). **Publish:** `origin/sub/AST-1319/AST-1339-gap-meteorite-new-retry-tests`. Product holding: sibling **AST-1338** (`code(AST-1338)`).
+
+**`METEORITE_NEW_RETRY`** qualify holding (roster twin of **AST-898**): `METEORITE_NEW.retry_state` → **METEORITE_NEW_RETRY**; primary claim `["METEORITE_NEW","METEORITE_NEW_RETRY"]`; first-strike fail-dest → holding; second-strike → **METEORITE_ERROR_QUALIFY**; UI label **"Meteorite New (retry)"**; no `JOBS_IN_REVIEW_GRADE_FIELD` entry. **BOT_BLOCKED** priors include **METEORITE_NEW_RETRY**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry / claim / UI / fail-dest twin | `src/utils/config.py` | **`TestAst1339MeteoriteNewRetryQualifyHolding`** (`[bug-repro]`) |
+| AST-1053 priors / In Review membership / order / label | same | revised **`TestAst1053MeteoriteGdlJobStates`** |
+| BOT_BLOCKED prior equality | same | revised **`TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui`**; membership belt **`TestAst1197…::test_task_config_email_and_bot_knobs`** |
+
+Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). Roster twin: **AST-898** above.
+
+**Broken / obsolete:** AST-1053 priors that omit **METEORITE_NEW_RETRY**; AST-1195 `BOT_BLOCKED.prior_states == ["PASSED_JOBLIST","METEORITE_NEW"]` equality.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui \
+  tests/component/utils/test_config.py::TestAst1197QualifyMeteoriteApplyKnobs::test_task_config_email_and_bot_knobs \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  -q
+```
+
 
 ### AST-1189 · AST-1164
 
@@ -781,6 +827,37 @@ Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
 | Token floor literal | `src/utils/config.py` | **`TestAst903CraftRubricMaxTokens`** |
 
 **AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
+
+### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+**`deepseek_brain_max_tokens_floor`** + DeepSeek `BRAIN_BIG` `max_tokens: 384000`. Not on Little/Medium; `DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"]` stays **16000**. Primary hop manifest: **`docs/test-bible/core/agent.md`** § AST-1391.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tier literal + helper | `src/utils/config.py` | **`TestAst1391DeepseekBigMaxTokensFloor`** |
+
+### AST-1397 · AST-1396 · AST-1395 (gap — tests)
+
+**Parent:** [AST-1395 — Loading ad hoc agent screen spills log warnings to the console](https://linear.app/astralcareermatch/issue/AST-1395/loading-ad-hoc-agent-screen-spills-log-warnings-to-the-console). **Publish:** `origin/sub/AST-1395/AST-1397-cover-empty-candidate-first-name-silence`. Product gate: sibling **AST-1396**.
+
+`resolve_tokens` candidate-source empty WARNING is silent when `candidate_data` is `{}` (Agent Ad Hoc list load / no candidate). A truthy token view with blank `first` / `full` still warns. Mixed `{$FIRST_NAME} {$CALLER_RESPONSE}` `any("resolved to empty")` does not pin this. Does **not** change job/chain empty-warning branches.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty-cd FIRST_NAME silence | `src/utils/config.py` | **`TestResolveTokens::test_empty_candidate_data_does_not_warn_on_first_name`** (`[bug-repro]`) |
+| Truthy view blank first still warns | same | **`TestResolveTokens::test_blank_first_name_on_truthy_view_still_warns`** |
+
+**Broken / obsolete:** none — mixed empty-candidate-and-chain `any(...)` still holds via chain.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestResolveTokens::test_empty_candidate_data_does_not_warn_on_first_name \
+  tests/component/utils/test_config.py::TestResolveTokens::test_blank_first_name_on_truthy_view_still_warns \
+  tests/component/utils/test_config.py::TestResolveTokens::test_logs_and_returns_empty_for_missing_candidate_and_chain_values \
+  -q
+```
 
 ---
 
@@ -844,7 +921,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config cov
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`CANDIDATE_STAGE_DISPATCH`** artifacts entry (`craft_get_rubric`) + claim/trigger helpers; wrappers retired.
 
 ### AST-1022 · AST-1018
 
@@ -885,6 +962,42 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
   tests/component/utils/test_config.py::TestAst997FinalizeExperienceJobArray \
   -q
 ```
+
+---
+
+### AST-1349 · AST-1345
+
+**AST-1349:** Config experience schemas confirm-only (shared `_EXPERIENCE_JOB_*` already locked). Prompt + draft-validate contract: **`docs/test-bible/core/candidate.md`** § AST-1349.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft / finalize schema identity (reuse) | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig`**, **`TestAst997FinalizeExperienceJobArray`** |
+
+### AST-1382 · AST-1362 (gap — accomplishments list schema)
+
+**AST-1382:** `_EXPERIENCE_JOB_ITEM_SCHEMA["accomplishments"]` is `{"type": "list", "required": True}` (other four keys remain `str`). Primary fixture retarget: **`TestAst996ExperienceJobArrayConfig`**. Candidate/UI: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| accomplishments type list on shared schema | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig::test_craft_resume_base_experience_is_job_array_field`** |
+
+### AST-1350 · AST-1345
+
+**AST-1350:** `BUILD_CONFIG["unsupported_resume_structure_message"]` exact toast string. Primary refuse/emit: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Message literal | `src/utils/config.py` | **`TestAst1350UnsupportedResumeStructureMessage`** |
+
+---
+
+### AST-1351 · AST-1345
+
+**AST-1351:** `BUILD_CONFIG["experience_job_ui_fields"]` keys match craft schema. Primary UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Field spine keys + labels | `src/utils/config.py` | **`TestAst1351ExperienceJobUiFields`** |
 
 ---
 
@@ -974,7 +1087,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ### AST-1025 · AST-1023
 
-**AST-1025:** Admin `NAV_CONFIG` item **Session Cover Letter** (`/admin/session_cover_letter`) immediately after **Session Resume Paste**. Primary page §6c: **`docs/test-bible/frontend/pages.md`**.
+**AST-1025:** Tools `NAV_CONFIG` item **Cover Letter Paste** (`/admin/session_cover_letter`) immediately after **Resume Paste** (AST-1386 labels; paths unchanged). Primary page §6c: **`docs/test-bible/frontend/pages.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -990,11 +1103,11 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ### AST-1033 · AST-1031
 
-**AST-1033:** Admin `NAV_CONFIG` item **Read email** (`/admin/read_email`) immediately after **Session Cover Letter**. Primary page §6c: **`docs/test-bible/frontend/pages.md`**. API: **`docs/test-bible/ui/api/api_inbox.md`**.
+**AST-1033 / AST-1048 / AST-1386:** **Manage Email** (`/admin/manage_email`) lives in the **Operations** admin-only group (no longer adjacent to paste items). `/admin/read_email` remains absent. Primary page §6c: **`docs/test-bible/frontend/pages.md`**. API: **`docs/test-bible/ui/api/api_inbox.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Nav order + label | `src/utils/config.py` | **`TestAst1033ReadEmailNav`** |
+| Nav label/path + no read_email | `src/utils/config.py` | **`TestAst1033ReadEmailNav`** |
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -1090,13 +1203,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
 
-`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, **IGNORE**, unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
+`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, company state **METEORITE** after **AST-1493** (was IGNORE), unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Template keys + IGNORE/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing assert revised **AST-1056**) |
+| Template keys + company_state/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing **AST-1056**; company_state **AST-1493**) |
 
-**Broken / obsolete:** none — additive config block.
+**Broken / obsolete:** AST-1041 `company_state == "IGNORE"` — revised **AST-1493**.
 
 **Integration:** no existing scenario asserts METEORITE_CONFIG — no revision.
 
@@ -1157,7 +1270,7 @@ Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/
 | --- | --- | --- |
 | Meteorite priors + UI manifests + non-meteorite smoke | `src/utils/config.py` | **`TestAst1053MeteoriteGdlJobStates`** (priors/labels revised **AST-1060**) |
 
-**Broken / obsolete:** RECOMMENDED prior absence assert superseded by **AST-1055**; score-gated membership smoke revised by **AST-1054**; create-state smoke superseded by **AST-1056** / **`TestAst1056MeteoriteCreateLanding`**; GDL-entry priors + NEW label + QUALIFIED UI revised by **AST-1060**.
+**Broken / obsolete:** RECOMMENDED prior absence assert superseded by **AST-1055**; score-gated membership smoke revised by **AST-1054**; create-state smoke superseded by **AST-1056** / **`TestAst1056MeteoriteCreateLanding`**; GDL-entry priors + NEW label + QUALIFIED UI revised by **AST-1060**; qualify-holding priors / In Review **METEORITE_NEW_RETRY** cutover revised by **AST-1339**.
 
 **Integration:** no existing scenarios assert meteorite JOB_STATES — none revised.
 
@@ -1365,13 +1478,13 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`.
 
-`CONTACT_CONFIG["skills"]`: `save_candidate_profile` + `save_candidate_contact` with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+`CONTACT_CONFIG["skills"]`: `save_candidate_profile` (name columns `first`/`last`/`pronouns`) + `save_candidate_contact` (`contact.contact_email` / `contact.reply_email`) with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
 
-**Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
+**Broken / obsolete:** AST-1066 empty-skills asserts — revised above. `profile.*` allowed_paths retired (AST-1014 name columns / contact blob).
 
 **Integration:** none.
 
@@ -1789,6 +1902,52 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
 ```
 
 
+### AST-1668 · AST-1636
+
+**Parent:** [AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve`.
+
+`CONTACT_CONFIG` known/unknown recognition reply text defaults. Core recognition + unbound: **`docs/test-bible/core/contact.md`** § AST-1668.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| known/unknown recognition reply text | `src/utils/config.py` | **`TestAst1668RecognitionReplyConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG keys.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig \
+  -q
+```
+
+### AST-1672 · AST-1670
+
+**Parent:** [AST-1670 — Split inflow website resolve into CSE fetch + find_company_website dispatch](https://linear.app/astralcareermatch/issue/AST-1670). **Publish:** `origin/sub/AST-1670/AST-1672-discovered-resolve-registry-ssot`.
+
+Config/SSOT only: company **`DISCOVERED`** land/vet state; CSE-only **`INFLOW_CONFIG["resolve"]`** on **`DISCOVERED`** (waiting **`WEBSITE_REVIEW`**, hit-list key, no **`ai_task_key`**); schedulable **`resolve_website`** (`agent_task=find_company_website`). Runners / claim SQL: siblings **AST-1673** / **AST-1674**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Discovery land **`DISCOVERED`** | `src/utils/config.py` | **`TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals`**; **`TestAst1672DiscoveredResolveRegistrySsot::test_hit_list_key_and_cse_only_resolve_block`** |
+| 2 | Vet claim / admin defaults **`DISCOVERED`** | same | **`TestAst505InflowDiscoveryConfig::{test_inflow_config_vet_literals,test_vet_inflow_discovery_task,test_vet_inflow_discovery_dispatch_admin_defaults}`** |
+| 3 | **`resolve_website`** company/**`WEBSITE_REVIEW`** + agent identity | same | **`TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults`** |
+| — | CSE-only resolve + transitions + hit-list key | same | **`TestAst506InflowResolveConfig`**; **`TestAst1672DiscoveredResolveRegistrySsot::{test_discovered_state_batch_criteria_and_transitions,test_hit_list_key_and_cse_only_resolve_block}`**; revised **`TestAst1214DispatchAdminDefaultsWidened`** |
+
+**Broken / obsolete (Betty revision this pass):** AST-505/506/1214 asserts that expected vet/resolve triggers on **`NEW`**, **`ai_task_key`** on the resolve block, and **`NEW → WEBSITE_FOUND|NO_WEBSITE|VET_FAILED`** transition tuples — cut over to **`DISCOVERED`** / CSE-only / **`WEBSITE_REVIEW`** edges. Same pass: **`TestAst1214`** `meteorite_email` admin defaults expect **`entity_type: None`** (mailbox poller after AST-1529+; tip product).
+
+**Integration:** none — config-only; do not invent new integration coverage. Existing integration scenarios do not assert these literals.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
+  tests/component/utils/test_config.py::TestAst1672DiscoveredResolveRegistrySsot \
+  -q
+```
+
 ### AST-1206 · AST-1203
 
 **Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
@@ -1834,13 +1993,13 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
 
-`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps the three hop keys → `job_resume` / `cover_letter` / `proposed_answers`. `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those pin slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
+`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` maps **only** `propose_application_responses` → `proposed_answers` (**AST-1548** removed finalize hops). Finalize hops bind catalog keys via **`TASK_CONFIG.artifact_key`** (**AST-1602** retired `JOB_ARTIFACT_BODY_REPLICA_BY_TASK`; leaf types via `JOB_EDITABLE_ARTIFACT_TYPES` from those keys). `JOB_BUILD_ARTIFACT_CLEAR_KEYS` includes those body slots (legacy body keys retained). Primary pin/do_task coverage: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/agent.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Pin map + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
+| Pin map + finalize artifact_key (no body-replica) + clear keys | `src/utils/config.py` | **`TestAst1099JobArtifactAgentDataPinConfig`** |
 
-**Broken / obsolete:** none.
+**Broken / obsolete:** three-key pin map including finalize hops — AST-1554. Body-replica **leaf** values — revised under **AST-1590**. Body-replica **map** asserts — revised under **AST-1602**.
 
 **Integration:** none.
 
@@ -1984,6 +2143,52 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
   tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
   tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
+  -q
+```
+
+**AST-1264:** craft run_next migration neutered — see **`docs/test-bible/data/database/agent_tasks.md`** § AST-1264.
+
+
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. Config: wrappers in `DISPATCH_RETIRED_TASK_KEYS`; `CANDIDATE_STAGE_DISPATCH` artifacts-only with `task_key=craft_get_rubric`; trigger/entity helpers; AC2 `REQUESTED_RESUME` remains selectable.
+
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+`REQUESTED_ARTIFACTS.prior_states` adds regenerate re-entry (`ARTIFACTS_READY` / stale / `ACTIVE_SEARCH` / `PAUSE_SEARCH`); `artifact_generate_states` expanded; unordered `CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH` (no hop sequencing list). Core walk / UI: **`docs/test-bible/core/candidate.md`** / **`frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Priors + path map + generate states | `src/utils/config.py` | **`TestAst1253GenerateRegenerateHandoffConfig`**; revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+
+**Broken / obsolete:** prior `artifact_generate_states == ["RESUME_READY", "ACTIVE_SEARCH"]` assert.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1253GenerateRegenerateHandoffConfig \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab \
+  -q
+```
+
+### AST-1375 · AST-1371
+
+**Parent:** [AST-1371](https://linear.app/astralcareermatch/issue/AST-1371/regenerate-resume-button-does-not-appear-for-resumes-with-unsupported). **Publish:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`.
+
+`build_state_ui_manifest()["candidate"]` adds `artifact_generate_inflight_hide_states` (`REQUESTED_ARTIFACTS`, `REQUESTED_ARTIFACTS_RETRY` — not ERROR). `artifact_generate_states` unchanged. UI escape hatch: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inflight hide list | `src/utils/config.py` | **`TestAst1375ArtifactGenerateInflightHideStates`** |
+
+**Broken / obsolete:** none — additive key.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates \
   -q
 ```
 
@@ -2403,14 +2608,14 @@ Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_
 
 **Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
 
-`qualify_meteorite` schema: `job_link` / `job_title` → `required: False` so omit/`null` do not abort `do_task`. Universal rename `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** in `JOB_STATES` (priors `PASSED_JOBLIST` + `METEORITE_NEW`), `GAZER_CONFIG` fetch_jd error_states, `SKIPPED_STATES`, skipped section order + bulk-retry map (retry → `PASSED_JOBLIST`). Gazer map: **`docs/test-bible/core/gazer.md`**. Fixture: **`docs/test-bible/frontend/pages.md`**.
+`qualify_meteorite` schema: `job_link` / `job_title` → `required: False` so omit/`null` do not abort `do_task`. Universal rename `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** in `JOB_STATES` (priors `PASSED_JOBLIST` + `METEORITE_NEW` + **`METEORITE_NEW_RETRY`** after **AST-1339**), `GAZER_CONFIG` fetch_jd error_states, `SKIPPED_STATES`, skipped section order + bulk-retry map (retry → `PASSED_JOBLIST`). Gazer map: **`docs/test-bible/core/gazer.md`**. Fixture: **`docs/test-bible/frontend/pages.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Schema optional + `_validate_response_schema` omit/null | `src/utils/config.py` / `src/core/agent.py` | **`TestAst1195SchemaNullsAndBotBlocked`**; revised **`TestAst1127QualifyMeteoriteCompanyJobIdOptional`**, **`TestAst1060QualifyMeteoriteConfig`** |
 | `BOT_BLOCKED` registry + skipped UI + gazer error_states | `src/utils/config.py` | **`TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui`**; **`TestAst1156SkippedBulkRetryMap`** (covers map completeness / priors) |
 
-**Broken / obsolete:** AST-1060 / AST-1127 asserts that `job_title` / `job_link` stay `required: True`; AST-1127 sibling-missing check on `job_title` → `jd_text`. Frontend fixture `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` (see pages bible).
+**Broken / obsolete:** AST-1060 / AST-1127 asserts that `job_title` / `job_link` stay `required: True`; AST-1127 sibling-missing check on `job_title` → `jd_text`. Frontend fixture `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` (see pages bible). Pre–AST-1339 `BOT_BLOCKED.prior_states` equality without **METEORITE_NEW_RETRY**.
 
 **Integration:** none revised (no existing scenarios pin `JD_SCRAPE_FAIL_BOT` / qualify schema required flags).
 
@@ -2580,3 +2785,1445 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
   -q
 ```
+
+
+### AST-1236 · AST-1174
+
+**Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
+
+`SURFER_PACING_CONFIG` — dwell centre/spread (10 ± 5 seconds), `max_tabs` (1), named `mv3_idle_ceiling_seconds` (30). Module-load asserts keep the dwell window under the MV3 idle ceiling (ordinary timers, not `chrome.alarms`). GET + extension helpers: **`docs/test-bible/ui/api/api_surfer.md`**, **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Defaults + MV3 window contract | `src/utils/config.py` | **`TestAst1236SurferPacingConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer pacing scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1236SurferPacingConfig \
+  -q
+```
+
+### AST-1229 · AST-1169
+
+**Parent:** [AST-1169 — Surfer batch — durable worklist state and batch-scoped intake](https://linear.app/astralcareermatch/issue/AST-1169/surfer-batch-durable-worklist-state-and-batch-scoped-intake). **Publish:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity`.
+
+`SURFER_BATCH_CONFIG` — batch statuses (`requires_all_urls_terminal` on COMPLETED only), URL outcomes (`pending`/`delivered` non-terminal), id prefix `surfer`, lifecycle pointer key `active_surfer_batch_id`. No staleness keys. Core: **`docs/test-bible/core/surfer.md`**. Data: **`docs/test-bible/data/database/surfer_batches.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Vocab + flag contract | `src/utils/config.py` | **`TestAst1229SurferBatchConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1229SurferBatchConfig \
+  -q
+```
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`SURFER_CONSENT_CONFIG` — `candidate_data_key` `surfer_consent`, opaque `current_version`, provisional `disclosure_copy`, closed `statuses` (`none`/`opted_in`/`opted_out`), `default_status` `none`. Core helpers + API: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Key / version / copy / statuses contract | `src/utils/config.py` | **`TestAst1235SurferConsentConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer consent scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+`SURFER_CONSENT_CONFIG` — `current_version` `"2"`, off-store-weight `disclosure_copy`, chrome keys (`disclosure_title` / `opt_in_label` / `decline_label` / `current_ok_*`); Candidate nav **Surfer Consent** → `/candidate/surfer_consent`. DTO chrome: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension lib: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chrome + version + copy weight + nav | `src/utils/config.py` | **`TestAst1237SurferConsentDisclosureConfig`** |
+
+**Broken / obsolete:** none — AST-1235 contract still holds (opaque non-empty version).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
+  -q
+```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+`SURFER_CONSENT_CONFIG` — off-switch / stale / uninstall / `capture_denied_message` chrome; Candidate nav **Surfer** → `/candidate/surfer`. Gate + DTO: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Off-switch copy + Surfer nav | `src/utils/config.py` | **`TestAst1238SurferOffSwitchConfig`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
+  -q
+```
+
+### AST-1214 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1214-admin-catalog-api-hardcode-audit-alphabetical-task-key-lists`.
+
+`dispatch_task_admin_defaults` widens beyond `TASK_CONFIG`: helper-resolvable hops (`fetch_*`, `gaze`, `inflow_discovery`, `recheck_no_openings`, plus writer-capable `prefilter` / `inflow_resolve_website`) resolve via `_dispatch_*` helpers; meteorite mailbox fold via `METEORITE_EMAIL_PARSE_CONFIG` (`legacy_agent_task_key`, `admin_entity_type`) + `is_meteorite_email_mailbox_task_key`. Admin picker/validator/Avail: **`docs/test-bible/ui/api/api_admin.md`** (**AST-1214**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper-resolvable + mailbox defaults | `src/utils/config.py` | revised gap-key classes (**`TestAst796…`**, **`TestAst702…`**, **`TestAst719…`**, **`TestAst701…`**, **`TestAst874…`**, **`TestAst505…`**, **`TestAst506…`**); **`TestAst1214DispatchAdminDefaultsWidened`** |
+| Mailbox fold config fields | same | revised **`TestAst1089ParseMeteoriteEmailConfig`** |
+
+**Broken / obsolete (Betty revision this pass):** `dispatch_task_admin_defaults(<gap_key>)` expecting `unknown task_key` KeyError for helper-resolvable / prefilter / inflow_resolve_website keys.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover::test_fetch_jd_gazer_hop_not_task_config_catalog \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig::test_dispatch_registry_and_pjl_data_keys \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig::test_dispatch_registry_and_homepage_text_key \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig::test_gazer_and_dispatch_registry \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig::test_inflow_resolve_website_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
+  -q
+```
+
+---
+
+### AST-1270 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`.
+
+`TASK_CONFIG["draft_job_resume"]` declares **`nested_resume_key`** + **`payload_metadata_keys`** (includes **`deviations`**). Primary unwrap/whitelist/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1270.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nest key + metadata tuple | `src/utils/config.py` | **`TestAst1270DraftJobResumeNestConfig`**; reuse **`TestAst594DraftJobResumeSchema`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst594DraftJobResumeSchema \
+  -q
+```
+
+---
+
+### AST-1271 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`.
+
+`TASK_CONFIG["draft_job_resume"]["deviations_artifact_key"]` + same literal in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Primary retention coverage: **`docs/test-bible/core/tracker.md`** § AST-1271.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Artifact slot + clear-keys | `src/utils/config.py` | **`TestAst1271DeviationsArtifactConfig`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  -q
+```
+
+---
+
+### AST-1333 · AST-1326
+
+**Parent:** [AST-1326 — Make "Highlights" a REQUIRED resume section](https://linear.app/astralcareermatch/issue/AST-1326/make-highlights-a-required-resume-section). **Publish:** `origin/sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts`.
+
+Shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` requires `highlights` (str) immediately before `experience`; `craft_resume_base` / `simple_resume_parse` keep object identity. Agent_task `cache_prompt`s require Highlights above Experience (craft: 10 keyed segments + empty-string checklist; simple: field inventory + segment block). Catalog twin `docs/uat-fixtures/AST-756/expected-agent_task.json` stays byte-identical. Catalog membership / normalize coerce = **AST-1332**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared schema + omit/empty validation | `src/utils/config.py` | **`TestAst1333CraftParseHighlightsSchema`**; reuse **`TestAst1037SimpleResumeParseConfig`** |
+| Prompt + fixture twin | `data/admin/agent_task.json` | **`TestAst1333CraftParseHighlightsPrompts`** |
+| Schema fixture payloads | `src/core/candidate.py` callers | revised **`TestAst517ResumeStructure`** inject cases; **`TestAst1005FalseMissingCandidateName`** `_OTHER_REQUIRED` |
+| Prompt regressions (contracts on simple_resume_parse) | same JSON | revised **`TestAst996…job_array_contract`**, **`TestAst1027…`**, **`TestAst1028…`**, **`TestAst1029…`**, **`TestAst1030…`** → read `simple_resume_parse` `current=1` |
+
+**Broken / obsolete this pass:** craft/parse schema fixtures omitting `highlights` fail validation — add `highlights: ""`. AST-996 / AST-1027–1030 asserted Judith craft_resume_base wording that now lives on Ruth `simple_resume_parse` (post AST-1037/1038); retargeted + aligned to current prompt text.
+
+**Integration:** none — no existing scenario pins craft/parse schema field inventory; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1333CraftParseHighlightsSchema \
+  tests/component/utils/test_config.py::TestAst1037SimpleResumeParseConfig \
+  tests/component/core/test_candidate.py::TestAst1333CraftParseHighlightsPrompts \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure::test_normalize_injects_default_when_resume_structure_missing \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure::test_normalize_injects_default_when_resume_structure_sections_empty \
+  tests/component/core/test_candidate.py::TestAst1005FalseMissingCandidateName \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst1029CraftResumeBaseCompetenciesBullets \
+  tests/component/core/test_candidate.py::TestAst1030CraftResumeBaseNoBulletPreserve \
+  -q
+```
+
+
+### AST-1365 · AST-1360
+
+`ideal_day` in `CANDIDATE_LIBRARY_CONFIG["context_keys"]` + `context_completeness_keys`; `TOKEN_SOURCES["IDEAL_DAY"]`. Primary gate/save coverage: **`docs/test-bible/core/candidate.md`** § AST-1365 — **`TestAst1365IdealDayLibraryToken`**, revised **`TestCheckContextCompleteExtended`**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended \
+  tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary \
+  -q
+```
+
+
+### AST-1366 · AST-1360
+
+Candidate `NAV_CONFIG` Ideal Day (`/candidate/ideal_day`) between Backstory and Writing Preferences. Routed page + save: **`docs/test-bible/frontend/pages.md`** § AST-1366.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1366IdealDayCandidateNav \
+  -q
+```
+
+### AST-1367 · AST-1360
+
+**Parent:** [AST-1360 — Add ideal_day to candidate context](https://linear.app/astralcareermatch/issue/AST-1360/add-ideal-day-to-the-set-of-candidate-context-strengths-priorities-etc). **Publish:** `origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists`.
+
+`ideal_day` joins `TOPIC_MENU_CONFIG["informs"]` (after `backstory`) and `TOPIC_MENU_GEN_CONFIG` `packet_context_keys` / `patchable_context_keys` (after `deal_breakers`). Estelle seed prompts for confirm/generate list the same vocabulary. Does **not** own Candidate Ideal Day UI (**AST-1366**) or JD/DO/LIKE craft prompts (**AST-1368**). Library/token: **AST-1365**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Informs + packet/patch allowlists | `src/utils/config.py` | revised **`TestAst1074TopicMenuConfig`**; **`TestAst1367IdealDayTopicMenuInforms`**; existing **`TestAst1075TopicMenuGenConfig`** (⊆ library) |
+| `validate_topic` accepts `ideal_day` | `src/core/candidate.py` | revised **`TestAst1074TopicMenuPersistence`** |
+| Estelle seed prompt vocabulary | `data/admin/agent_task.json` | revised **`TestAst1075TopicMenuCatalogRows`** |
+
+**Broken / obsolete this pass:** `TestAst1365IdealDayLibraryToken::test_topic_menu_informs_exclude_ideal_day_until_sibling` — asserted Ideal Day absent from informs until this sibling; removed. **`TestAst1074TopicMenuConfig._INFORMS`** — six-tuple → seven with `ideal_day`.
+
+**Integration:** no existing scenario asserts Topic Menu informs catalog membership — no revision.
+
+## QA test manifest
+
+1. Config informs + GEN allowlists: `tests/component/utils/test_config.py::TestAst1074TopicMenuConfig` + `TestAst1367IdealDayTopicMenuInforms` + `TestAst1075TopicMenuGenConfig`
+2. validate_topic Ideal Day: `tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_accepts_ideal_day_inform` (+ existing happy/reject)
+3. Estelle seed prompts: `tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows`
+
+**AST-1367** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1074TopicMenuConfig \
+  tests/component/utils/test_config.py::TestAst1075TopicMenuGenConfig \
+  tests/component/utils/test_config.py::TestAst1367IdealDayTopicMenuInforms \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_happy_and_rejects \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_accepts_ideal_day_inform \
+  tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1373 · AST-1372
+
+**Parent:** [AST-1372 — Extend Stytch sessions](https://linear.app/astralcareermatch/issue/AST-1372). **Publish:** `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules`.
+
+`AUTH_CONFIG` gains non-secret `session_duration_minutes` (20) + `activity_extension_interval_minutes` (10); `get_auth_session_policy()` returns only those two ints. Public `GET /api/auth_session_policy` (no `@require_auth`) for pre-login SPA reads — route coverage: **`docs/test-bible/ui/api/api_system.md`**. Does **not** own React authenticate/extend (**AST-1374**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session literals + SPA-safe helper | `src/utils/config.py` | **`TestAst1373AuthSessionPolicy`** |
+| Public policy route | `src/ui/api/api_system.py` | **`TestAst1373AuthSessionPolicyRoute`** |
+
+**Broken / obsolete:** none — additive keys + new open route. Existing `stytchAuthenticateHandoff` hardcoded `60` remains until **AST-1374**.
+
+**Integration:** no existing scenario asserts auth session policy or `/api/auth_session_policy` — no revision.
+
+## QA test manifest
+
+1. AUTH_CONFIG literals + `get_auth_session_policy`: `tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy`
+2. Public `GET /api/auth_session_policy`: `tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute`
+
+**AST-1373** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy \
+  tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1386 · AST-1370
+
+**Parent:** [AST-1370 — Group admin in the UI into three segments](https://linear.app/astralcareermatch/issue/AST-1370/group-admin-in-the-ui-into-three-segments). **Publish:** `origin/sub/AST-1370/AST-1386-three-segment-admin-nav`.
+
+`NAV_CONFIG` replaces the single Admin group with **Operations** / **Admin** / **Tools** (`admin_only: True`); paste nav labels **Resume Paste** / **Cover Letter Paste** (paths unchanged). `nav_admin_only_group_labels()` drives `/api/nav_config` non-admin omit — route coverage: **`docs/test-bible/ui/api/api_system.md`**. No React / routes / pages / shell.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Three segments + helper + candidate anchors | `src/utils/config.py` | **`TestAst1386ThreeSegmentAdminNav`** |
+| Paste adjacency (revised) | same | **`TestAst1025SessionCoverLetterNav`** |
+| Manage Email in Operations (revised) | same | **`TestAst1033ReadEmailNav`** |
+| Admin API three segments + omit | `src/ui/api/api_system.py` | **`test_nav_config_three_admin_segments_for_admin`**, **`test_nav_config_omits_admin_group_for_non_admin`**, **`test_nav_config_admin_agent_ad_hoc_label`** |
+
+**Broken / obsolete this pass:** single-Admin inventory + `label != "Admin"` omit + Agent Ad Hoc under Admin + Manage Email after paste — revised above.
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` asserts Jobs gates only — no Admin inventory; no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Three segments + `nav_admin_only_group_labels` + candidate anchors: `tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav`
+2. Cover Letter Paste after Resume Paste (Tools): `tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav`
+3. Manage Email in Operations / no read_email: `tests/component/utils/test_config.py::TestAst1033ReadEmailNav`
+4. Admin `/api/nav_config` three segments + paste labels: `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin`
+5. Non-admin omits Operations/Admin/Tools: `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`
+6. Agent Ad Hoc under Tools: `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label`
+
+**AST-1386** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav \
+  tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1405 · AST-1404
+
+**Parent:** [AST-1404 — Reintroduce the specific rubric tokens](https://linear.app/astralcareermatch/issue/AST-1404/reintroduce-the-specific-rubric-tokens). **Publish:** `origin/sub/AST-1404/AST-1405-named-rubric-prompt-tokens`.
+
+Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_RUBRIC`, `PREFILTER_RUBRIC`) with `source: rubric` + `owner_task_key` pin. `resolve_tokens` uses the pin, not the running task; `{$RUBRIC_VECTORS}` stays task-derived. Empty `candidate_data` silences missing-id warnings for pinned names only (AST-1396 contract). Does **not** register `JOBLIST_RUBRIC` / `COMPANY_PREFILTER` / `JOBDESC_RUBRIC`. Pickers already list `TOKEN_SOURCES` — no UI tests.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Named pins + picker membership | `src/utils/config.py` | **`TestAst1405NamedRubricPromptTokens::test_named_pins_registered_and_listed_in_pickers`** |
+| Pin independence vs `{$RUBRIC_VECTORS}` | same | **`TestAst1405NamedRubricPromptTokens::test_named_token_uses_pin_not_running_task_owner`** |
+| Empty-cd silence (pinned only) | same | **`TestAst1405NamedRubricPromptTokens::test_empty_cd_silences_pinned_names_not_rubric_vectors`** |
+| Truthy view missing cid still warns | same | **`TestAst1405NamedRubricPromptTokens::test_truthy_view_missing_cid_still_warns_for_pinned_name`** |
+| Legacy names stay unregistered | same | revised **`TestAst723RubricVectorsToken::test_legacy_per_artifact_rubric_tokens_removed`** |
+
+**Broken / obsolete this pass:** `TestAst723RubricVectorsToken._LEGACY_RUBRIC_TOKENS` included `GET_RUBRIC` / `DO_RUBRIC` / `LIKE_RUBRIC` as absent — those names are restored as pinned tokens; the tuple now covers only `COMPANY_PREFILTER` / `JOBLIST_RUBRIC` / `JOBDESC_RUBRIC`.
+
+**Integration:** no existing scenario asserts `TOKEN_SOURCES` rubric names or `resolve_tokens` pin vs running-task owner — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Named pins + Manage Tasks / Manage Agents pickers: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_named_pins_registered_and_listed_in_pickers`
+2. Pin independence + `{$RUBRIC_VECTORS}` still task-derived: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_named_token_uses_pin_not_running_task_owner`
+3. Empty-cd silence for pinned names; `RUBRIC_VECTORS` still warns: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_empty_cd_silences_pinned_names_not_rubric_vectors`
+4. Truthy token view without candidate id still warns: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_truthy_view_missing_cid_still_warns_for_pinned_name`
+5. Three forbidden legacy names stay absent: `tests/component/utils/test_config.py::TestAst723RubricVectorsToken::test_legacy_per_artifact_rubric_tokens_removed`
+6. Keep `RUBRIC_VECTORS` unpinned: `tests/component/utils/test_config.py::TestAst723RubricVectorsToken::test_rubric_vectors_token_registered`
+
+**AST-1405** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens \
+  tests/component/utils/test_config.py::TestAst723RubricVectorsToken \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1474 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462). **Publish:** `origin/sub/AST-1462/AST-1474-page-break-policy-config-resume-structure-schema`.
+
+`RESUME_STRUCTURE_PAGE_BREAK_*` tokens / labels / default / per-known-id map; every `RESUME_STRUCTURE_DEFAULT` section carries `page_break_policy: avoid_split` (incl. `prior_experience`). Normalize / GET catalog: **`docs/test-bible/core/candidate.md`** § AST-1474.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Page-break catalog literals | `src/utils/config.py` | **`TestAst1474PageBreakPolicyCatalog`** |
+
+**Broken / obsolete this pass:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1474PageBreakPolicyCatalog \
+  -q
+```
+
+### AST-1479 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
+
+**`APPLIED_JOB_STATES`** (four post-applied outcomes) + Jobs → Applied nav item enabled (no `enabled: False`). API/page: **`docs/test-bible/ui/api/api_jobs.md`** / **`docs/test-bible/frontend/pages.md`** § AST-1479.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied state set + nav | `src/utils/config.py` | **`TestAst1479AppliedJobStatesAndNav`** |
+
+**Broken / obsolete:** none — additive constant + nav enable.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+```
+
+### AST-1488 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`.
+
+**Re-land of AST-1479** — same `APPLIED_JOB_STATES` + Applied nav enablement. **Existing coverage — no new tests.** Full manifest: **`docs/test-bible/frontend/pages.md`** § AST-1488.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied state set + nav | `src/utils/config.py` | **`TestAst1479AppliedJobStatesAndNav`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+### AST-1493 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track`.
+
+`COMPANY_STATES["METEORITE"] = {}` (roster-inert); `METEORITE_CONFIG["company_state"]` → **METEORITE**; stem template keys (`stem_short_name_template` / `default_stem` / `meteorite_self_stem`). Ensure/track: **`docs/test-bible/core/meteorite.md`** (**AST-1493**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| METEORITE state + stem template asserts | `src/utils/config.py` | **`TestAst1493MeteoriteCompanyStateConfig`**; revised **`TestAst1041MeteoriteConfig`** |
+
+**Broken / obsolete:** AST-1041 `company_state == "IGNORE"`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
+  tests/component/core/test_meteorite.py::TestAst1493StemEnsureAndTrack \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  -q
+```
+
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`); `company_stem_response_key` literal for consult map. Enrich/apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema + response key + validate omit/value | `src/utils/config.py` | **`TestAst1494QualifyMeteoriteCompanyStemSchema`** |
+
+**Broken / obsolete:** none — additive optional field.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1494QualifyMeteoriteCompanyStemSchema \
+  -q
+```
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+`NAV_CONFIG` Companies group: **Meteorite** → `/companies/meteorite_list` (after Ignored). Core/API: **`docs/test-bible/core/meteorite.md`**, **`docs/test-bible/ui/api/api_companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Companies → Meteorite nav item | `src/utils/config.py` | **`TestAst1495MeteoriteCompaniesNav`** |
+
+**Broken / obsolete:** none — additive NAV item.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1495MeteoriteCompaniesNav \
+  -q
+```
+
+---
+
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+`TASK_CONFIG["advise_job_resume"]` coded-advice keys + `resume_advice` in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Primary parse/validate/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1507. Tracker persist + cancel clear: **`docs/test-bible/core/tracker.md`** § AST-1507. `do_task` validate/persist hooks: **`docs/test-bible/core/agent.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Artifact slot + clear-keys | `src/utils/config.py` | **`TestAst1507ResumeAdviceArtifactConfig`** |
+
+**Broken / obsolete:** none — additive advise metadata slot (AST-1271 deviations mirror).
+
+**Integration:** none — advise hop is component-layer; no existing integration scenario asserts coded resume advice.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1507ResumeAdviceArtifactConfig \
+  -q
+```
+
+---
+
+### AST-1508 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
+
+`TASK_CONFIG["draft_job_resume"]` per-code adherence keys (`advice_adherence_*`); **`deviations`** removed from draft metadata/artifact/clear-keys; **`advice_adherence`** in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Primary normalize/validate/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1508. Tracker persist: **`docs/test-bible/core/tracker.md`** § AST-1508.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Adherence slot + clear-keys | `src/utils/config.py` | **`TestAst1508AdviceAdherenceArtifactConfig`**; revised **`TestAst1270DraftJobResumeNestConfig`**, **`TestAst1271DeviationsArtifactConfig`** |
+
+**Broken / obsolete:** AST-1271 deviations slot on draft — superseded; **`TestAst1271DeviationsArtifactConfig`** revised to assert retirement.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1508AdviceAdherenceArtifactConfig \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  -q
+```
+
+### AST-1515 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch`.
+
+`CONTACT_TASK_CONFIG`: six allowlisted contact-task keys with handler dotted paths, descriptions, param hints, `requires_candidate=True`; import-time collision asserts vs `TASK_CONFIG` and `CONTACT_CONFIG["skills"]`. Core markup/dispatch: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Six keys + handler metadata + collision guards | `src/utils/config.py` | **`TestAst1515ContactTaskConfig`** |
+
+**Broken / obsolete:** none — new block distinct from `CONTACT_CONFIG` skills ACL and `TASK_CONFIG`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1515ContactTaskConfig \
+  -q
+```
+
+---
+
+### AST-1523 · AST-1460
+
+**Parent:** [AST-1460](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence`.
+
+Strip **`resume_advice_*`** / **`advice_adherence_*`**; restore draft **`notes_artifact_key`** + clear slot. Primary coverage: **`docs/test-bible/core/candidate.md`** § AST-1523.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Notes slot + epic keys retired | `src/utils/config.py` | **`TestAst1523NotesArtifactConfig`**; revised **`TestAst1270DraftJobResumeNestConfig`**, **`TestAst1271DeviationsArtifactConfig`** |
+
+**Broken / obsolete:** **`TestAst1507ResumeAdviceArtifactConfig`**, **`TestAst1508AdviceAdherenceArtifactConfig`** — retired with product revert.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1523NotesArtifactConfig \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  -q
+```
+
+---
+
+### AST-1529 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config`.
+
+`STAGE_METEORITE_CONFIG` (six closed outcomes + source-ref prefixes + landable/skip/text/url partitions) + `TASK_CONFIG["stage_meteorite"]` (outcome enum lockstep; jobs scrap schema). Retires live `TASK_CONFIG["meteorite_email"]` Ruth parse entry and `METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]` — PARSE block is a fold stub only; mailbox poller key stays `METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"`. Catalog: **`docs/test-bible/core/repo_admin_json.md`**. Schema validate: **`docs/test-bible/core/agent.md`**. Core orchestration / caller cutover: siblings **AST-1530** / **AST-1531**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage config + TASK_CONFIG shell + PARSE stub + mailbox poller | `src/utils/config.py` | **`TestAst1529StageMeteoriteConfig`** |
+
+**Broken / obsolete:** **`TestAst1089ParseMeteoriteEmailConfig`** — rewritten as **`TestAst1529StageMeteoriteConfig`**. **`TestAst1144ParseMeteoriteEmailMetadataDict`** (config) — skipped; metadata lived on retired parse schema.
+
+**Integration:** no existing scenarios assert stage_meteorite / parse_modes — none revised.
+
+## QA test manifest
+
+1. Stage config shell: `tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig`
+2. Schema validate: `tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate`
+3. Catalog + fixture twin: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+4. Catalog membership lock: `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys`
+5. Fixture byte twin (cross-ticket): `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/core/test_agent.py::TestAst1529StageMeteoriteSchemaValidate \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1534 · AST-1532
+
+**Parent:** [AST-1532](https://linear.app/astralcareermatch/issue/AST-1532). **Publish:** `origin/sub/AST-1532/AST-1534-scoped-adhoc-runs-list-api`.
+
+`UI_CONFIG["adhoc_import_runs_limit"]` (10) + `UI_CONFIG["adhoc_import_picker_visible_rows"]` (5). Primary map: **`docs/test-bible/core/agent.md`** (§ AST-1534).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cap + visible-row literals | `src/utils/config.py` | **`TestAst1534AdhocImportConfigKeys`** |
+
+**Broken / obsolete:** none for config keys. List-path revisions live under core/agent § AST-1534.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1534AdhocImportConfigKeys \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1550 · AST-1541
+
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`. **Gap revise:** **AST-1612** (`origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`) — product hop start on **AST-1609**.
+
+Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + public `build_artifacts_discussion_hop_task_keys()` live `run_next` walk: starts at the unique live `run_next` parent of `resume_artifact_chain.first_task_key` when exactly one parent exists (today `anticipate_scan`), else at `first_task_key`; cycle → `RuntimeError`. Healthy-chain length is live (~10 when unique parent present), not a hard-coded nine. Manifest sections + story `task_name`: **`docs/test-bible/ui/api/api_system.md`**, **`docs/test-bible/core/agent.md`**. React pane: sibling AST-1551.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Top tabs include Discussion | `src/utils/config.py` | **`TestAst1550DiscussionHopKeys::test_top_tabs_discussion_after_artifacts`**; revised **`TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`** |
+| Hop walk / empty start / cycle / unique parent | same | **`TestAst1550DiscussionHopKeys`** (incl. **`test_hop_walk_unique_parent_includes_anticipate_scan`**) |
+
+**Broken / obsolete:** AST-948 three-tab `report_top_tabs` assert — revised in place for Discussion. Pre-AST-1609 “excludes `anticipate_scan`” assert — removed (AST-1612).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Config tabs + hop walk: `tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys`
+2. Revised report tabs (AST-948→1550): `tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs`
+3. Manifest Discussion sections: `tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections`
+4. Story `task_name`: `tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_ast565_recommended_report_manifest_tabs \
+  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
+  tests/component/core/test_agent.py::TestAst1550AgentStoryTaskName \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1612 · AST-1607
+
+**Parent:** [AST-1607](https://linear.app/astralcareermatch/issue/AST-1607/artifacts-discussion-is-incomplete). **Publish:** `origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`. Product: **AST-1609** (`origin/sub/AST-1607/AST-1609-fix-artifacts-discussion-incomplete`).
+
+Test-gap sibling: revise AST-1550 hop-walk coverage for unique-parent start; frontend Discussion filter coverage lives under **`docs/test-bible/frontend/components.md`** § AST-1612.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unique-parent walk includes `anticipate_scan` | `src/utils/config.py` | **`TestAst1550DiscussionHopKeys::test_hop_walk_unique_parent_includes_anticipate_scan`** |
+
+**Broken / obsolete:** `"anticipate_scan" not in keys` on short-chain walk — removed.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1550DiscussionHopKeys::test_hop_walk_unique_parent_includes_anticipate_scan \
+  -q
+```
+
+**Pass criterion:** pytest green — red on pre-AST-1609 product (walk starts at `first` only).
+
+
+### AST-1557 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1557-meteorite-table-claim-helpers`.
+
+`METEORITE_STATES` staging-row registry (`prior_states` per key; distinct from `JOB_STATES` `METEORITE_*` labels) + `METEORITE_STATES_RETENTION` purge/stale partitions. Data helpers: **`docs/test-bible/data/database/meteorites.md`** § AST-1557.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven keys, NEW entry, priors ⊆ registry | `src/utils/config.py` | **`TestAst1557MeteoriteStates`** |
+| Retention partitions disjoint + ⊆ states | same | **`TestAst1557MeteoriteStates::test_retention_partitions`** |
+
+**Broken / obsolete:** none — additive registry.
+
+**Integration:** none — do not invent.
+
+Primary numbered manifest: **`docs/test-bible/data/database/meteorites.md`** § AST-1557.
+
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+Retire `FETCH_EMAIL_CONFIG`, `INBOX_BIND_CONFIG`, `TASK_CONFIG["fetch_email"]`, `SEED_CONFIG["dispatch_task-fetch-email"]`. Primary inbox/Manage Email map: **`docs/test-bible/core/inbox.md`** § AST-1558.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config + task/seed retirement | `src/utils/config.py` | **`TestAst1558FetchEmailBindRetired`** |
+
+**Broken / obsolete:** **`TestAst1313InboxBindConfig`** — `INBOX_BIND_CONFIG` removed (replaced by retirement asserts).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired \
+  -q
+```
+
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+`METEORITE_MONITORING_CONFIG` (`outcome_already_ingested`); `debug_func` → `meteorite.check_inbox`. **`TestAst1559MonitoringConfig`**.
+
+---
+
+### AST-1560 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
+
+`METEORITE_INGRESS_DISPATCH_CONFIG` (task keys, trigger states, scrape page_status map); `SEED_CONFIG["dispatch_task-meteorite-ingress"]`. **`TestAst1560IngressDispatchConfig`**. Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
+---
+
+### AST-1562 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
+
+`METEORITE_RETENTION_CONFIG` (day cutoffs, batch size); `SEED_CONFIG["dispatch_task-meteorite-retention"]`. Retires `unbound_retention_days`, `debug_func_selected`, selected-id outcome keys from `METEORITE_EMAIL_MAILBOX_CONFIG`. **`TestAst1562RetentionConfig`**. Runners: **`docs/test-bible/core/meteorite.md`** § AST-1562.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1562.
+
+---
+
+### AST-1561 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
+
+`METEORITE_BOT_BLOCKED_NOTIFY_CONFIG` (task key, `BOT_BLOCKED` trigger, nag limit, DM templates); `SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]`. **`TestAst1561BotBlockedNotifyConfig`**. Runners + contact routing: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+---
+
+### AST-1576 · AST-1569
+
+**Publish:** `origin/sub/AST-1569/AST-1576-generic-save-candidate-data`.
+
+`TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"` (in `ARTIFACT_CONFIG`). Wrapper `src/utils/artifact_catalog.py` deleted. Primary: **`docs/test-bible/core/candidate.md`** § AST-1576.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| artifact_key + ARTIFACT_CONFIG SoT; module gone | `src/utils/config.py` | **`TestAst1576CraftResumeBaseArtifactKey`** |
+
+**Broken / obsolete:** `tests/component/utils/test_artifact_catalog.py`. Singleton `ARTIFACT_CONFIG` key-set assert — revised under **AST-1590** (pilot membership remains).
+
+**Integration:** none.
+
+### AST-1590 · AST-1588
+
+**Parent:** [AST-1588 — Support job.artifacts.job_resume and job.artifacts.cover_letter as artifacts](https://linear.app/astralcareermatch/issue/AST-1588/support-job-artifactsjob-resume-and-job-artifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys`.
+
+Registers `job.artifacts.job_resume` + `job.artifacts.cover_letter` in `ARTIFACT_CONFIG` beside the candidate pilot; **AST-1602** moved finalize→catalog binding to `TASK_CONFIG.artifact_key` (body-replica map retired); `JOB_EDITABLE_ARTIFACT_TYPES` derived as leaf strings from those keys; JAR resume/cover tabs stay leaf keys with 1:1 leaf asserts. Sibling blob keys stay out of the catalog. Config-only — no tracker/schema/UI this child.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog keys + metadata + sibling exclusion | `src/utils/config.py` | **`TestAst1590JobArtifactCatalogKeys`** |
+| Finalize artifact_key + editable leaves (revised AST-1602) | same | **`TestAst1099JobArtifactAgentDataPinConfig::test_body_replica_by_task_map`**, **`TestAst1590JobArtifactCatalogKeys::test_body_replica_and_editable_derived_from_catalog`** |
+| Pilot membership (revised; not singleton) | same | **`TestAst1576CraftResumeBaseArtifactKey::test_craft_artifact_key_is_hierarchical_pilot`** |
+| JAR leaf tabs unchanged | same | existing **`TestAst1100ArtifactTabPinKeys`**, **`TestAst1116CoverLetterDataShapes`** |
+| Agent debug label cites catalog key (revised) | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails`** |
+
+**Broken / obsolete this pass:** body-replica leaf-string asserts; `ARTIFACT_CONFIG` singleton key-set; agent `key=cover_letter` debug skip string. Body-replica map membership asserts — revised under **AST-1602** (do not re-assert deleted symbol).
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` key set or body-replica catalog values; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Job catalog keys + bindings: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys`
+2. Revised body-replica map: `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig`
+3. Revised pilot membership: `tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey`
+4. JAR leaf tabs (regression): `tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys` + `TestAst1116CoverLetterDataShapes`
+5. Agent store-failed debug label: `tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys \
+  tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey \
+  tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
+  tests/component/utils/test_config.py::TestAst1116CoverLetterDataShapes \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin::test_debug_skip_replica_when_store_fails \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — `500a0dbdc3e235ab96a324e762762aca8ff103a10fd411192bcb2c3a7776c6b2`
+
+### AST-1596 · AST-1578
+
+**Parent:** [AST-1578 — Split token config: add source-type field](https://linear.app/astralcareermatch/issue/AST-1578/split-token-config-add-source-type-field-data-field-artifact-special). **Publish:** `origin/sub/AST-1578/AST-1596-token-catalog-source-type-typing`.
+
+`TOKEN_SOURCE_TYPES` + required `source_type` on every `TOKEN_SOURCES` row; `BASE_RESUME` sole `artifact` with `artifact_key` → `ARTIFACT_CONFIG`; import-time asserts; thin `get_tokens_by_source_type` / `get_artifact_key_for_token`. Resolve path / admin name lists unchanged. Config-only — no consumer rewire this child.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Typed catalog + asserts + getters | `src/utils/config.py` | **`TestAst1596TokenCatalogSourceTypeTyping`** |
+| Job token dict equality (revised) | same | **`TestAst513JobTokens`** |
+| COMPANY_SEARCH_TERMS stays data_field (revised) | same | **`TestAst504CompanySearchTermsConfig`** |
+| Pronoun dict equality (revised) | same | **`TestAst575PronounTokens`** |
+| FULL_NAME dict equality (revised) | same | **`TestAst510MiddleNameConfig`** |
+| Rubric / named-pin dict equality (revised) | same | **`TestAst723RubricVectorsToken`**, **`TestAst1405NamedRubricPromptTokens`** |
+| IDEAL_DAY dict equality (revised) | same | **`TestAst1365IdealDayLibraryToken`** (ideal_day token_source method) |
+
+**Broken / obsolete this pass:** full-dict `TOKEN_SOURCES[…] == {…}` asserts that omitted `source_type` (job / pronoun / rubric / candidate path rows listed above).
+
+**Integration:** none — no existing scenario asserts `TOKEN_SOURCES` `source_type` / `artifact_key` or the new getters; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Typed catalog + getters + assert contract: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+2. Revised job token equality: `tests/component/utils/test_config.py::TestAst513JobTokens`
+3. Revised COMPANY_SEARCH_TERMS: `tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig::test_company_search_terms_token_source`
+4. Revised pronouns: `tests/component/utils/test_config.py::TestAst575PronounTokens::test_get_tokens_includes_five_pronoun_names`
+5. Revised FULL_NAME: `tests/component/utils/test_config.py::TestAst510MiddleNameConfig::test_full_name_token_source`
+6. Revised rubric registry: `tests/component/utils/test_config.py::TestAst723RubricVectorsToken::test_rubric_vectors_token_registered`
+7. Revised named rubric pins: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_named_pins_registered_and_listed_in_pickers`
+8. Revised IDEAL_DAY: `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst513JobTokens \
+  tests/component/utils/test_config.py::TestAst504CompanySearchTermsConfig::test_company_search_terms_token_source \
+  tests/component/utils/test_config.py::TestAst575PronounTokens::test_get_tokens_includes_five_pronoun_names \
+  tests/component/utils/test_config.py::TestAst510MiddleNameConfig::test_full_name_token_source \
+  tests/component/utils/test_config.py::TestAst723RubricVectorsToken::test_rubric_vectors_token_registered \
+  tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_named_pins_registered_and_listed_in_pickers \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — `91d04205bc2b5579c3a5da6c6696b20a874ba24a9dc5b94db3116da38fd2c510`
+
+### AST-1602 · AST-1601
+
+**Parent:** [AST-1601 — Rip out job-specific artifact pin helpers; match candidate catalog pattern](https://linear.app/astralcareermatch/issue/AST-1601/rip-out-job-specific-artifact-pin-helpers-match-candidate). **Publish:** `origin/sub/AST-1601/AST-1602-retire-job-body-replica-config-authority`.
+
+Config-only: `TASK_CONFIG["finalize_job_resume"]` / `finalize_cover_letter` expose `artifact_key` → catalog keys; `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` deleted; `JOB_EDITABLE_ARTIFACT_TYPES` derived from those task keys; `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` / sibling non-catalog blobs unchanged. Agent/tracker call-site rewire is sibling **AST-1603** (transient import of deleted symbol until that child lands — do not include agent body-replica tests on this manifest).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finalize artifact_key + map gone + editable + pin + siblings | `src/utils/config.py` | **`TestAst1602RetireJobBodyReplicaConfigAuthority`** |
+| Revised body-replica asserts (1099 / 1590) | same | **`TestAst1099JobArtifactAgentDataPinConfig`**, **`TestAst1590JobArtifactCatalogKeys`** |
+| Catalog + JAR regression | same | **`TestAst1576CraftResumeBaseArtifactKey`**, **`TestAst1100ArtifactTabPinKeys`**, **`TestAst1116CoverLetterDataShapes`** |
+
+**Broken / obsolete this pass:** `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` membership / intersection asserts in **`TestAst1099…::test_body_replica_by_task_map`** and **`TestAst1590…::test_body_replica_and_editable_derived_from_catalog`**.
+
+**Integration:** none — no existing scenario asserts the body-replica map; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary finalize artifact_key authority: `tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority`
+2. Revised pin/body-replica class: `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig`
+3. Revised catalog + editable derivation: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys`
+4. Pilot membership regression: `tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey`
+5. JAR leaf tabs regression: `tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys` + `TestAst1116CoverLetterDataShapes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority \
+  tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys \
+  tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey \
+  tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
+  tests/component/utils/test_config.py::TestAst1116CoverLetterDataShapes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1621 · AST-1620
+
+**Parent:** [AST-1620 — Treat meteorite as a first-class dispatch entity_type](https://linear.app/astralcareermatch/issue/AST-1620/treat-meteorite-as-a-first-class-dispatch-entity-type). **Publish:** `origin/sub/AST-1620/AST-1621-register-meteorite-entity-types`.
+
+Register `meteorite` in `ENTITY_TYPES`; wire `dispatch_entity_state_registry` / `dispatch_claim_states` / `_dispatch_sort_by_for` to `METEORITE_STATES`; flip ingress + bot-blocked `SEED_CONFIG` SQL `entity_type` to `'meteorite'`. Code Rules §2.1 / §2.4 wording is docs-acceptance. Count/due/Available/ledger/live-row backfill stay siblings **AST-1622** / **AST-1623**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| ENTITY_TYPES + registry + claim + sort + seeds | `src/utils/config.py` | **`TestAst1621MeteoriteEntityTypeRegistry`** |
+| Code Rules ENTITY_TYPES + §2.4 claim-queue | `docs/ASTRAL_CODE_RULES.md` | docs-acceptance (grep) |
+
+**Broken / obsolete:** none — AST-1560 / AST-1561 seed presence asserts still hold (they never pinned NULL `entity_type`).
+
+**Integration:** none — no existing scenario asserts ingress `entity_type` or `ENTITY_TYPES` membership; do not invent.
+
+## QA test manifest
+
+1. Meteorite entity-type registry + ingress/notify seeds: `tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry`
+2. Docs-acceptance (required): on publish tip, `docs/ASTRAL_CODE_RULES.md` §2.1 ENTITY_TYPES bullet lists `meteorite`; §2.4 claim-queue parenthetical includes `` `meteorite` ``
+3. Regression (seed presence still green): `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_seed_catalog_has_ingress_dispatch_rows` + `TestAst1561BotBlockedNotifyConfig::test_seed_catalog_has_notify_dispatch_row` + `TestAst1562RetentionConfig::test_seed_catalog_has_retention_dispatch_row`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_seed_catalog_has_ingress_dispatch_rows \
+  tests/component/utils/test_config.py::TestAst1561BotBlockedNotifyConfig::test_seed_catalog_has_notify_dispatch_row \
+  tests/component/utils/test_config.py::TestAst1562RetentionConfig::test_seed_catalog_has_retention_dispatch_row \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1 + 3; docs-acceptance line 2 via grep/read on publish tip — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1632 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1632-catalog-plain-text-strengths-token`.
+
+Config-only: `BUILD_CONFIG["artifact_shapes"]["plain_text"] = "raw_string"`; register `candidate.context.strengths` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, `ingestion_owner: candidate`); context sibling freeze (priorities / deal_breakers / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["STRENGTHS"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}`. No UI / hydrate / API / blob retirement (siblings).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| plain_text shape + strengths catalog + sibling freeze + STRENGTHS token | `src/utils/config.py` | **`TestAst1632CatalogPlainTextStrengthsToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts; `test_base_resume_artifact_linkage`) |
+
+**Broken / obsolete this pass:** AST-1590 three-key singleton; AST-1596 sole-`BASE_RESUME` artifact set / `data_field==23` / `get_tokens_by_source_type("artifact") == ["BASE_RESUME"]`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Strengths key, `plain_text` shape, or `STRENGTHS` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Strengths catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1648 · AST-1647
+
+**Parent:** [AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page](https://linear.app/astralcareermatch/issue/AST-1647). **Publish:** `origin/sub/AST-1647/AST-1648-catalog-bio-summary-token-profile-nav`.
+
+Config-only: register `candidate.context.bio_summary` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (priorities / deal_breakers / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["BIO_SUMMARY"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY"}`; delete profile `DATA_SHAPES` Bio Summary section; add Candidate `NAV_CONFIG` leaf `/candidate/bio_summary`. No hydrate / API / React (siblings AST-1649 / AST-1650).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| bio_summary catalog + plain_text reuse + sibling freeze + BIO_SUMMARY token + profile omit + nav | `src/utils/config.py` | **`TestAst1648CatalogBioSummaryTokenProfileNav`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+
+**Broken / obsolete this pass:** AST-1590 four-key singleton (missing bio_summary); AST-1596 `_artifact_tokens == {"BASE_RESUME", "STRENGTHS"}` / `data_field==22` / `get_tokens_by_source_type("artifact") == ["BASE_RESUME", "STRENGTHS"]`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Bio Summary key, `BIO_SUMMARY` artifact typing, profile Bio Summary section, or Candidate Bio Summary nav; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Bio Summary catalog + token + profile/nav: `tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1654 · AST-1642
+
+**Parent:** [AST-1642 — Migrate candidate_data.context.deal_breakers to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1642). **Publish:** `origin/sub/AST-1642/AST-1654-catalog-plain-text-deal-breakers-token`.
+
+Config-only: register `candidate.context.deal_breakers` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (priorities / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["DEAL_BREAKERS"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "DEAL_BREAKERS"}`. No UI / hydrate / API / blob retirement (siblings). Mirror AST-1632. Parallel epics (**AST-1648** bio_summary / **AST-1651** priorities) are not on this tip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| deal_breakers catalog + plain_text reuse + sibling freeze + DEAL_BREAKERS token | `src/utils/config.py` | **`TestAst1654CatalogPlainTextDealBreakersToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Strengths / Bio Summary freeze lists drop deal_breakers | same | **`TestAst1632…`** / **`TestAst1648…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 closed set expecting `bio_summary` or `priorities` instead of `deal_breakers`; AST-1596 `_artifact_tokens` / getters naming `BIO_SUMMARY` or `PRIORITIES` instead of `DEAL_BREAKERS`; AST-1632 / AST-1648 freeze lists still asserting `deal_breakers` absent; AST-1648 asserting `DEAL_BREAKERS` `data_field`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Deal Breakers key or `DEAL_BREAKERS` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Deal Breakers catalog + plain_text reuse + token: `tests/component/utils/test_config.py::TestAst1654CatalogPlainTextDealBreakersToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1654CatalogPlainTextDealBreakersToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+
+### AST-1651 · AST-1641
+
+**Parent:** [AST-1641 — Migrate candidate_data.context.priorities to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1641). **Publish:** `origin/sub/AST-1641/AST-1651-catalog-plain-text-priorities-token`.
+
+Config-only: register `candidate.context.priorities` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (deal_breakers / backstory / ideal_day / writing_preferences stay out); flip `TOKEN_SOURCES["PRIORITIES"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES"}`. No UI / hydrate / API / blob retirement (siblings AST-1652 / AST-1653). Parallel epic **AST-1648** (`bio_summary`) is not on this tip — `TestAst1648*` skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| priorities catalog + plain_text reuse + sibling freeze + PRIORITIES token | `src/utils/config.py` | **`TestAst1651CatalogPlainTextPrioritiesToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+
+**Broken / obsolete this pass:** AST-1590 five-key set expecting `bio_summary` (parallel tip) / missing `priorities`; AST-1596 `_artifact_tokens` / counts expecting `BIO_SUMMARY` not `PRIORITIES`; AST-1632 / AST-1648 `PRIORITIES` still-`data_field` asserts; AST-1632 / AST-1648 freeze lists still naming `priorities`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Priorities key or `PRIORITIES` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Priorities catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1651CatalogPlainTextPrioritiesToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1651CatalogPlainTextPrioritiesToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1658 · AST-1643
+
+**Parent:** [AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1643). **Publish:** `origin/sub/AST-1643/AST-1658-catalog-plain-text-ideal-day-token`.
+
+Config-only: register `candidate.context.ideal_day` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (priorities / deal_breakers / backstory / writing_preferences stay out); flip `TOKEN_SOURCES["IDEAL_DAY"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "BIO_SUMMARY", "IDEAL_DAY"}`. No UI / hydrate / API / blob retirement (siblings AST-1659 / AST-1660). Tip lineage includes bio_summary (AST-1648); parallel priorities / deal_breakers epics are not on this tip — `TestAst1651*` / `TestAst1654*` skipif when those keys are absent.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| ideal_day catalog + plain_text reuse + sibling freeze + IDEAL_DAY token | `src/utils/config.py` | **`TestAst1658CatalogPlainTextIdealDayToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Revised IDEAL_DAY token_source (was data_field) | same | **`TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`** |
+| Strengths / Bio Summary freeze lists drop ideal_day | same | **`TestAst1632…`** / **`TestAst1648…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 five-key set missing `ideal_day` / expecting `deal_breakers`; AST-1596 `_artifact_tokens` / counts without `IDEAL_DAY` (or naming `DEAL_BREAKERS` from parallel tip); AST-1365 `IDEAL_DAY` still-`data_field` equality; AST-1632 / AST-1648 freeze lists still naming `ideal_day`; AST-1632 / AST-1648 asserting `DEAL_BREAKERS` artifact on this tip.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Ideal Day key or `IDEAL_DAY` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Ideal Day catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1658CatalogPlainTextIdealDayToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Revised IDEAL_DAY token_source: `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1658CatalogPlainTextIdealDayToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1661 · AST-1644
+
+**Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token`.
+
+Config-only: register `candidate.context.backstory` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (ideal_day / writing_preferences stay out — priorities / deal_breakers / bio_summary already registered); flip `TOKEN_SOURCES["BACKSTORY"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES", "DEAL_BREAKERS", "BIO_SUMMARY", "BACKSTORY"}`. No UI / hydrate / API / blob retirement (siblings AST-1662 / AST-1663). Parallel Ideal Day epic (**AST-1658**) is not on this tip — `TestAst1658*` skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| backstory catalog + plain_text reuse + sibling freeze + BACKSTORY token | `src/utils/config.py` | **`TestAst1661CatalogPlainTextBackstoryToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Strengths / Bio Summary / Priorities / Deal Breakers freeze lists drop backstory | same | **`TestAst1632…`** / **`TestAst1648…`** / **`TestAst1651…`** / **`TestAst1654…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 closed set expecting `ideal_day` / missing `backstory`; AST-1596 `_artifact_tokens` / counts with `IDEAL_DAY` not `BACKSTORY` (or missing priorities / deal_breakers); AST-1632 / AST-1648 / AST-1651 / AST-1654 freeze lists still naming `backstory`; AST-1654 / AST-1658 asserting `BACKSTORY` `data_field`; AST-1365 Ideal Day token equality still requiring artifact on this tip.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Backstory key or `BACKSTORY` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Backstory catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1661CatalogPlainTextBackstoryToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Revised IDEAL_DAY token_source (data_field on this tip): `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1661CatalogPlainTextBackstoryToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1664 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token`.
+
+Config-only: register `candidate.context.writing_preferences` in `ARTIFACT_CONFIG` (`body_shape: plain_text`, reuse AST-1632 `raw_string` sentinel); context sibling freeze (backstory / ideal_day stay out — priorities / deal_breakers / bio_summary already registered); flip `TOKEN_SOURCES["WRITING_PREFERENCES"]` to `source_type: artifact` + `artifact_key`; closed `_artifact_tokens == {"BASE_RESUME", "STRENGTHS", "PRIORITIES", "DEAL_BREAKERS", "BIO_SUMMARY", "WRITING_PREFERENCES"}`. No UI / hydrate / API / blob retirement (siblings AST-1665 / AST-1666). Parallel Backstory epic (**AST-1661**) is not on this tip — `TestAst1661*` skipif when catalog lacks that key.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| writing_preferences catalog + plain_text reuse + sibling freeze + WRITING_PREFERENCES token | `src/utils/config.py` | **`TestAst1664CatalogPlainTextWritingPreferencesToken`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Revised artifact-token set + type counts + getters | same | **`TestAst1596TokenCatalogSourceTypeTyping`** (helper + live counts) |
+| Strengths / Bio Summary / Priorities / Deal Breakers freeze lists drop writing_preferences | same | **`TestAst1632…`** / **`TestAst1648…`** / **`TestAst1651…`** / **`TestAst1654…`** `_CTX_SIBLINGS` |
+
+**Broken / obsolete this pass:** AST-1590 closed set expecting `backstory` / missing `writing_preferences`; AST-1596 `_artifact_tokens` / counts with `BACKSTORY` not `WRITING_PREFERENCES`; AST-1632 / AST-1648 / AST-1651 / AST-1654 freeze lists still naming `writing_preferences`; AST-1661 asserting without skipif on tips that lack backstory.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` Writing Preferences key or `WRITING_PREFERENCES` artifact typing; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary Writing Preferences catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1664CatalogPlainTextWritingPreferencesToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Revised IDEAL_DAY token_source (data_field on this tip): `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1664CatalogPlainTextWritingPreferencesToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+
+### AST-1675 · AST-1671
+
+**Scope:** Company prefilter lasting catalog identity is **`prefilter_company`**. Dual-key shims **`dispatch_row_task_key`** / **`dispatch_task_grouping_catalog_key`** deleted; one-release alias dropped. **`ROSTER_CONFIG["prefilter"]`** hop-policy block key unchanged. Callables / **`prefilter_company_notes`** unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shims gone | `src/utils/config.py` | **`TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed`** |
+| Frozensets + helpers + admin defaults | same | **`TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity`**; revised **`TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults`**; revised **`TestAst1214DispatchAdminDefaultsWidened`** (`prefilter_company`) |
+| Meteorite grouping identity | same | revised **`TestAst1222MeteoriteAliasDispatchAndSeed::test_grouping_catalog_key_stays_on_alias`** |
+
+**Broken / obsolete this pass:** shim tests expecting `dispatch_row_task_key` / `dispatch_task_grouping_catalog_key`; Ast702/Ast1214 bare-`prefilter` helper membership.
+
+**Integration:** none — no existing scenario asserts catalog-key dual identity; do not invent.
+
+## QA test manifest
+
+1. Shim deletion: `tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed`
+2. Lasting catalog helpers: `tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity`
+3. Batch mode + defaults + bare reject: `tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults`
+4. Admin defaults matrix: `tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed \
+  tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+
+### AST-1678 · AST-1677
+
+**Parent:** [AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape`.
+
+Config-only: `BUILD_CONFIG["artifact_shapes"]["resume_structure"] = "structure_dict"`; register `candidate.artifacts.resume_structure` in `ARTIFACT_CONFIG` (`body_shape: resume_structure`, `ingestion_owner: candidate`); closed key-set + per-entry asserts; fence `job.artifacts.resume_structure` absent. No token flip, no operative save/hydrate, no React (siblings AST-1679 / AST-1680).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| resume_structure shape + catalog + job-side fence | `src/utils/config.py` | **`TestAst1678CatalogResumeStructureBodyShape`** |
+| Revised closed ARTIFACT_CONFIG key-set | same | **`TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`** |
+| Tip drift: context freeze empty + BACKSTORY/IDEAL_DAY artifact tokens | same | revised **`TestAst1632…`** / **`TestAst1648…`** / **`TestAst1651…`** / **`TestAst1654…`** / **`TestAst1658…`** / **`TestAst1661…`** / **`TestAst1664…`** ; **`TestAst1596TokenCatalogSourceTypeTyping`** (8 artifact / 16 data_field) |
+
+**Broken / obsolete this pass:** AST-1590 closed set missing `candidate.artifacts.resume_structure` (and tip-complete context keys); AST-1596 artifact-token set / counts without BACKSTORY+IDEAL_DAY; context `_CTX_SIBLINGS` freezes and data_field sibling asserts that still treated those leaves as unmigrated; AST-1602 sibling list missing `job.artifacts.resume_structure`.
+
+**Integration:** none — no existing scenario asserts `ARTIFACT_CONFIG` resume_structure key or `structure_dict` shape; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Primary resume_structure catalog + shape + job fence: `tests/component/utils/test_config.py::TestAst1678CatalogResumeStructureBodyShape`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Tip-drift freeze/token revisions (run with primary): `tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken` · `TestAst1648CatalogBioSummaryTokenProfileNav` · `TestAst1651CatalogPlainTextPrioritiesToken` · `TestAst1654CatalogPlainTextDealBreakersToken` · `TestAst1658CatalogPlainTextIdealDayToken` · `TestAst1661CatalogPlainTextBackstoryToken` · `TestAst1664CatalogPlainTextWritingPreferencesToken`
+5. Job sibling fence: `tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority::test_sibling_blobs_stay_out_of_artifact_config`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1678CatalogResumeStructureBodyShape \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken \
+  tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav \
+  tests/component/utils/test_config.py::TestAst1651CatalogPlainTextPrioritiesToken \
+  tests/component/utils/test_config.py::TestAst1654CatalogPlainTextDealBreakersToken \
+  tests/component/utils/test_config.py::TestAst1658CatalogPlainTextIdealDayToken \
+  tests/component/utils/test_config.py::TestAst1661CatalogPlainTextBackstoryToken \
+  tests/component/utils/test_config.py::TestAst1664CatalogPlainTextWritingPreferencesToken \
+  tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority::test_sibling_blobs_stay_out_of_artifact_config \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+
+### AST-1688 · AST-1684
+
+**Parent:** [AST-1684 — Reply-to emails in meteorite when single_jd_no_link](https://linear.app/astralcareermatch/issue/AST-1684/reply-to-emails-in-meteorite-when-single-jd-no-link). **Publish:** `origin/sub/AST-1684/AST-1688-stage-meteorite-electronic-contact-schema-prompts`.
+
+Config-only (sibling **AST-1689** owns DB/map/persist): optional `electronic_contact` on `TASK_CONFIG["stage_meteorite"].response_schema.jobs.items_schema`; `STAGE_METEORITE_CONFIG["electronic_contact_response_key"]` + `METEORITE_CONFIG["electronic_contact_column"]` lockstep; outcome / `text_source_ref_outcomes` unchanged. Catalog prompts: **`docs/test-bible/core/repo_admin_json.md`** § AST-1688.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema field + config literals + validate omit/string | `src/utils/config.py` | **`TestAst1688StageMeteoriteElectronicContactConfig`** |
+| Prior stage shell (still green) | same | **`TestAst1529StageMeteoriteConfig`** |
+
+**Broken / obsolete this pass:** AST-756 `expected-agent_task.json` twin drifted on `stage_meteorite` prompts — synced in **`docs/test-bible/core/repo_admin_json.md`** § AST-1688 (fixture path is catalog-owned).
+
+**Integration:** no existing scenario asserts `electronic_contact` / stage_meteorite schema keys — none revised; do not invent.
+
+## QA test manifest
+
+1. Electronic-contact schema + literals: `tests/component/utils/test_config.py::TestAst1688StageMeteoriteElectronicContactConfig`
+2. Prior stage shell: `tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig`
+3. Catalog prompts + fixture twin: `tests/component/core/test_repo_admin_json.py::TestAst1688StageMeteoriteElectronicContactPrompts`
+4. Prior catalog + fixture lockstep: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+5. Whole-file fixture identity: `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1688StageMeteoriteElectronicContactConfig \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst1688StageMeteoriteElectronicContactPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+- `docs/test-bible/core/repo_admin_json.md` — *(filled after publish)*
+
+### AST-1698 · AST-1579
+
+**Parent:** [AST-1579](https://linear.app/astralcareermatch/issue/AST-1579). **Publish:** `origin/sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper`.
+
+`list_artifact_keys_in_prompt_texts` — ordered-unique `ARTIFACT_CONFIG` keys for artifact-typed `{$TOKEN}` names via `_TOKEN_RE` + `TOKEN_SOURCES` / `get_artifact_key_for_token` (no hard-coded pinnable allowlist). Primary harvest + `do_task` attach: **`docs/test-bible/core/agent.md`** § AST-1698.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt-text artifact key parse + key-level dedupe | `src/utils/config.py` | **`TestAst1698ListArtifactKeysInPromptTexts`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/agent.md`** § AST-1698 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1701 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql`.
+
+`SOURCE_ENTITY_TYPES` company|meteorite replaces gazed write authority; `JOB_SOURCES` / `is_valid_job_source` / `validate_job_source` / `job_source_transition_allowed` are aliases until sibling #2; `METEORITE_CONFIG["source_entity_type"]`; breadcrumb format + timezone clock helpers. Job DDL/writers: **`docs/test-bible/data/database/jobs.md`** § AST-1701.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Closed set + aliases + METEORITE_CONFIG key | `src/utils/config.py` | **`TestAst1701SourceEntityTypes::test_closed_set_and_job_source_aliases`** |
+| Validators + transitions (no gazed; no meteorite→company) | `src/utils/config.py` | **`…::test_validators_and_transitions`** |
+| Breadcrumb clock + format | `src/utils/config.py` | **`…::test_breadcrumb_clock_and_format`** |
+
+**Broken / obsolete:** none in config suite (gazed was not asserted as live write set).
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/data/database/jobs.md`** § AST-1701 (shared numbered list).
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1712 · AST-1711
+
+**Parent:** [AST-1711](https://linear.app/astralcareermatch/issue/AST-1711). **Publish:** `origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map`.
+
+Mailbox task key `meteorite_email` → `stage_email_meteorite`; `debug_func` → `inbox.check_email`. `METEORITE_STATES` gains `NOT_A_JOB` and `NEW_EMAIL_ERROR`; scrape-failure `ERROR` becomes `SCRAPE_ERROR` in the registry, retention partitions, scrape page-status map, and `src/core/meteorite.py` failure writes. Log text `This row is ERROR` stays. Ruth save and `NEW_EMAIL_ERROR` / `NOT_A_JOB` row writes stay **AST-1713**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry + mailbox key | `src/utils/config.py` | **`TestAst1712MailboxKeyAndClassifyStates`** |
+| Catalog row rename | `data/admin/agent_task.json` | **`TestAst1712MailboxCatalogKey`** |
+| Failure writes `SCRAPE_ERROR` | `src/core/meteorite.py` | revised stage / scrape / land state asserts |
+| Stale list + `NOT_A_JOB` purge | retention | **`TestAst1562RunMeteoriteRetention::test_stale_rows_info_logged_not_deleted`**, **`TestAst1712NotAJobPurge`** |
+
+**Broken / obsolete:** mailbox key and `ERROR` registry asserts in **`TestAst1088GazeEmailConfig`**, **`TestAst1090GazeEmailRunnerConfig`**, **`TestAst1529StageMeteoriteConfig`**, **`TestAst1214DispatchAdminDefaultsWidened`**, **`TestAst1557MeteoriteStates`**, **`TestAst1560IngressDispatchConfig`**, **`TestAst1559MonitoringConfig`**, **`TestAst1562RetentionConfig`**, **`TestAst1467GazeEmailRetired`**, **`TestAst1529StageMeteoriteCatalogRow`**, **`TestAst786AgentTaskRepoJsonSeed`**, inbox bound-count fixture, **`TestAst1135ListDtasksMeteoriteMailboxAvail`**, **`TestAst1214AdminCatalogAlphabeticalWritable`**, dispatcher provision null-retire rows. AST-756 fixture mailbox row renamed. Whole-file catalog↔fixture byte lock prompt drift is pre-existing and not this ticket.
+
+**Integration:** none — no existing scenario names this key or `METEORITE_STATES`.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1557MeteoriteStates \
+  tests/component/utils/test_config.py::TestAst1559MonitoringConfig \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
+  tests/component/utils/test_config.py::TestAst1562RetentionConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst1712MailboxCatalogKey \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow::test_stage_meteorite_ruth_shell_and_outcomes \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_ast1467_gaze_email_retire.py::TestAst1467GazeEmailRetired \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_missing_content_errors \
+  tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention::test_stale_rows_info_logged_not_deleted \
+  tests/component/core/test_meteorite.py::TestAst1712NotAJobPurge \
+  tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs::test_count_inbox_bound_by_candidate_mailbox_map \
+  tests/component/ui/api/test_api_admin.py::TestAst1135ListDtasksMeteoriteMailboxAvail \
+  tests/component/ui/api/test_api_admin.py::TestAst1214AdminCatalogAlphabeticalWritable::test_mailbox_trigger_null_only_and_unsupported_craft_wording \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map:docs/test-bible/utils/config.md | shasum`
+
+---
+
+### AST-1726 · AST-1721 (TELESCOPE_CONFIG)
+
+**Scope:** `TELESCOPE_CONFIG` HTTP client knobs; trimmed `PLAYWRIGHT_CONFIG` (no Firefox launch keys); drop `RAILWAY_CONFIG["playwright_browsers_path"]`.
+
+| Area | Component tests |
+| --- | --- |
+| TELESCOPE_CONFIG defaults | `tests/component/utils/test_config.py::TestAst1726TelescopeConfig` |
+| Trimmed PLAYWRIGHT_CONFIG | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` (revised) |
+
+External map: [`docs/test-bible/external/telescope.md`](../external/telescope.md).

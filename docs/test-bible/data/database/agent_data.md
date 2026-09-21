@@ -65,3 +65,75 @@ One-time `backfill_agent_data_refs` — dry-run + live UPDATE of `ref_agent_data
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1274 · AST-1273
+
+**Parent:** [AST-1273](https://linear.app/astralcareermatch/issue/AST-1273/job-isnt-loading-on-recommended-page). **Publish:** `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open`.
+
+Complete fetch-side `ref_agent_data_id` resolve when local `block_data` is null/empty; secondary soft-fail in `get_entity_agent_story` / `GET /api/jobs/<id>` so corrupt graphs do not HTTP 500; `JobAnalysisReportModal` maps 404 → "Job not found" and other non-OK to honest copy.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty local + ref → canonical plain text; populated ref always follows chain | `src/data/database.py` (`_resolve_agent_data_block_data`) | **`TestAst1274ResolveNullBlockDataRef`**; existing **`TestAst977AgentDataSelfRefDedupe::{test_reads_resolve_ref_to_plain_text,test_resolve_raises_on_missing_ref_and_cycle}`** |
+| Story soft-fail (list / get_agent_data_for_ids) | `src/core/roster.py` | **`TestAst1274AgentStorySoftFail`** |
+| Detail soft-fail → 200 + `agent_story: []` | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_detail_soft_fails_agent_story`**; regression **`test_detail_not_found`**, **`test_detail_returns_agent_story`** |
+| Modal 404 vs non-404 load copy | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1274 load error honesty`** |
+
+**Broken / obsolete:** JAR fixture drift revised on first pass (`contact` / `job_resume`). **Return pass:** dropped `test_local_body_preferred_over_ref` — product follows populated `ref_agent_data_id` (no `has_local`); assert ref-target content when both body and ref set.
+
+**Integration:** none — existing integration map has no job-detail scenario to revise (`docs/test-bible/integration/README.md` job-entity gap). Do not invent new integration coverage.
+
+**AST-1274** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst1274ResolveNullBlockDataRef \
+  tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_reads_resolve_ref_to_plain_text \
+  tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_resolve_raises_on_missing_ref_and_cycle \
+  tests/component/core/test_roster.py::TestAst1274AgentStorySoftFail \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_soft_fails_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_not_found \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_returns_agent_story \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1377 · AST-1376
+
+**Parent:** [AST-1376 — Missing bootstrap steps for ref_agent_data_id](https://linear.app/astralcareermatch/issue/AST-1376/missing-bootstrap-steps-for-ref-agent-data-id). **Publish:** `origin/sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data`.
+
+Legacy `agent_data` tables missing `ref_agent_data_id` gain a nullable TEXT column via `_ensure_agent_data_schema` (same ADD COLUMN idiom as `entity_id`); second ensure / upsert-registry startup is idempotent; create-path unchanged. Does **not** own historical backfill (**AST-978**) or craft_do_rubric token limits.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fresh CREATE + legacy ALTER (regression) | `src/data/database.py` | **`TestAst977AgentDataSelfRefDedupe::test_ensure_schema_adds_ref_column_on_fresh_and_legacy`** |
+| Legacy ADD nullable + upsert ensure idempotent | `src/data/database.py` | **`TestAst1377EnsureRefAgentDataId::test_legacy_ensure_adds_nullable_ref_idempotent`** |
+| Write/read using `ref_agent_data_id` after ensure | `src/data/database.py` | **`TestAst1377EnsureRefAgentDataId::test_legacy_write_read_uses_ref_after_ensure`** |
+| Startup upsert-registry leaves column present | `src/data/database.py` | **`TestAst1377EnsureRefAgentDataId::test_startup_upsert_registry_ensures_ref_column`** |
+
+**Broken / obsolete:** none — AST-977 schema test remains the fresh+legacy ALTER smoke; AST-1377 adds idempotency, post-ensure write/read, and bootstrap registry reach.
+
+**Integration:** no existing `tests/integration/` scenario asserts `agent_data` schema ensure / `ref_agent_data_id` DDL — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Fresh + legacy ALTER regression: `tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_ensure_schema_adds_ref_column_on_fresh_and_legacy`
+2. Legacy nullable ADD + idempotent upsert ensure: `tests/component/data/database/test_agent_data.py::TestAst1377EnsureRefAgentDataId::test_legacy_ensure_adds_nullable_ref_idempotent`
+3. Post-ensure write/read (no `OperationalError`): `tests/component/data/database/test_agent_data.py::TestAst1377EnsureRefAgentDataId::test_legacy_write_read_uses_ref_after_ensure`
+4. Startup registry ensure: `tests/component/data/database/test_agent_data.py::TestAst1377EnsureRefAgentDataId::test_startup_upsert_registry_ensures_ref_column`
+
+**AST-1377** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_ensure_schema_adds_ref_column_on_fresh_and_legacy \
+  tests/component/data/database/test_agent_data.py::TestAst1377EnsureRefAgentDataId \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+`list_agent_data_batches` (Ad Hoc import list): **`docs/test-bible/core/agent.md`** § AST-1451 (unfiltered retired) + § AST-1534 (candidate/task/limit).

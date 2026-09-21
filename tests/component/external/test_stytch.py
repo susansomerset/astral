@@ -13,6 +13,7 @@ from src.external import stytch as stytch_mod
 @pytest.fixture(autouse=True)
 def _reset_stytch_client() -> None:
     stytch_mod._client = None
+    stytch_mod._profile_by_user_id.clear()
 
 
 def _fake_user(
@@ -66,6 +67,44 @@ class TestAuthenticateSessionJwt:
         assert out["user_id"] == "user-test-1"
         assert out["email"] == "susan@example.com"
         mock_users.get.assert_called_once_with(user_id="user-test-1")
+
+    def test_silent_skips_users_get_and_reuses_cached_profile(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_sessions = MagicMock()
+        mock_sessions.authenticate_jwt.return_value = SimpleNamespace(
+            session=SimpleNamespace(user_id="user-test-1"),
+        )
+        mock_users = MagicMock()
+        mock_users.get.return_value = _fake_user()
+        mock_client = MagicMock(sessions=mock_sessions, users=mock_users)
+        monkeypatch.setattr(stytch_mod, "_get_client", lambda: mock_client)
+
+        stytch_mod.authenticate_session_jwt("jwt-here", remote=True)
+        mock_users.get.assert_called_once_with(user_id="user-test-1")
+        mock_users.get.reset_mock()
+
+        out = stytch_mod.authenticate_session_jwt("jwt-here", remote=False)
+        assert out["user_id"] == "user-test-1"
+        assert out["email"] == "susan@example.com"
+        mock_users.get.assert_not_called()
+        mock_sessions.authenticate_jwt.assert_called_with(session_jwt="jwt-here")
+
+    def test_silent_without_cache_skips_users_get(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        mock_sessions = MagicMock()
+        mock_sessions.authenticate_jwt.return_value = SimpleNamespace(
+            session=SimpleNamespace(user_id="user-test-1"),
+        )
+        mock_users = MagicMock()
+        mock_client = MagicMock(sessions=mock_sessions, users=mock_users)
+        monkeypatch.setattr(stytch_mod, "_get_client", lambda: mock_client)
+
+        out = stytch_mod.authenticate_session_jwt("jwt-here", remote=False)
+        assert out == {"user_id": "user-test-1", "email": None, "name": "user-test-1"}
+        mock_users.get.assert_not_called()
+        mock_sessions.authenticate_jwt.assert_called_once_with(session_jwt="jwt-here")
 
     def test_empty_jwt_raises_stytch_auth_error(self) -> None:
         with pytest.raises(stytch_mod.StytchAuthError, match="missing session JWT"):

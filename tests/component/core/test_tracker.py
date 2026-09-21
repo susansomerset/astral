@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
@@ -36,6 +37,10 @@ class TestIngestJobs:
         _, kwargs = save.call_args
         assert kwargs["company"] == "co"
         assert kwargs["state"] == "NEW"
+        # AST-1704: gazed ingest writes company parent SoT + employer company_id.
+        assert kwargs["source"] == cfg.SOURCE_ENTITY_TYPE_COMPANY
+        assert kwargs["source_entity_id"] == "co"
+        assert kwargs["company_id"] == "co"
 
     def test_counts_invalid_title_when_regex_filters_listing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(tracker_mod.database, "raw_job_listing_is_duplicate", lambda *args, **kwargs: False)
@@ -465,10 +470,23 @@ class TestAst309CoverLetterArtifact:
         assert tracker_mod.normalize_cover_letter_artifact("text") == {"Subject": "", "Letter": "", "signature": ""}
 
     def test_save_job_artifact_cover_letter_normalizes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        saved: list[dict[str, object]] = []
-        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
-        tracker_mod.save_job_artifact_cover_letter("job-1", {"re_line": "Re", "body": "Hi"})
-        assert saved[0]["artifacts"]["cover_letter"] == {"Subject": "Re", "Letter": "Hi", "signature": ""}
+        # AST-1592: cover lands via catalog write (normalize still applies).
+        table: list[tuple] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
+                (et, eid, at, data, source_artifact_ids)
+            )
+            or "uuid-cl",
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-stub")
+        uid = tracker_mod.save_job_artifact(
+            "job-1", "job.artifacts.cover_letter", {"re_line": "Re", "body": "Hi"}
+        )
+        assert uid == "uuid-cl"
+        assert table[0][:3] == ("job", "job-1", "cover_letter")
+        assert table[0][3] == {"Subject": "Re", "Letter": "Hi", "signature": ""}
 
 
 class TestPersistJobArtifactFromParsed:
@@ -480,9 +498,30 @@ class TestPersistJobArtifactFromParsed:
         assert tracker_mod.parsed_matches_artifact_shape("x", "cover_letter") is False
 
     def test_persists_resume_and_cover_shapes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        saved: list[dict[str, object]] = []
-        monkeypatch.setattr(tracker_mod, "save_job_data", lambda jid, payload: saved.append(payload))
-        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: {})
+        # AST-1592: from-parsed lands via save_job_artifact (catalog keys), not job_data SoT.
+        table: list[tuple] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
+                (et, eid, at, data)
+            )
+            or f"uuid-{at}",
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-stub")
+        monkeypatch.setattr(
+            tracker_mod,
+            "_candidate_data_for_job",
+            lambda jid: {
+                "artifacts": {
+                    "resume_structure": [
+                        {"id": "professional_summary", "enabled": True, "order": 1},
+                        {"id": "core_competencies", "enabled": True, "order": 2},
+                        {"id": "experience", "enabled": True, "order": 3},
+                    ]
+                }
+            },
+        )
         resume = {
             "candidate_name": "A",
             "candidate_title": "T",
@@ -492,12 +531,12 @@ class TestPersistJobArtifactFromParsed:
             "experience": "e",
         }
         assert tracker_mod.persist_job_artifact_from_parsed("job-1", resume) is True
-        assert saved[0]["artifacts"]["resume_content"]["professional_summary"] == "s"
-        saved.clear()
+        assert any(t[2] == "job_resume" and t[3].get("professional_summary") == "s" for t in table)
+        table.clear()
         assert tracker_mod.persist_job_artifact_from_parsed(
             "job-1", {"re_line": "Re", "body": "Hi", "signature": ""}
         ) is True
-        assert saved[0]["artifacts"]["cover_letter"]["Letter"] == "Hi"
+        assert any(t[2] == "cover_letter" and t[3].get("Letter") == "Hi" for t in table)
 
 
 class TestAst518JobResumeArtifacts:
@@ -986,14 +1025,17 @@ class TestAst1100ResolveHydrateJobArtifactPins:
         assert "artifact_resolve agent_data_id=id-ok recorded" in combined
         assert "artifact_resolve skipped reason=empty_agent_data_id" in combined
 
-    def test_hydrate_replaces_pin_strings_leaves_legacy_dicts(
+    def test_hydrate_operator_slots_no_pin_resolve_proposed_answers_still_resolves(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(
-            tracker_mod,
-            "resolve_job_artifact_agent_data_body",
-            lambda pin, debug=False: {"body": pin},
-        )
+        # AST-1548/1554: job_resume/cover_letter pin strings stay; proposed_answers still resolves.
+        resolve_calls: list[str] = []
+
+        def _resolve(pin: str, debug: bool = False) -> dict:
+            resolve_calls.append(pin)
+            return {"body": pin}
+
+        monkeypatch.setattr(tracker_mod, "resolve_job_artifact_agent_data_body", _resolve)
         out = tracker_mod.hydrate_job_artifacts_for_display(
             {
                 "job_resume": "pin-resume",
@@ -1002,11 +1044,37 @@ class TestAst1100ResolveHydrateJobArtifactPins:
                 "analysis_upshot": {"summary": "x"},
             }
         )
-        assert out["job_resume"] == {"body": "pin-resume"}
+        assert out["job_resume"] == "pin-resume"
         # AST-1116: legacy/partial cover dicts normalize to Subject/Letter/signature spine.
         assert out["cover_letter"] == {"Subject": "keep", "Letter": "", "signature": ""}
         assert out["proposed_answers"] == {"body": "pin-answers"}
         assert out["analysis_upshot"] == {"summary": "x"}
+        assert resolve_calls == ["pin-answers"]
+
+    def test_hydrate_job_resume_dict_wins_over_resume_content_sibling(self) -> None:
+        out = tracker_mod.hydrate_job_artifacts_for_display(
+            {
+                "job_resume": {"professional_summary": "on-slot"},
+                "resume_content": {"professional_summary": "sibling"},
+            }
+        )
+        assert out["job_resume"] == {"professional_summary": "on-slot"}
+
+    def test_hydrate_overlays_resume_content_when_job_resume_pin_or_empty(self) -> None:
+        out_pin = tracker_mod.hydrate_job_artifacts_for_display(
+            {
+                "job_resume": "legacy-pin",
+                "resume_content": {"professional_summary": "sibling"},
+            }
+        )
+        assert out_pin["job_resume"] == {"professional_summary": "sibling"}
+        out_empty = tracker_mod.hydrate_job_artifacts_for_display(
+            {
+                "job_resume": {},
+                "resume_content": {"professional_summary": "sibling"},
+            }
+        )
+        assert out_empty["job_resume"] == {"professional_summary": "sibling"}
 
     def test_hydrate_non_dict_returns_empty(self) -> None:
         assert tracker_mod.hydrate_job_artifacts_for_display(None) == {}
@@ -1020,26 +1088,28 @@ class TestAst1100ResolveHydrateJobArtifactPins:
             "resolve_job_artifact_agent_data_body",
             lambda pin, debug=False: {"ok": True},
         )
-        tracker_mod.hydrate_job_artifacts_for_display({"job_resume": "pin-1"})
+        tracker_mod.hydrate_job_artifacts_for_display({"proposed_answers": "pin-1"})
         assert saved == []
 
 class TestAst1116HydrateCoverLetterNormalize:
-    """AST-1116: hydrate overlay normalizes cover_letter dict to Subject/Letter/signature."""
+    """AST-1116/1548: hydrate overlay normalizes cover_letter dict; pin strings → no resolve."""
 
-    def test_hydrate_normalizes_pin_resolved_re_line_body(
+    def test_hydrate_leaves_cover_pin_string_without_resolve(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        resolve_calls: list[str] = []
         monkeypatch.setattr(
             tracker_mod,
             "resolve_job_artifact_agent_data_body",
-            lambda pin, debug=False: {"re_line": "Re: Role", "body": "Hello", "signature": "Ada"},
+            lambda pin, debug=False: resolve_calls.append(pin) or {
+                "re_line": "Re: Role",
+                "body": "Hello",
+                "signature": "Ada",
+            },
         )
         out = tracker_mod.hydrate_job_artifacts_for_display({"cover_letter": "pin-cover"})
-        assert out["cover_letter"] == {
-            "Subject": "Re: Role",
-            "Letter": "Hello",
-            "signature": "Ada",
-        }
+        assert out["cover_letter"] == "pin-cover"
+        assert resolve_calls == []
 
     def test_hydrate_normalizes_legacy_body_dict(self) -> None:
         out = tracker_mod.hydrate_job_artifacts_for_display(
@@ -1056,3 +1126,1365 @@ class TestAst1116HydrateCoverLetterNormalize:
             {"cover_letter": {"re_line": "Re", "body": "Hi"}}
         )
         assert saved == []
+
+
+class TestAst1504CoverLetterHydrateDisplayGaps:
+    """AST-1504 gaps flipped for AST-1548: operator hydrate uses job cover dict only (no pin resolve)."""
+
+    def test_hydrate_unwraps_nested_cover_dict_to_subject_letter(self) -> None:
+        """Nested cover keys on the job dict become Subject/Letter for JAR tabs."""
+        out = tracker_mod.hydrate_job_artifacts_for_display(
+            {
+                "cover_letter": {
+                    "hop": {
+                        "re_line": "Re: Nest",
+                        "body": "Nested letter body",
+                        "signature": "Ada",
+                    },
+                }
+            }
+        )
+        assert out["cover_letter"] == {
+            "Subject": "Re: Nest",
+            "Letter": "Nested letter body",
+            "signature": "Ada",
+        }
+
+    def test_hydrate_does_not_install_empty_spine_for_non_cover_dict(self) -> None:
+        """Nonempty gate — unrelated dict must not become an all-empty Subject/Letter/signature spine."""
+        out = tracker_mod.hydrate_job_artifacts_for_display(
+            {"cover_letter": {"unrelated": "meta"}}
+        )
+        empty_spine = {"Subject": "", "Letter": "", "signature": ""}
+        assert out["cover_letter"] != empty_spine
+        assert out["cover_letter"] == {"unrelated": "meta"}
+
+    def test_hydrate_leaves_cover_pin_string(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1548: pin string on cover_letter is not resolved for operator hydrate."""
+        monkeypatch.setattr(
+            tracker_mod,
+            "resolve_job_artifact_agent_data_body",
+            lambda pin, debug=False: {"unrelated": "meta"},
+        )
+        out = tracker_mod.hydrate_job_artifacts_for_display({"cover_letter": "pin-cover"})
+        assert out["cover_letter"] == "pin-cover"
+
+
+class TestAst1554BodyReplicaPersistHelpers:
+    """AST-1554 body-replica helpers — AST-1592/1603: save_job_artifact / _prepare_job_replica_body."""
+
+    def _resume_cd(self) -> dict:
+        return {
+            "artifacts": {
+                "resume_structure": [
+                    {"id": "professional_summary", "enabled": True, "order": 1},
+                    {"id": "experience", "enabled": True, "order": 2},
+                ]
+            }
+        }
+
+    def test_save_job_artifact_job_resume_writes_artifacts_table(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1556/1592: authoritative write is database.save_artifact via catalog key.
+        table: list[tuple] = []
+        job_data: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
+                (et, eid, at, data, source_artifact_ids)
+            )
+            or "uuid-jr",
+        )
+        monkeypatch.setattr(
+            tracker_mod, "save_job_data", lambda jid, payload, **k: job_data.append(payload)
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-stub")
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._resume_cd())
+        uid = tracker_mod.save_job_artifact(
+            "job-1554",
+            "job.artifacts.job_resume",
+            {"professional_summary": "S", "experience": []},
+        )
+        assert uid == "uuid-jr"
+        assert table, "expected artifacts-table write for job_resume"
+        assert table[0][0] == "job"
+        assert table[0][1] == "job-1554"
+        assert table[0][2] == "job_resume"
+        assert table[0][3]["professional_summary"] == "S"
+        assert table[0][4] == []  # no base_resume → empty sources
+        for payload in job_data:
+            art = (payload or {}).get("artifacts") or {}
+            assert "job_resume" not in art
+            assert "resume_content" not in art
+
+    def test_prepare_job_replica_body_resume_coat_check(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            tracker_mod, "parsed_matches_job_resume_content", lambda jid, parsed: False
+        )
+        assert (
+            tracker_mod._prepare_job_replica_body(
+                "job.artifacts.job_resume", {}, astral_job_id="job-1554"
+            )
+            is None
+        )
+
+    def test_save_job_artifact_cover_letter_writes_artifacts_table(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        table: list[tuple] = []
+        job_data: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
+                (et, eid, at, data, source_artifact_ids)
+            )
+            or "uuid-cl",
+        )
+        monkeypatch.setattr(
+            tracker_mod, "save_job_data", lambda jid, payload, **k: job_data.append(payload)
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-1554")
+        uid = tracker_mod.save_job_artifact(
+            "job-1554",
+            "job.artifacts.cover_letter",
+            {"re_line": "Re: Role", "body": "Hello", "signature": "Ada"},
+        )
+        assert uid == "uuid-cl"
+        assert table
+        assert table[0][:3] == ("job", "job-1554", "cover_letter")
+        assert table[0][3] == {
+            "Subject": "Re: Role",
+            "Letter": "Hello",
+            "signature": "Ada",
+        }
+        for payload in job_data:
+            art = (payload or {}).get("artifacts") or {}
+            assert "cover_letter" not in art
+
+    def test_prepare_job_replica_body_cover_coat_check_empty(self) -> None:
+        assert (
+            tracker_mod._prepare_job_replica_body(
+                "job.artifacts.cover_letter",
+                {"re_line": "", "body": "", "signature": ""},
+                astral_job_id="job-1554",
+            )
+            is None
+        )
+
+
+class TestAst1556JobArtifactsTableSoT:
+    """AST-1556 [bug-repro]: job_resume/cover_letter SoT is artifacts table (not job_data blob)."""
+
+    def _resume_cd(self) -> dict:
+        return {
+            "artifacts": {
+                "resume_structure": [
+                    {"id": "professional_summary", "enabled": True, "order": 1},
+                    {"id": "experience", "enabled": True, "order": 2},
+                ]
+            }
+        }
+
+    def test_save_job_resume_body_writes_artifacts_table_not_job_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] After Save/finalize, current row must exist in artifacts table — not job_data."""
+        table: list[tuple] = []
+        job_data: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
+                (et, eid, at, data)
+            )
+            or "uuid-1556",
+        )
+        monkeypatch.setattr(
+            tracker_mod, "save_job_data", lambda jid, payload, **k: job_data.append(payload)
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-stub")
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._resume_cd())
+        tracker_mod.save_job_artifact(
+            "job-1556",
+            "job.artifacts.job_resume",
+            {"professional_summary": "Table SoT", "experience": []},
+        )
+        assert table, "pre-fix writes job_data only — make-fix must call save_artifact"
+        assert table[0] == (
+            "job",
+            "job-1556",
+            "job_resume",
+            table[0][3],
+        )
+        assert table[0][3]["professional_summary"] == "Table SoT"
+        for payload in job_data:
+            art = (payload or {}).get("artifacts") or {}
+            assert "job_resume" not in art and "resume_content" not in art
+
+    def test_save_cover_letter_writes_artifacts_table_not_job_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Cover editable body must land as artifacts-table current row."""
+        table: list[tuple] = []
+        job_data: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: table.append(
+                (et, eid, at, data)
+            )
+            or "uuid-cl",
+        )
+        monkeypatch.setattr(
+            tracker_mod, "save_job_data", lambda jid, payload, **k: job_data.append(payload)
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-1556")
+        tracker_mod.save_job_artifact(
+            "job-1556",
+            "job.artifacts.cover_letter",
+            {"re_line": "Re: Role", "body": "Hello", "signature": "Ada"},
+        )
+        assert table, "pre-fix cover save writes job_data only"
+        assert table[0][:3] == ("job", "job-1556", "cover_letter")
+        assert table[0][3] == {
+            "Subject": "Re: Role",
+            "Letter": "Hello",
+            "signature": "Ada",
+        }
+        for payload in job_data:
+            assert "cover_letter" not in ((payload or {}).get("artifacts") or {})
+
+    def test_hydrate_overlays_artifacts_table_currents(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Operator hydrate must read get_current_artifact for job_resume/cover_letter."""
+        import inspect
+
+        gets: list[tuple] = []
+
+        def _get(et: str, eid: str, at: str):
+            gets.append((et, eid, at))
+            if at == "job_resume":
+                return {"artifact_data": {"professional_summary": "from-table"}, "current": 1}
+            if at == "cover_letter":
+                return {
+                    "artifact_data": {"Subject": "Re", "Letter": "Hi", "signature": "A"},
+                    "current": 1,
+                }
+            return None
+
+        monkeypatch.setattr(tracker_mod.database, "get_current_artifact", _get)
+        sig = inspect.signature(tracker_mod.hydrate_job_artifacts_for_display)
+        kwargs = {"astral_job_id": "job-1556"} if "astral_job_id" in sig.parameters else {}
+        out = tracker_mod.hydrate_job_artifacts_for_display({}, **kwargs)
+        assert ("job", "job-1556", "job_resume") in gets
+        assert ("job", "job-1556", "cover_letter") in gets
+        assert out.get("job_resume", {}).get("professional_summary") == "from-table"
+        assert out.get("cover_letter", {}).get("Letter") == "Hi"
+
+    def test_clear_job_build_artifacts_retires_table_currents(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Cancel must retire artifacts-table currents for job_resume/cover_letter."""
+        retired: list[tuple] = []
+
+        def _retire(et: str, eid: str, at: str) -> bool:
+            retired.append((et, eid, at))
+            return True
+
+        monkeypatch.setattr(
+            tracker_mod.database, "retire_current_artifact", _retire, raising=False
+        )
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_job",
+            lambda jid: {
+                "astral_job_id": jid,
+                "job_data": {
+                    "artifacts": {
+                        "job_resume": {"professional_summary": "x"},
+                        "cover_letter": {"Subject": "Re"},
+                        "resume_content": {"professional_summary": "x"},
+                    }
+                },
+            },
+        )
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: None)
+        tracker_mod.clear_job_build_artifacts("job-1556")
+        assert ("job", "job-1556", "job_resume") in retired
+        assert ("job", "job-1556", "cover_letter") in retired
+
+
+class TestAst1270NestedResumePayloadBody:
+    """AST-1270: _resume_payload_body prefers nested resume; ignores notes envelope."""
+
+    def test_prefers_nested_resume_dict(self) -> None:
+        body = tracker_mod._resume_payload_body(
+            {
+                "agent_payload": {
+                    "resume": {
+                        "professional_summary": "from-nest",
+                        "experience": "nested-jobs",
+                    },
+                    "professional_summary": "flat-should-lose",
+                    "notes": ["skipped UAT claim"],
+                }
+            }
+        )
+        assert body == {
+            "professional_summary": "from-nest",
+            "experience": "nested-jobs",
+        }
+        assert "notes" not in body
+        assert "resume" not in body
+
+    def test_flat_unwrapped_payload_unchanged(self) -> None:
+        body = tracker_mod._resume_payload_body(
+            {"agent_payload": {"professional_summary": "S", "experience": "E"}}
+        )
+        assert body == {"professional_summary": "S", "experience": "E"}
+
+
+class TestAst1523NotesMetadataRetention:
+    """AST-1523: extract/save freeform notes; resume body never includes metadata keys."""
+
+    def test_extract_nested_envelope_reads_notes(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "resume": {"professional_summary": "S"},
+                "notes": ["skipped UAT claim"],
+            }
+        }
+        assert tracker_mod.extract_draft_job_resume_notes(parsed) == ["skipped UAT claim"]
+
+    def test_extract_absent_returns_none(self) -> None:
+        assert (
+            tracker_mod.extract_draft_job_resume_notes(
+                {"agent_payload": {"professional_summary": "S"}}
+            )
+            is None
+        )
+
+    def test_extract_coerces_string_and_drops_blanks(self) -> None:
+        assert tracker_mod.extract_draft_job_resume_notes(
+            {"agent_payload": {"notes": "  one note  "}}
+        ) == ["one note"]
+        assert tracker_mod.extract_draft_job_resume_notes(
+            {"agent_payload": {"notes": ["keep", "  ", ""]}}
+        ) == ["keep"]
+
+    def test_persist_saves_under_artifact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod,
+            "save_job_data",
+            lambda jid, payload: saved.append({"jid": jid, **payload}),
+        )
+        ok = tracker_mod.persist_draft_job_resume_notes(
+            "job-1523",
+            {"agent_payload": {"notes": ["a", "b"], "professional_summary": "S"}},
+        )
+        assert ok is True
+        assert saved == [{"jid": "job-1523", "artifacts": {"notes": ["a", "b"]}}]
+
+    def test_persist_absent_key_returns_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: saved.append(1))
+        assert (
+            tracker_mod.persist_draft_job_resume_notes(
+                "job-1523", {"agent_payload": {"professional_summary": "S"}}
+            )
+            is False
+        )
+        assert saved == []
+
+    def test_resume_body_skips_notes_metadata(self) -> None:
+        body = tracker_mod._resume_payload_body(
+            {
+                "agent_payload": {
+                    "professional_summary": "S",
+                    "notes": "looks-like-a-section",
+                }
+            }
+        )
+        assert body == {"professional_summary": "S"}
+        assert "notes" not in body
+
+    def test_persist_job_artifact_writes_notes_not_resume_content(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import candidate as candidate_mod
+
+        saved: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod,
+            "save_job_data",
+            lambda jid, payload: saved.append(payload),
+        )
+        monkeypatch.setattr(
+            tracker_mod,
+            "_candidate_data_for_job",
+            lambda jid: {
+                "artifacts": {
+                    "base_resume": {"professional_summary": "base"},
+                    "resume_structure": candidate_mod.default_resume_structure(),
+                }
+            },
+        )
+        parsed = {
+            "agent_payload": {
+                "resume": {"professional_summary": "tailored"},
+                "notes": ["note"],
+            }
+        }
+        assert tracker_mod.persist_job_artifact_from_parsed("job-1523", parsed) is True
+        arts = [p.get("artifacts") for p in saved]
+        resume_writes = [a for a in arts if a and "resume_content" in a]
+        note_writes = [a for a in arts if a and "notes" in a]
+        assert resume_writes
+        assert "notes" not in resume_writes[0]["resume_content"]
+        assert note_writes and note_writes[0]["notes"] == ["note"]
+
+    def test_clear_job_build_artifacts_removes_notes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved: list[tuple[str, dict, bool]] = []
+
+        def _save(jid: str, payload: dict, replace: bool = False) -> None:
+            saved.append((jid, payload, replace))
+
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_job",
+            lambda jid: {
+                "job_data": {
+                    "artifacts": {
+                        "resume_content": {"professional_summary": "draft"},
+                        "notes": ["old note"],
+                        "analysis_upshot": {"summary": "keep"},
+                    }
+                }
+            },
+        )
+        monkeypatch.setattr(tracker_mod, "save_job_data", _save)
+        tracker_mod.clear_job_build_artifacts("job-1523")
+        art = saved[0][1]["artifacts"]
+        assert "notes" not in art
+        assert "resume_content" not in art
+        assert art["analysis_upshot"] == {"summary": "keep"}
+
+
+class TestAst1523EpicHelpersRemoved:
+    """AST-1523: hard-contract persist/validate helpers removed from tracker."""
+
+    def test_epic_helpers_removed(self) -> None:
+        assert not hasattr(tracker_mod, "extract_draft_job_resume_deviations")
+        assert not hasattr(tracker_mod, "persist_draft_job_resume_deviations")
+        assert not hasattr(tracker_mod, "extract_draft_job_resume_advice_adherence")
+        assert not hasattr(tracker_mod, "persist_draft_job_resume_advice_adherence")
+        assert not hasattr(tracker_mod, "get_job_resume_advice_codes")
+        assert not hasattr(tracker_mod, "extract_advise_job_resume_coded_advice")
+        assert not hasattr(tracker_mod, "persist_advise_job_resume_coded_advice")
+
+
+class TestAst1305JobResumeExtras:
+    """AST-1305: job persist keeps base-derived extras; invented keys stay out."""
+
+    def test_prepare_keeps_base_extra_and_drops_invented(self) -> None:
+        from src.core import candidate as candidate_mod
+
+        structure = candidate_mod.default_resume_structure()
+        cd = {
+            "artifacts": {
+                "resume_structure": structure,
+                "base_resume": {
+                    "professional_summary": "S",
+                    "highlights": "Won awards",
+                },
+            }
+        }
+        prepared = tracker_mod._prepare_job_resume_content(
+            {
+                "professional_summary": "Job S",
+                "highlights": "Job highlights",
+                "invented_section": "nope",
+            },
+            cd,
+        )
+        assert prepared["professional_summary"] == "Job S"
+        assert prepared["highlights"] == "Job highlights"
+        assert "invented_section" not in prepared
+
+
+class TestAst1420AssembleJobCopySnapshot:
+    """AST-1420: stored job + populated hop blocks; artifact pins stay ids."""
+
+    _PIN = "pin-resp"
+    _HOP = "hop-task"
+    _JOB = {
+        "astral_job_id": "job-1420",
+        "job_data": {"artifacts": {"job_resume": "pin-resp"}},
+        "state": "IN_REVIEW",
+        "n": 7,  # non-string walk ignore
+    }
+
+    def _wire(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        job: Any,
+        hits: List[str] | None = None,
+        refs: List[dict] | None = None,
+        seeds: Dict[str, Any] | None = None,
+        batches: Dict[str, List[dict]] | None = None,
+        refs_exc: Exception | None = None,
+        seed_exc: Dict[str, Exception] | None = None,
+    ) -> MagicMock:
+        hits = hits or []
+        seeds = seeds or {}
+        batches = batches or {}
+        seed_exc = seed_exc or {}
+        batch_calls: list[str] = []
+
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: job)
+
+        def _for_ids(ids: List[str]) -> dict:
+            return {i: {"agent_data_id": i} for i in ids if i in hits}
+
+        monkeypatch.setattr(tracker_mod.database, "get_agent_data_for_ids", _for_ids)
+
+        if refs_exc is not None:
+            monkeypatch.setattr(
+                tracker_mod.database,
+                "list_entity_latest_agent_refs",
+                MagicMock(side_effect=refs_exc),
+            )
+        else:
+            monkeypatch.setattr(
+                tracker_mod.database,
+                "list_entity_latest_agent_refs",
+                lambda et, eid: list(refs or []),
+            )
+
+        def _seed(aid: str) -> Any:
+            if aid in seed_exc:
+                raise seed_exc[aid]
+            return seeds.get(aid)
+
+        def _batch(bid: str) -> List[dict]:
+            batch_calls.append(bid)
+            return list(batches.get(bid) or [])
+
+        monkeypatch.setattr(tracker_mod.database, "get_agent_data", _seed)
+        monkeypatch.setattr(tracker_mod.database, "get_agent_data_by_batch", _batch)
+        spy = MagicMock()
+        spy.batch_calls = batch_calls
+        return spy
+
+    def test_missing_job_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._wire(monkeypatch, job=None)
+        assert tracker_mod.assemble_job_copy_snapshot("missing") is None
+
+    def test_empty_walk_and_no_refs_returns_empty_agent_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No string values → skip get_agent_data_for_ids (else {}).
+        called: list[object] = []
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: {"n": 1, "xs": [2, None], "pad": "   "})
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_agent_data_for_ids",
+            lambda ids: called.append(ids) or {},
+        )
+        monkeypatch.setattr(
+            tracker_mod.database, "list_entity_latest_agent_refs", lambda et, eid: []
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-empty")
+        assert snap == {"job": {"n": 1, "xs": [2, None], "pad": "   "}, "agent_data": {}}
+        assert called == []
+
+    def test_pins_stay_ids_and_blocks_follow_config_types(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin string on the stored job is an agent_data id; hop from latest refs unions in.
+        monkeypatch.setattr(tracker_mod, "BLOCK_TYPES", ["SYSTEM", "RESPONSE", "FEEDBACK"])
+        batches = {
+            "b-pin": [
+                {"block_type": "SYSTEM", "agent_data_id": "sys-1", "block_data": "sys text"},
+                {"block_type": "RESPONSE", "agent_data_id": self._PIN, "block_data": "resolved pin"},
+                # last RESPONSE wins
+                {"block_type": "RESPONSE", "agent_data_id": "resp-newer", "block_data": None},
+            ],
+            "b-hop": [
+                {"block_type": "TASK", "agent_data_id": self._HOP, "block_data": "task body"},
+                {"block_type": "RESPONSE", "agent_data_id": "hop-resp", "block_data": "hop resp"},
+            ],
+        }
+        self._wire(
+            monkeypatch,
+            job=self._JOB,
+            hits=[self._PIN],
+            refs=[
+                {
+                    "prompt_blocks": [
+                        "skip-non-dict",
+                        {"id": None},
+                        {"id": "  "},
+                        {"id": self._HOP},
+                        {"id": self._PIN},  # duplicate of walk hit — first-seen wins
+                    ]
+                }
+            ],
+            seeds={
+                self._PIN: {"block_type": "RESPONSE", "batch_id": "b-pin", "task_key": "draft"},
+                self._HOP: {"block_type": "TASK", "batch_id": "b-hop", "task_key": None},
+            },
+            batches=batches,
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-1420")
+        assert snap["job"]["job_data"]["artifacts"]["job_resume"] == self._PIN
+        pin_blocks = snap["agent_data"][self._PIN]["blocks"]
+        assert set(pin_blocks) == {"SYSTEM", "RESPONSE"}  # FEEDBACK omitted — no row
+        assert pin_blocks["RESPONSE"] == {"id": "resp-newer", "content": ""}  # None → ""
+        assert pin_blocks["SYSTEM"]["content"] == "sys text"
+        hop = snap["agent_data"][self._HOP]
+        assert hop["task_key"] == ""
+        assert "TASK" not in hop["blocks"]  # not in patched BLOCK_TYPES
+        assert hop["blocks"]["RESPONSE"]["content"] == "hop resp"
+
+    def test_latest_refs_failure_keeps_stored_ids(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("WARNING")
+        self._wire(
+            monkeypatch,
+            job=self._JOB,
+            hits=[self._PIN],
+            refs_exc=RuntimeError("refs down"),
+            seeds={self._PIN: {"block_type": "RESPONSE", "batch_id": "b-pin", "task_key": "t"}},
+            batches={"b-pin": [{"block_type": "RESPONSE", "agent_data_id": self._PIN, "block_data": "ok"}]},
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-1420")
+        assert self._PIN in snap["agent_data"]
+        assert "list_entity_latest_agent_refs failed" in caplog.text
+
+    def test_skips_missing_row_no_batch_and_hop_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("WARNING")
+        job = {
+            "astral_job_id": "job-1420",
+            "a": "gone",
+            "b": "nobatch",
+            "c": "boom",
+            "d": "ok-id",
+        }
+        self._wire(
+            monkeypatch,
+            job=job,
+            hits=["gone", "nobatch", "boom", "ok-id"],
+            seeds={
+                "nobatch": {"block_type": "RESPONSE", "batch_id": "  ", "task_key": "t"},
+                "ok-id": {"block_type": "RESPONSE", "batch_id": "b-ok", "task_key": "t"},
+            },
+            seed_exc={"boom": ValueError("cyclic pointer")},
+            batches={
+                "b-ok": [
+                    {
+                        "block_type": "RESPONSE",
+                        "agent_data_id": "",
+                        "block_data": {"not": "str"},
+                    }
+                ]
+            },
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-1420", debug=True)
+        assert set(snap["agent_data"]) == {"ok-id"}
+        assert snap["agent_data"]["ok-id"]["blocks"]["RESPONSE"]["id"] == ""
+        assert "hop failed" in caplog.text
+
+    def test_shared_batch_queried_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        spy = self._wire(
+            monkeypatch,
+            job={"x": "id-a", "y": "id-b"},
+            hits=["id-a", "id-b"],
+            seeds={
+                "id-a": {"block_type": "SYSTEM", "batch_id": "shared", "task_key": "t"},
+                "id-b": {"block_type": "RESPONSE", "batch_id": "shared", "task_key": "t"},
+            },
+            batches={
+                "shared": [
+                    {"block_type": "SYSTEM", "agent_data_id": "id-a", "block_data": "s"},
+                    {"block_type": "RESPONSE", "agent_data_id": "id-b", "block_data": "r"},
+                ]
+            },
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-1420")
+        assert spy.batch_calls == ["shared"]
+        assert snap["agent_data"]["id-a"]["blocks"] == snap["agent_data"]["id-b"]["blocks"]
+
+    def test_debug_true_emits_index_false_is_silent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(tracker_mod, "get_logger", lambda *a, **k: dbg)
+        self._wire(monkeypatch, job={"n": 1}, refs=[])
+        tracker_mod.assemble_job_copy_snapshot("job-empty", debug=False)
+        dbg.debug_index.assert_not_called()
+        tracker_mod.assemble_job_copy_snapshot("job-empty", debug=True)
+        job_hdr = dbg.debug_index.call_args_list[0].kwargs
+        assert job_hdr["func"] == "assemble_job_copy_snapshot"
+        assert job_hdr["outcome"] == "assembled_no_ids"
+
+    def test_debug_recorded_and_skip_outcomes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(tracker_mod, "get_logger", lambda *a, **k: dbg)
+        self._wire(
+            monkeypatch,
+            job={"a": "gone", "b": self._PIN},
+            hits=[self._PIN, "gone"],
+            seeds={
+                self._PIN: {"block_type": "RESPONSE", "batch_id": "b-pin", "task_key": "draft"},
+            },
+            batches={
+                "b-pin": [
+                    {"block_type": "RESPONSE", "agent_data_id": self._PIN, "block_data": "body"}
+                ]
+            },
+        )
+        tracker_mod.assemble_job_copy_snapshot("job-1420", debug=True)
+        outcomes = [c.kwargs["outcome"] for c in dbg.debug_index.call_args_list]
+        assert outcomes[0] == "assembled"
+        assert "missing_row" in outcomes
+        assert "recorded" in outcomes
+        dbg.debug_detail_block.assert_called()
+        assert "body" in dbg.debug_detail_block.call_args.args[0]
+
+
+class TestAst1453LegalJobSuccessorStates:
+    """AST-1453: successors == JOB_STATES keys transition would accept, minus from_state."""
+
+    def test_excludes_self_includes_unrestricted_and_listed_priors(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Tiny registry: None prior = unrestricted; listed prior must match current.
+        monkeypatch.setattr(
+            tracker_mod,
+            "JOB_STATES",
+            {
+                "A": {"prior_states": None},
+                "B": {"prior_states": ["A"]},
+                "C": {"prior_states": ["Z"]},
+            },
+        )
+        assert tracker_mod.legal_job_successor_states("A") == ["B"]
+        assert set(tracker_mod.legal_job_successor_states("X")) == {"A"}
+        assert tracker_mod.legal_job_successor_states("B") == ["A"]
+
+
+class TestAst1453PersistSkippedJobEdits:
+    """AST-1453: skipped-only field writes; transition after columns/JD; empty JD ok."""
+
+    _SKIP = "CANDIDATE_SKIPPED"
+    _JD_KEY = "job_description"
+
+    def _job(self, **over: Any) -> Dict[str, Any]:
+        base: Dict[str, Any] = {
+            "astral_job_id": "job-1453",
+            "state": self._SKIP,
+            "job_title": "Old",
+            "job_link": "https://old.example",
+            "state_history": [],
+        }
+        base.update(over)
+        return base
+
+    def test_missing_job_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: None)
+        with pytest.raises(ValueError, match="Job not found"):
+            tracker_mod.persist_skipped_job_edits("missing", {"job_title": "T"})
+
+    def test_non_skipped_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job(state="RECOMMENDED"))
+        with pytest.raises(ValueError, match="not in a skipped state"):
+            tracker_mod.persist_skipped_job_edits("job-1453", {"job_title": "T"})
+
+    def test_empty_title_and_link_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        with pytest.raises(ValueError, match="job_title required"):
+            tracker_mod.persist_skipped_job_edits("job-1453", {"job_title": "  "})
+        with pytest.raises(ValueError, match="job_link required"):
+            tracker_mod.persist_skipped_job_edits("job-1453", {"job_link": ""})
+
+    def test_writes_title_link_jd_then_transition(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        order: List[str] = []
+        jobs = {"job-1453": self._job()}
+
+        def _get(jid: str) -> Any:
+            return jobs.get(jid)
+
+        def _save(jid: str, **kw: Any) -> bool:
+            order.append("save_job")
+            jobs[jid] = {**jobs[jid], **kw}
+            return True
+
+        def _save_data(jid: str, patch: Dict[str, Any]) -> None:
+            order.append("save_job_data")
+            assert patch == {self._JD_KEY: "pasted JD"}
+
+        def _transition(ids: List[str], to_state: str) -> None:
+            order.append("transition")
+            assert ids == ["job-1453"] and to_state == "NEW"
+            jobs["job-1453"] = {**jobs["job-1453"], "state": to_state}
+
+        monkeypatch.setattr(tracker_mod, "get_job", _get)
+        monkeypatch.setattr(tracker_mod, "save_job", _save)
+        monkeypatch.setattr(tracker_mod, "save_job_data", _save_data)
+        monkeypatch.setattr(tracker_mod, "transition_job_state", _transition)
+        out = tracker_mod.persist_skipped_job_edits(
+            "job-1453",
+            {
+                "job_title": " New Title ",
+                "job_link": " https://new.example ",
+                "job_description": "pasted JD",
+                "state": "NEW",
+            },
+        )
+        # JD write then column save, then hop (plan: fields before transition).
+        assert order == ["save_job_data", "save_job", "transition"]
+        assert out["job_title"] == "New Title"
+        assert out["job_link"] == "https://new.example"
+        assert out["state"] == "NEW"
+
+    def test_empty_jd_persists_without_strip_whole_blob(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        patches: List[Dict[str, Any]] = []
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        monkeypatch.setattr(
+            tracker_mod,
+            "save_job_data",
+            lambda jid, patch: patches.append(patch),
+        )
+        monkeypatch.setattr(tracker_mod, "save_job", MagicMock())
+        monkeypatch.setattr(tracker_mod, "transition_job_state", MagicMock())
+        tracker_mod.persist_skipped_job_edits("job-1453", {"job_description": ""})
+        tracker_mod.persist_skipped_job_edits("job-1453", {"job_description": None})
+        assert patches == [{self._JD_KEY: ""}, {self._JD_KEY: ""}]
+
+    def test_same_state_skips_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        monkeypatch.setattr(tracker_mod, "save_job", MagicMock())
+        monkeypatch.setattr(tracker_mod, "save_job_data", MagicMock())
+        monkeypatch.setattr(tracker_mod, "transition_job_state", transition)
+        tracker_mod.persist_skipped_job_edits("job-1453", {"state": self._SKIP})
+        transition.assert_not_called()
+
+    def test_field_writes_before_illegal_transition_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock(return_value=True)
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        monkeypatch.setattr(tracker_mod, "save_job", save)
+        monkeypatch.setattr(tracker_mod, "save_job_data", MagicMock())
+        monkeypatch.setattr(
+            tracker_mod,
+            "transition_job_state",
+            MagicMock(side_effect=ValueError("Invalid transition: CANDIDATE_SKIPPED -> PASSED_JD")),
+        )
+        with pytest.raises(ValueError, match="Invalid transition"):
+            tracker_mod.persist_skipped_job_edits(
+                "job-1453", {"job_title": "Kept", "state": "PASSED_JD"}
+            )
+        save.assert_called_once()
+        assert save.call_args.kwargs["job_title"] == "Kept"
+
+
+# Branches: pattern match / ownership refuse / hydrate / Style D (AST-1518).
+class TestAst1518ContactTaskReads:
+    """AST-1518: contact_task_* read wrappers + get_job_by_pattern."""
+
+    def _job(self, jid: str = "j1", company: str = "acme", title: str = "Engineer") -> Dict[str, Any]:
+        return {
+            "astral_job_id": jid,
+            "company": company,
+            "job_title": title,
+            "job_link": f"https://jobs.example/{jid}",
+            "state": "RECOMMENDED",
+        }
+
+    def _patch_story(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.agent.get_entity_agent_story",
+            lambda entity: [{"role": "assistant", "content": "story"}],
+        )
+
+    def test_get_job_by_pattern_exact_one(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        jobs = [self._job("j1", title="Staff Engineer"), self._job("j2", title="Analyst")]
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: jobs)
+        assert tracker_mod.get_job_by_pattern("c1", "Staff")["astral_job_id"] == "j1"
+        assert tracker_mod.get_job_by_pattern("c1", "missing") is None
+        jobs2 = [self._job("j1", title="Engineer A"), self._job("j2", title="Engineer B")]
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: jobs2)
+        assert tracker_mod.get_job_by_pattern("c1", "Engineer") is None
+
+    def test_contact_task_get_job_by_pattern_happy_and_errors(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._patch_story(monkeypatch)
+        job = self._job()
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: [job])
+        monkeypatch.setattr(
+            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
+        )
+        out = tracker_mod.contact_task_get_job_by_pattern("c1", "Engineer")
+        assert out["ok"] is True and out["task_key"] == "get_job_by_pattern"
+        assert out["result"]["astral_job_id"] == "j1"
+        assert out["result"]["agent_story"]
+
+        assert tracker_mod.contact_task_get_job_by_pattern("", "x")["error"] == "no_candidate"
+        assert tracker_mod.contact_task_get_job_by_pattern("c1", "")["error"] == "unmatched_pattern"
+        monkeypatch.setattr(tracker_mod, "list_jobs", lambda **kwargs: [])
+        assert tracker_mod.contact_task_get_job_by_pattern("c1", "x")["error"] == "unmatched_pattern"
+        monkeypatch.setattr(
+            tracker_mod,
+            "list_jobs",
+            lambda **kwargs: [self._job("j1"), self._job("j2", title="Engineer Two")],
+        )
+        assert (
+            tracker_mod.contact_task_get_job_by_pattern("c1", "Engineer")["error"]
+            == "ambiguous_pattern"
+        )
+
+    def test_contact_task_get_job_data_ownership(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_story(monkeypatch)
+        job = self._job()
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: job if jid == "j1" else None)
+        monkeypatch.setattr(
+            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
+        )
+        ok = tracker_mod.contact_task_get_job_data("c1", "j1")
+        assert ok["ok"] is True and "agent_story" in ok["result"]
+
+        monkeypatch.setattr(
+            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "other"}
+        )
+        refused = tracker_mod.contact_task_get_job_data("c1", "j1")
+        assert refused["error"] == "refused_cross_candidate"
+
+        assert tracker_mod.contact_task_get_job_data("c1", "missing")["error"] == "not_found"
+        assert tracker_mod.contact_task_get_job_data("", "j1")["error"] == "no_candidate"
+
+    def test_contact_task_get_company_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_story(monkeypatch)
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_company",
+            lambda sn: {"short_name": sn, "candidate_id": "c1"} if sn == "acme" else None,
+        )
+        out = tracker_mod.contact_task_get_company_data("c1", "acme")
+        assert out["ok"] is True and out["result"]["short_name"] == "acme"
+        assert out["result"]["agent_story"]
+        assert tracker_mod.contact_task_get_company_data("c1", "nope")["error"] == "not_found"
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_company",
+            lambda sn: {"short_name": sn, "candidate_id": "other"},
+        )
+        assert (
+            tracker_mod.contact_task_get_company_data("c1", "acme")["error"]
+            == "refused_cross_candidate"
+        )
+
+    def test_contact_task_get_candidate_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_story(monkeypatch)
+        row = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {"profile": {"first": "Ada"}},
+        }
+        monkeypatch.setattr(tracker_mod.candidate_mod, "get_candidate", lambda cid: row if cid == "c1" else None)
+        full = tracker_mod.contact_task_get_candidate_data("c1", "")
+        assert full["ok"] is True and full["result"]["agent_story"]
+        leaf = tracker_mod.contact_task_get_candidate_data("c1", "profile.first")
+        assert leaf["ok"] is True and leaf["result"] == "Ada"
+        assert tracker_mod.contact_task_get_candidate_data("c1", "profile.missing")["error"] == "not_found"
+        assert tracker_mod.contact_task_get_candidate_data("", "")["error"] == "no_candidate"
+
+    def test_style_d_debug_on_job_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_story(monkeypatch)
+        log = MagicMock()
+        monkeypatch.setattr(tracker_mod, "get_logger", lambda _n: log)
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        monkeypatch.setattr(
+            tracker_mod, "get_company", lambda sn: {"short_name": sn, "candidate_id": "c1"}
+        )
+        tracker_mod.contact_task_get_job_data("c1", "j1", debug=True)
+        outcomes = [c.kwargs.get("outcome") for c in log.debug_index.call_args_list]
+        assert outcomes == ["found", "recorded"]
+        assert log.debug_index.call_args_list[0].kwargs["func"] == "tracker.contact_task_get_job_data"
+
+
+# Branches: save_job_artifact/get_job_current catalog shape; job_resume→base_resume citation;
+# cover sources pass-through; type-specific public saves gone; hydrate via get_job_current.
+class TestAst1592TrackerCatalogWriteReadCitation:
+    """AST-1592: generic job catalog write/read + job_resume cites base_resume."""
+
+    def _resume_cd(self) -> dict:
+        return {
+            "artifacts": {
+                "resume_structure": [
+                    {"id": "professional_summary", "enabled": True, "order": 1},
+                    {"id": "experience", "enabled": True, "order": 2},
+                ]
+            }
+        }
+
+    def test_type_specific_public_saves_removed(self) -> None:
+        assert not hasattr(tracker_mod, "save_job_artifact_job_resume_body")
+        assert not hasattr(tracker_mod, "save_job_artifact_cover_letter")
+        assert not hasattr(tracker_mod, "persist_finalize_job_resume_content")
+        assert not hasattr(tracker_mod, "persist_finalize_cover_letter_content")
+        assert hasattr(tracker_mod, "save_job_artifact")
+        assert hasattr(tracker_mod, "get_job_current")
+        assert not hasattr(tracker_mod, "prepare_job_replica_body")
+        assert hasattr(tracker_mod, "_prepare_job_replica_body")
+        assert tracker_mod._JOB_ARTIFACT_PIN_KEYS == ("proposed_answers",)
+
+    def test_get_job_current_hit_miss_and_key_validation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_current_artifact",
+            lambda et, eid, at: (
+                {"artifact_data": {"professional_summary": "cur"}, "current": 1}
+                if at == "job_resume"
+                else None
+            ),
+        )
+        assert tracker_mod.get_job_current("job-1", "job.artifacts.job_resume") == {
+            "professional_summary": "cur"
+        }
+        assert tracker_mod.get_job_current("job-1", "job.artifacts.cover_letter") is None
+        with pytest.raises(ValueError, match="unknown catalog key"):
+            tracker_mod.get_job_current("job-1", "not.a.key")
+        with pytest.raises(ValueError, match="artifact_key required"):
+            tracker_mod.get_job_current("job-1", "   ")
+        with pytest.raises(ValueError, match="astral_job_id required"):
+            tracker_mod.get_job_current("  ", "job.artifacts.job_resume")
+
+    def test_job_resume_cites_current_base_resume_uuid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: list[dict] = []
+
+        def _get(et: str, eid: str, at: str):
+            if et == "candidate" and at == "base_resume":
+                return {"artifact_uuid": "base-uuid-99", "artifact_data": {"x": 1}}
+            return None
+
+        monkeypatch.setattr(tracker_mod.database, "get_current_artifact", _get)
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: saves.append(
+                {
+                    "et": et,
+                    "eid": eid,
+                    "at": at,
+                    "data": data,
+                    "sources": source_artifact_ids,
+                }
+            )
+            or "new-jr",
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-9")
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._resume_cd())
+        # Caller-supplied sources must be ignored for job_resume (always auto-cite).
+        uid = tracker_mod.save_job_artifact(
+            "job-9",
+            "job.artifacts.job_resume",
+            {"professional_summary": "Cited", "experience": []},
+            source_artifact_ids=["caller-should-ignore"],
+        )
+        assert uid == "new-jr"
+        assert saves[0]["sources"] == ["base-uuid-99"]
+        assert saves[0]["at"] == "job_resume"
+        assert saves[0]["data"]["professional_summary"] == "Cited"
+
+    def test_job_resume_empty_sources_when_no_base_resume(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod.database, "get_current_artifact", lambda *a, **k: None
+        )
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: saves.append(
+                source_artifact_ids
+            )
+            or "new-jr",
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-9")
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: self._resume_cd())
+        tracker_mod.save_job_artifact(
+            "job-9",
+            "job.artifacts.job_resume",
+            {"professional_summary": "No base", "experience": []},
+        )
+        assert saves[0] == []
+
+    def test_cover_letter_passes_caller_sources(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: list = []
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "save_artifact",
+            lambda et, eid, at, data, source_artifact_ids=None, candidate_id=None: saves.append(
+                source_artifact_ids
+            )
+            or "cl",
+        )
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-9")
+        tracker_mod.save_job_artifact(
+            "job-9",
+            "job.artifacts.cover_letter",
+            {"Subject": "S", "Letter": "L", "signature": ""},
+            source_artifact_ids=["seed-1"],
+        )
+        assert saves[0] == ["seed-1"]
+
+
+class TestAst1600TrackerCandidateIdLand:
+    """AST-1600: denormalized job.candidate_id + pass-through into save_artifact."""
+
+    def test_bug_repro_candidate_id_for_job_prefers_job_column(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] pre-fix ignores job.candidate_id → None when company cid blank.
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_job",
+            lambda jid: {
+                "astral_job_id": jid,
+                "company": "acme",
+                "candidate_id": "cand-from-job",
+            },
+        )
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_company",
+            lambda sn: {"short_name": sn, "candidate_id": None},
+        )
+        assert tracker_mod._candidate_id_for_job("job-1600") == "cand-from-job"
+
+    def test_bug_repro_save_job_artifact_passes_candidate_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] pre-fix omits candidate_id= on database.save_artifact.
+        saves: list = []
+
+        def _save(et, eid, at, data, source_artifact_ids=None, candidate_id=None):
+            saves.append({"candidate_id": candidate_id, "at": at})
+            return "uid-1600"
+
+        monkeypatch.setattr(tracker_mod.database, "save_artifact", _save)
+        monkeypatch.setattr(tracker_mod, "_candidate_id_for_job", lambda jid: "cand-1600")
+        uid = tracker_mod.save_job_artifact(
+            "job-1600",
+            "job.artifacts.cover_letter",
+            {"Subject": "S", "Letter": "L", "signature": ""},
+        )
+        assert uid == "uid-1600"
+        assert saves[0]["at"] == "cover_letter"
+        assert saves[0]["candidate_id"] == "cand-1600"
+
+class TestAst1603TrackerPinKeysAndPrivatePrepare:
+    """AST-1603: pin keys proposed_answers only; prepare is private."""
+
+    def test_public_prepare_gone_private_present(self) -> None:
+        assert not hasattr(tracker_mod, "prepare_job_replica_body")
+        assert hasattr(tracker_mod, "_prepare_job_replica_body")
+        assert tracker_mod._JOB_ARTIFACT_PIN_KEYS == ("proposed_answers",)
+        assert "job_resume" not in tracker_mod._JOB_ARTIFACT_PIN_KEYS
+        assert "cover_letter" not in tracker_mod._JOB_ARTIFACT_PIN_KEYS
+
+    def test_hydrate_still_overlays_catalog_currents(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_job_current",
+            lambda jid, key, debug=False: (
+                {"professional_summary": "from-table"}
+                if key == "job.artifacts.job_resume"
+                else {"Subject": "S", "Letter": "L", "signature": ""}
+                if key == "job.artifacts.cover_letter"
+                else None
+            ),
+        )
+        out = tracker_mod.hydrate_job_artifacts_for_display(
+            {"proposed_answers": "pin-pa"},
+            astral_job_id="job-1603",
+        )
+        assert out["job_resume"] == {"professional_summary": "from-table"}
+        assert out["cover_letter"]["Subject"] == "S"
+        # proposed_answers pin string stays until resolve returns body
+        assert out["proposed_answers"] == "pin-pa"
+
+
+class TestAst1614StringJsonPrepare:
+    """AST-1614 [bug-repro]: finalize-shaped string JSON must coerce through prepare."""
+
+    def _envelope(self) -> dict:
+        return {
+            "agent_performance": "success",
+            "agent_payload": {
+                "resume": {
+                    "professional_summary": "Tailored summary for AST-1614",
+                    "experience": [],
+                }
+            },
+        }
+
+    def test_bug_repro_prepare_lands_finalize_shaped_string_json(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Default structure (empty cd) still enables non-contact sections for match.
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: {})
+        raw = json.dumps(self._envelope())
+        body = tracker_mod._prepare_job_replica_body(
+            "job.artifacts.job_resume", raw, astral_job_id="job-1614"
+        )
+        assert isinstance(body, dict)
+        assert body.get("professional_summary") == "Tailored summary for AST-1614"
+
+        fenced = "```json\n" + raw + "\n```"
+        fenced_body = tracker_mod._prepare_job_replica_body(
+            "job.artifacts.job_resume", fenced, astral_job_id="job-1614"
+        )
+        assert isinstance(fenced_body, dict)
+        assert fenced_body.get("professional_summary") == "Tailored summary for AST-1614"
+
+    def test_bug_repro_prepare_empty_on_non_json_string(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(tracker_mod, "_candidate_data_for_job", lambda jid: {})
+        assert (
+            tracker_mod._prepare_job_replica_body(
+                "job.artifacts.job_resume",
+                "not-json-at-all",
+                astral_job_id="job-1614",
+            )
+            is None
+        )
+
+    def test_bug_repro_prepare_lands_cover_letter_string_json(self) -> None:
+        raw = json.dumps(
+            {
+                "agent_performance": "success",
+                "agent_payload": {
+                    "re_line": "Re: Role",
+                    "body": "Cover body for AST-1614",
+                    "signature": "Ada",
+                },
+            }
+        )
+        body = tracker_mod._prepare_job_replica_body(
+            "job.artifacts.cover_letter", raw, astral_job_id="job-1614"
+        )
+        assert isinstance(body, dict)
+        assert body.get("Subject") == "Re: Role"
+        assert body.get("Letter") == "Cover body for AST-1614"
+
+class TestAst1680JobResumeHydrateBeforeResolve:
+    """AST-1680: tracker prepare/filter hydrate→resolve when cid known (table SoT)."""
+
+    def _table_structure(self):
+        from src.core import candidate as candidate_mod
+
+        structure = candidate_mod.default_resume_structure()
+        # technical_skills is optional — safe disable signal (highlights is required).
+        structure["sections"]["technical_skills"]["enabled"] = False
+        return structure
+
+    def _stub_table_current(self, monkeypatch: pytest.MonkeyPatch, structure: dict) -> None:
+        from src.core import candidate as candidate_mod
+
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate_current",
+            lambda cid, key: structure
+            if cid == "c1680" and key == "candidate.artifacts.resume_structure"
+            else None,
+        )
+
+    def test_prepare_uses_table_current_when_blob_empty(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        table = self._table_structure()
+        self._stub_table_current(monkeypatch, table)
+        # Blob empty — without hydrate, resolve would use default (highlights enabled).
+        cd = {"artifacts": {}, "_astral_candidate_id": "c1680"}
+        prepared = tracker_mod._prepare_job_resume_content(
+            {
+                "professional_summary": "Job summary",
+                "technical_skills": "Should drop — disabled on table current",
+            },
+            cd,
+        )
+        assert prepared["professional_summary"] == "Job summary"
+        assert "technical_skills" not in prepared
+
+    def test_parsed_matches_shape_uses_table_enabled_sections(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        table = self._table_structure()
+        self._stub_table_current(monkeypatch, table)
+        cd = {"artifacts": {}, "_astral_candidate_id": "c1680"}
+        # Only technical_skills body — disabled on table current → False.
+        assert (
+            tracker_mod.parsed_matches_resume_content_shape(
+                {"technical_skills": "only this"}, cd
+            )
+            is False
+        )
+        assert (
+            tracker_mod.parsed_matches_resume_content_shape(
+                {"professional_summary": "ok"}, cd
+            )
+            is True
+        )
+
+    def test_prepare_without_cid_skips_hydrate(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as candidate_mod
+
+        spy = MagicMock(wraps=candidate_mod.hydrate_operative_resume_structure_for_response)
+        monkeypatch.setattr(
+            candidate_mod, "hydrate_operative_resume_structure_for_response", spy
+        )
+        structure = candidate_mod.default_resume_structure()
+        cd = {"artifacts": {"resume_structure": structure}}
+        prepared = tracker_mod._prepare_job_resume_content(
+            {"professional_summary": "s"}, cd
+        )
+        spy.assert_not_called()
+        assert prepared["professional_summary"] == "s"
+

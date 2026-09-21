@@ -1,3 +1,252 @@
+<!-- linear-archive: AST-1117 archived 2026-08-07 -->
+
+## Linear archive (AST-1117)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1117/uat-print-resume-and-print-cover-letter-open-recommended-page-not-html  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data  
+**Blocked by / blocks / related:** parent: AST-1091
+
+### Description
+
+## What this implements
+
+Print Resume / Print Cover Letter open tabs that render Flask HTML from `/candidate/resume|<job_id>` and `/candidate/cover/<job_id>`, resolved through pinned artifact bodies — not the recommended-jobs SPA shell.
+
+## In scope
+
+- [X] `astral.layers.ui-config-driven-business-logic` — routing/proxy only; no new FE business rules
+- [X] `astral.layers.import-direction` — HTML still from core builders via existing blueprint
+- [X] `astral.standards.in-scope-only` — Print HTML delivery path only
+- [X] `astral.batch.entity-agent-responses-latest-only` — pins stay ids; bodies via builder resolve
+- [X] `astral.patterns.coat-check-never-store-empty` — no new job_data writes
+- [X] Vite proxy `/candidate` → Flask (local UAT hole)
+- [X] Flask SPA catch-all must not serve `index.html` for `candidate/*`
+
+## Considered but excluded
+
+- [X] Pin write — AST-1099
+- [X] Cover Letter ArtifactEditor field-defs — AST-1116
+- [X] Relocating HTML under `/api/…` / changing Print URLs — wrong fix (keep AST-605 paths)
+- [X] Hiding Print when pins-only / blank tab / SPA navigate / swallow builder errors — wrong fixes
+- [X] Session cover/resume paste — excluded
+- [X] `tests/` / `docs/test-bible/**` — Betty
+- [X] `astral.standards.database-header-inventory` — no `src/data/**`
+- [X] `astral.layers.scripts-exempt-from-layer-rules` — no `scripts/**`
+
+## Acceptance criteria
+
+- [X] Print Resume opens a tab with resume HTML (pin-resolved body), not `/jobs/recommended`.
+- [X] Print Cover Letter opens a tab with cover HTML (pin-resolved body), not `/jobs/recommended`.
+- [X] Pin-on-job + builder pin resolve contracts still hold; no full HTML/JSON forced onto `job_data` as the pin replacement.
+
+## Boundaries
+
+Does not change pin write, Cover Letter field-defs (AST-1116), session paste, or unrelated recommended chrome.
+
+## Notes for planning
+
+Hypothesis: Vite proxies only `/api`; `/candidate/*` loads SPA → `*` redirects to recommended. Flask `resume_html_bp` + AST-1100 builder pin resolve already exist.
+
+## Git branch (authoritative)
+
+Per parent **## Git**: `sub/AST-1091/AST-1117-print-html-blobs`.
+
+## What failed
+
+Both **Print Resume** and **Print Cover Letter** open new browser tabs that land on the recommended page, not printable HTML blobs for the job resume / cover letter.
+
+## Expected
+
+Print Resume / Print Cover Letter open tabs that render the HTML document built from the pinned artifact bodies (`job_data.artifacts.job_resume` / `cover_letter` → `agent_data`), suitable for print/PDF.
+
+## Repro
+
+1. Open a recommended job whose daisy-chain left resume and cover pins set.
+2. Click **Print Resume** — new tab shows the recommended page, not resume HTML.
+3. Click **Print Cover Letter** — same: recommended page, not cover HTML.
+
+## Parent AC (quoted inline)
+
+> After a successful `finalize_job_resume` hop (chain may continue), `job_data.artifacts.job_resume` equals that hop's RESPONSE `agent_data_id` and that id loads the hop body from `agent_data`.
+
+> After a successful `finalize_cover_letter` hop (chain may continue), `job_data.artifacts.cover_letter` equals that hop's RESPONSE `agent_data_id` and that id loads the hop body from `agent_data`.
+
+> A full successful daisy-chain that ran those three hops leaves all three pointer keys set; UAT surfaces that show Job Resume / Cover Letter / suggested answers resolve content via those ids without a manual PUT of the response body.
+
+## Diagnosis
+
+* **Hypothesis:** Print buttons become visible from non-empty pin strings, but `/candidate/resume/<job_id>` and `/candidate/cover/<job_id>` (or the builders behind them) do not return the printable HTML blob for pin-only artifacts — the new tab falls through to the app/recommended shell instead of an HTML document.
+* **Correct outcome:** Each Print action opens a tab whose document is the resume or cover HTML resolved through the pins.
+* **Wrong fix to avoid:** Hide Print buttons when pins-only; open a blank tab; re-store full HTML/JSON on `job_data`; SPA navigate inside the modal instead of serving HTML; swallow builder errors.
+* **Related siblings / contracts:** AST-1100 (pin resolve for surfaces / builders); AST-1099 (pin write). Cover Letter preview field-defs bug is separate.
+
+## Original brief
+
+UAT bug filed by Chuckles from fix-uat.
+
+### Comments
+
+#### radia — 2026-08-01T00:59:35.481Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1117
+**Publish ref:** `origin/sub/AST-1091/AST-1117-print-html-blobs` @ `56841f9d` (code `c2788bfd`; merge-tests `dcab534f`)
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-1117)` → `7da983d3` |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | Publish forward on origin/sub only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1091/AST-1117-…` matches Git table |
+| orch.git.merge-on-checkout | universal | conforms | No illegal merge recipe in ticket commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None in AST-1117 history |
+| orch.git.no-dev-agent-branches | universal | conforms | Child sub only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in astral-AST-1091 |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | UAT diagnosis locked; no open product fork |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 implemented; Stage 3 no-code verify |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-child review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty test + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Implementer path was Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Assignee left with Katherine |
+| orch.roles.pre-commit-path-bans | universal | conforms | Doc-only Radia commit; engineer off bans |
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/core/**` / config in ticket change set |
+| astral.agent.do-task-delegation | scoped | not-applicable | no `src/core/**` |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no `src/core/**` |
+| astral.batch.batch-id-first | scoped | not-applicable | no core/data paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no core/data paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no core/data paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no core/data paths (pins untouched) |
+| astral.config.config-source-of-truth | scoped | conforms | No new config dialects; routing only |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no core/data/config scoring paths |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no `artifacts/**` / spikes paths |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan under `docs/features/` |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no core/config chain paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatcher/config seed paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `docs/features/artifacts/ast-1117-….md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty did not edit src/features |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer code commit left tests/bible to Betty |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no core/external paths |
+| astral.layers.import-direction | scoped | conforms | UI stays on existing HTML blueprint / builders |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Routing only; no new FE business rules |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | no `src/core/**` |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no `src/core/**` |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | `resume_html_bp` `@require_auth` unchanged; no new open routes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | paths do not match seed admin/bootstrap |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no dispatcher/config/admin seed paths |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | No new boot seed path |
+| astral.seed.define-approved | scoped | conforms | No product seed invented |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no dispatcher/data/config seed paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no dispatcher/config/data seed paths |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No new data-layer calls |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` |
+| astral.standards.debug-contract-gated | scoped | conforms | No new ungated debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Minimal proxy + catch-all guard |
+| astral.standards.in-scope-only | scoped | conforms | Print HTML delivery path only |
+| astral.standards.logging-via-utils | scoped | conforms | No new logging surface |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Ticket ids only in comments (carve-out) |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays in ui (+ Betty tests) |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new domain sets |
+| astral.standards.public-then-helpers | scoped | conforms | Catch-all edit only |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no `src/utils/**` |
+| astral.state.core-decides-transitions | scoped | not-applicable | no core/data paths |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no core/data/config state paths |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no `src/core/**` |
+| astral.ui.frontend-file-placement | scoped | conforms | Vite config stays under `frontend/` |
+| astral.ui.naming-conventions | scoped | conforms | Existing `/candidate/*` paths unchanged |
+| astral.ui.single-gunicorn-worker | scoped | conforms | No worker changes |
+
+## Pattern conformance
+
+| cited | verdict |
+|-------|---------|
+| astral.layers.ui-config-driven-business-logic | conforms |
+| astral.layers.import-direction | conforms |
+| astral.standards.in-scope-only | conforms |
+| astral.batch.entity-agent-responses-latest-only | conforms (pins untouched; N/A on core paths but cited intent holds) |
+| astral.patterns.coat-check-never-store-empty | conforms (no new writes) |
+
+## Plan adherence
+
+FIX-UAT Stages 1–2 match: Vite `/candidate` proxy + Flask SPA catch-all 404 for `candidate/*`. Stage 3 no builder code (AST-1100 pin resolve already on tip). Self-Assessment Single-Component / high / Medium fits. Wrong fixes rejected (hide Print, relocate under `/api`, SPA-navigate).
+
+## Findings
+
+None.
+
+## Notes
+
+- FIX-UAT mode. `no plan-rubric verdict attached` — not a block (C4).
+- Change set: AST-1117 commits on publish tip. Active statutes = 65.
+- Docs append @ `56841f9d`.
+- Session note: `linear-radia` MCP socket missing; comment posted via Radia Linear API key (viewer = Radia).
+
+context_tokens≈36000
+
+— Radia
+
+#### betty — 2026-08-01T00:55:35.448Z
+## QA test manifest
+
+`origin/sub/AST-1091/AST-1117-print-html-blobs` @ `dcab534f` (`merge-tests(AST-1117): origin/tests 7da983d3239e15cd30ae1ef176fdf8beabfcdfef`)
+
+### 1. Existing coverage (bible-backed)
+
+1. `tests/component/ui/api/test_api_resume_html.py::TestResumeHtmlRoutes` — job resume HTML route
+2. `tests/component/ui/api/test_api_resume_html.py::TestAst581CoverRoute` — cover HTML route
+3. JAR Print `window.open('/candidate/…')` + pin visibility — `docs/test-bible/frontend/lib.md` (AST-605 / AST-1100); no re-author this pass
+
+### 2. Broken / obsolete
+
+none
+
+### 3. Gaps (new this pass)
+
+1. `tests/component/ui/test_server.py::TestAst1117CandidateSpaGuard` — catch-all 404 JSON for `candidate/*`, SPA fallback still for other paths
+2. `tests/component/ui/test_server.py::TestAst1117ViteCandidateProxy` — `vite.config.ts` proxies `/candidate` → Flask `:5001`
+
+**Bible shasum** (on publish tip):
+- `docs/test-bible/ui/server.md` `a9b3e6dc7e03178126e14cd10d830b99f723ea25`
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/test_server.py::TestAst1117CandidateSpaGuard \
+  tests/component/ui/test_server.py::TestAst1117ViteCandidateProxy \
+  tests/component/ui/api/test_api_resume_html.py::TestResumeHtmlRoutes \
+  tests/component/ui/api/test_api_resume_html.py::TestAst581CoverRoute \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+#### katherine — 2026-08-01T00:51:04.428Z
+Plan published on `origin/sub/AST-1091/AST-1117-print-html-blobs` @ `ecc5edf1`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1091/AST-1117-print-html-blobs/docs/features/artifacts/ast-1117-print-html-blobs.md
+
+**Approach:** Vite proxies only `/api` today — Print `window.open('/candidate/…')` loads the SPA, and `*` redirects to `/jobs/recommended`. Proxy `/candidate` → Flask; harden Flask `serve_react` so `candidate/*` never gets `index.html`. Builder pin resolve (AST-1100) stays; Stage 3 verifies only.
+
+**Self-assessment**
+- **Scope — Single-Component:** Vite proxy + Flask SPA catch-all guard for `/candidate/*`.
+- **Conf — high:** Symptom matches React catch-all; HTML blueprint + pin resolve already ship.
+- **Risk — Medium:** Local proxy misconfig still 404s print; catch-all 404 is better than wrong recommended shell.
+
+---
+
 # AST-1117 — UAT: Print Resume and Print Cover Letter open recommended page not HTML
 
 **Linear:** [AST-1117](https://linear.app/astralcareermatch/issue/AST-1117/uat-print-resume-and-print-cover-letter-open-recommended-page-not-html)
