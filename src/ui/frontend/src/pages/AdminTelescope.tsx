@@ -60,18 +60,16 @@ export default function AdminTelescope() {
   const [waitReady, setWaitReady] = useState(false)
   const [links, setLinks] = useState(true)
   const [cull, setCull] = useState(false)
-  const [selector, setSelector] = useState("")
+  // AST-1744 — Tag is the only primary; Class name is secondary (combinable).
   const [tag, setTag] = useState("")
   const [className, setClassName] = useState("")
+  const [elementId, setElementId] = useState("")
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ScrapeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [showJson, setShowJson] = useState(false)
   const clearToast = useCallback(() => setToast(null), [])
-
-  // Tag/class_name and CSS selector are mutually exclusive (service 400 if both).
-  const tagClassActive = Boolean(tag.trim() || className.trim())
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -88,12 +86,9 @@ export default function AdminTelescope() {
         links: responseType === "text" ? links : true,
         cull: responseType === "html" ? cull : false,
       }
-      if (tagClassActive) {
-        if (tag.trim()) body.tag = tag.trim()
-        if (className.trim()) body.class_name = className.trim()
-      } else if (selector.trim()) {
-        body.selector = selector.trim()
-      }
+      if (tag.trim()) body.tag = tag.trim()
+      if (className.trim()) body.class_name = className.trim()
+      if (elementId.trim()) body.id = elementId.trim()
       const res = await api("/api/admin/telescope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,8 +204,7 @@ export default function AdminTelescope() {
             type="text"
             value={tag}
             onChange={e => setTag(e.target.value)}
-            disabled={Boolean(selector.trim())}
-            placeholder="div / span / …"
+            placeholder="html / div / span / body / head / ul"
           />
         </label>
 
@@ -220,19 +214,21 @@ export default function AdminTelescope() {
             type="text"
             value={className}
             onChange={e => setClassName(e.target.value)}
-            disabled={Boolean(selector.trim())}
-            placeholder="shaders (no leading dot)"
+            placeholder="logo / shaders (no leading dot)"
           />
+          <span style={{ fontSize: 12, opacity: 0.75 }}>
+            Class matches return each element&apos;s outer HTML when Response type is html
+            (not text).
+          </span>
         </label>
 
         <label className="admin-telescope-field">
-          <span>Selector (optional)</span>
+          <span>Id (optional)</span>
           <input
             type="text"
-            value={selector}
-            onChange={e => setSelector(e.target.value)}
-            disabled={tagClassActive}
-            placeholder="css / page / body"
+            value={elementId}
+            onChange={e => setElementId(e.target.value)}
+            placeholder="hero (no leading #)"
           />
         </label>
 

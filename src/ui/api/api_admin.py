@@ -2098,6 +2098,9 @@ def admin_telescope():
     class_name = body.get("class_name")
     if class_name is not None:
         class_name = str(class_name).strip() or None
+    element_id = body.get("id")
+    if element_id is not None:
+        element_id = str(element_id).strip() or None
     try:
         data = asyncio.run(
             admin_telescope_scrape(
@@ -2109,6 +2112,7 @@ def admin_telescope():
                 selector=selector,
                 tag=tag,
                 class_name=class_name,
+                id=element_id,
                 cull=bool(cull),
             )
         )

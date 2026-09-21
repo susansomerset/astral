@@ -1124,6 +1124,8 @@ class TestAst1703EmailBreadcrumb:
         out = await meteorite_mod.run_stage_meteorite(
             _ingress_task(batch_id="stage-batch-nobread", candidate_id=cid)
         )
+        # AST-1751: ERROR arms bump total_errors only — not total_failed.
+        assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
         assert row["state"] == "SCRAPE_ERROR"
@@ -1226,6 +1228,8 @@ class TestAst1560RunStageMeteorite:
             out = await meteorite_mod.run_stage_meteorite(
                 _ingress_task(batch_id="stage-batch-miss", candidate_id=cid)
             )
+        # AST-1751: ERROR arms bump total_errors only — not total_failed.
+        assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
         assert any("missing classify_outcome" in r.message for r in caplog.records)
@@ -1272,8 +1276,13 @@ class TestAst1560RunScrapeMeteorite:
 
     @pytest.mark.asyncio
     async def test_blocked_emits_monitoring(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+        self,
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
     ) -> None:
+        import logging
+
         db = sqlite_in_memory
         cid = "cand-scp-block"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
@@ -1287,22 +1296,26 @@ class TestAst1560RunScrapeMeteorite:
         async def _fetch(_link, debug=False):
             return ("blocked page", _link)
 
-        log = MagicMock()
-        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _n: log)
         monkeypatch.setattr(meteorite_mod, "_land_fetch_link_text", _fetch)
         monkeypatch.setattr("src.core.gazer._classify_jd", lambda _t: "bot")
-        out = await meteorite_mod.run_scrape_meteorite(
-            _ingress_task(
-                batch_id="scrape-batch-block",
-                candidate_id=cid,
-                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.run_scrape_meteorite(
+                _ingress_task(
+                    batch_id="scrape-batch-block",
+                    candidate_id=cid,
+                    task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+                )
             )
-        )
-        assert out["total_passed"] == 1
+        # AST-1751: scrape BOT_BLOCKED is fail-only (not pass, not error).
+        assert out["total_failed"] == 1
+        assert out["total_passed"] == 0
+        assert out["total_errors"] == 0
         assert db.get_meteorite(row_id)["state"] == "BOT_BLOCKED"
+        # Product: _row_miss → logger.warning "… — scrape blocked at {link}" / BOT_BLOCKED.
         assert any(
-            "meteorite scrape blocked" in c.args[0] for c in log.info.call_args_list
-        )
+            "scrape blocked at" in r.getMessage() and "BOT_BLOCKED" in r.getMessage()
+            for r in caplog.records
+        ), "expected _row_miss warning with scrape blocked + BOT_BLOCKED"
 
     @pytest.mark.asyncio
     async def test_sibling_rows_do_not_abort_batch(
@@ -1340,9 +1353,98 @@ class TestAst1560RunScrapeMeteorite:
         )
         assert out["total_processed"] == 2
         assert out["total_passed"] == 1
+        # AST-1751: ERROR row must not also bump total_failed.
+        assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         assert db.get_meteorite(bad_id)["state"] == "SCRAPE_ERROR"
         assert db.get_meteorite(good_id)["state"] == "READY"
+
+    @pytest.mark.asyncio
+    async def test_ast1751_error_only_batch_fail_zero_error_n(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1751 bug-repro: five SCRAPE_ERROR rows → fail:0 error:5 (not fail:5)."""
+        db = sqlite_in_memory
+        cid = "cand-scp-err5"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E5"})
+        for i in range(5):
+            _insert_meteorite_row(
+                db,
+                cid,
+                source_id=f"mid-err-{i}",
+                state="SCRAPE_LINK",
+                link="not-http",
+            )
+
+        out = await meteorite_mod.run_scrape_meteorite(
+            _ingress_task(
+                batch_id="scrape-batch-err5",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+            )
+        )
+        assert out["total_processed"] == 5
+        assert out["total_passed"] == 0
+        assert out["total_failed"] == 0, (
+            "AST-1751: ERROR-only batch must report fail:0 (errors are not also fails)"
+        )
+        assert out["total_errors"] == 5
+
+    @pytest.mark.asyncio
+    async def test_ast1750_scrape_closed_error_includes_signal_text_len_final_url(
+        self,
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """AST-1750 bug-repro: soft-fail scrape_closed must carry signal/text_len/final_url."""
+        import logging
+
+        db = sqlite_in_memory
+        cid = "cand-scp-closed"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "C"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="SCRAPE_LINK",
+            link="https://www.dice.com/job-detail/abc",
+        )
+        visible = "Sorry, this job is no longer available. " + ("x" * 80)
+        final_url = "https://www.dice.com/job-detail/abc-final"
+
+        async def _fetch(_link, debug=False):
+            return (visible, final_url)
+
+        monkeypatch.setattr(meteorite_mod, "_land_fetch_link_text", _fetch)
+        monkeypatch.setattr("src.core.gazer._classify_jd", lambda _t: "closed")
+
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.run_scrape_meteorite(
+                _ingress_task(
+                    batch_id="scrape-batch-closed",
+                    candidate_id=cid,
+                    task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+                ),
+                debug=True,
+            )
+
+        assert out["total_errors"] == 1
+        err = db.get_meteorite(row_id)["error"] or ""
+        assert "scrape_closed" in err, f"expected scrape_closed in error, got {err!r}"
+        assert "signal=" in err, (
+            "AST-1750: scrape_closed error must name the matched closed_signals token"
+        )
+        assert "no longer available" in err
+        assert f"text_len={len(visible)}" in err, (
+            "AST-1750: scrape_closed error must include text_len="
+        )
+        assert "final_url=" in err and final_url in err, (
+            "AST-1750: scrape_closed error must include final_url="
+        )
+        assert any(
+            "signal=" in r.getMessage() and "scrape_closed" in r.getMessage()
+            for r in caplog.records
+        ), "AST-1750: warning must carry the same diagnostic why string"
 
 
 @pytest.mark.skipif(
@@ -1412,6 +1514,8 @@ class TestAst1560RunLandMeteorite:
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
             )
         )
+        # AST-1751: land ERROR arm bumps total_errors only — not total_failed.
+        assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
 
@@ -1906,7 +2010,9 @@ class TestAst1689ElectronicContactMapPersist:
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
-        assert out["total_passed"] == 1
+        # AST-1751: scrape BOT_BLOCKED counts as fail (contact column still preserved).
+        assert out["total_failed"] == 1
+        assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
         assert row["state"] == "BOT_BLOCKED"
         assert row[col] == "keep@example.com"

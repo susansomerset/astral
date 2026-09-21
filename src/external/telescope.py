@@ -329,6 +329,7 @@ async def _post_telescope(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
+    id: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
     links: bool = True,
@@ -349,15 +350,25 @@ async def _post_telescope(
         body["tag"] = tag
     if class_name is not None:
         body["class_name"] = class_name
-    resp = await _pool.request(
-        "POST", TELESCOPE_CONFIG["telescope_path"], json_body=body
-    )
+    if id is not None:
+        body["id"] = id
+    path = TELESCOPE_CONFIG["telescope_path"]
+    # Statute debug: request params in, full JSON out — ContextVar gates emission.
+    _log.debug("Calling _post_telescope: [path=%s, body=%s]", path, body)
+    resp = await _pool.request("POST", path, json_body=body)
     if resp.status_code >= 400:
+        _log.debug(
+            "Response from _post_telescope: status=%s path=%s body=%s",
+            resp.status_code,
+            path,
+            resp.text,
+        )
         raise PlaywrightInfraError(
             "telescope_http_error",
             f"POST /telescope HTTP {resp.status_code}: {resp.text[:200]}",
         )
     data = resp.json()
+    _log.debug("Response from _post_telescope: %s", data)
     _log.info(
         "telescope ok path=/telescope final_url=%s",
         data.get("final_url"),
@@ -371,6 +382,7 @@ async def _post_telescope_html(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
+    id: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
 ) -> dict:
@@ -389,15 +401,24 @@ async def _post_telescope_html(
         body["tag"] = tag
     if class_name is not None:
         body["class_name"] = class_name
-    resp = await _pool.request(
-        "POST", TELESCOPE_CONFIG["telescope_html_path"], json_body=body
-    )
+    if id is not None:
+        body["id"] = id
+    path = TELESCOPE_CONFIG["telescope_html_path"]
+    _log.debug("Calling _post_telescope_html: [path=%s, body=%s]", path, body)
+    resp = await _pool.request("POST", path, json_body=body)
     if resp.status_code >= 400:
+        _log.debug(
+            "Response from _post_telescope_html: status=%s path=%s body=%s",
+            resp.status_code,
+            path,
+            resp.text,
+        )
         raise PlaywrightInfraError(
             "telescope_http_error",
             f"POST /telescope/html HTTP {resp.status_code}: {resp.text[:200]}",
         )
     data = resp.json()
+    _log.debug("Response from _post_telescope_html: %s", data)
     html = data.get("html")
     if isinstance(html, list):
         html_len = sum(len(h or "") for h in html)
@@ -434,6 +455,7 @@ async def admin_telescope_scrape(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
+    id: Optional[str] = None,
     cull: bool = False,
 ) -> dict:
     """Admin workbench scrape — returns full Telescope JSON (incl. scrape_meta)."""
@@ -446,6 +468,7 @@ async def admin_telescope_scrape(
             selector=selector,
             tag=tag,
             class_name=class_name,
+            id=id,
             expand=expand,
             wait_ready=wait_ready,
             links=links,
@@ -456,6 +479,7 @@ async def admin_telescope_scrape(
             selector=selector,
             tag=tag,
             class_name=class_name,
+            id=id,
             expand=expand,
             wait_ready=wait_ready,
         )
@@ -1275,6 +1299,7 @@ def _cull_html(html: str) -> str:  # pragma: no cover
     
     # Extract body tag first - we only cull body content, not head/html wrappers
     body_tag = soup.find('body')
+    had_body = body_tag is not None
     if body_tag is None:
         # Fallback: if no body tag, use the whole document
         body_soup = soup
@@ -1285,6 +1310,19 @@ def _cull_html(html: str) -> str:  # pragma: no cover
     
     # Use body_soup for all culling operations
     soup = body_soup
+
+    # AST-1745: class-scoped fragments whose top-level nodes are <svg> (e.g. svg.logo)
+    # must keep that outerHTML; nested svg under non-svg roots still get stripped below.
+    preserve_root_svgs = set()
+    if not had_body:
+        for child in list(soup.children):
+            if getattr(child, "name", None) == "svg":
+                preserve_root_svgs.add(child)
+
+    def _in_preserved_svg(elem) -> bool:
+        if elem in preserve_root_svgs:
+            return True
+        return any(p in preserve_root_svgs for p in getattr(elem, "parents", []))
     
     # Remove script tags (including JSON blobs like __NEXT_DATA__)
     for script in soup.find_all('script'):
@@ -1311,8 +1349,11 @@ def _cull_html(html: str) -> str:  # pragma: no cover
     for comment in comments:
         comment.extract()
     
-    # Remove large SVG blocks (icon sprites are often huge and not job-relevant)
+    # Remove large SVG blocks (icon sprites are often huge and not job-relevant).
+    # Keep fragment-root svgs (and their descendants) — AST-1745 class-scoped logos.
     for svg in soup.find_all('svg'):
+        if _in_preserved_svg(svg):
+            continue
         svg.decompose()
     
     # Special handling for img tags: only keep if they have alt or class, and only keep those attributes
@@ -1334,11 +1375,18 @@ def _cull_html(html: str) -> str:  # pragma: no cover
     # Explicit inclusion: unwrap all tags not in allowed_tags list
     # Use multiple passes to handle nested structures (unwrap from deepest to shallowest)
     # Process until no more non-allowed tags remain
-    # Note: img tags are handled separately above, so exclude them from unwrapping
+    # Note: img tags are handled separately above, so exclude them from unwrapping.
+    # AST-1745: also leave preserved root-svg trees intact (svg/g/path not in allowed_tags).
     max_passes = 10  # Safety limit to prevent infinite loops
     for pass_num in range(max_passes):
         # Find all elements that are not in allowed_tags (excluding img, which is handled separately)
-        non_allowed = [elem for elem in soup.find_all(True) if elem.name not in allowed_tags and elem.name != 'img']
+        non_allowed = [
+            elem
+            for elem in soup.find_all(True)
+            if elem.name not in allowed_tags
+            and elem.name != "img"
+            and not _in_preserved_svg(elem)
+        ]
         if not non_allowed:
             break  # All remaining tags are allowed or already handled
         # Unwrap each non-allowed tag (preserves children and text content)
