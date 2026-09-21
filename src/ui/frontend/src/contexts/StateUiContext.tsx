@@ -19,6 +19,7 @@ export interface StateUiManifest {
     recommended: {
       sections: Array<{ state: string; label: string }>
       phase_score_columns: Array<{ field: string; label: string }>
+      phase_score_header_title_template?: string
       primary_actions_by_state?: Record<string, Array<{
         action_key: string
         label: string
@@ -44,6 +45,12 @@ export interface StateUiManifest {
         shapes_key: string | null
         use_resume_structure: boolean
       }>
+      // AST-1692: Meteorite pane sections from AST-1691 config → manifest.
+      report_meteorite_sections?: Array<{
+        section_id: string
+        nav_label: string
+        default_expanded: boolean
+      }>
       // AST-1057: partition by METEORITE_CONFIG company prefix (manifest-driven).
       meteorite_section?: {
         section_id: string
@@ -52,7 +59,13 @@ export interface StateUiManifest {
       }
     }
   }
-  candidate: { artifact_generate_states: string[] }
+  candidate: {
+    artifact_generate_states: string[]
+    artifact_generate_inflight_hide_states: string[]
+    artifacts_chain_task_keys: string[]
+    artifacts_chain_hop_labels: string[]
+    artifacts_chain_artifact_keys: string[]
+  }
   company: {
     watch_readonly_states: string[]
     bulk_transitions: Record<string, string>

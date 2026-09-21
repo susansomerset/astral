@@ -1,3 +1,259 @@
+<!-- linear-archive: AST-1193 archived 2026-08-07 -->
+
+## Linear archive (AST-1193)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1193/analysis-token-vectorrubric-match-parity-issues-while-running  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1163 — Issues while running anticipate_scan  
+**Blocked by / blocks / related:** parent: AST-1163
+
+### Description
+
+## What this implements
+
+Make ANALYSIS_* job-token formatting resolve grade vectors against live rubric criteria with the **same** label-or-code matching rules consult scoring already uses (prompt assembly parity across agent calls), so persisted grades produce non-empty formatted ANALYSIS tokens; include debug found/recorded for per-phase grade vs formatted counts. Does **not** own candidate name view (sibling).
+
+## Acceptance criteria
+
+- [X] 2. For a job with persisted JD/DO/GET/LIKE grades whose vectors match the candidate's live rubric under the same label-or-code rules consult scoring uses, each corresponding `{$ANALYSIS_*}` token is non-empty and includes CONSIDER / rubric blob / ANALYSIS RESULT for those vectors — no per-vector "no rubric criterion" skip that empties the token while grades exist.
+- [X] 3. A debug-gated run of the fixed path shows per-index found/recorded lines for each ANALYSIS phase (counts of grades vs formatted vectors).
+- [X] 4. Susan can reproduce: after this child lands, a Generate Artifacts / `anticipate_scan` run with complete consult grades no longer logs empty `{$ANALYSIS_*}` from unmatchable vectors.
+
+## Boundaries
+
+Does **not** own candidate name token view (sibling AST-1192). Does **not** harden provider timeouts / blank errors (**AST-1164**). Does **not** regenerate candidate rubrics. Does **not** change `JOB_TOKEN_CONFIG` phase maps, grade persistence keys, `_grade_set_vector_diff` / IncompleteGradeSetError, or Manage Tasks prompt prose.
+
+## In scope
+
+- [X] `astral.agent.grade-vector-validation` — ANALYSIS formatter: live label-or-code parity with scoring helpers; on live miss, job-carried `*_rubric` snapshot identity (AST-1063) + live content-by-code so persisted grades are not silently skipped
+- [X] `astral.config.config-source-of-truth` — keep reading `JOB_TOKEN_CONFIG` analysis phase maps; no parallel token/phase maps
+- [X] `astral.standards.dry-and-focused-functions` — one shared `_find_rubric_criterion` for scoring helpers + ANALYSIS formatter
+- [X] `astral.standards.debug-contract-gated` — Style D found/recorded per ANALYSIS phase only when `debug=True`
+- [X] `astral.patterns.coat-check-never-store-empty` — do not persist empty failed ANALYSIS / hollow prompt outputs as if successful (this ticket formats only; no new empty persistence)
+- [X] `astral.standards.logging-via-utils` — debug via `src/utils/logging.py` helpers on the touched path
+- [X] `astral.standards.in-scope-only` — only ANALYSIS match parity + debug on `consult`/`agent` job_context path
+
+## Considered but excluded
+
+- [X] `astral.agent.do-task-delegation` — prompt assembly stays in `do_task`; this child only fixes job_context ANALYSIS formatting inputs (no new agent call shape)
+- [X] `astral.batch.claim-process-release` — no new dispatch lifecycle
+- [X] `astral.dispatch.run-next-is-chain-authority` — hop order unchanged
+- [X] `astral.layers.import-direction` — no new cross-layer imports planned
+- [X] Candidate name token view / `{$FIRST_NAME}` / `{$LAST_NAME}` — **AST-1192**
+- [X] Provider timeout / blank error / zero-token hardening — **AST-1164**
+- [X] Rubric regeneration / `rubric_vector` writes — out of epic
+- [X] `_grade_set_vector_diff` / IncompleteGradeSetError / pass thresholds — out of scope
+- [X] `tests/`, `docs/test-bible/**` — Betty
+
+## Notes for planning
+
+Joan r1: label-or-code alone is a no-op for the parent log (full labels). Plan Diagnosis + Stage 3: live label-or-code first, then job-carried `*_rubric` snapshot identity (AST-1063) with live content-by-code — closes AC4 without regenerating rubrics. Stage 1 remains shared `_find_rubric_criterion` DRY.
+
+## Git branch (authoritative)
+
+`origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity` — ignore Linear `gitBranchName`.
+
+### Comments
+
+#### chuckles — 2026-08-05T23:38:00.859Z
+[merge-child] blocked: sub not stacked on ftr — `origin/ftr/AST-1163-anticipate-scan-token-context` has AST-1192 commits not in `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity`. @Hedy Lamarr — merge `origin/ftr/AST-1163-anticipate-scan-token-context` into the publish ref and push, then Chuckles retries merge-child.
+
+— Chuckles
+
+#### radia — 2026-08-05T23:36:15.921Z
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1193
+**Publish ref:** `64ea1d86` → doc-only `b91302dd` (`origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity`)
+**Overall:** CLEAN
+
+## Plan adherence
+
+- Implementation matches Stage 1–3 literally: `_find_rubric_criterion` placed immediately after `_strip_code`; both scoring helpers refactored onto it with behavior byte-for-byte preserved (first-match-then-decide, unchanged `ValueError` messages); `_format_analysis_phase_text` live-first / snapshot-identity-fallback / live-content-by-code / blob-less-but-nonempty exactly per Stage 3 step 3's four emit rules; `phase_tokens` sourced from `JOB_TOKEN_CONFIG["analysis_phases"]` (no second hardcoded tuple, no `total=4`); debug via a **local** `get_logger(__name__, debug_flag=debug)` handle only — grepped the diff for `set_debug_flag`, zero hits, shared module logger never clobbered.
+- `src/` footprint is exactly the two planned files (`consult.py`, `agent.py`). Role boundaries clean per commit (`code()` → `src/` only, `test()` → `tests/`+`docs/test-bible/` only, `docs()` → `docs/features/` only).
+- Joan's `plan-rubric.v1` r1 verdict (APPROVED) is attached with 2 open `discuss` items from her final pass — both are **closed by the shipped code**, not carried forward: the snapshot-key-derivation-coupling discuss is answered directly by `_analysis_phase_rubric_snapshot_key`'s docstring ("Couples to `grades_key == f\"{save_prefix}_grades}\"` — same stem both sides today") — exactly the comment she suggested; the residual-AC4-precondition discuss isn't a code gap, it's a UAT-time question already instrumented via the `snapshot_criteria=` debug count.
+
+**Pattern conformance:** all cited ids (`astral.agent.grade-vector-validation`, `astral.config.config-source-of-truth`, `astral.standards.dry-and-focused-functions`, `astral.standards.debug-contract-gated`, `astral.patterns.coat-check-never-store-empty`, `astral.standards.logging-via-utils`, `astral.standards.in-scope-only`) score `conforms` via the full sweep. `grade-vector-validation`'s literal statement (do_task schema/grade-value validation) isn't touched by this diff — the citation covers the plan's extended reading (grade-vector *matching* for rendering), which Joan's traceability already accepted at Plan Approved; noting the stretch for the record, not as a finding.
+
+**Cross-ticket note (not a finding):** this branch inherited `test(AST-1192)` / `test(AST-1189)` / `test(AST-1190)` commits via `merge-tests` (stacked-sibling test lineage in this epic worktree) but none of AST-1192's `src/` changes — `TestAst1192TokenViewForDoTask` would fail standalone on this branch's `agent.py`. Expected/by-design until `merge-child` lands both siblings on `ftr/AST-1163` in order; not something AST-1193's own diff introduced or can fix.
+
+**What's solid:** Debug contract textbook — `index`/`total` from the config-authority phase map, counts-only detail lines (no blob spam), early-return paths still emit when `debug=True`. Snapshot-fallback emit shape is byte-identical to the existing block string with `rubric_blob == ""`, so the "blob-less but non-empty" path shares one code path rather than forking — exactly what Joan flagged as load-bearing for AC4.
+
+## Frame diff
+
+(none) — implementation matches the plan doc's Files Changed / Stage 1 / Stage 2 / Stage 3 as written; no adds or moves applied to this description.
+
+Full active corpus (63 leaves — 18 universal + 45 scoped) swept in-session; zero violations, zero stragglers vs Joan's plan-rubric attachment. Doc-only verdict appended to the plan doc under `## Review` on `origin/<publish-ref>` (not pasted here per C1 note — full checked-list stays off-ticket).
+
+context_tokens≈62000
+
+— Radia
+
+#### betty — 2026-08-05T23:29:32.569Z
+## QA test manifest — AST-1193
+
+**Publish:** `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity` @ `64ea1d86`
+**Betty SHA:** `origin/tests` `d15b790f` (`merge-tests(AST-1193): origin/tests d15b790f…`)
+
+### Classification
+
+1. **Existing coverage:** AST-513 `TestAst513JobTokenContext` + scoring label/code helpers (`TestRubricLookup` / `TestImportanceForLabelBranches`) — keep in manifest after revision.
+2. **Broken / obsolete (revised this pass):** `TestAst513JobTokenContext` — formatter loads live criteria via `rubric_criteria_for_task` (not artifact blobs alone); patch live criteria + `_astral_candidate_id`.
+3. **Gaps (this pass):** `_find_rubric_criterion`; snapshot fallback + live content-by-code; snapshot-without-live nonempty CONSIDER; Style D found/recorded; `debug=False` quiet; agent `debug=` thread into builder.
+
+### Manifest (test-child)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1193AnalysisMatchParity \
+  tests/component/core/test_consult.py::TestAst513JobTokenContext \
+  tests/component/core/test_agent.py::TestAst1193DebugJobContext \
+  -q
+```
+
+1. **`TestAst1193AnalysisMatchParity`** — finder label/code; live-miss + `*_rubric` snapshot → live content-by-code; snapshot-only CONSIDER nonempty; `debug=True` found/recorded; `debug=False` quiet.
+2. **`TestAst513JobTokenContext`** — revised live-path regression for VISIBLE_JD / ANALYSIS formatting.
+3. **`TestAst1193DebugJobContext`** — `_job_context_for_call(..., debug=True)` reaches `build_job_token_context`.
+
+**Pass criterion:** pytest green on the three paths above — not zero-arg harness / branch-lock gate.
+
+### Bible (publish-ref shasum)
+
+- `docs/test-bible/core/consult.md` — `802e77e1bb1b6ea9225e4e3275f0bbb64d2e376f`
+
+— Betty
+
+#### joan — 2026-08-05T23:23:20.644Z
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1193
+**Overall:** APPROVED
+**Publish ref tip:** `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity` @ `f133877f`
+
+## Traceability
+
+AC2→S1 (shared label-or-code predicate) + S3 (live-first path, live `content`); AC3→S2 (per-phase found/recorded); AC4→S3 (snapshot identity fallback) — **now delivered**, conditional on snapshot presence (finding 3). Stages→definition: S1→In-scope `dry-and-focused-functions`; S2→In-scope `debug-contract-gated`; S3→In-scope `grade-vector-validation` (the snapshot clause is now explicit in the child description). No orphan stages. Parent AC1 is N/A–boundary (sibling AST-1192).
+
+**Considered:** full active corpus swept (65 leaves — 18 universal + 30 scoped considered, 17 scoped excluded on layer/path predicates). All `conforms`; both round-1 `needs-discussion` items (`debug-contract-gated`, `no-hardcoded-sets`) are now closed by the delta. Recorded in-session per R7.
+
+## Findings
+
+**1. `resolved` — round-1 fix-now is closed. I traced the snapshot mechanism end to end and it holds.**
+
+The things that could have made Stage 3 a paper fix all check out:
+
+- **Shape.** `_rubric_snapshot_for_job_data:207-212` emits a list of **dicts** with `code` / `label` / `importance` / `grade_descriptions`. So `_find_rubric_criterion(snapshot, vector_label)` can match it (the helper skips non-dicts, which would have silently killed the fallback had the snapshot been a list of strings), and `code` is present, so the live-content-by-code hop in step 3b has something to hop on. `content` is indeed dropped — Diagnosis point 4 is accurate.
+- **Key derivation.** `grades_key[:-7] + "_rubric"` matches every real write site: `jd_rubric` at `consult.py:1962`, and `f"{prefix}_rubric"` at `consult.py:1053` where `save_prefix` is `do` / `get` / `like` (`config.py:645,671,697`). All four ANALYSIS phases resolve to a key that is actually persisted. Deriving from `grades_key` rather than `rubric_artifact` was the right call — `ANALYSIS_JD`'s artifact key is `jobdesc_rubric`, which is **not** the job-carried key. The frontend's `jobCarriedRubricKey("jd_grades") == "jd_rubric"` independently confirms the convention.
+- **The fallback cannot miss when the snapshot exists.** This is the part that upgrades the plan from plausible to deterministic, and it is worth stating in the plan: the snapshot is written from the *same* criteria list used for reason hydrate and completeness in that call. `_hydrate_grade_reasons_from_rubric:186` raises when a vector has no criterion, and AST-1155's `_require_complete_grade_set` / `_grade_set_vector_diff:616-631` demands exact set equality on stripped labels. A successful grade save therefore *implies* every grade vector equals a label in the list that was snapshotted. So snapshot present ⟹ every vector matches ⟹ non-empty token. Not a heuristic.
+- **Emit shape is unchanged, not invented.** Today's block is `f"CONSIDER: {title}\n{rubric_blob}\nANALYSIS RESULT: …"` (`consult.py:834-836`). Step 3c's blob-less variant is byte-identical to that string with `rubric_blob == ""`, so the engineer can implement one code path rather than two.
+- **Stage 2 is executable as literally written.** `get_logger(name, debug_flag=…)` exists at `logging.py:284`, `debug_index` is keyword-only with exactly `func` / `index` / `total` / `identifier` / `outcome` (`logging.py:233-241`), `debug_detail(message)` at `:255`. And the round-1 concern was real — `set_debug_flag:202-213` does lower a DEBUG logger back to INFO. The local-handle rule is the correct fix.
+- **Meteorite fork.** The `ANALYSIS_JD` override keeps `grades_key: "jd_grades"`, so it derives `jd_rubric` on that fork too; and if a meteorite job lacks the snapshot, step 3c's last branch degrades to today's warning rather than misbehaving.
+
+I also confirmed the plan's own honesty check: `data/astral.db` here symlinks to the real DB and has 0 jobs / 0 candidates, so the "no live row dump" caveat is accurate rather than convenient.
+
+**2. `discuss` — read and write derive the snapshot key by two different rules.**
+
+The write side uses `f"{save_prefix}_rubric"`; the plan's read side uses `grades_key[:-7] + "_rubric"`. These agree for all four phases today only because `grades_key == f"{save_prefix}_grades"` in each case, which is a coincidence of naming rather than an enforced invariant — a future task whose `save_prefix` differs from its `grades_key` stem would write a snapshot the formatter silently never finds, and the symptom would be an empty ANALYSIS token with no error. One tiny shared helper (or a comment at the read site naming the coupling to `save_prefix`) makes the next person's life easier. Your call whether it earns a line in this ticket.
+
+**3. `discuss` — the residual AC4 precondition, and what to do if UAT trips it.**
+
+Self-assessment names this correctly: if a failing job predates the AST-1063 write path, it carries no `*_rubric` and the fallback cannot fire. That cannot be settled before build from this worktree (empty DB), so it is properly a UAT-time question, not a plan defect — and Stage 2's `snapshot_criteria=` count is exactly the instrument that answers it. Two requests so the answer doesn't turn into improvisation:
+
+- If a debug run shows `snapshot_criteria=0` with `found_grades>0` on the reproduce job, that is the **escalate** the plan already names — post it on AST-1163 and stop. Do **not** reach for the tempting nearby fixes: widening `_rubric_snapshot_for_job_data` to store `content`, backfilling snapshots onto existing jobs, or relaxing the match to fuzzy/casefold are all explicitly out of bounds here.
+- Worth knowing while you build: a blob-less `CONSIDER` block is **in** bounds. Parent AC2 is scoped to vectors that match the *live* rubric, and those always get live `content`; the blob-less branch only occurs outside AC2's scope, where AC4's non-empty requirement is the governing bar. So the weaker-context case is not an AC2 miss.
+
+**4. `nit`** — Stage 1 step 4 takes three clauses and a "may" to arrive at its actual instruction. The final rule is unambiguous (Stage 1 commit = helper + scoring refactors; Stage 3 commit = formatter), so `plan-is-bible` is satisfied, but collapsing it to those two clauses would read better on the next pass.
+
+## What the plan gets right
+
+The Diagnosis section is the model of what a round-2 revision should look like — it names the mechanism, states plainly that Stage 1 is a no-op for the observed run, and keeps Stage 1 anyway because the DRY win is real. Ordering live-first and treating the snapshot strictly as *identity* (never as a content source) is the conservative choice: it cannot regress a currently-working match, and it cannot fabricate a rubric blob. Insisting the predicate stay byte-for-byte identical with no fuzzy matching remains the right guardrail, and I re-verified that `_lookup_rubric_reason_for_grade:154-161` and `_importance_for_label:597-604` are indeed identical predicates that both commit to the first match before deciding — so `_find_rubric_criterion` preserves behavior exactly in both call sites. Removing the `if not rubric_criteria: return ""` early exit is additive rather than risky, since the observed run had non-empty live criteria. `Conf: Medium` with the failure mode spelled out is the honest reading, and Boundaries against AST-1192, AST-1164, rubric regeneration, and the test tree hold throughout.
+
+context_tokens≈146000
+
+— Joan
+
+#### hedy — 2026-08-05T23:17:11.459Z
+[plan-discuss] round=1 reply
+
+Agreed on finding 1: Stage 1 label-or-code alone is a no-op for the parent log (full labels, not 2-char codes). Diagnosis is now in the plan: formatter never reads job-carried `*_rubric` snapshots; 100% live miss fits post-grade rubric drift after AST-1155 accepted those labels.
+
+**Delta @ `f133877f`:**
+1. **fix-now / AC4:** New Stage 3 — live `_find_rubric_criterion` first; on miss, match grade vector to phase `*_rubric` snapshot (same helper); pull `content` from live by code; if live content gone, still emit CONSIDER + ANALYSIS RESULT (non-empty token). Stage 1 kept as DRY only (no longer claims it closes the bug).
+2. **discuss / debug-contract:** Stage 2 uses local `get_logger(__name__, debug_flag=debug)` only — never `set_debug_flag(debug)` / never lower shared module DEBUG.
+3. **discuss / hardcoded phases:** iterate + `total` from `JOB_TOKEN_CONFIG["analysis_phases"].keys()`.
+4. **Conf:** `high` → `Medium` (fallback needs snapshots on the failing jobs).
+
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity/docs/features/artifacts/ast-1193-analysis-token-vector-rubric-match-parity.md
+
+Status stays **Plan Discuss** for Joan.
+
+#### joan — 2026-08-05T23:13:24.734Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1193
+**Overall:** REVISE
+**Publish ref tip:** `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity` @ `4ec1524d`
+
+## Traceability
+
+AC2→S1 (parity predicate — mapped, but see finding 1: satisfiable *vacuously* on the observed data); AC3→S2 (per-phase found/recorded); AC4→**no stage demonstrably delivers it**. Stages→definition: S1→Functional scope bullet 2, S2→Functional scope bullet 3. No orphan stages. Parent AC1 is N/A–boundary ("Does **not** own candidate name token view (sibling AST-1192)").
+
+**Considered:** full active corpus swept (65 leaves — 18 universal + 30 scoped considered, 17 scoped excluded on layer/path predicates). Two `needs-discussion` (findings 2 and 3); all others `conforms`. Recorded in-session per R7.
+
+## Findings
+
+**1. `fix-now` — label-or-code parity is a no-op for every vector in the pasted log, so AC4 (Susan's reproduction) is not delivered.**
+
+The drift the plan describes is real and I verified it: `_format_analysis_phase_text` matches label-only at `src/core/consult.py:816-821`, while `_lookup_rubric_reason_for_grade:154-161` and `_importance_for_label:597-604` both accept stripped-label **or** uppercased code. Extracting one predicate is the right cleanup.
+
+But it cannot be the cause of the reported failure. The plan's own Done-when scopes the behavior change precisely: "A grade whose `vector` is a **2-char code** that scoring would accept produces a CONSIDER … block instead of the skip." Every one of the ~35 unmatched vectors in the parent's log is a full human label, not a code — `'Compensation'`, `'Program Scope'`, `'Domain & Role Type Exclusions'`, `'Keyword / ATS Match'`, `'Gut Instinct: Would She Brag?'`. The new disjunct fires only when a criterion's `code` equals the upper-cased vector, and codes are two characters by construction (`_CODE_SUFFIX = r'\s*\([A-Z]{2}\)\s*$'` at line 124; `_vector_labels_map:146-147` maps code→label). `'COMPENSATION'` will never equal a 2-char code. After Stage 1 ships, that run logs the same 35 warnings and `{$ANALYSIS_DO}` is still empty.
+
+Note how AC2 is worded — "grades **whose vectors match** the candidate's live rubric under the same label-or-code rules" — it is conditional, so the parity fix satisfies AC2 on paper while the observed bug survives untouched. AC4 is the one that bites: "a … run with complete consult grades **no longer logs empty** `{$ANALYSIS_*}` from unmatchable vectors."
+
+There is also affirmative evidence the real cause is elsewhere. `_grade_set_vector_diff:616-631` compares live rubric labels against grade vectors on stripped labels, and AST-1155's `IncompleteGradeSetError` rejects a grade set that is not an exact match. If these grades persisted through that gate, their vectors *did* equal the live rubric labels at grading time — which points at the rubric having changed after the grades were written (or the phase's `rubric_owner_task_key` resolving a different rubric than the one graded against), not at a code-vs-label predicate. A 100% miss rate across all four phases fits "wrong or newer criteria list" far better than "code formatting."
+
+**Recommendation:** before build, diagnose one concrete vector end to end — for that candidate and job, dump `rubric_criteria_for_task(cid, owner)` for each phase's `rubric_owner_task_key` alongside the persisted `*_grades` vectors — and write into the plan why `'Compensation'` misses today and what makes it hit after the change. Then either add the stage that fixes the actual mismatch class, or, if the cause is rubric drift between grading time and now, say so plainly and escalate on **AST-1163**: parent Boundaries forbid regenerating rubrics, so choosing between rendering a grade without its rubric blob, resolving against an analysis-time snapshot (`_rubric_snapshot_for_job_data:191` exists for AST-1063, though it deliberately omits `content`), or something else is an Archie/Susan call, not a build-time improvisation. Keep Stage 1 either way — it is good DRY work — but the plan should stop claiming it closes the bug.
+
+**2. `discuss` (R3 `astral.standards.debug-contract-gated` → needs-discussion) — `set_debug_flag(debug)` with `debug=False` silences debug output that other callers turned on.**
+
+Stage 2 steps 1–2 call `logger.set_debug_flag(debug)` at the top of `build_job_token_context` and `_format_analysis_phase_text`. That setter does not merely gate new lines — `src/utils/logging.py:202-213` *lowers* the named logger from DEBUG back to INFO when the flag is false. Since `logger` here is the shared `src.core.consult` module logger, any artifact hop that builds job token context with `debug=False` will switch off debug for the rest of that run for everything else in `consult.py` (a `render_verdict` debug run, a debug-enabled preview, or the sibling epics' debug work). The statute asks for no new contract lines when `debug=False`; suppressing existing ones is a side effect worth avoiding. Recommend raising only — set the flag when `debug` is true and never lower it — or take a local handle the way `emit_llm_call_debug` does, so a non-debug caller cannot clobber module state. Also please settle the step-2 "or rely on module logger flag" alternative into one instruction; `plan-is-bible` means the engineer executes what is written, and that step currently offers two shapes.
+
+**3. `discuss` (R3 `astral.standards.no-hardcoded-sets` → needs-discussion) — second hardcoded phase list plus literal `total = 4`.**
+
+Stage 2 step 3 derives `index` from a literal `("ANALYSIS_JD", "ANALYSIS_DO", "ANALYSIS_GET", "ANALYSIS_LIKE")` tuple and hardcodes `total = 4`, while `JOB_TOKEN_CONFIG["analysis_phases"]` is the config authority the plan otherwise commits to (and which the meteorite override mutates at `consult.py:788-790`). I am not calling this a violation — `build_job_token_context:853` already iterates that same literal tuple, so the plan matches adjacent style — but this adds a second copy plus a count that silently goes stale if a phase is ever added. Deriving both from the config map costs one line and matches `astral.config.config-source-of-truth`.
+
+**4. `acceptable`** — I checked the two refactor targets for semantic drift, since replacing an inline loop with a first-match helper can change behavior. Both `_lookup_rubric_reason_for_grade` and `_importance_for_label` already commit to the first matching criterion and then decide (returning or raising inside the loop, raising after it), so `_find_rubric_criterion` returning the first match preserves behavior exactly. The plan's insistence that the predicate be byte-for-byte identical, with no fuzzy or casefold matching, is the right guardrail.
+
+## What the plan gets right
+
+The proposed helper's predicate is a faithful copy of `consult.py:157-161`, placement after `_strip_code` respects public-then-helpers, and collapsing three copies of the loop into one is a genuine §1.3 DRY win that prevents the next drift. Stage 1 step 4 correctly enumerates the behavior that must **not** change — meteorite override merge, `grades_key`, empty-criteria early return, warn-and-continue per vector rather than failing the whole token, and the CONSIDER / blob / ANALYSIS RESULT block shape — which is exactly the specificity that makes a plan reviewable. Stage 2 step 6's explicit "no new empty persistence" keeps `astral.patterns.coat-check-never-store-empty` clean, the counts-only debug detail avoids blob spam, and the `do_task` → `_job_context_for_call` → `build_job_token_context` thread is the minimal wiring for AC3. Boundaries against AST-1192, AST-1164, and the test tree are respected throughout.
+
+Self-assessment is well-formed and `Risk: Medium` is honest about wrong-blob attachment. `Conf: high` is the claim to revisit — it rests entirely on the label-only/label-or-code drift being the cause, and the log's vector shapes say it is not.
+
+context_tokens≈118000
+
+— Joan
+
+#### hedy — 2026-08-05T23:09:06.175Z
+Plan published on `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity` @ `4ec1524d`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity/docs/features/artifacts/ast-1193-analysis-token-vector-rubric-match-parity.md
+
+**Self-assessment**
+- **Scope:** Single-Component — `consult.py` ANALYSIS formatter + shared criterion finder; thin `debug` thread through `agent._job_context_for_call`.
+- **Conf:** high — formatter still label-only while scoring helpers already use AST-707 label-or-code; fix is shared `_find_rubric_criterion` + Style D found/recorded counts.
+- **Risk:** Medium — ANALYSIS tokens feed artifact LLM prompts; wrong match would attach the wrong rubric blob, but the predicate is already trusted by scoring/hydration.
+
+---
+
 # AST-1193 — ANALYSIS token vector↔rubric match parity
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1193/analysis-token-vectorrubric-match-parity-issues-while-running  

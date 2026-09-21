@@ -1,8 +1,10 @@
 import type { ReactNode } from "react"
 import { ConfidenceBullets } from "../components/ConfidenceBullets"
 import {
+  buildJobListRubricColumnsForGroup,
   buildJobListRubricColumnsFromArtifact,
   formatGradeDotTooltip,
+  jobCarriedRubricKey,
   normalizeRubricVectorKey,
   sortJobListRubricColumns,
   type JobListRubricColumn,
@@ -71,10 +73,8 @@ export function artifactHasContent(artifacts: unknown, key: string): boolean {
 }
 
 export function printResumeVisible(artifacts: unknown): boolean {
-  return (
-    artifactHasContent(artifacts, "job_resume")
-    || artifactHasContent(artifacts, "resume_content")
-  )
+  // AST-1593: hydrated job_resume current only — resume_content is not catalog SoT.
+  return artifactHasContent(artifacts, "job_resume")
 }
 
 export function printCoverVisible(artifacts: unknown): boolean {
@@ -188,53 +188,27 @@ export function buildPhaseTabGradeDots(
   return <>{dots}</>
 }
 
-/** Horizontal grade + confidence row for Analysis section headers (AST-950). */
+/** Horizontal grade + confidence row for Analysis section headers (AST-950 / AST-1327). */
 export function buildPhaseSectionGradeConfidenceRow(
   gradesRaw: unknown,
-  rubricArtifactKey: string | undefined,
-  candidateArtifacts: Record<string, unknown>,
+  job: Record<string, unknown>,
+  gradesField: string,
 ): ReactNode {
+  // Job-carried *_rubric (or grades-only) — never live candidate artifacts (AST-1327).
+  const cols = sortJobListRubricColumns(
+    buildJobListRubricColumnsForGroup({ gradeKey: gradesField, columnSourceJob: job }),
+  )
   const cells: ReactNode[] = []
-
-  const rubricItems =
-    rubricArtifactKey && Array.isArray(candidateArtifacts[rubricArtifactKey])
-      ? (candidateArtifacts[rubricArtifactKey] as Array<{
-          code?: string
-          label?: string
-          importance?: unknown
-        }>)
-      : null
-
-  if (rubricItems && rubricItems.length > 0) {
-    const cols = sortJobListRubricColumns(buildJobListRubricColumnsFromArtifact(rubricItems))
-    for (const col of cols) {
-      const { grade, gradeTooltip, confidence } = gradeAndConfidenceForCol(gradesRaw, col)
-      if (!grade) continue
-      cells.push(
-        <span key={col.code || col.label} className="recommended-report-phase-grade-cell">
-          {gradeDot(grade, gradeTooltip)}
-          <ConfidenceBullets confidence={confidence} />
-        </span>,
-      )
-    }
-  } else if (Array.isArray(gradesRaw) && gradesRaw.length > 0) {
-    // Rubric missing — still show graded vectors in array order.
-    for (const row of gradesRaw as Array<{
-      vector?: string
-      grade?: string
-      reason?: string
-      confidence?: number
-    }>) {
-      if (!row.vector || !row.grade) continue
-      cells.push(
-        <span key={row.vector} className="recommended-report-phase-grade-cell">
-          {gradeDot(row.grade, row.reason?.trim() || "")}
-          <ConfidenceBullets confidence={row.confidence} />
-        </span>,
-      )
-    }
+  for (const col of cols) {
+    const { grade, gradeTooltip, confidence } = gradeAndConfidenceForCol(gradesRaw, col)
+    if (!grade) continue
+    cells.push(
+      <span key={col.code || col.label} className="recommended-report-phase-grade-cell">
+        {gradeDot(grade, gradeTooltip)}
+        <ConfidenceBullets confidence={confidence} />
+      </span>,
+    )
   }
-
   if (!cells.length) return null
   return <div className="recommended-report-phase-grade-row">{cells}</div>
 }
@@ -265,4 +239,74 @@ export function jobGradesForField(job: Record<string, unknown>, gradesField: str
     if (fromJd !== undefined) return fromJd
   }
   return job[gradesField]
+}
+
+/** Top-level flatten first, then job_data — API derive writes top-level only (AST-1348). */
+export function jobScoreBreakdownForGradesField(
+  job: Record<string, unknown>,
+  gradesField: string,
+): { earned: number; possible: number; max: number } | null {
+  if (!gradesField.endsWith("_grades")) return null
+  const breakdownKey = `${gradesField.slice(0, -"_grades".length)}_score_breakdown`
+  let raw: unknown = job[breakdownKey]
+  if (raw === undefined) {
+    const jd = job.job_data
+    if (jd && typeof jd === "object" && !Array.isArray(jd)) {
+      raw = (jd as Record<string, unknown>)[breakdownKey]
+    }
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const obj = raw as Record<string, unknown>
+  const earned = obj.earned
+  const possible = obj.possible
+  const max = obj.max
+  if (
+    typeof earned !== "number" || !Number.isFinite(earned)
+    || typeof possible !== "number" || !Number.isFinite(possible)
+    || typeof max !== "number" || !Number.isFinite(max)
+  ) {
+    return null
+  }
+  return { earned, possible, max }
+}
+
+/** Analysis section header title with score chrome (AST-1348). */
+export function formatPhaseSectionScoreTitle(
+  phaseLabel: string,
+  breakdown: { earned: number; possible: number; max: number },
+  template: string,
+): string {
+  const e = String(Math.round(breakdown.earned))
+  const p = String(Math.round(breakdown.possible))
+  const m = String(Math.round(breakdown.max))
+  const tpl = template.trim()
+  if (!tpl) {
+    return `${phaseLabel} - score: ${e} out of ${p} possible (${m} max total)`
+  }
+  return tpl
+    .replaceAll("{phase_label}", phaseLabel)
+    .replaceAll("{earned}", e)
+    .replaceAll("{possible}", p)
+    .replaceAll("{max}", m)
+}
+
+/** Analysis-time job-carried `*_rubric` for a grades field (top-level flatten or job_data). */
+export function jobRubricForField(
+  job: Record<string, unknown>,
+  gradesField: string,
+): Array<{ code?: string; label?: string; importance?: number; content?: string }> | null {
+  const rubricKey = jobCarriedRubricKey(gradesField)
+  if (!rubricKey) return null
+  const jd = job.job_data
+  if (jd && typeof jd === "object" && !Array.isArray(jd)) {
+    const fromJd = (jd as Record<string, unknown>)[rubricKey]
+    if (Array.isArray(fromJd) && fromJd.length) {
+      return fromJd as Array<{ code?: string; label?: string; importance?: number; content?: string }>
+    }
+  }
+  const top = job[rubricKey]
+  if (Array.isArray(top) && top.length) {
+    return top as Array<{ code?: string; label?: string; importance?: number; content?: string }>
+  }
+  return null
 }

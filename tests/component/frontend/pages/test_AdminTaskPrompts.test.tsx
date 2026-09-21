@@ -396,4 +396,152 @@ describe("AdminTaskPrompts", () => {
       expect(within(phaseOne).getByText("task_a")).not.toBeVisible()
     }, 20000)
   })
+
+  describe("AST-1215 alphabetical run_next options", () => {
+    it("edit modal run_next options are lexicographic even when tasks load unsorted", async () => {
+      const unsorted = [
+        {
+          ...tasks[1],
+          task_key: "zebra",
+          task_key_uuid: "uuid-z",
+          run_next: "",
+          task_seq: 3,
+          task_name: "zebra",
+        },
+        {
+          ...tasks[0],
+          task_key: "alpha",
+          task_key_uuid: "uuid-a2",
+          run_next: "mid",
+          task_seq: 1,
+          task_name: "alpha",
+        },
+        {
+          ...tasks[1],
+          task_key: "mid",
+          task_key_uuid: "uuid-m",
+          run_next: "",
+          task_seq: 2,
+          task_name: "mid",
+        },
+      ]
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/repo_json/status") {
+          return {
+            ok: true,
+            json: async () => ({
+              agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+              agent_task: { diverged: false, repo_relative_path: "data/admin/agent_task.json" },
+            }),
+          } as Response
+        }
+        if (url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") {
+          return { json: async () => unsorted } as Response
+        }
+        if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
+        if (url === "/api/admin/tasks/meta/tokens") return jsonResponse(["candidate_name"])
+        if (url === "/api/admin/tasks/meta/chain_tokens") return jsonResponse([])
+        if (url === "/api/admin/tasks/alpha" && !init?.method) {
+          return {
+            json: async () => ({
+              ...unsorted[1],
+              system_prompt: "s",
+              user_prompt: "u",
+              cache_prompt: "c",
+              cache_prompt_b: "",
+              cache_prompt_c: "",
+              cache_prompt_d: "",
+              nocache_prompt: "n",
+              run_next: "mid",
+            }),
+          } as Response
+        }
+      })
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("Manage Tasks")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+      await userEvent.click(screen.getByText("alpha"))
+      await waitFor(() => expect(screen.getByRole("heading", { name: /Edit: alpha/ })).toBeInTheDocument())
+      const editModal = screen.getByRole("heading", { name: /Edit: alpha/ }).closest(".modal-card") as HTMLElement
+      const runNextSelect = within(editModal).getByDisplayValue("mid")
+      const values = Array.from(runNextSelect.querySelectorAll("option"))
+        .map(o => (o as HTMLOptionElement).value)
+        .filter(Boolean)
+      // Current task_key is omitted from run_next options (cycle guard); remaining keys stay alpha-sorted.
+      expect(values).toEqual(["mid", "zebra"])
+    }, 20000)
+  })
+
+  describe("AST-1410 silent refetch", () => {
+    function hangTasksGet() {
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if ((url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      return (body: unknown) => {
+        release({ ok: true, json: async () => body } as Response)
+      }
+    }
+
+    it("revert while edit overlay is open keeps the draft and skips Loading...", async () => {
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/repo_json/status") {
+          return {
+            ok: true,
+            json: async () => ({
+              agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+              agent_task: { diverged: true, repo_relative_path: "data/admin/agent_task.json" },
+            }),
+          } as Response
+        }
+        if (url === "/api/admin/repo_json/revert/agent_task" && init?.method === "POST") {
+          return { ok: true, json: async () => ({ ok: true }) } as Response
+        }
+        if (url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") {
+          return { json: async () => tasks } as Response
+        }
+        if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a", "agent_b"] } as Response
+        if (url === "/api/admin/tasks/meta/tokens") return jsonResponse(["candidate_name"])
+        if (url === "/api/admin/tasks/meta/chain_tokens") return jsonResponse([])
+        if (url === "/api/admin/tasks/task_a" && !init?.method) {
+          return {
+            json: async () => ({
+              ...tasks[0],
+              system_prompt: "{$SELECTED_AGENT}",
+              user_prompt: "user",
+              cache_prompt: "cache",
+              cache_prompt_b: "b0",
+              cache_prompt_c: "c0",
+              cache_prompt_d: "d0",
+              nocache_prompt: "nocache",
+              run_next: "task_b",
+            }),
+          } as Response
+        }
+      })
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("task_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+      await userEvent.click(screen.getByText("task_a"))
+      await waitFor(() => expect(screen.getByRole("heading", { name: /Edit: task_a/ })).toBeInTheDocument())
+      const groupName = screen.getByDisplayValue("Phase One")
+      await userEvent.type(groupName, " draft")
+      const release = hangTasksGet()
+      await userEvent.click(screen.getByRole("button", { name: "Revert to file" }))
+      await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument())
+      const confirms = screen.getAllByRole("button", { name: "Revert to file" })
+      await userEvent.click(confirms[confirms.length - 1])
+      await waitFor(() => expect(screen.getByRole("heading", { name: /Edit: task_a/ })).toBeInTheDocument())
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      expect(screen.getByDisplayValue("Phase One draft")).toBeInTheDocument()
+      expect(screen.getByText("task_a")).toBeInTheDocument()
+      release(tasks)
+      await waitFor(() => expect(screen.getByRole("heading", { name: /Edit: task_a/ })).toBeInTheDocument())
+      expect(screen.getByDisplayValue("Phase One draft")).toBeInTheDocument()
+    }, 20000)
+  })
 })
