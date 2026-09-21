@@ -1626,13 +1626,16 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
     if not batch_id:
         raise ValueError("entity_batch_id is required")
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
 
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["stage_trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["stage_trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["stage_trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["stage_trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1729,12 +1732,16 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
         raise ValueError("entity_batch_id is required")
     status_map = cfg["scrape_page_status_states"]
 
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["scrape_trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["scrape_trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["scrape_trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["scrape_trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1814,15 +1821,20 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
     )
     land_states = ["READY", "BOT_BLOCKED"]
 
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, states=%s, limit=%s]",
-        batch_id, land_states, batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, states=%s, limit=%s, candidate_id=%s]",
+        batch_id, land_states, batch_size, entity_candidate_id,
     )
     claim_meteorite_batch(
         batch_id,
         cfg["land_trigger_state"],
         limit=batch_size,
+        candidate_id=entity_candidate_id,
         states=land_states,
     )
     rows = get_meteorite_batch(batch_id)
@@ -1908,12 +1920,16 @@ async def run_notify_meteorite_bot_blocked(
     if not batch_id:
         raise ValueError("entity_batch_id is required")
 
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:

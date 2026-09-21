@@ -947,11 +947,12 @@ class TestAst1530StageMeteorite:
         assert any("not_original_posting" in r.getMessage() for r in caplog.records)
 
 
-def _ingress_task(*, batch_id: str, task_key: str | None = None) -> dict:
+def _ingress_task(*, batch_id: str, candidate_id: str, task_key: str | None = None) -> dict:
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
     return {
         "task_key": task_key or cfg["stage_task_key"],
         "entity_batch_id": batch_id,
+        "candidate_id": candidate_id,
         "batch_size": cfg["batch_size"],
     }
 
@@ -996,11 +997,12 @@ def _insert_meteorite_row(db, cid: str, **fields: object) -> int:
     return row_id
 
 
-def _notify_task(*, batch_id: str) -> dict:
+def _notify_task(*, batch_id: str, candidate_id: str) -> dict:
     cfg = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
     return {
         "task_key": cfg["task_key"],
         "entity_batch_id": batch_id,
+        "candidate_id": candidate_id,
         "batch_size": cfg["batch_size"],
     }
 
@@ -1120,7 +1122,7 @@ class TestAst1703EmailBreadcrumb:
             # link omitted → blank → ERROR missing breadcrumb link
         )
         out = await meteorite_mod.run_stage_meteorite(
-            _ingress_task(batch_id="stage-batch-nobread")
+            _ingress_task(batch_id="stage-batch-nobread", candidate_id=cid)
         )
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
@@ -1182,7 +1184,7 @@ class TestAst1560RunStageMeteorite:
             link="https://jobs.example.com/role",
         )
         batch_id = "stage-batch-url"
-        out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id))
+        out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id, candidate_id=cid))
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
         assert row["state"] == "SCRAPE_LINK"
@@ -1204,7 +1206,7 @@ class TestAst1560RunStageMeteorite:
             link=crumb,
         )
         batch_id = "stage-batch-text"
-        out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id))
+        out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id, candidate_id=cid))
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
         assert row["state"] == "READY"
@@ -1222,7 +1224,7 @@ class TestAst1560RunStageMeteorite:
         row_id = _insert_meteorite_row(db, cid)
         with caplog.at_level(logging.WARNING):
             out = await meteorite_mod.run_stage_meteorite(
-                _ingress_task(batch_id="stage-batch-miss")
+                _ingress_task(batch_id="stage-batch-miss", candidate_id=cid)
             )
         assert out["total_errors"] == 1
         assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
@@ -1258,6 +1260,7 @@ class TestAst1560RunScrapeMeteorite:
         out = await meteorite_mod.run_scrape_meteorite(
             _ingress_task(
                 batch_id="scrape-batch-ok",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
@@ -1291,6 +1294,7 @@ class TestAst1560RunScrapeMeteorite:
         out = await meteorite_mod.run_scrape_meteorite(
             _ingress_task(
                 batch_id="scrape-batch-block",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
@@ -1330,6 +1334,7 @@ class TestAst1560RunScrapeMeteorite:
         out = await meteorite_mod.run_scrape_meteorite(
             _ingress_task(
                 batch_id="scrape-batch-sib",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
@@ -1380,6 +1385,7 @@ class TestAst1560RunLandMeteorite:
             out = await meteorite_mod.run_land_meteorite(
                 _ingress_task(
                     batch_id="land-batch-1",
+                    candidate_id=cid,
                     task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
                 )
             )
@@ -1402,6 +1408,7 @@ class TestAst1560RunLandMeteorite:
         out = await meteorite_mod.run_land_meteorite(
             _ingress_task(
                 batch_id="land-batch-miss",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
             )
         )
@@ -1521,7 +1528,7 @@ class TestAst1561RunNotifyBotBlocked:
             lambda **kw: {"ok": True, "ts": "9999.0001"},
         )
         out = await meteorite_mod.run_notify_meteorite_bot_blocked(
-            _notify_task(batch_id="notify-batch-1")
+            _notify_task(batch_id="notify-batch-1", candidate_id=cid)
         )
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
@@ -1546,7 +1553,7 @@ class TestAst1561RunNotifyBotBlocked:
         post = MagicMock()
         monkeypatch.setattr("src.core.contact.contact_post_message", post)
         out = await meteorite_mod.run_notify_meteorite_bot_blocked(
-            _notify_task(batch_id="notify-batch-abandon")
+            _notify_task(batch_id="notify-batch-abandon", candidate_id=cid)
         )
         assert out["total_passed"] == 1
         assert db.get_meteorite(row_id)["state"] == "ABANDONED"
@@ -1895,6 +1902,7 @@ class TestAst1689ElectronicContactMapPersist:
         out = await meteorite_mod.run_scrape_meteorite(
             _ingress_task(
                 batch_id="scrape-1689-block",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
@@ -1934,6 +1942,7 @@ class TestAst1689ElectronicContactMapPersist:
         out = await meteorite_mod.run_land_meteorite(
             _ingress_task(
                 batch_id="land-1689-1",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
             )
         )
@@ -2015,7 +2024,7 @@ class TestAst1693RunLandBotBlocked:
             captured.update(kwargs)
             return {"outcome": METEORITE_CONFIG["land_outcome_created"], "astral_job_id": "job-1693-land"}
         monkeypatch.setattr(meteorite_mod.tracker, "save_meteorite_job", _save)
-        out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-bb", task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
+        out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-bb", candidate_id=cid, task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
         assert row["state"] == "LANDED" and row["astral_job_id"] == "job-1693-land"
@@ -2027,7 +2036,7 @@ class TestAst1693RunLandBotBlocked:
         cid = "cand-1693-empty"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
         row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED", content="", link="https://example.test/job/empty")
-        out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-empty", task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
+        out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-empty", candidate_id=cid, task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
         assert out["total_failed"] == 0 and out["total_errors"] == 0 and out["total_passed"] == 0
         row = db.get_meteorite(row_id)
         assert row["state"] == "BOT_BLOCKED" and not row.get("astral_job_id")
@@ -2046,7 +2055,7 @@ class TestAst1693NotifySkipsContentful:
         post = MagicMock()
         monkeypatch.setattr(meteorite_mod, "_resolve_slack_dm_channel_for_candidate", lambda _c: "D-1693")
         monkeypatch.setattr("src.core.contact.contact_post_message", post)
-        out = await meteorite_mod.run_notify_meteorite_bot_blocked(_notify_task(batch_id="notify-1693-skip"))
+        out = await meteorite_mod.run_notify_meteorite_bot_blocked(_notify_task(batch_id="notify-1693-skip", candidate_id=cid))
         assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
         assert row["state"] == "BOT_BLOCKED" and not row.get("estelle_notified_at")

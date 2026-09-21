@@ -3821,10 +3821,17 @@ def claim_meteorite_batch(
     batch_id: str,
     state: str,
     limit: int,
+    candidate_id: Optional[str] = None,
     *,
     states: Optional[List[str]] = None,
 ) -> int:
-    """Claim up to limit unclaimed meteorite rows in state. batch_id first."""
+    """Claim up to limit unclaimed meteorite rows in state. batch_id first.
+    candidate_id: required; scopes claim via meteorite.candidate_id
+    (stat.dispatch.entity-state-bound — meteorite is bound to a candidate just like job/company).
+    """
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
     now = _utc_now()
     claim_states = states if states is not None else [state]
     state_sql, state_params = _state_in_sql(claim_states)
@@ -3833,12 +3840,13 @@ def claim_meteorite_batch(
         conn = _get_connection()
         try:
             _ensure_meteorite_schema(conn)
-            params = [batch_id, now, *state_params, int(limit)]
+            params = [batch_id, now, *state_params, cid, int(limit)]
             cur = conn.execute(
                 f"""UPDATE meteorite SET batch_id = ?, batch_created_at = ?
                    WHERE id IN (
                      SELECT id FROM meteorite
                      WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                       AND candidate_id = ?
                      ORDER BY rowid
                      LIMIT ?
                    )""",
@@ -3892,12 +3900,21 @@ def clear_meteorite_batch(batch_id: str) -> int:
 
 
 
-def count_meteorites_unclaimed_in_states(states: List[str]) -> int:
-    """Count unclaimed meteorite rows in the given state set (global pool).
+def count_meteorites_unclaimed_in_states(
+    states: List[str], candidate_id: Optional[str] = None
+) -> int:
+    """Count unclaimed meteorite rows in the given state set.
 
+    When candidate_id is set, count is scoped to that candidate only
+    (stat.dispatch.entity-state-bound — mirrors count_candidates_unclaimed_in_states).
     Unclaimed = batch_id IS NULL OR batch_id = '' — same predicate as claim_meteorite_batch.
     """
     state_sql, state_params = _state_in_sql(states)
+    cid = (candidate_id or "").strip()
+    extra_sql = " AND candidate_id = ?" if cid else ""
+    params: List[Any] = list(state_params)
+    if cid:
+        params.append(cid)
 
     def _with_conn() -> int:
         conn = _get_connection()
@@ -3905,8 +3922,8 @@ def count_meteorites_unclaimed_in_states(states: List[str]) -> int:
             _ensure_meteorite_schema(conn)
             row = conn.execute(
                 f"""SELECT COUNT(*) FROM meteorite
-                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')""",
-                tuple(state_params),
+                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = ''){extra_sql}""",
+                tuple(params),
             ).fetchone()
             return int(row[0])
         finally:
@@ -8632,8 +8649,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
-    entity_type=meteorite counts the global unclaimed meteorite pool via
-    count_meteorites_unclaimed_in_states and does not require candidate_id.
+    entity_type=meteorite counts this row's candidate via count_meteorites_unclaimed_in_states
+    (stat.dispatch.entity-state-bound — meteorite is candidate-bound like job/company, not a pool).
     meteorite_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
     """
     entity_type = task.get("entity_type")
@@ -8641,7 +8658,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     candidate_id = task.get("candidate_id")
     if not entity_type or not state:
         return 0
-    if entity_type != "meteorite" and not candidate_id:
+    if not candidate_id:
         return 0
     if entity_type not in ENTITY_TYPES:
         return 0
@@ -8654,7 +8671,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if not claim_states:
         return 0
     if entity_type == "meteorite":
-        return count_meteorites_unclaimed_in_states(claim_states)
+        return count_meteorites_unclaimed_in_states(claim_states, candidate_id=candidate_id)
     task_key = task.get("task_key", "")
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)

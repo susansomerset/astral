@@ -1694,8 +1694,9 @@ class TestAst1618SaveDispatchTaskCallerEntity:
         assert row is not None
         assert row["sort_by"] is None
 
-class TestAst1622MeteoriteCountEligibleDue:
-    """AST-1622: global meteorite pool count_eligible + AUTO-due without candidate_id."""
+class TestMeteoritePerCandidateCountEligibleDue:
+    """stat.dispatch.entity-state-bound: meteorite count_eligible/AUTO-due is candidate-scoped,
+    same as job/company — no more global NULL-candidate_id pool (was AST-1622)."""
 
     def test_count_meteorites_unclaimed_in_states(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1707,16 +1708,28 @@ class TestAst1622MeteoriteCountEligibleDue:
             ]
         )
         assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 3
-        db.claim_meteorite_batch("batch-1622", "NEW", 1)
+        db.claim_meteorite_batch("batch-1622", "NEW", 1, candidate_id="c1")
         assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 2
+        # candidate_id scopes the count to that candidate's rows only.
+        assert db.count_meteorites_unclaimed_in_states(["NEW"], candidate_id="c1") == 1
+        assert db.count_meteorites_unclaimed_in_states(["NEW"], candidate_id="c2") == 1
         db.update_meteorite(ids[1], state="READY")
         assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 1
         assert db.count_meteorites_unclaimed_in_states(["READY"]) == 1
         with pytest.raises(ValueError):
             db.count_meteorites_unclaimed_in_states([])
 
-    def test_count_eligible_null_candidate_meteorite(self, sqlite_in_memory) -> None:
-        # Staging rows still carry candidate_id; the dispatch_task shell is global (NULL cid).
+    def test_claim_meteorite_batch_requires_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.insert_meteorite_rows(
+            [{"candidate_id": "c1", "source_kind": "email", "source_id": "m1"}]
+        )
+        with pytest.raises(ValueError, match="candidate_id"):
+            db.claim_meteorite_batch("batch-no-cid", "NEW", 1)
+
+    def test_count_eligible_meteorite_requires_candidate_id_and_scopes_to_it(
+        self, sqlite_in_memory
+    ) -> None:
         db = sqlite_in_memory
         db.insert_meteorite_rows(
             [
@@ -1731,10 +1744,13 @@ class TestAst1622MeteoriteCountEligibleDue:
             "task_key": "stage_meteorite",
             "min_count": 1,
         }
-        assert db.count_eligible_for_dispatch_task(task) == 2
-        # Non-null candidate_id on the task still counts the global pool.
-        task["candidate_id"] = "ignored"
-        assert db.count_eligible_for_dispatch_task(task) == 2
+        # No candidate_id on the row -> 0, same as job/company (never a global pool count).
+        assert db.count_eligible_for_dispatch_task(task) == 0
+        # candidate_id scopes the count to that candidate's own rows only.
+        task["candidate_id"] = "c-a"
+        assert db.count_eligible_for_dispatch_task(task) == 1
+        task["candidate_id"] = "c-b"
+        assert db.count_eligible_for_dispatch_task(task) == 1
 
     def test_count_eligible_job_still_requires_candidate_id(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1747,10 +1763,13 @@ class TestAst1622MeteoriteCountEligibleDue:
         }
         assert db.count_eligible_for_dispatch_task(task) == 0
 
-    def test_get_due_includes_null_candidate_meteorite(self, sqlite_in_memory) -> None:
+    def test_get_due_scopes_meteorite_to_its_own_candidate(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.insert_meteorite_rows(
-            [{"candidate_id": "c-due", "source_kind": "email", "source_id": "due1"}]
+            [
+                {"candidate_id": "c-due", "source_kind": "email", "source_id": "due1"},
+                {"candidate_id": "c-other", "source_kind": "email", "source_id": "due2"},
+            ]
         )
         conn = db._get_connection()
         try:
@@ -1761,7 +1780,7 @@ class TestAst1622MeteoriteCountEligibleDue:
                     candidate_id, task_key, entity_type, trigger_state, sort_by,
                     batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor
                 ) VALUES (
-                    NULL, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at',
+                    'c-due', 'stage_meteorite', 'meteorite', 'NEW', 'updated_at',
                     0, 0, 1, 10, 1, NULL
                 )
                 """
@@ -1773,5 +1792,6 @@ class TestAst1622MeteoriteCountEligibleDue:
         keys = [t["task_key"] for t in due]
         assert "stage_meteorite" in keys
         row = next(t for t in due if t["task_key"] == "stage_meteorite")
-        assert row["candidate_id"] is None
-        assert row["available_count"] >= 1
+        assert row["candidate_id"] == "c-due"
+        # available_count is this candidate's 1 row only, not the 2-row global pool.
+        assert row["available_count"] == 1

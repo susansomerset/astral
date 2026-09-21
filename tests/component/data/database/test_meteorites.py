@@ -113,7 +113,7 @@ class TestAst1557MeteoriteBatchClaim:
     def test_claim_get_clear_multi_row_pool(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         self._seed_new(db, 3)
-        n = db.claim_meteorite_batch("meteorite-batch-a", "NEW", 2)
+        n = db.claim_meteorite_batch("meteorite-batch-a", "NEW", 2, candidate_id="c1557")
         assert n == 2
         rows = db.get_meteorite_batch("meteorite-batch-a")
         assert len(rows) == 2
@@ -121,7 +121,7 @@ class TestAst1557MeteoriteBatchClaim:
             assert r["batch_id"] == "meteorite-batch-a"
             assert r.get("batch_created_at")
         # Concurrent claim cannot steal locked rows
-        n2 = db.claim_meteorite_batch("meteorite-batch-b", "NEW", 2)
+        n2 = db.claim_meteorite_batch("meteorite-batch-b", "NEW", 2, candidate_id="c1557")
         assert n2 == 1  # one unclaimed left
         assert len(db.get_meteorite_batch("meteorite-batch-b")) == 1
         cleared = db.clear_meteorite_batch("meteorite-batch-a")
@@ -129,8 +129,25 @@ class TestAst1557MeteoriteBatchClaim:
         for r in db.get_meteorite_batch("meteorite-batch-a"):
             assert False, "batch should be empty after clear"
         # Released rows reclaimable
-        n3 = db.claim_meteorite_batch("meteorite-reclaim", "NEW", 10)
+        n3 = db.claim_meteorite_batch("meteorite-reclaim", "NEW", 10, candidate_id="c1557")
         assert n3 == 2
+
+    def test_claim_requires_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_new(db, 1)
+        with pytest.raises(ValueError, match="candidate_id"):
+            db.claim_meteorite_batch("meteorite-batch-no-cid", "NEW", 1)
+
+    def test_claim_scopes_to_candidate(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_new(db, 2)
+        other = db.insert_meteorite_rows(
+            [{"candidate_id": "c-other", "source_kind": "email", "source_id": "mid-other"}]
+        )
+        n = db.claim_meteorite_batch("meteorite-scoped", "NEW", 10, candidate_id="c1557")
+        assert n == 2  # c-other's row is untouched
+        ids = {r["id"] for r in db.get_meteorite_batch("meteorite-scoped")}
+        assert other[0] not in ids
 
     def test_claim_unions_states(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -141,6 +158,7 @@ class TestAst1557MeteoriteBatchClaim:
             "union-batch",
             "NEW",
             10,
+            candidate_id="c1557",
             states=["NEW", "ERROR"],
         )
         assert n == 2
