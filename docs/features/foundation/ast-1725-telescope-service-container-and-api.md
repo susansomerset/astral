@@ -685,3 +685,60 @@ Do **not** change `/telescope/html`, `capture_text`, auth, pool, Dockerfile, or 
 ## Radia review-fix (AST-1732)
 
 Restacked onto ftr after REVIEW; link-scoping + sibling capture_html/class fixes held. → User Testing.
+
+## Bug: AST-1735 — Telescope head vs body text+links return identical links
+
+### As-is
+
+`POST /telescope` with `links: true` and `selector: "head"`, then the same URL with `selector: "body"`, returns the **same** `links` array (document-wide), even when head and body contain different anchors.
+
+### To-be
+
+Links are scoped to the selected element: `"head"` → http(s) `a[href]` under `<head>` only; `"body"` → under `<body>` only. When the DOM differs by section, the two responses’ `links` arrays differ. Omitted selector / `"page"` still mean whole-document link collection.
+
+### Repro
+
+1. Page with at least one http(s) anchor in `<body>` and a different set in (or absent from) `<head>` (any public site with nav links in body is enough).
+2. `POST /telescope` `{"url": "…", "selector": "head", "links": true}` (bearer) → note `links`.
+3. Same URL with `"selector": "body"` → note `links`.
+4. As-is: the two `links` arrays are equal (full-page set both times, or body alias still document-wide matching a non-scoped head path on the tip under test).
+5. To-be: every `links[].href` for `head` is under `<head>`; every href for `body` is under `<body>`; the arrays are not equal when the sections’ anchors differ.
+
+Component (no live browser): `capture_links(page, "head")` and `capture_links(page, "body")` must evaluate scoped scripts (not the document-wide branch); assert the evaluate selector / root differs (`head` vs `body`) and that omit/`"page"` still use the document-wide script.
+
+### Root cause
+
+AST-1732 wired `capture_links(page, selector)` and scoped CSS class selectors, but left this whole-page gate:
+
+```python
+if not sel or sel.lower() in ("page", "body"):
+    # document.querySelectorAll('a[href]')
+```
+
+So explicit `"body"` is still an alias for **document-wide** links (same set as omit / `"page"`). UAT expects `"body"` / `"head"` to mean the HTML elements. Explicit `"head"` already falls through to the scoped `querySelectorAll` path after AST-1732; pairing it with body-as-document still yields a wrong body set and made pre-1732 tips return identical full-page arrays for both selectors. AST-1732’s “What must still hold” line that `"body"` returns whole-page links is **superseded** by this bug.
+
+Platform admin / `src/external/telescope.py` already forward `selector` on `POST /telescope` — no client re-extraction bug.
+
+### Proposed change
+
+1. In `service/telescope/capture.py` `capture_links` only:
+   - Whole-document path: when `not sel` **or** `sel.lower() == "page"` (drop `"body"` from this gate).
+   - All other selectors — including explicit `"head"` and `"body"` — use the existing scoped evaluate (roots via `querySelectorAll(sel)`, http(s) `a[href]` under each root, dedupe by `href`). No new JS shape required unless make-fix prefers `document.head` / `document.body` specials equivalent to that query.
+2. Do **not** change `capture_text` (body/page visible-text chrome strip stays), `capture_html`, `app.py` (already passes `body.selector`), auth, pool, Dockerfile, or `src/**`.
+3. Do not re-assert AST-1732’s “body = whole-page links” invariant; update any comment in `capture_links` that still says omit/page/body share the document path.
+
+### Blast radius
+
+- Callers that passed `"selector": "body"` expecting **document-wide** links (including anchors under `<head>`) will get body-only links — intentional UAT correction; use omit or `"page"` for whole-document.
+- `"head"` already scoped after AST-1732; behavior stays element-scoped; new coverage should lock head≠body when fixtures differ.
+- `links: false` and class/CSS scoping from AST-1732 unchanged.
+- Betty may need a head-vs-body (and body≠page) assertion on `capture_links` (fix-board TESTS signal). Do not edit `tests/` here.
+
+### What must still hold
+
+- AST-1725 AC: `links` defaults true; when false, omit `links`; http(s) filter; bearer; expand/wait_ready defaults; no service cull; zero `src` imports under `service/telescope/`.
+- AST-1732: non-`page` CSS/class selectors still scope links; multi-match union + href dedupe.
+- Omitted selector and explicit `"page"` still return **whole-document** links.
+- Explicit `"body"` scopes to `<body>` (this ticket); explicit `"head"` scopes to `<head>`.
+- Multi-match **text** behavior and HTML specials (AST-1729/1731) unchanged.
+- Boundaries: no Railway/CI; no platform `telescope.py` / admin proxy edits for this bug.
