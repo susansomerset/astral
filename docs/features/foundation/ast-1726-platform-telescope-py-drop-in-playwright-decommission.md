@@ -609,3 +609,71 @@ AST-1728 step 6 rendered results with bare `<pre>` elements and never defined `.
 ## Radia review-fix (AST-1730)
 
 Overall: CLEAN. [bug-repro] OK; What must still hold OK. Clean-review shortcut → User Testing.
+
+## Bug: AST-1734 — Telescope admin page / full JSON not scrollable
+
+UAT-batch fix against AST-1721 Component/Technical scope (`src/ui/frontend/` admin Telescope page). Sibling of AST-1728 / AST-1730 on this doc; does not rewrite Stages 1–4 or those bug blocks. **Distinct from AST-1730:** that ticket made the response *textareas* scrollable; this ticket makes the *page* scrollable so those panes (especially full JSON below the form) are reachable.
+
+### As-is
+
+The Telescope admin page itself does not scroll. With form + metadata + raw pane already filling the viewport, opening **Show full JSON** leaves only a one-line-high strip of the JSON textarea visible; the operator cannot scroll the page to reach the rest of the payload.
+
+### To-be
+
+The Telescope admin page scrolls (via the existing shell `.content` scroller) so the operator can navigate the full form + metadata + raw + full-JSON stack. AST-1730 textarea inner-scroll / select-all behavior remains.
+
+### Repro
+
+1. Sign in as admin; open `/admin/telescope`.
+2. Submit a URL that returns a non-trivial body (enough that raw pane + form consume most of the viewport).
+3. Click **Show full JSON**.
+4. Observe: the page/document does not scroll; only a thin (≈one-line) band of the JSON textarea is visible below the toggle; wheel/trackpad on the page background does not reveal more content.
+
+### Root cause
+
+`AdminTelescope` roots in `<div className="list-page">`. Global `.list-page` (App.css) is built for table tools:
+
+```css
+.list-page {
+  height: calc(100% - 40px);
+  overflow: hidden;
+  /* + flex column */
+}
+```
+
+That locks the card to the viewport and clips overflow. List tables recover via an *inner* `.list-page-table-wrap--scroll`; AdminTelescope has no such inner page scroller — AST-1730 only capped the textareas (`maxHeight: 60vh`). Form + meta + raw pane consume the fixed card height, so the full-JSON textarea is clipped to a sliver. Sibling form tools (e.g. Agent Ad Hoc) avoid `.list-page` height/overflow lock so `.content { overflow-y: auto }` scrolls the page.
+
+### Proposed change
+
+⚠️ **Decision — fix page flow on AdminTelescope only; do not change global `.list-page`:** Table pages still need the fixed-height + `overflow: hidden` + inner table scroll contract. Touched file stays inside parent scope `src/ui/frontend/`.
+
+⚠️ **Decision — keep AST-1730 `RESPONSE_PANE_STYLE` textareas:** Inner pane scroll/select-all stays; this bug only unlocks the outer page so both panes remain reachable when stacked.
+
+1. **`src/ui/frontend/src/pages/AdminTelescope.tsx` only:**
+   - On the root wrapper that currently is `<div className="list-page">`, override the two clipping properties so the card grows with content and participates in `.content` page scroll. Prefer the smallest override that matches existing admin form tools:
+
+     ```tsx
+     <div className="list-page" style={{ height: "auto", overflow: "visible" }}>
+     ```
+
+     Equivalent acceptable alternative (same outcome): drop `list-page` and use the Agent Ad Hoc free-flow shell (`style={{ padding: 24, maxWidth: 1100 }}`) with the same title/subtitle children — pick one; do not do both.
+
+   - Leave `RESPONSE_PANE_STYLE`, form controls, metadata list, API call, and show/hide full JSON toggle unchanged.
+   - Do **not** edit `App.css` `.list-page` globally.
+   - Do **not** change `/api/admin/telescope`, `telescope.py`, or the service.
+
+**Out of this bug:** AST-1730 textarea widget choice; scrape contract / scrape_meta; nav/routes; service.
+
+### Blast radius
+
+- Admin Telescope UI layout only — candidates and core scrape callers untouched.
+- Other `.list-page` consumers (ListPage tables, Execution History, etc.) unchanged if the override stays page-local.
+- AST-1730 vitest / shallow asserts on `textarea[readonly]` stay valid.
+
+### What must still hold
+
+- Parent AC 14 / AST-1728 to-be: submit URL + toggles; see raw body + scrape_meta.
+- AST-1730 to-be: raw + full-JSON panes remain read-only wrapping scrollable textareas with native select-all (no regression to bare `<pre>`).
+- No change to `/api/admin/telescope` request/response shape.
+- `service/*` ↔ `src/` import fence unchanged.
+- No depth/output limits on scrape content — only layout scroll so the existing panes are reachable.
