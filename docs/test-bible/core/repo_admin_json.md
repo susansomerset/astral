@@ -592,3 +592,46 @@ Live `stage_meteorite` Ruth row (six outcome literals in `cache_prompt`; seq `2.
   tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
   -q
 ```
+
+
+### AST-1755 · AST-1753
+
+**Parent:** [AST-1753 — stage_email_meteorite enhancements](https://linear.app/astralcareermatch/issue/AST-1753/stage-email-meteorite-enhancements). **Publish:** `origin/sub/AST-1753/AST-1755-stage-meteorite-job-title-prompts`.
+
+`stage_meteorite` `cache_prompt` gains `## JOB TITLE (optional)` (subject-prefer; never invent); `user_prompt` names optional `job_title`. No `$RESPONSE_SCHEMA` in prompt fields. AST-756 fixture whole-file twin synced. Schema confirm (optional `job_title`): **`docs/test-bible/utils/config.md`** § AST-1529 (`TestAst1529StageMeteoriteConfig`). Row persistence when Ruth returns `job_title`: **`docs/test-bible/core/meteorite.md`** § AST-1713 (`TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields`). Siblings **AST-1756** / **AST-1757** own jd_text fallback and land→job title wiring.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Subject-prefer prompts + no `$RESPONSE_SCHEMA` + fixture lockstep | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1755StageMeteoriteJobTitlePrompts`** |
+| Prior stage Ruth shell + fixture lockstep (grouping revised) | same | **`TestAst1529StageMeteoriteCatalogRow`** |
+| Schema optional `job_title` (confirm only) | `src/utils/config.py` | **`TestAst1529StageMeteoriteConfig`** |
+| Stage→row `job_title` persist (existing map) | `src/core/meteorite.py` | **`TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields`** |
+
+**Broken / obsolete this pass:**
+- AST-756 `expected-agent_task.json` twin asserting pre-AST-1755 `stage_meteorite` prompts (byte lock) — synced.
+- **`TestAst1529StageMeteoriteCatalogRow`** grouping/seq asserts (`Meteorite Review` / `4500` / `2.0`, qualify `task_seq == 2.5`) — revised to live catalog (`Land Meteorite` / `4200` / seq `1`; mailbox same group; qualify stays Meteorite Review).
+
+**Integration:** none — no existing scenario asserts `stage_meteorite` prompt `job_title` ask.
+
+## QA test manifest
+
+1. Job-title prompts + fixture twin: `tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts`
+2. Prior catalog + fixture lockstep: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+3. Whole-file fixture identity: `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+4. Schema confirm optional `job_title`: `tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig`
+5. Stage→row title persist (AC4): `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/repo_admin_json.md`

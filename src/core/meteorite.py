@@ -1005,6 +1005,7 @@ async def stage_meteorite(
             source_kind=kind,
             source_id=sid,
             timezone_key=_candidate_contact_timezone(cid),
+            ingress_blob=blob,
         )
         if map_err:
             failed = _save_error(str(map_err), outcome, batch_id=batch_id)
@@ -1173,6 +1174,10 @@ async def land_meteorite(
             if not mlink and row_link:
                 update_meteorite(mid, link=row_link)
                 mlink = row_link
+            # AST-1757: enrich title wins; else staged meteorite.job_title
+            enrich_title = (row.get("job_title") or "").strip()
+            staged_title = (mrow.get("job_title") or "").strip()
+            title_for_save = enrich_title or staged_title or None
             emp = _optional_real_company_id(company_stem=row_stem or None, candidate_id=cid)
             logger.debug(
                 "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
@@ -1183,7 +1188,7 @@ async def land_meteorite(
                 meteorite_id=mid,
                 company_id=emp,
                 company_job_id=row.get("company_job_id") or None,
-                job_title=row.get("job_title") or None,
+                job_title=title_for_save,
                 job_link=mlink or None,
                 job_data={jd_key: found_jd},
                 employer_name=found_emp or None,
@@ -1307,6 +1312,7 @@ def _map_classify_jobs_to_meteorite_rows(
     source_kind: str,
     source_id: str,
     timezone_key: str = "",
+    ingress_blob: str = "",
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Map classify jobs → insert_meteorite_rows dicts (no source_ref synthesis)."""
     if source_kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"]:
@@ -1327,8 +1333,12 @@ def _map_classify_jobs_to_meteorite_rows(
             return [], "text outcome produced no jobs"
         for job in rows:
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
+            # Prefer Ruth jd_text; blank → classify ingress blob (subject+body), not map fail
             if not text:
-                return [], "text scrap missing jd_text"
+                fallback = ingress_blob.strip() if isinstance(ingress_blob, str) else ""
+                if not fallback:
+                    return [], "text scrap missing jd_text"
+                text = fallback
             link: Optional[str] = None
             if source_kind == "email":
                 from_email = (
@@ -1899,6 +1909,8 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     continue
 
                 link_text = (row.get("link") or "").strip()
+                # AST-1757: staged meteorite.job_title → job (dispatch has no enrich)
+                staged_title = (row.get("job_title") or "").strip() or None
                 logger.debug(
                     "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
                     cid, row_id,
@@ -1910,6 +1922,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     job_data={jd_key: content},
                     job_link=link_text or None,
                     company_job_id=None,
+                    job_title=staged_title,
                     employer_name=None,
                     debug=debug,
                 )
