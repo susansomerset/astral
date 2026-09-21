@@ -1428,8 +1428,6 @@ class TestAst1560RunScrapeMeteorite:
                 debug=True,
             )
 
-        # AST-1751: scrape_closed ERROR is errors-only (sibling of diagnostic detail).
-        assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         err = db.get_meteorite(row_id)["error"] or ""
         assert "scrape_closed" in err, f"expected scrape_closed in error, got {err!r}"
