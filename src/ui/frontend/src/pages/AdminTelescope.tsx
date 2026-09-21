@@ -221,8 +221,12 @@ export default function AdminTelescope() {
             value={className}
             onChange={e => setClassName(e.target.value)}
             disabled={Boolean(selector.trim())}
-            placeholder="shaders (no leading dot)"
+            placeholder="logo — outer HTML when Response type is html"
           />
+          <span style={{ fontSize: 12, opacity: 0.75 }}>
+            Class matches return each element&apos;s outer HTML when Response type is html
+            (not text).
+          </span>
         </label>
 
         <label className="admin-telescope-field">

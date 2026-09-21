@@ -1275,6 +1275,7 @@ def _cull_html(html: str) -> str:  # pragma: no cover
     
     # Extract body tag first - we only cull body content, not head/html wrappers
     body_tag = soup.find('body')
+    had_body = body_tag is not None
     if body_tag is None:
         # Fallback: if no body tag, use the whole document
         body_soup = soup
@@ -1285,6 +1286,19 @@ def _cull_html(html: str) -> str:  # pragma: no cover
     
     # Use body_soup for all culling operations
     soup = body_soup
+
+    # AST-1745: class-scoped fragments whose top-level nodes are <svg> (e.g. svg.logo)
+    # must keep that outerHTML; nested svg under non-svg roots still get stripped below.
+    preserve_root_svgs = set()
+    if not had_body:
+        for child in list(soup.children):
+            if getattr(child, "name", None) == "svg":
+                preserve_root_svgs.add(child)
+
+    def _in_preserved_svg(elem) -> bool:
+        if elem in preserve_root_svgs:
+            return True
+        return any(p in preserve_root_svgs for p in getattr(elem, "parents", []))
     
     # Remove script tags (including JSON blobs like __NEXT_DATA__)
     for script in soup.find_all('script'):
@@ -1311,8 +1325,11 @@ def _cull_html(html: str) -> str:  # pragma: no cover
     for comment in comments:
         comment.extract()
     
-    # Remove large SVG blocks (icon sprites are often huge and not job-relevant)
+    # Remove large SVG blocks (icon sprites are often huge and not job-relevant).
+    # Keep fragment-root svgs (and their descendants) — AST-1745 class-scoped logos.
     for svg in soup.find_all('svg'):
+        if _in_preserved_svg(svg):
+            continue
         svg.decompose()
     
     # Special handling for img tags: only keep if they have alt or class, and only keep those attributes
@@ -1334,11 +1351,18 @@ def _cull_html(html: str) -> str:  # pragma: no cover
     # Explicit inclusion: unwrap all tags not in allowed_tags list
     # Use multiple passes to handle nested structures (unwrap from deepest to shallowest)
     # Process until no more non-allowed tags remain
-    # Note: img tags are handled separately above, so exclude them from unwrapping
+    # Note: img tags are handled separately above, so exclude them from unwrapping.
+    # AST-1745: also leave preserved root-svg trees intact (svg/g/path not in allowed_tags).
     max_passes = 10  # Safety limit to prevent infinite loops
     for pass_num in range(max_passes):
         # Find all elements that are not in allowed_tags (excluding img, which is handled separately)
-        non_allowed = [elem for elem in soup.find_all(True) if elem.name not in allowed_tags and elem.name != 'img']
+        non_allowed = [
+            elem
+            for elem in soup.find_all(True)
+            if elem.name not in allowed_tags
+            and elem.name != "img"
+            and not _in_preserved_svg(elem)
+        ]
         if not non_allowed:
             break  # All remaining tags are allowed or already handled
         # Unwrap each non-allowed tag (preserves children and text content)
