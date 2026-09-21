@@ -1045,3 +1045,69 @@ Out of this bug: changing platform consumers that only read `href` (`extract_sit
 ## Radia review-fix (AST-1747)
 
 Overall: CLEAN / PROCEED — href dedupe with text[]; resolve-child skipped.
+
+## Bug: AST-1750 — Telescope/meteorite scrape errors lack detail; error/debug logging fails statutes
+
+UAT-batch fix against parent AST-1721 Component/Technical scope (platform `src/external/telescope.py` HTTP client + `src/core/meteorite.py` scrape ERROR path). Lives on this plan doc because Ada owns AST-1725 and the UAT handoff assigned this bug to Ada. Does not rewrite Stages 1–4 above or service contract fields beyond what debug already receives from the wire.
+
+### As-is
+
+Batch `scrape_meteorite` yields reproducible ERROR rows whose warning is only `scrape_closed` / `This row is ERROR`, while the platform client has already logged a bare `telescope ok path=/telescope final_url=…`. Telescope HTTP joints emit no `logger.debug` of the request parameters sent or the full raw API response, so debug mode cannot walk the scrape under `stat.logging.debug` / `stat.logging.error`.
+
+### To-be
+
+ERROR outcomes (including `scrape_closed`) carry enough who/why facts to diagnose the close (matched classifier signal, text length, final URL) on the per-item warning and on the row `error` field; with debug on, Telescope client logs show the full request parameter body sent to `/telescope` or `/telescope/html` and the full raw JSON response (no truncation), per logging statutes.
+
+### Repro
+
+1. Dispatch `scrape_meteorite` for candidate `somerset` with several Dice (or similar) job-detail URLs that Telescope fetches successfully but whose visible text matches a `TRACKER_CONFIG["jd_classifier"]["closed_signals"]` phrase (or fixture text containing e.g. `"no longer available"`).
+2. Observe log pairs: `INFO … telescope ok path=/telescope final_url=…` then `WARNING … meteorite <id> for somerset — scrape_closed` / `This row is ERROR` with no signal, length, or URL facts; row `error` column is literally `scrape_closed`.
+3. Re-run the same batch with task `debug=True` (log_debug ContextVar set). Confirm there is still no `Calling _post_telescope: […]` / `Response from _post_telescope: …` (or equivalent) line carrying the request body and full response JSON.
+
+Fixture shape (no DB seed — file/JSON world): any `visible_text` string that contains one entry from `closed_signals` (e.g. `"Sorry, this job is no longer available."`) returned from a successful Telescope JSON `{final_url, text, links?, scrape_meta?}` is enough to hit the ERROR branch without a live Dice fetch.
+
+### Root cause
+
+Two stacked defects on the happy-HTTP / soft-fail-classify path:
+
+1. **Platform Telescope client** (`_post_telescope` / `_post_telescope_html` in `src/external/telescope.py`) logs only an ungated succinct `info` success line. It never emits statute `debug` callee-in / callee-out at the HTTP joint, so operators cannot see request parameters or the raw response when `log_debug` is on. Error/4xx paths also fail to debug-dump the full response body before raising (exception message still may stay short).
+2. **Meteorite scrape ERROR path** (`run_scrape_meteorite` in `src/core/meteorite.py`) sets `err = f"scrape_{page_status}"` (e.g. `scrape_closed`) after `_classify_jd(visible_text)` and passes that bare token to `_row_miss` / `update_meteorite(..., error=err)`. Classification is content-signal based (`TRACKER_CONFIG["jd_classifier"]["closed_signals"]`), but neither the warning nor the persisted `error` records which signal matched, how much text arrived, or the `final_url` — so `telescope ok` + `scrape_closed` looks like a transport success with an unexplained ERROR.
+
+### Proposed change
+
+Scope files (parent Component/Technical): `src/external/telescope.py`, `src/core/meteorite.py`. Call shapes of public scrape helpers and meteorite runners stay unchanged; this is logging + richer ERROR strings on existing branches. No service contract change required for the debug dump (client already has the JSON). Do not absorb AST-1751 (error vs fail counts).
+
+1. **`src/external/telescope.py` — `_post_telescope` and `_post_telescope_html`**
+   - Immediately before `_pool.request(...)`, emit ungated `logger.debug` callee-in with the path and the full `body` dict (request parameters sent). Do **not** log `Authorization` / bearer (headers stay out of the message).
+   - After a successful `resp.json()`, emit ungated `logger.debug` callee-out with the **full** parsed response object (entire dict / JSON-serializable form). Do **not** truncate (`stat.logging.debug` forbids truncation). Keep the existing succinct `info` success one-liner as-is.
+   - On HTTP `status_code >= 400` (before raise): `logger.debug` the full `resp.text` (and status/path); keep raising `PlaywrightInfraError` with a short message for the exception string. Unexpected throws already use warning/exception elsewhere — do not add a second `error` rollup.
+   - Same pattern for both text and html helpers. No `if debug` / `if log_debug.get()` at the call site — ContextVar gates emission.
+
+2. **`src/core/meteorite.py` — `run_scrape_meteorite` ERROR branch (the `err = …` / `_row_miss` / `update_meteorite` path around the non-ok / empty-text outcomes)**
+   - When building `err` for a soft-fail page_status (`closed` / `missing` / empty-ok), compute diagnostic facts:
+     - `page_status`
+     - `final_url` (from `_land_fetch_link_text`)
+     - `text_len=len(visible_text or "")`
+     - for `closed`: first matching string from `TRACKER_CONFIG["jd_classifier"]["closed_signals"]` found in `visible_text` (case-insensitive), labeled e.g. `signal=…`; if somehow none match, `signal=None`
+   - Persist a single diagnostic string on the row: e.g. `error="scrape_closed signal='no longer available' text_len=1842 final_url=https://…"` (same string used as the `_row_miss` `why`). Keep next_step `"This row is ERROR"`.
+   - Still emit one per-item `warning` via `_row_miss` (who + why + next step) — do **not** dump full page HTML on the warning line (`stat.logging.warning` Do/Don't: payload is debug).
+   - On that same soft-fail branch, add ungated `logger.debug` with the full `visible_text` (and page_status / final_url) so debug mode shows the body that drove classification. Do not gate on `if debug`.
+
+3. **Out of this bug:** changing `_classify_jd` return shape; service `service/telescope/` console logger; admin UI; AST-1751 fail/error tally semantics; inventing new closed_signals; truncating or capping debug payloads; touching `tests/` / bible.
+
+### Blast radius
+
+- `src/external/telescope.py` debug volume rises whenever any caller runs with `log_debug` (roster / gazer / meteorite / admin) — expected under the debug statute; info lines stay succinct.
+- Meteorite row `error` strings become longer; anything that displayed the bare token `scrape_closed` in UI/UAT will show the richer string (still one field).
+- Sibling AST-1751 (errors must not count as fails) is orthogonal — do not change `total_failed` / `total_errors` accounting here.
+- Betty may want a repro that asserts warning/error text includes `signal=` / `text_len=` and that debug emits request body + full response; that is fix-board / qa-fix territory.
+
+### What must still hold
+
+- Parent AC / AST-1726 drop-in: public scrape helper names and parameters unchanged; import path remains `telescope`.
+- Meteorite runner call shapes and state machine (`SCRAPE_LINK` → `READY` | `BOT_BLOCKED` | ERROR states via `scrape_page_status_states`) unchanged except richer `error` / warning text on soft-fails.
+- `stat.logging.warning`: one per-item who/why; no HTML dump on warning; no exception for configured soft-fails.
+- `stat.logging.debug`: callee-in / callee-out at Telescope HTTP joints; no truncation; no call-site `if debug` gating.
+- `stat.logging.info`: existing `telescope ok` one-liner remains always-on and succinct.
+- `stat.logging.error`: still only for thrown failures with facts + next step + traceback — soft `scrape_closed` stays warning.
+- No bearer/token in logs; no `src`↔`service` imports; no depth/output caps on debug content; AST-1751 tally rules untouched.
