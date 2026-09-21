@@ -2062,17 +2062,17 @@ class TestAst1668UnboundAndRecognition:
         contact_mod._seen_event_ids.clear()
 
     def test_list_unbound_omits_bound_ids(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1738: unbound source becomes list_workspace_members; keep posters stub so
+        # pre-fix trees still exercise the filter until make-fix lands.
+        pool = [
+            {"slack_user_id": "U_FREE", "username": "free"},
+            {"slack_user_id": "U_BOUND", "username": "bound"},
+            {"slack_user_id": "  ", "username": "blank"},
+            "skip",
+        ]
+        monkeypatch.setattr(contact_mod, "list_workspace_posters", MagicMock(return_value=pool))
         monkeypatch.setattr(
-            contact_mod,
-            "list_workspace_posters",
-            MagicMock(
-                return_value=[
-                    {"slack_user_id": "U_FREE", "username": "free"},
-                    {"slack_user_id": "U_BOUND", "username": "bound"},
-                    {"slack_user_id": "  ", "username": "blank"},
-                    "skip",
-                ]
-            ),
+            contact_mod, "list_workspace_members", MagicMock(return_value=pool), raising=False
         )
 
         def _lookup(sid: str, *, debug: bool = False):
@@ -2166,3 +2166,35 @@ class TestAst1668UnboundAndRecognition:
         turn.assert_not_called()
         paste.assert_not_called()
         assert "hear_ack_post" not in out
+
+
+# Branches: unbound from members when posters empty (AST-1738 bug-repro).
+class TestAst1738UnboundMembersNotPosters:
+    """[bug-repro] empty poster pool must not empty the unbound bind list."""
+
+    def test_unbound_lists_members_when_posters_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pre-fix: list_unbound_slack_users only calls list_workspace_posters → [].
+        # Post-fix: calls list_workspace_members → humans below.
+        members = [
+            {"slack_user_id": "U_FREE", "username": "free.user"},
+            {"slack_user_id": "U_BOUND", "username": "bound.user"},
+        ]
+        posters = MagicMock(return_value=[])
+        monkeypatch.setattr(contact_mod, "list_workspace_posters", posters)
+        monkeypatch.setattr(
+            contact_mod,
+            "list_workspace_members",
+            MagicMock(return_value=members),
+            raising=False,
+        )
+
+        def _lookup(sid: str, *, debug: bool = False):
+            return "c1" if sid == "U_BOUND" else None
+
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", _lookup)
+        out = contact_mod.list_unbound_slack_users()
+        assert out == [{"slack_user_id": "U_FREE", "username": "free.user"}]
+        posters.assert_not_called()
+
