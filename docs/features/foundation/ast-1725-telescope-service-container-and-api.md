@@ -748,3 +748,6 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 - Explicit CSS selectors (including bare-class retry from AST-1731) still resolve the same nodes; only the per-node text extraction changes.
 - Zero `src` imports under `service/telescope/`; capture stays browser-only.
 - Boundaries: no Railway/CI, no platform `telescope.py` post-render fork of this strip, no Surfer extension.
+## Radia review-fix (AST-1733)
+
+Overall: CLEAN. Clean-review shortcut → User Testing (resolve skipped).
