@@ -220,7 +220,7 @@ export default function AgentTimesheets() {
         selectable
         onSelectionChange={setSelectedRows}
         idField="agent_req_id"
-        actions={<button className="timesheet-export-btn" onClick={handleExport}>Export CSV</button>}
+        actions={<button className="btn primary" onClick={handleExport}>Export CSV</button>}
       />
     </div>
   )

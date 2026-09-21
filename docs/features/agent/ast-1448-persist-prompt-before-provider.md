@@ -1,0 +1,322 @@
+<!-- linear-archive: AST-1448 archived 2026-09-09 -->
+
+## Linear archive (AST-1448)
+
+**Archived:** 2026-09-09  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1448/persist-prompt-before-provider-write-to-agent-data-before-calling-the  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1442 — write to agent_data BEFORE calling the prompt, save the response when it comes back.  
+**Blocked by / blocks / related:** parent: AST-1442
+
+### Description
+
+## What this implements
+
+Every stored LLM call (production task run and Ad Hoc workbench Test) commits assembled prompt segments to agent_data before the provider is called, and writes RESPONSE only after return. Kill or restart mid-call leaves those prompt rows queryable by batch. Does not own UI, timesheets, state transitions, storage-off Ad Hoc, or a new table.
+
+## Citations
+
+`pattern.agent.prompt-persist-before-provider` (proposed), `pattern.batch.entity-agent-responses`, `astral.agent.do-task-delegation`, `astral.batch.entity-agent-responses-latest-only`, `astral.standards.debug-contract-gated`, `astral.layers.core-vs-external-bright-line`.
+
+## Acceptance criteria
+
+- [X] On a stored production task run, agent_data contains the prompt segments for that batch before the provider call is issued — verifiable by reading the batch while a call is in flight, or by killing mid-call and reading afterward.
+- [X] On a stored Ad Hoc workbench Test, the same: prompt segments are present even if the call is interrupted and no RESPONSE exists.
+- [X] When the provider returns successfully, a RESPONSE row is written with the same success body rules as today.
+- [X] When the provider returns a failure, a RESPONSE failure-audit row is written as today.
+- [X] After kill or restart mid-call: prompt rows for that batch are present; RESPONSE may be absent; a later successful run writes its own prompt and RESPONSE without corrupting the interrupted batch's prompt rows.
+- [X] A storage-off call writes no agent_data rows.
+- [X] When debug is on, prompt persist emits per-block found/recorded (index N/M) before the provider call; RESPONSE persist still emits after return. When debug is off, no new debug-contract lines.
+- [X] Latest-per-task and agent story still require a RESPONSE — a prompt-only interrupted batch does not become the latest story entry.
+
+## Boundaries
+
+- [X] Does not own UI for prompt-only batches, timesheets, entity state on kill, storage-off Ad Hoc, import agent data (AST-1439), or Ad Hoc seven-segment editors (AST-1403). Does not change block types, compression, content-dedup refs, or entity_id stamping.
+
+## Notes for planning
+
+This child introduces `pattern.agent.prompt-persist-before-provider` once Archie approves the catalog id. One inseparable sequencing invariant across the two stored call sites.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1442-write-to-agent-data-before-calling-the-prompt`,
+child `sub/AST-1442/<this-id>-persist-prompt-before-provider`. Created at dispatch-parent.
+
+## QA test manifest
+
+Narrowed `test-child` run (pytest green — not zero-arg harness / branch-lock):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key \
+  -q
+```
+
+1. Existing coverage: `TestDoTask` API-failure store; `TestDoTaskStorageFailures` swallow; `TestAst515AdhocWorkbenchLedger` (prompt still stored once); `TestAst984EntityColumnRetired::test_list_latest_per_task_key` (latest-per-task is RESPONSE-gated).
+2. Broken/obsolete: none — `_store_prompt_blocks` still once; order moved before the provider await.
+3. New: `tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider` — `do_task` prompt-before-`send_to_anthropic` and RESPONSE after; provider raise leaves prompt only; `store_agent_data=False` writes nothing; persist exception still calls provider; later success uses a new `batch_id`; workbench Test same vs `run_adhoc`; bare `run_adhoc` stores nothing; debug found/recorded before await and silent when `debug=False`; prompt-only rows are not `list_entity_latest_agent_refs`.
+
+Bible: `docs/test-bible/core/agent.md` shasum `1d11d592de93c507caa2e29973fd39801472190c` (`git show origin/sub/AST-1442/AST-1448-persist-prompt-before-provider:docs/test-bible/core/agent.md | shasum`).
+
+### Comments
+
+#### radia — 2026-08-19T20:04:50.102Z
+[code-rubric] PROCEED (Commit: 3688da45fdc5a2abf4bc097e37e1e022ac51c597) persist-before-provider clean
+
+#### betty — 2026-08-19T16:52:22.042Z
+`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider` @ `3688da45` · persist-before-provider tests
+
+#### joan — 2026-08-19T16:37:27.861Z
+[plan-rubric] PROCEED (Commit: ecf7bbbe2640a391a61e49ab7a9834f131ea0952) Persist-before-provider plan
+
+#### ada — 2026-08-19T16:32:17.637Z
+`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider` @ `ecf7bbbe` · persist-before-provider plan
+
+---
+
+# AST-1448 — Persist prompt before provider
+
+- **Linear:** [AST-1448](https://linear.app/astralcareermatch/issue/AST-1448)
+- **Parent:** [AST-1442](https://linear.app/astralcareermatch/issue/AST-1442)
+- **Publish ref:** `sub/AST-1442/AST-1448-persist-prompt-before-provider`
+
+Stored LLM calls (production `do_task` and Ad Hoc workbench Test) currently assemble prompt segments, await the provider, then write those segments to `agent_data`. A kill or restart during the await leaves no durable prompt. This ticket commits the same `_store_prompt_blocks` writes **before** `send_to_anthropic` / `send_to_deepseek` / `run_adhoc`, then writes RESPONSE only after return. `save_agent_data` already `conn.commit()`s per row, so those prompt rows are queryable by `batch_id` while the call is in flight. Storage-off paths stay storage-off. Latest-per-task / agent story stay RESPONSE-gated (`list_entity_latest_agent_refs` filters `block_type = 'RESPONSE'`). Catalog lands `pattern.agent.prompt-persist-before-provider` as **`status: proposed`** (`proposed_in: AST-1442`); product code does not look up that id.
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `canon/patterns/agent/pattern.agent.prompt-persist-before-provider.md` | New proposed catalog entry | docs |
+| `canon/patterns/README.md` | Add the new row; bump proposed count | docs |
+| `canon/patterns/HARVEST.md` | Add supporting-package + crosswalk rows | docs |
+| `src/core/agent.py` | Persist prompt segments before provider at both stored call sites; RESPONSE stay after return | core |
+
+Do **not** edit: `src/data/database.py` (`save_agent_data` already commits), `src/external/anthropic.py`, `src/external/deepseek.py`, `src/core/timesheets.py`, `src/utils/config.py` (`BLOCK_TYPES` / `ENTITY_TYPES` unchanged), `src/ui/**`, `run_adhoc` (storage-off), hop ledger / entity state transitions, `tests/`, bible.
+
+## Stage 1: Propose the persist-before-provider catalog entry
+
+**Done when:** `canon/patterns/agent/pattern.agent.prompt-persist-before-provider.md` exists with SCHEMA frontmatter `status: proposed`, `proposed_in: AST-1442`, `approved_by: null`, `approved_at: null`. README and HARVEST list it. No `src/` changes in this stage.
+
+1. Create directory `canon/patterns/agent/` if missing. Add `canon/patterns/agent/pattern.agent.prompt-persist-before-provider.md` with this frontmatter and body (no extra frontmatter keys):
+
+```yaml
+---
+id: pattern.agent.prompt-persist-before-provider
+name: Persist assembled prompt before provider call
+status: proposed
+proposed_in: AST-1442
+approved_by: null
+approved_at: null
+canonical_refs:
+  - path: src/core/agent.py
+    symbol: do_task
+  - path: src/core/agent.py
+    symbol: run_adhoc_workbench_test
+  - path: src/core/agent.py
+    symbol: _store_prompt_blocks
+related_statutes:
+  - astral.agent.do-task-delegation
+  - astral.batch.entity-agent-responses-latest-only
+  - astral.layers.core-vs-external-bright-line
+  - astral.standards.debug-contract-gated
+  - astral.batch.batch-id-first
+supersedes: null
+superseded_by: null
+---
+```
+
+Body sections in SCHEMA order:
+
+- `# Problem` — Prompt segments are only written after the provider returns, so a kill or process restart during the await leaves no durable record of what was sent.
+- `# Solution shape` — When `agent_data` storage is on, commit assembled prompt segments via existing `_store_prompt_blocks` / `save_agent_data` **before** the external provider await; write RESPONSE after return (success body or failure-audit, same as today). Prompt writes are best-effort: a failed prompt write must not abort the provider call. Persist stays in core; provider I/O stays in external. Latest-per-task and agent story remain RESPONSE-gated. Point at `canonical_refs` — do not paste large code.
+- `## When not to use` — bullets: storage-off calls (`store_agent_data=False`, bare `run_adhoc`); writing timesheets before the provider returns; treating a prompt-only interrupted batch as latest story / latest-per-task; aborting the provider call because prompt persist failed; adding a new table or block type; UI for prompt-only batches.
+- `## Notes` — Implementation must not depend on this catalog id until `status: approved` (AUTHORING). This child lands the file as proposed and implements the sequencing invariant; Archie sets approved later.
+
+2. In `canon/patterns/README.md`, update the harvested-corpus sentence that currently says three entries are `status: proposed` to **four**. Add this table row after the last proposed row (`pattern.ui.in-place-live-refresh`):
+
+   `| \`pattern.agent.prompt-persist-before-provider\` | proposed | \`agent/pattern.agent.prompt-persist-before-provider.md\` |`
+
+3. In `canon/patterns/HARVEST.md`, add a supporting-package row:
+
+   `| persist prompt before provider | \`pattern.agent.prompt-persist-before-provider\` |`
+
+   and a Crosswalk row:
+
+   `| create (AST-1442) | \`pattern.agent.prompt-persist-before-provider\` | agent | \`agent/pattern.agent.prompt-persist-before-provider.md\` | AST-1442 | proposed — commit prompt segments before provider await; RESPONSE after return |`
+
+⚠️ **Decision:** Land the catalog id as **proposed**, not approved. AUTHORING forbids implementation *depending on* an unapproved id; the product change is a call-order move that does not import or look up the id. Do not edit `docs/ASTRAL_CODE_RULES.md` in this ticket.
+
+## Stage 2: `do_task` — prompt persist before provider await
+
+**Done when:** In `do_task`, `_store_prompt_blocks` runs after `_assemble_blocks_seven_segment` and **before** `await send_to_anthropic` / `await send_to_deepseek`. `_store_response_block` (success and failure-audit) still runs only after those awaits return. `_should_store` is still `store_agent_data and batch_id and entity_type`. Persist failure still does not skip the provider call. `store_agent_data=False` still writes no prompt or RESPONSE rows. Prompt-block kwargs (`entity_id=index if index else None`, `caches_resolved_four=(rca or "", rcb or "", rcc or "", rcd or "")`, etc.) are unchanged. When `debug=True`, `_store_prompt_blocks` Style D found/recorded (index N/M) emits before the await; `_store_response_block` still emits after return. When `debug=False`, this path adds no new debug-contract lines. `python3 -m py_compile src/core/agent.py` passes.
+
+1. In `src/core/agent.py` `do_task`, immediately **after** the post-assemble `if debug:` block that logs `llm_params` / `blocks system=...` (the block that ends with `runtime_prompt_segments={len(runtime_prompt)}`) and **before** `if provider == "anthropic":`, insert the existing persist setup **verbatim** (same kwargs, same `try`/`except Exception` + `logger.debug("_store_prompt_blocks failed", exc_info=True)`):
+
+```python
+    prompt_blocks: List[Dict[str, str]] = []
+    _should_store = store_agent_data and batch_id and entity_type
+    if _should_store:
+        try:
+            prompt_blocks = _store_prompt_blocks(
+                entity_type=entity_type,
+                task_key=task_key,
+                batch_id=batch_id,
+                system_content=system_content,
+                caches_resolved_four=(rca or "", rcb or "", rcc or "", rcd or ""),
+                nocache_content=nocache_content,
+                user_content=user_content,
+                live_content=live_content,
+                debug=debug,
+                entity_id=index if index else None,
+            )
+        except Exception:
+            logger.debug("_store_prompt_blocks failed", exc_info=True)
+```
+
+2. **Delete** the duplicate persist block that currently sits after `result["runtime_prompt"] = runtime_prompt` (the comment `# Store prompt blocks in agent_data (non-blocking; best-effort)` through the `_store_prompt_blocks` `except`). Leave `result["runtime_prompt"] = runtime_prompt` and the following provider-failure `logger.error` / `if not result.get("success"):` RESPONSE audit store unchanged.
+
+3. Do **not** call `_store_prompt_blocks` a second time after the await. Do **not** move `_store_response_block`, timesheet recording (`record_timesheet` on the external send), hop ledger close, or validation/decode. Do **not** add a new persist helper — relocate this call only. Do **not** treat persist failure as fatal: keep the `except Exception` swallow.
+
+⚠️ **Decision:** Relocate the existing call rather than wrap persist+await in a new function. One sequencing change, same helper, same best-effort contract. Durability is the existing `save_agent_data` `conn.commit()` per row — do not add a data-layer flush.
+
+## Stage 3: Workbench Test — prompt persist before `run_adhoc`
+
+**Done when:** `run_adhoc_workbench_test` writes prompt segments after ledger `RUNNING` and **before** `await run_adhoc(...)`. RESPONSE (success stringify / failure-audit) still runs only after `run_adhoc` returns a result dict. Bare `run_adhoc` still writes no `agent_data`. If `run_adhoc` raises, the existing inner `except` still marks the ledger FAILED and re-raises; prompt rows already committed for that `batch_id` remain. Persist failure still does not skip `run_adhoc`. `python3 -m py_compile src/core/agent.py` passes.
+
+1. In `run_adhoc_workbench_test`, **move** the existing `_store_prompt_blocks` `try`/`except` (the block that uses `caches_resolved_four=(cache_content or "", cache_content_b or "", ...)` and `entity_id=entity_id if entity_id else None`) to immediately **before** `result = await run_adhoc(`, still **inside** the outer `try` and **outside** the inner `except Exception` that marks ledger FAILED (persist must not be treated as a workbench crash). Keep the swallow:
+
+```python
+        try:
+            _store_prompt_blocks(
+                entity_type=entity_type,
+                task_key=workbench_task_key,
+                batch_id=batch_id,
+                system_content=system_content,
+                caches_resolved_four=(
+                    cache_content or "",
+                    cache_content_b or "",
+                    cache_content_c or "",
+                    cache_content_d or "",
+                ),
+                nocache_content=nocache_content,
+                user_content=user_content,
+                live_content=live_content,
+                debug=debug,
+                entity_id=entity_id if entity_id else None,
+            )
+        except Exception:
+            logger.debug("_store_prompt_blocks failed", exc_info=True)
+
+        try:
+            result = await run_adhoc(
+```
+
+2. **Delete** the post-`run_adhoc` `_store_prompt_blocks` block (the one currently after the inner `except` / `raise` and before `if not result.get("success"):`). Leave ledger updates, `_store_response_block` success/failure, `compute_batch_cost`, `result["batch_id"] = batch_id`, and the `finally` log flush unchanged.
+
+3. Do **not** add `store_agent_data` or `_store_prompt_blocks` inside `run_adhoc`. Do **not** change Preview (`adhoc_preview` / `_resolve_adhoc`). Do **not** change `BLOCK_TYPES`, compression, content-dedup, or entity_id stamping kwargs.
+
+⚠️ **Decision:** Workbench persist stays in `run_adhoc_workbench_test`, not inside storage-off `run_adhoc`. That keeps the two stored call sites (`do_task` and workbench Test) as the only persist-before-provider surfaces.
+
+## Execution contract
+
+- Execute stages in order. One commit per stage on this epic worktree, then `git push origin HEAD:sub/AST-1442/AST-1448-persist-prompt-before-provider`.
+- Do not add files, config blocks, tables, routes, or UI not listed above.
+- Do not edit `tests/` or the bible. Existing component tests that assert `_store_prompt_blocks` was called once after a mocked provider **returns** still hold (call still happens once). Betty owns any new in-flight / kill-mid-call order assertion.
+- If a referenced helper signature has drifted, stop and comment on **AST-1442** with the Stage N blocked template — do not improvise.
+
+## Pattern / statute map (this ticket)
+
+| Id | Role |
+|----|------|
+| `pattern.agent.prompt-persist-before-provider` | Introduced as proposed (Stage 1); sequencing in Stages 2–3 |
+| `pattern.batch.entity-agent-responses` | Reuse — latest-per-task stays RESPONSE-gated; do not change `list_entity_latest_agent_refs` |
+| `astral.agent.do-task-delegation` | Core still delegates I/O through `send_to_*`; reorder persist vs await inside `do_task` |
+| `astral.batch.entity-agent-responses-latest-only` | Prompt-only interrupted batches must not become latest story |
+| `astral.layers.core-vs-external-bright-line` | Persist stays in core; provider I/O stays in external |
+| `astral.standards.debug-contract-gated` | Prompt found/recorded before await; RESPONSE after return; quiet when `debug=False` |
+| `astral.standards.database-header-inventory` | No new tables |
+| `astral.standards.dry-and-focused-functions` | Reuse `_store_prompt_blocks`; do not fork a second store path |
+| `astral.standards.in-scope-only` | Sequencing + durability of existing writes only |
+| `astral.standards.data-raises-caller-logs` | No data-layer logging; persist failure remains `logger.debug` in core |
+| `astral.batch.batch-id-first` | Prompt and RESPONSE rows keep the existing `batch_id` |
+
+## Estimate
+
+Confirm Chuckles estimate: 3 — agree
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`  
+**Product commits:** `f94263a3` (Stage 1 — proposed `pattern.agent.prompt-persist-before-provider`), `cb2196fe` (Stage 2 — `do_task` persist before provider), `6b2fafc9` (Stage 3 — workbench persist before `run_adhoc`)
+
+`_store_response_block`, timesheets, `run_adhoc` storage-off, `database.py`, UI, and `BLOCK_TYPES` left untouched.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1448
+**Overall:** APPROVED
+**Commit:** `ecf7bbbe2640a391a61e49ab7a9834f131ea0952` (`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`)
+
+## Traceability
+AC1 production persist-before-call → S2; AC2 workbench Test same → S3; AC3–4 RESPONSE success/failure after return → S2–S3 (do not move `_store_response_block`); AC5 kill/restart prompt-only + later run on a new `batch_id` → S2–S3 relocate-only; AC6 storage-off → S2 `_should_store` / S3 no persist in `run_adhoc`; AC7 debug found/recorded before await, RESPONSE after, quiet when off → S2; AC8 latest-per-task stays RESPONSE-gated → S2–S3 (no `list_entity_latest_agent_refs` edit); S1 → parent New patterns proposed (`pattern.agent.prompt-persist-before-provider` as `status: proposed`, no runtime id lookup).
+
+**Findings**
+
+- **acceptable** — Stage 1 README: insert-after `pattern.ui.in-place-live-refresh` is stale; current last `proposed` row is `pattern.dispatch.run-next-chain-authority`. Engineer should bump the harvested-corpus proposed count to four and add the new row with the other proposed entries; not a definition miss.
+- No `fix-now`. No R3 `violates`. R5 maps. R6: files stay `core` + `canon/patterns`; no new tables/config/`ui`; reuse `_store_prompt_blocks`; `save_agent_data` already `conn.commit()`s per row; AUTHORING “must not depend on unapproved id” is honored (catalog file only). Cited reuse patterns resolve `status: approved`. Parent AC and this child’s AC match.
+
+R1–R4 executed in-session (universal set scored; scoped exclusions are layer/path misses: `data`/`ui`/`utils`/`scripts`/`tests`/`docs/features/**`/seed-admin paths). Slim R7: statute table not appended.
+
+context_tokens≈48000
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1448
+**Publish ref:** `3688da45fdc5a2abf4bc097e37e1e022ac51c597` (`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`)
+**Overall:** CLEAN
+
+**Diff change set** (`origin/dev...3688da45`): layers `core` + `docs`; change_types `add` + `modify`. AST-1448 product: `src/core/agent.py`, proposed catalog + patterns README/HARVEST, issue doc. Betty: `tests/component/core/test_agent_ast1448.py`, `docs/test-bible/core/agent.md`. Also on three-dot via `test(AST-1450)` + `merge-tests`: `docs/test-bible/frontend/components.md`, `tests/component/frontend/components/test_NavigationShell.test.tsx` — not this child's Files Changed.
+
+**Statutes checked:** Full harvested active set (64 ids). Universal never `not-applicable`. All scoped statutes conform or not-applicable per layer/path miss.
+
+**Pattern conformance:** `pattern.batch.entity-agent-responses` conforms; `pattern.agent.prompt-persist-before-provider` conforms (introduced as `status: proposed`).
+
+**Plan adherence:** Stages 1–3 match issue doc; estimate 3 matches relocate + proposed catalog.
+
+**Findings:** *(none — no fix-now / discuss)*
+
+**advisory:** Three-dot also contains AST-1450 NavigationShell / frontend bible via `test(AST-1450)` + `merge-tests`. Out of AST-1448 Files Changed.
+
+**advisory:** Pre-await persist dropped the old "non-blocking; best-effort" comment — matches plan "verbatim" snippet.
+
+**What's solid:** Call-order only, same kwargs, RESPONSE/timesheets/external untouched, catalog proposed with no runtime id lookup.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/28986dcb8aa0b05dd3cbc597098f0878/44f7e36b-5c91-4faf-809b-7693f77d7399/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/fd24db40-ab19-4f51-a863-46b00b2dd549/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/28986dcb8aa0b05dd3cbc597098f0878/a0e4c02e-db8d-49a1-8995-7cc0dc8205c1/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1442 (parent) | ftr/AST-1442-write-to-agent-data-before-calling-the-prompt |
+| AST-1448 | sub/AST-1442/AST-1448-persist-prompt-before-provider |
+
+**Epic worktree:** `astral-AST-1442/` — one active sub checked out at a time.

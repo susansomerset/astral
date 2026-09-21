@@ -1,3 +1,226 @@
+<!-- linear-archive: AST-1101 archived 2026-08-11 -->
+
+## Linear archive (AST-1101)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1101/uat-channel-estelle-no-contact-hear-evidence-activity-reply  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1043 — Slack Bot Agent  
+**Blocked by / blocks / related:** parent: AST-1043
+
+### Description
+
+## What failed
+
+Staging Slack Event Subscriptions Request URL verifies (challenge OK). Manage Slack listen is on. @Estelle in a Slack channel produces no UAT-visible evidence that Contact accepted the event (no Manage Slack @Estelle-users activity row, no non-prod reply / hear signal).
+
+## Expected
+
+With listen **on** and Estelle in the channel: channel `@Estelle` reaches Contact (`app_mention`). Manage Slack lists the Slack user (bind status, msg count, last channel/ts). Non-production replies use the `[<environment>]` prefix when Contact posts a reply.
+
+## Repro
+
+1. Staging: Request URL verified; Admin → Manage Slack listen **on**.
+2. Confirm Estelle is a **member** of the test channel; Event Subscriptions include bot event `app_mention`.
+3. In that channel, `@Estelle` with a short message.
+4. Open Admin → Manage Slack — activity list does not show the Slack user / last message.
+5. Observe Slack thread/channel — no Contact `[staging]` (or deploy-label) reply / hear signal.
+
+## Parent AC (quoted inline)
+
+> 2. Slack Event Subscriptions Request URL points at Astral’s production Contact webhook; signed events are verified and ack’d; Estelle-relevant DMs/@-mentions reach Contact when Manage Slack listen is on.
+> 3. Admin **Manage Slack** exposes a per-environment listen/respond switch; when off, Contact does not respond; when on for non-production, replies are prefixed with `[<environment>]`.
+> 4. Admin **Manage Slack** lists Slack users who have @'ed Estelle: bind success/fail to an Astral candidate, inbound message count from that Slack user, and timestamp + channel of the last message seen.
+
+(Parent AC #9 is the list; bug text numbered it as 4 in Expected — plan cites Parent AC #2, #3, #9.)
+
+## Diagnosis
+
+* **Hypothesis:** Channel `app_mention` is not completing Contact’s accept path on staging (listen durable state still off in-process, event filtered, or post-ack `handle_slack_event` / activity record / reply path failing silently). HTTP challenge success only proves verify+challenge — not that `@` events are accepted and recorded.
+* **Correct outcome:** `@Estelle` in a joined channel with listen on → Contact accepts; Manage Slack activity row updates; non-prod outbound (when Contact replies) carries `[<environment>]`.
+* **Wrong fix to avoid:** Fabricating activity rows without a real accept; switching production ingress to Socket Mode; swallowing async handler errors; treating “no conversational envelope” as done while AC #2/#3/#9 still fail.
+* **Related siblings / contracts:** AST-1069 (Events ingress), AST-1067 (listen + prefix), AST-1068 (resolve/PROSPECT), AST-1094 (activity list), AST-1070 (context cache) — must still hold. Full Estelle dialogue quality remains AST-1046; this bug is hear/accept + UAT evidence only.
+
+## Boundaries
+
+* This bug does **not** change: Slack app install wizard UX, Socket Mode as production transport, full conversational rubric/envelope ownership on AST-1046 beyond existing Contact turn post helper.
+* "No more stacktrace / no more error" alone is **not** done — Parent AC #2 + #3 + #9 + Correct outcome must hold.
+
+## Acceptance criteria
+
+- [X] With listen on, channel `@Estelle` is accepted by Contact (`app_mention`).
+- [X] Manage Slack activity row updates for that Slack user (bind, count, last channel/ts).
+- [X] Non-prod outbound (Estelle turn reply or hear-ack fallback) is prefixed with `[<environment>]`.
+- [X] No fabricated activity without a real accept; verify/ack/challenge unchanged.
+
+## In scope
+
+- [X] `pattern.core.contact-agent` (proposed) — listen re-read, Events background log wrap, hear-ack fallback
+- [X] `pattern.config.config-block` — `CONTACT_CONFIG["hear_ack_reply_text"]`
+- [X] `astral.config.config-source-of-truth` — hear-ack copy from config
+- [X] `astral.standards.debug-contract-gated` — Style D on hear-ack when `debug=True`
+- [X] `astral.standards.logging-via-utils` — background handler errors via `get_logger`
+- [X] `astral.standards.in-scope-only` / `astral.standards.no-cross-contamination` — siblings held
+- [X] `astral.ui.single-gunicorn-worker` — durable listen file SoT; no multi-worker invent
+- [X] `astral.layers.import-direction` — core only; UI/external signatures unchanged
+
+## Considered but excluded
+
+- [X] `pattern.external.slack-events` changes to verify/challenge — AST-1069 held
+- [X] `pattern.ui.admin-endpoint` / Manage Slack React — AST-1094 list shape held
+- [X] `astral.standards.database-header-inventory` — no new SQLite table
+- [X] Socket Mode production transport
+- [X] Estelle envelope / TASK_CONFIG schema — AST-1072 / AST-1046
+- [X] Fabricating activity without accept
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1043-slack-bot-agent`; child `sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence`. Created at fix-uat.
+
+## Plan
+
+`docs/features/contact/ast-1101-uat-channel-at-estelle-no-hear-evidence.md` @ `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence` tip `e15c6174`.
+
+### Comments
+
+#### radia — 2026-07-31T04:46:16.844Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1101
+**Publish ref:** `f695eea8` on `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence`
+**Overall:** CLEAN
+
+**Diff change set:** `origin/dev...f695eea8` — layers `{core, utils, docs}`; change_types `{add, modify}`; 7 focused paths for UAT hear evidence (Parent AC #2/#3/#9).
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | hear_ack_reply_text in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under docs/features — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file AST-1101 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/merge-tests touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer code() commits touch src only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no external edits; post via contact_post_message |
+| astral.layers.import-direction | scoped | conforms | core+utils only; UI/external signatures unchanged |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** in tip |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no ui layer in three-dot tip |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | no ui/** in tip |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer in tip |
+| astral.standards.database-header-inventory | scoped | not-applicable | no data/** in tip |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D on hear-ack when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | small background wrapper + hear-ack block |
+| astral.standards.in-scope-only | scoped | conforms | no Socket Mode / envelope / activity schema ownership |
+| astral.standards.logging-via-utils | scoped | conforms | background failures via get_logger |
+| astral.standards.no-cross-contamination | scoped | conforms | three-dot tip is 7 focused paths |
+| astral.standards.no-hardcoded-sets | scoped | conforms | hear-ack copy from CONTACT_CONFIG |
+| astral.standards.public-then-helpers | scoped | conforms | private _run_handle_slack_event_background |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config has no data import |
+| astral.state.core-decides-transitions | scoped | conforms | no state transition ownership |
+| astral.state.job-prior-states-enforced | scoped | conforms | no job prior-state edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend in tip |
+| astral.ui.naming-conventions | scoped | not-applicable | no ui/** in tip |
+| astral.ui.single-gunicorn-worker | scoped | conforms | durable listen re-read; no multi-worker invent |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests SHA 2a3ea72c |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1101-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | tip tree vs origin/dev focused; no lost AST-1017 paths |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1101-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions held (re-read listen; hear-ack fallback) |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 land as planned |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authorship |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns test/bible + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Hedy through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Hedy remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.core.contact-agent (proposed) | conforms | listen re-read + Events log wrap + hear-ack |
+| pattern.config.config-block | conforms | CONTACT_CONFIG hear_ack_reply_text |
+
+## Plan adherence
+
+Stages 1–2 match: `hear_ack_reply_text`, remove once-hydrate, background exception log, hear-ack only when accepted + channel and Estelle `slack_post.ok` is not True, via `format_contact_reply_text` + `contact_post_message`. Self-Assessment Single-Component / high / Medium matches footprint. Sibling boundaries held.
+
+## Findings
+
+None.
+
+## What’s solid
+
+Sticky listen hydrate removed; daemon thread failures logged; hear-ack is fallback not fabricated activity; prefix still only via AST-1067 helper; no verify/challenge/UI edits.
+
+## Notes
+
+no plan-rubric verdict attached
+
+Plan append: `docs/features/contact/ast-1101-uat-channel-at-estelle-no-hear-evidence.md` @ `f695eea8`.
+
+context_tokens≈38000
+
+— Radia
+
+#### betty — 2026-07-31T04:43:41.607Z
+QA manifest (FIX-UAT) — `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence` @ `2a3ea72c` (`merge-tests(AST-1101): origin/tests af1e289b`).
+
+1. `tests/component/utils/test_config.py::TestAst1101HearAckConfig` — `hear_ack_reply_text` non-empty
+2. `tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence` — durable listen re-read; hear-ack + `[staging]` prefix when turn does not post; skip hear-ack when turn posted; listen_off; background wrapper logs
+3. `tests/component/core/test_contact.py::TestAst1094EstelleActivity` — activity still records on accept
+4. `tests/component/core/test_contact.py::TestAst1069ContactSlackIngress` — verify/ack/challenge + accept path still green
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1101HearAckConfig \
+  tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence \
+  tests/component/core/test_contact.py::TestAst1094EstelleActivity \
+  tests/component/core/test_contact.py::TestAst1069ContactSlackIngress \
+  -q
+```
+
+Bible sha256 @ publish tip:
+- `docs/test-bible/utils/config.md` `33ec54025de838c380081d0a3267c2bb1732bb8dbb0f82f6ef3032cdeb42fad5`
+- `docs/test-bible/core/contact.md` `582e1b85c37727d41df3f8257dedef1b3bce51edd270466860066faff9ff14f6`
+
+— Betty
+
+#### hedy — 2026-07-31T04:38:59.046Z
+Plan published on `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence` @ `433daed0`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence/docs/features/contact/ast-1101-uat-channel-at-estelle-no-hear-evidence.md
+
+**Scope:** `Single-Component` — Contact listen re-read + Events background log wrap + hear-ack fallback; one CONTACT_CONFIG string.
+
+**Conf:** `high` — AST-1067 durable listen, AST-1094 activity-on-accept, AST-1073 prefix+post already exist; sticky hydrate + silent thread + turn-post gap match UAT.
+
+**Risk:** `Medium` — double-reply if “posted” detection wrong; gated on `slack_post.ok is True` before skipping hear-ack.
+
+---
+
 # AST-1101 — UAT: Channel @Estelle — no Contact hear evidence (activity / reply)
 
 **Linear:** [AST-1101](https://linear.app/astralcareermatch/issue/AST-1101/uat-channel-estelle-no-contact-hear-evidence-activity-reply)  
