@@ -311,6 +311,41 @@ class TestCullHtmlDefault:
         culled.assert_not_called()
 
 
+class TestAst1745CullPreservesRootSvgLogo:
+    """AST-1745 bug-repro — class-scoped svg.logo outerHTML must survive _cull_html."""
+
+    def test_cull_html_preserves_root_svg_logo_outerhtml(self) -> None:
+        # Susan's exemplar shape: single-root svg.logo fragment from class filter.
+        frag = (
+            '<svg id="bLogo" role="img" class="logo" viewBox="0 0 24 24" '
+            'aria-label="Microsoft Logo Image" fill="none" tabindex="0">'
+            '<g class="squares">'
+            '<path fill="#f26522" d="M11.4 0H0v11.4h11.4z"></path>'
+            '<path fill="#8dc63f" d="M23.9 0H12.5v11.4H24z"></path>'
+            "</g></svg>"
+        )
+        out = pw_mod._cull_html(frag)
+        assert out.strip() != "", (
+            "AST-1745: _cull_html must not erase a root svg.logo class-scoped fragment"
+        )
+        assert "<svg" in out.lower(), "AST-1745: root svg element must remain"
+        assert "logo" in out
+        assert "bLogo" in out or "viewBox" in out
+
+    def test_cull_html_still_strips_nested_svg_under_page_content(self) -> None:
+        # Whole-page / job HTML: nested decorative svgs stay culled.
+        html = (
+            "<div class=\"job\"><p>Acme role</p>"
+            '<svg class="icon" viewBox="0 0 8 8"><circle r="4"></circle></svg>'
+            "</div>"
+        )
+        out = pw_mod._cull_html(html)
+        assert "Acme role" in out
+        assert "<svg" not in out.lower(), (
+            "AST-1745: nested svg under non-svg roots must still be culled"
+        )
+
+
 # Branches: no platform playwright module (AST-1726 AC6).
 class TestPlaywrightModuleGone:
     def test_src_external_playwright_import_fails(self) -> None:

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 # querySelectorAll; bare CSS ident with zero hits → retry as .{selector}.
 _BARE_CLASS_RETRY = """
@@ -37,19 +37,17 @@ _QUERY_HTML_JS = (
 }"""
 )
 
-# Scoped links: same bare→.class retry as html/text (AST-1736), then collect under roots.
+# Scoped links: bare→.class retry (AST-1736); emit every http(s) anchor under roots.
+# Href merge + text[] lives in `_dedupe_links_by_href` (AST-1747), not first-wins JS.
 _QUERY_LINKS_JS = (
     """(selector) => {"""
     + _BARE_CLASS_RETRY
     + """
-    const roots = nodes;
-    const seen = new Set();
     const out = [];
-    for (const root of roots) {
+    for (const root of nodes) {
         for (const a of Array.from(root.querySelectorAll('a[href]'))) {
             const href = a.href;
-            if (!href || !href.startsWith('http') || seen.has(href)) continue;
-            seen.add(href);
+            if (!href || !href.startsWith('http')) continue;
             out.push({ href, text: (a.innerText || '').trim() });
         }
     }
@@ -131,6 +129,32 @@ def _fold_blobs(blobs) -> Union[str, List[str]]:
     return list(blobs)
 
 
+def _dedupe_links_by_href(raw: Optional[List]) -> List[Dict[str, Any]]:
+    """One object per href; `text` is a deduped list[str] in first-seen order (AST-1747)."""
+    if not raw:
+        return []
+    out: List[Dict[str, Any]] = []
+    by_href: Dict[str, Dict[str, Any]] = {}
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        href = item.get("href")
+        if not href or not isinstance(href, str):
+            continue
+        if href not in by_href:
+            entry: Dict[str, Any] = {"href": href, "text": []}
+            by_href[href] = entry
+            out.append(entry)
+        label = item.get("text")
+        if not isinstance(label, str):
+            continue
+        text = label.strip()
+        texts: List[str] = by_href[href]["text"]
+        if text not in texts:
+            texts.append(text)
+    return out
+
+
 async def capture_text(page, selector: str | None) -> Union[str, List[str]]:
     sel = (selector or "").strip()
     if not sel or sel.lower() in ("page", "body"):
@@ -148,11 +172,11 @@ async def capture_text(page, selector: str | None) -> Union[str, List[str]]:
     return _fold_blobs(blobs)
 
 
-async def capture_links(page, selector: str | None = None) -> List[Dict[str, str]]:
+async def capture_links(page, selector: str | None = None) -> List[Dict[str, Any]]:
     sel = (selector or "").strip()
     # Whole-document only for omit / "page"; explicit "body"/"head" are element-scoped (AST-1735)
     if not sel or sel.lower() == "page":
-        return await page.evaluate(
+        raw = await page.evaluate(
             """() => {
                 const links = Array.from(document.querySelectorAll('a[href]'));
                 return links
@@ -163,8 +187,10 @@ async def capture_links(page, selector: str | None = None) -> List[Dict[str, str
                     .filter(item => item.href && item.href.startsWith('http'));
             }"""
         )
-    # Scoped: bare→.class retry (AST-1736) + union under roots, dedupe by href (AST-1732)
-    return await page.evaluate(_QUERY_LINKS_JS, sel)
+        return _dedupe_links_by_href(raw)
+    # Scoped: bare→.class (AST-1736) + union under roots; fold href/text[] (AST-1747)
+    raw = await page.evaluate(_QUERY_LINKS_JS, sel)
+    return _dedupe_links_by_href(raw)
 
 
 async def capture_html(page, selector: str | None) -> Union[str, List[str]]:

@@ -154,7 +154,7 @@ Response:
 {
   "final_url": "<page.url after redirects>",
   "text": "<string>" | ["<blob>", "..."],
-  "links": [{"href": "...", "text": "..."}]
+  "links": [{"href": "...", "text": ["...", "..."]}]
 }
 ```
 
@@ -954,3 +954,84 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 Overall: CLEAN / PROCEED — optional id filter; resolve-child skipped.
 
 - **docs-acceptance:** `test(AST-1746)` @ `e20341ce` already on `origin/ftr` via sibling merge stack; merge-tests still delivered on this sub.
+
+## Bug: AST-1747 — Telescope links array must dedupe href with text array
+
+### As-is
+
+`POST /telescope` with `links: true` can return multiple `links[]` entries that share the same `href` but differ in `text` (one object per `<a>`). The scoped path (AST-1732) already collapses duplicate hrefs but keeps **first-seen `text` only** (string), dropping later labels for the same URL.
+
+### To-be
+
+`links` is deduped by `href`: one object per distinct http(s) URL. That object’s `text` field is a **deduped array** of the trimmed label strings seen for that href (first-seen order of hrefs; first-seen order of unique texts). A single label still yields a one-element array (e.g. `"text": ["Apply"]`), never a bare string.
+
+### Repro
+
+Fixture DOM (or `page.evaluate` mock returning the same raw list):
+
+```html
+<a href="https://example.com/jobs/1">Software Engineer</a>
+<a href="https://example.com/jobs/1">View role</a>
+<a href="https://example.com/jobs/1">Software Engineer</a>
+<a href="https://example.com/jobs/2">Designer</a>
+```
+
+1. `POST /telescope` with bearer, `{"url": "…", "links": true}` (omit selector / `"page"`), or call `capture_links(page)` / `capture_links(page, ".listing")` when those anchors sit under `.listing`.
+2. As-is (whole-page): three objects for `…/jobs/1` plus one for `…/jobs/2`, each with string `text`.
+3. As-is (scoped, after AST-1732): one object for `…/jobs/1` with `text: "Software Engineer"` only — `"View role"` lost.
+4. To-be: exactly two objects, order preserved by first href sighting:
+
+```json
+[
+  {"href": "https://example.com/jobs/1", "text": ["Software Engineer", "View role"]},
+  {"href": "https://example.com/jobs/2", "text": ["Designer"]}
+]
+```
+
+### Root cause
+
+Stage 3 / AST-1732 treat each anchor as `{href, text: string}`. Whole-document collection never merges by href. Scoped collection merges by href but **first text wins**, so alternate anchor labels for the same URL are discarded. UAT wants href uniqueness **and** retention of distinct labels as a text array.
+
+### Proposed change
+
+All product edits in `service/telescope/capture.py` (parent Component/Technical scope: service capture helpers). Do **not** change auth, pool, Dockerfile, Railway/CI, admin UI, or invent a second links shape on the platform.
+
+1. Add a pure helper, e.g. `_dedupe_links_by_href(raw: list[dict]) -> list[dict]`:
+   - Walk `raw` in order; key by `href` string.
+   - First time an href appears → append `{ "href": href, "text": [] }` to the result list (preserves href order).
+   - For each item, take trimmed label: if `text` is already a `str`, use it; ignore non-dict / missing href.
+   - Append the label to that href’s `text` array only if it is not already present (exact string match after trim) — including `""` at most once when an empty label was seen.
+   - Return the list. Every object’s `text` is a `list[str]` (length may be 0 only if raw had no text field; normal anchors yield ≥0 entries per rules above).
+
+2. **Whole-page evaluate** (`not sel` / `"page"`): keep collecting one raw `{href, text: trimmed string}` per `a[href]` with `href.startsWith('http')`. Pass the list through `_dedupe_links_by_href` before return.
+
+3. **Scoped evaluate** (`_QUERY_LINKS_JS`): stop skipping when `seen.has(href)`. Under each match root, push every http(s) anchor as `{href, text: trimmed}` (same per-anchor shape as whole-page). Remove the `seen` Set. After evaluate, pass through `_dedupe_links_by_href` so multi-root unions merge texts instead of first-wins.
+
+4. Update `capture_links` return annotation to reflect `text: list[str]` (e.g. `List[Dict[str, Any]]` or an explicit TypedDict) — still one list of link objects.
+
+5. In this plan doc’s Stage 3 response example, change  
+   `"links": [{"href": "...", "text": "..."}]`  
+   to  
+   `"links": [{"href": "...", "text": ["...", "..."]}]`  
+   so the contract matches the bug (make-fix may edit that line in the same commit).
+
+Out of this bug: changing platform consumers that only read `href` (`extract_site_page_list`, etc.); optional annotation cleanup in `src/external/telescope.py` (`List[Dict[str, str]]`) is not required for correctness.
+
+### Blast radius
+
+- Response contract change: `links[].text` is always an array. Admin raw JSON pane shows arrays; any external/client code that assumed a string must adapt.
+- AST-1732 “first occurrence wins for text” is superseded for the text field; href scoping + union under multi-match roots still hold, now with merged label arrays.
+- Whole-page and scoped paths share one fold helper — behavior stays aligned.
+- Betty / fix-board: component tests that assert `text` is a `str` or that duplicate hrefs appear twice will need updating; a repro should assert one object per href and `text == ["Software Engineer", "View role"]` for the fixture above.
+- Platform drop-in currently uses `lnk.get("href")` only for crawl lists — runtime OK without edit; typed as `Dict[str, str]` becomes stale.
+
+### What must still hold
+
+- AST-1725 AC: `links` default true; when `links: false`, omit the key; http(s)-only hrefs; bearer; expand/wait_ready defaults; no service cull; zero `src` imports under `service/telescope/`.
+- AST-1732 / AST-1735: filtering selectors still scope which anchors are collected; omitted / `"page"` = whole document; `"body"` / `"head"` / CSS stay element-scoped.
+- Multi-match **page text** (`text` string vs list of blobs) unchanged.
+- No depth/output caps added; no Surfer/post-render fork; no Railway/CI edits.
+
+## Radia review-fix (AST-1747)
+
+Overall: CLEAN / PROCEED — href dedupe with text[]; resolve-child skipped.
