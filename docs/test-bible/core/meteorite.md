@@ -273,6 +273,20 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 
 ---
 
+### AST-1750 · AST-1721 (qa-fix bug-repro — scrape_closed diagnostic detail)
+
+**Board REVISE:** `run_scrape_meteorite` soft-fail ERROR (`scrape_closed`) must include `signal=` / `text_len=` / `final_url=` on row error + warning; AST-1560 only covers READY / BOT_BLOCKED / bare ERROR.
+
+| Area | Component tests |
+| --- | --- |
+| scrape_closed diagnostic string | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url -q
+```
+
+
 ### AST-1562 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.

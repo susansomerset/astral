@@ -1333,6 +1333,61 @@ class TestAst1560RunScrapeMeteorite:
         assert db.get_meteorite(bad_id)["state"] == "SCRAPE_ERROR"
         assert db.get_meteorite(good_id)["state"] == "READY"
 
+    @pytest.mark.asyncio
+    async def test_ast1750_scrape_closed_error_includes_signal_text_len_final_url(
+        self,
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """AST-1750 bug-repro: soft-fail scrape_closed must carry signal/text_len/final_url."""
+        import logging
+
+        db = sqlite_in_memory
+        cid = "cand-scp-closed"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "C"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="SCRAPE_LINK",
+            link="https://www.dice.com/job-detail/abc",
+        )
+        visible = "Sorry, this job is no longer available. " + ("x" * 80)
+        final_url = "https://www.dice.com/job-detail/abc-final"
+
+        async def _fetch(_link, debug=False):
+            return (visible, final_url)
+
+        monkeypatch.setattr(meteorite_mod, "_land_fetch_link_text", _fetch)
+        monkeypatch.setattr("src.core.gazer._classify_jd", lambda _t: "closed")
+
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.run_scrape_meteorite(
+                _ingress_task(
+                    batch_id="scrape-batch-closed",
+                    task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+                ),
+                debug=True,
+            )
+
+        assert out["total_errors"] == 1
+        err = db.get_meteorite(row_id)["error"] or ""
+        assert "scrape_closed" in err, f"expected scrape_closed in error, got {err!r}"
+        assert "signal=" in err, (
+            "AST-1750: scrape_closed error must name the matched closed_signals token"
+        )
+        assert "no longer available" in err
+        assert f"text_len={len(visible)}" in err, (
+            "AST-1750: scrape_closed error must include text_len="
+        )
+        assert "final_url=" in err and final_url in err, (
+            "AST-1750: scrape_closed error must include final_url="
+        )
+        assert any(
+            "signal=" in r.getMessage() and "scrape_closed" in r.getMessage()
+            for r in caplog.records
+        ), "AST-1750: warning must carry the same diagnostic why string"
+
 
 @pytest.mark.skipif(
     not hasattr(meteorite_mod, "run_land_meteorite"),
