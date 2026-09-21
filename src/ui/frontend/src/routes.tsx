@@ -1,4 +1,5 @@
 // SYNC: Every route here must have a matching nav item in src/utils/config.py NAV_CONFIG.
+//       Deeplink-only routes (e.g. jobs/detail/:jobId) use JOBS_DETAIL_ROUTE_PREFIX — not NAV_CONFIG.
 //       If you add/remove/rename a route, update NAV_CONFIG to match.
 import { Navigate, Outlet, type RouteObject } from "react-router-dom"
 import AdminRoute from "./components/AdminRoute"
@@ -14,12 +15,14 @@ import InReview from "./pages/JobsInReview"
 import Skipped from "./pages/JobsSkipped"
 import Applied from "./pages/JobsApplied"
 import Responded from "./pages/JobsResponded"
+import JobsJobDetail from "./pages/JobsJobDetail"
 
 // --- Companies ---
 import WatchList from "./pages/CompaniesWatchList"
 import NewList from "./pages/CompaniesNewList"
 import InactiveList from "./pages/CompaniesInactiveList"
 import Ignored from "./pages/CompaniesIgnored"
+import Meteorite from "./pages/CompaniesMeteorite"
 import WatchHistory from "./pages/CompaniesWatchHistory"
 
 // --- Artifacts ---
@@ -37,9 +40,11 @@ import LikeJobCriteria from "./pages/ArtifactsLikeJobCriteria"
 import Profile from "./pages/CandidateProfile"
 import CandidateIntake from "./pages/CandidateIntake"
 import Strengths from "./pages/CandidateStrengths"
+import BioSummary from "./pages/CandidateBioSummary"
 import Priorities from "./pages/CandidatePriorities"
 import DealBreakers from "./pages/CandidateDealBreakers"
 import Backstory from "./pages/CandidateBackstory"
+import IdealDay from "./pages/CandidateIdealDay"
 import WritingPreferences from "./pages/CandidateWritingPreferences"
 import CandidateSurferConsent from "./pages/CandidateSurferConsent"
 import CandidateSurfer from "./pages/CandidateSurfer"
@@ -54,7 +59,9 @@ import ManageCandidates from "./pages/AdminManageCandidates"
 import AgentPrompts from "./pages/AdminAgentPrompts"
 import TaskPrompts from "./pages/AdminTaskPrompts"
 import AnthropicAdHoc from "./pages/AdminAnthropicAdHoc"
+import AdminTelescope from "./pages/AdminTelescope"
 import DataManagement from "./pages/AdminDataManagement"
+import ScheduledQueries from "./pages/AdminScheduledQueries"
 import SessionResumePaste from "./pages/AdminSessionResumePaste"
 import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
 import AdminManageEmail from "./pages/AdminManageEmail"
@@ -84,12 +91,14 @@ const routes: RouteObject[] = [
           { path: "jobs/recommended", element: <Recommended /> },
           { path: "jobs/applied", element: <Applied /> },
           { path: "jobs/responded", element: <Responded /> },
+          { path: "jobs/detail/:jobId", element: <JobsJobDetail /> },
 
           // Companies
           { path: "companies/watch_list", element: <WatchList /> },
           { path: "companies/new_list", element: <NewList /> },
           { path: "companies/inactive_list", element: <InactiveList /> },
           { path: "companies/ignored", element: <Ignored /> },
+          { path: "companies/meteorite_list", element: <Meteorite /> },
           { path: "companies/watch_history", element: <WatchHistory /> },
 
           // Artifacts
@@ -108,9 +117,11 @@ const routes: RouteObject[] = [
           { path: "candidate/surfer", element: <CandidateSurfer /> },
           { path: "candidate/intake", element: <CandidateIntake /> },
           { path: "candidate/strengths", element: <Strengths /> },
+          { path: "candidate/bio_summary", element: <BioSummary /> },
           { path: "candidate/priorities", element: <Priorities /> },
           { path: "candidate/deal_breakers", element: <DealBreakers /> },
           { path: "candidate/backstory", element: <Backstory /> },
+          { path: "candidate/ideal_day", element: <IdealDay /> },
           { path: "candidate/writing_preferences", element: <WritingPreferences /> },
           { path: "candidate/surfer_consent", element: <CandidateSurferConsent /> },
 
@@ -124,6 +135,8 @@ const routes: RouteObject[] = [
           { path: "admin/agent_prompts", element: <AdminRoute><AgentPrompts /></AdminRoute> },
           { path: "admin/task_prompts", element: <AdminRoute><TaskPrompts /></AdminRoute> },
           { path: "admin/anthropic_ad_hoc", element: <AdminRoute><AnthropicAdHoc /></AdminRoute> },
+          { path: "admin/telescope", element: <AdminRoute><AdminTelescope /></AdminRoute> },
+          { path: "admin/scheduled_queries", element: <AdminRoute><ScheduledQueries /></AdminRoute> },
           { path: "admin/data_management", element: <AdminRoute><DataManagement /></AdminRoute> },
           { path: "admin/session_resume_paste", element: <AdminRoute><SessionResumePaste /></AdminRoute> },
           { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },

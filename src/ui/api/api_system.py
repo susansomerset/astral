@@ -5,11 +5,19 @@ from typing import Optional
 from flask import Blueprint, g, jsonify, request
 
 from ui.auth import require_auth, require_admin
-from src.core.candidate import get_candidate
+from src.utils.auth import local_auth_passthrough_payload
+from src.core.candidate import (
+    get_candidate,
+    requested_artifacts_chain_artifact_keys,
+    requested_artifacts_chain_hop_labels,
+    requested_artifacts_chain_task_keys,
+)
 from src.utils.config import (
     NAV_CONFIG,
     DATA_SHAPES,
+    METEORITE_CONFIG,
     CANDIDATE_STATES,
+    CANDIDATE_STAGE_DISPATCH,
     IN_REVIEW_STATES,
     RECOMMENDED_JOB_STATES,
     SKIPPED_STATES,
@@ -18,8 +26,14 @@ from src.utils.config import (
     PREAMBLE_CONFIG,
     TOPIC_MENU_GEN_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
+    JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS,
+    build_artifacts_discussion_hop_task_keys,
     build_state_ui_manifest,
+    dispatch_hop_label,
+    get_auth_session_policy,
+    nav_admin_only_group_labels,
 )
+from src.data.database import get_agent_task
 from src.utils.logging import get_logger
 from src.core.deploy_status import get_deploy_status_payload
 
@@ -53,6 +67,9 @@ def _get_company_counts(candidate_id: Optional[str]) -> dict:
         exclude = list(set(active) | {"IGNORE"})
         counts["/companies/inactive_list"] = len(list_companies(exclude_states=exclude, candidate_id=candidate_id))
         counts["/companies/ignored"] = len(list_companies(states=["IGNORE"], candidate_id=candidate_id))
+        counts["/companies/meteorite_list"] = len(
+            list_companies(states=[METEORITE_CONFIG["company_state"]], candidate_id=candidate_id)
+        )
         counts["/companies/watch_history"] = len(list_company_job_scans(candidate_id=candidate_id))
         return counts
     except Exception:
@@ -79,15 +96,12 @@ def _get_job_counts(candidate_id: Optional[str]) -> dict:
 
 
 def _resolve_nav(candidate_state: str, candidate_id: Optional[str] = None) -> list:
-    """Walk NAV_CONFIG and resolve visible/enabled gates against candidate_state."""
+    """Walk NAV_CONFIG and resolve item-level enabled gates against candidate_state."""
     company_counts = _get_company_counts(candidate_id)
     job_counts = _get_job_counts(candidate_id)
     nav_counts = {**company_counts, **job_counts}
     resolved = []
     for group in NAV_CONFIG:
-        visible_gate = group.get("visible")
-        if isinstance(visible_gate, str) and not _is_at_or_past(candidate_state, visible_gate):
-            continue
         resolved_items = []
         for item in group["items"]:
             enabled_gate = item.get("enabled")
@@ -110,7 +124,8 @@ def _nav_config_for_user(candidate_state: str, candidate_id: Optional[str]) -> l
     nav = _resolve_nav(candidate_state, candidate_id)
     if g.user.get("is_admin"):
         return nav
-    return [group for group in nav if group.get("label") != "Admin"]
+    admin_labels = nav_admin_only_group_labels()
+    return [group for group in nav if group.get("label") not in admin_labels]
 
 
 # --- Open endpoints (no auth) ---
@@ -118,6 +133,18 @@ def _nav_config_for_user(candidate_state: str, candidate_id: Optional[str]) -> l
 @system_bp.route("/health")
 def health():
     return {"status": "ok"}
+
+
+@system_bp.route("/auth_session_policy")
+def auth_session_policy():
+    """Non-secret session duration + extend cadence for SPA (AST-1373). Public on purpose."""
+    return jsonify(get_auth_session_policy())
+
+
+@system_bp.route("/auth_passthrough")
+def auth_passthrough():
+    """Public non-secret local-auth signal for SPA. Public on purpose."""
+    return jsonify(local_auth_passthrough_payload())
 
 
 # --- Authenticated endpoints ---
@@ -160,6 +187,11 @@ def ui_config():
     return jsonify({
         **UI_CONFIG,
         "base_resume_accent_palette": BUILD_CONFIG.get("accent_palette", []),
+        # AST-1351: experience job-array editor field spine + unsupported notice text.
+        "experience_job_ui_fields": BUILD_CONFIG["experience_job_ui_fields"],
+        "unsupported_resume_structure_message": BUILD_CONFIG[
+            "unsupported_resume_structure_message"
+        ],
         # AST-1016: Intro + mechanical steps for AST-1017 (no page chrome here).
         "preamble": PREAMBLE_CONFIG,
         # AST-1075: Estelle Topic Menu confirm/generate UI labels.
@@ -180,7 +212,50 @@ def ui_config():
 @require_auth
 def state_ui_manifest():
     """G1: job/company/candidate state labels + bulk transition targets from config (single source)."""
-    return jsonify(build_state_ui_manifest())
+    manifest = build_state_ui_manifest()
+    cand = manifest.setdefault("candidate", {})
+    # AST-1253: live run_next walk — degrade to empty arrays if walk fails (keep rest of manifest).
+    try:
+        cand["artifacts_chain_task_keys"] = requested_artifacts_chain_task_keys()
+        cand["artifacts_chain_hop_labels"] = requested_artifacts_chain_hop_labels()
+        cand["artifacts_chain_artifact_keys"] = requested_artifacts_chain_artifact_keys()
+        # AST-1388: hide Generate while on REQUESTED_ARTIFACTS.<hop> compound labels.
+        trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        hide = list(cand.get("artifact_generate_inflight_hide_states") or [])
+        for tk in cand["artifacts_chain_task_keys"]:
+            label = dispatch_hop_label(trigger, tk)
+            if label not in hide:
+                hide.append(label)
+        cand["artifact_generate_inflight_hide_states"] = hide
+    except Exception as exc:
+        _log.warning("artifacts chain manifest walk failed: %s", exc)
+        cand["artifacts_chain_task_keys"] = []
+        cand["artifacts_chain_hop_labels"] = []
+        cand["artifacts_chain_artifact_keys"] = []
+    # AST-1550: Discussion hop sections — soft-fail like artifacts_chain above.
+    try:
+        sections = []
+        for task_key in build_artifacts_discussion_hop_task_keys():
+            row = get_agent_task(task_key) or {}
+            name = (row.get("task_name") or "").strip()
+            sections.append({
+                "section_id": task_key,
+                "nav_label": name or task_key,
+                "default_expanded": False,
+            })
+        manifest.setdefault("jobs", {}).setdefault("recommended", {})[
+            "report_discussion_sections"
+        ] = sections
+    except Exception as exc:
+        _log.warning("discussion sections manifest walk failed: %s", exc)
+        manifest.setdefault("jobs", {}).setdefault("recommended", {})[
+            "report_discussion_sections"
+        ] = []
+    # AST-1691: Meteorite pane sections — static config copy (no live walk).
+    manifest.setdefault("jobs", {}).setdefault("recommended", {})[
+        "report_meteorite_sections"
+    ] = list(JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS)
+    return jsonify(manifest)
 
 
 # ---------------------------------------------------------------------------

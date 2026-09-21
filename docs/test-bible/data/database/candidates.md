@@ -31,3 +31,65 @@ Adds nullable `candidate.last_email_check` (fresh CREATE + ALTER migrate) and `u
   tests/component/data/database/test_candidates.py::TestAst1134LastEmailCheck \
   -q
 ```
+
+### AST-1258 · AST-1257
+
+**Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis`.
+
+Candidate row `batch_id` / `batch_created_at` (null/empty = unclaimed) plus data-layer pool claim → get → clear peers of job/company (`claim_candidate_batch` batch_id-first, cross-candidate pool, no single-ctx gate). Eligibility / Avail for non-inflow candidate stage tasks: **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1258. Dispatcher/core wrappers: sibling **AST-1259**. Canon/docs: **AST-1260**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema columns + unclaimed save | `src/data/database.py` | **`TestAst1258CandidateBatchClaim::test_schema_has_nullable_batch_columns`**, **`::test_save_leaves_batch_unclaimed`** |
+| Claim → get → clear multi-row; concurrent refuse; release all | `src/data/database.py` | **`TestAst1258CandidateBatchClaim::test_claim_get_clear_multi_row_pool`** |
+| Claim unions primary + retry states | `src/data/database.py` | **`TestAst1258CandidateBatchClaim::test_claim_unions_retry_states`** |
+
+**Broken / obsolete (Betty revision):** none in this module — claim APIs are additive. Stage Avail assertion revision lives in **`test_dispatch_tasks.py`**.
+
+**Integration:** none (no existing integration scenario asserts unlocked candidate claim / inflow-only stage Avail).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_candidates.py::TestAst1258CandidateBatchClaim \
+  -q
+```
+
+### AST-1417 · AST-1415 (gap — save_candidate hop-label persist)
+
+**Parent:** [AST-1415 — Candidate state validation bug](https://linear.app/astralcareermatch/issue/AST-1415). **Sibling product:** AST-1416. **Publish:** `origin/sub/AST-1415/AST-1417-save-candidate-hop-label-coverage`.
+
+Board REVISE on AST-1416: `TestSaveCandidate` only rejects `NOT_A_STATE`; AST-1389 mocks the hop-label write. This gap owns the [bug-repro] bar for `save_candidate` persist of `REQUESTED_ARTIFACTS.<hop>`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Persist hop label via save_candidate UPDATE | `src/data/database.py` (`save_candidate`) | **`TestAst1417SaveCandidateHopLabelPersist::test_update_persists_requested_artifacts_hop_label`** (**[bug-repro]**) |
+
+**Broken / obsolete this pass:** none — `TestSaveCandidate::test_rejects_invalid_state` still rejects non-hop unknowns (`NOT_A_STATE`, `NEW`).
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. Hop-label persist (bug-repro): `tests/component/data/database/test_candidates.py::TestAst1417SaveCandidateHopLabelPersist::test_update_persists_requested_artifacts_hop_label`
+
+**AST-1417** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_candidates.py::TestAst1417SaveCandidateHopLabelPersist \
+  -q
+```
+
+**Pass criterion:** node fails on pre-fix tree (`Invalid candidate state 'REQUESTED_ARTIFACTS.craft_get_rubric'`); flips green after AST-1416 `make-fix`.
+
+### AST-1502 · AST-1492 (gap — ensure leaves live candidate content)
+
+**Parent:** AST-1492. **Sibling product:** AST-1497. Primary bible: **`docs/test-bible/core/bootstrap.md`** § AST-1502.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ensure skips content migrates; ARTIFACTS_READY survives | `src/data/database.py` (`_ensure_candidate_schema`) | **`TestAst1502EnsureLeavesLiveCandidateContent::test_ensure_candidate_schema_leaves_artifacts_ready_without_content_migrates`** (**[bug-repro]**) |
+
+**Broken / obsolete this pass:** none in this module beyond the new assertion bar (AST-575 ensure-driven backfill expectations may need a later revise when AST-1497 lands — out of this gap's board What).
+
+**Integration:** none.

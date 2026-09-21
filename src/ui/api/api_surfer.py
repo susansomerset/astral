@@ -1,4 +1,4 @@
-"""Surfer consent API (AST-1235). Extension + web off-switch share this record."""
+"""Surfer API — pacing config (AST-1236) + consent (AST-1235)."""
 
 from flask import Blueprint, jsonify, request
 
@@ -8,10 +8,12 @@ from src.core.candidate import (
     opt_out_surfer_consent,
     surfer_consent_dto,
 )
+from src.utils.config import SURFER_PACING_CONFIG
 from src.utils.deploy_status import ui_llm_debug
 from ui.auth import require_auth
 
-surfer_bp = Blueprint("surfer", __name__, url_prefix="/api/candidates")
+# Shared /api prefix so pacing stays at /api/surfer/... and consent at /api/candidates/...
+surfer_bp = Blueprint("surfer", __name__, url_prefix="/api")
 
 
 def _debug_flag() -> bool:
@@ -19,7 +21,19 @@ def _debug_flag() -> bool:
     return ui_llm_debug(explicit_debug=explicit)
 
 
-@surfer_bp.route("/<candidate_id>/surfer/consent", methods=["GET"])
+@surfer_bp.route("/surfer/pacing_config", methods=["GET"])
+@require_auth
+def pacing_config():
+    # Return a plain dict copy so callers cannot mutate the config module.
+    return jsonify({
+        "dwell_center_seconds": SURFER_PACING_CONFIG["dwell_center_seconds"],
+        "dwell_spread_seconds": SURFER_PACING_CONFIG["dwell_spread_seconds"],
+        "max_tabs": SURFER_PACING_CONFIG["max_tabs"],
+        "mv3_idle_ceiling_seconds": SURFER_PACING_CONFIG["mv3_idle_ceiling_seconds"],
+    })
+
+
+@surfer_bp.route("/candidates/<candidate_id>/surfer/consent", methods=["GET"])
 @require_auth
 def get_surfer_consent_route(candidate_id):
     if not get_candidate(candidate_id):
@@ -27,7 +41,7 @@ def get_surfer_consent_route(candidate_id):
     return jsonify(surfer_consent_dto(candidate_id))
 
 
-@surfer_bp.route("/<candidate_id>/surfer/consent", methods=["PUT"])
+@surfer_bp.route("/candidates/<candidate_id>/surfer/consent", methods=["PUT"])
 @require_auth
 def put_surfer_consent_route(candidate_id):
     if not get_candidate(candidate_id):
