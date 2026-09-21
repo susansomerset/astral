@@ -982,6 +982,7 @@ def _insert_meteorite_row(db, cid: str, **fields: object) -> int:
             "nag_count",
             "estelle_notified_at",
             "astral_job_id",  # AST-1690 retention skip fixtures
+            "job_title",  # AST-1757 staged title fixtures
             *(
                 [METEORITE_CONFIG["electronic_contact_column"]]
                 if "electronic_contact_column" in METEORITE_CONFIG
@@ -2544,4 +2545,127 @@ class TestAst1756IngressBlobJdTextFallback:
         assert len(rows) == 1
         assert rows[0]["content"] == blob.strip()
         assert rows[0]["state"] == "READY"
+
+
+# Branches: dispatch land passes staged job_title; public land enrich-preferred /
+# staged-fallback (AST-1757).
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "run_land_meteorite"),
+    reason="AST-1757 land runners not on this publish tip",
+)
+class TestAst1757LandStagedJobTitle:
+    """AST-1757: land wires staged meteorite.job_title; enrich title wins when present."""
+
+    @pytest.mark.asyncio
+    async def test_dispatch_passes_staged_job_title(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC7: run_land_meteorite passes row job_title into save_meteorite_job."""
+        db = sqlite_in_memory
+        cid = "cand-1757-dispatch"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        _insert_meteorite_row(
+            db,
+            cid,
+            state="READY",
+            content="Landable JD " + ("q" * 40),
+            job_title="Senior Widget Engineer",
+        )
+        captured: dict = {}
+
+        def _save(_cid, **kwargs):
+            captured.update(kwargs)
+            return {
+                "outcome": METEORITE_CONFIG["land_outcome_created"],
+                "astral_job_id": "job-1757-d",
+            }
+
+        monkeypatch.setattr(meteorite_mod.tracker, "save_meteorite_job", _save)
+        out = await meteorite_mod.run_land_meteorite(
+            _ingress_task(
+                batch_id="land-1757-d",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert captured.get("job_title") == "Senior Widget Engineer"
+
+    @pytest.mark.asyncio
+    async def test_public_land_staged_when_enrich_blank(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC8: enrich blank → job.job_title from meteorite column."""
+        db = sqlite_in_memory
+        cid = "cand-1757-ac8"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "A"})
+        mid = _insert_meteorite_row(
+            db,
+            cid,
+            state="READY",
+            content="seed " + ("z" * 40),
+            source_kind="paste",
+            source_id="paste-1757-ac8",
+            job_title="Senior Widget Engineer",
+        )
+
+        async def _enrich(_cid, scraps, **_k):
+            return {
+                "success": True,
+                "jobs": [{
+                    "company_job_id": "AC8JOB01",
+                    "job_title": "",
+                    "jd_text": "JD " + ("x" * 40),
+                    "scrap_index": 0,
+                }],
+            }
+
+        monkeypatch.setattr(
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
+        )
+        out = await meteorite_mod.land_meteorite(
+            cid, text="j" * 50, meteorite_id=mid
+        )
+        assert out["outcome"] == METEORITE_CONFIG["land_outcome_created"]
+        job = db.get_job(out["outcomes"][0]["astral_job_id"])
+        assert job["job_title"] == "Senior Widget Engineer"
+
+    @pytest.mark.asyncio
+    async def test_public_land_enrich_wins_over_staged(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC9: non-empty enrich title wins over differing staged column."""
+        db = sqlite_in_memory
+        cid = "cand-1757-ac9"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
+        mid = _insert_meteorite_row(
+            db,
+            cid,
+            state="READY",
+            content="seed " + ("z" * 40),
+            source_kind="paste",
+            source_id="paste-1757-ac9",
+            job_title="Staged Title Only",
+        )
+
+        async def _enrich(_cid, scraps, **_k):
+            return {
+                "success": True,
+                "jobs": [{
+                    "company_job_id": "AC9JOB01",
+                    "job_title": "Enrich Preferred Title",
+                    "jd_text": "JD " + ("y" * 40),
+                    "scrap_index": 0,
+                }],
+            }
+
+        monkeypatch.setattr(
+            "src.core.meteorite.enrich_meteorite_land_packet", _enrich
+        )
+        out = await meteorite_mod.land_meteorite(
+            cid, text="k" * 50, meteorite_id=mid
+        )
+        assert out["outcome"] == METEORITE_CONFIG["land_outcome_created"]
+        job = db.get_job(out["outcomes"][0]["astral_job_id"])
+        assert job["job_title"] == "Enrich Preferred Title"
 
