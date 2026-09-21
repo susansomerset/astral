@@ -1,10 +1,8 @@
-"""meteorite staging table + claim/insert/update/retention helpers (AST-1557)."""
+"""meteorite staging table + claim/insert/update helpers (AST-1557)."""
 
 from __future__ import annotations
 
 import pytest
-
-from src.utils.config import METEORITE_STATES, METEORITE_STATES_RETENTION
 
 
 class TestAst1557MeteoriteSchema:
@@ -52,9 +50,10 @@ class TestAst1557MeteoriteSchema:
 
 
 class TestAst1557InsertMeteoriteRows:
-    """Fan-out insert forces NEW; empty list is a no-op."""
+    """Fan-out insert defaults missing state to NEW but honors an explicit state
+    (e.g. NEW_EMAIL_ERROR from _new_email_error_row); empty list is a no-op."""
 
-    def test_insert_n_rows_forces_new_and_unclaimed(self, sqlite_in_memory) -> None:
+    def test_insert_n_rows_defaults_missing_state_to_new(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         ids = db.insert_meteorite_rows(
             [
@@ -63,7 +62,7 @@ class TestAst1557InsertMeteoriteRows:
                     "source_kind": "email",
                     "source_id": "mid-a",
                     "content": "jd-1",
-                    "state": "READY",  # ignored — force NEW
+                    "state": "NEW",
                 },
                 {
                     "candidate_id": "c1",
@@ -71,6 +70,7 @@ class TestAst1557InsertMeteoriteRows:
                     "source_id": "mid-a",
                     "link": "https://example.com/job",
                     "classify_outcome": "link",
+                    # state omitted entirely — must default to NEW, not KeyError.
                 },
             ]
         )
@@ -87,6 +87,24 @@ class TestAst1557InsertMeteoriteRows:
             assert row["state_changed_at"]
         by_src = db.list_meteorites_by_source("email", "mid-a")
         assert {r["id"] for r in by_src} == set(ids)
+
+    def test_insert_respects_explicit_non_new_state(self, sqlite_in_memory) -> None:
+        # Real caller: _new_email_error_row inserts straight to NEW_EMAIL_ERROR, not NEW.
+        db = sqlite_in_memory
+        mid = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": "c1",
+                    "source_kind": "email",
+                    "source_id": "mid-err",
+                    "state": "NEW_EMAIL_ERROR",
+                    "error": "boom",
+                }
+            ]
+        )[0]
+        row = db.get_meteorite(mid)
+        assert row["state"] == "NEW_EMAIL_ERROR"
+        assert row["state_history"][0]["to_state"] == "NEW_EMAIL_ERROR"
 
     def test_empty_rows_returns_empty(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -115,7 +133,7 @@ class TestAst1557MeteoriteBatchClaim:
     def test_claim_get_clear_multi_row_pool(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         self._seed_new(db, 3)
-        n = db.claim_meteorite_batch("meteorite-batch-a", "NEW", 2)
+        n = db.claim_meteorite_batch("meteorite-batch-a", "NEW", 2, candidate_id="c1557")
         assert n == 2
         rows = db.get_meteorite_batch("meteorite-batch-a")
         assert len(rows) == 2
@@ -123,7 +141,7 @@ class TestAst1557MeteoriteBatchClaim:
             assert r["batch_id"] == "meteorite-batch-a"
             assert r.get("batch_created_at")
         # Concurrent claim cannot steal locked rows
-        n2 = db.claim_meteorite_batch("meteorite-batch-b", "NEW", 2)
+        n2 = db.claim_meteorite_batch("meteorite-batch-b", "NEW", 2, candidate_id="c1557")
         assert n2 == 1  # one unclaimed left
         assert len(db.get_meteorite_batch("meteorite-batch-b")) == 1
         cleared = db.clear_meteorite_batch("meteorite-batch-a")
@@ -131,19 +149,37 @@ class TestAst1557MeteoriteBatchClaim:
         for r in db.get_meteorite_batch("meteorite-batch-a"):
             assert False, "batch should be empty after clear"
         # Released rows reclaimable
-        n3 = db.claim_meteorite_batch("meteorite-reclaim", "NEW", 10)
+        n3 = db.claim_meteorite_batch("meteorite-reclaim", "NEW", 10, candidate_id="c1557")
         assert n3 == 2
+
+    def test_claim_requires_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_new(db, 1)
+        with pytest.raises(ValueError, match="candidate_id"):
+            db.claim_meteorite_batch("meteorite-batch-no-cid", "NEW", 1)
+
+    def test_claim_scopes_to_candidate(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_new(db, 2)
+        other = db.insert_meteorite_rows(
+            [{"candidate_id": "c-other", "source_kind": "email", "source_id": "mid-other"}]
+        )
+        n = db.claim_meteorite_batch("meteorite-scoped", "NEW", 10, candidate_id="c1557")
+        assert n == 2  # c-other's row is untouched
+        ids = {r["id"] for r in db.get_meteorite_batch("meteorite-scoped")}
+        assert other[0] not in ids
 
     def test_claim_unions_states(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         a = self._seed_new(db, 1)[0]
         b = self._seed_new(db, 1)[0]
-        db.update_meteorite(b, state="ERROR")
+        db.update_meteorite(b, state="SCRAPE_ERROR")
         n = db.claim_meteorite_batch(
             "union-batch",
             "NEW",
             10,
-            states=["NEW", "ERROR"],
+            candidate_id="c1557",
+            states=["NEW", "SCRAPE_ERROR"],
         )
         assert n == 2
         ids = {r["id"] for r in db.get_meteorite_batch("union-batch")}
@@ -189,41 +225,3 @@ class TestAst1557MeteoriteReadUpdate:
         with pytest.raises(ValueError, match="unknown meteorite fields"):
             db.update_meteorite(mid, batch_id="nope")
 
-
-class TestAst1557MeteoriteRetention:
-    """Retention select by states+cutoff; delete by ids (caller owns day math)."""
-
-    def test_list_for_retention_and_delete(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        mid = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "old"}]
-        )[0]
-        db.update_meteorite(mid, state="LANDED")
-        # Force an old state_changed_at so retention cutoff can match
-        conn = db._get_connection()
-        try:
-            conn.execute(
-                "UPDATE meteorite SET state_changed_at = ? WHERE id = ?",
-                ("2000-01-01T00:00:00+00:00", mid),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-        fresh = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "fresh"}]
-        )[0]
-        db.update_meteorite(fresh, state="LANDED")
-
-        purge_states = list(METEORITE_STATES_RETENTION["purge_states"])
-        assert set(purge_states) <= set(METEORITE_STATES)
-        hit = db.list_meteorites_for_retention(
-            states=purge_states,
-            older_than="2010-01-01T00:00:00+00:00",
-        )
-        assert [r["id"] for r in hit] == [mid]
-
-        assert db.delete_meteorites_by_ids([]) == 0
-        n = db.delete_meteorites_by_ids([mid])
-        assert n == 1
-        assert db.get_meteorite(mid) is None
-        assert db.get_meteorite(fresh) is not None

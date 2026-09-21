@@ -53,7 +53,6 @@ Config sections:
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
-  METEORITE_RETENTION_CONFIG — scheduled LANDED purge + stale-row day cutoffs (AST-1562)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -2665,12 +2664,6 @@ METEORITE_STATES = {
     },
 }
 
-# Retention partitions (state literals only — day cutoffs are caller/config for AST-1562).
-METEORITE_STATES_RETENTION = {
-    "purge_states": ("LANDED", "NOT_A_JOB"),
-    "stale_list_states": ("SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED"),
-}
-
 assert set(METEORITE_STATES) == {
     "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
     "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
@@ -2679,13 +2672,6 @@ assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
 assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
 assert METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
 assert METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
-assert (
-    set(METEORITE_STATES_RETENTION["purge_states"])
-    | set(METEORITE_STATES_RETENTION["stale_list_states"])
-) <= set(METEORITE_STATES)
-assert set(METEORITE_STATES_RETENTION["purge_states"]).isdisjoint(
-    METEORITE_STATES_RETENTION["stale_list_states"]
-)
 for _ms, _mcfg in METEORITE_STATES.items():
     _priors = _mcfg["prior_states"]
     if _priors is not None:
@@ -2747,23 +2733,6 @@ for _tpl_key in ("dm_first_template", "dm_nag_template"):
     assert isinstance(_tpl, str) and _tpl and "{link}" in _tpl
 assert "{nag_count}" in _mid_notify["dm_nag_template"]
 assert "{nag_limit}" in _mid_notify["dm_nag_template"]
-
-# AST-1562: scheduled retention — purge old LANDED; warn stale SCRAPE_ERROR/BOT_BLOCKED/ABANDONED.
-METEORITE_RETENTION_CONFIG = {
-    "task_key": "meteorite_retention",
-    "landed_purge_days": 90,
-    "stale_list_days": 14,
-    "batch_size": 200,
-}
-_mid_retention = METEORITE_RETENTION_CONFIG
-assert isinstance(_mid_retention["task_key"], str) and _mid_retention["task_key"]
-assert isinstance(_mid_retention["landed_purge_days"], int) and _mid_retention["landed_purge_days"] >= 1
-assert isinstance(_mid_retention["stale_list_days"], int) and _mid_retention["stale_list_days"] >= 1
-assert isinstance(_mid_retention["batch_size"], int) and _mid_retention["batch_size"] >= 1
-assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED", "NOT_A_JOB"}
-assert set(METEORITE_STATES_RETENTION["stale_list_states"]) == {
-    "SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED",
-}
 
 # ---------------------------------------------------------------------------
 # SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
@@ -3207,67 +3176,70 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
         ")",
     ),
-    # AST-1560: global meteorite ingress transition runners (NULL candidate_id pool).
+    # stat.dispatch.entity-state-bound: per-candidate meteorite ingress transition runners
+    # (was NULL candidate_id global pool pre-remediation; candidate_id now required to claim).
     "dispatch_task-meteorite-ingress": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at', "
+        ") SELECT c.candidate_id, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'stage_meteorite' "
         "    AND d.trigger_state = 'NEW'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK', 'updated_at', "
+        ") SELECT c.candidate_id, 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'scrape_meteorite' "
         "    AND d.trigger_state = 'SCRAPE_LINK'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'land_meteorite', 'meteorite', 'READY', 'updated_at', "
+        ") SELECT c.candidate_id, 'land_meteorite', 'meteorite', 'READY', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'land_meteorite' "
         "    AND d.trigger_state = 'READY'"
         ")",
     ),
-    # AST-1561: global BOT_BLOCKED Estelle notify runner (NULL candidate_id pool).
+    # stat.dispatch.entity-state-bound: per-candidate BOT_BLOCKED Estelle notify runner
+    # (was NULL candidate_id global pool pre-remediation).
     "dispatch_task-meteorite-bot-blocked-notify": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
+        ") SELECT c.candidate_id, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_bot_blocked_notify' "
         "    AND d.trigger_state = 'BOT_BLOCKED'"
         ")",
     ),
-    # AST-1562: global meteorite retention runner (NULL candidate_id; daily hygiene).
-    "dispatch_task-meteorite-retention": (
-        "INSERT INTO dispatch_task ("
-        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
-        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'meteorite_retention', NULL, NULL, 'updated_at', "
-        "0, 24, 0, 200, 0, NULL "
-        "WHERE NOT EXISTS ("
-        "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
-        "    AND d.task_key = 'meteorite_retention'"
+    # stat.dispatch.entity-state-bound: one-time operator cleanup for legacy NULL-candidate_id
+    # rows from the pre-remediation global pool. Linear paste only, run once per environment
+    # AFTER the per-candidate rows above have been seeded — never auto-executed (AST-1496).
+    "dispatch_task-meteorite-ingress-retire-null-pool": (
+        "DELETE FROM dispatch_task "
+        "WHERE candidate_id IS NULL "
+        "  AND task_key IN ("
+        "'stage_meteorite', 'scrape_meteorite', 'land_meteorite', 'meteorite_bot_blocked_notify'"
         ")",
     ),
 }
@@ -3571,6 +3543,14 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "JD_READY"
     if task_key == "evaluate_meteorite":
         return "METEORITE_QUALIFIED"
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["stage_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["scrape_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["land_trigger_state"]
+    if task_key == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]:
+        return METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"]
     if task_key == "grade_do":
         return "PASSED_JD"
     if task_key == "grade_get":
@@ -3610,6 +3590,14 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
         return "company"
     if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"
+    # stat.dispatch.entity-state-bound: ingress/notify rows now per-candidate meteorite (was global NULL pool).
+    if task_key in (
+        METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+        METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],
+    ):
+        return "meteorite"
     cfg = TASK_CONFIG.get(task_key) or TASK_CONFIG.get(resolve_dispatch_task_config_key(task_key)) or {}
     et = cfg.get("entity_type")
     if isinstance(et, str) and et.strip():
@@ -5482,7 +5470,7 @@ DATA_SHAPES = {
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "company_website", "label": "Website", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
-                {"key": "state_updated_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
                 {"key": "batch_id", "label": "Batch ID", "sortable": True},
                 {"key": "created_at", "label": "Created", "sortable": True, "type": "datetime"},
             ],
@@ -5491,14 +5479,14 @@ DATA_SHAPES = {
                 {"key": "short_name", "label": "Short Name", "sortable": True},
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
-                {"key": "state_updated_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
             ],
             "ignored": [
                 {"key": "company_name", "label": "Company", "sortable": True},
                 {"key": "short_name", "label": "Short Name", "sortable": True},
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "prefilter_company_notes", "label": "Ignore Reason", "sortable": True, "expandable": True},
-                {"key": "state_updated_at", "label": "Ignored At", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "Ignored At", "sortable": True, "defaultDesc": True, "type": "datetime"},
             ],
             "watch_history": [
                 {"key": "company_name", "label": "Company", "sortable": True},

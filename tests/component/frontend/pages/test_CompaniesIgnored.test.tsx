@@ -18,7 +18,7 @@ const companies = [
     company_name: "Acme Corp",
     state: "IGNORE",
     prefilter_company_notes: "nope",
-    state_updated_at: "2026-01-01T00:00:00Z",
+    state_changed_at: "2026-01-01T00:00:00Z",
     state_history: [],
   },
 ]
