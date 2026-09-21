@@ -4292,8 +4292,11 @@ class TestAst1529StageMeteoriteConfig:
         )
         assert "stage_meteorite" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         assert "meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
-        with pytest.raises(KeyError, match="stage_meteorite"):
-            cfg._dispatch_trigger_state_for_task_key("stage_meteorite")
+        # stat.dispatch.entity-state-bound: stage_meteorite is now a real per-candidate
+        # meteorite-entity dispatch row (was unresolvable — that gap is what forced the old
+        # global NULL-candidate_id pool seed). meteorite_email stays fully retired.
+        assert cfg._dispatch_trigger_state_for_task_key("stage_meteorite") == "NEW"
+        assert cfg._dispatch_entity_type_for_task_key("stage_meteorite") == "meteorite"
         with pytest.raises(KeyError, match="meteorite_email"):
             cfg._dispatch_trigger_state_for_task_key("meteorite_email")
 
@@ -5514,7 +5517,7 @@ class TestAst1550DiscussionHopKeys:
 
 
 class TestAst1557MeteoriteStates:
-    """AST-1557: METEORITE_STATES staging registry + retention partitions (not JOB_STATES)."""
+    """AST-1557: METEORITE_STATES staging registry (not JOB_STATES)."""
 
     def test_seven_keys_and_new_entry(self) -> None:
         assert set(cfg.METEORITE_STATES) == {
@@ -5530,14 +5533,6 @@ class TestAst1557MeteoriteStates:
         assert "METEORITE_NEW" in cfg.JOB_STATES
         assert "NEW" in cfg.METEORITE_STATES
         assert "NEW" in cfg.JOB_STATES
-
-    def test_retention_partitions(self) -> None:
-        purge = set(cfg.METEORITE_STATES_RETENTION["purge_states"])
-        stale = set(cfg.METEORITE_STATES_RETENTION["stale_list_states"])
-        assert purge == {"LANDED", "NOT_A_JOB"}
-        assert stale == {"SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED"}
-        assert purge.isdisjoint(stale)
-        assert purge | stale <= set(cfg.METEORITE_STATES)
 
     def test_priors_are_registry_keys(self) -> None:
         keys = set(cfg.METEORITE_STATES)
@@ -5598,23 +5593,8 @@ class TestAst1561BotBlockedNotifyConfig:
         assert "BOT_BLOCKED" in blob
 
 
-class TestAst1562RetentionConfig:
-    """AST-1562: METEORITE_RETENTION_CONFIG + dispatch seed; mailbox literals retired."""
-
-    def test_retention_config_literals(self) -> None:
-        retention = cfg.METEORITE_RETENTION_CONFIG
-        assert retention["task_key"] == "meteorite_retention"
-        assert retention["landed_purge_days"] >= 1
-        assert retention["stale_list_days"] >= 1
-        assert retention["batch_size"] >= 1
-        assert "stale_list_line" not in retention
-        assert "debug_func" not in retention
-        assert set(cfg.METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED", "NOT_A_JOB"}
-        assert set(cfg.METEORITE_STATES_RETENTION["stale_list_states"]) == {
-            "SCRAPE_ERROR",
-            "BOT_BLOCKED",
-            "ABANDONED",
-        }
+class TestMailboxConfigRetiredLiterals:
+    """METEORITE_EMAIL_MAILBOX_CONFIG: retired selected/unbound literals stay gone."""
 
     def test_mailbox_config_retired_selected_and_unbound_literals(self) -> None:
         m = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
@@ -5627,13 +5607,6 @@ class TestAst1562RetentionConfig:
             "selected_outcome_skipped_unmatched",
         ):
             assert key not in m
-
-    def test_seed_catalog_has_retention_dispatch_row(self) -> None:
-        assert "dispatch_task-meteorite-retention" in cfg.SEED_CONFIG
-        sql = cfg.SEED_CONFIG["dispatch_task-meteorite-retention"]
-        blob = sql if isinstance(sql, str) else "\n".join(sql)
-        assert "meteorite_retention" in blob
-        assert "NULL" in blob.upper()
 
 
 class TestAst1576CraftResumeBaseArtifactKey:
@@ -6394,12 +6367,6 @@ class TestAst1621MeteoriteEntityTypeRegistry:
         assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED'" in notify_blob
         assert ", 'meteorite_bot_blocked_notify', NULL," not in notify_blob
 
-    def test_retention_seed_stays_null_entity_type(self) -> None:
-        # Boundary: retention remains non-claim (NULL entity_type + NULL trigger).
-        retention = cfg.SEED_CONFIG["dispatch_task-meteorite-retention"]
-        blob = retention if isinstance(retention, str) else "\n".join(retention)
-        assert ", 'meteorite_retention', NULL, NULL," in blob
-
 
 class TestAst1602RetireJobBodyReplicaConfigAuthority:
     """AST-1602: finalize TASK_CONFIG.artifact_key SoT; body-replica map gone."""
@@ -6661,10 +6628,6 @@ class TestAst1712MailboxKeyAndClassifyStates:
         assert cfg.METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
         assert cfg.METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
         assert cfg.METEORITE_STATES["SCRAPE_LINK"]["prior_states"] == ["NEW", "SCRAPE_ERROR"]
-        assert set(cfg.METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED", "NOT_A_JOB"}
-        assert set(cfg.METEORITE_STATES_RETENTION["stale_list_states"]) == {
-            "SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED",
-        }
         page = cfg.METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]
         assert page["closed"] == "SCRAPE_ERROR"
         assert page["missing"] == "SCRAPE_ERROR"

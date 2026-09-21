@@ -2439,6 +2439,112 @@ class TestAst1054MeteoriteDispatchProvision:
 
 
 @pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "ensure_meteorite_ingress_dispatch_tasks"),
+    reason="stat.dispatch.entity-state-bound per-candidate ingress provision not on this publish tip",
+)
+class TestMeteoriteIngressPerCandidateDispatchProvision:
+    """stat.dispatch.entity-state-bound: stage/scrape/land/notify are per-candidate, not a NULL pool."""
+
+    def test_ensure_inserts_all_four_once_then_idempotent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        existing: list[dict] = []
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append(
+                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"]}
+            )
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        first = dispatcher_mod.ensure_meteorite_ingress_dispatch_tasks("cand-1")
+        assert first == {"candidate_id": "cand-1", "added": 4, "skipped": 0}
+        by_key = {s["task_key"]: s for s in saves}
+        assert by_key["stage_meteorite"]["candidate_id"] == "cand-1"
+        assert by_key["stage_meteorite"]["trigger_state"] == "NEW"
+        assert by_key["scrape_meteorite"]["trigger_state"] == "SCRAPE_LINK"
+        assert by_key["land_meteorite"]["trigger_state"] == "READY"
+        assert by_key["meteorite_bot_blocked_notify"]["trigger_state"] == "BOT_BLOCKED"
+        second = dispatcher_mod.ensure_meteorite_ingress_dispatch_tasks("cand-1")
+        assert second == {"candidate_id": "cand-1", "added": 0, "skipped": 4}
+
+    def test_empty_candidate_id_raises(self) -> None:
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            dispatcher_mod.ensure_meteorite_ingress_dispatch_tasks("")
+
+    def test_provision_touches_template_and_scheduled_candidates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        monkeypatch.setattr(
+            dispatcher_mod.database, "get_candidate", lambda cid: {"astral_candidate_id": cid}
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database, "list_candidate_ids_with_dispatch_tasks", lambda: ["tmpl", "c2"]
+        )
+        calls: list[str] = []
+
+        def _ensure(cid):
+            calls.append(cid)
+            return {"candidate_id": cid, "added": 4, "skipped": 0}
+
+        monkeypatch.setattr(dispatcher_mod, "ensure_meteorite_ingress_dispatch_tasks", _ensure)
+        out = dispatcher_mod.provision_meteorite_ingress_dispatch_tasks()
+        assert calls == ["tmpl", "tmpl", "c2"]
+        assert out["candidates_touched"] == 2
+        assert out["added"] == 12
+        assert out["skipped"] == 0
+
+    def test_start_scheduler_does_not_invoke_ingress_provision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] AST-1496 carve-out — new provisioner must also stay off the boot path."""
+        dispatcher_mod._tick_thread = None
+        monkeypatch.setattr(
+            dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
+        )
+        monkeypatch.setattr(
+            dispatcher_mod, "provision_meteorite_dispatch_tasks", MagicMock(return_value={})
+        )
+        mingress = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "provision_meteorite_ingress_dispatch_tasks", mingress)
+        monkeypatch.setattr(
+            dispatcher_mod, "correct_meteorite_ingress_dispatch_entity_types", MagicMock(return_value={})
+        )
+        monkeypatch.setattr(
+            dispatcher_mod, "retire_candidate_requested_wrapper_dispatch_tasks", MagicMock(return_value={})
+        )
+        if hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks"):
+            monkeypatch.setattr(
+                dispatcher_mod, "provision_meteorite_email_dispatch_tasks", MagicMock(return_value={})
+            )
+        if hasattr(dispatcher_mod, "ensure_fetch_email_dispatch_task"):
+            monkeypatch.setattr(
+                dispatcher_mod, "ensure_fetch_email_dispatch_task", MagicMock(return_value={})
+            )
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon = daemon
+
+            def start(self) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        dispatcher_mod.start_scheduler()
+        mingress.assert_not_called()
+
+
+@pytest.mark.skipif(
     not hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks"),
     reason="AST-1466 meteorite_email provision not on this publish tip",
 )
@@ -2963,54 +3069,6 @@ class TestAst1561BotBlockedNotifyDispatchOne:
         }
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[1561] = {"asyncio_task": None}
-        await dispatcher_mod._dispatch_one(task)
-        runner.assert_awaited_once()
-        assert runner.await_args.args[0]["entity_batch_id"].startswith(f"{tk}-")
-        loop.assert_not_called()
-        save_ledger.assert_called_once()
-        assert save_ledger.call_args.args[1] == tk
-
-
-@pytest.mark.skipif(
-    not hasattr(dispatcher_mod, "_is_meteorite_retention_task_key"),
-    reason="AST-1562 retention dispatch branch not on this publish tip",
-)
-class TestAst1562RetentionDispatchOne:
-    """AST-1562: _dispatch_one routes retention runner with entity_batch_id."""
-
-    @pytest.mark.asyncio
-    async def test_routes_retention_runner_with_entity_batch_id(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        from src.core import meteorite as meteorite_mod
-
-        runner = AsyncMock(
-            return_value={
-                "total_processed": 2,
-                "total_passed": 2,
-                "total_failed": 0,
-                "total_errors": 0,
-            }
-        )
-        monkeypatch.setattr(meteorite_mod, "run_meteorite_retention", runner)
-        save_ledger = MagicMock()
-        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
-        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
-        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
-        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
-        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
-        loop = AsyncMock()
-        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
-        tk = dispatcher_mod.METEORITE_RETENTION_CONFIG["task_key"]
-        task = {
-            "id": 1562,
-            "task_key": tk,
-            "candidate_id": None,
-            "auto_mode": 1,
-            "debug": 0,
-        }
-        with dispatcher_mod._registry_lock:
-            dispatcher_mod._task_registry[1562] = {"asyncio_task": None}
         await dispatcher_mod._dispatch_one(task)
         runner.assert_awaited_once()
         assert runner.await_args.args[0]["entity_batch_id"].startswith(f"{tk}-")
