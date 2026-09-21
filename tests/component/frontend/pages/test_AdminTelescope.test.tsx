@@ -1,5 +1,5 @@
 /**
- * AST-1728 / AST-1730 — AdminTelescope page + scrollable selectable response panes.
+ * AST-1728 / AST-1730 / AST-1734 — AdminTelescope page + panes + page scroll.
  */
 import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -46,6 +46,22 @@ describe("AdminTelescope", () => {
       "../../../../src/ui/frontend/src/pages/AdminTelescope"
     )
     expect(mod.default).toBeTypeOf("function")
+  })
+
+  it("AST-1734: root unlocks page scroll (list-page height auto / overflow visible)", () => {
+    renderWithProviders(<AdminTelescope />)
+    const listPage = document.querySelector(".list-page") as HTMLElement | null
+    if (listPage) {
+      // Proposed fix: override .list-page height/overflow so .content can scroll.
+      expect(listPage.style.height).toBe("auto")
+      expect(listPage.style.overflow).toBe("visible")
+    } else {
+      // Acceptable alternative: drop list-page for free-flow shell (Agent Ad Hoc style).
+      const heading = screen.getByRole("heading", { name: /^Telescope$/i })
+      const wrap = heading.parentElement as HTMLElement
+      expect(wrap.style.overflow).not.toBe("hidden")
+      expect(wrap.style.height === "" || wrap.style.height === "auto").toBe(true)
+    }
   })
 
   it("AST-1730: raw response is read-only scrollable wrapping textarea", async () => {
