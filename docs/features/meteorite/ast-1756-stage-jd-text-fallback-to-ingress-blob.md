@@ -198,3 +198,68 @@ AC5→Stage 1 §2–3 + verify §5 (blank/missing `jd_text` → stripped `ingres
 - Plan Discuss: status `Plan Ready`, assignee Joan, zero completed `[plan-discuss]` rounds.
 
 context_tokens≈22000
+
+## Review stub (build-child)
+
+**Built:** `7d9fcbe1e8709c303415a123311cc76fd62e50b2` on `sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob`
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1756
+**Publish ref:** `fa9e050efecf3bddb6b3a766e73ac4295b738643` (`origin/sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob`)
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored both directives **A**; diff confirms same.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback`
+- **Finding:** Plan names both `single_jd_no_link` and `multi_jd_inline`; tests exercise `text_source_ref_outcomes[0]` only. Loop logic applies the same fallback per job, so risk is low, but a second-outcome or two-job `multi_jd_inline` case would close the plan wording gap.
+- **Recommendation:** Optional hardening at resolve-child discretion; not blocking.
+
+- **Location:** `docs/test-bible/core/meteorite.md` § AST-1756
+- **Finding:** Bible shasum line still reads `fill after merge-tests`.
+- **Recommendation:** Chuckles can stamp on doc writeback (hygiene only).
+
+## What's solid
+
+- Product change is minimal and matches Stage 1: `ingress_blob` kwarg on `_map_classify_jobs_to_meteorite_rows`, fallback only in the text-outcome branch, degenerate empty blob still returns `text scrap missing jd_text`, URL branch untouched, sole `stage_meteorite` call site passes `ingress_blob=blob` (raw caller blob, not `_classify_stage_blob` wrapper).
+- No new `logger.debug` / `logger.info` lines; only an inline comment in the fallback branch — honors id-only `stat.logging.debug` scope.
+- Content stays on the row from the same stage pass via caller blob / Ruth `jd_text`; no parallel extract path — satisfies Canon Scope reading of `patt.task.daisy-chain`.
+- Betty landed `TestAst1756IngressBlobJdTextFallback` covering AC5/AC6, degenerate error, URL unchanged, and `stage_meteorite` persist wire — addresses Joan's plan-stage discuss note about missing committed coverage.
+- Sibling boundaries hold: no `agent_task.json`, land/Tracker, or AST-1757 call-site edits.
+- Estimate **2 — agree** still fits (~8 lines product + manifest/tests).
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+- Append this artifact to `docs/features/meteorite/ast-1756-stage-jd-text-fallback-to-ingress-blob.md` and `docs()` push on publish ref.
+- Post slim upshot via `linear_proxy --as radia`.
+- Move to **Review Posted**; datt **§3h** → **PROCEED** path toward User Testing (no fix-now items).
+
+```
+

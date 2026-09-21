@@ -1005,6 +1005,7 @@ async def stage_meteorite(
             source_kind=kind,
             source_id=sid,
             timezone_key=_candidate_contact_timezone(cid),
+            ingress_blob=blob,
         )
         if map_err:
             failed = _save_error(str(map_err), outcome, batch_id=batch_id)
@@ -1307,6 +1308,7 @@ def _map_classify_jobs_to_meteorite_rows(
     source_kind: str,
     source_id: str,
     timezone_key: str = "",
+    ingress_blob: str = "",
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Map classify jobs → insert_meteorite_rows dicts (no source_ref synthesis)."""
     if source_kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"]:
@@ -1327,8 +1329,12 @@ def _map_classify_jobs_to_meteorite_rows(
             return [], "text outcome produced no jobs"
         for job in rows:
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
+            # Prefer Ruth jd_text; blank → classify ingress blob (subject+body), not map fail
             if not text:
-                return [], "text scrap missing jd_text"
+                fallback = ingress_blob.strip() if isinstance(ingress_blob, str) else ""
+                if not fallback:
+                    return [], "text scrap missing jd_text"
+                text = fallback
             link: Optional[str] = None
             if source_kind == "email":
                 from_email = (
