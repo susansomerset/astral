@@ -24,6 +24,31 @@ async def test_capture_text_body_selector_uses_visible_text_js() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ast1733_capture_text_selector_strips_style_script_noscript() -> None:
+    """AST-1733 bug-repro: CSS selector path (e.g. head) must clone-and-strip style/script."""
+    page = MagicMock()
+    page.evaluate = AsyncMock(return_value=["Page Title"])
+    out = await capture_mod.capture_text(page, "head")
+    assert out == "Page Title"
+    call = page.evaluate.await_args
+    js = call.args[0]
+    # Pre-fix selector path is bare el.innerText — no clone / no style strip.
+    assert "cloneNode" in js, (
+        "AST-1733: selector capture_text must clone match roots before innerText"
+    )
+    assert "style, script, noscript" in js or (
+        "style" in js and "script" in js and "noscript" in js
+    ), (
+        "AST-1733: selector path must remove style/script/noscript before innerText"
+    )
+    # Page/body chrome strip must not apply on intentional CSS selectors.
+    assert "header, footer, nav" not in js, (
+        "AST-1733: selector path must not strip header/footer/nav (page/body-only)"
+    )
+    assert len(call.args) > 1 and call.args[1] == "head"
+
+
+@pytest.mark.asyncio
 async def test_capture_text_multi_match_returns_list() -> None:
     page = MagicMock()
     page.evaluate = AsyncMock(return_value=["one", "two", "three"])

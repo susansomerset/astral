@@ -132,3 +132,18 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
   tests/component/service/test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href \
   tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1732_post_telescope_passes_selector_to_capture_links -q
 ```
+
+---
+
+### AST-1733 · AST-1721 (qa-fix bug-repro — selector text strips style)
+
+**Board REVISE:** `capture_text` CSS selector path (e.g. `"head"`) must clone-and-strip `style`/`script`/`noscript` like the page/body path; existing body-path test does not cover this.
+
+| Area | Component tests |
+| --- | --- |
+| Selector path clone + style/script/noscript strip | `test_telescope_capture.py::test_ast1733_capture_text_selector_strips_style_script_noscript` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_ast1733_capture_text_selector_strips_style_script_noscript -q
+```
