@@ -257,6 +257,76 @@ class TestTelescopeRoutes:
             "html": "<html/>",
         }
 
+    def test_ast1736_html_class_name_resolves_to_dot_class(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        """AST-1736 bug-repro: class_name 'shaders' → capture_html gets '.shaders'."""
+        client, _pool, headers = telescope_app_client
+        seen: dict[str, Any] = {}
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            page = MagicMock()
+            page.url = "https://example.com/s"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+
+        async def capt_html(page, selector=None):
+            seen["selector"] = selector
+            return '<div class="shaders">hit</div>'
+
+        monkeypatch.setattr(app_mod, "capture_html", capt_html)
+
+        resp = client.post(
+            "/telescope/html",
+            headers=headers,
+            json={
+                "url": "https://example.com/s",
+                "class_name": "shaders",
+                "expand": False,
+            },
+        )
+        assert resp.status_code == 200
+        assert seen.get("selector") == ".shaders", (
+            "AST-1736: class_name must resolve to CSS .shaders before capture_html"
+        )
+        html = resp.json().get("html") or ""
+        assert "shaders" in html
+
+    def test_ast1736_selector_plus_class_name_returns_400(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        """AST-1736 bug-repro: selector + class_name together is ambiguous → 400."""
+        client, _pool, headers = telescope_app_client
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            page = MagicMock()
+            page.url = "https://example.com/x"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+        monkeypatch.setattr(
+            app_mod, "capture_html", AsyncMock(return_value="<div/>")
+        )
+
+        resp = client.post(
+            "/telescope/html",
+            headers=headers,
+            json={
+                "url": "https://example.com/x",
+                "selector": ".other",
+                "class_name": "shaders",
+                "expand": False,
+            },
+        )
+        assert resp.status_code == 400, (
+            "AST-1736: selector + class_name must be rejected as ambiguous"
+        )
+
 
 class TestRunBrowserJobErrors:
     @pytest.mark.asyncio

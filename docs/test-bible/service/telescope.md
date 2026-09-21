@@ -132,3 +132,54 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
   tests/component/service/test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href \
   tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1732_post_telescope_passes_selector_to_capture_links -q
 ```
+
+---
+
+### AST-1733 · AST-1721 (qa-fix bug-repro — selector text strips style)
+
+**Board REVISE:** `capture_text` CSS selector path (e.g. `"head"`) must clone-and-strip `style`/`script`/`noscript` like the page/body path; existing body-path test does not cover this.
+
+| Area | Component tests |
+| --- | --- |
+| Selector path clone + style/script/noscript strip | `test_telescope_capture.py::test_ast1733_capture_text_selector_strips_style_script_noscript` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_ast1733_capture_text_selector_strips_style_script_noscript -q
+```
+
+---
+
+### AST-1735 · AST-1721 (qa-fix bug-repro — head/body scoped links)
+
+**Board REVISE:** `capture_links("head"|"body")` must be element-scoped (`body` not whole-page alias); omit/`"page"` stay document-wide. AST-1732 only covers class selectors.
+
+| Area | Component tests |
+| --- | --- |
+| `"body"` scoped (not whole-page) | `test_telescope_capture.py::test_ast1735_capture_links_body_is_scoped_not_whole_page` (**bug-repro**) |
+| `"head"` scoped; omit/`page` whole-doc | `test_telescope_capture.py::test_ast1735_capture_links_head_scoped_and_page_stays_whole_document` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_ast1735_capture_links_body_is_scoped_not_whole_page \
+  tests/component/service/test_telescope_capture.py::test_ast1735_capture_links_head_scoped_and_page_stays_whole_document -q
+```
+
+---
+
+### AST-1736 · AST-1721 (qa-fix bug-repro — tag/class_name filter)
+
+**Board REVISE:** explicit `class_name` (e.g. `shaders`) → resolved `.class` html; `selector`+`class_name` → 400; `capture_links` bare→class retry. AST-1731 only covers bare `selector` heuristic.
+
+| Area | Component tests |
+| --- | --- |
+| `class_name` → `.shaders` into capture_html | `test_telescope_app.py::TestTelescopeRoutes::test_ast1736_html_class_name_resolves_to_dot_class` (**bug-repro**) |
+| Ambiguous selector+class_name → 400 | `test_telescope_app.py::TestTelescopeRoutes::test_ast1736_selector_plus_class_name_returns_400` (**bug-repro**) |
+| Links bare-class retry | `test_telescope_capture.py::test_ast1736_capture_links_bare_class_retries_as_class` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1736_html_class_name_resolves_to_dot_class \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1736_selector_plus_class_name_returns_400 \
+  tests/component/service/test_telescope_capture.py::test_ast1736_capture_links_bare_class_retries_as_class -q
+```

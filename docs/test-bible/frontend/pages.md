@@ -2923,3 +2923,18 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
 ```
+
+---
+
+### AST-1734 · AST-1721 (qa-fix bug-repro — page scroll unlock)
+
+**Board REVISE:** root `.list-page` must use `height: auto` / `overflow: visible` (or free-flow shell) so `.content` scrolls; AST-1730 only asserts textarea inner scroll.
+
+| Area | Component tests |
+| --- | --- |
+| Page scroll unlock on root | `test_AdminTelescope.test.tsx` — **`AST-1734: root unlocks page scroll (list-page height auto / overflow visible)`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
+```
