@@ -306,7 +306,7 @@ Two intentional Stage contracts from the rework epic hard-coded skip-as-passed:
 
 ### Proposed change
 
-Scope gate (AST-1742 `## Scope`): `src/core/inbox.py`, `src/core/meteorite.py` (+ Betty tests if assertions lock skip-as-passed). **Gap:** Land UI rollup in `src/ui/api/api_inbox.py` is not listed but must learn `counter="failed"` or AC1 on the ingest→UI path stays broken — see `[scope-gate]` on the ticket. Proposed steps below assume that one-line file is added to Scope before `make-fix`.
+AST-1742 `## Scope` (amended): `src/core/inbox.py`, `src/core/meteorite.py`, `src/ui/api/api_inbox.py` (+ Betty tests if assertions lock skip-as-passed). `[scope-gate]` cleared — Chuckles added the Land `_land_all` file/kind to Scope on AST-1742 and AST-1740.
 
 1. **`src/core/inbox.py` — `check_email` only (counter branches; archive rules untouched)**
 
@@ -327,9 +327,9 @@ Scope gate (AST-1742 `## Scope`): `src/core/inbox.py`, `src/core/meteorite.py` (
    - **Decision — already-ingested:** leave `counter="passed"` (same hygiene decision as `check_email`).
    - Docstring today says `counter passed|error` — extend to `passed|failed|error`.
 
-3. **`src/ui/api/api_inbox.py` — Land selected-ids rollup (needs Scope amend)**
+3. **`src/ui/api/api_inbox.py` — `_land_all` counter branch**
 
-   In `_land_all`, prefer ingest `counter` before the skip_outcomes fallback. Today `counter not in {"passed","error"}` falls through to `outcome in skip_outcomes → is_passed=True`, which would keep NOT_A_JOB as passed even after step 2. Add before the `else`:
+   Prefer ingest `counter` before the skip_outcomes fallback. Today `counter not in {"passed","error"}` falls through to `outcome in skip_outcomes → is_passed=True`, which would keep NOT_A_JOB as passed even after step 2. Add before the `else`:
 
    ```python
    elif counter == "failed":
@@ -343,8 +343,8 @@ Scope gate (AST-1742 `## Scope`): `src/core/inbox.py`, `src/core/meteorite.py` (
 ### Blast radius
 
 - **Dispatcher mailbox** accumulates `check_email`’s four-key summary — `total_failed` will start moving; ledger already has the key.
-- **`check_inbox`** (Land/admin leftover): still maps any non-`passed` counter to `errors` (no `failed` branch). Out of AST-1742 Scope; mailbox no longer calls it. Note only — do not expand this ticket to rewire `check_inbox` unless Scope is widened again.
-- **Manage Email Land** (`api_inbox`) — broken for skip-as-fail until the Scope amend in step 3 lands.
+- **`check_inbox`** (Land/admin leftover): still maps any non-`passed` counter to `errors` (no `failed` branch). Out of AST-1742 Scope; mailbox no longer calls it. Note only — do not expand this ticket to rewire `check_inbox`.
+- **Manage Email Land** (`api_inbox._land_all`): step 3 makes ingest `counter="failed"` count as fails; without it, skip_outcomes fallback would keep NOT_A_JOB as passed.
 - **Tests / bible** (Betty): any assertion that skip / `NOT_A_JOB` / `counter="passed"` / `total_failed == 0` for mailbox or ingest must flip; fix-board decides.
 
 ### What must still hold
