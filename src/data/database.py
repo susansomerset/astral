@@ -3622,7 +3622,7 @@ def list_candidates() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
-# Allowed ORDER BY columns for candidate pool claims (AST-1258).
+# Allowed ORDER BY columns for candidate batch claims (stat.dispatch.entity-state-bound).
 _CANDIDATE_BATCH_SORT_COLUMNS = frozenset({"rowid", "created_at", "updated_at", "state_changed_at"})
 
 
@@ -3631,14 +3631,21 @@ def claim_candidate_batch(
     state: str,
     limit: int,
     sort_by: Optional[str] = None,
+    candidate_id: Optional[str] = None,
     *,
     states: Optional[List[str]] = None,
 ) -> int:
-    """Claim up to limit unclaimed candidates in state (cross-candidate pool).
+    """Claim up to limit unclaimed candidates in state.
 
+    candidate_id: required; scopes claim to that candidate's own row via
+    astral_candidate_id (stat.dispatch.entity-state-bound — a candidate-entity dispatch_task
+    row processes only its own bound candidate, never a cross-candidate pool; batch is always 0 or 1).
     Sets batch_id, batch_created_at. Parameter order: batch_id first (caller owns it).
     Unclaimed = batch_id IS NULL OR batch_id = '' (same as job/company). Returns count claimed.
     """
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
     now = _utc_now()
     claim_states = states if states is not None else [state]
     state_sql, state_params = _state_in_sql(claim_states)
@@ -3652,12 +3659,13 @@ def claim_candidate_batch(
         conn = _get_connection()
         try:
             _ensure_candidate_schema(conn)
-            params = [batch_id, now, *state_params, int(limit)]
+            params = [batch_id, now, *state_params, cid, int(limit)]
             cur = conn.execute(
                 f"""UPDATE candidate SET batch_id = ?, batch_created_at = ?
                    WHERE astral_candidate_id IN (
                      SELECT astral_candidate_id FROM candidate
                      WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                       AND astral_candidate_id = ?
                      {order_clause}
                      LIMIT ?
                    )""",
@@ -4152,7 +4160,7 @@ def update_meteorite(meteorite_id: int, **fields: Any) -> None:
 def count_candidates_unclaimed_in_states(
     states: List[str], candidate_id: Optional[str] = None
 ) -> int:
-    """Count unclaimed candidates in the given state set (global pool; AST-1258).
+    """Count unclaimed candidates in the given state set.
 
     When candidate_id is set, count is that row only (0 or 1; AST-1432 Avail).
     """

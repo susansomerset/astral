@@ -1945,12 +1945,14 @@ def get_new_candidate_batch(
     sort_by: Optional[str] = None,
     batch_id: Optional[str] = None,
     context: Optional[str] = None,
+    candidate_id: Optional[str] = None,
     *,
     states: Optional[List[str]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Claim candidates for batch processing. Returns (batch_id, candidates).
 
-    Cross-candidate pool (AST-1258/1259) — no candidate_id / score_floor scope.
+    candidate_id: required; scopes the claim to that one candidate's own row
+    (stat.dispatch.entity-state-bound — no cross-candidate pool; was AST-1258/1259).
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
@@ -1968,7 +1970,9 @@ def get_new_candidate_batch(
     if not batch_id and not context:
         raise ValueError("batch_id or context is required for batch_id generation")
     bid = batch_id or f"{context}-{uuid.uuid4()}"
-    database.claim_candidate_batch(bid, state, limit_val, sort_by=sort_by, states=states)
+    database.claim_candidate_batch(
+        bid, state, limit_val, sort_by=sort_by, candidate_id=candidate_id, states=states
+    )
     return (bid, database.get_candidate_batch(bid))
 
 

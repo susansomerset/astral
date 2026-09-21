@@ -638,7 +638,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     bid             = ctx.get("entity_batch_id") or log_batch_id.get()
     dispatch_task_key = (task.get("task_key") or "").strip()
     use_full_batch = batch_call_mode or (dispatch_task_key == "parse_job_list")
-    # Candidate consult reads entities[0] only — force per-row gather for pool claims (AST-1259).
+    # Candidate consult reads entities[0] only — force per-row gather.
     if entity_type == "candidate":
         use_full_batch = False
     s               = dict(_SUMMARY_ZERO)
@@ -656,13 +656,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             from src.core.candidate import requested_artifacts_dispatch_claim_states
             claim_states = requested_artifacts_dispatch_claim_states()
         logger.debug(
-            "Calling get_new_candidate_batch: [state=%s, limit=%s, sort_by=%s, batch_id=%s, states=%s]",
-            input_state, limit, sort_by, bid, claim_states,
+            "Calling get_new_candidate_batch: [state=%s, limit=%s, sort_by=%s, candidate_id=%s, batch_id=%s, states=%s]",
+            input_state, limit, sort_by, candidate_id, bid, claim_states,
         )
         bid, entities = get_new_candidate_batch(
             input_state,
             limit=limit,
             sort_by=sort_by,
+            candidate_id=candidate_id,
             batch_id=bid,
             states=claim_states,
         )

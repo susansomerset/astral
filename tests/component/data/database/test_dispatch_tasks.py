@@ -1412,7 +1412,8 @@ class TestAst972CandidateStageEligibility:
 
 
 class TestAst1258CandidatePoolEligibility:
-    """AST-1258 + AST-1436: bound-row Avail is 0/1; locked rows → 0; inflow_discovery unchanged."""
+    """stat.dispatch.entity-state-bound: bound-row Avail is 0/1; locked rows -> 0;
+    inflow_discovery unchanged; no cross-candidate pool (was AST-1258/1436)."""
 
     def test_pool_count_zero_when_all_matching_rows_locked(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1426,14 +1427,20 @@ class TestAst1258CandidatePoolEligibility:
         }
         # Bound row: only c1258e1 counts (retry companion is a different candidate).
         assert db.count_eligible_for_dispatch_task(task) == 1
+        # stat.dispatch.entity-state-bound: claiming c1258e1's own row never sweeps in
+        # c1258e2 (a different candidate), even with a states union and a wide limit.
         n = db.claim_candidate_batch(
             "lock-all-1258",
             "REQUESTED_ARTIFACTS",
             10,
+            candidate_id="c1258e1",
             states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
         )
-        assert n == 2
+        assert n == 1
         assert db.count_eligible_for_dispatch_task(task) == 0
+        # c1258e2 is untouched — still its own candidate's row to claim.
+        other_task = {**task, "candidate_id": "c1258e2"}
+        assert db.count_eligible_for_dispatch_task(other_task) == 1
 
     def test_inflow_discovery_still_uses_inflow_helper(self, sqlite_in_memory) -> None:
         # Non-ACTIVE_SEARCH candidate must not get pool count for inflow_discovery.
@@ -1460,7 +1467,8 @@ class TestAst1258CandidatePoolEligibility:
 
 
 class TestAst1436BoundCandidateAvail:
-    """AST-1436: two unclaimed candidates → bound Avail 1; lock bound, other free → 0."""
+    """stat.dispatch.entity-state-bound: two unclaimed candidates -> bound Avail 1;
+    lock bound, other free -> 0; other candidate is never swept in."""
 
     def test_two_unclaimed_bound_row_is_one_then_zero_when_bound_locked(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1473,11 +1481,14 @@ class TestAst1436BoundCandidateAvail:
             "task_key": "craft_get_rubric",
         }
         assert db.count_eligible_for_dispatch_task(task) == 1
-        n = db.claim_candidate_batch("lock-ca-1436", "REQUESTED_ARTIFACTS", 1)
+        n = db.claim_candidate_batch("lock-ca-1436", "REQUESTED_ARTIFACTS", 1, candidate_id="c-a")
         assert n == 1
         claimed = {r["astral_candidate_id"] for r in db.get_candidate_batch("lock-ca-1436")}
         assert claimed == {"c-a"}
         assert db.count_eligible_for_dispatch_task(task) == 0
+        # c-b is untouched by c-a's claim (no cross-candidate pool).
+        other_task = {**task, "candidate_id": "c-b"}
+        assert db.count_eligible_for_dispatch_task(other_task) == 1
 
 
 class TestAst1088NullCandidateMeteoriteEmail:
