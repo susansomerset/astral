@@ -128,3 +128,12 @@ AC1→Stage1(1–3, smoke fail-dest); AC2→Stage1(1–3, smoke holding→termin
 - **Recommendation:** On build, either add a parallel all-`X` debug branch in `render_verdict`'s `IncompleteGradeSetError` handler or implement step 4's preferred one-line `all literal X grade set …` in `_run_batch_consult` only — behavior is already correct via `_consult_batch_fail_dest`; message honesty is the only delta.
 
 context_tokens≈42000
+
+## Review stub (build)
+
+**Publish ref:** `sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding`  
+**Tip:** `eec4856b`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `eec4856b` | All-X scored grades → retry holding |
