@@ -286,6 +286,34 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
   tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url -q
 ```
 
+**Pass criterion:** pytest green on the node — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1751 · AST-1721 (qa-fix bug-repro — ERROR not also fail; BOT_BLOCKED is fail)
+
+**Board REVISE:** rewrite `TestAst1560RunScrapeMeteorite` BOT_BLOCKED `total_passed`→`total_failed`; missing ERROR-only `fail:0 error:N` (sibling omitted `total_failed`); stage/land double-bump holds may break.
+
+| Area | Component tests |
+| --- | --- |
+| ERROR-only batch fail:0 error:N | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1751_error_only_batch_fail_zero_error_n` (**bug-repro**) |
+| scrape BOT_BLOCKED → total_failed | `TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring` (rewritten) |
+| sibling ERROR omits fail | `TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch` (rewritten) |
+| stage/land ERROR holds | `TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors`, `TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring`, `TestAst1560RunLandMeteorite::test_missing_content_errors` (`total_failed==0`) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1751_error_only_batch_fail_zero_error_n \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_missing_content_errors -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
 
 ### AST-1562 · AST-1555
 
