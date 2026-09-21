@@ -4192,6 +4192,20 @@ Mailbox task key `meteorite_email` → `stage_email_meteorite`; `debug_func` →
 
 **Integration:** none — no existing scenario names this key or `METEORITE_STATES`.
 
+### AST-1752 · AST-1721 (qa-fix bug-repro — LINK_EXPIRED page map)
+
+`METEORITE_STATES` gains `LINK_EXPIRED` (`prior_states` `SCRAPE_LINK` only). `scrape_page_status_states` maps `closed` and `missing` to `LINK_EXPIRED` (not `SCRAPE_ERROR`).
+
+| Area | Component tests |
+| --- | --- |
+| Registry + closed/missing map | `test_config.py::TestAst1557MeteoriteStates`, `TestAst1560IngressDispatchConfig`, `TestAst1712MailboxKeyAndClassifyStates` (**bug-repro** with meteorite.md) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_ingress_task_keys_and_triggers -q
+```
+
 ## QA test manifest
 
 ```bash
