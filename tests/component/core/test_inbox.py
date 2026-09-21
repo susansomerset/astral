@@ -374,6 +374,47 @@ class TestAst1714CheckEmail:
         stage.assert_not_awaited()
         archive.assert_called_once_with(mid)
 
+    @pytest.mark.asyncio
+    async def test_skip_outcome_counts_failed_not_passed(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1743 [bug-repro]: NOT_A_JOB / skip after archive increments failed, not passed."""
+        db = sqlite_in_memory
+        cid = "cand-1743-skip"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        mid = "msg-1743-skip"
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate", lambda _c: ["a@ex.com"]
+        )
+        monkeypatch.setattr(
+            inbox_mod, "fetch_candidate_email", lambda _a, debug=False: [self._msg(mid)]
+        )
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_with_assembled_html",
+            lambda _m: {"assembled_html": "full", "html_body": "body"},
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "archive_candidate_email", archive)
+
+        async def _stage(*_a, **_k):
+            return {
+                "outcome": "not_job_content",
+                "stage_outcome": "not_job_content",
+                "skipped": True,
+                "jobs": [],
+                "error": None,
+                "batch_id": "b",
+            }
+
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", _stage)
+        out = await inbox_mod.check_email({"candidate_id": cid}, debug=False)
+        assert out["total_processed"] == 1
+        assert out["total_failed"] == 1
+        assert out["total_passed"] == 0
+        assert out["total_errors"] == 0
+        archive.assert_called_once_with(mid)
+
     def test_dispatcher_has_no_check_inbox_call(self) -> None:
         import inspect
         from src.core import dispatcher as dispatcher_mod

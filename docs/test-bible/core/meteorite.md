@@ -514,3 +514,21 @@ Email text outcomes author non-http `meteorite.link` breadcrumbs (From/To + time
 ```
 
 **Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1713-stage-meteorite-saves-the-ruth-row:docs/test-bible/core/meteorite.md | shasum`
+
+### AST-1743 · AST-1740 (gap — ingest skip→failed counter)
+
+**Parent:** [AST-1740](https://linear.app/astralcareermatch/issue/AST-1740). **Sibling product:** AST-1742. **Publish:** `origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip + archive → `counter="failed"` | `src/core/meteorite.py` | **`[bug-repro]`** `TestAst1743IngestSkipFailed::test_skip_outcome_returns_counter_failed` |
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1743IngestSkipFailed::test_skip_outcome_returns_counter_failed \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests:docs/test-bible/core/meteorite.md | shasum`

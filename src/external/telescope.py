@@ -327,6 +327,8 @@ async def _post_telescope(
     url: str,
     *,
     selector: Optional[str] = None,
+    tag: Optional[str] = None,
+    class_name: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
     links: bool = True,
@@ -343,6 +345,10 @@ async def _post_telescope(
     }
     if selector is not None:
         body["selector"] = selector
+    if tag is not None:
+        body["tag"] = tag
+    if class_name is not None:
+        body["class_name"] = class_name
     resp = await _pool.request(
         "POST", TELESCOPE_CONFIG["telescope_path"], json_body=body
     )
@@ -363,6 +369,8 @@ async def _post_telescope_html(
     url: str,
     *,
     selector: Optional[str] = None,
+    tag: Optional[str] = None,
+    class_name: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
 ) -> dict:
@@ -377,6 +385,10 @@ async def _post_telescope_html(
     }
     if selector is not None:
         body["selector"] = selector
+    if tag is not None:
+        body["tag"] = tag
+    if class_name is not None:
+        body["class_name"] = class_name
     resp = await _pool.request(
         "POST", TELESCOPE_CONFIG["telescope_html_path"], json_body=body
     )
@@ -386,10 +398,15 @@ async def _post_telescope_html(
             f"POST /telescope/html HTTP {resp.status_code}: {resp.text[:200]}",
         )
     data = resp.json()
+    html = data.get("html")
+    if isinstance(html, list):
+        html_len = sum(len(h or "") for h in html)
+    else:
+        html_len = len(html or "")
     _log.info(
         "telescope ok path=/telescope/html final_url=%s html_len=%s",
         data.get("final_url"),
-        len(data.get("html") or ""),
+        html_len,
     )
     return data
 
@@ -415,6 +432,8 @@ async def admin_telescope_scrape(
     wait_ready: Optional[bool] = None,
     links: bool = True,
     selector: Optional[str] = None,
+    tag: Optional[str] = None,
+    class_name: Optional[str] = None,
     cull: bool = False,
 ) -> dict:
     """Admin workbench scrape — returns full Telescope JSON (incl. scrape_meta)."""
@@ -425,6 +444,8 @@ async def admin_telescope_scrape(
         data = await _post_telescope(
             url,
             selector=selector,
+            tag=tag,
+            class_name=class_name,
             expand=expand,
             wait_ready=wait_ready,
             links=links,
@@ -433,11 +454,17 @@ async def admin_telescope_scrape(
         data = await _post_telescope_html(
             url,
             selector=selector,
+            tag=tag,
+            class_name=class_name,
             expand=expand,
             wait_ready=wait_ready,
         )
         if cull and "html" in data:
-            data = {**data, "html": _cull_html(data["html"] or "")}
+            raw_html = data["html"]
+            if isinstance(raw_html, list):
+                data = {**data, "html": [_cull_html(h or "") for h in raw_html]}
+            else:
+                data = {**data, "html": _cull_html(raw_html or "")}
     _log.info(
         "telescope admin scrape type=%s final_url=%s",
         rt,
@@ -494,6 +521,9 @@ async def _ensure_html(
         wait_ready=page.wait_ready,
     )
     html = data.get("html") or ""
+    # Drop-in parsers expect one DOM string — unwrap first match from multi-match list.
+    if isinstance(html, list):
+        html = html[0] if html else ""
     if selector is None:
         page._html = html
     final = data.get("final_url")

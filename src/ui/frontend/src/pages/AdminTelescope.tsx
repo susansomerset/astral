@@ -1,7 +1,7 @@
 /**
  * AST-1728 — Admin Telescope workbench: URL + options → raw scrape + scrape_meta.
  */
-import { useCallback, useState, type FormEvent } from "react"
+import { useCallback, useState, type CSSProperties, type FormEvent } from "react"
 import Toast, { type ToastMessage } from "../components/Toast"
 import api from "../lib/api"
 
@@ -19,7 +19,7 @@ type ScrapeMeta = {
 type ScrapeResult = {
   final_url?: string
   text?: string | string[]
-  html?: string
+  html?: string | string[]
   links?: unknown
   scrape_meta?: ScrapeMeta
   [key: string]: unknown
@@ -27,10 +27,30 @@ type ScrapeResult = {
 
 function formatBody(data: ScrapeResult | null, responseType: ResponseType): string {
   if (!data) return ""
-  if (responseType === "html") return typeof data.html === "string" ? data.html : ""
+  if (responseType === "html") {
+    const h = data.html
+    if (Array.isArray(h)) return h.join("\n---\n")
+    return typeof h === "string" ? h : ""
+  }
   const t = data.text
   if (Array.isArray(t)) return t.join("\n---\n")
   return typeof t === "string" ? t : ""
+}
+
+/** AST-1730 — read-only scrollable wrapping pane (raw body + JSON dump). */
+const RESPONSE_PANE_STYLE: CSSProperties = {
+  display: "block",
+  width: "100%",
+  boxSizing: "border-box",
+  minHeight: 200,
+  maxHeight: "60vh",
+  overflow: "auto",
+  whiteSpace: "pre-wrap",
+  wordBreak: "break-word",
+  fontFamily: "monospace",
+  fontSize: 12,
+  lineHeight: 1.5,
+  resize: "vertical",
 }
 
 export default function AdminTelescope() {
@@ -41,12 +61,17 @@ export default function AdminTelescope() {
   const [links, setLinks] = useState(true)
   const [cull, setCull] = useState(false)
   const [selector, setSelector] = useState("")
+  const [tag, setTag] = useState("")
+  const [className, setClassName] = useState("")
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ScrapeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [showJson, setShowJson] = useState(false)
   const clearToast = useCallback(() => setToast(null), [])
+
+  // Tag/class_name and CSS selector are mutually exclusive (service 400 if both).
+  const tagClassActive = Boolean(tag.trim() || className.trim())
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -63,7 +88,12 @@ export default function AdminTelescope() {
         links: responseType === "text" ? links : true,
         cull: responseType === "html" ? cull : false,
       }
-      if (selector.trim()) body.selector = selector.trim()
+      if (tagClassActive) {
+        if (tag.trim()) body.tag = tag.trim()
+        if (className.trim()) body.class_name = className.trim()
+      } else if (selector.trim()) {
+        body.selector = selector.trim()
+      }
       const res = await api("/api/admin/telescope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -94,8 +124,9 @@ export default function AdminTelescope() {
 
   const meta = result?.scrape_meta
 
+  // AST-1734 — unlock page scroll; keep list-page card chrome (do not touch global CSS).
   return (
-    <div className="list-page">
+    <div className="list-page" style={{ height: "auto", overflow: "visible" }}>
       <h1 className="list-page-title">Telescope</h1>
       <p className="list-page-subtitle">
         Call the Telescope service and inspect raw content plus scrape metadata.
@@ -142,7 +173,7 @@ export default function AdminTelescope() {
               checked={expand}
               onChange={e => setExpand(e.target.checked)}
             />{" "}
-            expand
+            expand (scroll / Load More — not numbered pages)
           </label>
           <label>
             <input
@@ -173,11 +204,34 @@ export default function AdminTelescope() {
         </div>
 
         <label className="admin-telescope-field">
+          <span>Tag (optional)</span>
+          <input
+            type="text"
+            value={tag}
+            onChange={e => setTag(e.target.value)}
+            disabled={Boolean(selector.trim())}
+            placeholder="div / span / …"
+          />
+        </label>
+
+        <label className="admin-telescope-field">
+          <span>Class name (optional)</span>
+          <input
+            type="text"
+            value={className}
+            onChange={e => setClassName(e.target.value)}
+            disabled={Boolean(selector.trim())}
+            placeholder="shaders (no leading dot)"
+          />
+        </label>
+
+        <label className="admin-telescope-field">
           <span>Selector (optional)</span>
           <input
             type="text"
             value={selector}
             onChange={e => setSelector(e.target.value)}
+            disabled={tagClassActive}
             placeholder="css / page / body"
           />
         </label>
@@ -205,14 +259,24 @@ export default function AdminTelescope() {
       {result ? (
         <section className="admin-telescope-body">
           <h2>Raw {responseType}</h2>
-          <pre className="admin-telescope-pre">{formatBody(result, responseType)}</pre>
+          <textarea
+            className="admin-telescope-pre"
+            readOnly
+            value={formatBody(result, responseType)}
+            spellCheck={false}
+            style={RESPONSE_PANE_STYLE}
+          />
           <button type="button" onClick={() => setShowJson(v => !v)}>
             {showJson ? "Hide" : "Show"} full JSON
           </button>
           {showJson ? (
-            <pre className="admin-telescope-pre">
-              {JSON.stringify(result, null, 2)}
-            </pre>
+            <textarea
+              className="admin-telescope-pre"
+              readOnly
+              value={JSON.stringify(result, null, 2)}
+              spellCheck={false}
+              style={RESPONSE_PANE_STYLE}
+            />
           ) : null}
         </section>
       ) : null}

@@ -171,3 +171,21 @@ Board REVISE: `TestAst1558InboxLandMeteoriteApi` asserted Land→`stage_meteorit
 ```
 
 **Pass criterion (test-fix):** [bug-repro] flips red→green after AST-1608 `make-fix` — not zero-arg harness / branch-lock gate.
+
+### AST-1743 · AST-1740 (gap — Land counter=failed)
+
+**Parent:** [AST-1740](https://linear.app/astralcareermatch/issue/AST-1740). **Sibling product:** AST-1742. **Publish:** `origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Land honors ingest `counter="failed"` | `src/ui/api/api_inbox.py` | **`[bug-repro]`** `TestAst1558InboxLandMeteoriteApi::test_land_meteorite_counter_failed_counts_failed` |
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py::TestAst1558InboxLandMeteoriteApi::test_land_meteorite_counter_failed_counts_failed \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests:docs/test-bible/ui/api/api_inbox.md | shasum`
