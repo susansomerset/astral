@@ -2956,19 +2956,6 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
-### AST-1746 · AST-1721 (qa-fix bug-repro — AdminTelescope Id control)
-
-**Board REVISE:** AdminTelescope must expose optional Id filter (alongside Class name); AST-1736 class-only.
-
-| Area | Component tests |
-| --- | --- |
-| Id control present | `test_AdminTelescope.test.tsx` — **`AST-1746: AdminTelescope exposes optional Id filter control`** (**bug-repro**) |
-
-```bash
-cd src/ui/frontend && npm run test:component -- \
-  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx -t AST-1746
-```
-
 ### AST-1749 · AST-1741
 
 **Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.

@@ -154,7 +154,7 @@ Response:
 {
   "final_url": "<page.url after redirects>",
   "text": "<string>" | ["<blob>", "..."],
-  "links": [{"href": "...", "text": "..."}]
+  "links": [{"href": "...", "text": ["...", "..."]}]
 }
 ```
 
@@ -877,3 +877,400 @@ Out of this bug: implementing Next/page-N capture; changing scroll/click caps; p
 ## Radia review-fix (AST-1737)
 
 Overall: CLEAN. Expand contract documented. Clean-review shortcut → User Testing.
+
+## Bug: AST-1745 — Telescope class filter must return outer HTML for matching elements
+
+### As-is
+
+Specifying a class name (e.g. `logo`) does not return the outer HTML for the element(s) with that class.
+
+### To-be
+
+A class-name filter returns the outer HTML for the element(s) with that class — e.g. matching `class="logo"` yields the full opening tag + children, as in:
+
+```html
+<svg id="bLogo" role="img" class="logo" viewBox="0 0 24 24" aria-label="Microsoft Logo Image" filter="none" tabindex="0"><g class="squares">…</g></svg>
+```
+
+(0 matches → `""`; 1 → that string; 2+ → `list[str]` of each match’s outer HTML.)
+
+### Repro
+
+Component fixture (no live Microsoft URL required — ticket supplies the markup shape):
+
+1. DOM containing exactly one node like Susan’s exemplar: `<svg … class="logo" …>…</svg>` (no reliance on a `<logo>` tag existing).
+2. `POST /telescope/html` with bearer and body `{"url":"…","class_name":"logo","expand":false}` (no `selector`).
+3. **As-is failure modes that still miss the to-be:**
+   - Admin Response type left at default **text** + Class name `logo` → visible text of the SVG is empty/near-empty (not outer HTML).
+   - Response type **html** + Class name `logo` + **cull** on → platform `_cull_html` decomposes every `<svg>`, so the matched fragment becomes `""` even though the service returned the svg outer HTML.
+4. **To-be:** html response with `class_name: "logo"` returns non-empty `html` equal to that element’s `outerHTML` (attributes retained). Same shape for bare `selector: "logo"` after AST-1731 retry when no `<logo>` tag exists. Multi-match → `list[str]`.
+
+Admin Telescope: Response type html, Class name `logo`, cull off (and after this fix, cull on must not empty a root svg match).
+
+### Root cause
+
+Two layers already agree on the happy path, then a post-render step (and an Admin default) undo Susan’s exemplar:
+
+1. **Service capture is already outerHTML for CSS/class matches** — `service/telescope/capture.py` `_QUERY_HTML_JS` maps each node to `el.outerHTML`; AST-1736 `resolve_capture_query(class_name="logo")` → `.logo` (explicit class, not tag-first). AST-1731 bare-`selector` retry covers `selector: "logo"` the same way when no `<logo>` tag exists.
+2. **Platform `_cull_html` always `decompose()`s every `svg`** (`src/external/telescope.py`). Admin optional cull (and any caller that culls a class-scoped fragment) runs that helper on the service payload. When the match *is* the logo SVG, cull turns a correct outerHTML string into `""`. That is the defect that specifically erases the ticket’s example.
+3. **Admin Response type defaults to `text`** — class filter on an SVG then returns text capture (empty), not markup. The to-be is an **HTML** capture contract; operators must use Response type html (help copy should say so). Do not change text-endpoint semantics.
+
+Not this bug: Tag/Selector unify + class-as-secondary UX (AST-1744); optional `id` filter (AST-1746).
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture contract; `src/external/telescope.py` post-render cull; Admin Telescope copy). Do **not** absorb AST-1744 field unify or AST-1746 `id`.
+
+1. **`service/telescope/capture.py` — keep outerHTML contract (verify only)**
+   - CSS / `class_name`-resolved path must continue to return `outerHTML` per match with existing `_fold_blobs` (`""` / `str` / `list[str]`).
+   - Do **not** switch to `innerHTML`, text, or first-child-only. No change expected unless a tip regresses this; make-fix confirms against the fixture in Repro.
+
+2. **`src/external/telescope.py` — cull must not erase class-scoped SVG roots**
+   - In `_cull_html`, change the blanket “remove all svg” step so **top-level root `<svg>` nodes of a fragment** (input with no `<body>`, soup roots that are `svg`) are **preserved**. Still decompose **nested** `<svg>` under non-svg roots (icon sprites inside larger page/job HTML) — same intent as today’s whole-page cull.
+   - `admin_telescope_scrape` keeps optional `cull` default **false**; when `cull` is true and `html` is a string or `list[str]`, apply the updated helper to each blob so `class_name: "logo"` → svg outerHTML survives cull.
+   - Drop-in `cull_html_default` full-document paths unchanged in spirit (nested svgs still stripped inside body content).
+
+3. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — operator contract copy**
+   - On the Class name field (placeholder or adjacent hint): class filter returns each match’s **outer HTML** when Response type is **html** (not text). No auto-switch of response type; no new request fields.
+
+4. **Pass-through** — `src/ui/api/api_admin.py` / `_post_telescope_html` already forward `class_name`; no new keys. Do not reintroduce selector XOR class rules (AST-1744 owns that surface).
+
+### Blast radius
+
+- Admin html + cull on + class-scoped SVG logos start returning markup instead of `""` — intentional for this UAT.
+- Whole-page / body-wrapped HTML still loses nested decorative SVGs under cull (job-list use case).
+- Text endpoint + class filter still returns visible text only (SVG → empty text remains correct for text mode).
+- AST-1731 / AST-1736 resolve + multi-match html shape unchanged.
+- Betty / qa-fix may need a repro that applies cull to an svg.logo fragment (red before cull-root fix, green after); do not edit `tests/` here.
+- Sibling AST-1744 / AST-1746 plans may touch the same Admin filter row — do not merge their field-model changes into this bug.
+
+### What must still hold
+
+- Parent AC 3: `POST /telescope/html` returns `final_url` + rendered `html`; bearer required; **no service-side cull**.
+- AST-1731: bare `selector` class retry + multi-match html `""` / `str` / `list[str]`.
+- AST-1736: explicit `class_name` → `.{class_name}` (or `{tag}.{class_name}`); ambiguous old XOR rules stay until AST-1744 lands.
+- AST-1729: empty / `page` / `body` specials when no class filter is in play.
+- AST-1728: admin cull default **off** so the pane shows raw service HTML unless the operator opts in.
+- Zero `src` imports under `service/telescope/`; capture stays browser-only.
+- Drop-in `_ensure_html` first-match unwrap for list html unchanged.
+
+## Radia review (AST-1745)
+
+**Overall:** CLEAN — `[code-rubric] PROCEED` @ `a830d0f0`.
+
+- **[bug-repro] OK** — `test_cull_html_preserves_root_svg_logo_outerhtml` + nested-SVG companion.
+- **What must still hold — OK** — service no cull; AST-1731/1736/1729/1728 holds; no `src` imports under service.
+- **Product:** `_cull_html` preserves fragment-root `<svg>`; Admin Class name hint notes outer HTML needs Response type html.
+- **§3h:** resolve-child skipped (clean review).
+
+- **docs-acceptance:** `test(AST-1745)` @ `ca61b293` already on `origin/ftr` via sibling merge stack; merge-tests still delivered on this sub.
+## Bug: AST-1746 — Telescope add optional id filter parameter
+
+UAT-batch fix against amended AST-1721 Component/Technical scope (optional `id` secondary filter + admin control, alongside tag/selector/class). Lives on this plan doc because AST-1736’s tag/`class_name` contract + capture resolver are the sibling surface. Does not rewrite Stages 1–4 or other bug blocks.
+
+### As-is
+
+Telescope requests and Admin Telescope expose optional `tag` / `class_name` (and CSS `selector`) but have no optional `id` parameter to filter elements by `id="<idstring>"`.
+
+### To-be
+
+An optional `id` request field (same role as `class_name`) resolves to a CSS id selector so capture matches `id="<idstring>"`; Admin Telescope exposes an Id control and forwards it; platform admin proxy / `_post_telescope*` pass it through.
+
+### Repro
+
+1. DOM with at least one node whose attribute is `id="hero"` (any tag), and no reliance on a bare CSS `selector` of `#hero`.
+2. `POST /telescope/html` with bearer and body `{"url":"…","id":"hero","expand":false}` — **as-is:** `id` is ignored (Pydantic drops unknown fields or field absent) → whole-document / default HTML, not the `#hero` node.
+3. Admin Telescope: Tag / Class name / Selector present; **no** Id input — operator cannot express id intent without typing `#hero` into Selector.
+4. **To-be:** `id: "hero"` (optional `tag`) returns that node’s html/text/links scope; Admin Id field sends `id` and omits `selector` when secondary filters are active.
+
+### Root cause
+
+AST-1736 added explicit `tag` / `class_name` → CSS in `resolve_capture_query` and wired them through service models, platform client, admin proxy, and AdminTelescope UI. The parallel **id** secondary filter was never added — only class got a first-class field. Parent scope has since been amended to include it; product still lacks the field and control.
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture + request models; `src/external/telescope.py` / `src/ui/api/` pass-through; `src/ui/frontend/` Admin Telescope). Do **not** remove AST-1736 tag/`class_name` behavior, AST-1731 bare-class retry on `selector`, or AST-1729 `page`/`body` branches.
+
+1. **`service/telescope/capture.py` — extend `resolve_capture_query`**
+   - Add optional kwarg `id: str | None = None` (strip like the others). Reuse `_CLASS_NAME_RE` (same `^[A-Za-z_][\w-]*$`) for the id token, or an identically shaped `_ID_RE` alias — invalid → `CaptureQueryError("invalid id")`.
+   - Ambiguity: if `selector` is non-empty **and** any of `tag` / `class_name` / `id` is non-empty → `CaptureQueryError` (message names all three secondary fields).
+   - When `id` is set (alone or with tag/class), build CSS **without** attribute-selector fallback and **without** a bare→`#id` retry on the `selector` path:
+     - `id` only → `#{id}`
+     - `tag` + `id` → `{tag}#{id}`
+     - `class_name` + `id` → `.{class_name}#{id}`
+     - `tag` + `class_name` + `id` → `{tag}.{class_name}#{id}`
+   - When `id` is unset, keep today’s tag/`class_name` / selector-only branches unchanged.
+   - `capture_html` / `capture_text` / `capture_links` stay selector-string consumers; app still resolves once per request.
+
+2. **`service/telescope/app.py` — request field + resolve wiring**
+   - On `TelescopeRequest` and `TelescopeHtmlRequest`, add optional `id: str | None = None`.
+   - `_resolve_body_selector` passes `id=body.id` into `resolve_capture_query`; log mode when `id` (and/or tag/class) is set, e.g. `telescope filter mode=tag/class/id … resolved=…`, without dumping page HTML.
+   - Invalid/ambiguous → existing HTTP 400 `detail` path.
+
+3. **`src/external/telescope.py` + `src/ui/api/api_admin.py` — pass-through**
+   - `_post_telescope`, `_post_telescope_html`, and `admin_telescope_scrape` accept optional `id` and include `"id"` in the JSON body when set (same omit-when-unset pattern as `class_name`).
+   - Admin proxy reads `id` from the request body (strip empty → `None`) and forwards it.
+
+4. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — Id control**
+   - Add optional **Id** text input beside Tag / Class name (placeholder e.g. `hero` — no leading `#`).
+   - Treat Id as part of the secondary-filter group with Tag/Class: if any of tag / class_name / id is filled, send those fields and **omit** `selector` (disable Selector when the group is active; disable the group when Selector is filled) — same mutual exclusion as AST-1736, now including `id`.
+   - Help copy: Id = HTML `id` token without a leading `#`.
+
+**Out of this bug:** inventing bare-`selector` → `#ident` retry; changing multi-match fold rules; service cull; expand/pagination; unrelated admin scroll bugs.
+
+### Blast radius
+
+- Contract JSON gains one optional key (`id`); omit-when-unset keeps existing clients working.
+- Admin operators who previously typed `#foo` into Selector keep that path; new Id field is the preferred explicit path (mirrors Class name vs bare class token).
+- Combining `id` with `class_name` / `tag` can narrow matches vs class-only (correct).
+- Betty / qa-fix may assert `id: "…"` → scoped html/text/links and `selector`+`id` → 400; do not edit `tests/` here.
+
+### What must still hold
+
+- Parent AC 3 / AC 14: endpoints and admin still return `final_url` + text|html|links (+ scrape_meta on admin); bearer required; no service-side cull.
+- AST-1736: `tag` / `class_name` resolution and Admin Tag/Class controls unchanged when `id` is omitted.
+- AST-1731: bare `selector` class retry + multi-match html `""` / `str` / `list[str]` unchanged when only `selector` is used.
+- AST-1729: empty / `page` / `body` specials unchanged.
+- AST-1732: when a filter matches, links stay scoped under match roots (dedupe by href).
+- Zero `src` imports under `service/telescope/`; capture stays browser-only.
+- Drop-in `_ensure_html` first-match unwrap for list html unchanged.
+
+## Radia review-fix (AST-1746)
+
+Overall: CLEAN / PROCEED — optional id filter; resolve-child skipped.
+
+- **docs-acceptance:** `test(AST-1746)` @ `e20341ce` already on `origin/ftr` via sibling merge stack; merge-tests still delivered on this sub.
+
+## Bug: AST-1747 — Telescope links array must dedupe href with text array
+
+### As-is
+
+`POST /telescope` with `links: true` can return multiple `links[]` entries that share the same `href` but differ in `text` (one object per `<a>`). The scoped path (AST-1732) already collapses duplicate hrefs but keeps **first-seen `text` only** (string), dropping later labels for the same URL.
+
+### To-be
+
+`links` is deduped by `href`: one object per distinct http(s) URL. That object’s `text` field is a **deduped array** of the trimmed label strings seen for that href (first-seen order of hrefs; first-seen order of unique texts). A single label still yields a one-element array (e.g. `"text": ["Apply"]`), never a bare string.
+
+### Repro
+
+Fixture DOM (or `page.evaluate` mock returning the same raw list):
+
+```html
+<a href="https://example.com/jobs/1">Software Engineer</a>
+<a href="https://example.com/jobs/1">View role</a>
+<a href="https://example.com/jobs/1">Software Engineer</a>
+<a href="https://example.com/jobs/2">Designer</a>
+```
+
+1. `POST /telescope` with bearer, `{"url": "…", "links": true}` (omit selector / `"page"`), or call `capture_links(page)` / `capture_links(page, ".listing")` when those anchors sit under `.listing`.
+2. As-is (whole-page): three objects for `…/jobs/1` plus one for `…/jobs/2`, each with string `text`.
+3. As-is (scoped, after AST-1732): one object for `…/jobs/1` with `text: "Software Engineer"` only — `"View role"` lost.
+4. To-be: exactly two objects, order preserved by first href sighting:
+
+```json
+[
+  {"href": "https://example.com/jobs/1", "text": ["Software Engineer", "View role"]},
+  {"href": "https://example.com/jobs/2", "text": ["Designer"]}
+]
+```
+
+### Root cause
+
+Stage 3 / AST-1732 treat each anchor as `{href, text: string}`. Whole-document collection never merges by href. Scoped collection merges by href but **first text wins**, so alternate anchor labels for the same URL are discarded. UAT wants href uniqueness **and** retention of distinct labels as a text array.
+
+### Proposed change
+
+All product edits in `service/telescope/capture.py` (parent Component/Technical scope: service capture helpers). Do **not** change auth, pool, Dockerfile, Railway/CI, admin UI, or invent a second links shape on the platform.
+
+1. Add a pure helper, e.g. `_dedupe_links_by_href(raw: list[dict]) -> list[dict]`:
+   - Walk `raw` in order; key by `href` string.
+   - First time an href appears → append `{ "href": href, "text": [] }` to the result list (preserves href order).
+   - For each item, take trimmed label: if `text` is already a `str`, use it; ignore non-dict / missing href.
+   - Append the label to that href’s `text` array only if it is not already present (exact string match after trim) — including `""` at most once when an empty label was seen.
+   - Return the list. Every object’s `text` is a `list[str]` (length may be 0 only if raw had no text field; normal anchors yield ≥0 entries per rules above).
+
+2. **Whole-page evaluate** (`not sel` / `"page"`): keep collecting one raw `{href, text: trimmed string}` per `a[href]` with `href.startsWith('http')`. Pass the list through `_dedupe_links_by_href` before return.
+
+3. **Scoped evaluate** (`_QUERY_LINKS_JS`): stop skipping when `seen.has(href)`. Under each match root, push every http(s) anchor as `{href, text: trimmed}` (same per-anchor shape as whole-page). Remove the `seen` Set. After evaluate, pass through `_dedupe_links_by_href` so multi-root unions merge texts instead of first-wins.
+
+4. Update `capture_links` return annotation to reflect `text: list[str]` (e.g. `List[Dict[str, Any]]` or an explicit TypedDict) — still one list of link objects.
+
+5. In this plan doc’s Stage 3 response example, change  
+   `"links": [{"href": "...", "text": "..."}]`  
+   to  
+   `"links": [{"href": "...", "text": ["...", "..."]}]`  
+   so the contract matches the bug (make-fix may edit that line in the same commit).
+
+Out of this bug: changing platform consumers that only read `href` (`extract_site_page_list`, etc.); optional annotation cleanup in `src/external/telescope.py` (`List[Dict[str, str]]`) is not required for correctness.
+
+### Blast radius
+
+- Response contract change: `links[].text` is always an array. Admin raw JSON pane shows arrays; any external/client code that assumed a string must adapt.
+- AST-1732 “first occurrence wins for text” is superseded for the text field; href scoping + union under multi-match roots still hold, now with merged label arrays.
+- Whole-page and scoped paths share one fold helper — behavior stays aligned.
+- Betty / fix-board: component tests that assert `text` is a `str` or that duplicate hrefs appear twice will need updating; a repro should assert one object per href and `text == ["Software Engineer", "View role"]` for the fixture above.
+- Platform drop-in currently uses `lnk.get("href")` only for crawl lists — runtime OK without edit; typed as `Dict[str, str]` becomes stale.
+
+### What must still hold
+
+- AST-1725 AC: `links` default true; when `links: false`, omit the key; http(s)-only hrefs; bearer; expand/wait_ready defaults; no service cull; zero `src` imports under `service/telescope/`.
+- AST-1732 / AST-1735: filtering selectors still scope which anchors are collected; omitted / `"page"` = whole document; `"body"` / `"head"` / CSS stay element-scoped.
+- Multi-match **page text** (`text` string vs list of blobs) unchanged.
+- No depth/output caps added; no Surfer/post-render fork; no Railway/CI edits.
+
+## Radia review-fix (AST-1747)
+
+Overall: CLEAN / PROCEED — href dedupe with text[]; resolve-child skipped.
+
+## Bug: AST-1750 — Telescope/meteorite scrape errors lack detail; error/debug logging fails statutes
+
+UAT-batch fix against parent AST-1721 Component/Technical scope (platform `src/external/telescope.py` HTTP client + `src/core/meteorite.py` scrape ERROR path). Lives on this plan doc because Ada owns AST-1725 and the UAT handoff assigned this bug to Ada. Does not rewrite Stages 1–4 above or service contract fields beyond what debug already receives from the wire.
+
+### As-is
+
+Batch `scrape_meteorite` yields reproducible ERROR rows whose warning is only `scrape_closed` / `This row is ERROR`, while the platform client has already logged a bare `telescope ok path=/telescope final_url=…`. Telescope HTTP joints emit no `logger.debug` of the request parameters sent or the full raw API response, so debug mode cannot walk the scrape under `stat.logging.debug` / `stat.logging.error`.
+
+### To-be
+
+ERROR outcomes (including `scrape_closed`) carry enough who/why facts to diagnose the close (matched classifier signal, text length, final URL) on the per-item warning and on the row `error` field; with debug on, Telescope client logs show the full request parameter body sent to `/telescope` or `/telescope/html` and the full raw JSON response (no truncation), per logging statutes.
+
+### Repro
+
+1. Dispatch `scrape_meteorite` for candidate `somerset` with several Dice (or similar) job-detail URLs that Telescope fetches successfully but whose visible text matches a `TRACKER_CONFIG["jd_classifier"]["closed_signals"]` phrase (or fixture text containing e.g. `"no longer available"`).
+2. Observe log pairs: `INFO … telescope ok path=/telescope final_url=…` then `WARNING … meteorite <id> for somerset — scrape_closed` / `This row is ERROR` with no signal, length, or URL facts; row `error` column is literally `scrape_closed`.
+3. Re-run the same batch with task `debug=True` (log_debug ContextVar set). Confirm there is still no `Calling _post_telescope: […]` / `Response from _post_telescope: …` (or equivalent) line carrying the request body and full response JSON.
+
+Fixture shape (no DB seed — file/JSON world): any `visible_text` string that contains one entry from `closed_signals` (e.g. `"Sorry, this job is no longer available."`) returned from a successful Telescope JSON `{final_url, text, links?, scrape_meta?}` is enough to hit the ERROR branch without a live Dice fetch.
+
+### Root cause
+
+Two stacked defects on the happy-HTTP / soft-fail-classify path:
+
+1. **Platform Telescope client** (`_post_telescope` / `_post_telescope_html` in `src/external/telescope.py`) logs only an ungated succinct `info` success line. It never emits statute `debug` callee-in / callee-out at the HTTP joint, so operators cannot see request parameters or the raw response when `log_debug` is on. Error/4xx paths also fail to debug-dump the full response body before raising (exception message still may stay short).
+2. **Meteorite scrape ERROR path** (`run_scrape_meteorite` in `src/core/meteorite.py`) sets `err = f"scrape_{page_status}"` (e.g. `scrape_closed`) after `_classify_jd(visible_text)` and passes that bare token to `_row_miss` / `update_meteorite(..., error=err)`. Classification is content-signal based (`TRACKER_CONFIG["jd_classifier"]["closed_signals"]`), but neither the warning nor the persisted `error` records which signal matched, how much text arrived, or the `final_url` — so `telescope ok` + `scrape_closed` looks like a transport success with an unexplained ERROR.
+
+### Proposed change
+
+Scope files (parent Component/Technical): `src/external/telescope.py`, `src/core/meteorite.py`. Call shapes of public scrape helpers and meteorite runners stay unchanged; this is logging + richer ERROR strings on existing branches. No service contract change required for the debug dump (client already has the JSON). Do not absorb AST-1751 (error vs fail counts).
+
+1. **`src/external/telescope.py` — `_post_telescope` and `_post_telescope_html`**
+   - Immediately before `_pool.request(...)`, emit ungated `logger.debug` callee-in with the path and the full `body` dict (request parameters sent). Do **not** log `Authorization` / bearer (headers stay out of the message).
+   - After a successful `resp.json()`, emit ungated `logger.debug` callee-out with the **full** parsed response object (entire dict / JSON-serializable form). Do **not** truncate (`stat.logging.debug` forbids truncation). Keep the existing succinct `info` success one-liner as-is.
+   - On HTTP `status_code >= 400` (before raise): `logger.debug` the full `resp.text` (and status/path); keep raising `PlaywrightInfraError` with a short message for the exception string. Unexpected throws already use warning/exception elsewhere — do not add a second `error` rollup.
+   - Same pattern for both text and html helpers. No `if debug` / `if log_debug.get()` at the call site — ContextVar gates emission.
+
+2. **`src/core/meteorite.py` — `run_scrape_meteorite` ERROR branch (the `err = …` / `_row_miss` / `update_meteorite` path around the non-ok / empty-text outcomes)**
+   - When building `err` for a soft-fail page_status (`closed` / `missing` / empty-ok), compute diagnostic facts:
+     - `page_status`
+     - `final_url` (from `_land_fetch_link_text`)
+     - `text_len=len(visible_text or "")`
+     - for `closed`: first matching string from `TRACKER_CONFIG["jd_classifier"]["closed_signals"]` found in `visible_text` (case-insensitive), labeled e.g. `signal=…`; if somehow none match, `signal=None`
+   - Persist a single diagnostic string on the row: e.g. `error="scrape_closed signal='no longer available' text_len=1842 final_url=https://…"` (same string used as the `_row_miss` `why`). Keep next_step `"This row is ERROR"`.
+   - Still emit one per-item `warning` via `_row_miss` (who + why + next step) — do **not** dump full page HTML on the warning line (`stat.logging.warning` Do/Don't: payload is debug).
+   - On that same soft-fail branch, add ungated `logger.debug` with the full `visible_text` (and page_status / final_url) so debug mode shows the body that drove classification. Do not gate on `if debug`.
+
+3. **Out of this bug:** changing `_classify_jd` return shape; service `service/telescope/` console logger; admin UI; AST-1751 fail/error tally semantics; inventing new closed_signals; truncating or capping debug payloads; touching `tests/` / bible.
+
+### Blast radius
+
+- `src/external/telescope.py` debug volume rises whenever any caller runs with `log_debug` (roster / gazer / meteorite / admin) — expected under the debug statute; info lines stay succinct.
+- Meteorite row `error` strings become longer; anything that displayed the bare token `scrape_closed` in UI/UAT will show the richer string (still one field).
+- Sibling AST-1751 (errors must not count as fails) is orthogonal — do not change `total_failed` / `total_errors` accounting here.
+- Betty may want a repro that asserts warning/error text includes `signal=` / `text_len=` and that debug emits request body + full response; that is fix-board / qa-fix territory.
+
+### What must still hold
+
+- Parent AC / AST-1726 drop-in: public scrape helper names and parameters unchanged; import path remains `telescope`.
+- Meteorite runner call shapes and state machine (`SCRAPE_LINK` → `READY` | `BOT_BLOCKED` | ERROR states via `scrape_page_status_states`) unchanged except richer `error` / warning text on soft-fails.
+- `stat.logging.warning`: one per-item who/why; no HTML dump on warning; no exception for configured soft-fails.
+- `stat.logging.debug`: callee-in / callee-out at Telescope HTTP joints; no truncation; no call-site `if debug` gating.
+- `stat.logging.info`: existing `telescope ok` one-liner remains always-on and succinct.
+- `stat.logging.error`: still only for thrown failures with facts + next step + traceback — soft `scrape_closed` stays warning.
+- No bearer/token in logs; no `src`↔`service` imports; no depth/output caps on debug content; AST-1751 tally rules untouched.
+
+## Radia review (AST-1750)
+
+**Overall:** CLEAN — `[code-rubric] PROCEED` @ `b45b8c70`.
+
+- **[bug-repro] OK** — scrape_closed diagnostics + Telescope debug dump.
+- **What must still hold — OK** — logging statutes; AST-1751 tally untouched; no service/UI.
+- **§3h:** resolve-child skipped (clean review).
+
+## Bug: AST-1744 — Telescope tag/selector unified; class is secondary filter
+
+### As-is
+
+Admin Telescope exposes **Tag**, **Class name**, and **Selector** as three inputs. Tag/Class and Selector are mutually exclusive (filling one disables the other; `resolve_capture_query` returns HTTP 400 if `selector` is set together with `tag` or `class_name`). Operators treat `html` / `div` / `span` / `body` / `head` / `ul` as the same kind of filter but must pick which primary field means “element type,” and cannot combine a tag-like Selector with Class name.
+
+### To-be
+
+**Tag and Selector are the same primary filter** — element tag names (`html`, `div`, `span`, `body`, `head`, `ul`, plus existing `page` / empty whole-document specials). **Class name is a secondary filter**: when set, match elements within that tag that have `class="<classname>"` (CSS `{tag}.{classname}`, or `.{classname}` when no tag is set). Admin shows one primary field + Class name (always combinable). No separate competing Selector slot.
+
+### Repro
+
+1. Open Admin Telescope (or call `POST /telescope/html` with bearer).
+2. **As-is:** enter Tag `div` and also try Selector `span` — fields disable each other; or enter Selector `div` plus Class name `logo` — Class is disabled / request would 400 if both were sent.
+3. **To-be:** enter Tag `div` and Class name `logo` together → request resolves to CSS `div.logo` and returns matching outer HTML (0 → `""`, 1 → `str`, 2+ → `list[str]`). Tag alone `ul` → tag selector `ul`. Class alone `logo` → `.logo`. Same rules on `POST /telescope` text/links.
+
+### Root cause
+
+AST-1736 added explicit `tag` / `class_name` **beside** the existing `selector` field as an alternate exclusive mode so class intent would not depend on bare-token → `.class` retry. That fixed “I mean a class,” but left **two primary slots for one concept** (element type / CSS primary). The mutual-exclusion rule (`selector` XOR `tag`/`class_name`) is what makes Tag and Selector feel like different things to operators.
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture + contract; `src/external/telescope.py` / `src/ui/api/` pass-through as needed; `src/ui/frontend/` Admin Telescope). Do **not** implement optional `id` (AST-1746). Do **not** absorb AST-1745 (class outerHTML content correctness) beyond the unify/combine semantics below.
+
+1. **`service/telescope/capture.py` — unify primary; class is secondary**
+   - Rewrite `resolve_capture_query(*, selector, tag, class_name) -> str | None`:
+     - Strip all inputs.
+     - **Primary** = unified `tag` / `selector`: if both non-empty and unequal → `CaptureQueryError` (ambiguous primary); if both equal, use once; else use whichever is set.
+     - **`class_name` secondary (no longer XOR with primary):**
+       - Invalid token (`^[A-Za-z_][\w-]*$` fails) → `CaptureQueryError`.
+       - `class_name` + no primary (or primary is case-insensitive `page` / `body`) → return `.{class_name}` (class-only CSS; do not keep page/body specials when class filters).
+       - `class_name` + primary matching a simple tag/ident (`^[A-Za-z][\w-]*$`) → return `{primary}.{class_name}`.
+       - `class_name` + primary that is already complex CSS (leading `.` / `#` / `[`, combinators, spaces, `tag.class`, etc.) → `CaptureQueryError` (secondary class only combines with a bare tag primary or alone).
+     - Primary only → return it unchanged (existing `capture_*` empty / `page` / `body` branches + AST-1731 `_BARE_CLASS_RETRY` on selector-only bare tokens still apply).
+     - None set → `None`.
+   - Delete the old rule that rejects any non-empty `selector` together with `tag` or `class_name`.
+   - Keep `_BARE_CLASS_RETRY` for selector-only bare tokens (programmatic / back-compat); Admin’s preferred path is explicit `class_name`.
+
+2. **`service/telescope/app.py` — contract wording + logging**
+   - On `TelescopeRequest` / `TelescopeHtmlRequest`, document that `tag` and `selector` are **aliases for the same primary** (element tag / legacy CSS primary); `class_name` is an optional secondary filter.
+   - `_resolve_body_selector` logging: mode = primary (+ optional class), not “selector XOR tag/class.”
+   - Still map `CaptureQueryError` → HTTP 400 with `detail`.
+
+3. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — one primary + class**
+   - Remove the separate **Selector** input and all mutual-disable logic (`tagClassActive` / disabling Class when Selector is filled).
+   - Keep a single primary field labeled **Tag** (placeholder e.g. `html / div / span / body / head / ul`; `page` still accepted for whole-document text path).
+   - Keep **Class name** always enabled (secondary; placeholder without leading dot).
+   - Submit body: when Tag filled → send `tag` (omit `selector`); when Class filled → send `class_name`; both may be sent together. Do not send empty strings.
+
+4. **`src/external/telescope.py` + `src/ui/api/api_admin.py`**
+   - No new fields. Keep forwarding `selector` / `tag` / `class_name` when present. Adjust comments only if they still describe the old XOR rule. Callers may send `tag`+`class_name` together; `selector` remains a supported alias for the primary for non-Admin clients.
+
+### Blast radius
+
+- AST-1736 Admin path that sent only `class_name` / `tag` still works; combining Tag + Class becomes legal (was blocked).
+- Existing Betty / component asserts that `selector` + `class_name` → 400 (e.g. `test_ast1736_selector_plus_class_name_returns_400`) become wrong under the new contract — fix-board TESTS signal; do not edit `tests/` here.
+- Programmatic full-CSS `selector` without `class_name` unchanged; bare `selector` class retry unchanged.
+- Sibling AST-1745 (class must return outer HTML for `logo`) and AST-1746 (`id` secondary filter) stay separate; this bug only unifies primary + class secondary semantics.
+- Drop-in `_ensure_html` / core call shapes untouched.
+
+### What must still hold
+
+- Parent AC 3 / 5 / 14: contract endpoints, multi-match `""` / `str` / `list[str]`, Admin can submit optional filters and see raw body + scrape_meta.
+- AST-1729: empty / `page` / `body` specials when **no** `class_name` is set.
+- AST-1731: bare `selector`-only class retry + multi-match html shape.
+- AST-1732 / AST-1735: filtered links stay scoped under match roots.
+- AST-1736: explicit `class_name` still means class (not tag-first heuristic) when that field is used.
+- Zero `src` imports under `service/telescope/`; bearer auth; no service-side cull.
+- Parent scope line “alongside tag/selector and class” — tag/selector read as one primary concept (this bug); `id` still owned by AST-1746.
+
+## Radia review-fix (AST-1744)
+
+Overall: FIX-NOW — restack onto current ftr; drop sibling scope/tests; keep unify tag/selector + class secondary.
+
+## Resolution (AST-1744)
+
+**Date:** 2026-09-21  
+**Radia fix-now:** Restacked onto `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` (`sync(ftr)`). Kept AST-1744 product: unify tag/selector primary, class secondary (`tag.class`), Admin Tag+Class (no Selector). Betty stripped AST-1746-only tests/bible @ `360faa07`. Epic ftr also carries AST-1746 `id` secondary filter — merged into resolve_capture_query / Admin Id without reintroducing Selector XOR.

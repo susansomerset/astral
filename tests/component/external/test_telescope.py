@@ -346,6 +346,64 @@ class TestAst1745CullPreservesRootSvgLogo:
         )
 
 
+class TestAst1750PostTelescopeDebugDump:
+    """AST-1750 bug-repro — _post_telescope debug dumps full request body + response."""
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_debug_emits_request_body_and_full_response(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        from src.utils.logging import log_debug
+
+        payload = {
+            "final_url": "https://example.com/final",
+            "text": "Sorry, this job is no longer available.",
+            "scrape_meta": {"bot_blocked": False, "content_chars": 40},
+        }
+
+        async def fake_request(method, path, json_body=None, **_kwargs):
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json = MagicMock(return_value=payload)
+            resp.text = '{"final_url":"https://example.com/final"}'
+            return resp
+
+        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        token = log_debug.set(True)
+        try:
+            with caplog.at_level(logging.DEBUG, logger="src.external.telescope"):
+                out = await pw_mod._post_telescope(
+                    "https://example.com/job",
+                    expand=False,
+                    links=False,
+                )
+        finally:
+            log_debug.reset(token)
+
+        assert out["final_url"] == payload["final_url"]
+        msgs = "\n".join(r.getMessage() for r in caplog.records)
+        assert "https://example.com/job" in msgs or "url" in msgs.lower(), (
+            "AST-1750: debug must dump request parameters including url"
+        )
+        assert "expand" in msgs or "False" in msgs, (
+            "AST-1750: debug callee-in must include request body fields"
+        )
+        assert "no longer available" in msgs or "final_url" in msgs, (
+            "AST-1750: debug callee-out must dump full response (no truncation)"
+        )
+        assert any(
+            "Calling" in r.getMessage() or "body" in r.getMessage().lower()
+            or "request" in r.getMessage().lower()
+            for r in caplog.records
+        ), "AST-1750: missing ungated logger.debug callee-in before _pool.request"
+        assert any(
+            "Response" in r.getMessage() or "final_url" in r.getMessage()
+            for r in caplog.records
+        ), "AST-1750: missing ungated logger.debug callee-out with full JSON"
+
+
 # Branches: no platform playwright module (AST-1726 AC6).
 class TestPlaywrightModuleGone:
     def test_src_external_playwright_import_fails(self) -> None:

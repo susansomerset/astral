@@ -268,6 +268,50 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 
 ---
 
+### AST-1750 · AST-1721 (qa-fix bug-repro — scrape_closed diagnostic detail)
+
+**Board REVISE:** `run_scrape_meteorite` soft-fail ERROR (`scrape_closed`) must include `signal=` / `text_len=` / `final_url=` on row error + warning; AST-1560 only covers READY / BOT_BLOCKED / bare ERROR.
+
+| Area | Component tests |
+| --- | --- |
+| scrape_closed diagnostic string | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url -q
+```
+
+**Pass criterion:** pytest green on the node — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1751 · AST-1721 (qa-fix bug-repro — ERROR not also fail; BOT_BLOCKED is fail)
+
+**QA-handoff (Ada):** `candidate_id=` on error-only repro; blocked assert uses `_row_miss`/`logger.warning` (`scrape blocked at`).
+
+**Board REVISE:** rewrite `TestAst1560RunScrapeMeteorite` BOT_BLOCKED `total_passed`→`total_failed`; missing ERROR-only `fail:0 error:N` (sibling omitted `total_failed`); stage/land double-bump holds may break.
+
+| Area | Component tests |
+| --- | --- |
+| ERROR-only batch fail:0 error:N | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1751_error_only_batch_fail_zero_error_n` (**bug-repro**) |
+| scrape BOT_BLOCKED → total_failed | `TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring` (rewritten) |
+| sibling ERROR omits fail | `TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch` (rewritten) |
+| stage/land ERROR holds | `TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors`, `TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring`, `TestAst1560RunLandMeteorite::test_missing_content_errors` (`total_failed==0`) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1751_error_only_batch_fail_zero_error_n \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_missing_content_errors -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1562 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
