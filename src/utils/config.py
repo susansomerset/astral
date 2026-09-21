@@ -3374,6 +3374,39 @@ JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS = [
     },
 ]
 
+# AST-1748: Jobs → Meteorites list columns + detail modal sections (config → API; React must not invent order).
+JOBS_METEORITES_LIST_COLUMNS = [
+    {"key": "state", "label": "State", "sortable": True},
+    {"key": "job_title", "label": "Title", "sortable": True},
+    {"key": "employer_name", "label": "Employer", "sortable": True},
+    {"key": "classify_outcome", "label": "Classify", "sortable": True},
+    {"key": "link", "label": "Link", "sortable": True},
+    {"key": "astral_job_id", "label": "Job", "sortable": True},
+    {
+        "key": "state_changed_at",
+        "label": "State Changed",
+        "sortable": True,
+        "defaultDesc": True,
+        "type": "datetime",
+    },
+]
+
+JOBS_METEORITES_MODAL_SECTIONS = [
+    {"section_id": "meteorite_timestamps", "nav_label": "Timestamps", "default_expanded": True},
+    {"section_id": "meteorite_link", "nav_label": "Link", "default_expanded": True},
+    {"section_id": "meteorite_content", "nav_label": "Content", "default_expanded": True},
+    {
+        "section_id": "meteorite_provenance",
+        "nav_label": "Provenance",
+        "default_expanded": False,
+    },
+    {
+        "section_id": "meteorite_job",
+        "nav_label": "Linked Job",
+        "default_expanded": True,
+    },
+]
+
 # Phase rows are Analysis-tab sections (not top tabs) after AST-948.
 JOBS_RECOMMENDED_REPORT_PHASE_TABS = [
     {"tab_id": "phase_jd", "nav_label": "JD Analysis", "grades_field": "jd_grades", "take_key": "take_jd"},
