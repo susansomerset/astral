@@ -677,3 +677,13 @@ That locks the card to the viewport and clips overflow. List tables recover via 
 - No change to `/api/admin/telescope` request/response shape.
 - `service/*` ↔ `src/` import fence unchanged.
 - No depth/output limits on scrape content — only layout scroll so the existing panes are reachable.
+
+## Resolution (AST-1734) — 2026-09-21
+
+Radia `review-fix` overall FIX-NOW (`880d96ef`): drop/revert `data/admin/agent_task.json` (AST-1722 Land Meteorite stubs) from this publish ref before merge-child; keep AdminTelescope page-scroll fix.
+
+**fix-now — `agent_task.json`:** No tree edit. At resolve time the file is **byte-identical** to both `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` (`b756e235`) and `origin/dev` (`cmp` clean). Two-dot `git diff` vs ftr/dev is empty; `origin/ftr…HEAD` for this path has no commits. Radia's 38-line three-dot delta was against an older ftr tip / multi-merge-base phantom — deleting or reverting the catalog now would *create* a stray deletion vs current ftr/dev. AdminTelescope scroll override unchanged (`height: auto` / `overflow: visible`).
+
+**Discuss — sibling merge-tests:** Left as-is (Betty shared `astral-tests` delivery); not product scope for this bug.
+
+**Advisory — plan match:** Confirmed; no further change.
