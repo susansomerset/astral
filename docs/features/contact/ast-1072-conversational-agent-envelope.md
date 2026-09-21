@@ -1,3 +1,357 @@
+<!-- linear-archive: AST-1072 archived 2026-08-14 -->
+
+## Linear archive (AST-1072)
+
+**Archived:** 2026-08-14  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1072/conversational-agent-envelope-success-failure-concern-contact-estelle  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1046 — Contact Estelle conversational envelope  
+**Blocked by / blocks / related:** parent: AST-1046; blocks: AST-1073
+
+### Description
+
+## What this implements
+
+Schema + `do_task` contract for conversational envelope; concern → admin aside + note. Does not own Slack wiring.
+
+## Acceptance criteria
+
+- [X] Each agent turn yields a structured envelope outcome of success, failure, or concern.
+- [X] A concern outcome records an admin-visible aside (short note) about user struggle / negative experience.
+- [X] Default brain tier remains medium / non-thinking unless config says otherwise.
+- [X] Debug=True paths emit contract index + `|` detail for turn outcomes.
+
+## Boundaries
+
+Does **not** own Slack wiring, Contact resolve, listen gate, or the Estelle turn loop (sibling). Does **not** re-implement AST-1043 Contact plumbing.
+
+## In scope
+
+- [X] `pattern.agent.conversational-envelope` — `agent_performance.status` ∈ {success, failure, concern}; `admin_aside` required on concern (`src/utils/config.py`, `src/core/agent.py`)
+- [X] `astral.agent.do-task-delegation` — CHAT task `contact_estelle_turn` via `do_task`; no direct Anthropic assembly
+- [X] `astral.standards.debug-contract-gated` — Style D turn-outcome lines only when `debug=True`
+- [X] `pattern.config.config-block` — `CONTACT_ESTELLE_CONFIG` + `CONVERSATIONAL_PERFORMANCE_SCHEMA` (CHAT-only; do not mutate global `BASE_SCHEMA`)
+- [X] `astral.layers.core-vs-external-bright-line` — utils config + core agent only for this contract
+- [X] Minimal `data/admin/agent_task.json` seed for `contact_estelle_turn`
+- [X] Conversational brain override → Medium / non-thinking without changing Estelle agent row (Big for upshot)
+
+## Considered but excluded
+
+* Slack Events ingress / Manage Slack listen gate / resolve-util / Slack context cache / Contact ACL skills — AST-1043 / AST-1073 (`src/external`, contact turn loop)
+* Estelle turn loop orchestration — AST-1073
+* Mutating `principal_recruiter_estelle.brain_setting` globally — would break analysis_upshot Big tier
+* Extending `BASE_SCHEMA` for all tasks — concern is CHAT-only semantics
+* Universal `orch.*` statutes — not listed per-child
+
+## Notes for planning
+
+Conversational envelope schema + `do_task` contract; concern → admin aside + note.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-30T03:03:28.721Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1072
+**Publish ref:** `5b47c4e08037a9185409d26f61eafa383cd5c446` (`origin/sub/AST-1046/AST-1072-conversational-agent-envelope`)
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | No graded confidence / scoring path touched |
+| astral.agent.do-task-delegation | scoped | conforms | Envelope via `do_task`; no new direct Anthropic assembly |
+| astral.agent.grade-vector-validation | scoped | conforms | No vectors / grade tasks |
+| astral.batch.batch-id-first | scoped | conforms | No batch claim/process work |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id invention |
+| astral.batch.claim-process-release | scoped | conforms | No dispatcher batch work |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Relies on existing do_task storage path |
+| astral.config.config-source-of-truth | scoped | conforms | Outcomes/schema/brain in config; BASE_SCHEMA untouched |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | No scoring/dispatch floor changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env for brain default |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths ∩ artifacts/spikes empty |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan doc in docs/features; not spike notes (C4 straggler) |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `docs/features/contact/ast-1072-….md` (C4 straggler) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Engineer owns src/features; Betty did not touch them |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests/bible via Betty `test` + one merge-tests (C4 straggler) |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | utils + core only; Slack/external left to siblings |
+| astral.layers.import-direction | scoped | conforms | core→utils imports; no layer inversion |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers ∩ scripts empty |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Config block; no UI business rules |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check work |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | No consult/render_verdict work |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers ∩ ui empty |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No data-layer Python; admin JSON seed only |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers ∩ data empty |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D only when debug=True; lengths not full blobs |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Single schema + `is_conversational_task` gate |
+| astral.standards.in-scope-only | scoped | conforms | Envelope contract only; Slack/turn loop excluded |
+| astral.standards.logging-via-utils | scoped | conforms | Uses existing `_do_task_debug_logger` helpers |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays utils/core + admin seed |
+| astral.standards.no-hardcoded-sets | scoped | conforms | `CONVERSATIONAL_OUTCOMES` / schema in config |
+| astral.standards.public-then-helpers | scoped | conforms | Helpers colocated with validation; matches agent.py layout |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No new utils→data import |
+| astral.state.core-decides-transitions | scoped | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job state work |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No run_next chain work |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers ∩ ui frontend empty |
+| astral.ui.naming-conventions | scoped | not-applicable | layers ∩ ui empty |
+| astral.ui.single-gunicorn-worker | scoped | conforms | Touches config.py but not worker/RAILWAY |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Exactly one merge-tests SHA on sub |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Publish on origin/sub only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1046/AST-1072-…` |
+| orch.git.merge-on-checkout | universal | conforms | No illegal merge recipe in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None in history |
+| orch.git.no-dev-agent-branches | universal | conforms | Uses sub publish-ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree astral-AST-1046 |
+| orch.git.three-permanent-branches | universal | conforms | No permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Plan decisions explicit; no open product Q |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages + Files Changed match diff |
+| orch.pipeline.project-scoped-queues | universal | conforms | Contact child scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | No canon/statutes edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty test + merge-tests ownership |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | No banned path commits by engineer |
+
+## Pattern conformance
+
+| Cited id | Verdict |
+|----------|---------|
+| `pattern.agent.conversational-envelope` | conforms |
+| `pattern.config.config-block` | conforms |
+| `astral.agent.do-task-delegation` | conforms |
+| `astral.standards.debug-contract-gated` | conforms |
+| `astral.layers.core-vs-external-bright-line` | conforms |
+
+## Plan adherence
+
+Diff matches Self-Assessment Single-Component / high / Medium: config + `do_task` CHAT contract + one `agent_task` seed. Sibling AST-1073 / AST-1043 scope not smuggled. Concern ≠ hard failure; Medium brain override CHAT-only; Style D gated.
+
+## Findings
+
+**discuss (C4 straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` at plan time; all three are in-scope on the three-dot diff (plan file + Betty test-tree). Each scores **conforms** — straggler callout only; no product fix.
+
+**advisory:** Validation-failure debug path labels `outcome="validation error"` for both schema errors and CHAT `status=failure` short-circuits. Prefer `failure` when envelope status is failure if AST-1073 operators key off the index outcome string.
+
+### What’s solid
+
+CHAT-only schema leaves BASE_SCHEMA / Estelle Big intact; concern requires `admin_aside`; one Betty `merge-tests`; no Slack/external scope creep.
+
+**Notes:** Joan plan-rubric APPROVED attached. Active statute count = 56. Docs append on plan file.
+
+context_tokens≈52000
+
+— Radia
+
+#### chuckles — 2026-07-30T03:00:56.430Z
+[thread-missing] Cursor chat `4de3c484-9093-46a2-afa2-050c2a7c2b67` has no local `store.db` on **chuckles** (expected `/home/susan/.cursor/chats/1881949f6913c56102302a1096e88bcb/4de3c484-9093-46a2-afa2-050c2a7c2b67/store.db`; blob-search also empty).
+
+Minting a **new** conversation on this host and continuing (history from the old UUID is not recovered).
+
+Replacement UUID: `528b45c4-ec4e-4fbe-a831-c858211757dc`.
+
+— Chuckles
+
+#### betty — 2026-07-30T02:58:04.114Z
+## QA test manifest — AST-1072
+
+**Publish:** `origin/sub/AST-1046/AST-1072-conversational-agent-envelope` @ `912dc2c7` (`merge-tests(AST-1072): origin/tests d7b193db7c38e1d7cf2e9ca6791c65c7c9457953`)
+
+### 1. Existing coverage (bible-backed)
+
+None alone covers the new CHAT ternary envelope — gaps filled below.
+
+### 2. Broken / obsolete
+
+1. `TestAst786AgentTaskRepoJsonSeed` — catalog **42 → 43** (`contact_estelle_turn`); UAT fixture `docs/uat-fixtures/AST-756/expected-agent_task.json` byte-locked.
+
+### 3. Gaps (new this pass)
+
+1. `tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig` — outcomes/schema, `CONTACT_ESTELLE_CONFIG` Medium, CHAT registration, `is_conversational_task`, stringify includes `concern`.
+2. `tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope` — validate success/concern/aside/failure; helper shape; `do_task` preserve outcome + Medium brain; Style D debug; failure → `success=False`.
+3. `tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow` — Estelle seed prompts.
+
+**Integration:** no existing scenario asserts CHAT / `contact_estelle_turn` — no revision.
+
+### Run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1072ConversationalEnvelopeConfig \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+```
+
+### Bible shasums on publish-ref
+
+- `docs/test-bible/utils/config.md` `059440e67768f44c2bb21b9b2446db99e3625e1d`
+- `docs/test-bible/core/agent.md` `2e84ec96979432d9476f04cf5da51d6147fbed15`
+- `docs/test-bible/core/repo_admin_json.md` `4a841616341b6b0a2172894d3c3d8a79470cfd20`
+
+— Betty
+
+#### chuckles — 2026-07-30T02:47:18.226Z
+[thread-missing] Cursor chat `253b4c04-fd07-4848-a4d1-2e93e8f7b8a3` has no local `store.db` on **chuckles** (expected `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/253b4c04-fd07-4848-a4d1-2e93e8f7b8a3/store.db`; blob-search also empty).
+
+Minting a **new** conversation on this host and continuing (history from the old UUID is not recovered).
+
+Replacement UUID: `62019fcc-f4d8-4fe4-bf19-23b0696bc2a9`.
+
+— Chuckles
+
+#### joan — 2026-07-30T02:40:47.101Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1072
+**Overall:** APPROVED
+
+**Notes:** Files Changed layer cell `data/admin seed` unrecognized by matching enum → treated as `docs` (path `data/admin/agent_task.json` still matched path filters where applicable).
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 multi-turn Slack via AST-1043 Contact | N/A — boundary (AST-1073 / AST-1043) |
+| AC2 structured envelope success\|failure\|concern | Stages 1–2 (`CONVERSATIONAL_*`, CHAT validation) |
+| AC3 concern → admin-visible aside + note | Stage 2 concern requires `admin_aside`; Stage 3 prompt seed; result preserve |
+| AC4 default brain medium / non-thinking | Stage 1 `CONTACT_ESTELLE_CONFIG`; Stage 2 CHAT brain override (not Estelle Big) |
+| AC5 Debug=True index + `\|` detail for turn outcomes | Stage 2.6 Style D gated on `debug=True` |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 config schema + CHAT task | Purpose/new pattern `conversational-envelope`; child AC2/AC4; pattern.config.config-block |
+| Stage 2 do_task contract | Functional scope do_task + concern aside; child AC2–AC5; do-task-delegation |
+| Stage 3 agent_task seed | Enables do_task resolve for envelope; minimal; AST-1073 owns richer Contact prompts |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Sub publish path; engineer plan/code vocabulary implied |
+| orch.git.flow-direction-inviolable | conforms | Publish to origin/sub only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-1046/AST-1072-… |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree astral-AST-1046 |
+| orch.git.three-permanent-branches | conforms | No permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Decisions explicit in plan; open questions none |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Contact scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate-plan only |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/ edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Ada) owns build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer path after Plan Approved |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded-task / confidence path changes |
+| astral.agent.do-task-delegation | conforms | Envelope via do_task; no direct Anthropic assembly |
+| astral.agent.grade-vector-validation | conforms | No vectors/grade tasks touched |
+| astral.batch.batch-id-first | conforms | No batch claim/process work |
+| astral.batch.batch-id-format | conforms | No batch_id invention |
+| astral.batch.claim-process-release | conforms | No dispatcher batch work |
+| astral.batch.entity-agent-responses-latest-only | conforms | Relies on existing do_task agent_data path |
+| astral.config.config-source-of-truth | conforms | Outcomes/schema/brain in config; BASE_SCHEMA untouched |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring/dispatch floor changes |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env for brain default |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src/features |
+| astral.layers.core-vs-external-bright-line | conforms | utils + core only; Slack/external left to siblings |
+| astral.layers.import-direction | conforms | core→utils; no layer inversion |
+| astral.layers.ui-config-driven-business-logic | conforms | Config block added; no React business rules |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check work |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult/render_verdict work |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer Python; seed JSON only |
+| astral.standards.debug-contract-gated | conforms | Style D only when debug=True; lengths not full blobs |
+| astral.standards.dry-and-focused-functions | conforms | Single schema + is_conversational_task gate |
+| astral.standards.in-scope-only | conforms | Envelope contract only; Slack/turn loop excluded |
+| astral.standards.logging-via-utils | conforms | Uses existing debug helpers |
+| astral.standards.no-cross-contamination | conforms | Stays utils/core + admin seed |
+| astral.standards.no-hardcoded-sets | conforms | CONVERSATIONAL_OUTCOMES / schema in config |
+| astral.standards.public-then-helpers | conforms | Helper + CHAT branches scoped |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data import |
+| astral.state.core-decides-transitions | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | conforms | No job state work |
+| astral.state.no-daisy-chain-in-run | conforms | No run_next chain work |
+| astral.ui.single-gunicorn-worker | conforms | Touches config.py but not worker/RAILWAY |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — paths match none of plan paths
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers ∩ plan empty
+- astral.patterns.require-auth-on-protected-endpoints — layers ∩ plan empty
+- astral.standards.database-header-inventory — layers ∩ plan empty
+- astral.ui.frontend-file-placement — layers ∩ plan empty
+- astral.ui.naming-conventions — layers ∩ plan empty
+
+## Findings
+
+None fix-now.
+
+**discuss (non-blocking):** “Admin-visible” for concern is satisfied by validating/preserving `admin_aside` on the `do_task` result (and existing agent_data storage). Operator-facing Slack/admin surface is correctly left to AST-1073.
+
+**acceptable:** Self-assessment Single-Component / high / Medium matches; concern≠failure and CHAT-only brain override are the right risk mitigations.
+
+**R6:** Definition fidelity pass for child #1. Layers pass. Config SoT pass. Debug gated pass. No Slack/scope creep. Non-CHAT BASE_SCHEMA path explicitly preserved.
+
+context_tokens≈48000
+
+— Joan
+
+#### chuckles — 2026-07-30T02:38:12.294Z
+[thread-orphan] Cursor chat `da0027e7-276d-4fe2-a6e6-65c8eb77e24d` was not at the expected workspace path on **chuckles** (`/home/susan/.cursor/chats/1881949f6913c56102302a1096e88bcb/da0027e7-276d-4fe2-a6e6-65c8eb77e24d/store.db`).
+
+Blob-found at `/home/susan/.cursor/chats/0f41bf986cfef9e06ea903e586d6d4d9/da0027e7-276d-4fe2-a6e6-65c8eb77e24d/store.db` — relocated to `/home/susan/.cursor/chats/1881949f6913c56102302a1096e88bcb/da0027e7-276d-4fe2-a6e6-65c8eb77e24d/store.db` (same UUID; history kept). Continuing.
+
+— Chuckles
+
+#### ada — 2026-07-30T02:37:46.287Z
+Plan: `docs/features/contact/ast-1072-conversational-agent-envelope.md`
+
+GitHub: https://github.com/susansomerset/astral/blob/sub/AST-1046/AST-1072-conversational-agent-envelope/docs/features/contact/ast-1072-conversational-agent-envelope.md
+
+Publish: `origin/sub/AST-1046/AST-1072-conversational-agent-envelope` @ `00742739`
+
+**Scope:** Single-Component — config CHAT schema + `do_task` concern contract + one agent_task seed; no Slack/turn loop.
+
+**Conf:** high — reuses agent_performance envelope, reserved `CHAT` task_type, existing Medium/non-thinking tier map, Style D helpers.
+
+**Risk:** Medium — concern must not hard-fail `do_task`; brain override scoped to CHAT so Estelle Big/upshot stays intact; non-CHAT validation path unchanged.
+
+#### chuckles — 2026-07-30T02:32:10.806Z
+[thread-missing] Cursor chat `5a1cab94-ecfa-4d44-9624-592fe3d536dd` has no local `store.db` on **chuckles** (expected `/home/susan/.cursor/chats/1881949f6913c56102302a1096e88bcb/5a1cab94-ecfa-4d44-9624-592fe3d536dd/store.db`; blob-search also empty).
+
+Minting a **new** conversation on this host and continuing (history from the old UUID is not recovered).
+
+Replacement UUID: `234777dd-eefd-4660-99e5-1594c1a07725`.
+
+— Chuckles
+
+---
+
 # AST-1072 — Conversational agent envelope (success / failure / concern)
 
 **Linear:** [AST-1072](https://linear.app/astralcareermatch/issue/AST-1072/conversational-agent-envelope-success-failure-concern-contact-estelle)  

@@ -1,0 +1,199 @@
+file	grade	loe
+src/__init__.py	X	
+src/core/__init__.py	X	
+src/core/agent.py	D	4
+src/core/auth_bootstrap.py	A	
+src/core/bootstrap.py	C	1
+src/core/builder.py	C	2
+src/core/candidate.py	D	4
+src/core/consult.py	D	4
+src/core/contact.py	B	2
+src/core/deploy_status.py	A	
+src/core/dispatcher.py	D	3
+src/core/gaze_email.py	C	1
+src/core/gazer.py	D	3
+src/core/inbox.py	C	1
+src/core/intake.py	D	3
+src/core/meteorite.py	A	
+src/core/monitor.py	A	
+src/core/repo_admin_json.py	C	1
+src/core/roster.py	D	4
+src/core/table_copy_upsert.py	A	
+src/core/timesheets.py	A	
+src/core/tracker.py	C	2
+src/data/__init__.py	X	
+src/data/contact_debug.py	C	1
+src/data/contact_estelle_activity.py	C	1
+src/data/contact_listen.py	C	1
+src/data/database.py	D	3
+src/external/__init__.py	X	
+src/external/anthropic.py	C	1
+src/external/deepseek.py	C	1
+src/external/gmail.py	A	
+src/external/google_cse.py	C	1
+src/external/linear.py	C	1
+src/external/playwright.py	D	3
+src/external/slack.py	A	
+src/external/stytch.py	C	1
+src/ui/__init__.py	X	
+src/ui/api/__init__.py	X	
+src/ui/api/api_admin.py	D	4
+src/ui/api/api_candidate.py	C	1
+src/ui/api/api_companies.py	C	1
+src/ui/api/api_contact.py	C	1
+src/ui/api/api_inbox.py	A	
+src/ui/api/api_intake.py	C	1
+src/ui/api/api_jobs.py	C	1
+src/ui/api/api_meteorite.py	A	
+src/ui/api/api_resume_html.py	C	1
+src/ui/api/api_slack.py	A	
+src/ui/api/api_surfer.py	C	1
+src/ui/api/api_system.py	C	1
+src/ui/api_errors.py	A	
+src/ui/auth.py	C	1
+src/ui/server.py	C	1
+src/utils/__init__.py	X	
+src/utils/auth.py	A	
+src/utils/config.py	B	2
+src/utils/cost_calculator.py	A	
+src/utils/deploy_status.py	B	1
+src/utils/formatting.py	B	1
+src/utils/integration_io.py	A	
+src/utils/llm_external.py	A	
+src/utils/logging.py	B	1
+src/utils/merge_ticket_log.py	C	1
+src/utils/network.py	A	
+src/utils/rubric_feedback.py	B	1
+src/utils/rubric_text.py	C	1
+src/ui/extension/src/lib/dwell.ts	A	
+src/ui/extension/src/lib/fanOut.ts	A	
+src/ui/extension/src/lib/pacingConfig.ts	A	
+src/ui/extension/src/lib/surferConsent.ts	A	
+src/ui/extension/src/lib/surferConsentGate.ts	A	
+src/ui/extension/src/lib/surferDisclosureDom.ts	C	1
+src/ui/extension/src/lib/surferOffSwitch.ts	A	
+src/ui/frontend/src/App.tsx	A	
+src/ui/frontend/src/components/AdminCandidateFilterControl.tsx	A	
+src/ui/frontend/src/components/AdminDeployFooter.tsx	C	1
+src/ui/frontend/src/components/AdminRoute.tsx	A	
+src/ui/frontend/src/components/AgentAnalysisHeader.tsx	C	1
+src/ui/frontend/src/components/AgentStoryTab.tsx	A	
+src/ui/frontend/src/components/ArtifactEditor.tsx	C	2
+src/ui/frontend/src/components/BatchAgentDataModal.tsx	C	1
+src/ui/frontend/src/components/CandidateActionNotesModal.tsx	A	
+src/ui/frontend/src/components/CandidateJobRowActions.tsx	A	
+src/ui/frontend/src/components/CollapsiblePanel.tsx	A	
+src/ui/frontend/src/components/CompanyDetailModal.tsx	A	
+src/ui/frontend/src/components/ConfidenceBullets.tsx	A	
+src/ui/frontend/src/components/ContextTextPage.tsx	C	1
+src/ui/frontend/src/components/DetailsEditPage.tsx	A	
+src/ui/frontend/src/components/ExperienceJobsEditor.tsx	C	1
+src/ui/frontend/src/components/FormFields.tsx	A	
+src/ui/frontend/src/components/IntakeChatModal.tsx	C	1
+src/ui/frontend/src/components/IntakePreamblePanel.tsx	C	1
+src/ui/frontend/src/components/IntakeTopicMenuPanel.tsx	A	
+src/ui/frontend/src/components/JobAnalysisReportModal.tsx	A	
+src/ui/frontend/src/components/JobDetailModal.tsx	A	
+src/ui/frontend/src/components/LabeledTextArea.tsx	A	
+src/ui/frontend/src/components/ListPage.tsx	C	1
+src/ui/frontend/src/components/ListTableTruncatedCell.tsx	A	
+src/ui/frontend/src/components/MaterialsPreviewModal.tsx	A	
+src/ui/frontend/src/components/Modal.tsx	A	
+src/ui/frontend/src/components/NavigationShell.tsx	C	1
+src/ui/frontend/src/components/ProfileTextPage.tsx	A	
+src/ui/frontend/src/components/RecommendedJobReportHeader.tsx	A	
+src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx	A	
+src/ui/frontend/src/components/ReportSectionList.tsx	A	
+src/ui/frontend/src/components/RequireAuth.tsx	A	
+src/ui/frontend/src/components/ResumeStructureEditor.tsx	X	
+src/ui/frontend/src/components/RubricModal.tsx	A	
+src/ui/frontend/src/components/SectionExpandChrome.tsx	A	
+src/ui/frontend/src/components/SideTabPanel.tsx	C	1
+src/ui/frontend/src/components/StateTimeline.tsx	A	
+src/ui/frontend/src/components/TabbedTextArea.tsx	A	
+src/ui/frontend/src/components/Time.tsx	A	
+src/ui/frontend/src/components/Toast.tsx	A	
+src/ui/frontend/src/components/TokenTextarea.tsx	C	1
+src/ui/frontend/src/components/UserPrompt.tsx	A	
+src/ui/frontend/src/contexts/AuthContext.tsx	A	
+src/ui/frontend/src/contexts/CandidateContext.tsx	A	
+src/ui/frontend/src/contexts/StateUiContext.tsx	A	
+src/ui/frontend/src/hooks/useAdminCandidateFilter.ts	A	
+src/ui/frontend/src/hooks/useCandidateJobActions.ts	A	
+src/ui/frontend/src/hooks/useDirtyLeaveSaveThenNavigate.ts	A	
+src/ui/frontend/src/hooks/useInPlaceLiveRefresh.ts	A	
+src/ui/frontend/src/hooks/useSectionExpandPolicy.ts	A	
+src/ui/frontend/src/lib/analysisUpshot.ts	B	1
+src/ui/frontend/src/lib/api.ts	B	1
+src/ui/frontend/src/lib/artifactBlobHasContent.ts	A	
+src/ui/frontend/src/lib/authPassthrough.ts	A	
+src/ui/frontend/src/lib/authSessionPolicy.ts	A	
+src/ui/frontend/src/lib/candidateJobActions.ts	A	
+src/ui/frontend/src/lib/candidateLabel.ts	A	
+src/ui/frontend/src/lib/copyJobSnapshot.ts	A	
+src/ui/frontend/src/lib/documentTitle.ts	A	
+src/ui/frontend/src/lib/fmt.ts	A	
+src/ui/frontend/src/lib/listTableLayout.ts	A	
+src/ui/frontend/src/lib/recommendedJobReport.tsx	B	1
+src/ui/frontend/src/lib/rubricDisplay.ts	A	
+src/ui/frontend/src/lib/sessionAuthMark.ts	A	
+src/ui/frontend/src/lib/sessionExtend.ts	A	
+src/ui/frontend/src/lib/stateUiSections.ts	A	
+src/ui/frontend/src/lib/stytchAuthenticateHandoff.ts	A	
+src/ui/frontend/src/lib/stytchClient.ts	X	
+src/ui/frontend/src/lib/stytchRedirect.ts	A	
+src/ui/frontend/src/lib/taskKeySort.ts	A	
+src/ui/frontend/src/lib/timesheetCost.ts	A	
+src/ui/frontend/src/lib/toastDiagnostics.ts	A	
+src/ui/frontend/src/lib/uiConfig.ts	A	
+src/ui/frontend/src/lib/useListTableColumnMeasure.ts	C	1
+src/ui/frontend/src/lib/useLocalStorage.ts	A	
+src/ui/frontend/src/main.tsx	X	
+src/ui/frontend/src/pages/AdminAgentPrompts.tsx	D	1
+src/ui/frontend/src/pages/AdminAgentTimesheets.tsx	D	2
+src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx	C	1
+src/ui/frontend/src/pages/AdminCostReconciliation.tsx	C	1
+src/ui/frontend/src/pages/AdminDataManagement.tsx	D	2
+src/ui/frontend/src/pages/AdminManageCandidates.tsx	C	1
+src/ui/frontend/src/pages/AdminManageEmail.tsx	C	1
+src/ui/frontend/src/pages/AdminManageSlack.tsx	A	
+src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx	D	2
+src/ui/frontend/src/pages/AdminScheduledActions.tsx	C	1
+src/ui/frontend/src/pages/AdminScheduledQueries.tsx	A	
+src/ui/frontend/src/pages/AdminSessionCoverLetter.tsx	A	
+src/ui/frontend/src/pages/AdminSessionResumePaste.tsx	A	
+src/ui/frontend/src/pages/AdminTaskPrompts.tsx	C	2
+src/ui/frontend/src/pages/AdminVectorFeedback.tsx	C	1
+src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx	C	1
+src/ui/frontend/src/pages/ArtifactsCompanySearchTerms.tsx	A	
+src/ui/frontend/src/pages/ArtifactsCompanyWatchCriteria.tsx	A	
+src/ui/frontend/src/pages/ArtifactsDoJobCriteria.tsx	A	
+src/ui/frontend/src/pages/ArtifactsGetJobCriteria.tsx	A	
+src/ui/frontend/src/pages/ArtifactsJobDescCriteria.tsx	A	
+src/ui/frontend/src/pages/ArtifactsJobListCriteria.tsx	A	
+src/ui/frontend/src/pages/ArtifactsLikeJobCriteria.tsx	A	
+src/ui/frontend/src/pages/ArtifactsMeteoriteCriteria.tsx	A	
+src/ui/frontend/src/pages/Authenticate.tsx	A	
+src/ui/frontend/src/pages/CandidateBackstory.tsx	A	
+src/ui/frontend/src/pages/CandidateDealBreakers.tsx	A	
+src/ui/frontend/src/pages/CandidateIdealDay.tsx	A	
+src/ui/frontend/src/pages/CandidateIntake.tsx	C	1
+src/ui/frontend/src/pages/CandidatePriorities.tsx	A	
+src/ui/frontend/src/pages/CandidateProfile.tsx	C	1
+src/ui/frontend/src/pages/CandidateStrengths.tsx	A	
+src/ui/frontend/src/pages/CandidateSurfer.tsx	A	
+src/ui/frontend/src/pages/CandidateSurferConsent.tsx	C	1
+src/ui/frontend/src/pages/CandidateWritingPreferences.tsx	A	
+src/ui/frontend/src/pages/CompaniesIgnored.tsx	A	
+src/ui/frontend/src/pages/CompaniesInactiveList.tsx	A	
+src/ui/frontend/src/pages/CompaniesNewList.tsx	A	
+src/ui/frontend/src/pages/CompaniesWatchHistory.tsx	A	
+src/ui/frontend/src/pages/CompaniesWatchList.tsx	A	
+src/ui/frontend/src/pages/JobsApplied.tsx	A	
+src/ui/frontend/src/pages/JobsInReview.tsx	C	1
+src/ui/frontend/src/pages/JobsRecommended.tsx	C	1
+src/ui/frontend/src/pages/JobsResponded.tsx	A	
+src/ui/frontend/src/pages/JobsSkipped.tsx	C	1
+src/ui/frontend/src/pages/LogOffScreen.tsx	A	
+src/ui/frontend/src/pages/Login.tsx	A	
+src/ui/frontend/src/routes.tsx	A	

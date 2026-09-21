@@ -1,13 +1,22 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react"
 import AgentAnalysisHeader from "./AgentAnalysisHeader"
+import { type AgentStoryEntry } from "./AgentStoryTab"
 import ArtifactEditor from "./ArtifactEditor"
+import JobDiscussionPane from "./JobDiscussionPane"
+import JobMeteoritePane, { type RelatedMeteorite } from "./JobMeteoritePane"
 import Modal from "./Modal"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
+import {
+  type Catalog,
+  type SectionRow,
+} from "./ResumeStructureEditor"
 import { TabBar } from "./TabbedTextArea"
+import Toast, { type ToastMessage } from "./Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
+import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { parseAnalysisUpshot, type AnalysisUpshot } from "../lib/analysisUpshot"
 import {
   anyReportArtifactContent,
@@ -15,13 +24,32 @@ import {
   artifactsTabPrimaryActions,
   buildPhaseSectionGradeConfidenceRow,
   emailWithJobPlusTag,
+  formatPhaseSectionScoreTitle,
   gradesForHeader,
   isArtifactsBuildInProgress,
   jobGradesForField,
+  jobRubricForField,
+  jobScoreBreakdownForGradesField,
   printCoverVisible,
   printResumeVisible,
   type ReportPrimaryAction,
 } from "../lib/recommendedJobReport"
+
+function catalogFromPayload(data: { catalog?: unknown }): Catalog | null {
+  const raw = data.catalog
+  if (!raw || typeof raw !== "object") return null
+  const c = raw as Catalog
+  if (!Array.isArray(c.body_formats)) return null
+  return c
+}
+
+/** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
+function httpListingHref(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (s.startsWith("http://") || s.startsWith("https://")) return s
+  return null
+}
 
 interface JobDetail {
   astral_job_id: string
@@ -30,11 +58,18 @@ interface JobDetail {
   state: string
   state_changed_at: string | null
   job_link?: string | null
+  listing_href?: string | null
   job_data?: Record<string, unknown>
   jd_grades?: unknown
   do_grades?: unknown
   get_grades?: unknown
   like_grades?: unknown
+  jd_rubric?: unknown
+  do_rubric?: unknown
+  get_rubric?: unknown
+  like_rubric?: unknown
+  agent_story?: AgentStoryEntry[]
+  related_meteorite?: RelatedMeteorite | null
 }
 
 interface Props {
@@ -54,20 +89,22 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [error, setError] = useState<string | null>(null)
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
+  const [snapshotCopied, setSnapshotCopied] = useState(false)
+  const [detailLinkCopied, setDetailLinkCopied] = useState(false)
+  const [snapshotCopying, setSnapshotCopying] = useState(false)
   const [activeTopTab, setActiveTopTab] = useState("summary")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
   const [structureError, setStructureError] = useState(false)
+  const [allSections, setAllSections] = useState<SectionRow[]>([])
+  const [catalog, setCatalog] = useState<Catalog | null>(null)
+  const [structureSaving, setStructureSaving] = useState(false)
+  const [structureSaveError, setStructureSaveError] = useState<string | null>(null)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+  const clearToast = useCallback(() => setToast(null), [])
 
   const candidate = useMemo(
     () => candidates.find(c => c.astral_candidate_id === selectedId),
     [candidates, selectedId],
-  )
-  const candidateArtifacts = useMemo(
-    () =>
-      ((candidate?.candidate_data as Record<string, unknown> | undefined)?.artifacts as
-        | Record<string, unknown>
-        | undefined) ?? {},
-    [candidate],
   )
 
   const load = useCallback(async () => {
@@ -78,7 +115,15 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setCompanyNotes(null)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
-      if (!res.ok) throw new Error("Job not found")
+      if (!res.ok) {
+        if (res.status === 404) throw new Error("Job not found")
+        const errBody = (await res.json().catch(() => ({}))) as { error?: string }
+        const msg =
+          typeof errBody.error === "string" && errBody.error.trim()
+            ? errBody.error.trim()
+            : `Load failed (HTTP ${res.status})`
+        throw new Error(msg)
+      }
       const data = (await res.json()) as JobDetail
       setJob(data)
       if (data.company) {
@@ -105,36 +150,149 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
 
   useEffect(() => { load() }, [load])
 
-  // Resume section labels for Job Resume ArtifactEditor (mirrors candidate structure).
+  // Resume section labels + structure authoring (candidate resume_structure as shared defaults).
   useEffect(() => {
     if (!selectedId) {
       setStructureSections(null)
       setStructureError(false)
+      setAllSections([])
+      setCatalog(null)
       return
     }
     setStructureSections(null)
     setStructureError(false)
+    setAllSections([])
+    setCatalog(null)
     api(`/api/candidates/${selectedId}/resume_structure`)
       .then(r => r.json())
       .then(data => {
         const sections = Array.isArray(data.sections) ? data.sections : []
         setStructureSections(sections.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
+        setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
+        setCatalog(catalogFromPayload(data))
       })
       .catch(() => {
         setStructureSections(null)
         setStructureError(true)
+        setAllSections([])
+        setCatalog(null)
       })
   }, [selectedId])
+
+  function handleStructureRowsChange(rows: SectionRow[]) {
+    setAllSections(rows)
+    setStructureSections(rows.map(r => ({ id: r.id, label: r.title })))
+  }
+
+  async function persistStructureRows(rows: SectionRow[]): Promise<void> {
+    if (!selectedId) throw new Error("No candidate selected")
+    const sections: Record<string, Record<string, unknown>> = {}
+    rows.forEach((row, index) => {
+      const spec: Record<string, unknown> = {
+        id: row.id,
+        title: row.title,
+        enabled: row.enabled,
+        order: index,
+        job_agent_editable: row.job_agent_editable,
+        page_break_policy: row.page_break_policy,
+      }
+      if (row.format) spec.format = row.format
+      sections[row.id] = spec
+    })
+    setStructureSaving(true)
+    setStructureSaveError(null)
+    try {
+      const r = await api(`/api/candidates/${selectedId}/data`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifacts: { resume_structure: { sections } } }),
+      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({})) as { error?: string }
+        throw new Error(e.error || "Save failed")
+      }
+      await r.json()
+      const data = await api(`/api/candidates/${selectedId}/resume_structure`).then(res => res.json())
+      const sectionsList = Array.isArray(data.sections) ? data.sections : []
+      setStructureSections(sectionsList.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
+      setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
+      setCatalog(catalogFromPayload(data))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Save failed"
+      setStructureSaveError(msg)
+      throw e instanceof Error ? e : new Error(msg)
+    } finally {
+      setStructureSaving(false)
+    }
+  }
+
+  function saveStructure(rows: SectionRow[]) {
+    void persistStructureRows(rows)
+      .then(() => setToast({ text: "Resume sections saved", variant: "success" }))
+      .catch(e => {
+        const msg = e instanceof Error ? e.message : "Save failed"
+        setToast({ text: msg, variant: "error" })
+      })
+  }
+
+  // AST-1350: fetch-then-blob; AST-1489: auto-persist structure rows before resume GET.
+  const handlePrintResume = useCallback(async () => {
+    if (!jobId) return
+    try {
+      if (selectedId) {
+        await persistStructureRows(allSections)
+      }
+      const r = await api(`/candidate/resume/${encodeURIComponent(jobId)}`)
+      if (!r.ok) {
+        let msg = `HTTP ${r.status}`
+        try {
+          const data = await r.json()
+          if (typeof data.error === "string" && data.error) msg = data.error
+        } catch { /* non-JSON error body */ }
+        setToast({ text: msg, variant: "error" })
+        return
+      }
+      const html = await r.text()
+      if (!html.trim()) {
+        setToast({ text: "HTML response was empty", variant: "error" })
+        return
+      }
+      const blobUrl = URL.createObjectURL(
+        new Blob([html], { type: "text/html;charset=utf-8" }),
+      )
+      // No noopener/noreferrer features — those force a null return even on success.
+      const win = window.open(blobUrl, "_blank")
+      if (win) {
+        win.opener = null
+      } else {
+        setToast({
+          text: "Popup blocked — allow popups to open the HTML tab.",
+          variant: "error",
+        })
+      }
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    } catch (e) {
+      setToast({
+        text: e instanceof Error ? e.message : "Print failed",
+        variant: "error",
+      })
+    }
+  }, [jobId, selectedId, allSections])
 
   // Reset top tab when opening a different job.
   useEffect(() => {
     setActiveTopTab("summary")
   }, [jobId])
+  useEffect(() => { setSnapshotCopied(false) }, [jobId])
+  useEffect(() => { setDetailLinkCopied(false) }, [jobId])
 
   const topTabs = useMemo(() => {
     const rows = manifest?.jobs.recommended.report_top_tabs ?? []
-    return rows.map(r => ({ key: r.tab_id, label: r.nav_label }))
-  }, [manifest])
+    const hasMeteorite = job?.related_meteorite != null
+    return rows
+      .filter(r => r.tab_id !== "meteorite" || hasMeteorite)
+      .map(r => ({ key: r.tab_id, label: r.nav_label }))
+  }, [manifest, job?.related_meteorite])
 
   useEffect(() => {
     if (topTabs.length === 0) return
@@ -169,10 +327,51 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   }, [manifest, companyNotes, hasCaveats, hasQuestions])
 
   const analysisSections = useMemo((): ReportSectionDef[] => {
-    return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => ({
-      section_id: p.tab_id,
-      nav_label: p.nav_label,
-      default_expanded: p.tab_id === "phase_jd",
+    const template = manifest?.jobs.recommended.phase_score_header_title_template ?? ""
+    const jobRec = job as unknown as Record<string, unknown> | null
+    return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => {
+      const base = p.nav_label
+      let nav_label = base
+      if (jobRec) {
+        const breakdown = jobScoreBreakdownForGradesField(jobRec, p.grades_field)
+        if (breakdown) {
+          nav_label = formatPhaseSectionScoreTitle(base, breakdown, template)
+        }
+      }
+      return {
+        section_id: p.tab_id,
+        nav_label,
+        default_expanded: false,
+      }
+    })
+  }, [manifest, job])
+
+  // AST-1551: Discussion hop slots from AST-1550 manifest (local cast — Scope omits StateUiContext).
+  const discussionSections = useMemo((): ReportSectionDef[] => {
+    const recommended = manifest?.jobs.recommended as
+      | {
+          report_discussion_sections?: Array<{
+            section_id: string
+            nav_label: string
+            default_expanded: boolean
+          }>
+        }
+      | undefined
+    const rows = recommended?.report_discussion_sections ?? []
+    return rows.map(s => ({
+      section_id: s.section_id,
+      nav_label: s.nav_label,
+      default_expanded: s.default_expanded,
+    }))
+  }, [manifest])
+
+  // AST-1692: Meteorite pane sections from typed manifest (AST-1691 config).
+  const meteoriteSections = useMemo((): ReportSectionDef[] => {
+    const rows = manifest?.jobs.recommended.report_meteorite_sections ?? []
+    return rows.map(s => ({
+      section_id: s.section_id,
+      nav_label: s.nav_label,
+      default_expanded: s.default_expanded,
     }))
   }, [manifest])
 
@@ -287,9 +486,9 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (!job || !manifest) return null
     const phase = manifest.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === sectionId)
     if (!phase) return null
-    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
-    const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
-    return buildPhaseSectionGradeConfidenceRow(gradesRaw, rubricKey, candidateArtifacts)
+    const jobRec = job as unknown as Record<string, unknown>
+    const gradesRaw = jobGradesForField(jobRec, phase.grades_field)
+    return buildPhaseSectionGradeConfidenceRow(gradesRaw, jobRec, phase.grades_field)
   }
 
   function renderAnalysisSection(sectionId: string): ReactNode {
@@ -299,14 +498,20 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     const parsed = parseAnalysisUpshot(job.job_data?.analysis_upshot)
     const takeRaw = parsed?.[phase.take_key as keyof AnalysisUpshot]
     const takeBody = typeof takeRaw === "string" ? takeRaw.trim() : ""
-    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
+    const jobRec = job as unknown as Record<string, unknown>
+    const gradesRaw = jobGradesForField(jobRec, phase.grades_field)
     const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
     const grades = gradesForHeader(gradesRaw)
+    const rubricItems = jobRubricForField(jobRec, phase.grades_field)
     return (
       <div>
         {takeBody ? <p className="job-analysis-upshot-body">{takeBody}</p> : null}
         {grades.length > 0 ? (
-          <AgentAnalysisHeader grades={grades} rubricArtifact={rubricKey} />
+          <AgentAnalysisHeader
+            grades={grades}
+            rubricItems={rubricItems}
+            rubricArtifact={rubricKey}
+          />
         ) : (
           <p className="recommended-report-empty">No consult detail on file.</p>
         )}
@@ -330,6 +535,12 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           taskKey="craft_resume_base"
           useCandidateResumeStructure
           structureSections={structureSections}
+          structureCatalog={catalog}
+          structureRows={allSections}
+          onStructureRowsChange={handleStructureRowsChange}
+          onStructureSave={saveStructure}
+          structureSaving={structureSaving}
+          structureError={structureSaveError}
           jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
         />
       )
@@ -357,14 +568,14 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       const cancelActions = artifactActions.filter(a => a.action_key === "cancel_build")
       return (
         <div className="recommended-report-artifacts-actions">
-          <button type="button" className="modal-btn save in-flight" disabled>
+          <button type="button" className="btn primary in-flight" disabled>
             Generating…
           </button>
           {cancelActions.map(action => (
             <button
               key={action.action_key}
               type="button"
-              className="modal-btn save"
+              className="btn secondary"
               disabled={primaryBusy}
               onClick={() => runPrimaryAction(action)}
             >
@@ -383,7 +594,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
         <div className="recommended-report-artifacts-actions">
           <button
             type="button"
-            className={`modal-btn save${primaryBusy ? " in-flight" : ""}`}
+            className={`btn primary${primaryBusy ? " in-flight" : ""}`}
             disabled={primaryBusy}
             onClick={() => runPrimaryAction(generate)}
           >
@@ -409,7 +620,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setError(null)
     try {
       if (action.method === "CLIENT") {
-        if (job.job_link) window.open(job.job_link, "_blank", "noopener,noreferrer")
+        const href = httpListingHref(job.listing_href)
+        if (href) window.open(href, "_blank", "noopener,noreferrer")
         return
       }
       const path = `/api/jobs/${encodeURIComponent(jobId)}/${action.path_suffix}`
@@ -430,6 +642,26 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     } finally {
       setPrimaryBusy(false)
     }
+  }
+
+  async function handleCopySnapshot() {
+    if (!jobId || snapshotCopying) return
+    setSnapshotCopying(true)
+    const ok = await copyJobSnapshotToClipboard(jobId)
+    setSnapshotCopying(false)
+    if (!ok) return
+    setSnapshotCopied(true)
+    window.setTimeout(() => setSnapshotCopied(false), 2000)
+  }
+
+  function handleCopyDetailLink() {
+    if (!jobId) return
+    const url =
+      `${window.location.origin}/jobs/detail/${encodeURIComponent(jobId)}`
+    navigator.clipboard.writeText(url).then(() => {
+      setDetailLinkCopied(true)
+      window.setTimeout(() => setDetailLinkCopied(false), 2000)
+    })
   }
 
   function handleCopyApplicationEmail() {
@@ -457,6 +689,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       onClose={onClose}
       title={job?.company || "Recommended Job Report"}
       size="wide"
+      showFooter={false}
     >
       {loading && <p className="entity-loading">Loading…</p>}
       {error && <p className="entity-error">{error}</p>}
@@ -465,7 +698,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           <div className="recommended-report-chrome">
             <RecommendedJobReportHeader
               jobTitle={jobTitleDisplay}
-              jobLink={job.job_link ?? null}
+              jobLink={httpListingHref(job.listing_href)}
               companyName={job.company}
               companyWebsite={companyWebsite}
               applicationEmail={applicationEmail}
@@ -473,16 +706,14 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               copyFeedback={copyFeedback}
               onCopyApplicationEmail={handleCopyApplicationEmail}
               onCopyLinkedIn={handleCopyLinkedIn}
+              onCopyDetailLink={handleCopyDetailLink}
+              detailLinkCopied={detailLinkCopied}
+              onCopySnapshot={handleCopySnapshot}
+              snapshotCopied={snapshotCopied}
+              snapshotCopying={snapshotCopying}
               showPrintResume={showPrintResume}
               showPrintCover={showPrintCover}
-              onPrintResume={() => {
-                if (!jobId) return
-                window.open(
-                  `/candidate/resume/${encodeURIComponent(jobId)}`,
-                  "_blank",
-                  "noopener,noreferrer",
-                )
-              }}
+              onPrintResume={() => { void handlePrintResume() }}
               onPrintCover={() => {
                 if (!jobId) return
                 window.open(
@@ -524,10 +755,23 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
                 />
               )}
               {activeTopTab === "artifacts" && renderArtifactsPane()}
+              {activeTopTab === "discussion" && (
+                <JobDiscussionPane
+                  sections={discussionSections}
+                  agentStory={job?.agent_story ?? []}
+                />
+              )}
+              {activeTopTab === "meteorite" && job?.related_meteorite != null && (
+                <JobMeteoritePane
+                  sections={meteoriteSections}
+                  relatedMeteorite={job.related_meteorite}
+                />
+              )}
             </div>
           )}
         </div>
       )}
+      <Toast message={toast} onDone={clearToast} />
     </Modal>
   )
 }

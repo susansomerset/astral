@@ -4,6 +4,7 @@ import TabbedTextArea from "../components/TabbedTextArea"
 import type { TextTab } from "../components/TabbedTextArea"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
+import { useDirtyLeaveSaveThenNavigate } from "../hooks/useDirtyLeaveSaveThenNavigate"
 import api from "../lib/api"
 import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 import type { Section } from "../components/FormFields"
@@ -36,6 +37,22 @@ function readJpegDataUrl(file: File, maxW: number, maxH: number): Promise<string
     reader.onerror = () => reject(new Error("Could not read signature image"))
     reader.readAsDataURL(file)
   })
+}
+
+/** Align edit trees with FormFields display coerce before dirty stringify. */
+function normalizeProfileEditTreeForDirtyCompare(value: unknown): unknown {
+  if (value === null || value === undefined) return ""
+  if (Array.isArray(value)) {
+    return value.map(normalizeProfileEditTreeForDirtyCompare)
+  }
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = normalizeProfileEditTreeForDirtyCompare(v)
+    }
+    return out
+  }
+  return value
 }
 
 export default function Profile() {
@@ -89,15 +106,22 @@ export default function Profile() {
   }, [selectedId])
 
   const data = fetched?.id === selectedId ? fetched.data : null
+  const isDirty =
+    data !== null &&
+    JSON.stringify(normalizeProfileEditTreeForDirtyCompare(values)) !==
+      JSON.stringify(normalizeProfileEditTreeForDirtyCompare(data))
 
   function set(key: string, value: unknown) {
     setValues(prev => setByPath(prev, key, value))
   }
 
-  function handleSave() {
-    if (!selectedId) return
+  // Shared by header Save and dirty-leave onSave — snapshot clear before resolve.
+  const persistProfile = useCallback((): Promise<void> => {
+    if (!selectedId) {
+      return Promise.reject(new Error("No candidate selected"))
+    }
     setError(null)
-    api(`/api/candidates/${selectedId}/data`, {
+    return api(`/api/candidates/${selectedId}/data`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(values),
@@ -115,8 +139,17 @@ export default function Profile() {
       })
       .catch(e => {
         setError(e.message)
-        setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: "Save failed", variant: "error" })
+        setToast(
+          e instanceof ApiError
+            ? errorToastFromApiError(e)
+            : { text: "Save failed", variant: "error" },
+        )
+        throw e
       })
+  }, [selectedId, values, refreshCandidate])
+
+  function handleSave() {
+    void persistProfile()
   }
 
   function handleCancel() {
@@ -124,7 +157,11 @@ export default function Profile() {
     setError(null)
   }
 
-  const hasBaseResume = Boolean(getByPath(values, "artifacts.base_resume"))
+  useDirtyLeaveSaveThenNavigate({
+    isDirty,
+    onSave: persistProfile,
+  })
+
   const sigImg = String(getByPath(values, "contact.cover_letter_signature_image") ?? "")
   const maxSigW = sigLimits?.max_width_px
   const maxSigH = sigLimits?.max_height_px
@@ -166,7 +203,7 @@ export default function Profile() {
           {sigImg ? (
             <div style={{ marginTop: 12 }}>
               <img src={sigImg} alt="" style={{ maxWidth: maxSigW, maxHeight: maxSigH, display: "block" }} />
-              <button type="button" className="dep-btn cancel" style={{ marginTop: 8 }} onClick={handleClearSignatureImage}>
+              <button type="button" className="btn secondary" style={{ marginTop: 8 }} onClick={handleClearSignatureImage}>
                 Remove image
               </button>
             </div>
@@ -187,15 +224,10 @@ export default function Profile() {
 
   const textTabs: TextTab[] = tabSections.map(sec => {
     const f = sec.fields[0]
-    const isResume = f.key === "context.raw_resume"
     return {
       label: sec.label,
       key: f.key,
-      disabled: isResume && hasBaseResume,
-      // Prefer shapes placeholder; resume-lock override when base resume exists.
-      placeholder: f.placeholder ?? (isResume && hasBaseResume
-        ? "Locked — base resume has been generated from this text"
-        : undefined),
+      placeholder: f.placeholder,
       help: typeof f.help === "string" && f.help.trim() ? f.help : undefined,
     }
   })
@@ -207,8 +239,8 @@ export default function Profile() {
         <div className="dep-header">
           <h1 className="dep-title">Candidate Profile</h1>
           <div className="dep-actions">
-            <button className="dep-btn cancel" onClick={handleCancel}>Cancel</button>
-            <button className="dep-btn save" onClick={handleSave}>Save</button>
+            <button className="btn secondary" onClick={handleCancel}>Cancel</button>
+            <button className="btn primary" onClick={handleSave}>Save</button>
           </div>
         </div>
         <div className="dep-body">
