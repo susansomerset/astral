@@ -216,3 +216,11 @@ context_tokens≈26500
 ```
 [code-rubric] PROCEED (Commit: 17085cf8) land job_title wiring clean
 ```
+
+## Resolution
+
+**2026-09-21** — resolve-child (Hedy)
+
+- **Radia fix-now:** none (CLEAN / PROCEED).
+- **Discuss / advisory:** no product action (sibling merge-tests / bible shasum hygiene only).
+- **§9a:** `origin/dev` dry-run was already clean. `origin/ftr/AST-1753-stage-email-meteorite-enhancements` conflicted on `data/admin/agent_task.json` (sibling AST-1755 prompts). Merged that ftr tip into this sub (`resolve(AST-1757): merge ftr for §9a dry-run clean`); auto-merge kept AST-1757 land `job_title=` wiring and AST-1756 `ingress_blob` stage map. Both merge-tree dry-runs clean afterward.
