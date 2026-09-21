@@ -963,3 +963,5 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 - **Product:** `_cull_html` preserves fragment-root `<svg>`; Admin Class name hint notes outer HTML needs Response type html.
 - **§3h:** resolve-child skipped (clean review).
 
+- **docs-acceptance:** `test(AST-1745)` @ `ca61b293` already on `origin/ftr` via sibling merge stack; merge-tests still delivered on this sub.
+
