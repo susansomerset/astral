@@ -877,3 +877,74 @@ Out of this bug: implementing Next/page-N capture; changing scroll/click caps; p
 ## Radia review-fix (AST-1737)
 
 Overall: CLEAN. Expand contract documented. Clean-review shortcut → User Testing.
+
+## Bug: AST-1746 — Telescope add optional id filter parameter
+
+UAT-batch fix against amended AST-1721 Component/Technical scope (optional `id` secondary filter + admin control, alongside tag/selector/class). Lives on this plan doc because AST-1736’s tag/`class_name` contract + capture resolver are the sibling surface. Does not rewrite Stages 1–4 or other bug blocks.
+
+### As-is
+
+Telescope requests and Admin Telescope expose optional `tag` / `class_name` (and CSS `selector`) but have no optional `id` parameter to filter elements by `id="<idstring>"`.
+
+### To-be
+
+An optional `id` request field (same role as `class_name`) resolves to a CSS id selector so capture matches `id="<idstring>"`; Admin Telescope exposes an Id control and forwards it; platform admin proxy / `_post_telescope*` pass it through.
+
+### Repro
+
+1. DOM with at least one node whose attribute is `id="hero"` (any tag), and no reliance on a bare CSS `selector` of `#hero`.
+2. `POST /telescope/html` with bearer and body `{"url":"…","id":"hero","expand":false}` — **as-is:** `id` is ignored (Pydantic drops unknown fields or field absent) → whole-document / default HTML, not the `#hero` node.
+3. Admin Telescope: Tag / Class name / Selector present; **no** Id input — operator cannot express id intent without typing `#hero` into Selector.
+4. **To-be:** `id: "hero"` (optional `tag`) returns that node’s html/text/links scope; Admin Id field sends `id` and omits `selector` when secondary filters are active.
+
+### Root cause
+
+AST-1736 added explicit `tag` / `class_name` → CSS in `resolve_capture_query` and wired them through service models, platform client, admin proxy, and AdminTelescope UI. The parallel **id** secondary filter was never added — only class got a first-class field. Parent scope has since been amended to include it; product still lacks the field and control.
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture + request models; `src/external/telescope.py` / `src/ui/api/` pass-through; `src/ui/frontend/` Admin Telescope). Do **not** remove AST-1736 tag/`class_name` behavior, AST-1731 bare-class retry on `selector`, or AST-1729 `page`/`body` branches.
+
+1. **`service/telescope/capture.py` — extend `resolve_capture_query`**
+   - Add optional kwarg `id: str | None = None` (strip like the others). Reuse `_CLASS_NAME_RE` (same `^[A-Za-z_][\w-]*$`) for the id token, or an identically shaped `_ID_RE` alias — invalid → `CaptureQueryError("invalid id")`.
+   - Ambiguity: if `selector` is non-empty **and** any of `tag` / `class_name` / `id` is non-empty → `CaptureQueryError` (message names all three secondary fields).
+   - When `id` is set (alone or with tag/class), build CSS **without** attribute-selector fallback and **without** a bare→`#id` retry on the `selector` path:
+     - `id` only → `#{id}`
+     - `tag` + `id` → `{tag}#{id}`
+     - `class_name` + `id` → `.{class_name}#{id}`
+     - `tag` + `class_name` + `id` → `{tag}.{class_name}#{id}`
+   - When `id` is unset, keep today’s tag/`class_name` / selector-only branches unchanged.
+   - `capture_html` / `capture_text` / `capture_links` stay selector-string consumers; app still resolves once per request.
+
+2. **`service/telescope/app.py` — request field + resolve wiring**
+   - On `TelescopeRequest` and `TelescopeHtmlRequest`, add optional `id: str | None = None`.
+   - `_resolve_body_selector` passes `id=body.id` into `resolve_capture_query`; log mode when `id` (and/or tag/class) is set, e.g. `telescope filter mode=tag/class/id … resolved=…`, without dumping page HTML.
+   - Invalid/ambiguous → existing HTTP 400 `detail` path.
+
+3. **`src/external/telescope.py` + `src/ui/api/api_admin.py` — pass-through**
+   - `_post_telescope`, `_post_telescope_html`, and `admin_telescope_scrape` accept optional `id` and include `"id"` in the JSON body when set (same omit-when-unset pattern as `class_name`).
+   - Admin proxy reads `id` from the request body (strip empty → `None`) and forwards it.
+
+4. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — Id control**
+   - Add optional **Id** text input beside Tag / Class name (placeholder e.g. `hero` — no leading `#`).
+   - Treat Id as part of the secondary-filter group with Tag/Class: if any of tag / class_name / id is filled, send those fields and **omit** `selector` (disable Selector when the group is active; disable the group when Selector is filled) — same mutual exclusion as AST-1736, now including `id`.
+   - Help copy: Id = HTML `id` token without a leading `#`.
+
+**Out of this bug:** inventing bare-`selector` → `#ident` retry; changing multi-match fold rules; service cull; expand/pagination; unrelated admin scroll bugs.
+
+### Blast radius
+
+- Contract JSON gains one optional key (`id`); omit-when-unset keeps existing clients working.
+- Admin operators who previously typed `#foo` into Selector keep that path; new Id field is the preferred explicit path (mirrors Class name vs bare class token).
+- Combining `id` with `class_name` / `tag` can narrow matches vs class-only (correct).
+- Betty / qa-fix may assert `id: "…"` → scoped html/text/links and `selector`+`id` → 400; do not edit `tests/` here.
+
+### What must still hold
+
+- Parent AC 3 / AC 14: endpoints and admin still return `final_url` + text|html|links (+ scrape_meta on admin); bearer required; no service-side cull.
+- AST-1736: `tag` / `class_name` resolution and Admin Tag/Class controls unchanged when `id` is omitted.
+- AST-1731: bare `selector` class retry + multi-match html `""` / `str` / `list[str]` unchanged when only `selector` is used.
+- AST-1729: empty / `page` / `body` specials unchanged.
+- AST-1732: when a filter matches, links stay scoped under match roots (dedupe by href).
+- Zero `src` imports under `service/telescope/`; capture stays browser-only.
+- Drop-in `_ensure_html` first-match unwrap for list html unchanged.
