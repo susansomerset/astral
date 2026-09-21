@@ -361,3 +361,9 @@ AST-1742 `## Scope` (amended): `src/core/inbox.py`, `src/core/meteorite.py`, `sr
 Patterns: (none — inherit AST-1714: logging statutes only).
 
 Statutes (id-only until `make-fix`): `stat.logging.debug`; `stat.logging.error`; `stat.logging.info`; `stat.logging.info.dispatcher`; `stat.logging.warning`.
+
+### Resolution (AST-1742) — 2026-09-21
+
+**Radia** `[code-rubric] REVIEW` @ `c32117ad`: product retarget OK; missing bug-repro coverage lives on sibling **AST-1743** (landed `[bug-repro]` @ `f31756b1`); restack/merge is a Chuckles `merge-child` concern, not a product fix-now.
+
+**Engineer resolve:** no product code changes — fix-now empty for this ticket. Advance to User Testing.
