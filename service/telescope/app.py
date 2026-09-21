@@ -34,12 +34,26 @@ _EXPAND_DESC = (
 )
 
 
+# tag + selector = same primary; class_name is optional secondary (AST-1744).
+_PRIMARY_DESC = (
+    "Element tag / CSS primary (alias of tag). Same slot as tag — "
+    "html, div, span, body, head, ul, page, or legacy CSS."
+)
+_TAG_DESC = (
+    "Element tag primary (alias of selector). Same slot as selector — "
+    "html, div, span, body, head, ul, or page."
+)
+_CLASS_DESC = (
+    "Secondary class filter: elements with class=\"…\". "
+    "Combines with a bare tag primary as {tag}.{class}, or alone as .{class}."
+)
+
+
 class TelescopeRequest(BaseModel):
     url: str
-    selector: Optional[str] = None
-    tag: Optional[str] = None
-    class_name: Optional[str] = None
-    id: Optional[str] = None
+    selector: Optional[str] = Field(default=None, description=_PRIMARY_DESC)
+    tag: Optional[str] = Field(default=None, description=_TAG_DESC)
+    class_name: Optional[str] = Field(default=None, description=_CLASS_DESC)
     expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
     links: bool = True
@@ -47,10 +61,9 @@ class TelescopeRequest(BaseModel):
 
 class TelescopeHtmlRequest(BaseModel):
     url: str
-    selector: Optional[str] = None
-    tag: Optional[str] = None
-    class_name: Optional[str] = None
-    id: Optional[str] = None
+    selector: Optional[str] = Field(default=None, description=_PRIMARY_DESC)
+    tag: Optional[str] = Field(default=None, description=_TAG_DESC)
+    class_name: Optional[str] = Field(default=None, description=_CLASS_DESC)
     expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
 
@@ -60,29 +73,24 @@ def _resolve_body_selector(
     selector: Optional[str],
     tag: Optional[str],
     class_name: Optional[str],
-    id: Optional[str] = None,
 ) -> Optional[str]:
     """Map request filter fields to the CSS string capture_* expects; 400 on bad input."""
     try:
         resolved = resolve_capture_query(
-            selector=selector, tag=tag, class_name=class_name, id=id
+            selector=selector, tag=tag, class_name=class_name
         )
     except CaptureQueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    # Log filter mode without dumping page content
-    t = (tag or "").strip()
-    cn = (class_name or "").strip() if class_name else ""
-    eid = (id or "").strip() if id else ""
-    if t or cn or eid:
+    # Log primary (+ optional class) without dumping page content
+    primary = (tag or "").strip() or (selector or "").strip() or None
+    cn = (class_name or "").strip() or None
+    if primary or cn:
         _log.info(
-            "telescope filter mode=tag/class/id tag=%s class_name=%s id=%s resolved=%s",
-            t or None,
-            cn or None,
-            eid or None,
+            "telescope filter mode=primary(+class) primary=%s class_name=%s resolved=%s",
+            primary,
+            cn,
             resolved,
         )
-    elif selector and str(selector).strip():
-        _log.info("telescope filter mode=selector selector=%s", str(selector).strip())
     return resolved
 
 
@@ -183,10 +191,7 @@ async def post_telescope(request: Request, body: TelescopeRequest):
     if not url:
         raise HTTPException(status_code=400, detail="url required")
     sel = _resolve_body_selector(
-        selector=body.selector,
-        tag=body.tag,
-        class_name=body.class_name,
-        id=body.id,
+        selector=body.selector, tag=body.tag, class_name=body.class_name
     )
     pool: BrowserPool = request.app.state.pool
 
@@ -225,10 +230,7 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
     if not url:
         raise HTTPException(status_code=400, detail="url required")
     sel = _resolve_body_selector(
-        selector=body.selector,
-        tag=body.tag,
-        class_name=body.class_name,
-        id=body.id,
+        selector=body.selector, tag=body.tag, class_name=body.class_name
     )
     pool: BrowserPool = request.app.state.pool
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Optional, Union
 
 # querySelectorAll; bare CSS ident with zero hits → retry as .{selector}.
 _BARE_CLASS_RETRY = """
@@ -37,17 +37,19 @@ _QUERY_HTML_JS = (
 }"""
 )
 
-# Scoped links: bare→.class retry (AST-1736); emit every http(s) anchor under roots.
-# Href merge + text[] lives in `_dedupe_links_by_href` (AST-1747), not first-wins JS.
+# Scoped links: same bare→.class retry as html/text (AST-1736), then collect under roots.
 _QUERY_LINKS_JS = (
     """(selector) => {"""
     + _BARE_CLASS_RETRY
     + """
+    const roots = nodes;
+    const seen = new Set();
     const out = [];
-    for (const root of nodes) {
+    for (const root of roots) {
         for (const a of Array.from(root.querySelectorAll('a[href]'))) {
             const href = a.href;
-            if (!href || !href.startsWith('http')) continue;
+            if (!href || !href.startsWith('http') || seen.has(href)) continue;
+            seen.add(href);
             out.push({ href, text: (a.innerText || '').trim() });
         }
     }
@@ -60,7 +62,7 @@ _TAG_RE = re.compile(r"^[A-Za-z][\w-]*$")
 
 
 class CaptureQueryError(ValueError):
-    """Ambiguous or invalid tag/class_name/id/selector filter (maps to HTTP 400)."""
+    """Ambiguous or invalid tag/class_name/selector filter (maps to HTTP 400)."""
 
 
 def resolve_capture_query(
@@ -68,9 +70,11 @@ def resolve_capture_query(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
-    id: Optional[str] = None,
 ) -> Optional[str]:
-    """Build the CSS string for capture_* from selector and/or explicit tag/class/id.
+    """Build the CSS string for capture_* from unified tag/selector + optional class.
+
+    ``tag`` and ``selector`` are the same primary slot (AST-1744). ``class_name``
+    is a secondary filter → ``{tag}.{class}`` or ``.{class}`` alone.
 
     Returns None when nothing was set (whole-document / page defaults in capture_*).
     Raises CaptureQueryError on ambiguity or invalid tokens.
@@ -78,44 +82,31 @@ def resolve_capture_query(
     sel = (selector or "").strip()
     t = (tag or "").strip()
     cn = (class_name or "").strip()
-    eid = (id or "").strip()
 
-    if sel and (t or cn or eid):
-        raise CaptureQueryError(
-            "ambiguous filter: use selector or tag/class_name/id, not both"
-        )
-
-    # Explicit id → CSS #id (optionally with tag / class_name); no bare→# retry.
-    if eid:
-        if not _CLASS_NAME_RE.match(eid):
-            raise CaptureQueryError("invalid id")
-        if t and not _TAG_RE.match(t):
-            raise CaptureQueryError("invalid tag")
-        if cn and not _CLASS_NAME_RE.match(cn):
-            raise CaptureQueryError("invalid class_name")
-        if t and cn:
-            return f"{t}.{cn}#{eid}"
-        if t:
-            return f"{t}#{eid}"
-        if cn:
-            return f".{cn}#{eid}"
-        return f"#{eid}"
+    # Primary = unified tag/selector aliases
+    if sel and t and sel != t:
+        raise CaptureQueryError("ambiguous primary: tag and selector differ")
+    primary = t or sel or ""
 
     if cn:
         if not _CLASS_NAME_RE.match(cn):
             raise CaptureQueryError("invalid class_name")
-        if t:
-            if not _TAG_RE.match(t):
-                raise CaptureQueryError("invalid tag")
-            return f"{t}.{cn}"
-        return f".{cn}"
+        # page/body specials do not apply when class filters — class-only CSS
+        if not primary or primary.lower() in ("page", "body"):
+            return f".{cn}"
+        if not _TAG_RE.match(primary):
+            raise CaptureQueryError(
+                "class_name only combines with a bare tag primary (or alone)"
+            )
+        return f"{primary}.{cn}"
 
-    if t:
-        if not _TAG_RE.match(t):
+    if primary:
+        # Explicit tag path validates; selector-only may be full CSS / page / body
+        if t and not _TAG_RE.match(primary):
             raise CaptureQueryError("invalid tag")
-        return t
+        return primary
 
-    return sel or None
+    return None
 
 
 def _fold_blobs(blobs) -> Union[str, List[str]]:
@@ -127,32 +118,6 @@ def _fold_blobs(blobs) -> Union[str, List[str]]:
     if len(blobs) == 1:
         return blobs[0]
     return list(blobs)
-
-
-def _dedupe_links_by_href(raw: Optional[List]) -> List[Dict[str, Any]]:
-    """One object per href; `text` is a deduped list[str] in first-seen order (AST-1747)."""
-    if not raw:
-        return []
-    out: List[Dict[str, Any]] = []
-    by_href: Dict[str, Dict[str, Any]] = {}
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-        href = item.get("href")
-        if not href or not isinstance(href, str):
-            continue
-        if href not in by_href:
-            entry: Dict[str, Any] = {"href": href, "text": []}
-            by_href[href] = entry
-            out.append(entry)
-        label = item.get("text")
-        if not isinstance(label, str):
-            continue
-        text = label.strip()
-        texts: List[str] = by_href[href]["text"]
-        if text not in texts:
-            texts.append(text)
-    return out
 
 
 async def capture_text(page, selector: str | None) -> Union[str, List[str]]:
@@ -172,11 +137,11 @@ async def capture_text(page, selector: str | None) -> Union[str, List[str]]:
     return _fold_blobs(blobs)
 
 
-async def capture_links(page, selector: str | None = None) -> List[Dict[str, Any]]:
+async def capture_links(page, selector: str | None = None) -> List[Dict[str, str]]:
     sel = (selector or "").strip()
     # Whole-document only for omit / "page"; explicit "body"/"head" are element-scoped (AST-1735)
     if not sel or sel.lower() == "page":
-        raw = await page.evaluate(
+        return await page.evaluate(
             """() => {
                 const links = Array.from(document.querySelectorAll('a[href]'));
                 return links
@@ -187,10 +152,8 @@ async def capture_links(page, selector: str | None = None) -> List[Dict[str, Any
                     .filter(item => item.href && item.href.startsWith('http'));
             }"""
         )
-        return _dedupe_links_by_href(raw)
-    # Scoped: bare→.class (AST-1736) + union under roots; fold href/text[] (AST-1747)
-    raw = await page.evaluate(_QUERY_LINKS_JS, sel)
-    return _dedupe_links_by_href(raw)
+    # Scoped: bare→.class retry (AST-1736) + union under roots, dedupe by href (AST-1732)
+    return await page.evaluate(_QUERY_LINKS_JS, sel)
 
 
 async def capture_html(page, selector: str | None) -> Union[str, List[str]]:
