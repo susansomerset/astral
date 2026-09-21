@@ -147,3 +147,20 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 ./scripts/testing/run_component_tests.sh \
   tests/component/service/test_telescope_capture.py::test_ast1733_capture_text_selector_strips_style_script_noscript -q
 ```
+
+---
+
+### AST-1735 · AST-1721 (qa-fix bug-repro — head/body scoped links)
+
+**Board REVISE:** `capture_links("head"|"body")` must be element-scoped (`body` not whole-page alias); omit/`"page"` stay document-wide. AST-1732 only covers class selectors.
+
+| Area | Component tests |
+| --- | --- |
+| `"body"` scoped (not whole-page) | `test_telescope_capture.py::test_ast1735_capture_links_body_is_scoped_not_whole_page` (**bug-repro**) |
+| `"head"` scoped; omit/`page` whole-doc | `test_telescope_capture.py::test_ast1735_capture_links_head_scoped_and_page_stays_whole_document` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_ast1735_capture_links_body_is_scoped_not_whole_page \
+  tests/component/service/test_telescope_capture.py::test_ast1735_capture_links_head_scoped_and_page_stays_whole_document -q
+```
