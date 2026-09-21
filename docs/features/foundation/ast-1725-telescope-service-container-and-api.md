@@ -953,3 +953,13 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 - AST-1728: admin cull default **off** so the pane shows raw service HTML unless the operator opts in.
 - Zero `src` imports under `service/telescope/`; capture stays browser-only.
 - Drop-in `_ensure_html` first-match unwrap for list html unchanged.
+
+## Radia review (AST-1745)
+
+**Overall:** CLEAN — `[code-rubric] PROCEED` @ `a830d0f0`.
+
+- **[bug-repro] OK** — `test_cull_html_preserves_root_svg_logo_outerhtml` + nested-SVG companion.
+- **What must still hold — OK** — service no cull; AST-1731/1736/1729/1728 holds; no `src` imports under service.
+- **Product:** `_cull_html` preserves fragment-root `<svg>`; Admin Class name hint notes outer HTML needs Response type html.
+- **§3h:** resolve-child skipped (clean review).
+
