@@ -685,3 +685,77 @@ Do **not** change `/telescope/html`, `capture_text`, auth, pool, Dockerfile, or 
 ## Radia review-fix (AST-1732)
 
 Restacked onto ftr after REVIEW; link-scoping + sibling capture_html/class fixes held. → User Testing.
+
+## Bug: AST-1736 — Telescope HTML class filter (shaders) returns empty string
+
+### As-is
+
+Putting a bare class token like `shaders` in the Admin / request filter (`selector`) is not treated as a class name: the HTML scrape returns an empty string (same class-vs-tag confusion Susan hit on AST-1731 with `points-container`).
+
+### To-be
+
+Class-name filters match elements that have that class and return their HTML when nodes exist — **or** the request surface exposes an explicit tag vs class split so “I mean a class” does not depend on CSS-selector heuristics.
+
+### Repro
+
+Component fixture (no live URL required — ticket names the token `shaders`, not a host):
+
+1. DOM with no `<shaders>` element and at least one node `class="shaders"` (any tag).
+2. `POST /telescope/html` with `{"url":"…","selector":"shaders","expand":false}` (bearer) **or** Admin Telescope html + selector `shaders`.
+3. **As-is (pre-explicit-class / incomplete paths):** `"html":""` when the caller’s intent is class, not tag — and/or bare `shaders` fails to scope links on `POST /telescope` even when html/text would match after AST-1731.
+4. **To-be:** non-empty `html` for matching nodes; with explicit params, `class_name: "shaders"` (optional `tag`) matches without relying on bare-`selector` retry.
+
+### Root cause
+
+AST-1731 already landed a silent bare-CSS-ident → `.{ident}` retry inside `capture_html` / `capture_text` (`service/telescope/capture.py` `_BARE_CLASS_RETRY`). On this tip that path treats `shaders` the same as `points-container` for html/text. Two gaps remain vs this bug’s to-be:
+
+1. **Intent is still only a CSS `selector`.** A bare token is always “query as tag, then maybe as class.” There is no first-class “this is a class name” (and optional element tag) field — the design Susan asked for on the ticket.
+2. **`capture_links` never received the bare→class retry** (AST-1732 scoped roots with raw `querySelectorAll(selector)` only). Bare class filters are inconsistent across html/text vs links on the same request.
+
+So this is not “re-do AST-1731’s heuristic for another token”; it is the missing **tag / class parameter split** (plus shared selector resolution so links agree).
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` contract + capture; platform admin client pass-through; Admin Telescope UI). Do **not** re-open AST-1729 `page`/`body` branches or remove AST-1731 bare-retry on `selector` (back-compat).
+
+1. **`service/telescope/capture.py` — resolve class/tag → CSS; share across capture paths**
+   - Add a pure helper, e.g. `resolve_capture_query(*, selector: str | None, tag: str | None, class_name: str | None) -> str | None`:
+     - Strip all three inputs.
+     - If `selector` is non-empty **and** (`tag` or `class_name` non-empty) → raise a small domain error the route maps to **HTTP 400** (ambiguous filter).
+     - If `class_name` set: must match `^[A-Za-z_][\w-]*$` else 400; build CSS `.{class_name}` or `{tag}.{class_name}` when `tag` is also set (`tag` must match `^[A-Za-z][\w-]*$`). **Do not** run tag-first then class-retry for this path — class intent is explicit.
+     - If only `tag` set: return that tag name as the CSS selector.
+     - If only `selector` set: return it unchanged (existing `page`/`body`/empty handling stays in each `capture_*`).
+     - If none set: return `None` / `""` so today’s whole-document branches run.
+   - Route `capture_html` / `capture_text` / `capture_links` through that resolved CSS string (app calls the helper once per request and passes the result as today’s `selector` arg, **or** capture accepts the optional kwargs and resolves internally — one place only).
+   - Apply **`_BARE_CLASS_RETRY` to `capture_links`’ scoped path** the same way html/text do, so bare `selector: "shaders"` scopes link roots after zero tag hits (closes the AST-1732 omission without requiring callers to learn `class_name` immediately).
+
+2. **`service/telescope/app.py` — request fields**
+   - On `TelescopeRequest` and `TelescopeHtmlRequest`, add optional `tag: str | None = None` and `class_name: str | None = None` (JSON name `class_name`, not `class`).
+   - Before capture: resolve via the helper; on validation/ambiguity error → `400` with a clear `detail`.
+   - Pass the resolved selector into `capture_text` / `capture_links` / `capture_html` as today.
+   - Log which filter mode was used at info/debug (selector vs tag/class) without dumping page HTML.
+
+3. **`src/external/telescope.py` + `src/ui/api/api_admin.py` — pass-through**
+   - `_post_telescope`, `_post_telescope_html`, and `admin_telescope_scrape` accept optional `tag` / `class_name` and include them in the JSON body when set (same rules as service).
+   - Admin proxy reads `tag` / `class_name` from the request body and forwards them.
+
+4. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — explicit filters**
+   - Add optional **Tag** and **Class name** inputs beside the existing Selector field.
+   - Submit rules: if Class name and/or Tag is filled, send `tag` / `class_name` and **omit** `selector` (and disable or clear Selector in the UI to match the 400 rule). If only Selector is filled, keep today’s `selector` body field (AST-1731 bare-retry still applies).
+   - Placeholder/help: Selector = full CSS / `page` / `body`; Class name = class token without a leading dot.
+
+### Blast radius
+
+- AST-1731 bare-retry on `selector` remains for callers that already send bare tokens; new Admin path should prefer `class_name` so UAT does not depend on the heuristic.
+- AST-1732 scoped links: bare class tokens start scoping roots once `_BARE_CLASS_RETRY` is shared — link arrays may shrink vs today’s empty-root → empty list when `<shaders>` tags are absent (correct).
+- Contract JSON grows two optional keys; omit-when-unset keeps old clients working.
+- Betty / qa-fix may need asserts for `class_name: "shaders"` → non-empty html and for ambiguous `selector`+`class_name` → 400; do not edit `tests/` here.
+
+### What must still hold
+
+- Parent AC 3: `/telescope` + `/telescope/html` still return `final_url` + text|html|links; bearer required; no service-side cull.
+- AST-1731: bare `selector` class retry + multi-match html `""` / `str` / `list[str]` unchanged when only `selector` is used.
+- AST-1729: empty / `page` / `body` specials unchanged.
+- AST-1732: when a filter matches, links stay scoped under match roots (dedupe by href).
+- Zero `src` imports under `service/telescope/`; capture stays browser-only.
+- Drop-in `_ensure_html` first-match unwrap for list html unchanged.
