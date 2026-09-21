@@ -14,6 +14,8 @@ describe("SectionExpandChrome", () => {
     const collapseBtn = screen.getByRole("button", { name: "Collapse all" })
     expect(expandBtn).toHaveAttribute("type", "button")
     expect(collapseBtn).toHaveAttribute("type", "button")
+    expect(expandBtn).toHaveClass("btn", "secondary")
+    expect(collapseBtn).toHaveClass("btn", "secondary")
     expect(expandBtn.closest(".section-expand-chrome")).toBeTruthy()
 
     await user.click(expandBtn)

@@ -3,6 +3,7 @@ Core gazer business logic.
 
 In-scope: scrape_one, process_gazer_batch, fetch_jd_batch, fetch_culture_pages_batch,
 fetch_website_batch, fetch_job_pages_batch, validate_title_batch,
+contact_task_gazer_scrape (AST-1516 contact-task scrape),
 ingest_meteorite_jobs_from_email_html (AST-1061 gazer-reads-email).
 Re-exports get_new_company_batch and clear_company_batch from roster for callers
 that want a single import from core.
@@ -33,11 +34,12 @@ from src.utils.config import (
     GAZER_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
     ROSTER_CONFIG,
+    SOURCE_ENTITY_TYPE_METEORITE,
     TRACKER_CONFIG,
     PLAYWRIGHT_CONFIG,
 )
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
-from src.core.meteorite import create_meteorite_job, is_meteorite_company
+from src.core.meteorite import create_meteorite_job
 from src.data.database import (
     get_company,
     job_link_exists_for_candidate,
@@ -46,13 +48,24 @@ from src.data.database import (
     text_matches_known_company_job_id_for_candidate,
     update_company_last_scan_at,
 )
-from src.external.playwright import create_browser_context, create_batch_browser_session, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
+from src.external.telescope import (
+    create_browser_context,
+    create_batch_browser_session,
+    get_page,
+    close_page,
+    load_all_jobs,
+    extract_page_dom,
+    extract_page_scrape_contract,
+    get_visible_text,
+    check_connectivity,
+    extract_raw_job_listings,
+)
 from src.utils.formatting import (
     collapse_consecutive_blank_lines,
     normalize_link,
     normalize_pasted_list_email_html,
 )
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, truncate_debug_content
 
 _log = get_logger(__name__)
 
@@ -90,6 +103,15 @@ _JD_ERROR_STATES = {
     "bot":     "BOT_BLOCKED",  # AST-1195: universal bot/challenge state
     "missing": "JD_SCRAPE_FAIL_MISSING",
     "closed":  "JD_SCRAPE_FAIL_CLOSED",
+}
+
+# Maps _classify_jd() → Estelle/contact page_status (parent AC2: blocked/ok/closed/missing)
+_CONTACT_PAGE_STATUS = {
+    "ok": "ok",
+    "closed": "closed",
+    "missing": "missing",
+    "bot": "blocked",
+    "cookie": "blocked",
 }
 
 
@@ -855,8 +877,8 @@ async def validate_title_batch(
     passed = failed = 0
     for ji, job in enumerate(jobs, start=1):
         aid = job.get("astral_job_id", "")
-        # AST-1152: meteorite track never gets roster title-pattern outcomes.
-        if is_meteorite_company(job.get("company")):
+        # AST-1152 / AST-1704: meteorite track (source SoT) never gets roster title-pattern outcomes.
+        if (job.get("source") or "").strip() == SOURCE_ENTITY_TYPE_METEORITE:
             if debug:
                 _log.debug_index(
                     func="gazer.validate_title_batch",
@@ -922,6 +944,88 @@ async def scrape_one(short_name: str, job_site: str) -> Tuple[str, str, str]:
             return (short_name, job_site, dom_html)
         finally:
             await page.close()
+
+
+# ---- Contact-task scrape (AST-1516) ----
+
+async def contact_task_gazer_scrape(
+    astral_candidate_id: str,
+    param: str,
+    *,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Fetch visible text + links + blocked/ok/closed/missing for one URL (no job create)."""
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+
+    def _fail(error: str, url: str = "") -> Dict[str, Any]:
+        row: Dict[str, Any] = {"ok": False, "error": error, "task_key": "gazer_scrape"}
+        if url:
+            row["url"] = url
+        if debug:
+            log.debug_index(
+                func="gazer.contact_task_gazer_scrape",
+                index=1,
+                total=1,
+                identifier=(url or error)[:80],
+                outcome=f"failed error={error}",
+            )
+            if url:
+                log.debug_detail(f"final_url= visible_chars=0 links_count=0")
+        return row
+
+    url = (param or "").strip()
+    if not url:
+        return _fail("url_required")
+    if "://" not in url:
+        url = f"https://{url.lstrip('/')}"
+
+    if not await check_connectivity():
+        return _fail("no_connectivity", url)
+
+    try:
+        async with create_browser_context() as browser_context:
+            page = await get_page(browser_context, url)
+            try:
+                raw = await extract_page_scrape_contract(page)
+            finally:
+                await close_page(page)
+    except Exception as exc:
+        log.warning("[gazer] contact_task_gazer_scrape failed url=%s: %s", url[:120], exc)
+        return _fail(str(exc), url)
+
+    visible_text = collapse_consecutive_blank_lines(raw.get("visible_text") or "")
+    links = list(raw.get("nav_urls") or [])
+    final_url = (raw.get("final_url") or url).strip() or url
+    classification = _classify_jd(visible_text)
+    page_status = _CONTACT_PAGE_STATUS.get(classification, "missing")
+
+    if debug:
+        log.debug_index(
+            func="gazer.contact_task_gazer_scrape",
+            index=1,
+            total=1,
+            identifier=url[:80],
+            outcome=f"ok page_status={page_status}",
+        )
+        log.debug_detail(
+            f"final_url={final_url!r} visible_chars={len(visible_text)} "
+            f"links_count={len(links)}"
+        )
+        for line in truncate_debug_content(visible_text):
+            log.debug_detail(line)
+
+    return {
+        "ok": True,
+        "task_key": "gazer_scrape",
+        "astral_candidate_id": (astral_candidate_id or "").strip(),
+        "url": url,
+        "final_url": final_url,
+        "visible_text": visible_text,
+        "links": links,
+        "page_status": page_status,
+        "classification": classification,
+    }
 
 
 # ---- Process batch (scrape -> parse -> ingest -> record) ----

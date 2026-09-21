@@ -1,17 +1,17 @@
-"""Component tests for src/core/inbox.py (AST-1032 / AST-1047)."""
+"""Component tests for src/core/inbox.py (AST-1032 / AST-1558)."""
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.core import inbox as inbox_mod
 
 
-# Branches: success enrichment; log + re-raise on failure.
+# Branches: success passthrough; log + re-raise on failure.
 class TestListInboxMessages:
-    def test_returns_external_rows_with_candidate_match(
+    def test_returns_external_rows_passthrough(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         rows = [
@@ -25,21 +25,35 @@ class TestListInboxMessages:
             }
         ]
         monkeypatch.setattr(inbox_mod, "external_list_inbox_messages", MagicMock(return_value=rows))
-        monkeypatch.setattr(
-            inbox_mod,
-            "get_candidate_id_for_query",
-            MagicMock(return_value=None),
-        )
         out = inbox_mod.list_inbox_messages()
         assert len(out) == 1
         assert out[0]["id"] == "m1"
         assert out[0]["from_address"] == "a@x"
-        assert out[0]["candidate_match"] == {
-            "matched": False,
-            "astral_candidate_id": None,
-        }
-        # External row must not be mutated in place.
-        assert "candidate_match" not in rows[0]
+        assert "candidate_match" not in out[0]
+        assert out[0] is not rows[0]
+
+    def test_debug_true_emits_style_d_listed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [{"id": "m9", "from_address": "nobody@ex.com"}]
+        monkeypatch.setattr(inbox_mod, "external_list_inbox_messages", MagicMock(return_value=rows))
+        dbg_index = MagicMock()
+        monkeypatch.setattr(inbox_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg_index)
+        inbox_mod.list_inbox_messages(debug=True)
+        assert dbg_index.called
+        assert dbg_index.call_args.kwargs["func"] == "inbox.list"
+        assert dbg_index.call_args.kwargs["outcome"] == "listed"
+
+    def test_debug_false_emits_no_contract(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "external_list_inbox_messages",
+            MagicMock(return_value=[{"id": "m1", "from_address": "a@x"}]),
+        )
+        dbg = MagicMock()
+        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(inbox_mod.logger, "set_debug_flag", MagicMock())
+        inbox_mod.list_inbox_messages(debug=False)
+        assert not dbg.called
 
     def test_logs_and_reraises(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -55,7 +69,6 @@ class TestListInboxMessages:
         assert "list_inbox_messages failed" in warn.call_args.args[0]
 
 
-# Branches: success passthrough; log + re-raise on failure (includes message id).
 class TestGetMessageHtml:
     def test_returns_external_payload(self, monkeypatch: pytest.MonkeyPatch) -> None:
         payload = {"id": "m1", "html_body": "<p>x</p>"}
@@ -77,39 +90,6 @@ class TestGetMessageHtml:
         assert warn.call_args.args[1] == "m9"
 
 
-# AST-1047: From → candidate_match enrichment.
-class TestAst1047InboxFromBind:
-    def test_list_enriches_matched_from(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        rows = [{"id": "m1", "from_address": "Ada <ada@ex.com>", "subject": "x"}]
-        monkeypatch.setattr(inbox_mod, "external_list_inbox_messages", MagicMock(return_value=rows))
-        lookup = MagicMock(return_value="cand-ada")
-        monkeypatch.setattr(inbox_mod, "get_candidate_id_for_query", lookup)
-        out = inbox_mod.list_inbox_messages(debug=False)
-        assert out[0]["candidate_match"] == {
-            "matched": True,
-            "astral_candidate_id": "cand-ada",
-        }
-        lookup.assert_called_once_with("Ada <ada@ex.com>", debug=False)
-
-    def test_list_debug_emits_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        rows = [{"id": "m9", "from_address": "nobody@ex.com"}]
-        monkeypatch.setattr(inbox_mod, "external_list_inbox_messages", MagicMock(return_value=rows))
-        monkeypatch.setattr(
-            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value=None)
-        )
-        dbg_index = MagicMock()
-        dbg_detail = MagicMock()
-        monkeypatch.setattr(inbox_mod.logger, "set_debug_flag", MagicMock())
-        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg_index)
-        monkeypatch.setattr(inbox_mod.logger, "debug_detail", dbg_detail)
-        inbox_mod.list_inbox_messages(debug=True)
-        assert dbg_index.called
-        assert dbg_index.call_args.kwargs["func"] == "inbox_from_bind"
-        assert dbg_index.call_args.kwargs["outcome"] == "found|none"
-        assert any("from_address=" in str(c) for c in dbg_detail.call_args_list)
-
-
-# AST-1049: strip/extract + Create orchestration.
 class TestAst1049StripExtractEmailHtml:
     def test_strips_tags_attrs_and_wraps_subject(self) -> None:
         raw = (
@@ -127,170 +107,6 @@ class TestAst1049StripExtractEmailHtml:
         assert 'class="email-body"' in out
 
 
-class TestAst1049CreateMeteoriteJobFromInboxMessage:
-    def test_happy_path_rematch_strip_create(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            inbox_mod,
-            "get_message_html",
-            MagicMock(
-                return_value={
-                    "id": "m1",
-                    "html_body": "<p>JD body</p>",
-                    "subject": "Engineer",
-                    "from_address": "ada@ex.com",
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value="cand-1")
-        )
-        # AST-1061: orchestration calls gazer ingest sync (not create_meteorite_job).
-        created_row = {
-            "astral_job_id": "job-1",
-            "company": "meteorite-cand-1",
-            "state": "METEORITE_NEW",
-            "latest_score": 10.0,
-            "company_inserted": True,
-        }
-        ingest = MagicMock(
-            return_value={
-                "astral_candidate_id": "cand-1",
-                "mode": "body",
-                "created": [created_row],
-                "skipped": [],
-            }
-        )
-        monkeypatch.setattr(inbox_mod, "ingest_meteorite_jobs_from_email_html_sync", ingest)
-        out = inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=False)
-        assert out["astral_job_id"] == "job-1"
-        assert out["astral_candidate_id"] == "cand-1"
-        assert out["mode"] == "body"
-        assert out["created"] == [created_row]
-        assert out["skipped"] == []
-        ingest.assert_called_once()
-        assert ingest.call_args.args[0] == "cand-1"
-        html = ingest.call_args.args[1]
-        assert "Engineer" in html
-        assert "JD body" in html
-        assert ingest.call_args.kwargs.get("debug") is False
-
-    def test_unmatched_and_empty_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            inbox_mod,
-            "get_message_html",
-            MagicMock(
-                return_value={
-                    "id": "m1",
-                    "html_body": "<p>x</p>",
-                    "subject": "S",
-                    "from_address": "x@y",
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value=None)
-        )
-        with pytest.raises(ValueError, match="not matched"):
-            inbox_mod.create_meteorite_job_from_inbox_message("m1")
-        with pytest.raises(ValueError, match="message_id is required"):
-            inbox_mod.create_meteorite_job_from_inbox_message("  ")
-
-    def test_debug_emits_four_style_d_steps(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            inbox_mod,
-            "get_message_html",
-            MagicMock(
-                return_value={
-                    "id": "m1",
-                    "html_body": "<p>body</p>",
-                    "subject": "Sub",
-                    "from_address": "ada@ex.com",
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value="cand-1")
-        )
-        monkeypatch.setattr(
-            inbox_mod,
-            "ingest_meteorite_jobs_from_email_html_sync",
-            MagicMock(
-                return_value={
-                    "astral_candidate_id": "cand-1",
-                    "mode": "body",
-                    "created": [
-                        {
-                            "astral_job_id": "job-9",
-                            "company": "meteorite-cand-1",
-                            "state": "METEORITE_NEW",
-                            "latest_score": 10.0,
-                            "company_inserted": False,
-                        }
-                    ],
-                    "skipped": [],
-                }
-            ),
-        )
-        dbg = MagicMock()
-        monkeypatch.setattr(inbox_mod.logger, "set_debug_flag", MagicMock())
-        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg)
-        monkeypatch.setattr(inbox_mod.logger, "debug_detail", MagicMock())
-        inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=True)
-        outcomes = [c.kwargs.get("outcome") for c in dbg.call_args_list]
-        assert outcomes == ["found", "matched", "extracted", "recorded"]
-        dbg.reset_mock()
-        inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=False)
-        assert not dbg.called
-
-    def test_all_skipped_style_d_outcome_skipped(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            inbox_mod,
-            "get_message_html",
-            MagicMock(
-                return_value={
-                    "id": "m1",
-                    "html_body": "<p>" + ("x" * 50) + "</p>",
-                    "subject": "Sub",
-                    "from_address": "ada@ex.com",
-                }
-            ),
-        )
-        monkeypatch.setattr(
-            inbox_mod, "get_candidate_id_for_query", MagicMock(return_value="cand-1")
-        )
-        monkeypatch.setattr(
-            inbox_mod,
-            "ingest_meteorite_jobs_from_email_html_sync",
-            MagicMock(
-                return_value={
-                    "astral_candidate_id": "cand-1",
-                    "mode": "body",
-                    "created": [],
-                    "skipped": [
-                        {
-                            "reason": "known_company_job_id",
-                            "url": None,
-                            "matched_company_job_id": "EXT-1",
-                        }
-                    ],
-                }
-            ),
-        )
-        dbg = MagicMock()
-        monkeypatch.setattr(inbox_mod.logger, "set_debug_flag", MagicMock())
-        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg)
-        monkeypatch.setattr(inbox_mod.logger, "debug_detail", MagicMock())
-        out = inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=True)
-        assert out["astral_job_id"] is None
-        assert out["created"] == []
-        assert len(out["skipped"]) == 1
-        outcomes = [c.kwargs.get("outcome") for c in dbg.call_args_list]
-        assert outcomes == ["found", "matched", "extracted", "skipped"]
-
-
-# Branches: strip_extract runs paste normalize before subject wrap (AST-1131).
 class TestAst1131StripNormalizePastedList:
     def test_strip_unwraps_nested_autolink_job_href(self) -> None:
         from bs4 import BeautifulSoup
@@ -316,26 +132,293 @@ class TestAst1131StripNormalizePastedList:
         assert 'class="email-body"' in out
 
 
-# AST-1135: live bind-filtered inbox counts (Avail source).
-class TestAst1135InboxBoundCounts:
-    def test_map_and_per_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        msgs = [
-            {"id": "1", "candidate_match": {"matched": True, "astral_candidate_id": "A"}},
-            {"id": "2", "candidate_match": {"matched": True, "astral_candidate_id": "A"}},
-            {"id": "3", "candidate_match": {"matched": True, "astral_candidate_id": "B"}},
-            {"id": "4", "candidate_match": {"matched": False, "astral_candidate_id": None}},
-            {"id": "5", "candidate_match": {"matched": True, "astral_candidate_id": "  "}},
-        ]
-        monkeypatch.setattr(inbox_mod, "list_inbox_messages", MagicMock(return_value=msgs))
-        assert inbox_mod.count_inbox_bound_by_candidate() == {"A": 2, "B": 1}
-        assert inbox_mod.count_inbox_messages_bound_to_candidate("A") == 2
-        assert inbox_mod.count_inbox_messages_bound_to_candidate("B") == 1
-        assert inbox_mod.count_inbox_messages_bound_to_candidate("Z") == 0
+class TestAst1558CandidateInboxVerbs:
+    def _rows(self, monkeypatch: pytest.MonkeyPatch, *msgs: dict) -> None:
+        monkeypatch.setattr(
+            inbox_mod, "external_list_inbox_messages", MagicMock(return_value=list(msgs))
+        )
 
-    def test_blank_candidate_skips_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        listed = MagicMock(return_value=[{"id": "1"}])
-        monkeypatch.setattr(inbox_mod, "list_inbox_messages", listed)
-        assert inbox_mod.count_inbox_messages_bound_to_candidate("") == 0
-        assert inbox_mod.count_inbox_messages_bound_to_candidate("   ") == 0
+    def test_fetch_candidate_email_matches_from_or_to(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._rows(
+            monkeypatch,
+            {"id": "from-hit", "from_address": "Ada <ada@ex.com>", "to_address": ""},
+            {"id": "to-hit", "from_address": "x@y", "to_address": "Bob <bob@ex.com>"},
+            {"id": "miss", "from_address": "nobody@z.com", "to_address": "other@z.com"},
+        )
+        out = inbox_mod.fetch_candidate_email(["ada@ex.com", "bob@ex.com"])
+        assert [m["id"] for m in out] == ["from-hit", "to-hit"]
+
+    def test_fetch_candidate_email_empty_aliases_returns_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        listed = MagicMock(return_value=[{"id": "m1"}])
+        monkeypatch.setattr(inbox_mod, "external_list_inbox_messages", listed)
+        assert inbox_mod.fetch_candidate_email([]) == []
+        assert inbox_mod.fetch_candidate_email(["", "not-an-email"]) == []
         listed.assert_not_called()
 
+    def test_fetch_candidate_email_casefold(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._rows(
+            monkeypatch,
+            {"id": "m1", "from_address": "ADA@EX.COM", "to_address": ""},
+        )
+        out = inbox_mod.fetch_candidate_email(["Ada@Ex.Com"])
+        assert len(out) == 1
+        assert out[0]["id"] == "m1"
+
+    def test_archive_candidate_email_happy(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "external_archive_message", archive)
+        inbox_mod.archive_candidate_email("m1")
+        archive.assert_called_once_with("m1")
+
+    def test_archive_candidate_email_blank_raises(self) -> None:
+        with pytest.raises(ValueError, match="message_id is required"):
+            inbox_mod.archive_candidate_email("")
+        with pytest.raises(ValueError, match="message_id is required"):
+            inbox_mod.archive_candidate_email("   ")
+
+    def test_count_inbox_messages_bound_live_alias_match(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1611 [bug-repro]: Avail uses live alias-filtered count (not stub 0)."""
+        self._rows(
+            monkeypatch,
+            {"id": "from-hit", "from_address": "Ada <ada@ex.com>", "to_address": ""},
+            {"id": "miss", "from_address": "nobody@z.com", "to_address": "other@z.com"},
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate",
+            lambda _cid: ["ada@ex.com"],
+        )
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("cand-1") == 1
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("") == 0
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("   ") == 0
+
+    def test_count_inbox_bound_by_candidate_mailbox_map(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1611: one inbox list → per meteorite_email cid alias-filtered counts."""
+        msgs = [
+            {"id": "m1", "from_address": "ada@ex.com", "to_address": ""},
+            {"id": "m2", "from_address": "bob@ex.com", "to_address": ""},
+            {"id": "m3", "from_address": "other@z.com", "to_address": ""},
+        ]
+        monkeypatch.setattr(
+            inbox_mod, "list_inbox_messages", MagicMock(return_value=msgs)
+        )
+        monkeypatch.setattr(
+            "src.data.database.list_dispatch_tasks",
+            MagicMock(
+                return_value=[
+                    {"candidate_id": "cand-ada", "task_key": "stage_email_meteorite"},
+                    {"candidate_id": "cand-bob", "task_key": "stage_email_meteorite"},
+                    {"candidate_id": "cand-other", "task_key": "stage_meteorite"},
+                    {"candidate_id": "", "task_key": "stage_email_meteorite"},
+                ]
+            ),
+        )
+
+        def _aliases(cid: str) -> list[str]:
+            return {
+                "cand-ada": ["ada@ex.com"],
+                "cand-bob": ["bob@ex.com"],
+            }.get(cid, [])
+
+        monkeypatch.setattr("src.core.candidate.email_aliases_for_candidate", _aliases)
+        counts = inbox_mod.count_inbox_bound_by_candidate()
+        assert counts.get("cand-ada") == 1
+        assert counts.get("cand-bob") == 1
+        assert "cand-other" not in counts
+
+    def test_retired_symbols_absent(self) -> None:
+        for name in (
+            "run_fetch_email",
+            "create_meteorite_job_from_inbox_message",
+            "land_inbox_message_ids",
+            "_land_bound_inbox_message",
+            "_bind_inbox_message",
+        ):
+            assert not hasattr(inbox_mod, name), f"{name} should be removed"
+
+@pytest.mark.skipif(
+    not hasattr(inbox_mod, "check_email"),
+    reason="AST-1714 check_email not on this publish tip",
+)
+class TestAst1714CheckEmail:
+    """AST-1714: inbox.check_email stages full assembled message; dispatcher entrypoint."""
+
+    def _msg(self, mid: str = "m-1714") -> dict:
+        return {"id": mid, "from_address": "a@ex.com"}
+
+    @pytest.mark.asyncio
+    async def test_candidate_id_required(self) -> None:
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            await inbox_mod.check_email({}, debug=False)
+
+    @pytest.mark.asyncio
+    async def test_stages_assembled_html_and_archives(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1714"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "I"})
+        mid = "msg-1714"
+        assembled = "<html>From:a To:b\n<body>full</body></html>"
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate", lambda _c: ["a@ex.com"]
+        )
+        monkeypatch.setattr(
+            inbox_mod, "fetch_candidate_email", lambda _a, debug=False: [self._msg(mid)]
+        )
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_with_assembled_html",
+            lambda _m: {"assembled_html": assembled, "html_body": "<body>only</body>"},
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "archive_candidate_email", archive)
+        seen: dict = {}
+
+        async def _stage(candidate_id, blob, *, source_kind, source_id, debug=False):
+            seen.update(
+                candidate_id=candidate_id,
+                blob=blob,
+                source_kind=source_kind,
+                source_id=source_id,
+            )
+            return {
+                "outcome": "single_jd_no_link",
+                "stage_outcome": "single_jd_no_link",
+                "skipped": False,
+                "jobs": [],
+                "error": None,
+                "batch_id": "b",
+            }
+
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", _stage)
+        out = await inbox_mod.check_email({"candidate_id": cid}, debug=False)
+        assert out["total_passed"] == 1 and out["total_errors"] == 0
+        assert seen["blob"] == assembled
+        assert seen["blob"] != "<body>only</body>"
+        assert seen["source_kind"] == "email" and seen["source_id"] == mid
+        archive.assert_called_once_with(mid)
+        assert db.get_candidate(cid)["last_email_check"]
+
+    @pytest.mark.asyncio
+    async def test_stage_error_skips_archive(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1714-err"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
+        mid = "msg-err"
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate", lambda _c: ["a@ex.com"]
+        )
+        monkeypatch.setattr(
+            inbox_mod, "fetch_candidate_email", lambda _a, debug=False: [self._msg(mid)]
+        )
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_with_assembled_html",
+            lambda _m: {"assembled_html": "full", "html_body": "body"},
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "archive_candidate_email", archive)
+
+        async def _stage(*_a, **_k):
+            return {
+                "outcome": "error",
+                "stage_outcome": None,
+                "skipped": False,
+                "jobs": [],
+                "error": "boom",
+                "batch_id": None,
+            }
+
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", _stage)
+        out = await inbox_mod.check_email({"candidate_id": cid}, debug=False)
+        assert out["total_errors"] == 1
+        archive.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_already_ingested_archives_without_stage(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1714-dedup"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        mid = "msg-dedup"
+        db.insert_meteorite_rows([{
+            "candidate_id": cid,
+            "source_kind": "email",
+            "source_id": mid,
+            "state": "READY",
+            "link": "https://x/j",
+        }])
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate", lambda _c: ["a@ex.com"]
+        )
+        monkeypatch.setattr(
+            inbox_mod, "fetch_candidate_email", lambda _a, debug=False: [self._msg(mid)]
+        )
+        stage = AsyncMock()
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", stage)
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "archive_candidate_email", archive)
+        out = await inbox_mod.check_email({"candidate_id": cid}, debug=False)
+        assert out["total_passed"] == 1
+        stage.assert_not_awaited()
+        archive.assert_called_once_with(mid)
+
+    @pytest.mark.asyncio
+    async def test_skip_outcome_counts_failed_not_passed(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1743 [bug-repro]: NOT_A_JOB / skip after archive increments failed, not passed."""
+        db = sqlite_in_memory
+        cid = "cand-1743-skip"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        mid = "msg-1743-skip"
+        monkeypatch.setattr(
+            "src.core.candidate.email_aliases_for_candidate", lambda _c: ["a@ex.com"]
+        )
+        monkeypatch.setattr(
+            inbox_mod, "fetch_candidate_email", lambda _a, debug=False: [self._msg(mid)]
+        )
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_with_assembled_html",
+            lambda _m: {"assembled_html": "full", "html_body": "body"},
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(inbox_mod, "archive_candidate_email", archive)
+
+        async def _stage(*_a, **_k):
+            return {
+                "outcome": "not_job_content",
+                "stage_outcome": "not_job_content",
+                "skipped": True,
+                "jobs": [],
+                "error": None,
+                "batch_id": "b",
+            }
+
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", _stage)
+        out = await inbox_mod.check_email({"candidate_id": cid}, debug=False)
+        assert out["total_processed"] == 1
+        assert out["total_failed"] == 1
+        assert out["total_passed"] == 0
+        assert out["total_errors"] == 0
+        archive.assert_called_once_with(mid)
+
+    def test_dispatcher_has_no_check_inbox_call(self) -> None:
+        import inspect
+        from src.core import dispatcher as dispatcher_mod
+
+        src = inspect.getsource(dispatcher_mod)
+        assert "check_inbox" not in src
+        assert "check_email" in src
