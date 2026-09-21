@@ -2,6 +2,66 @@
 
 **Test tree:** `tests/component/pages/`
 
+Local-deploy `/authenticate` skip handoff: **`docs/test-bible/frontend/lib.md`** § AST-1441.
+
+### AST-1357 · AST-1356
+
+Unlock Candidate Profile **Original Resume Text** when `artifacts.base_resume` exists — remove `hasBaseResume` / `disabled` / lock placeholder on the resume tab. Field stays on existing Profile `values` / PUT / Cancel / dirty-leave (AST-1336); no Artifacts UI change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile unlock (§6c) | `CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — **`CandidateProfile — AST-1357 unlock original resume text`**: with base resume → enabled + no lock placeholder; Save PUT `context.raw_resume`; Cancel restores; without base resume still editable |
+| Cancel (non-resume) | same | Revised **`restores values on cancel`** (dropped obsolete `toBeDisabled` on resume) |
+
+**Broken / obsolete:** `restores values on cancel and locks resume text when base resume exists` — asserted resume `toBeDisabled()` when base resume present; product unlock makes that red.
+
+**Integration:** no existing scenario asserts Profile resume lock — no drift.
+
+**AST-1357** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+### AST-1336 · AST-1315
+
+Wire Candidate Profile to `useDirtyLeaveSaveThenNavigate` (sibling **AST-1335**): dirty vs last loaded/saved snapshot (`JSON.stringify`), shared `persistProfile` Promise for header Save + dirty-leave `onSave`, header Cancel unchanged. Profile only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile dirty-leave (§6c) | `CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — **`CandidateProfile — AST-1336 dirty-leave wiring`**: helper wired; clean→dirty on edit; in-page tab keeps draft; Cancel reverts; `onSave` PUT then clears dirty; save reject stays dirty + error |
+| Helper contract | `useDirtyLeaveSaveThenNavigate.ts` | `docs/test-bible/frontend/hooks.md` (**AST-1335**) — not re-tested here |
+
+**Broken / obsolete:** entire prior Profile suite under `renderWithProviders` (`MemoryRouter`) — Profile now calls `useBlocker` via the helper; mock `useDirtyLeaveSaveThenNavigate` in `test_CandidateProfile.test.tsx` so existing §6c cases stay green without a data-router harness. Header Save failure assert uses helper `onSave` (persistProfile rethrows; `void handleSave()` would leave Vitest unhandled rejection).
+
+**Integration:** no existing scenario asserts Profile leave prompts — no drift.
+
+**AST-1336** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+### AST-1343 · AST-1315 (bug — virgin restore dirty)
+
+**Parent:** AST-1315. **Publish:** `origin/sub/AST-1315/AST-1343-dirty-flag-not-cleared-after-undo-virgin-restore`. Board: `[board-betty] TESTS: REVISE` — nullish nested field touch+clear/Undo misses FormFields null↔`""` coerce.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Virgin empty after touch+clear (§6c) | `CandidateProfile.tsx` `isDirty` | `test_CandidateProfile.test.tsx` — **`AST-1343: nullish nested field touch+clear clears dirty (virgin empty)`** — load `contact.phone: null`, type then clear; expect `isDirty` false (fails pre-fix on raw stringify; passes after compare-time normalize) |
+
+**Broken / obsolete:** none in existing AST-1336 Cancel/exact-string cases (those still pass).
+
+**AST-1343** narrowed Vitest (bug-repro):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  --testNamePattern="AST-1343"
+```
+
 ### AST-436 · AST-442
 
 Parent UAT on **`origin/ftr/AST-436-quickie-bugs`** surfaced gaps when manifests tested components or API defaults only. Use **§6c** for all future UI QA.
@@ -472,6 +532,8 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-840** | **Level** dropdown (All/DEBUG/INFO/WARNING/ERROR); `log_level` URL param; `LogViewer` `visibleLogs` filter; filtered-empty message; filtered **Copy** | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx` | **`tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx`** — **`AST-840 log level filter`** describe |
 
+**Log viewer:** `visibleLogs` is oldest-first by `created_at` (then `id`); Copy uses that order. API `list_log_entries` is still `ORDER BY created_at DESC`. Log cells use `.list-page-table .dispatch-log-table tbody td` so they beat `.list-page-table tbody td` (5px padding); vertical padding and line-height are 80% of those prior values. **`renders and copies log rows oldest-first by created_at`**.
+
 **AST-840** narrowed run:
 
 ```bash
@@ -513,6 +575,27 @@ cd src/ui/frontend && npm run test:component -- \
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
+```
+
+---
+
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+Company Search Terms + Company Watch Criteria (via shared **`ArtifactEditor`**) hand off Generate/Regenerate to **`POST …/generate_artifacts`**. Primary component: **`docs/test-bible/frontend/components.md`** § AST-1253.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Search Terms Generate / Regenerate handoff | `ArtifactsCompanySearchTerms.tsx` | **`test_ArtifactsCompanySearchTerms.test.tsx`** — **`AST-1253:*`** (+ revised **AST-645** in-flight) |
+| Watch Criteria Regenerate Yes → handoff | `ArtifactsCompanyWatchCriteria.tsx` → `ArtifactEditor` | **`test_ArtifactsCompanyWatchCriteria.test.tsx`** — **`AST-1253: Regenerate Yes POSTs generate_artifacts`** (replaces AST-677 craft POST) |
+
+**Broken / obsolete:** AST-677 craft_prefilter_rubric ad-hoc generate assert; Search Terms populate-textarea-from-craft generate.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
   ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
 ```
 
@@ -657,7 +740,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-634** (Candidate filter), **AST-739** (DB grouping sections), **AST-746** (phase table on expand).
 
-**Note:** Full-file run excludes **AST-750** score-floor edit test until sibling `AST-750` ships on publish tip (product still hardcodes `1.00…10.00` options).
+**Note:** Score-floor **0.00** option + zero-save: **AST-1278** (restores prior **AST-750** UX). Catalog/API: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_admin.md`**.
 
 ### AST-768 · AST-572
 
@@ -966,7 +1049,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-987 · AST-985
 
-**AST-987:** Admin **Session Resume Paste** page + session HTML — paste → AST-986 parse API; `useLocalStorage` retention (`session_resume:paste_text` / `session_resume:last_parse`); Open HTML via `POST /api/admin/session_resume/html` → blob URL tab. Builder `build_session_base_resume` emits print HTML from in-memory structure/content (**no** `get_candidate` / profile overlay). Failed parse/HTML never opens a tab. Sibling **AST-986** owns parse core/route. View Parsed JSON control = **AST-1035**.
+**AST-987:** Admin **Session Resume Paste** page + session HTML — paste → AST-986 parse API; `useLocalStorage` retention (`session_resume:paste_text` / `session_resume:last_parse`); Open HTML via `POST /api/admin/session_resume/html` → blob URL tab (`window.open(url, "_blank")` then `opener = null`; success must not toast popup-blocked — **AST-1546**). Builder `build_session_base_resume` emits print HTML from in-memory structure/content (**no** `get_candidate` / profile overlay). Failed parse/HTML never opens a tab. Sibling **AST-986** owns parse core/route. View Parsed JSON control = **AST-1035**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -992,7 +1075,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1025 · AST-1023
 
-**AST-1025:** Admin **Session Cover Letter** page (§6c) — field form mirroring `BUILD_CONFIG["session_cover_letter"]["fields"]`; `useLocalStorage` (`session_cover_letter:fields` / `session_cover_letter:last_render`); Open HTML → `POST /api/admin/session_cover_letter/html` (AST-1024) → blob URL tab; failed/empty HTML never opens a tab; optional `candidate_id` from selected candidate. Nav item after Session Resume Paste. Core emit = sibling **AST-1024**.
+**AST-1025:** Admin **Session Cover Letter** page (§6c) — field form mirroring `BUILD_CONFIG["session_cover_letter"]["fields"]`; `useLocalStorage` (`session_cover_letter:fields` / `session_cover_letter:last_render`); Open HTML → `POST /api/admin/session_cover_letter/html` (AST-1024) → blob URL tab (`window.open(url, "_blank")` then `opener = null`; success must not toast popup-blocked — **AST-1546**); failed/empty HTML never opens a tab; optional `candidate_id` from selected candidate. Nav: **Cover Letter Paste** after **Resume Paste** in Tools (AST-1386 labels; paths unchanged). Core emit = sibling **AST-1024**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1202,6 +1285,26 @@ Recommended list partitions jobs whose `company` starts with manifest `meteorite
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+### AST-1709 · AST-1707
+
+**Parent:** [AST-1707](https://linear.app/astralcareermatch/issue/AST-1707). **Publish:** `origin/sub/AST-1707/AST-1709-null-company-recommended-partition-test`. **Sibling product guard:** AST-1708 (`(job.company ?? "").startsWith(prefix)` on `JobsRecommended.tsx`).
+
+Null `company` through Recommended meteorite partition (`isMeteoriteJob` / sections `useMemo`): page must not throw; row stays out of Meteorites and in the normal state section. Product null-guard is AST-1708 — this gap does not re-edit `JobsRecommended.tsx`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Null-company partition ([bug-repro]) | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** — **`AST-1708/AST-1709: null company does not throw; stays out of Meteorites`** |
+
+**Broken / obsolete:** none — additive repro next to AST-1057 cases.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1708/AST-1709"
 ```
 
 ### AST-1061 · AST-1058
@@ -1554,7 +1657,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
 
-Routed **`CandidateSurferConsent`** (`/candidate/surfer_consent`): GET DTO chrome; affirmative PUT `opt_in` with `accepted_version: dto.current_version`; **Not now** navigates `/jobs/recommended` with **no** PUT; `is_current` shows ok chrome without opt-out. Config: **`docs/test-bible/utils/config.md`**. Extension lib: **`docs/test-bible/frontend/lib.md`**.
+Routed **`CandidateSurferConsent`** (`/candidate/surfer_consent`): GET DTO chrome; affirmative PUT `opt_in` with `accepted_version: dto.current_version`; **Not now** navigates `/jobs/recommended` with **no** PUT; `is_current` shows ok chrome without opt-out. Config: **`docs/test-bible/utils/config.md`**. Extension lib: **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1574,7 +1677,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
 
-Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off); off-switch when `status === opted_in` via `useUserConfirm` then PUT `opt_out`; always shows `uninstall_guidance`; no disclosure/opt-in chrome. Config: **`docs/test-bible/utils/config.md`**. Extension gate: **`docs/test-bible/frontend/lib.md`**.
+Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off); off-switch when `status === opted_in` via `useUserConfirm` then PUT `opt_out`; always shows `uninstall_guidance`; no disclosure/opt-in chrome. Config: **`docs/test-bible/utils/config.md`**. Extension gate: **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1587,4 +1690,1251 @@ Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateSurfer.test.tsx
+```
+
+### AST-1215 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1215-admin-ui-grouping-honesty-alphabetical-dropdowns`.
+
+Admin React honesty: Scheduled Actions / Manage Tasks keep section headers + within-section order from `agent_task` grouping metadata; in-scope task-key dropdowns (SA Add/Edit, Manage Tasks run_next, Agent Ad Hoc Task Key + Save As) use shared lexicographic `taskKeySort` (match AST-1214 / Python `sorted` — not `localeCompare`). Helper unit tests: **`docs/test-bible/frontend/lib.md`** (**AST-1215**). Vector Feedback / Jobs UI out of scope.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions §6c Add Task option order | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1215 alphabetical task_key dropdown`** |
+| Manage Tasks §6c run_next option order | `AdminTaskPrompts.tsx` | **`test_AdminTaskPrompts.test.tsx`** — **`AST-1215 alphabetical run_next options`** |
+| Agent Ad Hoc §6c Task Key + Save As | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1215`** (+ api mock `importOriginal` fix for AuthContext) |
+
+**Broken / obsolete:** Ad Hoc `vi.mock(api)` without named auth exports — revised to `importOriginal` (AuthContext `setAuthTokenGetter` / `setUnauthorizedHandler`).
+
+**Integration:** none revised.
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_taskKeySort.test.ts \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
+```
+
+### AST-1278 · AST-1275
+
+**Parent:** [AST-1275 — Remove pass_threshold from task_config](https://linear.app/astralcareermatch/issue/AST-1275/remove-pass-threshold-from-task-config). **Publish:** `origin/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0`.
+
+Scheduled Actions Edit Dispatch Task: Score Floor options from **`GET /api/admin/dispatch_tasks/score_floor_options`** (config catalog; first **`0.00`**); save uses **`Number.isFinite`** so selecting **`0.00`** sends JSON **`score_floor: 0`**. Restores the **AST-750** zero-save case that was held out while product hardcoding mins at **1.00**. Catalog + admin GET + API zero-persist: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_admin.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1278: edit save sends score_floor 0 when 0.00 selected`** |
+| Catalog (existing) | `src/utils/config.py` | **`TestAst750DispatchScoreFloorCatalog`** |
+| Admin GET + zero persist (existing) | `src/ui/api/api_admin.py` | **`TestDispatchTasks::test_scheduler_and_run_controls`** (floors); **`TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor`** |
+
+**Broken / obsolete:** none — mocks already called `score_floor_options`; product regression was hardcoded React **1.00–10.00** plus falsy `parseFloat` coercion to **1**.
+
+**Integration:** none revised (admin UI only).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1278"
+```
+
+---
+
+### AST-1288 · AST-1285
+
+**Parent:** [AST-1285 — State transition validation for candidates is broken](https://linear.app/astralcareermatch/issue/AST-1285/state-transition-validation-for-candidates-is-broken). **Publish:** `origin/sub/AST-1285/AST-1288-manage-candidates-are-you-sure`.
+
+Manage Candidates edit-save are-you-sure on API `code=illegal_candidate_transition` (from → to); confirm retries PUT with `confirm_state_override: true` (**AST-1287**); cancel skips state-only (modal stays open, state select reset); legal / same-state / unknown-state 400 stay quiet (no illegal dialog). Does **not** own core/API force path.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) illegal-hop confirm | `src/ui/frontend/src/pages/AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — **`AST-1288:`** confirm retry / cancel / legal quiet / unknown-state no dialog |
+
+**Broken / obsolete this pass:** none — existing Manage Candidates PUT mocks still return 200; new cases use dedicated illegal-hop mock.
+
+**Integration:** none — UI confirm only; do not invent integration coverage (API contract covered under **AST-1287**).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  -t "AST-1288"
+```
+
+---
+
+### AST-1295 · AST-1291
+
+**Parent:** [AST-1291 — Move table lookup and field lookup objects on Data Management page](https://linear.app/astralcareermatch/issue/AST-1291/move-table-lookup-and-field-lookup-objects-on-data-management-page). **Publish:** `origin/sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql`.
+
+Layout-only: Data Management workbench flex row places **Main query panel** before **Schema browser** so Tables (+ Fields for selected table) render to the **right** of the SQL textarea. Selection / discovery SQL / Run / history / Copy Output / Table Upsert unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) schema-browser DOM order | `src/ui/frontend/src/pages/AdminDataManagement.tsx` | **`test_AdminDataManagement.test.tsx`** — **`AST-1295:`** Tables/Fields follow SQL textarea in document order; fields still load after table click |
+| Existing §6c regression (AC3) | same page | same file — sql / copy / schema click / upsert modal / toast / sql-error paths (labels + behavior, not left/right) |
+
+**Broken / obsolete this pass:** none — prior AdminDataManagement cases assert labels and flows, not left/right adjacency.
+
+**Integration:** none — page chrome reorder only; do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  -t "AST-1295"
+```
+
+---
+
+### AST-1306 · AST-1299
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format`.
+
+Operators author extra sections (title / format / enable / reorder / remove optional) on **Base Resume Content**. Format list comes from GET `catalog.body_formats` (not a TSX tuple). PUT `/data` **replaces** `sections` when that key is sent; accent-only PUT leaves sections. Required seven cannot be omitted or disabled. New extras slug from title in core (`_pending_*`). Does **not** own HTML emit (**AST-1304**) or hop/legacy ingest (**AST-1305**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New-extra default format | `src/utils/config.py` | **`TestAst1306ResumeStructureCatalog`** |
+| Slug + prepare-for-save | `src/core/candidate.py` | **`TestAst1306ResumeStructureSavePrep`** |
+| GET `all_sections`+`catalog`; PUT replace | `src/ui/api/api_candidate.py` | **`TestAst1306ResumeStructureAuthorApi`**; revised **`TestAst519ResumeStructureApi`** (normalize-valid fixture; 400 text) |
+| Types-only catalog / section row shapes | `src/ui/frontend/src/components/ResumeStructureEditor.tsx` | no dedicated component test (module exports types only after AST-1323) |
+| Routed page (**§6c**) header authoring + sections PUT | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1306:`** catalog formats / no Remove on required / sections PUT; chrome covered under **AST-1323** |
+
+**Broken / obsolete this pass:** AST-519 GET fixture was a three-id blob — `resolve_resume_structure` now falls back to DEFAULT (AST-1303 required seven). Fixture is a normalize-valid ten-id catalog with `technical_skills` disabled. PUT invalid-sections 400 now returns the normalize message (`missing required`), not `invalid resume_structure`. Flat `test_ResumeStructureEditor.test.tsx` deleted (UI removed; assertions live on the page suite).
+
+**Integration:** none — existing `test_candidate_nav_api.py` is nav only; do not invent editor integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1306ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1306ResumeStructureSavePrep \
+  tests/component/ui/api/test_api_candidate.py::TestAst1306ResumeStructureAuthorApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1306"
+```
+
+---
+
+### AST-1323 · AST-1299 (bug — AST-1306 editor chrome)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1323-structure-editor-collapsible-header-row-body-between`.
+
+Structure authoring moves onto each `ArtifactEditor` `CollapsiblePanel` header (title / format / enabled / **Job Edit** / up-down); section body text stays in the panel body between headers. Standalone flat `ResumeStructureEditor` panel removed from the page. Catalog-driven formats and required-no-Remove still hold.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) header-row + body-between | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1323: structure controls on collapsible header with body between`** (bug-repro); **`AST-1306:`** catalog PUT / no Remove (migrated off deleted flat editor test) |
+
+**Broken / obsolete this pass:** none — flat `ResumeStructureEditor` UI + `test_ResumeStructureEditor.test.tsx` removed; module is types-only. Header label copy (`Job edit` → `Job Edit:`) locked under **AST-1325**.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1323|AST-1306"
+```
+
+---
+
+### AST-1325 · AST-1299 (bug — structure header row layout)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1325-structure-header-row-name-style-enabled-job-edit-up-down-sup`.
+
+Single header row: name | style | `Enabled:` | `Job Edit:` | up/down (label-before-checkbox). Body still between headers (AST-1323). UI/CSS only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) header row contract | `ArtifactEditor.tsx`, `App.css` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1325: header row is name | style | Enabled: | Job Edit: | up/down`** (bug-repro); AST-1323/1306 no longer lock old `Job edit` copy |
+
+**Broken / obsolete this pass:** AST-1323/1306 cases that asserted `Job edit` — rewritten to `.structure-authoring-header` / catalog PUT only. **`[qa-handoff]`:** publish tip had duplicate `const headers` + leftover `Job edit` from a bad merge-tests conflict resolve — fixed; suite must load under vitest.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1325"
+```
+
+---
+
+### AST-1324 · AST-1299 (bug — hydrate GET from base_resume)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1324-base-resume-content-must-load-render-existing-artifact-secti`.
+
+Read-time hydrate: `GET /resume_structure` unions usable `artifacts.base_resume` keys into structure rows; missing body format defaults to `free_prose` (not Add-section `bullet_list`). Page panels follow hydrated enabled sections — no Save required to discover content already on the artifact.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| GET hydrate from base_resume | `src/core/candidate.py`, `src/ui/api/api_candidate.py` | **`TestAst1324HydrateResumeStructureFromBaseResumeGet`** (bug-repro) |
+
+**Broken / obsolete this pass:** none for this repro — AST-519 page “hides orphan” still mocks a non-hydrated GET; revisit if make-fix changes client orphan filtering.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst1324HydrateResumeStructureFromBaseResumeGet \
+  -q
+```
+
+---
+
+### AST-1318 · AST-1309 (apply in-row size on table-row labeled buttons)
+
+**Parent:** [AST-1309 — Add a button style for in-row buttons](https://linear.app/astralcareermatch/issue/AST-1309/add-a-button-style-for-in-row-buttons). **Publish:** `origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons`.
+
+Consume AST-1317 `.btn.in-row`: Scheduled Actions row Run / Stop (busy label `Draining…`) gain `in-row` on the existing role classes. Presentation only — handlers, `disabled`, overlay `inset`, AUTO / running gating unchanged. Toolbar Stop All / Add Task, both modal footers, and icon-controls stay full-size / `icon-control`. Inventory on this tree: only those two labeled `btn`s sit in a `<td>`.
+
+**Run vs Sweep:** AUTO off is always **Run** (loop to `max_runs`). AUTO on and Avail > 0 is **Sweep** (one batch; min_count disable unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) row size + leave-alone | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1318: row Run uses in-row; toolbar and modals stay full size`**; **`AST-1318: row Stop uses in-row`**; **`AST-1318: row Draining uses in-row`** |
+| Run vs Sweep label | same | **`AUTO off always labels Run; AUTO on with Avail > 0 labels Sweep`**; **`AUTO on with Avail > 0 labels Sweep`** |
+| Existing catalog / enablement | same | **`AST-1301: labeled actions use catalog classes`**; **`renders tasks, edits, runs, and stops threads`** |
+
+**Broken / obsolete this pass:** none — AST-1301 `toHaveClass("btn", "danger")` still holds with the added size token. Leave-alone modal case uses `mockApi(true)` (running thread) so toolbar Stop All is enabled — `mockApi(false)` leaves `activeThreads` empty and the click never opens Kill Running Threads.
+
+**Integration:** no existing scenario asserts labeled-button class catalogs — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1318|AST-1301"
+```
+
+---
+
+### AST-1337 · AST-1314
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content`.
+
+**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved **body** content, not editor buffer / session admin POST / job Print). **AST-1489:** structure `page_break_policy` auto-persisted from editor rows immediately before print GET. `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`. Success blob open: `window.open(url, "_blank")` then `opener = null` (no features string); must not toast popup-blocked (**AST-1546**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) Print enable + blob / error | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1337: Print disabled with no candidate; success opens blob tab (§6c)`**; **`AST-1337: Print error and empty HTML never open a tab`** |
+
+**Broken / obsolete this pass:** none for AST-1337 ship. **AST-1341** revises the Print 404 error assert to `No printable base resume content for this candidate` (replaces `Candidate missing artifacts.base_resume`).
+
+**Integration:** no existing scenario asserts Base Resume Content Print — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1337"
+```
+
+---
+
+### AST-1342 · AST-1314 (bug — Print next to Regenerate)
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1342-print-button-placement-next-to-regenerate`.
+
+UAT chrome: Print must sit in ArtifactEditor `dep-actions` **immediately after** Generate/Regenerate (`headerActions` slot), not in the orphaned page-level row above the editor. Validate-then-blob behavior stays AST-1337.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) placement bug-repro | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1342: Print sits in dep-actions next to Regenerate`** (bug-repro) |
+| No-candidate unavailable (AST-1337 revised) | same | **`AST-1337:`** no-candidate: Print absent **or** disabled (survives headerActions early-return) |
+
+**Broken / obsolete this pass:** AST-1337 “Print must exist and be disabled with no candidate” — rewritten to allow absent (post-fix) or disabled (pre-fix page-level).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1342|AST-1337"
+```
+
+---
+
+### AST-1341 · AST-1314 (bug — Print false-missing base_resume)
+
+**Parent:** [AST-1314](https://linear.app/astralcareermatch/issue/AST-1314). **Publish:** `origin/sub/AST-1314/AST-1341-print-base-resume-missing-artifacts-error`.
+
+Primary coverage: **`docs/test-bible/core/builder.md`** (`test_ast1341_list_shaped_base_resume_prints`). Page suite: AST-1337 Print error case asserts **`No printable base resume content for this candidate`**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1337: Print error"
+```
+
+
+### AST-1366 · AST-1360
+
+**Parent:** [AST-1360 — Add ideal_day to candidate context](https://linear.app/astralcareermatch/issue/AST-1360/add-ideal-day-to-the-set-of-candidate-context-strengths-priorities-etc). **Publish:** `origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface`.
+
+Candidate nav + Ideal Day edit page (`ContextTextPage` wrapper, `contextKey="ideal_day"`) peer of Strengths/Priorities/Deal Breakers/Backstory. Route `candidate/ideal_day` + `NAV_CONFIG` Ideal Day between Backstory and Writing Preferences. Save/load via existing `PUT /api/candidates/<id>/data` — no API change. Does **not** own Topic Menu informs (**AST-1367**) or craft prompts (**AST-1368**). Library/token/gate: **AST-1365**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Ideal Day page (§6c) | `CandidateIdealDay.tsx` | **`test_CandidateIdealDay.test.tsx`** — render heading + `ideal_day` prose; Save PUT `context.ideal_day` |
+| Nav order | `src/utils/config.py` `NAV_CONFIG` | **`TestAst1366IdealDayCandidateNav`** (`test_config.py`; map also **`docs/test-bible/utils/config.md`**) |
+| Shared editor behavior (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — unchanged; Ideal Day is another caller |
+
+**Broken / obsolete this pass:** none — new page + nav item only.
+
+**Integration:** no existing scenario asserts Candidate Ideal Day nav/page — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Ideal Day page (§6c): `tests/component/frontend/pages/test_CandidateIdealDay.test.tsx`
+2. Nav placement: `tests/component/utils/test_config.py::TestAst1366IdealDayCandidateNav`
+3. Shared ContextTextPage regression: `tests/component/frontend/components/test_ContextTextPage.test.tsx`
+
+**AST-1366** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1366IdealDayCandidateNav \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateIdealDay.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1394 · AST-1392 (show Ad Hoc Test body without type invalidation)
+
+**Parent:** [AST-1392](https://linear.app/astralcareermatch/issue/AST-1392). **Publish:** `origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation`.
+
+Agent Ad Hoc **Test** success path coerces `response_text` via **`responseBodyToText`** before `setResponse`, then existing **`formatResponse`** pretty-prints JSON strings. Nested object/list bodies still display as JSON text — never an `ERROR:` overlay and never a React child type crash. Plain text is unchanged. HTTP / `success: false` still set `ERROR:`. API stringify: **`docs/test-bible/ui/api/api_admin.md`** § AST-1394.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page first paint + compact JSON pretty-print (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — existing `previews, tests, fetches prompts, and saves as`; **`AST-1394: object payload JSON text pretty-prints`** |
+| Nested object defense (not ERROR) | same | **`AST-1394: nested object response_text still displays`** |
+| Plain text unchanged | same | **`AST-1394: plain text displays unchanged`** |
+| Failure overlay | same | **`AST-1394: provider failure still shows ERROR overlay`** |
+
+**Broken / obsolete this pass:** none — existing `"ok": true` pretty-print case still holds.
+
+**Integration:** no existing scenario asserts Agent Ad Hoc Test display — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page (**§6c**) + object/plain/failure chrome: `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+
+**AST-1394** narrowed run (page; API in **`ui/api/api_admin.md`**):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
+```
+
+### AST-1409 · AST-1406
+
+**Parent:** [AST-1406 — Page refreshes and modals are closed (lost!)](https://linear.app/astralcareermatch/issue/AST-1406). **Publish:** `origin/sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions`.
+
+Scheduled Actions consumes shared `useInPlaceLiveRefresh`: first paint may show `Loading…`; AUTO/Dbg post-PUT and running→idle `loadData()` are silent. Add/edit overlay stays outside the list gate and keeps its draft. Proposed `pattern.ui.in-place-live-refresh` is catalog docs (not pytest). Session-shell mount is **AST-1408**. Remaining list pages are **AST-1410**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hook contract | `useInPlaceLiveRefresh.ts` | **`test_useInPlaceLiveRefresh.test.tsx`** |
+| Routed Scheduled Actions (**§6c**) silent AUTO/Dbg | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1409 in-place live refresh`** → AUTO/Dbg without `Loading…` |
+| Avail / last-run + overlay draft | same | **`running→idle merges Avail and last-run; open Add Task draft survives`** |
+| Existing run-complete Avail | same | **`reloads dispatch tasks when a manual run thread finishes`** (regression) |
+| Fast Run never seen in thread_status | same | **`reloads Avail after Run even when thread_status never reports running`** |
+
+**Broken / obsolete:** none — first-paint `Loading…` and existing AUTO click / run-complete Avail cases stay. Filters stay client-side (no query-identity spinner on this page).
+
+**Integration:** no existing scenario asserts Scheduled Actions list remount / overlay draft — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Hook: `tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx`
+2. Routed page (**§6c**): `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — `--testNamePattern="AST-1409"`
+
+**AST-1409** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-1409|useInPlaceLiveRefresh"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1410 · AST-1406
+
+**Parent:** [AST-1406 — Page refreshes and modals are closed (lost!)](https://linear.app/astralcareermatch/issue/AST-1406). **Publish:** `origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces`.
+
+Remaining authenticated list surfaces consume `useInPlaceLiveRefresh` from **AST-1409**: first paint (and query-identity) may show `Loading…`; post-mutation / poll / modal-close `load*` is silent. Manage Tasks edit overlay stays outside the list gate. Artifact Cancel with no snapshot re-GETs last-saved tabs (no `window.location.reload`). Company Search Terms Cancel chrome stays snapshot-gated (`inReview = snapshot !== null`); the no-snapshot re-GET branch is covered on **`ArtifactEditor`**. Session-shell is **AST-1408**. Scheduled Actions is **AST-1409**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hook contract | `useInPlaceLiveRefresh.ts` | **`test_useInPlaceLiveRefresh.test.tsx`** (AST-1409) |
+| Manage Tasks overlay + silent revert (**§6c**) | `AdminTaskPrompts.tsx` | **`test_AdminTaskPrompts.test.tsx`** — **`AST-1410 silent refetch`** |
+| Manage Agents post-save (**§6c**) | `AdminAgentPrompts.tsx` | **`test_AdminAgentPrompts.test.tsx`** — **`AST-1410 silent refetch`** |
+| Scheduled Queries first paint + Deactivate (**§6c**) | `AdminScheduledQueries.tsx` | **`test_AdminScheduledQueries.test.tsx`** |
+| Manage Email Land Meteorite (**§6c**) | `AdminManageEmail.tsx` | **`test_AdminManageEmail.test.tsx`** — **`AST-1410 silent refetch`** |
+| Performance Monitor 15s poll + overlay (**§6c**) | `AdminPerformanceMonitor.tsx` | **`test_AdminPerformanceMonitor.test.tsx`** — **`AST-1410 silent refetch`** |
+| Recommended Skip (**§6c**) | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** — **`AST-1410 silent refetch`** |
+| In Review modal-close (**§6c**) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1410 silent refetch`** |
+| Skipped Retry (**§6c**) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1410 silent refetch`** |
+| Artifact no-snapshot Cancel | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1410: no-snapshot Cancel re-GETs last-saved tabs without location.reload`** |
+| Company Search Terms first paint (**§6c**) | `ArtifactsCompanySearchTerms.tsx` | existing **`test_ArtifactsCompanySearchTerms.test.tsx`** |
+
+**Broken / obsolete this pass:** none — first-paint `Loading…` and existing save/skip/retry cases stay. `test_AdminScheduledQueries.test.tsx` is new (bible listed it earlier; file was missing). Company Search Terms Cancel remains review/snapshot-only; no RTL path for the no-snapshot branch on that page.
+
+**Integration:** no existing scenario asserts list remount / overlay draft / artifact Cancel reload — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Hook (existing): `tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx`
+2. Manage Tasks: `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` — `--testNamePattern="AST-1410"`
+3. Manage Agents: `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — `--testNamePattern="AST-1410"`
+4. Scheduled Queries: `tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx`
+5. Manage Email: `tests/component/frontend/pages/test_AdminManageEmail.test.tsx` — `--testNamePattern="AST-1410"`
+6. Performance Monitor: `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — `--testNamePattern="AST-1410"`
+7. Recommended: `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1410"`
+8. In Review: `tests/component/frontend/pages/test_JobsInReview.test.tsx` — `--testNamePattern="AST-1410"`
+9. Skipped: `tests/component/frontend/pages/test_JobsSkipped.test.tsx` — `--testNamePattern="AST-1410"`
+10. ArtifactEditor Cancel: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1410"`
+11. Search Terms first paint: `tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx`
+
+**AST-1410** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  --testNamePattern="AST-1410|useInPlaceLiveRefresh|renders company search terms page"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1412 · AST-1403
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save`.
+
+Agent Ad Hoc editors match Manage Tasks’ seven segments (System, Cache A–D, No Cache, User). Fetch-from-task and Save As read/write all seven columns; overwrite ● / `hasContent` treat any populated segment as content. Preview and Test POST always include all seven keys, including `system_prompt: ""`. Preview modal / agent_data panes: sibling **AST-1413**. Backend assemble/store: **AST-1411**. `_enrich_tasks` `*_len` passthrough: **`docs/test-bible/ui/api/api_admin.md`** § AST-1412.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page first paint + seven tab labels (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1412: seven editor tabs match Manage Tasks labels`** |
+| Cache-B-only fetch isolation; Save As enabled from B | same | **`AST-1412: Cache B loads into B not A; Save As lights from B-only content`** |
+| Preview / Test / Save As seven keys; empty System is `""` | same | **`AST-1412: Preview, Test, and Save As send all seven keys; empty System is empty string`** |
+| Overwrite ● from Cache-B-only `*_len` | same | **`AST-1412: overwrite marker treats Cache-B-only list lens as existing content`** |
+| Existing kitchen-sink + AST-1215 + AST-1394 | same | keep **`previews, tests, fetches prompts, and saves as`**; **`AST-1215`**; **`AST-1394`** |
+
+**Broken / obsolete this pass:** `GET /tasks/task_a` mock and `/tasks` fixture were three-slot (`user` / `cache` / `nocache`). Revised to seven columns + Cache-B-only list row so fetch/overwrite match product. Kitchen-sink still uses default User tab + `"User prompt content..."`.
+
+**Integration:** no existing scenario asserts Ad Hoc editor tabs / Save As body — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+2. `_enrich_tasks` seven `*_len`: `tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens`
+
+**AST-1412** narrowed run (page; API lens in **`ui/api/api_admin.md`**):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  --testNamePattern="AST-1412|previews, tests, fetches|AST-1215|AST-1394"
+```
+
+**Pass criterion:** Vitest + `TestAst1412EnrichTaskLens` green — not zero-arg harness / branch-lock gate.
+
+### AST-1413 · AST-1403
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes`.
+
+Preview Prompt opens the shared `Modal` with eight resolved tabs (System, Cache A–D, No Cache, User, Live Content). The page has no inline “Resolved Prompt Preview” block. Cache A reads `cache_a` falling back to `cache`; empty slots show `(empty)`. After HTTP 200 + `success` + non-empty `batch_id`, the workbench mounts `BatchAgentDataPanes` (same body as Execution History, including RESPONSE + Tokens & Cost). Preview does not GET `/api/agent_data/…` or clear those panes. Soft-fail / missing `batch_id` toasts only. Editors / Save As: **AST-1412**. Assemble/store: **AST-1411**. Execution History still uses default `BatchAgentDataModal` — **`test_BatchAgentDataModal.test.tsx`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page first paint + Preview modal (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1413: Preview Prompt opens eight-tab modal; page has no inline preview block`** |
+| Post-Test panes; Preview does not refresh | same | **`AST-1413: successful Test mounts panes; Preview does not clear them`** |
+| Success without `batch_id` | same | **`AST-1413: Test without batch_id toasts and leaves panes unmounted`** |
+| Kitchen-sink + seven-segment POST + AST-1394 chrome | same | **`previews, tests, fetches prompts, and saves as`** waits for modal `sys` + **Tokens & Cost**; **`AST-1412`** Preview/Test wait retargeted; **`AST-1394`** overlay/pretty-print retargeted to panes/toast |
+| Execution History wrapper unchanged | `BatchAgentDataModal.tsx` | **`test_BatchAgentDataModal.test.tsx`** (default export still wide `Modal`) |
+
+**Broken / obsolete this pass:** Inline “Resolved Prompt Preview” + Response `<pre>` dump (including AST-1394 pretty-print / `ERROR:` overlay on the page) are gone. Page cases now assert modal tabs + `BatchAgentDataPanes`. API stringify of `response_text` stays in **`docs/test-bible/ui/api/api_admin.md`** § AST-1394.
+
+**Integration:** no existing scenario asserts Ad Hoc Preview modal / post-Test panes — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+2. Execution History modal wrapper (extract regression): `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx`
+
+**AST-1413** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1452 · AST-1439
+
+**Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load`.
+
+Agent Ad Hoc import picker table (list GET — sibling **AST-1451**; **AST-1535** scopes refetch with `candidate_id` / `task_key`), row select, **Load** into seven editors from `GET /api/agent_data/<batch_id>` (TASK → User; missing slots empty), `BatchAgentDataPanes` on imported `batch_id`, one leading `adhoc-` strip on workbench task key with `skipCatalogFetchRef` (no catalog fetch-from-task), `importEntityLock` for Preview/Test `entity_id`, dirty-editor replace confirm matching fetch-from-task. Does **not** own list query implementation or Test persist prefix (**AST-1451**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page + import list with candidate (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1452: with candidate selected loads import runs into the table`** (revised **AST-1535**) |
+| Load → editors + panes (**AC2**) | same | **`AST-1452: Load fills editors and mounts panes for the imported batch`** |
+| Strip `adhoc-`; skip catalog fetch (**AC4**) | same | **`AST-1452: Load strips one adhoc- prefix without catalog fetch-from-task`** |
+| `importEntityLock` + orphan entity option (**AC5**) | same | **`AST-1452: importEntityLock sends restored entity_id on Preview`** |
+| Dirty replace confirm (**AC6**) | same | **`AST-1452: dirty editors confirm Load; Cancel leaves content unchanged`**; **`AST-1452: dirty confirm Yes replaces editor content`** |
+| List/load GET contracts | **AST-1451** | **`docs/test-bible/core/agent.md`** § AST-1451 (no duplicate API tests here) |
+| Preview modal / post-Test panes baseline | **AST-1413** | existing **`AST-1413`** cases (unchanged) |
+
+**Broken / obsolete this pass:** all `mockApi` paths must stub **`GET /api/admin/adhoc/runs`** (empty array default) — revised under **AST-1535** to `startsWith` + candidate query. Originally: shared handler + AST-1215 inline mock.
+
+**Integration:** no existing scenario covers Ad Hoc import picker/load — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page + import picker/load (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx` — pattern **`AST-1452`**
+2. Regression: existing **`AST-1413`** / **`AST-1412`** / kitchen-sink cases in the same file (full file run)
+
+**AST-1452** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  --testNamePattern="AST-1452|AST-1413|previews, tests, fetches|AST-1215|AST-1394|AST-1412"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1478 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip`.
+
+Recommended opens JAR with shared-hook **Skip** / **Applied**; report strip uses labeled `.btn` roles; successful Skip/Applied refreshes the list and closes the report when the job leaves rows; CLIENT **Apply** stays absent. Modal unit cases: **`docs/test-bible/frontend/components.md`** § AST-1478.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Recommended → report Skip/Applied (**§6c**) | `JobsRecommended.tsx` + JAR | **`test_JobsRecommended.test.tsx`** — **`AST-1478 report Applied and Skip`** (strip visible; Skip → `/skip` + close; Applied → notes → `candidate_action` applied + close; no **Apply**) |
+
+**Broken / obsolete:** none — additive report wiring; existing open-report / list Skip / AST-1410 / AST-1477 list Applied asserts still hold.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. JAR callbacks: `test_JobAnalysisReportModal.test.tsx` — **`AST-1478`**
+2. Recommended page (**§6c**): `test_JobsRecommended.test.tsx` — **`AST-1478`**
+
+**AST-1478** narrowed run (from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1478|sticky header|opens the report|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1479 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
+
+Applied list home: `view=applied` rows, empty copy, post-applied R/I/X/G via shared notes + `candidate_action`, error toast on illegal transition. Config/API: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/ui/api/api_jobs.md`** § AST-1479.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Applied page (**§6c**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`JobsApplied — AST-1479 applied list home`** (rows + Actions; empty; Interview → notes → `candidate_action`; 409 toast) |
+
+**Broken / obsolete:** prior stub assert `"No records found."` — product empty copy is `"No applied jobs yet"`.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Applied page (**§6c**): `tests/component/frontend/pages/test_JobsApplied.test.tsx` — **`AST-1479`**
+2. API `view=applied`: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states` (+ revised `test_list_recommended_and_default`)
+3. Config states + nav: `tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav`
+
+**AST-1479** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1479"
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1454 · AST-1446
+
+**Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
+
+`JobsSkipped` / `JobsInReview` pass `onRefresh={load}` into `JobDetailModal` so Save refreshes the list. Editor chrome: **`docs/test-bible/frontend/components.md`** § AST-1454.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skipped list refresh after Save (**§6c**) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1454 onRefresh after skipped-field Save`** |
+| In Review list refresh after Save (**§6c**) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1454 onRefresh wiring`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. `tests/component/frontend/pages/test_JobsSkipped.test.tsx` — **`AST-1454`**
+2. `tests/component/frontend/pages/test_JobsInReview.test.tsx` — **`AST-1454`**
+3. Modal editors: `test_JobDetailModal.test.tsx` — **`AST-1454`** (primary: **components.md**)
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  --testNamePattern="AST-1454"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1476 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462). **Publish:** `origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`.
+
+Base Resume Content **Save sections** PUTs `page_break_policy` on each section; header shows catalog-driven Page break control. Primary ArtifactEditor / JAR: **`docs/test-bible/frontend/components.md`** § AST-1476.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) dropdown + Save sections | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1476:`**; revised **AST-1306** PUT asserts policy |
+
+**Broken / obsolete this pass:** AST-1306 catalog/all_sections fixtures lacked page-break fields — extended.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern="AST-1476|AST-1306"
+```
+
+### AST-1489 · AST-1483 (bug — Print ignores unsaved page-break)
+
+**Parent:** [AST-1483 — Resume page break settings don't work](https://linear.app/astralcareermatch/issue/AST-1483/resume-page-break-settings-dont-work). **Publish:** `origin/sub/AST-1483/AST-1489-page-break-settings-still-ignored-on-print`. Auto-save structure rows (incl. `page_break_policy`) before validate-then-blob print GET on Base Resume Content and JAR Job Resume. **Body content** still from saved artifacts — not editor buffer.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Base Print without Save sections (bug-repro) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1489:`** |
+| JAR Print Resume without Save sections | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1489:`** |
+| Reorder + Print full body (AST-1490) | `ArtifactEditor.tsx`, Base/JAR pages | **`docs/test-bible/frontend/components.md`** § AST-1490 |
+| Print mock handlers (AST-1337 / AST-1350) | same | revised **`AST-1337:`** / **`AST-1350:`** — tolerate structure PUT before resume GET |
+
+**Broken / obsolete this pass:** AST-1337 Print mocks lacked structure PUT handler — extended for make-fix blast radius.
+
+**Integration:** none — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Base print-before-PUT (bug-repro): `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1489"`
+2. JAR print-before-PUT (bug-repro): `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1489"`
+3. Print regression mocks: same files — `--testNamePattern="AST-1337|AST-1350"`
+
+**AST-1489** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1489|AST-1337|AST-1350"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1481 · AST-1463
+
+**Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`.
+
+Thin deeplink host at `/jobs/detail/:jobId` opens the **existing** `JobAnalysisReportModal` (same shell as Recommended row-click), prefetches job for early 404/candidate gate, admin candidate alignment via company → `candidate_id`, close → `/jobs/recommended`. Does **not** own post-auth return-path (**AST-1482**). **`JobsRecommended.tsx`** unchanged — list regression stays on existing **`opens the report modal from a row click`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed deeplink page (**§6c**) | `JobsJobDetail.tsx` | **`test_JobsJobDetail.test.tsx`** — **`AST-1481`** (modal shell; skipped job; 404 + API error UI + back link; close → recommended; blank id redirect; prefetch then company alignment before modal) |
+| Admin candidate alignment helper | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`AST-1481 alignSelectedCandidateForJobCompany`** (admin switch; non-admin no-op; company lookup soft-fail) |
+| Recommended list regression | `JobsRecommended.tsx` (untouched) | **`test_JobsRecommended.test.tsx`** — **`opens the report modal from a row click`** (existing) |
+
+**Broken / obsolete:** none — additive route/host; JAR component tests unchanged.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Deeplink page (**§6c**): `tests/component/frontend/pages/test_JobsJobDetail.test.tsx` — **`AST-1481`**
+2. Candidate alignment: `tests/component/frontend/contexts/test_CandidateContext.test.tsx` — **`AST-1481`**
+3. Recommended list regression: `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — **`opens the report modal from a row click`**
+
+**AST-1481** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1481|opens the report modal"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (publish tip):**
+
+- `docs/test-bible/frontend/pages.md` — `ab00a069b7566ed95635137118159ef65ffbd3d8`
+- `docs/test-bible/frontend/contexts.md` — `839d8fc16fcda5db81fc374b0177717f44d7cc3c`
+
+### AST-1488 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`.
+
+**Re-land of AST-1479** product slice (`APPLIED_JOB_STATES` + Applied nav + `view=applied` API + real `JobsApplied`). **Existing coverage — no new tests.** Config/API: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/ui/api/api_jobs.md`** § AST-1488.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Applied page (**§6c**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`JobsApplied — AST-1479 applied list home`** (rows + Actions; empty; Interview → notes → `candidate_action`; 409 toast) |
+| API `view=applied` | `api_jobs.py` | **`test_list_applied_uses_applied_job_states`** (+ **`test_list_recommended_and_default`**) |
+| Config states + nav | `config.py` | **`TestAst1479AppliedJobStatesAndNav`** |
+
+**Broken / obsolete:** none — product restore makes the AST-1479 suites green again; do not rename test ids.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Applied page (**§6c**): `tests/component/frontend/pages/test_JobsApplied.test.tsx` — **`AST-1479`**
+2. API `view=applied`: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states` (+ `test_list_recommended_and_default`)
+3. Config states + nav: `tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav`
+
+**AST-1488** narrowed run (same paths as AST-1479):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1479"
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1498 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1498-candidate-applied-missing-from-applied-screen`.
+
+Fix-lane bug: Applied page must list stem/meteorite jobs with NULL `company.candidate_id`; post-applied `candidate_action` must send `candidate_id` for linkage repair. API repro: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1498.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| POST includes `candidate_id` (**[bug-repro]**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`AST-1498 [bug-repro]: candidate_action POST includes candidate_id`** |
+
+**Broken / obsolete:** **`JobsApplied — AST-1479`** Interview case still asserts body without `candidate_id` — keep for pre-fix regression; AST-1498 repro is separate `it`.
+
+**Integration:** none.
+
+---
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+Read-only **Meteorite** companies list (`CompaniesMeteorite.tsx`): inline columns; fetches `view=meteorite_list`; row click → `CompanyDetailModal`; no bulk actions. API: **`docs/test-bible/ui/api/api_companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page load + modal (§6c) | `CompaniesMeteorite.tsx` | **`test_CompaniesMeteorite.test.tsx`** |
+| Non-array payload empty state | same | **`test_CompaniesMeteorite.test.tsx`** |
+
+**Broken / obsolete:** none — new page.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
+```
+
+
+### AST-1538 · AST-1533
+
+**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1538-manage-email-modal-copy-dark-purple`.
+
+Manage Email modal (§6c): render `assembled_html` in `<pre class="email-html-source">` (no `html_body` fallback); Copy (`btn secondary`) clips that string + success toast; `.email-html-source` background is `var(--bg-elevated)` (not `#fff`). Land Meteorite multi-select unchanged — covered by **AST-1142**. Assembly API: **`docs/test-bible/core/inbox.md`** / **`docs/test-bible/ui/api/api_inbox.md`** (**AST-1537**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Assembled modal source + no body-only fallback (§6c) | `AdminManageEmail.tsx` | revised matched-row modal case; **`AdminManageEmail — AST-1538`** |
+| Copy control + toast (§6c) | `AdminManageEmail.tsx` | **`AdminManageEmail — AST-1538`** · Copy clips `assembled_html` |
+| Dark purple reading surface | `App.css` | **`AdminManageEmail — AST-1538`** · `.email-html-source` uses `--bg-elevated` |
+| Land Meteorite multi-select regression (AC4) | `AdminManageEmail.tsx` | existing **`AdminManageEmail — AST-1142`** |
+
+**Broken / obsolete:** AST-1040/1051 modal case that mocked `html_body` only and asserted that string in the `<pre>` — revised to `assembled_html`.
+
+**Integration:** none — no existing Manage Email modal scenario; do not invent.
+
+## QA test manifest
+
+1. Routed page + assembled modal + copy + CSS: `tests/component/frontend/pages/test_AdminManageEmail.test.tsx`
+2. Land Meteorite regression (same file): describe **`AST-1142`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+**Pass criterion:** Vitest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+
+### AST-1535 · AST-1532 (Compact filtered import picker UI)
+
+**Parent:** [AST-1532](https://linear.app/astralcareermatch/issue/AST-1532). **Publish:** `origin/sub/AST-1532/AST-1535-compact-filtered-import-picker-ui`.
+
+Picker chrome only on `AdminAnthropicAdHoc.tsx`: refetch `GET /api/admin/adhoc/runs?candidate_id=…&task_key=…` on `[selectedId, taskKey]` (skip when no candidate); read `adhoc_import_picker_visible_rows` from `GET /api/ui_config`; scroll wrap `maxHeight` = head + N×row layout mirrors; preserve Load / confirmLoad. API filter/cap: **AST-1534**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page §6c + candidate-scoped list | `AdminAnthropicAdHoc.tsx` | revised **`AST-1452: with candidate selected loads import runs into the table`** |
+| Empty candidate → no runs GET | same | **`AST-1535: no candidate skips runs fetch and leaves picker empty`** |
+| Task key → `task_key` query | same | **`AST-1535: task key selection adds task_key query param on runs refetch`** |
+| ui_config visible rows → scroll maxHeight | same | **`AST-1535: ui_config visible rows set scroll wrap maxHeight`** |
+| Load / agent_data unchanged | same | **`AST-1535: Load still fills editors from agent_data batch`** + existing **`AST-1452`** Load suite |
+
+**Broken / obsolete this pass:** AST-1452 bare `/api/admin/adhoc/runs` on mount; `selectImportRow` race before filtered list arrives — revised in place. `mockApi` / AST-1215 mocks use `startsWith` + optional `uiConfig` / empty `candidates`.
+
+**Integration:** no existing scenario covers Agent Ad Hoc picker — do not invent.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc + filtered picker / Load (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx` — patterns **`AST-1535`** + **`AST-1452`**
+
+**AST-1535** narrowed run (from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  --testNamePattern="AST-1535|AST-1452"
+```
+
+**Pass criterion:** Vitest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+Manage Email (§6c): candidate filter default **All**; no Candidate/Matched column or modal match line; Land Meteorite disabled until a candidate is selected; list reload with `?candidate_id=`; Land POST includes `candidate_id`. API: **`docs/test-bible/ui/api/api_inbox.md`** § AST-1558.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Filter default All + candidate_id reload + no Matched (§6c) | `AdminManageEmail.tsx` | **`AdminManageEmail — AST-1558`** |
+| Land requires filter + POST body | same | revised **`AdminManageEmail — AST-1142`** / **AST-1410** |
+| Assembled modal without match line | same | revised older describe + **AST-1538** |
+
+**Broken / obsolete:** Candidate column / `Matched: …` / `manage-email-match` assertions (AST-1048/1051) — revised away. Land-enabled-on-selection-alone (AST-1142) — now requires candidate filter.
+
+**Integration:** none — do not invent.
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+---
+
+### AST-1577 · AST-1569
+
+**Parent:** [AST-1569 — Implement patt.artifact.write-operative](https://linear.app/astralcareermatch/issue/AST-1569/implement-pattartifactwrite-operative). **Publish:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`.
+
+Base Resume Content passes `bodyShape="resume_content"` (drops `useCandidateResumeStructure` on this page only); Save still PUTs leaf `artifacts.base_resume`. Draft `patt.artifact.ui-consistency` with no write-operative cross-link. Editor prop: **`docs/test-bible/frontend/components.md`** § AST-1577. (**AST-1628** retargeted plural → singular draft path/id.)
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) bodyShape + leaf Save | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1577:`** |
+| Draft pattern (no write-operative link) | `canon/directives/draft/patt.artifact.ui-consistency.md` | same **`AST-1577: page and draft follow ui-consistency`** |
+
+**Broken / obsolete:** none — existing structure/print/accent cases still render via `bodyShape`.
+
+**Integration:** none — do not invent.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1577|loads fixed tabs from structureSections|renders structure-driven tabs"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1619 · AST-1616
+
+**Parent:** [AST-1616](https://linear.app/astralcareermatch/issue/AST-1616). **Publish:** `origin/sub/AST-1616/AST-1619-editable-entity-type-modal`.
+
+Scheduled Actions Add/Edit modal: Entity Type is an editable `<select>` bound to `stateOptions` keys (not readOnly); changing entity refreshes Input State options and clears an invalid `trigger_state`; POST/PUT Save bodies include `entity_type`. Candidate on Add stays read-only / context-bound. API persist = sibling **AST-1618**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| AC1 editable Entity Type (§6c) | `<select>` not `readOnly` text | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx` — `AST-1619 editable Entity Type` → `Add Task Entity Type is a select (not readOnly text)`** |
+| AC2 Input State follows entity | Options swap; invalid trigger cleared | same | **`changing Entity Type swaps Input State options and clears invalid trigger`** |
+| AC3 Candidate bound on Add | Candidate row stays `readOnly` | same | asserted in AC1 case |
+| Save payload | POST/PUT include `entity_type` | same | **`Edit Save PUT body includes entity_type`**, **`Add Save POST body includes entity_type`** |
+
+**Broken / obsolete (Betty revised this pass):** modal `combobox` indices — Entity Type inserted at index 1; Input State is now `[2]` in **`add task modal: company task sets WATCH state options`**, **AST-780** add-POST toast, **AST-804** candidate Input State case.
+
+**Integration:** no existing scenario covers Scheduled Actions Entity Type modal — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Scheduled Actions page (§6c): `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — pattern **`AST-1619`**
+2. Revised combobox-index regressions: same file — **`company task sets WATCH`**, **`AST-780` add save POST fails**, **`AST-804 candidate Input State`**
+
+**AST-1619** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-1619|company task sets WATCH|add save POST fails|AST-804 candidate Input State"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1634 · AST-1629
+
+**Parent:** [AST-1629 — Migrate candidate_data.context.strengths to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1629). **Publish:** `origin/sub/AST-1629/AST-1634-strengths-contexttextpage-plain-text-path`.
+
+Strengths page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { strengths } }` GET/PUT (AST-1633 operative intercept); empty/whitespace Save disabled + client toast; `ArtifactEditor` untouched; sibling context pages omit `bodyShape`. Catalog/API: siblings **AST-1632** / **AST-1633**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Strengths page (§6c) — load / save reload / empty gate | `CandidateStrengths.tsx` | **`test_CandidateStrengths.test.tsx`** — `AST-1634` |
+| Shared plain_text empty gate + legacy callers | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** none — prior Strengths render case expanded under AST-1634 names.
+
+**Integration:** none — no existing scenario asserts Strengths ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Strengths page (§6c): `tests/component/frontend/pages/test_CandidateStrengths.test.tsx` — pattern **`AST-1634`**
+2. Shared ContextTextPage plain_text gate: `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateStrengths.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1650 · AST-1647
+
+**Parent:** [AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page](https://linear.app/astralcareermatch/issue/AST-1647). **Publish:** `origin/sub/AST-1647/AST-1650-bio-summary-page-route`.
+
+Thin `CandidateBioSummary.tsx` (`contextKey="bio_summary"`, `bodyShape="plain_text"`) + route `candidate/bio_summary`. Reuses `ContextTextPage` (no edits this ticket — shared gate covered by **AST-1634**). Nav/catalog: **AST-1648**. Operative PUT/GET: **AST-1649**. `ArtifactEditor` untouched.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Bio Summary page (§6c) — load / save reload / empty gate | `CandidateBioSummary.tsx` | **`test_CandidateBioSummary.test.tsx`** — `AST-1650` |
+
+**Broken / obsolete this pass:** none — profile Bio Summary section already removed in config (**AST-1648**); page-level profile Vitest mocks are local fixtures, not live `DATA_SHAPES`.
+
+**Integration:** none — no existing scenario asserts Bio Summary route / ContextTextPage wrapper; do not invent.
+
+## QA test manifest
+
+1. Routed Bio Summary page (§6c): `tests/component/frontend/pages/test_CandidateBioSummary.test.tsx` — pattern **`AST-1650`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateBioSummary.test.tsx \
+  --testNamePattern="AST-1650"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1656 · AST-1642
+
+**Parent:** [AST-1642 — Migrate candidate_data.context.deal_breakers to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1642). **Publish:** `origin/sub/AST-1642/AST-1656-deal-breakers-contexttextpage-wire-up`.
+
+Deal Breakers page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { deal_breakers } }` GET/PUT (AST-1655 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1654** / **AST-1655**. Mirror AST-1634.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Deal Breakers page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateDealBreakers.tsx` | **`test_CandidateDealBreakers.test.tsx`** — `AST-1656` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Deal Breakers render-only case expanded under AST-1656 names.
+
+**Integration:** none — no existing scenario asserts Deal Breakers ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Deal Breakers page (§6c): `tests/component/frontend/pages/test_CandidateDealBreakers.test.tsx` — pattern **`AST-1656`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateDealBreakers.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1656|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1653 · AST-1641
+
+**Parent:** [AST-1641 — Migrate candidate_data.context.priorities to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1641). **Publish:** `origin/sub/AST-1641/AST-1653-priorities-contexttextpage-wire-up`.
+
+Priorities page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { priorities } }` GET/PUT (AST-1652 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1651** / **AST-1652**. Mirror AST-1634 / AST-1656.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Priorities page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidatePriorities.tsx` | **`test_CandidatePriorities.test.tsx`** — `AST-1653` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Priorities render-only case expanded under AST-1653 names.
+
+**Integration:** none — no existing scenario asserts Priorities ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Priorities page (§6c): `tests/component/frontend/pages/test_CandidatePriorities.test.tsx` — pattern **`AST-1653`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidatePriorities.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1653|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1660 · AST-1643
+
+**Parent:** [AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1643). **Publish:** `origin/sub/AST-1643/AST-1660-ideal-day-contexttextpage-wire-up`.
+
+Ideal Day page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { ideal_day } }` GET/PUT (AST-1659 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1658** / **AST-1659**. Mirror AST-1634 / AST-1656.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Ideal Day page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateIdealDay.tsx` | **`test_CandidateIdealDay.test.tsx`** — `AST-1660` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Ideal Day AST-1366 render/save cases expanded under AST-1660 names (plain_text empty gate + bodyShape source assert).
+
+**Integration:** none — no existing scenario asserts Ideal Day ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Ideal Day page (§6c): `tests/component/frontend/pages/test_CandidateIdealDay.test.tsx` — pattern **`AST-1660`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateIdealDay.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1660|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1666 · AST-1645
+
+**Parent:** [AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1645). **Publish:** `origin/sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up`.
+
+Writing Preferences page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { writing_preferences } }` GET/PUT (AST-1665 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1664** / **AST-1665**. Mirror AST-1634 / AST-1660.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Writing Preferences page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateWritingPreferences.tsx` | **`test_CandidateWritingPreferences.test.tsx`** — `AST-1666` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** none — page was a ContextTextPage caller without `bodyShape`; new Vitest covers the wire-up.
+
+**Integration:** none — no existing scenario asserts Writing Preferences ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Writing Preferences page (§6c): `tests/component/frontend/pages/test_CandidateWritingPreferences.test.tsx` — pattern **`AST-1666`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateWritingPreferences.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1666|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1663 · AST-1644
+
+**Parent:** [AST-1644 — Migrate candidate_data.context.backstory to use the artifact table](https://linear.app/astralcareermatch/issue/AST-1644). **Publish:** `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up`.
+
+Backstory page passes `bodyShape="plain_text"` into `ContextTextPage`; shared editor keeps `{ context: { backstory } }` GET/PUT (AST-1662 operative intercept); empty/whitespace Save disabled via shared gate; `ArtifactEditor` / `ContextTextPage` untouched this ticket. Catalog/API: siblings **AST-1661** / **AST-1662**. Mirror AST-1634 / AST-1660.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Backstory page (§6c) — load / save reload / empty gate / bodyShape assert | `CandidateBackstory.tsx` | **`test_CandidateBackstory.test.tsx`** — `AST-1663` |
+| Shared plain_text empty gate (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — `AST-1634` |
+
+**Broken / obsolete this pass:** prior Backstory render-only case expanded under AST-1663 names (plain_text empty gate + bodyShape source assert).
+
+**Integration:** none — no existing scenario asserts Backstory ContextTextPage `bodyShape`; do not invent.
+
+## QA test manifest
+
+1. Routed Backstory page (§6c): `tests/component/frontend/pages/test_CandidateBackstory.test.tsx` — pattern **`AST-1663`**
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern **`AST-1634`**
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_CandidateBackstory.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1663|AST-1634"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+---
+
+### AST-1669 · AST-1636
+
+**Parent:** [AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown`.
+
+Manage Candidates add/edit Slack username `<select>` from `GET /api/admin/contact/unbound_slack_users`; stamps both `contact.slack_user_id` + `contact.slack_username` on save; edit prepends current bind; empty selection omits Slack keys; no Slack Web API from React. Unbound API: **`docs/test-bible/ui/api/api_contact.md`** § AST-1668. Poster pool: **`docs/test-bible/external/slack.md`** § AST-1667.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Manage Candidates page (§6c) — dropdown + bind stamp + omit-on-empty | `AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — **`AST-1669`** |
+| Unbound GET mock on existing suites | same | revised **`mockApi`** / suite mocks stub `/api/admin/contact/unbound_slack_users` |
+
+**Broken / obsolete this pass:** existing Add/Edit opens would `Unhandled api` unbound GET — revised mocks return `{ users: [] }` by default.
+
+**Integration:** none — no existing scenario asserts Manage Candidates Slack bind; do not invent.
+
+## QA test manifest
+
+1. Routed Manage Candidates Slack bind (§6c): `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — pattern **`AST-1669`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  --testNamePattern='AST-1669'
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+`JobsJobDetail` prefetch prefers `company_id` over legacy `company` for admin candidate align (§6c routed page). FE href chrome: **`docs/test-bible/frontend/components.md`** § AST-1704. Primary manifest: **`docs/test-bible/core/consult.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed deeplink host — company_id align | `JobsJobDetail.tsx` | **`test_JobsJobDetail.test.tsx`** — **`AST-1704`** |
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** none.
+
+---
+
+### AST-1728 · AST-1721 (qa-fix bug-repro — AdminTelescope §6c)
+
+| Area | Component tests |
+| --- | --- |
+| Page module exists / loads | `tests/component/frontend/pages/test_AdminTelescope.test.tsx` — **`AST-1728: AdminTelescope page module exports a component`** (**bug-repro**) |
+| Path / file presence (py) | `test_api_admin_telescope.py::test_admin_telescope_page_module_exists` + `test_routes_register_admin_telescope` |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
+```
+
+---
+
+### AST-1730 · AST-1721 (qa-fix bug-repro — scrollable selectable response)
+
+**Board REVISE:** raw / full-JSON panes must be read-only scrollable wrapping `<textarea className="admin-telescope-pre">` (`maxHeight: 60vh`, `overflow: auto`, `white-space: pre-wrap`).
+
+| Area | Component tests |
+| --- | --- |
+| Raw pane textarea + scroll/wrap styles | `test_AdminTelescope.test.tsx` — **`AST-1730: raw response is read-only scrollable wrapping textarea`** (**bug-repro**) |
+| Full JSON pane same shape | `test_AdminTelescope.test.tsx` — **`AST-1730: full JSON dump uses the same read-only textarea shape`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
+```
+
+---
+
+### AST-1734 · AST-1721 (qa-fix bug-repro — page scroll unlock)
+
+**Board REVISE:** root `.list-page` must use `height: auto` / `overflow: visible` (or free-flow shell) so `.content` scrolls; AST-1730 only asserts textarea inner scroll.
+
+| Area | Component tests |
+| --- | --- |
+| Page scroll unlock on root | `test_AdminTelescope.test.tsx` — **`AST-1734: root unlocks page scroll (list-page height auto / overflow visible)`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
 ```

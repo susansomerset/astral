@@ -183,31 +183,37 @@ class TestAst814InflowDiscoveryFreqHrs:
 
 
 class TestAst506InflowResolveEligible:
-    """AST-506: company NEW without website eligibility for inflow_resolve_website."""
+    """AST-506/1673: DISCOVERED without website eligibility for inflow_resolve_website."""
 
-    def test_count_new_without_website(self, sqlite_in_memory) -> None:
+    def test_count_discovered_without_website(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("no_site", state="NEW", candidate_id="c506", company_name="no_site")
+        db.save_company("no_site", state="DISCOVERED", candidate_id="c506", company_name="no_site")
         db.save_company(
             "has_site",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c506",
             company_website="https://has.example",
             company_name="has_site",
         )
-        assert db.count_company_new_without_website("c506") == 1
+        assert db.count_company_discovered_without_website("c506") == 1
 
     def test_count_excludes_claimed_batch(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("claimed", state="NEW", candidate_id="c506", company_name="claimed")
-        db.claim_company_batch("batch-506", "NEW", 1, candidate_id="c506", require_empty_website=True)
-        assert db.count_company_new_without_website("c506") == 0
+        db.save_company("claimed", state="DISCOVERED", candidate_id="c506", company_name="claimed")
+        db.claim_company_batch(
+            "batch-506", "DISCOVERED", 1, candidate_id="c506", require_empty_website=True,
+        )
+        assert db.count_company_discovered_without_website("c506") == 0
 
-    def test_claim_skips_new_with_website(self, sqlite_in_memory) -> None:
+    def test_claim_skips_discovered_with_website(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("skip_me", state="NEW", candidate_id="c506", company_website="https://x.example")
-        db.save_company("claim_me", state="NEW", candidate_id="c506", company_name="claim_me")
-        n = db.claim_company_batch("batch-506", "NEW", 10, candidate_id="c506", require_empty_website=True)
+        db.save_company(
+            "skip_me", state="DISCOVERED", candidate_id="c506", company_website="https://x.example",
+        )
+        db.save_company("claim_me", state="DISCOVERED", candidate_id="c506", company_name="claim_me")
+        n = db.claim_company_batch(
+            "batch-506", "DISCOVERED", 10, candidate_id="c506", require_empty_website=True,
+        )
         assert n == 1
         rows = db.get_company_batch("batch-506")
         assert len(rows) == 1
@@ -215,10 +221,10 @@ class TestAst506InflowResolveEligible:
 
     def test_count_eligible_for_dispatch_task_resolve(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("resolve_me", state="NEW", candidate_id="c506", company_name="resolve_me")
+        db.save_company("resolve_me", state="DISCOVERED", candidate_id="c506", company_name="resolve_me")
         task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "inflow_resolve_website",
             "candidate_id": "c506",
         }
@@ -228,51 +234,55 @@ class TestAst506InflowResolveEligible:
 
 
 class TestAst776InflowVetEligible:
-    """AST-776: vet vs resolve eligibility split on inflow_discovery_blurb."""
+    """AST-776/1673: vet vs resolve eligibility split on DISCOVERED + blurb."""
 
-    def test_count_new_pending_inflow_vet(self, sqlite_in_memory) -> None:
+    def test_count_discovered_pending_inflow_vet(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "vet_me",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="vet_me",
             company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
         )
-        db.save_company("no_blurb", state="NEW", candidate_id="c776", company_name="no_blurb")
-        assert db.count_company_new_pending_inflow_vet("c776") == 1
+        db.save_company("no_blurb", state="DISCOVERED", candidate_id="c776", company_name="no_blurb")
+        assert db.count_company_discovered_pending_inflow_vet("c776") == 1
 
-    def test_count_new_without_website_excludes_blurb(self, sqlite_in_memory) -> None:
+    def test_count_discovered_without_website_excludes_blurb(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "blurb_only",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="blurb_only",
             company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
         )
-        db.save_company("legacy_new", state="NEW", candidate_id="c776", company_name="legacy_new")
-        assert db.count_company_new_without_website("c776") == 1
+        db.save_company(
+            "legacy_discovered", state="DISCOVERED", candidate_id="c776", company_name="legacy_discovered",
+        )
+        assert db.count_company_discovered_without_website("c776") == 1
 
     def test_count_eligible_vet_vs_resolve_split(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "vet_row",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="vet_row",
             company_data={"inflow_discovery_blurb": "000|Co|https://vet.example|snip"},
         )
-        db.save_company("resolve_row", state="NEW", candidate_id="c776", company_name="resolve_row")
+        db.save_company(
+            "resolve_row", state="DISCOVERED", candidate_id="c776", company_name="resolve_row",
+        )
         vet_task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "vet_inflow_discovery",
             "candidate_id": "c776",
         }
         resolve_task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "inflow_resolve_website",
             "candidate_id": "c776",
         }
@@ -435,7 +445,7 @@ class TestAst641UnionClaimCount:
         task = {
             "entity_type": "company",
             "trigger_state": "WEBSITE_FOUND",
-            "task_key": "prefilter",
+            "task_key": "prefilter_company",
             "candidate_id": cid,
         }
         assert db.count_eligible_for_dispatch_task(task) == 2
@@ -528,73 +538,17 @@ class TestAst745StopAutomaticDispatchRowSeeding:
         assert db.count_eligible_for_dispatch_task(task) == 2
 
 
-class TestAst702PrefilterDispatchMigration:
-    """AST-702: prefilter rows migrate to HOMEPAGE_READY batch mode; obsolete retry rows removed."""
+class TestAst1675PrefilterCatalogRetarget:
+    """AST-1675: company dispatch_task.task_key prefilter → prefilter_company (idempotent).
 
-    def test_schema_migrates_prefilter_base_row_to_homepage_ready(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_dispatch_task("c702", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND")
-        conn = db._get_connection()
-        try:
-            db._dispatch_task_schema_ensured = False
-            db._ensure_dispatch_task_schema(conn)
-            row = conn.execute(
-                "SELECT trigger_state, batch_call_mode FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter'",
-                ("c702",),
-            ).fetchone()
-            assert tuple(row) == ("HOMEPAGE_READY", 1)
-        finally:
-            conn.close()
+    Supersedes AST-702 HOMEPAGE_READY content migration and AST-823 reverse retarget;
+    revises AST-703/1500 dual-row stability to preserve trigger_state under the new key.
+    """
 
-    def test_schema_deletes_obsolete_prefilter_retry_companion_row(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_dispatch_task("c702b", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
-        conn = db._get_connection()
-        try:
-            db._dispatch_task_schema_ensured = False
-            db._ensure_dispatch_task_schema(conn)
-            n = conn.execute(
-                "SELECT COUNT(*) FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND_RETRY'",
-                ("c702b",),
-            ).fetchone()[0]
-            assert n == 0
-        finally:
-            conn.close()
-
-class TestAst703PrefilterMigrationUniqueCollision:
-    """AST-703 UAT: legacy dual prefilter rows migrate without UNIQUE violation."""
-
-    def test_schema_migrates_when_both_website_found_and_retry_exist(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_dispatch_task("c703", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND")
-        db.save_dispatch_task("c703", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
-        conn = db._get_connection()
-        try:
-            db._dispatch_task_schema_ensured = False
-            db._ensure_dispatch_task_schema(conn)
-            n = conn.execute(
-                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'prefilter'",
-                ("c703",),
-            ).fetchone()[0]
-            row = conn.execute(
-                "SELECT trigger_state, batch_call_mode FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter'",
-                ("c703",),
-            ).fetchone()
-            assert n == 1
-            assert tuple(row) == ("HOMEPAGE_READY", 1)
-        finally:
-            conn.close()
-
-
-class TestAst823PrefilterDispatchMigration:
-    """AST-823 UAT: legacy prefilter_company dispatch rows and stale batch_call_mode retarget."""
-
-    def _insert_legacy_company_dispatch_row(
-        self, conn, candidate_id: str, task_key: str, trigger_state: str, batch_call_mode: int = 0,
+    def _insert_company_dispatch_row(
+        self, conn, candidate_id: str, task_key: str, trigger_state: str, batch_call_mode: int = 1,
     ) -> None:
+        # Raw insert — save_dispatch_task rejects bare leftover `prefilter` after alias drop.
         conn.execute(
             """
             INSERT INTO dispatch_task (
@@ -606,45 +560,108 @@ class TestAst823PrefilterDispatchMigration:
         )
         conn.commit()
 
-    def test_schema_retargets_prefilter_company_agent_key_row(self, sqlite_in_memory) -> None:
+    def test_schema_retargets_company_prefilter_to_prefilter_company(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         conn = db._get_connection()
         try:
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
-            self._insert_legacy_company_dispatch_row(
-                conn, "c823", "prefilter_company", "WEBSITE_FOUND",
-            )
+            self._insert_company_dispatch_row(conn, "c1675", "prefilter", "HOMEPAGE_READY")
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
             row = conn.execute(
-                "SELECT task_key, trigger_state, batch_call_mode FROM dispatch_task "
-                "WHERE candidate_id = ?",
-                ("c823",),
+                "SELECT task_key, trigger_state FROM dispatch_task WHERE candidate_id = ?",
+                ("c1675",),
             ).fetchone()
-            assert tuple(row) == ("prefilter", "HOMEPAGE_READY", 1)
+            assert tuple(row) == ("prefilter_company", "HOMEPAGE_READY")
+            leftover = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE task_key = 'prefilter' AND entity_type = 'company'",
+            ).fetchone()[0]
+            assert leftover == 0
         finally:
             conn.close()
 
-    def test_schema_enables_batch_call_mode_on_stale_homepage_ready_row(self, sqlite_in_memory) -> None:
+    def test_schema_preserves_dual_trigger_rows_under_new_key(self, sqlite_in_memory) -> None:
+        # AST-703/1500 intent: curated trigger_state pairs stay; only catalog key retargets.
         db = sqlite_in_memory
         conn = db._get_connection()
         try:
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
-            self._insert_legacy_company_dispatch_row(
-                conn, "c823b", "prefilter", "HOMEPAGE_READY", batch_call_mode=0,
+            self._insert_company_dispatch_row(conn, "c1675d", "prefilter", "WEBSITE_FOUND")
+            self._insert_company_dispatch_row(conn, "c1675d", "prefilter", "WEBSITE_FOUND_RETRY")
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT task_key, trigger_state FROM dispatch_task "
+                "WHERE candidate_id = ? ORDER BY trigger_state",
+                ("c1675d",),
+            ).fetchall()
+            assert [tuple(r) for r in rows] == [
+                ("prefilter_company", "WEBSITE_FOUND"),
+                ("prefilter_company", "WEBSITE_FOUND_RETRY"),
+            ]
+        finally:
+            conn.close()
+
+    def test_schema_deletes_old_row_when_prefilter_company_companion_exists(
+        self, sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_company_dispatch_row(
+                conn, "c1675c", "prefilter_company", "HOMEPAGE_READY", batch_call_mode=1,
+            )
+            self._insert_company_dispatch_row(
+                conn, "c1675c", "prefilter", "HOMEPAGE_READY", batch_call_mode=0,
             )
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
-            row = conn.execute(
-                "SELECT trigger_state, batch_call_mode FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter'",
-                ("c823b",),
-            ).fetchone()
-            assert tuple(row) == ("HOMEPAGE_READY", 1)
+            rows = conn.execute(
+                "SELECT task_key, batch_call_mode FROM dispatch_task WHERE candidate_id = ?",
+                ("c1675c",),
+            ).fetchall()
+            assert len(rows) == 1
+            assert tuple(rows[0]) == ("prefilter_company", 1)
         finally:
             conn.close()
+
+    def test_schema_leaves_craft_prefilter_rubric_untouched(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            # craft_prefilter_rubric is not company-prefilter catalog — must survive ensure.
+            self._insert_company_dispatch_row(
+                conn, "c1675r", "craft_prefilter_rubric", "ACTIVE_SEARCH",
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'craft_prefilter_rubric'",
+                ("c1675r",),
+            ).fetchone()[0]
+            assert n == 1
+            leftover = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'prefilter_company'",
+                ("c1675r",),
+            ).fetchone()[0]
+            assert leftover == 0
+        finally:
+            conn.close()
+
+
+# Class aliases keep older bible node-id class names importable for regression greps.
+TestAst702PrefilterDispatchMigration = TestAst1675PrefilterCatalogRetarget
+TestAst703PrefilterMigrationUniqueCollision = TestAst1675PrefilterCatalogRetarget
+TestAst823PrefilterDispatchMigration = TestAst1675PrefilterCatalogRetarget
 
 
 class TestAst748ConsultToGradeDispatchMigration:
@@ -1155,7 +1172,7 @@ class TestAst882HomepageReadyClaimsWfr:
         task = {
             "entity_type": "company",
             "trigger_state": "HOMEPAGE_READY",
-            "task_key": "prefilter",
+            "task_key": "prefilter_company",
             "candidate_id": cid,
         }
         assert db.count_eligible_for_dispatch_task(task) == 2
@@ -1219,7 +1236,7 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
         prefilter_task = {
             "entity_type": "company",
             "trigger_state": "HOMEPAGE_READY",
-            "task_key": "prefilter",
+            "task_key": "prefilter_company",
             "candidate_id": cid,
         }
         assert db.count_eligible_for_dispatch_task(prefilter_task) == 3
@@ -1341,95 +1358,162 @@ class TestAst962SaveDispatchTaskCoverLetterDefaults:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst972CandidateStageEligibility:
-    """AST-972: count_eligible for REQUESTED_* stage keys; ACTIVE_SEARCH for inflow only."""
+    """AST-972 → AST-1258: stage claim states + list ids; non-inflow Avail is unclaimed pool (not inflow-only)."""
 
-    def test_stage_resume_eligible_when_state_matches(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_candidate("c972", state="REQUESTED_RESUME", candidate_data={})
-        task = {
-            "entity_type": "candidate",
-            "trigger_state": "REQUESTED_RESUME",
-            "candidate_id": "c972",
-            "task_key": "candidate_requested_resume",
-        }
-        assert db.count_eligible_for_dispatch_task(task) == 1
-        db.save_candidate("c972", state="ACTIVE_SEARCH", candidate_data={})
-        assert db.count_eligible_for_dispatch_task(task) == 0
+    def test_stage_claim_states_include_retry(self) -> None:
+        from src.utils.config import dispatch_claim_states
 
-    def test_stage_artifacts_eligible_includes_retry(self, sqlite_in_memory) -> None:
+        assert dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate") == [
+            "REQUESTED_ARTIFACTS",
+            "REQUESTED_ARTIFACTS_RETRY",
+        ]
+        assert dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
+            "REQUESTED_RESUME",
+            "REQUESTED_RESUME_RETRY",
+        ]
+
+    def test_candidate_row_state_matches_artifacts_retry(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_candidate("c972a", state="REQUESTED_ARTIFACTS_RETRY", candidate_data={})
+        row = db.get_candidate("c972a")
+        assert row is not None
+        assert row["state"] == "REQUESTED_ARTIFACTS_RETRY"
+        # Claim companions (config) still include retry for primary trigger.
+        from src.utils.config import dispatch_claim_states
+        assert "REQUESTED_ARTIFACTS_RETRY" in dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate")
+
+    def test_candidate_stage_avail_is_unclaimed_pool(self, sqlite_in_memory) -> None:
+        # AST-1258: non-inflow candidate stage Avail = unclaimed pool in claim states (not inflow helper).
+        db = sqlite_in_memory
+        db.save_candidate("c972", state="REQUESTED_ARTIFACTS", candidate_data={})
         task = {
             "entity_type": "candidate",
             "trigger_state": "REQUESTED_ARTIFACTS",
-            "candidate_id": "c972a",
-            "task_key": "candidate_requested_artifacts",
+            "candidate_id": "c972",
+            "task_key": "craft_get_rubric",
         }
         assert db.count_eligible_for_dispatch_task(task) == 1
 
-    def test_unknown_candidate_task_key_returns_zero(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_candidate("c972b", state="ACTIVE_SEARCH", candidate_data={})
-        task = {
-            "entity_type": "candidate",
-            "trigger_state": "ACTIVE_SEARCH",
-            "candidate_id": "c972b",
-            "task_key": "not_a_real_candidate_task",
-        }
-        assert db.count_eligible_for_dispatch_task(task) == 0
-
     def test_list_candidate_ids_with_dispatch_tasks(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        # AST-1000 / AC4: empty DISTINCT set is a list, not AttributeError
         assert db.list_candidate_ids_with_dispatch_tasks() == []
         db.save_candidate("c972c", state="ACTIVE_SEARCH", candidate_data={})
         db.save_dispatch_task(
             candidate_id="c972c",
-            task_key="candidate_requested_resume",
+            task_key="craft_get_rubric",
             min_count=1,
             auto_mode=True,
-            trigger_state="REQUESTED_RESUME",
+            trigger_state="REQUESTED_ARTIFACTS",
             batch_size=1,
             freq_hrs=0,
         )
         assert "c972c" in db.list_candidate_ids_with_dispatch_tasks()
 
-# Branches: gaze_email save requires bound candidate_id (AST-1134 retires null shell).
-# Schema remains nullable + partial unique for residual rows deleted at provision.
-class TestAst1088NullCandidateGazeEmail:
-    """AST-1134: save_dispatch_task rejects null candidate_id for gaze_email too."""
 
-    def test_save_null_candidate_rejected_for_gaze_email(self, sqlite_in_memory) -> None:
-        from src.utils.config import GAZE_EMAIL_CONFIG
+
+class TestAst1258CandidatePoolEligibility:
+    """AST-1258 + AST-1436: bound-row Avail is 0/1; locked rows → 0; inflow_discovery unchanged."""
+
+    def test_pool_count_zero_when_all_matching_rows_locked(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1258e1", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c1258e2", state="REQUESTED_ARTIFACTS_RETRY", candidate_data={})
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "candidate_id": "c1258e1",
+            "task_key": "craft_get_rubric",
+        }
+        # Bound row: only c1258e1 counts (retry companion is a different candidate).
+        assert db.count_eligible_for_dispatch_task(task) == 1
+        n = db.claim_candidate_batch(
+            "lock-all-1258",
+            "REQUESTED_ARTIFACTS",
+            10,
+            states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        )
+        assert n == 2
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
+    def test_inflow_discovery_still_uses_inflow_helper(self, sqlite_in_memory) -> None:
+        # Non-ACTIVE_SEARCH candidate must not get pool count for inflow_discovery.
+        db = sqlite_in_memory
+        db.save_candidate("c1258inf", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.sync_company_search_terms("c1258inf", ["term"])
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "ACTIVE_SEARCH",
+            "candidate_id": "c1258inf",
+            "task_key": "inflow_discovery",
+            "freq_hrs": 168,
+        }
+        # Wrong state → inflow helper returns 0 (pool would be 1 if stage path were used).
+        assert db.count_eligible_for_dispatch_task(task) == 0
+        # Stage key on same rows still sees the unclaimed pool.
+        stage = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "candidate_id": "c1258inf",
+            "task_key": "craft_get_rubric",
+        }
+        assert db.count_eligible_for_dispatch_task(stage) == 1
+
+
+class TestAst1436BoundCandidateAvail:
+    """AST-1436: two unclaimed candidates → bound Avail 1; lock bound, other free → 0."""
+
+    def test_two_unclaimed_bound_row_is_one_then_zero_when_bound_locked(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c-a", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c-b", state="REQUESTED_ARTIFACTS", candidate_data={})
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "candidate_id": "c-a",
+            "task_key": "craft_get_rubric",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 1
+        n = db.claim_candidate_batch("lock-ca-1436", "REQUESTED_ARTIFACTS", 1)
+        assert n == 1
+        claimed = {r["astral_candidate_id"] for r in db.get_candidate_batch("lock-ca-1436")}
+        assert claimed == {"c-a"}
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
+
+class TestAst1088NullCandidateMeteoriteEmail:
+    """AST-1134 / AST-1467: save_dispatch_task rejects null candidate_id for meteorite_email too."""
+
+    def test_save_null_candidate_rejected_for_meteorite_email(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
 
         db = sqlite_in_memory
-        tk = GAZE_EMAIL_CONFIG["task_key"]
+        tk = METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         with pytest.raises(ValueError, match="candidate_id is required"):
             db.save_dispatch_task(
                 candidate_id=None,
                 task_key=tk,
-                min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
-                auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
-                entity_type=GAZE_EMAIL_CONFIG["entity_type"],
-                trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
-                batch_size=GAZE_EMAIL_CONFIG["batch_size"],
-                freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
+                min_count=int(METEORITE_EMAIL_MAILBOX_CONFIG["min_count"]),
+                auto_mode=bool(METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"]),
+                entity_type=METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"],
+                trigger_state=METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"],
+                batch_size=METEORITE_EMAIL_MAILBOX_CONFIG["batch_size"],
+                freq_hrs=float(METEORITE_EMAIL_MAILBOX_CONFIG["freq_hrs"] or 0),
             )
 
-    def test_bound_gaze_email_save(self, sqlite_in_memory) -> None:
-        from src.utils.config import GAZE_EMAIL_CONFIG
+    def test_bound_meteorite_email_save(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
 
         db = sqlite_in_memory
-        tk = GAZE_EMAIL_CONFIG["task_key"]
+        tk = METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         tid = db.save_dispatch_task(
             candidate_id="cand-ge",
             task_key=tk,
-            min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
-            auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
-            entity_type=GAZE_EMAIL_CONFIG["entity_type"],
-            trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
-            batch_size=GAZE_EMAIL_CONFIG["batch_size"],
-            freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
+            min_count=int(METEORITE_EMAIL_MAILBOX_CONFIG["min_count"]),
+            auto_mode=bool(METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"]),
+            entity_type=METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"],
+            trigger_state=METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"],
+            batch_size=METEORITE_EMAIL_MAILBOX_CONFIG["batch_size"],
+            freq_hrs=float(METEORITE_EMAIL_MAILBOX_CONFIG["freq_hrs"] or 0),
         )
         row = db.get_dispatch_task(tid)
         assert row is not None
@@ -1462,14 +1546,14 @@ class TestAst1088NullCandidateGazeEmail:
             conn.close()
 
 # Branches: data-layer gaze fake due retired (AST-1135); freq helper public.
-class TestAst1090GazeEmailDue:
-    """AST-1135: get_due_tasks / count_eligible no longer special-case gaze_email."""
+class TestAst1090MeteoriteEmailDue:
+    """AST-1135 / AST-1467: get_due_tasks / count_eligible no special-case for mailbox key."""
 
-    def test_get_due_skips_gaze_email_shell(self, sqlite_in_memory) -> None:
-        from src.utils.config import GAZE_EMAIL_CONFIG
+    def test_get_due_skips_mailbox_null_shell(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
 
         db = sqlite_in_memory
-        tk = GAZE_EMAIL_CONFIG["task_key"]
+        tk = METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         db.save_dispatch_task(
             candidate_id="cand-due",
             task_key=tk,
@@ -1483,10 +1567,10 @@ class TestAst1090GazeEmailDue:
         assert tk not in [t["task_key"] for t in due]
 
     def test_count_eligible_returns_zero_for_gaze(self, sqlite_in_memory) -> None:
-        from src.utils.config import GAZE_EMAIL_CONFIG
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
 
         db = sqlite_in_memory
-        tk = GAZE_EMAIL_CONFIG["task_key"]
+        tk = METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         tid = db.save_dispatch_task(
             candidate_id="cand-freq",
             task_key=tk,
@@ -1515,3 +1599,179 @@ class TestAst1135DispatchTaskFreqAllows:
         old = (datetime.now(timezone.utc) - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
         assert db.dispatch_task_freq_allows({"freq_hrs": 24, "last_run_at": old}) is True
 
+
+class TestAst1618SaveDispatchTaskCallerEntity:
+    """AST-1618: save_dispatch_task honors caller entity_type for sort_by."""
+
+    def test_caller_entity_overrides_catalog_sort(self, sqlite_in_memory) -> None:
+        """Stage 1 Done-when: non-catalog entity + trigger valid for *that* entity.
+
+        save must not require the trigger to be valid for the task-key catalog entity
+        when deriving defaults before applying the caller override.
+        """
+        from src.utils.config import _dispatch_sort_by_for, dispatch_task_admin_defaults
+
+        db = sqlite_in_memory
+        catalog = dispatch_task_admin_defaults("grade_do")  # job / PASSED_JD / latest_score
+        assert catalog["entity_type"] == "job"
+        assert catalog["sort_by"] == "latest_score"
+        expected_sort = _dispatch_sort_by_for("company", "WATCH")
+        assert expected_sort != catalog["sort_by"]
+        tid = db.save_dispatch_task(
+            "c1618",
+            "grade_do",
+            min_count=1,
+            entity_type="company",
+            trigger_state="WATCH",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == "company"
+        assert row["trigger_state"] == "WATCH"
+        assert row["sort_by"] == expected_sort
+
+    def test_caller_entity_with_catalog_valid_trigger(self, sqlite_in_memory) -> None:
+        """Overlap path (NEW): entity sticks; sort matches chosen-entity helper."""
+        from src.utils.config import _dispatch_sort_by_for
+
+        db = sqlite_in_memory
+        expected_sort = _dispatch_sort_by_for("company", "NEW")
+        tid = db.save_dispatch_task(
+            "c1618n",
+            "grade_do",
+            min_count=1,
+            entity_type="company",
+            trigger_state="NEW",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == "company"
+        assert row["sort_by"] == expected_sort
+
+    def test_omit_entity_keeps_catalog_defaults(self, sqlite_in_memory) -> None:
+        from src.utils.config import dispatch_task_admin_defaults
+
+        db = sqlite_in_memory
+        catalog = dispatch_task_admin_defaults("grade_do", trigger_state="PASSED_JD")
+        tid = db.save_dispatch_task(
+            "c1618b",
+            "grade_do",
+            min_count=1,
+            trigger_state="PASSED_JD",
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] == catalog["entity_type"]
+        assert row["sort_by"] == catalog["sort_by"]
+
+    def test_mailbox_omit_entity_keeps_null_sort(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+
+        db = sqlite_in_memory
+        db.save_candidate("c1618m", state="ACTIVE_SEARCH", candidate_data={})
+        tid = db.save_dispatch_task(
+            "c1618m",
+            METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
+            min_count=1,
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["entity_type"] is None
+        assert row["sort_by"] is None
+
+    def test_mailbox_caller_entity_still_null_sort(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+
+        db = sqlite_in_memory
+        db.save_candidate("c1618m2", state="ACTIVE_SEARCH", candidate_data={})
+        tid = db.save_dispatch_task(
+            "c1618m2",
+            METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
+            min_count=1,
+            entity_type="company",  # sort helper skipped for mailbox
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["sort_by"] is None
+
+class TestAst1622MeteoriteCountEligibleDue:
+    """AST-1622: global meteorite pool count_eligible + AUTO-due without candidate_id."""
+
+    def test_count_meteorites_unclaimed_in_states(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        ids = db.insert_meteorite_rows(
+            [
+                {"candidate_id": "c1", "source_kind": "email", "source_id": "m1"},
+                {"candidate_id": "c1", "source_kind": "email", "source_id": "m2"},
+                {"candidate_id": "c2", "source_kind": "email", "source_id": "m3"},
+            ]
+        )
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 3
+        db.claim_meteorite_batch("batch-1622", "NEW", 1)
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 2
+        db.update_meteorite(ids[1], state="READY")
+        assert db.count_meteorites_unclaimed_in_states(["NEW"]) == 1
+        assert db.count_meteorites_unclaimed_in_states(["READY"]) == 1
+        with pytest.raises(ValueError):
+            db.count_meteorites_unclaimed_in_states([])
+
+    def test_count_eligible_null_candidate_meteorite(self, sqlite_in_memory) -> None:
+        # Staging rows still carry candidate_id; the dispatch_task shell is global (NULL cid).
+        db = sqlite_in_memory
+        db.insert_meteorite_rows(
+            [
+                {"candidate_id": "c-a", "source_kind": "email", "source_id": "g1"},
+                {"candidate_id": "c-b", "source_kind": "email", "source_id": "g2"},
+            ]
+        )
+        task = {
+            "entity_type": "meteorite",
+            "trigger_state": "NEW",
+            "candidate_id": None,
+            "task_key": "stage_meteorite",
+            "min_count": 1,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
+        # Non-null candidate_id on the task still counts the global pool.
+        task["candidate_id"] = "ignored"
+        assert db.count_eligible_for_dispatch_task(task) == 2
+
+    def test_count_eligible_job_still_requires_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        task = {
+            "entity_type": "job",
+            "trigger_state": "NEW",
+            "candidate_id": None,
+            "task_key": "evaluate_jd",
+            "min_count": 1,
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
+    def test_get_due_includes_null_candidate_meteorite(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.insert_meteorite_rows(
+            [{"candidate_id": "c-due", "source_kind": "email", "source_id": "due1"}]
+        )
+        conn = db._get_connection()
+        try:
+            db._ensure_dispatch_task_schema(conn)
+            conn.execute(
+                """
+                INSERT INTO dispatch_task (
+                    candidate_id, task_key, entity_type, trigger_state, sort_by,
+                    batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor
+                ) VALUES (
+                    NULL, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at',
+                    0, 0, 1, 10, 1, NULL
+                )
+                """
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        due = db.get_due_tasks()
+        keys = [t["task_key"] for t in due]
+        assert "stage_meteorite" in keys
+        row = next(t for t in due if t["task_key"] == "stage_meteorite")
+        assert row["candidate_id"] is None
+        assert row["available_count"] >= 1

@@ -17,7 +17,7 @@ Repo-owned **`data/admin/agent.json`** and **`data/admin/agent_task.json`**: bar
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Missing / malformed file handling | `src/core/repo_admin_json.py` | `TestLoadRepoAdminJsonFile` |
-| Transactional apply order (agent → agent_task) | `src/core/repo_admin_json.py` | `TestApplyRepoAdminJsonAtStartup::test_applies_agent_then_agent_task_on_one_connection` |
+| Boot-time apply no-op (all deploy envs) | `src/core/repo_admin_json.py` | `TestApplyRepoAdminJsonAtStartup::test_startup_apply_is_noop_on_all_deploy_envs` (**AST-1502**) |
 | Export UTF-8 round-trip files | `src/core/repo_admin_json.py` | `TestExportRepoAdminJsonToFiles` |
 
 Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks.md`**. Bootstrap wire: **`docs/test-bible/core/bootstrap.md`**.
@@ -275,6 +275,26 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
   -q
 ```
 
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+`qualify_meteorite` Ruth prompts: **COMPANY STEM** priority rules (candidate `meteorite-self` / sender email / job-link slug); `user_prompt` asks for `company_stem`. Whole-file AST-756 fixture byte-identical to repo `agent_task.json` (build `cp` + `cmp`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt contract + fixture byte lock | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1494QualifyMeteoriteCompanyStemCatalog`** |
+
+**Broken / obsolete:** none — additive prompt fields on existing row.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog \
+  -q
+```
+
 
 ### AST-1211 · AST-1186
 
@@ -383,9 +403,9 @@ Meteorite-track `agent_task` rows move to **Meteorite Review** (`task_group_orde
 | Meteorite Review membership + no Job Review | `data/admin/agent_task.json` | **`TestAst1219MeteoriteReviewGroupMembership`**; revised **`TestAst1218GazeReviewClassicGroupLabel`** (meteorite half) |
 | Fixture grouping lockstep + AST-1211 | `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1219MeteoriteReviewGroupMembership::test_fixture_grouping_lockstep_and_ast1211`** |
 | Per-row group/seq pins | same | revised **`TestAst1055MeteoriteCatalogRows`**, **`TestAst1060QualifyMeteoriteCatalogRow`**, **`TestAst1089ParseMeteoriteEmailCatalogRow`**, **`TestAst1106GazeEmailCatalogRow`** |
-| Scheduled Actions section header mock | frontend pages | revised **`test_AdminScheduledActions_AST1106.test.tsx`** (Job Review → Meteorite Review) |
+| Scheduled Actions section header mock | frontend pages | ~~`test_AdminScheduledActions_AST1106.test.tsx`~~ — **retired AST-1467** (gaze carve-out obsolete) |
 
-**Broken / obsolete:** meteorite **Job Review** / fractional seq asserts (`2.3`…`11`); AST-1218 meteorite-half **Job Review**/`4000`; Scheduled Actions mock/header still **Job Review** for `gaze_email`.
+**Broken / obsolete:** meteorite **Job Review** / fractional seq asserts (`2.3`…`11`); AST-1218 meteorite-half **Job Review**/`4000`; Scheduled Actions mock/header still **Job Review** for `gaze_email`. **AST-1467 return:** frontend AST-1106 carve-out file deleted — see `docs/test-bible/frontend/pages.md` § AST-1106.
 
 **Integration:** none revised.
 
@@ -401,10 +421,12 @@ Meteorite-track `agent_task` rows move to **Meteorite Review** (`task_group_orde
   -q
 ```
 
-Vitest (when running full frontend / this page file):
+Vitest (AST-1106 file retired AST-1467 — gt0 regression via AST-887/AST-894):
 
 ```bash
-cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-887|AST-894"
 ```
 
 ### AST-1222 · AST-1184
@@ -431,5 +453,142 @@ Grouping-only `meteorite_grade_do` / `meteorite_grade_get` under **Meteorite Rev
   tests/component/core/test_repo_admin_json.py::TestAst1218GazeReviewClassicGroupLabel \
   tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
   tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
+  -q
+```
+
+### AST-1269 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1269-uat-alias-agent-task-rows-not-seeded-on-startup`.
+
+UAT restore: `meteorite_grade_do` / `meteorite_grade_get` grouping-only rows back in `data/admin/agent_task.json` after AST-1239 wipe (catalog **50 → 52**). Aliases stay under **Meteorite Review** / `"4500"` / seq `5`/`6` with AST-1222 pinned UUIDs; fixture lockstep for those two keys only. Does **not** re-run full Gaze/Meteorite Review membership or `meteorite_email` rename.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias seed restore + MR-only membership on tip | `data/admin/agent_task.json` | **`TestAst1269AliasAgentTaskSeedRestore`**; revised **`TestAst1222MeteoriteGradeAliasCatalogRows`** (masters keep prompts; no Gaze pin) |
+| Catalog count 50→52 + frozenset (`parse_meteorite_email`, no `meteorite_email` / `propose_application_responses`) | same | revised **`TestAst786AgentTaskRepoJsonSeed`** |
+| like/upshot remain Job Review seq `10`/`11` on wipe tip | same | revised **`TestAst1055MeteoriteCatalogRows`** |
+
+**Broken / obsolete (skipped pending broader seed-repair UAT):** full Gaze/Meteorite membership + `meteorite_email` rename classes — **`TestAst1218…`**, **`TestAst1219…`**, **`TestAst1089…`**, **`TestAst1106…`**, **`TestAst1144…`**, **`TestAst1213…`**, qualify/evaluate fixture lockstep under pre-wipe grouping (**`TestAst1196…`**, **`TestAst1060…`**, **`TestAst1211…`**, **`TestAst878…`**, **`TestAst1015…`**).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1269AliasAgentTaskSeedRestore \
+  tests/component/core/test_repo_admin_json.py::TestAst1222MeteoriteGradeAliasCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  -q
+```
+
+
+### AST-1368 · AST-1360
+
+**Parent:** [AST-1360 — Add ideal_day to candidate context](https://linear.app/astralcareermatch/issue/AST-1360/add-ideal-day-to-the-set-of-candidate-context-strengths-priorities-etc). **Publish:** `origin/sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts`.
+
+`craft_do_rubric.cache_prompt` gains Ideal Day / `{$IDEAL_DAY}` after Back Story and before Base Resume. LIKE + Job Description inherit via existing `{$CALLER_CACHE_A}` (no direct Ideal Day rows). Joblist / GET / meteorite craft rows intentionally omit `{$IDEAL_DAY}`. Depends on **AST-1365** `TOKEN_SOURCES["IDEAL_DAY"]`. Does **not** own Candidate UI (**AST-1366**) or Topic Menu informs (**AST-1367**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| DO cache Ideal Day + inheritance / boundaries | `data/admin/agent_task.json` | **`TestAst1368IdealDayCraftDoCachePrompt`** |
+
+**Broken / obsolete this pass:** none — additive seed prompt section only (no whole-file fixture byte lock on `craft_do_rubric`).
+
+**Integration:** no existing scenario asserts craft_do Ideal Day token — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Craft DO Ideal Day + LIKE/JD caller-cache + out-of-scope omit: `tests/component/core/test_repo_admin_json.py::TestAst1368IdealDayCraftDoCachePrompt`
+
+**AST-1368** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1368IdealDayCraftDoCachePrompt \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1367 · AST-1360
+
+Estelle `topic_menu_preamble_confirm` / `topic_menu_generate` `cache_prompt` vocabulary includes `ideal_day`. Primary: **`docs/test-bible/utils/config.md`** § AST-1367 — revised **`TestAst1075TopicMenuCatalogRows`**.
+
+### AST-1515 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch`.
+
+`contact_estelle_turn` system/user prompts teach `~~/<task_key> <parameters>~~` markup in `agent_payload.reply` (not `skill_calls`); reference live_content **Available contact tasks (markup)** section. Turn wiring: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Markup prompt contract | `data/admin/agent_task.json` | **`TestAst1515ContactEstelleTurnMarkupPrompt`** |
+
+**Broken / obsolete:** none — additive prompt paragraphs on existing row.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1515ContactEstelleTurnMarkupPrompt \
+  -q
+```
+
+### AST-1400 · AST-1398
+
+**Parent:** [AST-1398 — Update agent.json and agent_task.json](https://linear.app/astralcareermatch/issue/AST-1398/update-agentjson-and-agent-taskjson). **Publish:** `origin/sub/AST-1398/AST-1400-gap-estelle-craft-seed-asserts`.
+
+Gap sibling of **AST-1399** (`[board-betty] TESTS: REVISE`). Pins Estelle repo columns and craft Do/Like attachment identities against `data/admin/agent.json` / `agent_task.json`. AST-786/787 membership and repo-column tests stay as-is (no rewrite of the six-persona fixture mapping). Product/seed already on sibling AST-1399.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Estelle temp / max_tokens / §1 content; craft Do/Like uuids + prompt lengths | `data/admin/agent.json`, `data/admin/agent_task.json` | **`TestAst1400EstelleCraftSeedPins`** (`test_estelle_and_craft_match_ast1399_export` is the `[bug-repro]`) |
+
+**Broken / obsolete this pass:** none — additive pins. Do **not** fold Atlas/pre-existing `expected-agent.json` drift into this class.
+
+**Integration:** none revised; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Estelle + craft Do/Like seed pins: `tests/component/core/test_repo_admin_json.py::TestAst1400EstelleCraftSeedPins`
+
+**AST-1400** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1400EstelleCraftSeedPins \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate. `[bug-repro]` node is red against pre-AST-1399 (`origin/dev`) seed and green on this tip.
+
+
+
+### AST-1502 · AST-1492 (gap — bootstrap kill-switch)
+
+Primary: **`docs/test-bible/core/bootstrap.md`** § AST-1502. **`TestApplyRepoAdminJsonAtStartup`** rewritten: `apply_repo_admin_json_at_startup` is a no-op on staging/production/local (AST-1497 kill-switch). Export / divergence / catalog seed tests unchanged.
+
+---
+
+### AST-1529 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1529-stage-meteorite-catalog-config`.
+
+Live `stage_meteorite` Ruth row (six outcome literals in `cache_prompt`; seq `2.0` before `qualify_meteorite` `2.5`); `meteorite_email` remains non-live (empty prompts / no `agent_id`). Catalog frozenset drops stale `parse_meteorite_email`, adds `stage_meteorite` (**54** keys). AST-756 fixture whole-file twin synced. Config SSOT: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage Ruth shell + mailbox non-live + fixture lockstep | `data/admin/agent_task.json` | **`TestAst1529StageMeteoriteCatalogRow`** |
+| Catalog membership 54 | same | revised **`TestAst786AgentTaskRepoJsonSeed`** (`parse_meteorite_email` → `stage_meteorite`) |
+
+**Broken / obsolete:** **`TestAst1089ParseMeteoriteEmailCatalogRow`** remains under `_AST1269_SEED_WIPE_SKIP` (parse_modes Ruth shell); live classify coverage is **`TestAst1529StageMeteoriteCatalogRow`**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
   -q
 ```

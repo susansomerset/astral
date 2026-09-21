@@ -12,19 +12,45 @@
 
 **Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
 
-Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT aliases `…/artifacts/job_resume` and `…/artifacts/proposed_answers` write body dicts onto those keys.
+Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT `…/artifacts/proposed_answers` still writes a body dict onto that key. PUT `…/artifacts/job_resume` body dual-write is **AST-1548 / AST-1554** (was keep-pin under AST-1430).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | GET hydrate + PUT aliases | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi`** |
 
-**Broken / obsolete:** none — legacy `resume_content` / `application_responses` PUT routes retained.
+**Broken / obsolete:** `test_put_job_resume_writes_body_dict` (pre-AST-1430); `test_put_job_resume_writes_resume_content_keeps_pin` — AST-1554 (keep-pin).
 
 **Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi \
+  -q
+```
+
+### AST-1430 · AST-1422
+
+**Parent:** [AST-1422](https://linear.app/astralcareermatch/issue/AST-1422/finalize-job-resume-isnt-getting-parsed-into-the-job-resume-renderer). **Publish:** `origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin`. Product fix: **AST-1428**.
+
+**Broken / obsolete under AST-1548/AST-1554:** PUT keep-pin (`test_put_job_resume_writes_resume_content_keeps_pin`) — see AST-1554 dual-write node.
+
+### AST-1554 · AST-1547 (gap — PUT body dual-write)
+
+**Parent:** [AST-1547](https://linear.app/astralcareermatch/issue/AST-1547/job-resume-content-is-not-saving-to-the-job-record). Product: **AST-1548**.
+
+`PUT /api/jobs/<id>/artifacts/job_resume` stays thin → `save_job_artifact_job_resume_body` (table SoT under **AST-1556**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT via tracker body helper | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper`** |
+
+**Broken / obsolete:** dual-write / keep-pin PUT node names — AST-1556.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper \
   -q
 ```
 
@@ -43,3 +69,249 @@ Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT aliases `�
   tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_bulk_state_updates_jobs \
   -q
 ```
+
+### AST-1347 · AST-1346
+
+**Parent:** [AST-1346](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown`.
+
+`_flatten_grades` lifts `{jd,do,get,like}_score_breakdown` when present on `job_data` (same loop as grades/scores/rubrics). Does not invent when absent. Persist math: **`docs/test-bible/core/consult.md`** (**AST-1347**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Flatten lift + absent | `src/ui/api/api_jobs.py` (`_flatten_grades`) | **`TestAst1347FlattenScoreBreakdown`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
+  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  -q
+```
+
+### AST-1348 · AST-1346
+
+**Parent:** [AST-1346](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome`.
+
+After stored-trio lift, `_flatten_grades` derives missing `{jd,do,get,like}_score_breakdown` via `_phase_score_breakdown` when `{prefix}_score` + grades + job-carried rubric are present (response only). Header chrome: **`docs/test-bible/frontend/components.md`** / **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Derive / keep stored / omit unscored | `src/ui/api/api_jobs.py` (`_flatten_grades`) | **`TestAst1348FlattenDeriveBreakdown`** |
+
+**Broken / obsolete:** none — AST-1347 absent-without-rubric case still holds.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestAst1348FlattenDeriveBreakdown \
+  tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
+  -q
+```
+
+---
+
+### AST-1420 · AST-1419
+
+**Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload`.
+
+`GET /api/jobs/<astral_job_id>/copy` (`@require_auth`) returns `assemble_job_copy_snapshot` JSON: 401 unauthenticated, 404 missing job, 500 assembler exception. Does not hydrate artifacts, flatten grades, or attach `agent_story`. Assembler contract: **`docs/test-bible/core/tracker.md`**. Copy button: AST-1421.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Copy route wrap | `src/ui/api/api_jobs.py` | **`TestAst1420CopySnapshotRoute`** |
+
+**Broken / obsolete:** none — detail hydrate (**AST-1100**) unchanged.
+
+**Integration:** none — no existing jobs copy/detail scenario to revise.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestAst1420CopySnapshotRoute \
+  tests/component/core/test_tracker.py::TestAst1420AssembleJobCopySnapshot \
+  -q
+```
+
+### AST-1453 · AST-1446
+
+**Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits`.
+
+GET detail attaches `fields_editable` + `legal_next_states` (empty when not skipped). Authenticated `PUT /api/jobs/<id>` persists via `persist_skipped_job_edits` (409 not-skipped / illegal hop / identity collision; 400 empty title/link/state/body; 404 missing). Core contract: **`docs/test-bible/core/tracker.md`**. Form chrome: AST-1454.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| GET meta + PUT status map | `src/ui/api/api_jobs.py` | **`TestAst1453SkippedEditMetaAndPut`** |
+
+**Broken / obsolete:** none — additive keys on GET detail; existing story/hydrate suites still hold.
+
+**Integration:** none — no existing jobs detail/persist scenario to revise.
+
+## QA test manifest
+
+1. Core successors + persist gate/writes/hop ordering: `tests/component/core/test_tracker.py::TestAst1453LegalJobSuccessorStates` + `::TestAst1453PersistSkippedJobEdits`
+2. GET meta + PUT auth/status/detail shape: `tests/component/ui/api/test_api_jobs.py::TestAst1453SkippedEditMetaAndPut`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1453LegalJobSuccessorStates \
+  tests/component/core/test_tracker.py::TestAst1453PersistSkippedJobEdits \
+  tests/component/ui/api/test_api_jobs.py::TestAst1453SkippedEditMetaAndPut \
+  -q
+```
+
+**Bible shasum (this pass):** `docs/test-bible/ui/api/api_jobs.md` → `0dc463232d8241a0f85e6a85c71b9073aa9a7143` (pre-line)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1479 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
+
+`GET /api/jobs?view=applied` lists `APPLIED_JOB_STATES` ordered by `state_changed_at`. Page: **`docs/test-bible/frontend/pages.md`** § AST-1479.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied view list | `src/ui/api/api_jobs.py` | **`test_list_applied_uses_applied_job_states`**; revised **`test_list_recommended_and_default`** (unknown view → `[]`, not `view=applied`) |
+
+**Broken / obsolete:** `test_list_recommended_and_default` asserting `view=applied` → `[]`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  -q
+```
+
+### AST-1488 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`.
+
+**Re-land of AST-1479** — same `view=applied` list branch. **Existing coverage — no new tests.** Full manifest: **`docs/test-bible/frontend/pages.md`** § AST-1488.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied view list | `src/ui/api/api_jobs.py` | **`test_list_applied_uses_applied_job_states`**; **`test_list_recommended_and_default`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+### AST-1498 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1498-candidate-applied-missing-from-applied-screen`.
+
+Applied list must include post-applied jobs on stem/meteorite companies when `company.candidate_id` is NULL — supplement + repair pass on `view=applied` only. Page POST body: **`docs/test-bible/frontend/pages.md`** § AST-1498.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied view stem linkage (**[bug-repro]**) | `src/ui/api/api_jobs.py` | **`test_list_applied_includes_stem_job_null_company_candidate_id_ast1498`** |
+| Primary pass params (regression) | same | revised **`test_list_applied_uses_applied_job_states`** (multi-call safe) |
+
+**Broken / obsolete:** none pre-fix — **`test_list_applied_uses_applied_job_states`** revised so supplement pass does not false-fail post-fix.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. **[bug-repro]** API stem NULL linkage: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_includes_stem_job_null_company_candidate_id_ast1498`
+2. Applied primary pass regression: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states`
+3. **[bug-repro]** Page POST `candidate_id`: `tests/component/frontend/pages/test_JobsApplied.test.tsx` — **`AST-1498 [bug-repro]`**
+
+**AST-1498** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_includes_stem_job_null_company_candidate_id_ast1498 \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1498"
+```
+
+**Pass criterion:** repro lines flip red→green after `make-fix`; regression line stays green — not zero-arg harness / branch-lock gate.
+
+
+---
+
+### AST-1592 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation`.
+
+PUT job_resume / cover_letter / legacy resume_content call `save_job_artifact` with catalog keys (not type-specific helpers). Primary tracker coverage: **`docs/test-bible/core/tracker.md`** § AST-1592.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT job_resume → catalog write | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_persists_via_tracker_body_helper`** (revised) |
+| PUT cover_letter → catalog write | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_put_cover_letter_persists_via_tracker`** (revised) |
+
+**Broken / obsolete this pass:** spies on `save_job_artifact_job_resume_body` / `save_job_artifact_cover_letter` — retargeted to `save_job_artifact`.
+
+### AST-1694 · AST-1686
+
+**Parent:** [AST-1686](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get`.
+
+`GET /api/jobs/<id>` always includes `listing_href` (http(s) string or JSON `null`). Prefer http(s) `job.job_link`; else http(s) from `get_meteorite_link_by_astral_job_id`; soft-fail on lookup throw → `null`. Primary data helper: **`docs/test-bible/data/database/meteorites.md`** § AST-1694. Does **not** attach `related_meteorite` (AST-1691 / AST-1685).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prefer job_link / meteorite fallback / non-http null / soft-fail | `src/ui/api/api_jobs.py` | **`tests/component/ui/api/test_api_jobs_ast1694_listing_href.py::TestAst1694ListingHref`** |
+| Detail key + hydrate kwargs | same | **`TestAst1694DetailListingHrefKey`** (same module) |
+
+**Broken / obsolete:** shared `TestJobsRoutes` detail cases that omit `listing_href` / hydrate `astral_job_id` — covered by **`TestAst1694DetailListingHrefKey`**.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs_ast1694_listing_href.py \
+  tests/component/data/database/test_meteorites.py::TestAst1694GetMeteoriteLinkByAstralJobId \
+  -q
+```
+
+### AST-1691 · AST-1685
+
+**Publish:** `origin/sub/AST-1685/AST-1691-meteorite-lookup-report-config-api`.
+
+`GET /api/jobs/<id>` includes `related_meteorite` (flat object or `null`); soft-fail → `null` (not 500). Primary: **`docs/test-bible/data/database/meteorites.md`** § AST-1691.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| related_meteorite object | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_detail_related_meteorite_object`** |
+| related_meteorite soft-fail | same | **`TestJobsRoutes::test_detail_related_meteorite_soft_fail`** |
+| related_meteorite null (no link) | same | revised **`test_detail_returns_agent_story`**, **`test_detail_soft_fails_agent_story`** |
+
+**Broken / obsolete:** detail hydrate mocks — add `astral_job_id=None` kw so related_meteorite path does not TypeError.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_returns_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_soft_fails_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_object \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_soft_fail \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+`GET /api/jobs/:id` exposes `company_id`, `source`, `source_entity_id`, and inherited `job_link`. Primary manifest: **`docs/test-bible/core/consult.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Detail parent + job_link | `src/ui/api/api_jobs.py` | **`TestAst1704JobsDetailParentFields`** |
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** none.

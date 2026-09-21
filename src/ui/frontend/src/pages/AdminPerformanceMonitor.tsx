@@ -9,6 +9,7 @@ import {
   type AdminCandidateFilterValue,
   useAdminCandidateFilter,
 } from "../hooks/useAdminCandidateFilter"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 
 interface LedgerRow {
   batch_id: string
@@ -26,7 +27,7 @@ interface LedgerRow {
 }
 
 interface LogEntry {
-  id: string
+  id: number
   level: string
   logger_name: string
   message: string
@@ -93,7 +94,7 @@ export default function PerformanceMonitor() {
   const { selectedId } = useCandidate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<LedgerRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>("asc")
   const [expandedBatch, setExpandedBatch] = useState<string | null>(null)
@@ -198,19 +199,19 @@ export default function PerformanceMonitor() {
     setFilter("date_to", dateToInput)
   }
 
-  const loadData = useCallback((showSpinner = false) => {
-    if (showSpinner) setLoading(true)
+  const loadData = useCallback((showSpinner = false, silent = false) => {
+    beginRefresh(showSpinner)
     const qs = new URLSearchParams(filters).toString()
-    api(`/api/admin/dispatch_ledger${qs ? `?${qs}` : ""}`)
+    api(`/api/admin/dispatch_ledger${qs ? `?${qs}` : ""}`, silent ? { silent: true } : {})
       .then(r => r.json())
       .then(data => setRows(Array.isArray(data) ? data : []))
       .catch(() => setRows([]))
-      .finally(() => setLoading(false))
-  }, [filters])
+      .finally(() => endRefresh())
+  }, [filters, beginRefresh, endRefresh])
 
   useEffect(() => {
-    loadData(true)                                    // spinner on first/filter load
-    const id = setInterval(() => loadData(), 15_000)  // silent background refresh
+    loadData(true)
+    const id = setInterval(() => loadData(false, true), 15_000)
     return () => clearInterval(id)
   }, [loadData])
 
@@ -443,8 +444,12 @@ function LogViewer({
   const [copied, setCopied] = useState(false)
 
   const visibleLogs = useMemo(() => {
-    if (!logLevelFilter) return logs
-    return logs.filter(entry => entry.level === logLevelFilter)
+    const filtered = !logLevelFilter ? logs : logs.filter(entry => entry.level === logLevelFilter)
+    return [...filtered].sort((a, b) => {
+      const byTime = a.created_at.localeCompare(b.created_at)
+      if (byTime !== 0) return byTime
+      return a.id - b.id
+    })
   }, [logs, logLevelFilter])
 
   if (loading) return <div className="dispatch-log-panel"><p className="list-page-status">Loading logs...</p></div>
@@ -470,7 +475,7 @@ function LogViewer({
   return (
     <div className="dispatch-log-panel">
       <div className="dispatch-log-toolbar">
-        <button className="dispatch-log-copy-btn" onClick={copyLogs} title="Copy logs to clipboard">
+        <button className="btn secondary" onClick={copyLogs} title="Copy logs to clipboard">
           {copied ? "✓ Copied" : "⎘ Copy"}
         </button>
       </div>

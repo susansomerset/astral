@@ -466,17 +466,7 @@ class TestAst834ClearSelectJobPageRunNextMigration:
 
 
 class TestAst1113CraftRunNextChainMigration:
-    """AST-1113: confirm/correct craft_* agent_task.run_next succession at boot."""
-
-    CHAIN = (
-        ("craft_company_search_terms", "craft_joblist_rubric"),
-        ("craft_joblist_rubric", "craft_jobdesc_rubric"),
-        ("craft_jobdesc_rubric", "craft_do_rubric"),
-        ("craft_do_rubric", "craft_get_rubric"),
-        ("craft_get_rubric", "craft_like_rubric"),
-        ("craft_like_rubric", "craft_prefilter_rubric"),
-        ("craft_prefilter_rubric", ""),
-    )
+    """AST-1113 → AST-1264: craft run_next migration is a no-op (repo JSON authority)."""
 
     def _run_next(self, db, conn: sqlite3.Connection, task_key: str) -> str:
         row = conn.execute(
@@ -486,46 +476,35 @@ class TestAst1113CraftRunNextChainMigration:
         assert row is not None
         return row[0] or ""
 
-    def test_ast1113_migration_corrects_wrong_links(self, sqlite_in_memory) -> None:
+    def test_ast1264_migration_noop_leaves_wrong_links(self, sqlite_in_memory) -> None:
+        # Fossil AST-1113 used to rewrite craft_get → craft_like (skip do). Now must not touch.
         db = sqlite_in_memory
         conn = db._get_connection()
         try:
             db._ensure_agent_task_schema(conn)
-            for tk, _exp in self.CHAIN:
-                # Seed empty then SQL-set a valid-but-wrong successor (avoid self-loop / unknown-key bans).
-                db.save_agent_task(tk, agent_id="agent-1", user_prompt=f"{tk} prompt", run_next="")
-                conn.execute(
-                    "UPDATE agent_task SET run_next = ? WHERE task_key = ? AND current = 1",
-                    ("craft_resume_base", tk),
-                )
-                conn.commit()
+            db.save_agent_task(
+                "craft_get_rubric",
+                agent_id="agent-1",
+                user_prompt="get prompt",
+                run_next="craft_do_rubric",
+            )
+            conn.execute(
+                "UPDATE agent_task SET run_next = ? WHERE task_key = ? AND current = 1",
+                ("craft_like_rubric", "craft_get_rubric"),
+            )
+            conn.commit()
             db._apply_ast1113_craft_run_next_chain_migration(conn)
-            for tk, exp in self.CHAIN:
-                assert self._run_next(db, conn, tk) == exp
+            assert self._run_next(db, conn, "craft_get_rubric") == "craft_like_rubric"
         finally:
             conn.close()
 
-    def test_ast1113_migration_idempotent_when_already_correct(
+    def test_ast1264_migration_noop_does_not_invent_successors(
         self, sqlite_in_memory,
     ) -> None:
         db = sqlite_in_memory
         conn = db._get_connection()
         try:
             db._ensure_agent_task_schema(conn)
-            for tk, exp in self.CHAIN:
-                db.save_agent_task(tk, agent_id="agent-1", user_prompt=f"{tk} prompt", run_next=exp)
-            db._apply_ast1113_craft_run_next_chain_migration(conn)
-            for tk, exp in self.CHAIN:
-                assert self._run_next(db, conn, tk) == exp
-        finally:
-            conn.close()
-
-    def test_ast1113_migration_skips_missing_rows(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        conn = db._get_connection()
-        try:
-            db._ensure_agent_task_schema(conn)
-            # Only seed entry key — missing siblings must not invent ghost rows.
             db.save_agent_task(
                 "craft_company_search_terms",
                 agent_id="agent-1",
@@ -533,13 +512,23 @@ class TestAst1113CraftRunNextChainMigration:
                 run_next="",
             )
             db._apply_ast1113_craft_run_next_chain_migration(conn)
-            assert self._run_next(db, conn, "craft_company_search_terms") == "craft_joblist_rubric"
+            assert self._run_next(db, conn, "craft_company_search_terms") == ""
             missing = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE task_key = 'craft_joblist_rubric' AND current = 1",
             ).fetchone()[0]
             assert missing == 0
         finally:
             conn.close()
+
+    def test_ast1264_migration_body_is_return_only(self) -> None:
+        import inspect
+        from src.data import database as db_mod
+
+        body = inspect.getsource(db_mod._apply_ast1113_craft_run_next_chain_migration)
+        assert "UPDATE agent_task SET run_next" not in body
+        # Hook retained on schema ensure (slot visible; body no-op).
+        ensure = inspect.getsource(db_mod._ensure_agent_task_schema)
+        assert "_apply_ast1113_craft_run_next_chain_migration(conn)" in ensure
 
 
 class TestAst880VetInflowEncodedPromptMigration:
