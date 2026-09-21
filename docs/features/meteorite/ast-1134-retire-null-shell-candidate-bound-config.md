@@ -1,3 +1,349 @@
+<!-- linear-archive: AST-1134 archived 2026-08-11 -->
+
+## Linear archive (AST-1134)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1134/retire-null-shell-candidate-bound-config-schema-provision-last-email  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1128 — gaze_email — candidate-bound dispatch (redesign)  
+**Blocked by / blocks / related:** parent: AST-1128; blocks: AST-1135
+
+### Description
+
+## What this implements
+
+Owns retiring the shared null-`candidate_id` `gaze_email` provision/shell as the primary design; moves TASK_CONFIG / `GAZE_EMAIL_CONFIG` expectations to candidate-bound rows (keep `unbound_retention_days`); adds `candidate.last_email_check` (default null); provisions a `gaze_email` row for **every** `candidate` via coverage join; removes always-visible-under-Avail-gt0 special-casing for this task once Avail is real. Does **not** own the per-message runner decision tree (sibling #3) or the live bind-filtered Avail count implementation detail beyond making the shell honest (sibling #2).
+
+## Acceptance criteria
+
+- [X] 1. There is no primary shared null-`candidate_id` `gaze_email` dispatch row in active use; **every** `candidate` has a `gaze_email` `dispatch_task` row bound to that `candidate_id`.
+- [X] 2. After a `gaze_email` run for candidate A, `candidate.last_email_check` for A is non-null and reflects that run (including runs that found zero matching messages). — schema/default + update surface ownership shared with runner; this child owns the column and provision so the stamp can land.
+- [X] 3. Scheduled Actions Avail for a candidate’s `gaze_email` row equals the live count of current inbox messages that bind to that candidate; zero-Avail rows are not kept visible by a `gaze_email`-specific carve-out. — this child removes the carve-out/special-case shell; sibling #2 owns live count wiring.
+- [X] 4. Gmail secrets remain environ-only; Ruth invocations for a bound message continue to use **that candidate’s** API key; retention days remain config-owned. — retention days stay config-owned on this child.
+
+## Boundaries
+
+* Does **not** own the per-message runner decision tree (sibling #3 / AST-1136).
+* Does **not** own the live bind-filtered Avail count implementation beyond making the shell honest (sibling #2 / AST-1135).
+* Does **not** redesign Manage Email / Land Meteorite (AST-1129).
+
+## In scope
+
+- [X] `pattern.config.config-block` — `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` candidate-bound expectations; keep `unbound_retention_days`
+- [X] `astral.config.config-source-of-truth` — task key, seed sizes, retention days, account expectation stay config-owned
+- [X] `astral.seed.other-via-coverage-join` — provision `gaze_email` for every row in `candidate` (not hardcoded ids; not only candidates with existing dispatch rows)
+- [X] `astral.standards.in-scope-only` — config + schema stamp surface + dispatcher provision/ledger honesty only
+- [X] `astral.config.secrets-and-env-specific-from-environ` — Gmail secrets remain environ-only (no move into config)
+
+## Considered but excluded
+
+- [X] Live bind-filtered Avail / due eligibility rewrite — AST-1135 (`src/data/database.py` count path + admin Avail wiring)
+- [X] Per-message runner, unbound Trash hygiene, `last_email_check` call site — AST-1136 (`src/core/gaze_email.py`)
+- [X] Manage Email / Land Meteorite UI — AST-1129
+- [X] React Scheduled Actions filter plumbing — keep generic `always_visible_under_avail_gt0` flag; only empty `ADMIN_CONFIG` source tuple here
+- [X] Rebuild `dispatch_task.candidate_id` to NOT NULL — residual null rows deleted at provision; schema nullity left for this ticket
+
+## Notes for planning
+
+Keep `unbound_retention_days`. Coverage = every `candidate` row.
+
+## Git branch (authoritative)
+
+`sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config` (parent table). Ignore Linear `gitBranchName`.
+
+### Comments
+
+#### radia — 2026-08-02T20:24:27.342Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1134
+**Publish ref:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config` tip `a5c23ed0b18bf539af63e370085ab134812a6590`
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | no graded-task / confidence path edits |
+| `astral.agent.do-task-delegation` | scoped | conforms | no do_task / external LLM assembly |
+| `astral.agent.grade-vector-validation` | scoped | conforms | no vector/grade validation work |
+| `astral.batch.batch-id-first` | scoped | conforms | no new claim/get/clear batch APIs |
+| `astral.batch.batch-id-format` | scoped | conforms | entity_batch_id still task_key-uuid |
+| `astral.batch.claim-process-release` | scoped | conforms | mailbox remains non-claim; no CPR rewrite |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | no agent_data RESPONSE path edits |
+| `astral.config.config-source-of-truth` | scoped | conforms | task key/seed sizes/retention/always-visible tuple stay config-owned |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | no scoring / score_floor work |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | Gmail secrets not moved into config |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths artifacts/**\|scripts/spikes/** no match |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | features plan doc is ticket plan, not spike dump |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | no run_next / hop-chain membership sets |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | new inserts use GAZE_EMAIL_CONFIG auto_mode False; null shell deleted |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single docs/features/meteorite/ast-1134-….md |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test commits avoid src/features (merge-tests ok) |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | code() commits are src-only; tests via Betty |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | no Gmail I/O; core provision/ledger only |
+| `astral.layers.import-direction` | scoped | conforms | dispatcher→data/utils; data stamp helper; utils pure |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers/paths scripts/** no match |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | carve-out retired via empty ADMIN_CONFIG tuple; no React edit |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | no coat-check work |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | no consult/render_verdict work |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers/paths src/ui/** no match |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | no agent JSON seed table edits |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | gaze_email task_key remains Archie-named catalog ensure |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | provision only from start_scheduler |
+| `astral.seed.define-approved` | scoped | conforms | no invented seed catalogs; coverage rule from define |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | re-ensure is catalog gaze_email coverage, not random operator rows |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | provision loops list_candidates(); retires null shell |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | stamp helper raises; no data-layer logging |
+| `astral.standards.database-header-inventory` | scoped | conforms | candidate header notes last_email_check |
+| `astral.standards.debug-contract-gated` | scoped | conforms | added debug_detail under existing debug=True gate |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | ensure+provision+stamp focused; reuses list/save helpers |
+| `astral.standards.in-scope-only` | scoped | conforms | no runner/Avail API/React/Manage Email creep |
+| `astral.standards.logging-via-utils` | scoped | conforms | scheduler get_logger; no bare logging/print |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | APIs named by domain; ticket ids only in comments/logs |
+| `astral.standards.no-cross-contamination` | scoped | conforms | touches planned utils/data/core surfaces only |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | always-visible set emptied in config; no inline carve-out |
+| `astral.standards.public-then-helpers` | scoped | conforms | public ensure/provision/stamp APIs |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | no new utils→data import |
+| `astral.state.core-decides-transitions` | scoped | conforms | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | no job state work |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | no ingest/run_next daisy-chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers/paths src/ui/frontend/** no match |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers/paths src/ui/** no match |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | no gunicorn/worker changes |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | single merge-tests(AST-1134) SHA on sub tip |
+| `orch.git.commit-vocabulary` | universal | conforms | plan/code/docs/test/merge-tests vocabulary on sub |
+| `orch.git.flow-direction-inviolable` | universal | conforms | publish stays on origin/sub child ref |
+| `orch.git.ftr-sub-topology` | universal | conforms | sub/AST-1128/AST-1134-… matches parent Git table |
+| `orch.git.merge-on-checkout` | universal | conforms | no illegal merge/rebase recipe in commits |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear history; no cherry-pick/rebase/force |
+| `orch.git.no-dev-agent-branches` | universal | conforms | no agent-named branches; epic worktree sub tip |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | review on astral-AST-1128 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | no new permanent branches |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | sibling Avail/runner boundaries held; no product invent |
+| `orch.pipeline.plan-is-bible` | universal | needs-discussion | stages match; unbound gaze_email early-return omits FAILED ledger stamp |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Meteorite child AST-1134 only |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | review-child entered at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test()+merge-tests own tests/bible; code() is src-only |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee remains Ada |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada stays assignee through Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | engineer commits avoided banned test-tree paths |
+
+## Pattern conformance
+
+- `pattern.config.config-block` — conforms (GAZE_EMAIL_CONFIG / TASK_CONFIG / ADMIN_CONFIG block edits stay config-owned)
+- Active `astral.patterns.*` covered in Statutes checked
+
+## Plan adherence
+
+Stages 1–3 match Files Changed and Self-Assessment Scope (Single-Component). Sibling boundaries (AST-1135 Avail, AST-1136 runner/stamp call site, AST-1129 UI) not smuggled. One plan-literalism gap: unbound `_dispatch_one` path logs+returns without FAILED ledger.
+
+## Findings
+
+**discuss:** `src/core/dispatcher.py` `_dispatch_one` gaze_email unbound guard — Stage 3 said "log + mark ledger failed / return"; implementation logs and returns with no ledger write. Residual after null-shell retire; confirm intentional vs add bounded FAILED stamp.
+
+**discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`; post-Betty diff brings them in-scope. All three **conforms**.
+
+## What's solid
+
+Coverage-join provision, null-shell retire, bound ledger cid, stamp helper + schema, empty always-visible tuple, secrets stay environ. No fix-now.
+
+## Notes
+
+Joan plan-rubric verdict attached (APPROVED). Stragglers called out above.
+
+context_tokens≈52000
+
+#### betty — 2026-08-02T20:21:10.466Z
+## QA test manifest
+
+`origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config` @ `89a305cb`
+`merge-tests(AST-1134): origin/tests fdaddd51f0c97b9384c9aaff94b74a1e4b39d867`
+
+### Existing coverage (revised)
+
+1. `tests/component/utils/test_config.py::TestAst1088GazeEmailConfig` — candidate-bound shell; no `dispatch_ledger_candidate_id`; `freq_hrs == 0.1`
+2. `tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig` — runner literals without ledger placeholder
+3. `tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0` — empty always-visible carve-out
+4. `tests/component/data/database/test_dispatch_tasks.py::TestAst1088NullCandidateGazeEmail` — reject null `gaze_email` save; bound save; schema/index remain
+5. `tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue` — due/count on bound row (AUTO fixture)
+6. `tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne` — ledger uses bound cid; unbound skip
+
+### Gaps (new)
+
+7. `tests/component/core/test_dispatcher.py::TestAst1134GazeEmailDispatchProvision` — per-candidate ensure; retire null shell; coverage over `list_candidates()`; scheduler hook
+8. `tests/component/data/database/test_candidates.py::TestAst1134LastEmailCheck` — `last_email_check` column + stamp helper
+
+### Run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
+  tests/component/core/test_dispatcher.py::TestAst1134GazeEmailDispatchProvision \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1088NullCandidateGazeEmail \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
+  tests/component/data/database/test_candidates.py::TestAst1134LastEmailCheck \
+  -q
+```
+
+### Bible shasums (`origin/<publish-ref>`)
+
+- `docs/test-bible/utils/config.md` `883354bf41dc4c42983c141adc2d67aa7f021b03`
+- `docs/test-bible/core/dispatcher.md` `9f50beefa0a36d4b8deb08250e78e9072584493d`
+- `docs/test-bible/data/database/dispatch_tasks.md` `fb254c11da12b01f7212f4e93af3cdbc1bc97c5c`
+- `docs/test-bible/data/database/candidates.md` `8e753a038f342918398f8782747061ea03e7a130`
+
+API/React AST-1106 generic flag plumbing left as-is (config source emptied; plan: no React edits). No integration scenario drift.
+
+— Betty
+
+#### joan — 2026-08-02T20:11:38.856Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1134
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 no null shell; every candidate has gaze_email row | Stages 1 + 3 — retire null shell; coverage-join provision |
+| AC2 run processes only From→A messages | N/A — boundary (AST-1136 runner) |
+| AC3 last_email_check stamped after run | Stage 2 — column + `update_candidate_last_email_check`; call site AST-1136 |
+| AC4 live bind-filtered Avail; no carve-out | Stage 1 empties always-visible tuple; live count N/A (AST-1135) |
+| AC5 unbound newer than retention stays | N/A — boundary (AST-1136); retention days kept config-owned Stage 1 |
+| AC6 unbound older → Trash without null shell | N/A — boundary (AST-1136); Stage 3 removes null primary shell |
+| AC7 METEORITE_NEW ingest outcomes | N/A — boundary (AST-1136) |
+| AC8 Style D debug | N/A — boundary (AST-1136); this child no new debug paths |
+| AC9 secrets environ; Ruth key; retention config | Stage 1 — secrets stay environ; unbound_retention_days kept |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 config + empty always-visible | Purpose retire null shell; Functional scope §1 carve-out; child AC1/AC3/AC4 |
+| Stage 2 last_email_check + save gate | Functional scope §3; child AC2 schema surface |
+| Stage 3 coverage provision + ledger cid | Functional scope §1 every-candidate rows; Purpose candidate-bound dispatch; child AC1 |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Publish on sub via plan()/code() vocabulary |
+| orch.git.flow-direction-inviolable | conforms | Publish only to origin/sub/… |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table sub ref |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-1128/AST-1134-… |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree astral-AST-1128 |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Explicit Decisions; sibling handoffs clear |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Meteorite scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate-plan only |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/bible edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Ada) owns build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer implementer path |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded-task / confidence work |
+| astral.agent.do-task-delegation | conforms | No do_task / Ruth path changes |
+| astral.agent.grade-vector-validation | conforms | No grade validation work |
+| astral.batch.batch-id-first | conforms | No new claim/get/clear batch APIs |
+| astral.batch.batch-id-format | conforms | No batch_id format change |
+| astral.batch.claim-process-release | conforms | Mailbox remains non-claim; no new CPR |
+| astral.batch.entity-agent-responses-latest-only | conforms | No agent_data RESPONSE path edits |
+| astral.config.config-source-of-truth | conforms | GAZE_EMAIL_CONFIG / ADMIN tuple / seed sizes stay config-owned |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring / score_floor work |
+| astral.config.secrets-and-env-specific-from-environ | conforms | Explicitly keeps Gmail secrets environ-only |
+| astral.dispatch.run-next-is-chain-authority | conforms | No run_next / hop-chain edits |
+| astral.dispatch.seed-auto-false | conforms | New inserts use GAZE_EMAIL_CONFIG auto_mode False; null shell deleted (not left AUTO) |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src; Betty excluded |
+| astral.layers.core-vs-external-bright-line | conforms | No Gmail I/O; core provision/ledger only |
+| astral.layers.import-direction | conforms | dispatcher→data/utils; data→utils; utils pure |
+| astral.layers.ui-config-driven-business-logic | conforms | Carve-out retired via ADMIN_CONFIG empty tuple; no React hardcodes |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check work |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult work |
+| astral.seed.agent-tables-in-repo-json | conforms | No agent JSON seed tables |
+| astral.seed.archie-catalog-wins | conforms | Keeps Archie-named gaze_email task_key |
+| astral.seed.boot-only-not-hot-path | conforms | Provision at start_scheduler only |
+| astral.seed.define-approved | conforms | No rename of task_key / catalog invent |
+| astral.seed.operator-rows-stay-deleted | conforms | No revive of deleted operator rows |
+| astral.seed.other-via-coverage-join | conforms | Every `list_candidates()` row; rejects under-seed via dispatch-only ids |
+| astral.standards.data-raises-caller-logs | conforms | Stamp helper raises; no data-layer logging |
+| astral.standards.database-header-inventory | conforms | Header notes last_email_check; candidate table only |
+| astral.standards.debug-contract-gated | conforms | No new debug-contract lines on this child |
+| astral.standards.dry-and-focused-functions | conforms | Reuses list_candidates/save_dispatch_task; focused ensure+provision |
+| astral.standards.in-scope-only | conforms | No runner/Avail API/React/Manage Email |
+| astral.standards.logging-via-utils | conforms | Scheduler info log only; no bare logging |
+| astral.standards.names-not-ticket-ids | conforms | No ticket-id product names |
+| astral.standards.no-cross-contamination | conforms | Stays in utils/data/core layers named |
+| astral.standards.no-hardcoded-sets | conforms | Empties config tuple; no inline task-key carve-out set |
+| astral.standards.public-then-helpers | conforms | Focused public ensure/provision/stamp APIs |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data import |
+| astral.state.core-decides-transitions | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | conforms | No job state work |
+| astral.state.no-daisy-chain-in-run | conforms | No ingest/run_next daisy-chain |
+| astral.ui.single-gunicorn-worker | conforms | No gunicorn/worker changes |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.dispatch.run-next-is-chain-authority, astral.dispatch.seed-auto-false, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.seed.agent-tables-in-repo-json, astral.seed.archie-catalog-wins, astral.seed.boot-only-not-hot-path, astral.seed.define-approved, astral.seed.operator-rows-stay-deleted, astral.seed.other-via-coverage-join, astral.standards.data-raises-caller-logs, astral.standards.database-header-inventory, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.names-not-ticket-ids, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — layers {docs} ∩ plan {utils,data,core} empty
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers {scripts} ∩ plan empty
+- astral.patterns.require-auth-on-protected-endpoints — layers {ui} ∩ plan empty
+- astral.ui.frontend-file-placement — layers {ui} ∩ plan empty
+- astral.ui.naming-conventions — layers {ui} ∩ plan empty
+
+## Findings
+
+None fix-now.
+
+**discuss (non-blocking):** Stage 3 intentionally leaves existing `get_due_tasks` / `count_eligible_for_dispatch_task` gaze_email special-case until AST-1135. Honest shell (empty always-visible) may hide zero-Avail rows before live bind counts land — matches child AC3 split with sibling #2.
+
+**acceptable:** Scope Single-Component / Conf high / Risk Medium honest; keep null entity/trigger Decision correctly avoids routing mailbox into claim-queue counting.
+
+**R6:** Definition fidelity pass for child #1. Layer/import pass. Config/secrets pass. File placement N/A (existing modules). Coverage-join pass. No runner/Avail/React creep.
+
+context_tokens≈48000
+
+— Joan
+
+#### chuckles — 2026-08-02T20:09:57.441Z
+[thread-orphan] Joan session da0027e7-276d-4fe2-a6e6-65c8eb77e24d relocated
+found: /home/susan/.cursor/chats/0f41bf986cfef9e06ea903e586d6d4d9/da0027e7-276d-4fe2-a6e6-65c8eb77e24d/store.db
+expected: /home/susan/.cursor/chats/1c0e795437f6ce7d14a00499faa7508f/da0027e7-276d-4fe2-a6e6-65c8eb77e24d/store.db
+— Chuckles
+
+#### ada — 2026-08-02T20:09:34.019Z
+Plan published on `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config` @ `5551f130`.
+
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config/docs/features/meteorite/ast-1134-retire-null-shell-candidate-bound-config.md
+
+**Self-assessment**
+- **Scope:** Single-Component — utils config + data schema/save gate + dispatcher provision/ledger for one task key; no runner rewrite and no Avail API redesign.
+- **Conf:** high — replaces a known null-shell provision with the coverage-join pattern already used for candidate-scoped catalogs; carve-out retirement is emptying an existing config tuple.
+- **Risk:** Medium — wrong coverage loop or leftover null shell would break Scheduled Actions / dispatch UAT for every candidate; ledger cid mistake would orphan batch history. Mitigated by explicit retire-then-ensure steps and by leaving Avail/runner to siblings.
+
+Three stages: (1) candidate-bound config + empty always-visible tuple, (2) `candidate.last_email_check` + require bound `candidate_id` on save, (3) coverage-join provision over every `candidate` row, delete null shell, ledger uses row `candidate_id`.
+
+---
+
 # AST-1134 — Retire null shell — candidate-bound config, schema, provision, last_email_check
 
 **Linear:** [AST-1134](https://linear.app/astralcareermatch/issue/AST-1134/retire-null-shell-candidate-bound-config-schema-provision-last-email)

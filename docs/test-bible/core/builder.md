@@ -47,7 +47,7 @@ Equivalent harness:
 
 ### AST-998 · AST-994
 
-**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html`; legacy string experience stays a single prose block. `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**. **Role chrome** (subheader/meta/accomplishments) was superseded by **AST-1008** golden article classes — **`TestAst998ExperienceJobRender`** asserts the current golden emit shape.
+**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html`. **AST-1304** removed the leftover-prose Experience fallback (string Experience is not a `div.prose-block`). `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**. **Role chrome** (subheader/meta/accomplishments) was superseded by **AST-1008** golden article classes — **`TestAst998ExperienceJobRender`** asserts the current golden emit shape.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -70,7 +70,7 @@ Equivalent harness:
 
 ### AST-1007 · AST-993
 
-**AST-1007:** `_apply_resume_text_markers` deep-walks dict/list nests and applies `_resume_site_markers` (`__` → NBSP, `~~` → non-breaking hyphen, `" • "` → NBSP-bullet spacing) to every string leaf before session / base / job-tailored HTML emit. Layout chrome (role lead/bullets, education lines, skills grid, header/meta/styles) stays siblings **AST-1008** / **AST-1009** / **AST-1010**.
+**AST-1007:** `_apply_resume_text_markers` deep-walks dict/list nests and applies `_resume_site_markers` (`__` → NBSP, `~~` → non-breaking hyphen, `" • "` → left-only `\u00a0• ` on the shared marker path) to every string leaf before session / base / job-tailored HTML emit. Layout chrome (role lead/bullets, education lines, skills grid, header/meta/styles) stays siblings **AST-1008** / **AST-1009** / **AST-1010**. **AST-1528** originally glued both sides globally; **AST-1536** moves full `\u00a0•\u00a0` glue to `word_cloud` render only.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -127,7 +127,7 @@ Equivalent harness:
 
 ### AST-1009 · AST-993
 
-**AST-1009:** `_emit_body_sections_html` emits education as per-line `div.education-list` (`<strong>` credential + post-marker `\u00a0• ` rest), technical skills as `div.skills-grid` with one `div.skill-category` per `Category: items` line (`h4` + items `<p>`), and prior experience remains `p.competencies-list` (markers from AST-1007). Experience role chrome / header-meta-styles stay siblings **AST-1008** / **AST-1010**.
+**AST-1009:** `_emit_body_sections_html` emits education as per-line `div.education-list` (`<strong>` credential + post-marker left-only `\u00a0• ` rest), technical skills as `div.skills-grid` with one `div.skill-category` per `Category: items` line (`h4` + items `<p>`), and prior experience remains `p.competencies-list` (markers from AST-1007). Experience role chrome / header-meta-styles stay siblings **AST-1008** / **AST-1010**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -180,7 +180,7 @@ Equivalent harness:
 
 ### AST-1020 · AST-1019
 
-**AST-1020:** Shared resume embedded `<style>` matches Take 2 golden rules (contact flex, role/education/skills spacing/type, skills CSS grid, all-caps competencies/skills, unused `.title`/`.specialties`/`.job-title`/`.dates`, mobile + print including always-on `#prior-experience { page-break-before: always }`); `BUILD_CONFIG["default_style"]["colors"]` exposes golden text/border tokens; Astral `.prose-block` / cover / ATS appendages remain; no external stylesheet. Title/meta emit stays sibling **AST-1021**. Markup emit stays **AST-1008** / **AST-1009**.
+**AST-1020:** Shared resume embedded `<style>` matches Take 2 golden rules (contact flex, role/education/skills spacing/type, skills CSS grid, all-caps competencies/skills, unused `.title`/`.specialties`/`.job-title`/`.dates`, mobile + print); **AST-1475** removed always-on `#prior-experience { page-break-before: always }` — print section breaks come from structure `page_break_policy` (default keep-together); `BUILD_CONFIG["default_style"]["colors"]` exposes golden text/border tokens; Astral `.prose-block` / cover / ATS appendages remain; no external stylesheet. Title/meta emit stays sibling **AST-1021**. Markup emit stays **AST-1008** / **AST-1009**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -556,3 +556,361 @@ UAT: `_html_with_signature_image_token` escapes SomersetCover signature segments
   -q
 ```
 
+### AST-1304 · AST-1299
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format`.
+
+Resume HTML emit dispatches by each enabled section’s `format` (not by id). Highlights / Publications print as `bullet_list`. Changing an optional section’s format changes the Somerset treatment; DOM id stays the catalog map (`education` for `education_certifications`). Closed italic/bold tags render; other tags stay escaped. Required `experience` leftover prose is not printed (job arrays still emit). `filter_content_to_resume_structure` keeps leftover Experience prose and extra job-array / list-of-scalar bodies so emit can see them. `debug=True` adds one Style D header per enabled section (`emitted` / `skipped — empty` / `skipped — leftover prose` / `skipped — not job array` / `skipped — missing format`) plus `| title=… format=…`. Cover letter emit unchanged. Does **not** own hop schemas (**AST-1305**) or the structure editor (**AST-1306**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Format dispatch, bullet_list, emphasis, leftover prose skip, extra job-array emit, Style D trail | `src/core/builder.py` | **`TestAst1304BuilderEmitByFormat`**; revised **`TestBuilderHelpers::test_emits_body_sections_and_cover_blocks`**, **`TestAst987BuildSessionBaseResume::test_renders_from_in_memory_payload_no_candidate_bind`**, **`TestAst998ExperienceJobRender::test_session_legacy_string_experience_still_prose`** |
+| Filter keep-loop (extras + leftover Experience prose) | `src/core/candidate.py` | **`TestAst1304FilterContentToResumeStructure`**; reuse **`TestAst518ResumeStructureProjection`**, **`TestAst996ExperienceJobArray`** filter cases |
+| Job-array Experience still prints | `src/core/builder.py` | reuse **`TestAst998ExperienceJobRender`** (array paths) |
+| Cover letter unchanged | `src/core/builder.py` | reuse **`TestAst581ResumeCoverSplit`**, **`TestAst1304BuilderEmitByFormat::test_cover_letter_debug_has_no_resume_section_trail`** |
+
+**Broken / obsolete this pass:** AST-998 / AST-987 leftover Experience prose-block asserts — required Experience no longer has a string fallback. Helper six-section count now feeds a job array for `experience` so the section still emits. Emphasis helper assert expects CPython `html.escape` `&quot;` (not `&#34;`). `test_candidate.py` must not import AST-1305 `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` at module level — that name is not on this child’s product tree (import lives inside **`TestAst1305HopsContentBlobsAndLegacyLabels`** only).
+
+**Integration:** none — no existing `tests/integration/` scenario asserts resume HTML emit / section format. Do not invent one.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_candidate.py::TestAst1304FilterContentToResumeStructure \
+  tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection::test_filter_content_drops_orphan_and_empty_strings \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array \
+  tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only \
+  -q
+```
+
+---
+
+### AST-1350 · AST-1345
+
+**Parent:** [AST-1345 — Clarify candidate_data.artifacts.base_resume.experience node](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit`.
+
+When `experience` is present and not `is_experience_job_array`, builders raise `ValueError(BUILD_CONFIG["unsupported_resume_structure_message"])` before HTML assembly — no Experience-omitted resume. Defense in depth: `_emit_body_sections_html` raises the same for any `experience_detail` non-array. API/UI: **`docs/test-bible/ui/api/api_resume_html.md`**, **`docs/test-bible/frontend/components.md`**. Does **not** own array layout (**AST-1351**) or schema/prompts (**AST-1349**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config message + session/base refuse + emit defense | `src/utils/config.py`, `src/core/builder.py` | **`TestAst1350UnsupportedExperienceShape`**; **`TestAst1350UnsupportedResumeStructureMessage`** (config) |
+| Revised silent-omit paths | `src/core/builder.py` | revised **`TestAst987BuildSessionBaseResume`** (job-array happy path); revised **`TestAst998ExperienceJobRender::test_session_legacy_string_experience_refuses_emit`**; revised **`TestAst1304BuilderEmitByFormat::test_debug_true_style_d_per_enabled_section`** |
+
+**Broken / obsolete this pass:** AST-987 / AST-998 / AST-1304 asserts that string experience still returns HTML (omit Experience) — flipped to refuse or job-array fixtures.
+
+**Integration:** no existing scenario asserts resume Print / unsupported toast — no revision.
+
+## QA test manifest
+
+1. Core refuse + happy array: `TestAst1350UnsupportedExperienceShape`
+2. Config literal: `TestAst1350UnsupportedResumeStructureMessage`
+3. API 400/404: `TestAst1350UnsupportedResumeHtml` + existing `TestResumeHtmlRoutes` 404 rows
+4. JAR fetch-then-blob + unsupported toast: `test_JobAnalysisReportModal.test.tsx` AST-1350 / revised Print Resume
+5. Revised regressions: AST-987 / AST-998 / AST-1304 rows above
+6. Existing Base Resume Print error (no tab): `test_ArtifactsBaseResumeContent` AST-1337 error row (message passthrough)
+
+**AST-1350** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1350UnsupportedExperienceShape \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender::test_session_legacy_string_experience_refuses_emit \
+  tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat::test_debug_true_style_d_per_enabled_section \
+  tests/component/utils/test_config.py::TestAst1350UnsupportedResumeStructureMessage \
+  tests/component/ui/api/test_api_resume_html.py::TestAst1350UnsupportedResumeHtml \
+  tests/component/ui/api/test_api_resume_html.py::TestResumeHtmlRoutes \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="Print Resume|AST-1350"
+```
+
+---
+
+### AST-1351 · AST-1345
+
+**Parent:** [AST-1345](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`.
+
+When `debug=True`, session/base/job emit paths call `candidate.debug_experience_jobs` (Style D per-job detail). Happy-path role HTML remains `_emit_experience_jobs_html` (AST-998/1008). Refuse gate unchanged (AST-1350). UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Style D experience jobs on debug emit | `src/core/builder.py` | **`TestAst1351ExperienceDebugJobs`** |
+
+### AST-1382 · AST-1362 (gap — board-betty REVISE)
+
+**Parent:** [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/base-resume-issues). **Publish:** `origin/sub/AST-1362/AST-1382-gap-base-resume-tests`. Product: **AST-1381**.
+
+**[bug-repro]** paths: `accomplishments: string[]` with leading `•`/`-` → single `<li>` (no double bullet); `_resume_site_markers` / session emit converts authoring `|` → `•` on contact + competencies; `prior_experience` `format: free_prose` emits `.summary-intro` (not `.competencies-list`). Fixtures prefer `list[str]` accomplishments; one legacy str coerce case kept. UI/structure Save: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| string[] strip / pipes / free_prose / legacy coerce | `src/core/builder.py` | **`TestAst1382BugReproBaseResumeIssues`** |
+| Golden layout samples retargeted to list | same | **`TestAst1008ExperienceGoldenLayout`**, AST-1030 emit rows |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues \
+  -q
+```
+
+### AST-1341 · AST-1314 (bug — Print false-missing base_resume)
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1341-print-base-resume-missing-artifacts-error`.
+
+`build_base_resume` must ingest list-shaped / legacy `{label, content}` `artifacts.base_resume` the same way Base Resume Content already displays (via `ingest_legacy_label_content_base_resume`). Empty / unusable content raises **`No printable base resume content for this candidate`** (not `Candidate missing artifacts.base_resume`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List-shaped print success (bug-repro) | `src/core/builder.py` | **`TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints`** |
+| Empty / missing message | same | **`TestBuildBaseResume::test_requires_base_resume_artifact`**; **`TestBuildBaseResumeDebugPaths::test_failures_with_debug`** — match new empty copy |
+| Page error copy (AST-1337 revised) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — Print error asserts new operator sentence (primary: **`docs/test-bible/frontend/pages.md`**) |
+
+**Broken / obsolete this pass:** empty-gate asserts matching `missing artifacts.base_resume`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_requires_base_resume_artifact \
+  tests/component/core/test_builder.py::TestBuildBaseResumeDebugPaths::test_failures_with_debug \
+  -q
+```
+
+### AST-1487 · AST-1483 (bug — restore builder page-break print CSS)
+
+**Parent:** [AST-1483 — Resume page break settings don't work](https://linear.app/astralcareermatch/issue/AST-1483/resume-page-break-settings-dont-work). **Publish:** `origin/sub/AST-1483/AST-1487-fix-restore-builder-page-break-print-css`. Regression fix: AST-1475 `_print_section_page_break_css` never merged to `origin/dev`; hard-coded `#prior-experience { page-break-before: always; }` returned.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Policy → print CSS + role keep + no hard prior break | `src/core/builder.py` | **`TestAst1475PageBreakPrintCss`** |
+| Golden stylesheet flip (prior always-break → policy default) | same | revised **`TestAst1020GoldenStylesheet`** |
+
+**Broken / obsolete this pass:** **`TestAst1020GoldenStylesheet`** required unconditional `#prior-experience { page-break-before: always; }` — now asserts absence + default `#summary { page-break-inside: avoid; }` + `.role` keep.
+
+**Integration:** no existing scenario asserts resume print page-break CSS — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Default avoid_split / role keep / no forced prior (bug-repro): `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_default_avoid_split_and_role_keep_no_forced_prior_break`
+2. `page_break_before` + `normal`: `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_page_break_before_and_normal_on_session_base`
+3. Missing policy soft-default + job path: `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_missing_policy_soft_defaults_and_job_resume_path`
+4. Golden three surfaces (revised): `tests/component/core/test_builder.py::TestAst1020GoldenStylesheet`
+
+**AST-1487** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss \
+  tests/component/core/test_builder.py::TestAst1020GoldenStylesheet \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1528 · AST-1526 (word-cloud NBSP bullet glue — superseded at render by AST-1536)
+
+**Parent:** [AST-1526 — Resume word clouds need non-breaking spaces](https://linear.app/astralcareermatch/issue/AST-1526/resume-word-clouds-need-non-breaking-spaces). **Ship:** `origin/sub/AST-1526/AST-1528-word-cloud-nbsp-bullet-glue`.
+
+Original fix glued `\u00a0•\u00a0` on `_resume_site_markers` (generation path). **AST-1536** bug: format switch to `free_prose` inherited cloud glue — render-only fix on **`origin/sub/AST-1526/AST-1536-word-cloud-nbsp-glue-at-render`**. Regression lock: **`TestAst1528WordCloudNbspBulletGlue`** (markers left-only + session `word_cloud` HTML glued) + **`TestAst1536BugReproWordCloudFormatSwitch`**.
+
+---
+
+### AST-1536 · AST-1526 (bug — word-cloud NBSP glue at render only)
+
+**Parent:** [AST-1526](https://linear.app/astralcareermatch/issue/AST-1526/resume-word-clouds-need-non-breaking-spaces). **Publish:** `origin/sub/AST-1526/AST-1536-word-cloud-nbsp-glue-at-render`.
+
+Remove global `\u00a0•\u00a0` from `_resume_site_markers`; restore left-only `\u00a0• ` on the shared marker path. Apply full cloud glue only in the `word_cloud` emit arm via `_glue_word_cloud_bullet_separators`. Education partition reverts to `\u00a0• `. Cover from-block / header/contact asymmetric joins unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** format switch: `free_prose` must not show `\u00a0•\u00a0`; `word_cloud` still glued | `src/core/builder.py` | **`TestAst1536BugReproWordCloudFormatSwitch`** |
+| Markers left-only + digraph `__•__` + session cloud HTML | same | **`TestAst1528WordCloudNbspBulletGlue`** (revised per blast radius) |
+| Compact-title / meta tagline left-only regression | same | **`TestAst998ExperienceJobRender`**, **`TestAst1008ExperienceGoldenLayout`**, **`TestAst1007NestedTypographyMarkers`**, **`TestAst1009EducationSkillsPrior`**, **`TestAst1010HeaderContactMetaStyles`**, **`TestAst1021DocumentTitleChrome`** |
+| Digraph fidelity | same | **`TestAst1027UatMarkerExpand`** |
+| Pipe→bullet on `word_cloud` emit | same | **`TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`** |
+
+**Broken / obsolete (qa-fix):** AST-1528 asserts locking generation-path full glue on `_resume_site_markers`, education `\u00a0•\u00a0` partition, and compact-title/meta full-glue flips — revised in this pass.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. **[bug-repro]** free_prose no cloud glue: `tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch::test_free_prose_emit_has_no_cloud_glue`
+2. word_cloud control still glued: `tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch::test_word_cloud_emit_still_glued_after_format_switch_content`
+3. Markers left-only + render cloud: `tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue`
+4. Digraph + compact-title/meta/edu regression: `TestAst1027UatMarkerExpand`, `TestAst998ExperienceJobRender`, `TestAst1008ExperienceGoldenLayout`, `TestAst1007NestedTypographyMarkers`, `TestAst1009EducationSkillsPrior`, `TestAst1010HeaderContactMetaStyles`, `TestAst1021DocumentTitleChrome`, `TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+
+**AST-1536** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1027UatMarkerExpand \
+  -q
+```
+
+**Pass criterion:** item 1 red on pre-fix tree; all manifest lines green after `make-fix` + `test-fix` (red→green on **[bug-repro]**).
+
+---
+
+### AST-1540 · AST-1539 (word-cloud inner non-breaking at render)
+
+**Parent:** [AST-1539](https://linear.app/astralcareermatch/issue/AST-1539/word-cloud-items-with-inner-characters-must-be-non-breaking). **Publish:** `origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render`.
+
+Extend `_glue_word_cloud_bullet_separators`: after `\u00a0•\u00a0` glue, remaining ordinary `" "` → `\u00a0` and ASCII `"-"` → `\u2011` for `word_cloud` HTML emit only. `_resume_site_markers` / generation unchanged (left-only + digraphs). Format switch to `free_prose` must not inherit inner cloud NBSP / `\u2011`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inner space + hyphen on glue helper + session cloud emit | `src/core/builder.py` | **`TestAst1540WordCloudInnerNonBreaking`** |
+| Markers left-only + digraphs unchanged | same | **`TestAst1540WordCloudInnerNonBreaking::test_resume_site_markers_unchanged_left_only_and_digraphs`** + **`TestAst1528WordCloudNbspBulletGlue`** (session assert revised) |
+| Format switch: free_prose no inner cloud encoding | same | **`TestAst1540WordCloudInnerNonBreaking::test_free_prose_does_not_inherit_inner_cloud_encoding`** + **`TestAst1536BugReproWordCloudFormatSwitch`** |
+| Default-format competencies/prior UAT bullets | same | **`TestAst1029UatCompetenciesBulletsEmit`** (revised for inner NBSP/`\u2011`) |
+
+**Broken / obsolete (this pass):** `TestAst1528WordCloudNbspBulletGlue::test_session_word_cloud_emits_glued_separators` (`Stakeholder trust` → `Stakeholder\u00a0trust`); `TestAst1029UatCompetenciesBulletsEmit` expected HTML (spaces/hyphens inside default `word_cloud` items).
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Inner NBSP / non-breaking hyphen (helper + session emit + markers + free_prose): `tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking`
+2. Separator glue regression (revised): `tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue`
+3. Format-switch control: `tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch`
+4. Default word_cloud competencies/prior (revised): `tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit`
+5. Pipe→bullet emit: `tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+
+**AST-1540** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (after publish):** record via `git show origin/sub/AST-1539/AST-1540-word-cloud-inner-non-breaking-at-render:docs/test-bible/core/builder.md | shasum`.
+
+---
+
+### AST-1552 · AST-1539 (bug — word-cloud breaking space after bullet)
+
+**Parent:** [AST-1539](https://linear.app/astralcareermatch/issue/AST-1539/word-cloud-items-with-inner-characters-must-be-non-breaking). **Publish:** `origin/sub/AST-1539/AST-1552-word-cloud-breaking-space-after-bullet`.
+
+After AST-1540 blanket space→NBSP, restore `\u00a0•\u00a0` → `\u00a0• ` so Print/Open HTML can soft-wrap after the bullet. Keep NBSP before `•` and inner item `\u00a0` / `\u2011`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| **[bug-repro]** post-bullet ordinary space + inner non-breaking | `src/core/builder.py` | **`TestAst1552BugReproWordCloudBreakingSpaceAfterBullet`** |
+| AST-1540 / 1528 / 1029 / 1536 / 1382 asserts locking full `\u00a0•\u00a0` | same | revised in this qa-fix pass |
+
+**Broken / obsolete (qa-fix):** asserts expecting `\u00a0•\u00a0` / zero ordinary spaces in cloud — revised to `\u00a0• ` + inner locks.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. **[bug-repro]** post-bullet breaking space: `tests/component/core/test_builder.py::TestAst1552BugReproWordCloudBreakingSpaceAfterBullet`
+2. Revised inner + separator locks: `TestAst1540WordCloudInnerNonBreaking`, `TestAst1528WordCloudNbspBulletGlue`, `TestAst1029UatCompetenciesBulletsEmit`, `TestAst1536BugReproWordCloudFormatSwitch::test_word_cloud_emit_still_glued_after_format_switch_content`, `TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes`
+
+**AST-1552** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1552BugReproWordCloudBreakingSpaceAfterBullet \
+  tests/component/core/test_builder.py::TestAst1540WordCloudInnerNonBreaking \
+  tests/component/core/test_builder.py::TestAst1528WordCloudNbspBulletGlue \
+  tests/component/core/test_builder.py::TestAst1029UatCompetenciesBulletsEmit \
+  tests/component/core/test_builder.py::TestAst1536BugReproWordCloudFormatSwitch \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues::test_resume_site_markers_and_emit_convert_authoring_pipes \
+  -q
+```
+
+**Pass criterion:** item 1 red on pre-fix tree; all manifest lines green after `make-fix` + `test-fix` (red→green on **[bug-repro]**).
+
+---
+
+### AST-1587 · AST-1570
+
+**Parent:** [AST-1570 — Implement patt.artifact.read-current](https://linear.app/astralcareermatch/issue/AST-1570/implement-pattartifactread-current). **Publish:** `origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires`.
+
+Builder live paths load pilot base_resume via `load_pilot_base_resume_for_candidate` / `get_candidate_current` only — `_resolve_resume_sections`, `build_base_resume`, `_accent_source_label`, `_resume_content_source_label` updated; `_coerce_candidate_blob` attaches `_astral_candidate_id`. Style D `current_read=hit|miss` on `build_base_resume` `debug=True`. Candidate helper rewires: **`docs/test-bible/core/candidate.md`** § AST-1587.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `build_base_resume` current-read + Style D | `src/core/builder.py` | **`TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail`** (in `test_candidate.py`) |
+| Job resume fallback + source labels (revised) | same | **`TestBuilderIdentifierHelpers`**, **`TestAst518BuilderResumeStructure`**, **`TestBuildBaseResume`**, **`TestBuildBaseResumeDebugPaths`**, **`TestBuildResumeFromJobDebugPaths`**, **`TestAst1350UnsupportedExperienceShape`** |
+| Operative test harness | `tests/component/core/operative_fixture.py`, `conftest.py` | `_install_candidate_for_base_resume` + autouse `load_pilot` stub |
+
+**Broken / obsolete this pass:** tests seeding `artifacts.base_resume` without operative current-read; minimal `resume_structure` fixtures that fail `normalize_resume_structure` (use `default_resume_structure()` + title override).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Style D current-read trail: `tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail`
+2. Full builder regression (operative rewires): `tests/component/core/test_builder.py`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1587BaseResumeConsumerRewires::test_build_base_resume_debug_emits_current_read_trail \
+  tests/component/core/test_builder.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/builder.md` — `e4123fd99fd3dc048b72c905534dc48c3bbc23bfaf15359a3ea14815e3136540`
+
+---
+
+### AST-1593 · AST-1588
+
+**Parent:** [AST-1588](https://linear.app/astralcareermatch/issue/AST-1588/support-jobartifactsjob-resume-and-jobartifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`.
+
+Builder live resume/cover resolve uses `tracker.get_job_current` by catalog key (`job.artifacts.job_resume` / `job.artifacts.cover_letter`); debug source labels name that path. Job-record `resume_content` / pin SoT retired. UI consumers: **`docs/test-bible/frontend/components.md`**, **`docs/test-bible/frontend/lib.md`**. Inventory table lives in the plan doc (AC7). JAR modal unchanged (leaf keys).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog current resolve + debug labels | `src/core/builder.py` | **`TestAst1593BuilderCatalogCurrentRead`** |
+| Revised blob→catalog seed for build_* suites | same | **`_seed_job_catalog_currents` / `_build_*_from_job` wrappers**; **`TestBuilderIdentifierHelpers`**, **`TestAst1100BuilderPinResolve`** (rewritten) |
+| Full builder regression | same | `tests/component/core/test_builder.py` |
+
+**Broken / obsolete this pass:** pin/`resume_content` blob SoT asserts in source labels + `TestAst1100BuilderPinResolve`; build_* tests that seeded only `job_data.artifacts.resume_content` without catalog current — revised via seed helper.
+
+**Integration:** none.
+
+## QA test manifest (AST-1593)
+
+1. Builder catalog resolve: `tests/component/core/test_builder.py::TestAst1593BuilderCatalogCurrentRead`
+2. Builder regression: `tests/component/core/test_builder.py`
+3. ArtifactEditor no sibling SoT: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1593"`
+4. recommendedJobReport SoT: `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — `--testNamePattern="AST-1593|printResumeVisible|materialsPreviewVisible"`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  --testNamePattern="AST-1593|printResumeVisible|materialsPreviewVisible"
+```
+
+**Pass criterion:** pytest + vitest green on lines 1–4 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasum:** `docs/test-bible/core/builder.md` (fill after publish)

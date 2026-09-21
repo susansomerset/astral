@@ -33,13 +33,13 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 
 **Status:** has coverage
 
-**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Jobs group visibility follows candidate state (`ACTIVE_SEARCH` shows Jobs; `NEW_CANDIDATE` hides the group); unauthenticated nav returns 401.
+**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Jobs items stay enabled at `ACTIVE_SEARCH`; after AST-1449, `NEW_CANDIDATE` still returns Jobs / Companies / Artifacts / Candidate (no group-level state hide); unauthenticated nav returns 401. Unauthenticated 401 assumes deploy env is not `local` (AST-1440 passthrough). Harness autouse sets `ASTRAL_DEPLOY_ENV=staging` so `load_dotenv()` cannot restore `local`. Component coverage: [`ui/auth.md`](../ui/auth.md) § AST-1440; [`ui/api/api_system.md`](../ui/api/api_system.md) § AST-1449.
 
 **Scenarios:**
 
 - `tests/integration/scenarios/test_candidate_nav_api.py`
 
-**Citations:** AST-711 (first scenario + harness); AST-990 (early-lifecycle seed aligned to `NEW_CANDIDATE`)
+**Citations:** AST-711 (first scenario + harness); AST-990 (early-lifecycle seed aligned to `NEW_CANDIDATE`); AST-1449 (ungate candidate-facing groups)
 
 ### Controlled external I/O (product guard)
 

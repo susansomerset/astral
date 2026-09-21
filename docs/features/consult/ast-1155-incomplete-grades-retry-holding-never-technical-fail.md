@@ -1,3 +1,315 @@
+<!-- linear-archive: AST-1155 archived 2026-08-07 -->
+
+## Linear archive (AST-1155)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1155/incomplete-grades-retry-holding-never-technical-fail-technical-fail  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1150 — Technical fail for Do prompt  
+**Blocked by / blocks / related:** parent: AST-1150; blocks: AST-1156
+
+### Description
+
+## What this implements
+
+Shared consult apply path: reject incomplete/extra vector sets before `_render_score`; always route to retry holding for that trigger (standard + meteorite). Technical-fail states reserved for true infra failures. Debug expected-vs-decoded vector detail. Does **not** own prompt copy (sibling Rubric completeness contracts) or Skipped Retry.
+
+## In scope
+
+- [X] `astral.patterns.render-verdict-orchestrates-consult` — scored apply stays on consult verdict / batch process path
+- [X] `pattern.batch.entity-claim-process-release` — incompleteness is per-entity process failure inside claim → process → release
+- [X] `astral.state.core-decides-transitions` — retry vs technical via `JOB_STATES.retry_state` + `_consult_batch_fail_dest`
+- [X] `pattern.state.entity-state-transitions` — new `*_RETRY` holdings and priors for graded triggers
+- [X] `pattern.config.config-block` — retry destinations config-owned (no hard-coded technical remap in process_fn)
+- [X] `astral.agent.grade-vector-validation` — live-rubric completeness at consult apply (grade_* have no TASK_CONFIG.vectors)
+- [X] `astral.standards.debug-contract-gated` — expected vs decoded vector detail only when `debug=True` (Style D)
+
+## Considered but excluded
+
+- [X] `astral.agent.confidence-bounds` — X/0 no-signal contract + prompt hardening owned by AST-1154; this ticket only treats X/0 as present rows
+- [X] Skipped Retry / `bulk_retry_to_state` hop landing — AST-1156 (`src/ui` / skipped config)
+- [X] Prompt / `{$OUTPUT_INSTRUCTIONS}` / `agent_task.json` completeness copy — AST-1154
+- [X] `src/core/agent.py` decode / static TASK_CONFIG.vectors validation — not the live-rubric apply gate
+- [X] Scoring math / dealbreaker behavior for complete grade sets — unchanged
+
+## Acceptance criteria
+
+1. [x] Replaying any rubric grading batch (Do/Get/Like/JD/qualify/prefilter and meteorite twins) where the model omits at least one expected vector sends that job to **retry holding**, not `*_FAILED_TECHNICAL_*` / meteorite technical-fail.
+2. [x] When every rubric vector is present (including intentional `X`/`0`), pass/fail/dealbreaker/scored behavior matches today’s complete-grade behavior.
+3. [x] With `debug=True`, incomplete-grade jobs log missing/unexpected vectors under Style D index + `|` detail.
+
+## Boundaries
+
+- [X] Does **not** own prompt/output-contract copy or Skipped Retry landing. Does **not** change scoring math for complete grade sets.
+
+## Notes for planning
+
+Parent decision: incomplete grades always retry, never technical fail. Statute frame is In scope / Considered but excluded above.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-03T01:45:42.129Z
+[merge-child] blocked: validate-sub-log — git pull merge on sub (`Merge remote-tracking branch 'origin/dev'…` @ c1301c18; also 8e4c10f2 from origin/dev tip not yet on ftr).
+
+@Hedy Lamarr — restack/republish `origin/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail` from clean tip `82ce3365` + `git merge origin/ftr/AST-1150-technical-fail-for-do-prompt` only (message `merge(AST-1155): origin/ftr/…`). Do **not** merge origin/dev into the sub. Force-with-lease push the clean tip so `validate-sub-log` passes.
+
+— Chuckles
+
+#### radia — 2026-08-03T01:37:13.154Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1155
+**Publish ref:** a220ab12 (doc commit; code tip e6698dd865f900aca45831b8cd9ce82badcbfae9)
+**Overall:** DISCUSS
+
+## Plan adherence
+- Stage 1 (`src/utils/config.py`): all 7 planned `*_RETRY` holdings registered with `retry_state` on the correct primaries, priors extended exactly per the plan's per-state table, `IN_REVIEW_STATES`/`JOBS_IN_REVIEW_UI_SECTIONS` insert holdings immediately after their primary, `JOBS_IN_REVIEW_GRADE_FIELD` correctly *omits* `CULTURE_READY_RETRY` / `METEORITE_QUALIFIED_RETRY` (primaries absent from that map today — plan explicitly forbids inventing a speculative entry). `PASSED_LIKE_RETRY` / `METEORITE_PASSED_LIKE_RETRY` correctly untouched (out of scope).
+- Stage 2 (`src/core/consult.py`): `_grade_set_vector_diff` / `_require_complete_grade_set` / `_debug_incomplete_grade_set` match the plan verbatim; `_render_score` refactored to call the shared helper (DRY, as preferred); gate added before `_render_score` in `_apply_render_verdict_decoded_job`, before `_render_pass_fail` in both `qualify_job_listings.process` and `evaluate_jd_batch.process`; `_run_batch_consult`'s except-block emits the new debug path only on message match, falls through to the old generic debug path otherwise — confirmed no double-logging (process_fn never logs itself, only raises). `_INPUT_STATE_TO_TASK` gets exactly the 2 planned companions, no meteorite expansion.
+- Stage 3 (`consult.render_verdict`, `roster._apply_prefilter_decoded_company_outcome`): `render_verdict` keeps the `Unknown grading_mode:` re-raise, routes `missing vectors`/`unknown vectors` through `_consult_batch_fail_dest` instead of `_fail`, returns without touching `error_state` directly. Roster gate re-raises after debug (matches Joan's plan-time discuss-3 resolution — both real callers already catch `ValueError` into their existing `_prefilter_fail` retry paths; confirmed unchanged in this diff). Prep-failure branches (`_consult_scored_dispatch_batch_encoded` no-company / no-live-content) untouched — still go straight to `error_state` as required.
+- **Live-ran all three of the plan's own verification scripts against the actual publish tip** (not just prose): Stage 1 `retry_state`/`dispatch_claim_states` pairs, Stage 2 `_require_complete_grade_set` behavior incl. `X`/`0` counting as present, Stage 3 `_consult_batch_fail_dest` first-strike/second-strike routing incl. meteorite overlay error state. All three passed clean on this tree.
+- Full active statute set (65) scored in-session — 0 fix-now, 2 discuss carried from Joan's plan-rubric verdict (confirmed still accurate against the shipped diff, not just the plan), 3 trivially-clean C4 stragglers (see Notes).
+
+## Pattern conformance
+- `pattern.batch.entity-claim-process-release` — conforms. Incompleteness stays a per-entity process failure inside the existing claim→process→release scaffold; no new claim/clear signature.
+- `pattern.state.entity-state-transitions` — conforms. New holdings registered in `JOB_STATES` with real priors; core (`consult.py`/`roster.py`) decides the destination and passes it to tracker/data; retry is a separate dispatch-cycle claim, not an in-run hop.
+- `pattern.config.config-block` — conforms. Retry destinations live in `JOB_STATES.retry_state`; Decision 1 explicitly forbids a hard-coded technical→retry remap in `process_fn`, and the diff honors that.
+
+## Findings
+
+**discuss — `astral.dispatch.run-next-is-chain-authority`.** Carried from Joan's plan-rubric verdict, confirmed unchanged in the shipped diff: Stage 2 step 7 extends the legacy `_INPUT_STATE_TO_TASK` state→task map with `PASSED_JD_RETRY`→`grade_do` / `PASSED_DO_RETRY`→`grade_get`. This is explicitly a non-dispatch-routing legacy map per the code's own comment, and the diff correctly declines to expand it with meteorite keys (AST-1055: dispatch uses explicit `task_key`). Non-blocking; flagging for visibility only.
+
+**discuss — `astral.standards.no-hardcoded-sets`.** Carried from Joan's plan-rubric verdict, confirmed unchanged in the shipped diff: `render_verdict`'s incompleteness branch keys off `"missing vectors" in es or "unknown vectors" in es` — literal exception-message substring matching. Retry destinations themselves are correctly config-owned; only the *routing trigger* is string-based. Joan's suggested alternative (a dedicated `ValueError` subclass caught by type) would remove the coupling for about the same cost, since Stage 2 authors the raiser in the same file. Engineer's call, exercised — kept the substring match with the message prefix preserved for stability. Not fix-now.
+
+## Frame diff
+(none) — description already reflects the shipped diff via the plan doc's Files Changed table, Decisions, and Review stub section; no adds/moves applied to the Linear description itself.
+
+## Notes
+- Accepted-risk note carried from Joan (not a new finding): once `retry_state` exists on the seven primaries, *any* `process_fn` exception on those triggers first-strikes to the retry holding, not just incomplete grade sets — this is the established AST-642 behavior `NEW`/`JD_READY` already have, and the infra-failure paths the parent Boundary protects (missing company, prep failure, provider error) all occur outside `process_fn` and still route straight to `error_state` (confirmed unchanged in `_consult_scored_dispatch_batch_encoded`'s prep-skip branches). Second strike from a holding still lands technical — no loop.
+- C4 straggler check: 3 statutes Joan's plan-rubric verdict scored not-applicable/excluded (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`) score `conforms` on this diff-based sweep — same structural cause as AST-1154's review: the actual diff includes both plan-doc files (this ticket's own, plus AST-1154's via shared `ftr/AST-1150` ancestry) and the pipeline's later test/test-bible commits, neither of which sit in the plan's Files-Changed table by convention. All clean; not scope creep. Per-commit role separation verified: `code()` commits (`64ce12d2`, `4d735e94`, `47974f81`) touch only `src/utils/config.py` / `src/core/consult.py` / `src/core/roster.py`; `test()`/`merge-tests()` commits (`88de69a2`, `e6698dd8`) touch only `tests/**` and `docs/test-bible/**`.
+- `docs/test-bible/{core/builder,core/candidate,frontend/pages,ui/api/api_system}.md` and matching test files carry unrelated sibling-ticket entries (AST-1147/1148/1149/1152/1154) — bleed-in from the shared `origin/tests` branch via `merge-tests`, not authored by this ticket.
+
+## What's solid
+- Root-cause diagnosis was correct and the fix addresses it directly: the actual repro path (`_consult_scored_dispatch_batch_encoded` → `_apply_render_verdict_decoded_job` → raise → caught by `_run_batch_consult`) now resolves through `_consult_batch_fail_dest`, which already understood `retry_state` (AST-642) — the only missing piece really was the registry entries, and that's exactly what Stage 1 supplies.
+- DRY: `_render_score` now calls the shared `_require_complete_grade_set` instead of duplicating set math; `qualify_job_listings`'s old swallowed-exception path no longer double-duties as the completeness gate.
+- Debug emission is single-sourced per code path (no double logging), gated correctly behind `debug=True`, Style D shape.
+- Clean boundary discipline: no prompt/`agent_task.json` touch (AST-1154's territory), no Skipped Retry / `bulk_retry_to_state` touch (AST-1156's territory), no scoring-math change for complete sets — verified live via the `X`/`0`-counts-as-present assertion in the Stage 2 script.
+
+context_tokens≈195000
+
+— Radia
+
+#### betty — 2026-08-03T01:29:27.228Z
+## QA test manifest — AST-1155
+
+**Publish:** `origin/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail` @ `e6698dd8`
+**tests SHA:** `88de69a2` (`test(AST-1155): incomplete grades retry holding never technical fail`)
+**merge-tests:** `merge-tests(AST-1155): origin/tests 88de69a2d6d9768cd0abdcad0c626a2edc0dd46b`
+
+### Classification
+
+1. **Existing coverage (bible-backed)**
+   - `tests/component/core/test_consult.py::TestRenderScore::test_x_excluded_from_v` — complete sets with intentional `X`/`0` still score.
+   - `tests/component/core/test_consult.py::TestConsultBatchFailDest` — AST-642 fail-dest helper still holds for qualify/evaluate paths.
+
+2. **Broken / obsolete (revised this pass)**
+   - `TestAst874FetchCulturePagesConfig::test_job_states_and_like_priors` — LIKE priors include `CULTURE_READY_RETRY`.
+   - `TestAst1053MeteoriteGdlJobStates` — meteorite GDL priors + In Review `_PASS` include new `*_RETRY` holdings.
+
+3. **Gaps (new this pass)**
+   1. `tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings` — seven primary→holding claim companions, In Review labels/order, grade-field maps.
+   2. `tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry` — completeness helper (`X0` present); graded fail-dest matrix; `render_verdict` first strike → retry / second → technical; meteorite holding; batch incomplete → `PASSED_JD_RETRY`.
+   3. `tests/component/core/test_roster.py::TestAst1155PrefilterIncompleteRetry` — apply raises on incomplete set; `prefilter_company` → `WEBSITE_FOUND_RETRY`.
+
+**Integration:** none — no existing scenario asserts incomplete→technical vs retry.
+
+### Run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry \
+  tests/component/core/test_roster.py::TestAst1155PrefilterIncompleteRetry \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```
+
+### Bible (on publish-ref)
+
+- `docs/test-bible/core/consult.md` shasum `64514ce4c2ccd69770967acdd1bc4d1e43d7db6f`
+- `docs/test-bible/utils/config.md` shasum `c232e0df922e9572831835f4ec4180f0c799a355`
+
+— Betty
+
+#### joan — 2026-08-03T01:11:53.946Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1155
+**Overall:** APPROVED
+
+Publish ref confirmed against parent Git table: `sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail` @ `85f598b0`.
+
+Self-assessed Risk is `HIGH`, so this got the deeper pass the rubric asks for: I verified every state name, helper, and call site the plan depends on against the worktree rather than taking the plan's word. It held up. Notes on why HIGH risk did not trigger escalation are at the end.
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 incomplete/extra vectors → retry holding, never `*_FAILED_TECHNICAL_*` | Stage 1 (`retry_state` on seven graded triggers) + Stage 2 (gate before `_render_score`) + Stage 3 (`render_verdict` + prefilter routing) |
+| AC2 complete sets incl. `X`/`0` behave as today | Stage 2 Decision — exact set equality on stripped labels, `X`/`0` count as present; dealbreaker/threshold math untouched |
+| AC3 `debug=True` logs missing/unexpected vectors Style D | Stage 2 `_debug_incomplete_grade_set` (index header + `\|` detail), one emission per job |
+| AC4 Skipped Retry hop-correct landing | N/A — boundary (AST-1156); Non-goals name it |
+| AC5 (parent AC5 = debug) | Same as AC3 above; child AC list renumbers it 3 |
+
+Parent AC3 (model-facing prompt contracts) is AST-1154's, correctly excluded here.
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 `JOB_STATES` `*_RETRY` holdings + priors + In Review wiring | Functional scope 2 "Incomplete grades always retry — never technical fail"; Architectural definition `pattern.state.entity-state-transitions` and `pattern.config.config-block` |
+| Stage 2 completeness helper + apply gates + Style D debug | Functional scope 1 (enforcement half) and 5 (debug visibility); `astral.agent.grade-vector-validation` |
+| Stage 3 `render_verdict` routing + prefilter gate | Functional scope 2 for the single-job and company paths; parent Boundary "technical fail stays for true infra failures" |
+
+No orphan stages.
+
+## Adversarial verification (plan claims checked against the worktree)
+
+| Plan claim | Result |
+|------------|--------|
+| Seven graded primaries exist and lack `retry_state` | Verified — `PASSED_JD`, `PASSED_DO`, `CULTURE_READY`, `METEORITE_QUALIFIED`, `METEORITE_PASSED_JD`, `METEORITE_PASSED_DO`, `METEORITE_PASSED_GET` all defined; none carries `retry_state` |
+| The seven `*_RETRY` holding names are free | Verified — zero occurrences of any proposed holding name anywhere in `config.py` |
+| `JD_READY_RETRY` is the shape to mirror | Verified — exists as a registered holding with the In Review / grade-field wiring the plan copies |
+| `dispatch_claim_states`, `IN_REVIEW_STATES`, `JOBS_IN_REVIEW_UI_SECTIONS`, `JOBS_IN_REVIEW_GRADE_FIELD` exist | Verified in `config.py` |
+| `grade_*` TASK_CONFIG rows omit static `vectors`, so `do_task._validate_grades` cannot gate completeness | Verified — `grade_do` / `grade_get` / `grade_like` / `evaluate_jd` / `qualify_job_listings` all have no `vectors` key; consult apply really is the enforcement point |
+| Root cause: `bad_grades` → `_consult_batch_fail_dest` → `error_state` when no `retry_state` | Verified at `consult.py:1130-1141` and the `bad_grades` block at `1319-1396` |
+| First strike → holding, second strike → technical, no loop | Verified — `_consult_batch_fail_dest` returns `retry_state` when set; from a holding with no `retry_state` it falls through to `error_state`. Holdings are specified without `retry_state`, so the second strike terminates |
+| `render_verdict._fail` always uses `error_state`, so incompleteness needs a separate dest | Verified at `consult.py:1026-1032`; job-not-found / company-not-found / prep-failure branches all go through `_fail` and the plan leaves them alone |
+| All Stage 2/3 symbols exist | Verified — `_strip_code`, `_render_score`, `_apply_render_verdict_decoded_job`, `render_verdict`, `_consult_job_identifier`, `_INPUT_STATE_TO_TASK`, `_run_batch_consult`; roster `_prefilter_fail`, `_prefilter_batch_fail_dest`, `_apply_prefilter_decoded_company_outcome` |
+| roster already imports consult helpers (no new layer edge) | Verified — `roster.py` already does `from src.core.consult import ...` inside the apply function; core → core, no layer breach |
+| Stage 3 step 2's unresolved fork | Resolved by inspection — see discuss finding 3; both callers already catch, so only the plan's first branch is live |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | One `code()` commit per stage on the sub ref |
+| orch.git.flow-direction-inviolable | conforms | Publishes to `origin/sub/...` only |
+| orch.git.ftr-sub-topology | conforms | Publish ref matches the parent Git table row |
+| orch.git.merge-on-checkout | conforms | No merge recipe proposed |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | Sub branch only |
+| orch.git.one-epic-worktree-per-parent | conforms | Executes on `astral-AST-1150` |
+| orch.git.three-permanent-branches | conforms | Invents no permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Stage-blocked template escalates to parent AST-1150 |
+| orch.pipeline.plan-is-bible | conforms | Binding contract + Files Changed table; the one conditional step resolves deterministically against the code (discuss 3) |
+| orch.pipeline.project-scoped-queues | conforms | Single child, Astral Consult |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready entry |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | Test and bible files sit in a separate "Verify only (Betty / qa-child — engineer does not edit)" table, outside Files Changed — exactly the right shape |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Hedy implements |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer path after Plan Approved |
+| orch.roles.pre-commit-path-bans | conforms | No banned-path edits |
+| astral.agent.confidence-bounds | conforms | `X`/`0` rows count as present; plan invents no grades for omissions |
+| astral.agent.do-task-delegation | conforms | No change to `do_task` call shape or task_key resolution |
+| astral.agent.grade-vector-validation | conforms | Enforces the full live-rubric set at consult apply, which is the only available gate given `grade_*` has no static `vectors` |
+| astral.batch.batch-id-first | conforms | No claim/get/clear signature change |
+| astral.batch.batch-id-format | conforms | No batch_id construction change |
+| astral.batch.claim-process-release | conforms | Incompleteness stays a per-entity process failure inside the existing claim → process → release scaffold |
+| astral.batch.entity-agent-responses-latest-only | conforms | RESPONSE entity_id tagging untouched |
+| astral.config.config-source-of-truth | conforms | Retry destinations are `JOB_STATES.retry_state`; Decision 1 explicitly forbids a hard-coded remap in `process_fn` |
+| astral.config.pass-threshold-vs-score-floor | conforms | Neither value touched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets or env lookups |
+| astral.dispatch.run-next-is-chain-authority | needs-discussion | Stage 2 step 7 extends the legacy `_INPUT_STATE_TO_TASK` state→task shadow map — see discuss 2 |
+| astral.dispatch.seed-auto-false | conforms | Step 6 explicitly declines to seed `dispatch_task` companion rows; claim is registry-driven |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns `src/`; Betty's files are verify-only |
+| astral.layers.core-vs-external-bright-line | conforms | No external I/O moved into core |
+| astral.layers.import-direction | conforms | core → core helper reuse on an import edge that already exists; no new data/external imports |
+| astral.layers.ui-config-driven-business-logic | conforms | In Review labels/sections resolved from config, not React |
+| astral.patterns.coat-check-never-store-empty | conforms | Stage 2 gates *before* persist, so incomplete sets are never stored |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Scored apply stays on the `render_verdict` / `_run_batch_consult` path; no parallel router introduced |
+| astral.seed.agent-tables-in-repo-json | conforms | No `data/admin/**` edits |
+| astral.seed.archie-catalog-wins | conforms | State registry change is a committed config edit |
+| astral.seed.boot-only-not-hot-path | conforms | No new seed execution path |
+| astral.seed.define-approved | conforms | New `*_RETRY` states are state-registry entries, not a new seed catalog or coverage rule; parent Functional scope 2 names the retry-holding need |
+| astral.seed.operator-rows-stay-deleted | conforms | Step 6 declines to insert dispatch rows |
+| astral.seed.other-via-coverage-join | conforms | No candidate-scoped seed inserts; no hardcoded candidate ids |
+| astral.standards.data-raises-caller-logs | conforms | Data layer untouched; core raises and the batch scaffold logs |
+| astral.standards.debug-contract-gated | conforms | Incomplete detail only under `debug=True`, Style D index header + `\|` detail, one emission per job |
+| astral.standards.dry-and-focused-functions | conforms | One `_grade_set_vector_diff` / `_require_complete_grade_set`; `_render_score` refactored to call it rather than duplicate the set math |
+| astral.standards.in-scope-only | conforms | Explicit out-of-scope list covers `agent_task.json`, `agent.py`, `src/ui/**`, Skipped `bulk_retry_to_state`, tests |
+| astral.standards.logging-via-utils | conforms | Uses `logger.debug_index` / `debug_detail` from utils logging, no `print` |
+| astral.standards.names-not-ticket-ids | conforms | `{PRIMARY}_RETRY`, `_grade_set_vector_diff`, `_require_complete_grade_set` are domain names; AST-1155 appears only in a docstring |
+| astral.standards.no-cross-contamination | conforms | Stays within core + utils config |
+| astral.standards.no-hardcoded-sets | needs-discussion | Retry destinations are correctly config-owned, but Stage 3 routes on inline exception-message substrings — see discuss 1 |
+| astral.standards.public-then-helpers | conforms | Helpers placed adjacent to `_render_score`, consistent with file organization |
+| astral.standards.utils-data-late-import-only | conforms | No `utils → data` import added |
+| astral.state.core-decides-transitions | conforms | Core decides the destination and passes it to the data layer; the policy itself lives in `JOB_STATES` |
+| astral.state.job-prior-states-enforced | conforms | Stage 1 step 2 extends `prior_states` for every new holding's outbound edges, with an explicit instruction not to invent new hop edges |
+| astral.state.no-daisy-chain-in-run | conforms | Retry is a separate dispatch cycle claim, not an in-run hop |
+| astral.ui.single-gunicorn-worker | conforms | No gunicorn or worker change |
+
+## Considered and excluded
+
+**Considered (56):** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.dispatch.run-next-is-chain-authority, astral.dispatch.seed-auto-false, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.seed.agent-tables-in-repo-json, astral.seed.archie-catalog-wins, astral.seed.boot-only-not-hot-path, astral.seed.define-approved, astral.seed.operator-rows-stay-deleted, astral.seed.other-via-coverage-join, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.names-not-ticket-ids, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.single-gunicorn-worker
+
+**Excluded (9):**
+- astral.debug.no-repo-root-artifacts-dir — paths [artifacts/**, scripts/spikes/**] match no plan path
+- astral.debug.spikes-under-debug-dir — paths [debug/**, docs/features/**, scripts/spikes/**] match no plan path
+- astral.docs.features-single-file-per-ticket — layers [docs] does not intersect plan layers [core, utils]
+- astral.git.engineer-test-tree-ban — paths [tests/**, docs/test-bible/**, ...] match no plan path; the plan's test references are in a verify-only Betty table, not Files Changed
+- astral.layers.scripts-exempt-from-layer-rules — layers [scripts] does not intersect plan layers
+- astral.patterns.require-auth-on-protected-endpoints — layers [ui] does not intersect plan layers
+- astral.standards.database-header-inventory — layers [data] does not intersect plan layers
+- astral.ui.frontend-file-placement — layers [ui] does not intersect plan layers
+- astral.ui.naming-conventions — layers [ui] does not intersect plan layers
+
+## Findings
+
+**No fix-now findings.**
+
+**discuss 1 — retry routing is wider than incompleteness, and the plan does not say so.** `_run_batch_consult` catches `except Exception` from `process_fn` into `bad_grades` (`consult.py:1326-1340`) and routes the whole set through `_consult_batch_fail_dest`. Once Stage 1 puts `retry_state` on the seven primaries, *every* `process_fn` failure on those triggers first-strikes to the retry holding — a save error or an unexpected `KeyError`, not just an incomplete grade set. I do not think this breaks the parent Boundary "does not turn genuine technical failures into retry-hold": the infra failures that Boundary names (missing company, prep failure, provider error) all occur outside `process_fn` and still go straight to `error_state`, which I confirmed in `render_verdict._fail` and which Stage 3 step 3 explicitly preserves. The second strike from the holding still lands technical, so nothing loops. It is also the established AST-642 behavior that `NEW` / `JD_READY` already have. Flagging it because it is a real behavior change the plan never states, and Radia and Betty should be looking for it rather than discovering it. Worth one sentence in the plan.
+
+**discuss 2 — Stage 3's incompleteness routing keys off exception-message substrings.** `render_verdict` will branch on `str(e)` containing `missing vectors` / `unknown vectors`, and Stage 2 deliberately preserves the `_render_score:` message prefix to keep that working. This is the one place where the fix for a mis-routing bug depends on prose staying stable; if anyone reworded those raises later, incompleteness would silently fall back to technical fail — the exact bug being fixed here. Two things keep it off the fix-now list: the batch path that produced the repro does not use substrings at all (any `process_fn` exception is already routed by state), so only the single-job `render_verdict` path is exposed; and the plan narrows the match deliberately and says so. Since Stage 2 is authoring the raiser anyway, a dedicated `ValueError` subclass caught by type would cost about the same and remove the coupling — `_render_score`'s own defense-in-depth raises are in the same file and in scope. Engineer's call, and `astral.standards.no-hardcoded-sets` is scored needs-discussion on that basis.
+
+**discuss 3 — Stage 3 step 2 leaves a fork open; here is the answer so nobody improvises.** The step says to re-raise so the caller's existing `_prefilter_fail` path runs, then adds a fallback for "if the current caller does not catch apply-outcome errors" and tells the builder to inspect the live caller. I inspected it: both callers already catch. `prefilter_company` wraps the apply call in `except ValueError as outcome_err: return _prefilter_fail(...)` (`roster.py:1979-1994`), and `_run_batch_company_prefilter` wraps it in `except Exception` → `bad_grades` → `_prefilter_batch_fail_dest` (`roster.py:2207-2228`). So the plan's first branch is the live one, the fallback branch is dead, and no third router is needed. Under the plan's own "stop when a step is ambiguous" contract this could have cost a round trip; recording the resolution here instead.
+
+**acceptable — self-assessment honesty.** Scope `Single-Component`, Conf `high`, Risk `HIGH` are all honest. The Risk justification is specific rather than generic — wrong priors or holding names would break claim and transition across every rubric hop, and an over-broad `render_verdict` except could retry real infra failures. That second concern is exactly the right thing to have worried about, and Stage 3's narrow carve-out plus step 3's "do not change those branches" instruction is a real mitigation, not a hand-wave.
+
+**Why HIGH risk did not escalate.** The rubric escalates HIGH risk only when I am not confident the plan handles it. Every load-bearing fact the plan asserts checked out against the tree: the seven primaries exist and lack `retry_state`, the seven holding names are unused, `JD_READY_RETRY` gives a working precedent for all four registry touch points, `grade_*` genuinely has no static `vectors`, the second-strike path terminates, and every named helper exists where the plan says. The residual risk is concentrated in prior-state wiring, which Stage 1 step 2 handles edge by edge with an explicit "do not invent new hop edges" guard and a runnable assertion in step 7. That is a plan I am confident in.
+
+**R6 checklist.** Definition fidelity pass — implements Functional scope 2 and 5, nothing more. Boundaries pass — no prompt copy, no Skipped landing, no scoring-math change for complete sets. Layer and import pass. Config-as-source-of-truth pass. Placement pass. Batch pattern respected. Debug gating correct. DRY pass. No sibling scope creep into AST-1154 or AST-1156, and the plan correctly states it does not depend on AST-1154 landing first.
+
+context_tokens≈120000
+
+— Joan
+
+#### hedy — 2026-08-03T01:04:07.753Z
+Plan published on `origin/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail` @ `85f598b0`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail/docs/features/consult/ast-1155-incomplete-grades-retry-holding-never-technical-fail.md
+
+**Root cause:** `bad_grades` → `_consult_batch_fail_dest`, but `PASSED_JD` / meteorite graded triggers have no `retry_state`, so incompleteness lands on `*_FAILED_TECHNICAL_*`.
+
+**Self-assessment**
+- **Scope:** Single-Component — `JOB_STATES` retry holdings + consult/roster apply gate; no prompts, no Skipped UI.
+- **Conf:** high — AST-642/AST-898 pattern; missing `retry_state` is the first-touch technical path; live call sites enumerated.
+- **Risk:** HIGH — wrong priors/holding names would break claim/transition across every rubric hop; over-broad `render_verdict` except handling could retry real infra failures.
+
+— Hedy
+
+---
+
 # AST-1155 — Incomplete grades → retry holding (never technical fail)
 
 **Linear:** [AST-1155](https://linear.app/astralcareermatch/issue/AST-1155/incomplete-grades-retry-holding-never-technical-fail-technical-fail)  

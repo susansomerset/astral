@@ -1,3 +1,169 @@
+<!-- linear-archive: AST-1153 archived 2026-08-07 -->
+
+## Linear archive (AST-1153)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1153/prove-meteorite-analysis-without-title-pattern-reject-do-not-validate  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1151 — Do not validate titles on meteorites  
+**Blocked by / blocks / related:** parent: AST-1151
+
+### Description
+
+## What this implements
+
+After #1: observable coverage that a meteorite whose title would fail roster title patterns still reaches meteorite qualify/analysis eligibility when content gates pass, that short/blank title still content-fails, and that roster NEW title screening is unchanged. Does not invent new ingest paths.
+
+## In scope
+
+- [X] `pattern.state.entity-state-transitions` — proof locks meteorite track outcomes (`METEORITE_NEW` / `METEORITE_QUALIFIED` / `METEORITE_FAILED_QUALIFY`); forbids `INVALID_TITLE` for meteorite-company jobs
+- [X] `astral.standards.no-cross-contamination` — roster NEW title-screen unchanged (P5); meteorites not pattern-rejected (P1–P3)
+- [X] `astral.standards.in-scope-only` — stack + verify AST-1152 product; no GDL / ingest / threshold peel; no engineer `tests/` edits
+
+## Considered but excluded
+
+* `pattern.batch.entity-claim-process-release` — claim→process→release already owned by AST-1152 / existing qualify tasks; this ticket only locks outcomes
+* `pattern.config.config-block` / `astral.config.config-source-of-truth` — no new config keys; thresholds stay in `TASK_CONFIG` / `METEORITE_CONFIG` as shipped
+* `astral.state.job-prior-states-enforced` / `astral.state.core-decides-transitions` — transitions already decided on AST-1152; proof asserts them only
+* `astral.agent.do-task-delegation` / grade statutes — no agent/grade path on this ticket
+* `astral.dispatch.run-next-is-chain-authority` — no dispatch_task changes
+* New `tests/integration/` scenarios — same posture as AST-1152 bible (component locks only)
+* Re-implementing AST-1152 peel / `is_meteorite_company` — sibling #1 owns product
+
+## Acceptance criteria
+
+- [X] UAT can show a candidate-submitted meteorite with a title outside the candidate’s title patterns still progressing past the pre-analysis gate into meteorite analysis when title/link/JD content gates pass.
+- [X] A meteorite whose extract has a short or blank title still fails the existing content gate to METEORITE_FAILED_QUALIFY (unchanged policy).
+- [X] Roster NEW jobs still receive the existing title-pattern screen (pass → continue qualify; fail → INVALID_TITLE) with no behavioral change from this epic.
+
+## Boundaries
+
+Does not invent new ingest paths. Does not own stopping title-pattern screening (sibling #1). Does not change GDL scoring. Does not edit `tests/` / `docs/test-bible/**` (Betty materializes Proof matrix P1–P5).
+
+## Notes for planning
+
+Locks Archie decision: title-pattern forbidden; short/blank title content gate stays. Product tip is AST-1152 on `origin/ftr/AST-1151-do-not-validate-titles-on-meteorites`. Sync must use full `--ftr AST-1151-do-not-validate-titles-on-meteorites` (bare `AST-1151` skips).
+
+## Git branch (authoritative)
+
+`sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject`
+
+### Comments
+
+#### chuckles — 2026-08-03T01:49:14.955Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/<parent-segment>
+
+Offending commits on `origin/sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject`:
+- `84551735` Merge remote-tracking branch 'origin/dev' into sub/…
+- `5ba04dce` Merge remote-tracking branch 'origin/sub/…' into sub/…
+
+@Hedy Lamarr — rewrite/republish the sub tip without `Merge remote-tracking branch` (keep plan/code/merge-tests/test/docs/resolve sequence). Then Chuckles will re-run merge-child.
+
+— Chuckles
+
+#### radia — 2026-08-03T01:47:23.240Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1153
+**Publish ref:** 5ba04dce8d400bef3933504dacd5d61815d89b9f
+**Overall:** CLEAN
+
+## Plan adherence
+
+- Stage 1 (verify-only) and Stage 2 (Review-stub commit) executed exactly as written — confirmed byte-identical `src/core/{consult,gazer,meteorite}.py` between the AST-1152 code tip (`bba9bcb6`) and this tip, so "no `src/` edits" holds.
+- Proof matrix P1–P5 landed 1:1: `TestAst1153MeteoriteTitleScreenProof` (P1/P5 mixed-batch), `TestValidateTitleBatch::test_skips_meteorite_company_roster_still_fails` (P2), `TestAst1062QualifyMeteorite::test_pattern_mismatch_title_still_qualifies` (P3); P4 correctly reuses the existing untouched content-gate rows instead of duplicating.
+- Engineer `code(AST-1153)` commit (`dc359aa0`) touches only the plan doc — engineer test-tree ban held, matching the ticket's own explicit design.
+
+## Pattern conformance
+
+`pattern.state.entity-state-transitions` (cited in description) — conforms; proof locks `METEORITE_NEW` / `METEORITE_QUALIFIED` / `METEORITE_FAILED_QUALIFY` and forbids `INVALID_TITLE` for meteorite companies exactly as asserted.
+
+## Frame diff
+
+(none)
+
+**What's solid:**
+
+- `merge-tests(AST-1153)` (`dae275b0`) rides in AST-1155's roster/config test rows via the shared single `origin/tests` SHA — expected `orch.git.betty-merge-tests-one-sha` mechanics, not scope creep; that commit touches no `src/` or `docs/features/`, so `astral.git.betty-no-src-or-features` holds.
+- Bible section for AST-1153 in `docs/test-bible/core/consult.md` cross-references the plan's P1–P5 table cleanly and marks the AST-1152 "deferred" gaps as "filled."
+
+Full active-set sweep (65 statutes: 18 universal + 47 scoped) scored in-session against this diff (core + docs layers, add/modify — same predicate shape as the AST-1152 sweep since the `src/` payload is identical) — 33 scoped statutes matched and conformed, 14 not-applicable, all 18 universal conformed (no plan-is-bible drift this time — Stage 1/2 executed literally, unlike the AST-1152 discuss item). No Joan plan-rubric verdict attached to this ticket — no straggler check possible.
+
+context_tokens≈9
+
+— Radia
+
+#### betty — 2026-08-03T01:40:10.289Z
+1. `tests/component/core/test_consult.py::TestAst1153MeteoriteTitleScreenProof` — P1 re-home meteorite `NEW` → `METEORITE_NEW` (never `INVALID_TITLE`); mixed-batch P5 roster peer still screens
+2. `tests/component/core/test_gazer.py::TestValidateTitleBatch` (incl. `::test_skips_meteorite_company_roster_still_fails`) — P2 skip + roster fail; P5 roster regression
+3. `tests/component/core/test_consult.py::TestAst1062QualifyMeteorite` (incl. `::test_pattern_mismatch_title_still_qualifies` + `::test_content_gates_fail_state`) — P3 pattern-mismatch still qualifies; P4 short/blank content gate
+4. `tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle` — P5 roster inline title screen
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_gazer.py::TestValidateTitleBatch \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestAst1153MeteoriteTitleScreenProof \
+  -q
+```
+
+No integration scenario invent. AST-1152 deferred gaps filled.
+
+`origin/sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject` @ `dae275b0` (`merge-tests(AST-1153): origin/tests 7fb2170ee10af4bd13fb31eddc99f2bdfa660cbd`)
+
+Bible: `docs/test-bible/core/consult.md` shasum `e8f7994b80b23856c1b76e078644e9f53a17a264`
+
+— Betty
+
+#### joan — 2026-08-03T01:30:07.751Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1153
+**Overall:** APPROVED
+**Publish ref tip:** `c2aa04a6` on `origin/sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject`
+
+## Traceability
+
+AC1→P3 + UAT recipe steps 1–3 (pattern-mismatch title still reaches `METEORITE_QUALIFIED`); AC2→P4 + UAT step 5 (short/blank still `METEORITE_FAILED_QUALIFY`, thresholds untouched); AC3→P5 + UAT step 6 (roster `NEW` still screens to `INVALID_TITLE`). S1 (verify stacked product) and S2 (Review stub) are the delivery vehicle for the Proof matrix; P1–P2 are the mechanism locks behind AC1/AC3. No unmapped AC, no orphan stage.
+
+## Findings
+
+**discuss — two stop conditions name different escalation targets.** The Prerequisite says that if an AST-1152 symbol is missing after sync, stop and comment on **AST-1153**; the Files Changed note says a product gap vs the Proof matrix stops and comments on the **parent**. Those are arguably distinct triggers, but a builder who finds `is_meteorite_company` absent could read either. Naming one target (or one sentence distinguishing "sync incomplete" from "product gap") would remove the ambiguity. Non-blocking.
+
+**acceptable — verified against the tree, not taken on faith:**
+- The blocked-by product really is stacked: `is_meteorite_company` is present on `origin/ftr/AST-1151-do-not-validate-titles-on-meteorites` (`8a6438cb`) and on this publish ref, and `git diff --stat ftr..<ref> -- src/` is **empty**. Stage 1's preflight will pass and the "no `src/` delta" claim in Stage 2 already holds at tip.
+- `qualify_job_listings` on the ref does partition `meteorite_new` / `roster_new` and pass only `roster_new` into `validate_title_batch`, so P1/P2 describe symbols that exist rather than hoped-for ones.
+- `code(AST-1153)` for a docs-only build commit **conforms** to `orch.git.commit-vocabulary`: `docs()` is Radia's review slot in ASTRAL_GIT_WORKFLOW (`docs(AST-NNN): Radia review — clean/findings`), so an engineer build-stage commit correctly stays `code()`. The plan's Decision reaches the right answer.
+- Test-tree ownership is clean: Proof matrix P1–P5 is written as instructions for Betty with no engineer `tests/` or `docs/test-bible/**` edit, satisfying `orch.roles.betty-owns-test-tree`, `orch.roles.pre-commit-path-bans`, and `astral.git.betty-no-src-or-features` (engineer, not Betty, touches `docs/features/`).
+- One plan file for the ticket (`astral.docs.features-single-file-per-ticket` conforms); spike output is scoped to gitignored `debug/spikes/AST-1153/` with nothing committed (`astral.debug.spikes-under-debug-dir` conforms).
+- `orch.pipeline.plan-is-bible` conforms — the plan carries explicit stop-and-escalate conditions rather than inviting on-the-fly fixes.
+- Self-assessment (minor / high / low) is honest for a verify-plus-docs stage, and the named residual risks (short `--ftr AST-1151` silently skipping the parent merge; Betty missing a matrix row) are specific and mitigated in the Prerequisite and matrix.
+
+AC1–AC3 are locked by Betty's `qa-child` pass rather than by an artifact this child commits. That is the correct division under the engineer test-tree ban and matches the parent's framing of this child as proof/lock coverage, so it is not scored as a gap.
+
+Statute scoring (22 considered — 18 universal + 4 scoped; 43 excluded) ran in-session per R7 slim-artifact rules; no `violates`.
+
+context_tokens≈95000
+
+— Joan
+
+#### hedy — 2026-08-03T01:27:25.912Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject/docs/features/meteorite/ast-1153-prove-meteorite-analysis-without-title-pattern-reject.md
+
+`origin/sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject` @ `c2aa04a6`
+
+**Scope:** `minor` — docs-only build on the happy path; product peel already on AST-1152 / parent ftr; this ticket locks Betty’s deferred proof gaps (P1–P5).
+
+**Conf:** `high` — AST-1152 product + bible deferred rows are concrete; P1 re-home, P2 validate_title skip, P3 pattern-mismatch still qualifies, P4 content gate, P5 roster unchanged map 1:1 to parent ACs.
+
+**Risk:** `low` — no new product behavior; residual risk is short `--ftr AST-1151` silently omitting parent tip (plan Prerequisite requires full parent segment) or Betty missing a matrix row (mitigated by explicit P1–P5 + manifest shape).
+
+---
+
 # AST-1153 — Prove meteorite analysis without title-pattern reject
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-1153/prove-meteorite-analysis-without-title-pattern-reject-do-not-validate  

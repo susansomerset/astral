@@ -1,5 +1,6 @@
 interface Props {
   jobTitle: string
+  /** AST-1694 listing_href (http(s) or null) — not raw job_link. */
   jobLink: string | null
   companyName: string
   companyWebsite: string | null
@@ -8,6 +9,11 @@ interface Props {
   copyFeedback?: string | null
   onCopyApplicationEmail?: () => void
   onCopyLinkedIn?: () => void
+  onCopyDetailLink?: () => void
+  detailLinkCopied?: boolean
+  onCopySnapshot?: () => void
+  snapshotCopied?: boolean
+  snapshotCopying?: boolean
   showPrintResume: boolean
   showPrintCover: boolean
   onPrintResume?: () => void
@@ -25,19 +31,28 @@ export default function RecommendedJobReportHeader({
   copyFeedback,
   onCopyApplicationEmail,
   onCopyLinkedIn,
+  onCopyDetailLink,
+  detailLinkCopied,
+  onCopySnapshot,
+  snapshotCopied,
+  snapshotCopying,
   showPrintResume,
   showPrintCover,
   onPrintResume,
   onPrintCover,
 }: Props) {
   const link = jobLink?.trim() || null
+  const httpLink = (() => {
+    const t = (link ?? "").toLowerCase()
+    return t.startsWith("http://") || t.startsWith("https://") ? link : null
+  })()
 
   return (
     <div className="recommended-report-header">
       <div className="recommended-report-header-row">
-        {link ? (
+        {httpLink ? (
           <a
-            href={link}
+            href={httpLink}
             target="_blank"
             rel="noopener noreferrer"
             className="recommended-report-title-link"
@@ -60,12 +75,34 @@ export default function RecommendedJobReportHeader({
           <span className="recommended-report-company">{companyName}</span>
         )}
       </div>
-      {(applicationEmail || linkedInUrl) && (
+      {link && !httpLink && (
+        <div className="recommended-report-job-link-text">{link}</div>
+      )}
+      {(onCopyDetailLink || onCopySnapshot || applicationEmail || linkedInUrl) && (
         <div className="recommended-report-links">
+          {onCopyDetailLink && (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => onCopyDetailLink()}
+            >
+              {detailLinkCopied ? "Copied" : "Copy Link"}
+            </button>
+          )}
+          {onCopySnapshot && (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => onCopySnapshot()}
+              disabled={snapshotCopying}
+            >
+              {snapshotCopied ? "Copied" : "Copy"}
+            </button>
+          )}
           {applicationEmail && (
             <button
               type="button"
-              className="recommended-report-copy-link"
+              className="btn secondary"
               title="Copy Application Email"
               onClick={() => onCopyApplicationEmail?.()}
             >
@@ -75,7 +112,7 @@ export default function RecommendedJobReportHeader({
           {linkedInUrl && (
             <button
               type="button"
-              className="recommended-report-copy-link"
+              className="btn secondary"
               title="Copy LinkedIn Profile"
               onClick={() => onCopyLinkedIn?.()}
             >
@@ -90,12 +127,12 @@ export default function RecommendedJobReportHeader({
       {(showPrintResume || showPrintCover) && (
         <div className="recommended-report-header-actions">
           {showPrintResume && (
-            <button type="button" className="modal-btn cancel" onClick={() => onPrintResume?.()}>
+            <button type="button" className="btn secondary" onClick={() => onPrintResume?.()}>
               Print Resume
             </button>
           )}
           {showPrintCover && (
-            <button type="button" className="modal-btn cancel" onClick={() => onPrintCover?.()}>
+            <button type="button" className="btn secondary" onClick={() => onPrintCover?.()}>
               Print Cover Letter
             </button>
           )}

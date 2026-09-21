@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useState } from "react"
+import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
+import { useCandidate } from "../contexts/CandidateContext"
+import type { AdminCandidateFilterValue } from "../hooks/useAdminCandidateFilter"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
-
-type CandidateMatch = {
-  matched: boolean
-  astral_candidate_id: string | null
-}
 
 type InboxMessage = {
   id: string
@@ -15,13 +14,14 @@ type InboxMessage = {
   from_address: string
   date: string
   unread: boolean
-  candidate_match?: CandidateMatch
 }
 
 type LandMeteoriteResultRow = {
   message_id: string
   outcome: string
   astral_candidate_id: string | null
+  error?: string
+  job_count?: number
 }
 
 type LandMeteoriteResponse = {
@@ -42,11 +42,15 @@ function outcomeKind(outcome: string): "skip" | "fail" | "ok" {
 }
 
 export default function AdminManageEmail() {
+  const { candidates } = useCandidate()
+  // Default All — do not sync to nav selected candidate (AST-1558 AC).
+  const [candidateFilter, setCandidateFilter] =
+    useState<AdminCandidateFilterValue>("")
   const [messages, setMessages] = useState<InboxMessage[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [htmlBody, setHtmlBody] = useState("")
+  const [assembledHtml, setAssembledHtml] = useState("")
   const [bodyLoading, setBodyLoading] = useState(false)
   const [bodyError, setBodyError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -58,7 +62,7 @@ export default function AdminManageEmail() {
   const clearToast = useCallback(() => setToast(null), [])
 
   const selectionCount = selectedIds.size
-  const landEnabled = selectionCount > 0 && !landBusy
+  const landEnabled = Boolean(candidateFilter) && selectionCount > 0 && !landBusy
   const allSelected =
     messages.length > 0 && selectedIds.size === messages.length
 
@@ -79,11 +83,19 @@ export default function AdminManageEmail() {
     setSelectedIds(new Set())
   }
 
-  const loadMessages = useCallback(async () => {
-    setLoading(true)
+  function onFilterChange(next: AdminCandidateFilterValue) {
+    setCandidateFilter(next)
+    clearSelection()
+  }
+
+  const loadMessages = useCallback(async (showSpinner = false) => {
+    beginRefresh(showSpinner)
     setError(null)
     try {
-      const r = await api("/api/admin/inbox/messages")
+      const url = candidateFilter
+        ? `/api/admin/inbox/messages?candidate_id=${encodeURIComponent(candidateFilter)}`
+        : "/api/admin/inbox/messages"
+      const r = await api(url)
       const data = await r.json().catch(() => ({} as Record<string, unknown>))
       if (!r.ok) {
         const msg =
@@ -99,17 +111,17 @@ export default function AdminManageEmail() {
       setError(msg)
       setToast({ text: msg, variant: "error" })
     } finally {
-      setLoading(false)
+      endRefresh()
     }
-  }, [])
+  }, [beginRefresh, endRefresh, candidateFilter])
 
   useEffect(() => {
-    void loadMessages()
+    void loadMessages(true)
   }, [loadMessages])
 
   async function openMessage(row: InboxMessage) {
     setSelectedId(row.id)
-    setHtmlBody("")
+    setAssembledHtml("")
     setBodyError(null)
     setBodyLoading(true)
     try {
@@ -121,7 +133,10 @@ export default function AdminManageEmail() {
         setBodyError(msg)
         return
       }
-      setHtmlBody(typeof data.html_body === "string" ? data.html_body : "")
+      // Prefer assembled_html only — no html_body fallback (header+body AC).
+      setAssembledHtml(
+        typeof data.assembled_html === "string" ? data.assembled_html : "",
+      )
     } catch (e) {
       setBodyError(e instanceof Error ? e.message : "Failed to load message")
     } finally {
@@ -131,20 +146,15 @@ export default function AdminManageEmail() {
 
   function closeModal() {
     setSelectedId(null)
-    setHtmlBody("")
+    setAssembledHtml("")
     setBodyError(null)
   }
 
   const selected = messages.find(m => m.id === selectedId)
   const modalTitle = (selected?.subject || "").trim() || "Message"
-  const selectedMatchId =
-    selected?.candidate_match?.matched === true &&
-    (selected.candidate_match.astral_candidate_id || "").trim()
-      ? (selected.candidate_match.astral_candidate_id as string)
-      : null
 
   async function onLandMeteorite() {
-    if (selectedIds.size === 0 || landBusy) return
+    if (!candidateFilter || selectedIds.size === 0 || landBusy) return
     const ordered = messages.filter(m => selectedIds.has(m.id)).map(m => m.id)
     const orderedSet = new Set(ordered)
     const leftovers = [...selectedIds].filter(id => !orderedSet.has(id))
@@ -159,7 +169,10 @@ export default function AdminManageEmail() {
       const r = await api("/api/admin/inbox/land-meteorite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message_ids: ids }),
+        body: JSON.stringify({
+          message_ids: ids,
+          candidate_id: candidateFilter,
+        }),
       })
       const data = (await r.json().catch(() => ({}))) as LandMeteoriteResponse
       if (!r.ok) {
@@ -178,7 +191,13 @@ export default function AdminManageEmail() {
         typeof data.total_errors === "number" ? `errors ${data.total_errors}` : null,
       ].filter(Boolean)
       if (parts.length > 0) {
-        setToast({ text: `Land Meteorite: ${parts.join(", ")}`, variant: "success" })
+        const failN =
+          (typeof data.total_failed === "number" ? data.total_failed : 0) +
+          (typeof data.total_errors === "number" ? data.total_errors : 0)
+        setToast({
+          text: `Land Meteorite: ${parts.join(", ")}`,
+          variant: failN > 0 ? "error" : "success",
+        })
       }
       await loadMessages()
     } catch (err) {
@@ -188,18 +207,6 @@ export default function AdminManageEmail() {
     } finally {
       setLandBusy(false)
     }
-  }
-
-  function matchCell(row: InboxMessage) {
-    const m = row.candidate_match
-    if (m?.matched === true && (m.astral_candidate_id || "").trim()) {
-      return (
-        <td>
-          <span className="manage-email-match">Matched: {m.astral_candidate_id}</span>
-        </td>
-      )
-    }
-    return <td>—</td>
   }
 
   return (
@@ -214,8 +221,14 @@ export default function AdminManageEmail() {
       {!loading && !error && (
         <>
           <div className="manage-email-toolbar">
+            <AdminCandidateFilterControl
+              value={candidateFilter}
+              onChange={onFilterChange}
+              candidates={candidates}
+            />
             <button
               type="button"
+              className="btn primary"
               disabled={messages.length === 0}
               onClick={selectAllVisible}
             >
@@ -223,6 +236,7 @@ export default function AdminManageEmail() {
             </button>
             <button
               type="button"
+              className="btn secondary"
               disabled={selectionCount === 0}
               onClick={clearSelection}
             >
@@ -230,6 +244,7 @@ export default function AdminManageEmail() {
             </button>
             <button
               type="button"
+              className="btn primary"
               disabled={!landEnabled}
               onClick={onLandMeteorite}
             >
@@ -261,6 +276,7 @@ export default function AdminManageEmail() {
                     >
                       {subject} — {row.outcome}
                       {cid ? ` (${cid})` : ""}
+                      {row.error ? ` — ${row.error}` : ""}
                     </li>
                   )
                 })}
@@ -282,7 +298,6 @@ export default function AdminManageEmail() {
                   </th>
                   <th>Subject</th>
                   <th>From</th>
-                  <th>Candidate</th>
                   <th>Date</th>
                   <th>Status</th>
                 </tr>
@@ -303,14 +318,13 @@ export default function AdminManageEmail() {
                     </td>
                     <td>{row.subject}</td>
                     <td>{row.from_address}</td>
-                    {matchCell(row)}
                     <td>{row.date}</td>
                     <td>{row.unread ? "Unread" : "Read"}</td>
                   </tr>
                 ))}
                 {messages.length === 0 && (
                   <tr>
-                    <td colSpan={6}>No messages in inbox.</td>
+                    <td colSpan={5}>No messages in inbox.</td>
                   </tr>
                 )}
               </tbody>
@@ -325,19 +339,33 @@ export default function AdminManageEmail() {
         title={modalTitle}
         size="wide"
       >
-        {selectedMatchId && (
-          <p className="manage-email-match manage-email-match--modal">
-            Matched: {selectedMatchId}
-          </p>
-        )}
         {bodyLoading && <p style={{ padding: 20 }}>Loading…</p>}
         {!bodyLoading && bodyError && (
           <p style={{ padding: 20, color: "var(--danger)", fontSize: 13 }}>{bodyError}</p>
         )}
         {!bodyLoading && !bodyError && (
-          <div className="email-html-frame">
-            <pre className="email-html-source" title="Email body">{htmlBody || ""}</pre>
-          </div>
+          <>
+            <div className="manage-email-modal-toolbar">
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={!assembledHtml}
+                onClick={() => {
+                  void navigator.clipboard.writeText(assembledHtml).then(() => {
+                    setToast({ text: "Copied to clipboard", variant: "success" })
+                  })
+                }}
+                title="Copy header+body HTML"
+              >
+                Copy
+              </button>
+            </div>
+            <div className="email-html-frame">
+              <pre className="email-html-source" title="Email body">
+                {assembledHtml || ""}
+              </pre>
+            </div>
+          </>
         )}
       </Modal>
 
