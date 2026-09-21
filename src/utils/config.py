@@ -5263,6 +5263,7 @@ NAV_CONFIG = [
             {"label": "Skipped", "path": "/jobs/skipped"},
             {"label": "Recommended", "path": "/jobs/recommended"},
             {"label": "Applied", "path": "/jobs/applied"},
+            {"label": "Meteorites", "path": "/jobs/meteorites"},
             {"label": "Responded", "path": "/jobs/responded", "enabled": False},
         ],
     },
