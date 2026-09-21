@@ -343,3 +343,8 @@ AST-1761 `## Scope` gate: **only** `src/core/consult.py` / `run_consult_task` �
 - `run_company_task` `WEBSITE_REVIEW` → `resolve_website_company` routing and terminals unchanged.
 - No CSE re-query, no `TASK_CONFIG` key/value edits, no new SA keys, no dispatcher completion-line changes.
 - Original AST-1674 Canon Scope ids unchanged; this delta does not require new logging or batch-criteria behavior.
+
+
+## Review-fix findings (AST-1761)
+
+PROCEED — CLEAN; [bug-repro] N/A (board TESTS: OK); What must still hold OK; no fix-now.
