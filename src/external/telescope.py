@@ -329,6 +329,7 @@ async def _post_telescope(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
+    id: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
     links: bool = True,
@@ -349,6 +350,8 @@ async def _post_telescope(
         body["tag"] = tag
     if class_name is not None:
         body["class_name"] = class_name
+    if id is not None:
+        body["id"] = id
     resp = await _pool.request(
         "POST", TELESCOPE_CONFIG["telescope_path"], json_body=body
     )
@@ -371,6 +374,7 @@ async def _post_telescope_html(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
+    id: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
 ) -> dict:
@@ -389,6 +393,8 @@ async def _post_telescope_html(
         body["tag"] = tag
     if class_name is not None:
         body["class_name"] = class_name
+    if id is not None:
+        body["id"] = id
     resp = await _pool.request(
         "POST", TELESCOPE_CONFIG["telescope_html_path"], json_body=body
     )
@@ -434,6 +440,7 @@ async def admin_telescope_scrape(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
+    id: Optional[str] = None,
     cull: bool = False,
 ) -> dict:
     """Admin workbench scrape — returns full Telescope JSON (incl. scrape_meta)."""
@@ -446,6 +453,7 @@ async def admin_telescope_scrape(
             selector=selector,
             tag=tag,
             class_name=class_name,
+            id=id,
             expand=expand,
             wait_ready=wait_ready,
             links=links,
@@ -456,6 +464,7 @@ async def admin_telescope_scrape(
             selector=selector,
             tag=tag,
             class_name=class_name,
+            id=id,
             expand=expand,
             wait_ready=wait_ready,
         )
