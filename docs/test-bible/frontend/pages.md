@@ -2941,6 +2941,21 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1744 · AST-1721 (qa-fix bug-repro — Admin single Tag primary)
+
+**Board REVISE:** remove separate Selector; Tag is sole primary; Class always enabled (secondary).
+
+| Area | Component tests |
+| --- | --- |
+| No Selector; Class enabled with Tag | `test_AdminTelescope.test.tsx` — **`AST-1744: single Tag primary + Class always enabled; no Selector slot`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx -t 'AST-1744'
+```
+
+---
+
 ### AST-1746 · AST-1721 (qa-fix bug-repro — AdminTelescope Id control)
 
 **Board REVISE:** AdminTelescope must expose optional Id filter (alongside Class name); AST-1736 class-only.

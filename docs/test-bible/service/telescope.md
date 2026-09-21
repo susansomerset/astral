@@ -174,13 +174,12 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 | Area | Component tests |
 | --- | --- |
 | `class_name` → `.shaders` into capture_html | `test_telescope_app.py::TestTelescopeRoutes::test_ast1736_html_class_name_resolves_to_dot_class` (**bug-repro**) |
-| Ambiguous selector+class_name → 400 | `test_telescope_app.py::TestTelescopeRoutes::test_ast1736_selector_plus_class_name_returns_400` (**bug-repro**) |
+| Ambiguous XOR superseded by AST-1744 | see `test_ast1744_bare_primary_plus_class_name_resolves_to_tag_class` |
 | Links bare-class retry | `test_telescope_capture.py::test_ast1736_capture_links_bare_class_retries_as_class` (**bug-repro**) |
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1736_html_class_name_resolves_to_dot_class \
-  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1736_selector_plus_class_name_returns_400 \
   tests/component/service/test_telescope_capture.py::test_ast1736_capture_links_bare_class_retries_as_class -q
 ```
 
@@ -199,4 +198,26 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 ./scripts/testing/run_component_tests.sh \
   tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1746_html_id_resolves_to_hash_id \
   tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1746_selector_plus_id_returns_400 -q
+```
+
+---
+
+### AST-1744 · AST-1721 (qa-fix bug-repro — unify tag/selector; class secondary)
+
+**Board REVISE:** rewrite AST-1736 XOR (`selector`+`class_name`→400); bare primary + class → `tag.class`; Admin single Tag primary (no Selector) with Class always enabled.
+
+| Area | Component tests |
+| --- | --- |
+| Bare selector + class → `div.logo` | `test_telescope_app.py::TestTelescopeRoutes::test_ast1744_bare_primary_plus_class_name_resolves_to_tag_class` (**bug-repro**) |
+| Tag + class → `div.logo` | `test_telescope_app.py::TestTelescopeRoutes::test_ast1744_tag_plus_class_name_resolves_to_tag_class` |
+| Complex CSS + class still 400 | `test_telescope_app.py::TestTelescopeRoutes::test_ast1744_complex_selector_plus_class_name_still_400` |
+| Admin single primary | `test_AdminTelescope.test.tsx` — **`AST-1744: single Tag primary + Class always enabled; no Selector slot`** (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1744_bare_primary_plus_class_name_resolves_to_tag_class \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1744_tag_plus_class_name_resolves_to_tag_class \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1744_complex_selector_plus_class_name_still_400 -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx -t 'AST-1744'
 ```
