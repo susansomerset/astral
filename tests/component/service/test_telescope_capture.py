@@ -79,7 +79,8 @@ async def test_capture_links_filters_http() -> None:
         return_value=[{"href": "https://ex.com/a", "text": "A"}]
     )
     out = await capture_mod.capture_links(page)
-    assert out == [{"href": "https://ex.com/a", "text": "A"}]
+    # AST-1747: text is always a deduped list[str]
+    assert out == [{"href": "https://ex.com/a", "text": ["A"]}]
 
 
 @pytest.mark.asyncio
@@ -90,7 +91,7 @@ async def test_ast1732_capture_links_scoped_to_selector() -> None:
         return_value=[{"href": "https://in.example/job", "text": "Job"}]
     )
     out = await capture_mod.capture_links(page, ".job-list")
-    assert out == [{"href": "https://in.example/job", "text": "Job"}]
+    assert out == [{"href": "https://in.example/job", "text": ["Job"]}]
     call = page.evaluate.await_args
     js = call.args[0]
     whole_page_only = (
@@ -110,19 +111,40 @@ async def test_ast1732_capture_links_scoped_to_selector() -> None:
 
 @pytest.mark.asyncio
 async def test_ast1732_capture_links_multi_match_dedupes_by_href() -> None:
-    """AST-1732 bug-repro: multi-root link union dedupes by href."""
+    """AST-1732 scoped union + AST-1747 text[]: same href merges labels, not first-wins string."""
     page = MagicMock()
     page.evaluate = AsyncMock(
-        return_value=[{"href": "https://ex.com/a", "text": "first"}]
+        return_value=[
+            {"href": "https://ex.com/a", "text": "first"},
+            {"href": "https://ex.com/a", "text": "second"},
+        ]
     )
-    await capture_mod.capture_links(page, ".card")
-    js = page.evaluate.await_args.args[0]
-    assert any(
-        tok in js
-        for tok in ("seen", "Set(", "Map(", "dedup", "href] =", "by href", "unique")
-    ), (
-        "AST-1732: scoped multi-match links must dedupe by href in the evaluate script"
+    out = await capture_mod.capture_links(page, ".card")
+    assert out == [{"href": "https://ex.com/a", "text": ["first", "second"]}], (
+        "AST-1747: scoped multi-match must merge texts into a list, not first-wins string"
     )
+
+
+@pytest.mark.asyncio
+async def test_ast1747_capture_links_dedupes_href_with_text_array() -> None:
+    """AST-1747 bug-repro: one object per href; text is deduped label array."""
+    page = MagicMock()
+    page.evaluate = AsyncMock(
+        return_value=[
+            {"href": "https://example.com/jobs/1", "text": "Software Engineer"},
+            {"href": "https://example.com/jobs/1", "text": "View role"},
+            {"href": "https://example.com/jobs/1", "text": "Software Engineer"},
+            {"href": "https://example.com/jobs/2", "text": "Designer"},
+        ]
+    )
+    out = await capture_mod.capture_links(page)
+    assert out == [
+        {
+            "href": "https://example.com/jobs/1",
+            "text": ["Software Engineer", "View role"],
+        },
+        {"href": "https://example.com/jobs/2", "text": ["Designer"]},
+    ]
 
 
 @pytest.mark.asyncio
