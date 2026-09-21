@@ -1111,3 +1111,12 @@ Scope files (parent Component/Technical): `src/external/telescope.py`, `src/core
 - `stat.logging.info`: existing `telescope ok` one-liner remains always-on and succinct.
 - `stat.logging.error`: still only for thrown failures with facts + next step + traceback — soft `scrape_closed` stays warning.
 - No bearer/token in logs; no `src`↔`service` imports; no depth/output caps on debug content; AST-1751 tally rules untouched.
+
+## Radia review (AST-1750)
+
+**Overall:** CLEAN — `[code-rubric] PROCEED` @ `b45b8c70`.
+
+- **[bug-repro] OK** — scrape_closed diagnostics + Telescope debug dump.
+- **What must still hold — OK** — logging statutes; AST-1751 tally untouched; no service/UI.
+- **§3h:** resolve-child skipped (clean review).
+
