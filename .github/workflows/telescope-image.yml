@@ -6,6 +6,11 @@ on:
     paths:
       - 'service/telescope/**'
       - '.github/workflows/telescope-image.yml'
+  pull_request:
+    branches: [dev, main]
+    paths:
+      - 'service/telescope/**'
+      - '.github/workflows/telescope-image.yml'
   workflow_dispatch:
     inputs:
       channel:
@@ -23,12 +28,14 @@ jobs:
       packages: write
     steps:
       - uses: actions/checkout@v4
-      # main -> production, dev -> staging; manual dispatch uses the chosen channel.
+      # main -> production, dev -> staging, PRs -> pr-<number>; manual dispatch uses the chosen channel.
       - name: Resolve channel tag
         id: chan
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             ch="${{ github.event.inputs.channel }}"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            ch="pr-${{ github.event.number }}"
           elif [ "${{ github.ref_name }}" = "main" ]; then
             ch="production"
           else
@@ -56,3 +63,23 @@ jobs:
             ghcr.io/susansomerset/telescope:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      # Railway pulls image-sourced services on explicit trigger only — it does
+      # NOT watch the registry tag. Without this, the push above is a no-op on
+      # the live service until someone manually redeploys.
+      # Requires repo secrets RAILWAY_TOKEN_STAGING / RAILWAY_TOKEN_PRODUCTION:
+      # Railway project tokens (Project Settings -> Tokens), each scoped to
+      # the matching environment.
+      - name: Trigger Railway redeploy
+        if: github.event_name != 'pull_request'
+        env:
+          RAILWAY_TOKEN: ${{ steps.chan.outputs.channel == 'production' && secrets.RAILWAY_TOKEN_PRODUCTION || secrets.RAILWAY_TOKEN_STAGING }}
+          ENV_ID: ${{ steps.chan.outputs.channel == 'production' && '2ce313de-780c-490c-ae5d-ecb7903fc215' || '2604ddad-4700-4341-b2a5-7af42d70e9f1' }}
+          SERVICE_ID: ${{ steps.chan.outputs.channel == 'production' && 'e4c50fe4-4916-4a6c-a06f-b0ffa8cd9160' || '1d439c4b-08f4-4e5f-95aa-37079aa45cd5' }}
+        run: |
+          resp=$(curl -sf --request POST \
+            --url https://backboard.railway.com/graphql/v2 \
+            --header "Project-Access-Token: ${RAILWAY_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data "{\"query\":\"mutation(\$e:String!,\$s:String!){ serviceInstanceDeployV2(environmentId:\$e, serviceId:\$s) }\",\"variables\":{\"e\":\"${ENV_ID}\",\"s\":\"${SERVICE_ID}\"}}")
+          echo "$resp"
+          echo "$resp" | grep -q '"errors"' && exit 1 || true
