@@ -60,9 +60,6 @@ fi
 echo "      Installing Python packages into .venv..."
 "$VENV/bin/pip" install -r requirements.txt
 
-echo "      Installing Playwright browsers (Firefox)..."
-"$VENV/bin/python" -m playwright install firefox
-
 # ---------------------------------------------------------------------------
 # 5. Frontend (npm install + build)
 # ---------------------------------------------------------------------------
