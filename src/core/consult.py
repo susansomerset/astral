@@ -2539,7 +2539,6 @@ async def run_consult_task(
                 "total_errors": errors,
             }
         if task_key == "resolve_website":
-            from src.utils.config import TASK_CONFIG
             terminal_ok = (
                 TASK_CONFIG["resolve_website"]["pass_state"],
                 TASK_CONFIG["resolve_website"]["fail_state"],
