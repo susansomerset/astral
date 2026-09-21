@@ -1,0 +1,320 @@
+# AST-1603: Agent + tracker land via TASK_CONFIG.artifact_key
+
+**Linear:** [AST-1603](https://linear.app/astralcareermatch/issue/AST-1603)
+**Parent:** [AST-1601](https://linear.app/astralcareermatch/issue/AST-1601) — Rip out job-specific artifact pin helpers; match candidate catalog pattern
+**Publish ref:** `sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key`
+
+After [AST-1602](https://linear.app/astralcareermatch/issue/AST-1602) (config authority on `TASK_CONFIG.artifact_key`), rewire `do_task` finalize land to read that key and call `save_job_artifact`; drop the deleted `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` import/branch; privatize the job-only replica-prepare helper; strip `job_resume` / `cover_letter` from pin-key vocabulary. Keep `proposed_answers` pin resolve and generic catalog write/current-read. Does not touch config registration, does not catalog `proposed_answers`.
+
+## Explicit scope gate
+
+Ticket **## Scope** names only `src/core/agent.py` and `src/core/tracker.py`. Every Files Changed row and every Stage step stays inside those two files. No `config.py` edits (sibling #1 owns that). No coat-check. No new body-validation gates. No cataloging of `proposed_answers` / `notes` / `resume_content` / `application_responses`. No new type-specific public save for `job_resume` / `cover_letter`.
+
+**Prerequisite:** `sync-child.sh` with `--ftr AST-1601-rip-job-artifact-pin-helpers-match-candidate` already carries AST-1602 — `TASK_CONFIG["finalize_job_resume"]["artifact_key"]` / `finalize_cover_letter` set, `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` gone from `config.py`. If that symbol still exists at build start, stop and comment on the parent — do not re-implement config work here.
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/core/tracker.py` | Privatize `prepare_job_replica_body` → `_prepare_job_replica_body`; shrink `_JOB_ARTIFACT_PIN_KEYS` to `proposed_answers` only; hydrate pin-resolve loop follows | core |
+| `src/core/agent.py` | Remove `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` import/branch; land via `TASK_CONFIG` `artifact_key` → `_prepare_job_replica_body` + `save_job_artifact`; keep pin + draft-notes + candidate-craft paths | core |
+
+## Stages
+
+## Stage 1: Tracker — privatize prepare; strip catalog keys from pin vocabulary
+
+**Done when:** `prepare_job_replica_body` is no longer a public name (only `_prepare_job_replica_body`); `_JOB_ARTIFACT_PIN_KEYS` is exactly `("proposed_answers",)`; hydrate still overlays `job_resume` / `cover_letter` from `get_job_current` and still pin-resolves `proposed_answers`; `save_job_artifact` / `get_job_current` / `pin_job_artifact_agent_data_id` unchanged.
+
+1. In `src/core/tracker.py`, rename `prepare_job_replica_body` → `_prepare_job_replica_body` (same signature and body). Keep it among helpers below the public catalog write/read / pin APIs. Update the docstring to: private helper that unwraps a finalize hop payload for a job catalog key; returns `None` if no landable body (AST-1592 / AST-1603).
+2. After the rename, `src/core/tracker.py` must not define or re-export a public `prepare_job_replica_body` (no alias). `src/core/agent.py` may still import the old public name until Stage 2 — land Stage 2 in the same build session immediately after so the broken import window is one commit only.
+3. Change `_JOB_ARTIFACT_PIN_KEYS = ("job_resume", "cover_letter", "proposed_answers")` to:
+   ```python
+   _JOB_ARTIFACT_PIN_KEYS = ("proposed_answers",)
+   ```
+4. In `hydrate_job_artifacts_for_display`, keep the `get_job_current` overlay for `job.artifacts.job_resume` / `job.artifacts.cover_letter` unchanged. Simplify the pin-resolve loop: delete the `if key in ("job_resume", "cover_letter"): continue` branch (those keys are no longer in `_JOB_ARTIFACT_PIN_KEYS`). Loop body for `proposed_answers` stays: string pin → `resolve_job_artifact_agent_data_body` → replace value when body is not None.
+5. Do **not** add a new type-specific public save for job_resume / cover_letter. Do **not** change `save_job_artifact`, `get_job_current`, or `pin_job_artifact_agent_data_id` signatures/behavior.
+
+⚠️ **Decision:** Privatize prepare rather than leave it public. Scope allows either; `astral.standards.public-then-helpers` prefers no leftover public type-wired peer once the parallel map is gone. Agent is the sole production caller (lazy import of the private name in Stage 2). Betty revises component patches that still mock/import the public name under `qa-child` — engineer does not edit `tests/`.
+
+## Stage 2: Agent finalize land via TASK_CONFIG.artifact_key
+
+**Done when:** `src/core/agent.py` has zero references to `JOB_ARTIFACT_BODY_REPLICA_BY_TASK`; on successful `finalize_job_resume` / `finalize_cover_letter` with a job `index`, `do_task` reads `TASK_CONFIG[task_key]["artifact_key"]`, calls `_prepare_job_replica_body` then `save_job_artifact(index, catalog_key, body)`; `propose_application_responses` pin path and candidate craft persist path are unchanged in behavior.
+
+1. In `src/core/agent.py`, remove `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` from the `src.utils.config` import list (keep `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` and `TASK_CONFIG`).
+2. In `do_task`, replace the body-replica block that today starts with `replica_slot = JOB_ARTIFACT_BODY_REPLICA_BY_TASK.get(task_key)` and the paired `if result.get("success") and replica_slot:` / `elif pin_slot …` structure with:
+   ```python
+   pin_slot = JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK.get(task_key)
+   task_cfg = TASK_CONFIG.get(task_key) or {}
+   catalog_key = task_cfg.get("artifact_key")
+   # Job catalog land via TASK_CONFIG.artifact_key (AST-1603). Candidate craft
+   # uses a separate persist_candidate_craft_hops gate below — do not share this branch.
+   if (
+       result.get("success")
+       and task_cfg.get("entity_type") == "job"
+       and isinstance(catalog_key, str)
+       and catalog_key.strip()
+   ):
+       if index:
+           # Body land uses in-memory parsed — do not gate on resp_id (AST-1600).
+           # Lazy import breaks agent↔tracker cycle (consult imports agent).
+           try:
+               from src.core.tracker import (
+                   _prepare_job_replica_body,
+                   save_job_artifact,
+               )
+
+               body = _prepare_job_replica_body(
+                   catalog_key, parsed, astral_job_id=index
+               )
+               if body is None:
+                   logger.warning(
+                       "persist_job_artifact_catalog skipped task=%s index=%s "
+                       "key=%s reason=prepare_empty",
+                       task_key,
+                       index,
+                       catalog_key,
+                   )
+               else:
+                   landed = save_job_artifact(index, catalog_key, body)
+                   if landed is None:
+                       logger.warning(
+                           "persist_job_artifact_catalog skipped task=%s index=%s "
+                           "key=%s reason=save_skipped_empty",
+                           task_key,
+                           index,
+                           catalog_key,
+                       )
+           except Exception as persist_err:
+               logger.error(
+                   "persist_job_artifact_catalog failed task=%s index=%s err=%s",
+                   task_key,
+                   index,
+                   persist_err,
+               )
+       elif debug:
+           _do_task_debug_logger(debug).debug_detail(
+               f"artifact_catalog key={catalog_key} skipped reason=missing_index"
+           )
+   elif pin_slot and result.get("success"):
+       # unchanged proposed_answers pin branch (resp_id gate, debug skip reasons)
+       ...
+   ```
+   Keep the existing `elif pin_slot` body exactly as today (lazy import `pin_job_artifact_agent_data_id`, `index and resp_id` gate, debug skip reasons). Do not edit the `draft_job_resume` notes block or the `persist_candidate_craft_hops` candidate block that follow.
+3. Grep `src/core/agent.py` for `JOB_ARTIFACT_BODY_REPLICA` and the public name `prepare_job_replica_body` — zero hits. Grep `src/` for `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` — zero production hits. Debug skip lines stay Style D / `debug=True` gated (`astral.standards.debug-contract-gated`).
+
+⚠️ **Decision:** Gate job catalog land on `entity_type == "job"` **and** non-empty `artifact_key`, not on `artifact_key` alone. Candidate tasks (`craft_resume_base`, etc.) also carry `artifact_key`; sharing the branch would mis-route a candidate index into `save_job_artifact`. Ticket wording is job-finalize land; the entity_type gate is the concrete form of that boundary.
+
+## Estimate
+
+Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1603
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key` @ `bef3359881751500ee482c3e22a901439f3500a8`
+
+## Traceability
+- **AC3** → Stage 2 (`TASK_CONFIG` `artifact_key` → `_prepare_job_replica_body` → `save_job_artifact(index, catalog_key, body)` on successful finalize hops).
+- **AC4** → Stage 1 steps 3–4 (`_JOB_ARTIFACT_PIN_KEYS` = `("proposed_answers",)` only; hydrate loop no longer pin-resolves catalog keys) + Stage 2 (body-replica map branch removed; no agent pin writes for those keys).
+- **AC5** → Stage 1 step 4 (`get_job_current` overlay for `job.artifacts.job_resume` / `job.artifacts.cover_letter` unchanged).
+- **AC6** → Stage 2 (`elif pin_slot` branch kept verbatim for `propose_application_responses`).
+- **Parent AC1–2** → N/A — config registration is AST-1602 scope (plan prerequisite gate covers this).
+
+## Findings
+
+### discuss
+- **Location:** Linear assignee vs validate-plan gate  
+  **Finding:** Ticket assignee is Hedy; validate-plan §1 expects Joan at spawn.  
+  **Recommendation:** Chuckles procedural only — substantive review completed per spawn; restore implementer after upshot.
+
+- **Location:** Stage 1 step 2 — rename-before-agent-update window  
+  **Finding:** Privatizing `prepare_job_replica_body` before Stage 2 breaks `agent.py` import until Stage 2 lands; plan says “same build session” / “one commit only” but lacks AST-1602-style `## Execution contract`.  
+  **Recommendation:** Engineer should publish stages 1+2 atomically (single commit or back-to-back before push); optional plan addendum for clarity — not blocking.
+
+- **Location:** Tests / test-bible (out of Files Changed)  
+  **Finding:** `tests/component/core/test_tracker.py` and `test_agent.py` still mock/import public `prepare_job_replica_body` and body-replica map semantics.  
+  **Recommendation:** Plan correctly defers to Betty `qa-child`; engineer stays in `agent.py` / `tracker.py` only.
+
+### acceptable
+- **Location:** Stage 2 — `entity_type == "job"` gate  
+  **Finding:** `propose_application_responses` is `entity_type: "job"` but has no `artifact_key`; gate correctly falls through to pin branch. `craft_resume_base` has `artifact_key` but `entity_type: None`, so candidate craft persist block remains isolated.  
+  **Recommendation:** Keep as documented — sound boundary.
+
+- **Location:** Plan structure — no `## Self-Assessment`  
+  **Finding:** Absent; consistent with sibling AST-1602 / peer tracker plans.  
+  **Recommendation:** Optional `minor` self-assessment; not blocking.
+
+**Considered (in-session):** Universal `orch.*` — `conforms`. Scoped: `astral.standards.dry-and-focused-functions`, `astral.standards.public-then-helpers`, `astral.standards.debug-contract-gated`, `astral.layers.import-direction`, `astral.standards.in-scope-only` — `conforms`. Cited `patt.artifact.write-operative` / `patt.artifact.read-current` (draft directives) — plan preserves generic write + current-read hydrate; retires parallel map branch. Codebase anchors verified: `agent.py` ~L3049–3102 body-replica block matches replacement target; `tracker.py` `prepare_job_replica_body` ~L607–635 and `_JOB_ARTIFACT_PIN_KEYS` ~L666 match Stage 1; epic worktree config already carries AST-1602 `artifact_key` asserts (prerequisite satisfiable).
+
+context_tokens≈78000
+
+[plan-rubric] PROCEED (Commit: bef33598) agent land plan clean
+
+## Review (build)
+
+**Built @ `95eb7b7e`** — `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key`
+
+Stages 1–2 landed: `_prepare_job_replica_body` private; `_JOB_ARTIFACT_PIN_KEYS` = `proposed_answers` only; hydrate catalog overlay unchanged; `do_task` lands via `TASK_CONFIG.artifact_key` → `save_job_artifact`. Test path remains Betty `qa-child`.
+
+## Radia review
+
+# Radia code review — AST-1603
+
+**Publish ref:** `origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key` @ `eb2c4e8e723b3453d13e83f59ab855cb36a4d345`  
+**Diff baseline:** `origin/dev...origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key` (11 files; composite includes stacked sibling **AST-1602** config/test/doc commits not yet on `origin/dev`)
+
+**AST-1603 product delta:** `src/core/agent.py`, `src/core/tracker.py` (+ Betty test/bible revisions)
+
+---
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1603  
+**Publish ref:** eb2c4e8e723b3453d13e83f59ab855cb36a4d345  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no confidence-bound paths |
+| astral.agent.do-task-delegation | scoped | conforms | `do_task` land rewired per plan; pin + candidate craft blocks preserved |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch-id paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch-id format changes |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release batch helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity-agent-responses paths |
+| astral.config.config-source-of-truth | scoped | conforms | reads `TASK_CONFIG.artifact_key`; no parallel map reintroduced in core |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env usage |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact dirs |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | land still precedes `run_next`; no chain authority change |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no seed-auto paths |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | issue doc is pipeline artifact |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Betty test-tree path only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | test/bible edits via `merge-tests(AST-1603)` Betty SHA |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | `_prepare_job_replica_body` coat-check unchanged; empty → None/skip |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render-verdict paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API auth paths |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | core-only product diff |
+| astral.layers.import-direction | scoped | conforms | tracker imports remain lazy with cycle-break comments |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI paths |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed table paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog overrides |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row seed paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data-layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database/migration changes |
+| astral.standards.debug-contract-gated | scoped | conforms | catalog skip `debug_detail` only when `debug=True`; ops warnings/errors otherwise |
+| astral.standards.dry-and-focused-functions | scoped | conforms | parallel map branch removed; single TASK_CONFIG-driven path |
+| astral.standards.in-scope-only | scoped | conforms | product commits touch only `agent.py` / `tracker.py`; stacked AST-1602 config is prerequisite sibling |
+| astral.standards.logging-via-utils | scoped | conforms | uses module logger; no new `print()` / raw `logging` imports |
+| astral.standards.names-not-ticket-ids | scoped | conforms | runtime symbols use domain names |
+| astral.standards.no-cross-contamination | scoped | conforms | job catalog / pin / candidate craft paths stay separated |
+| astral.standards.no-hardcoded-sets | scoped | conforms | catalog keys read from `TASK_CONFIG`; pin keys centralized in `_JOB_ARTIFACT_PIN_KEYS` |
+| astral.standards.public-then-helpers | scoped | conforms | `prepare_job_replica_body` privatized per plan; agent sole caller via lazy import |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | no ad hoc state mutation |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job-state enforcement changes |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/daisy-chain paths |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend files |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI naming paths |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no gunicorn/server config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | single `merge-tests(AST-1603): origin/tests 1d3dc6c5…` on tip |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `merge-tests` / `docs` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | child on `sub/AST-1601/…` |
+| orch.git.ftr-sub-topology | universal | conforms | correct sub-under-parent topology |
+| orch.git.merge-on-checkout | universal | conforms | no merge/checkout violations evident |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear stage commits |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1601 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no extra permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | entity_type gate is plan-documented boundary |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 match plan; pin + hydrate overlay preserved |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to diff substance |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | agent/tracker tests + bible revised on Betty path |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy assignee; review recommend-only |
+| orch.roles.pre-commit-path-bans | universal | conforms | no hook-ban violations |
+
+**Straggler:** Joan `[plan-rubric] APPROVED` attached; no Excluded statute list — nothing to straggle.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block (epic shape) | conforms | Land reads `TASK_CONFIG.artifact_key`; no second SoT in core |
+| none formally cited in plan ## Patterns to reuse | — | Joan considered draft `patt.artifact.write-operative` / `read-current`; implementation preserves generic write + hydrate overlay |
+
+## Plan adherence
+
+**Stage 1 (tracker):** `prepare_job_replica_body` → `_prepare_job_replica_body`; no public alias; `_JOB_ARTIFACT_PIN_KEYS = ("proposed_answers",)`; hydrate `get_job_current` overlay for resume/cover unchanged; pin-resolve loop simplified; `save_job_artifact` / `get_job_current` / `pin_job_artifact_agent_data_id` signatures untouched.
+
+**Stage 2 (agent):** `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` import and branch removed; land gated on `entity_type == "job"` **and** non-empty `artifact_key` → `_prepare_job_replica_body` + `save_job_artifact(index, catalog_key, body)`; `elif pin_slot` branch for `propose_application_responses` preserved; draft-notes and candidate-craft blocks untouched.
+
+**Prerequisite AST-1602:** finalize `artifact_key` rows present on branch; config map gone.
+
+**Verification:** `from src.core import agent` succeeds; `rg` shows zero `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` / public `prepare_job_replica_body` in `src/`.
+
+**Estimate 3** footprint matches: two core files + Betty test/bible hygiene.
+
+**Resolves AST-1602 Radia discuss:** agent import break closed.
+
+## Frame diff
+
+- **Agent `do_task`:** body-replica map lookup replaced by `TASK_CONFIG.artifact_key` read with `entity_type == "job"` guard; lazy import of private `_prepare_job_replica_body`.
+- **Tracker:** job finalize prepare helper privatized; pin vocabulary shrinks to `proposed_answers` only — catalog bodies come from table/current-read overlay, not pin-resolve.
+- **Epic composite vs `origin/dev`:** includes AST-1602 config authority + AST-1603 core rewire (expected stacked-child shape).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none — Joan plan discuss items are procedural or already mitigated on publish tip)
+
+### advisory
+
+- **Location:** Commits `3ca72ec9` then `95eb7b7e` (two code commits for Stages 1–2)  
+  **Finding:** Between stage-1-only and stage-2, `agent.py` still imported public `prepare_job_replica_body` / body-replica map — locally broken until stage 2. Both landed before `merge-tests`; tip is sound.  
+  **Recommendation:** Future estimate-3 tickets: single atomic code commit when stage 1 renames a symbol stage 2 consumes (Joan plan note).
+
+- **Location:** `docs/test-bible/core/agent.md` L1311–1313, `tracker.md` L573  
+  **Finding:** AST-1603 bible shasum placeholders still `*(filled after publish)*`.  
+  **Recommendation:** Betty fill on next publish pass — not blocking correctness.
+
+- **Location:** Three-dot diff vs `origin/dev`  
+  **Finding:** Composite diff includes full AST-1602 stack (config + prior Radia doc). Not scope smuggling — prerequisite sibling on same publish ref.  
+  **Recommendation:** Chuckles/merge-child: rollup carries both children; no separate AST-1602 merge needed if AST-1603 sub already includes it.
+
+## What's solid
+
+- `entity_type == "job"` gate cleanly isolates finalize land from `craft_resume_base` (`entity_type: None`) and routes `propose_application_responses` (no `artifact_key`) to the unchanged pin branch.
+- Best-effort persist pattern preserved: warnings on empty prepare/save, `logger.error` on exception — hop does not fail.
+- Betty tests lock the new contract: `TestAst1603DoTaskCatalogLandViaArtifactKey`, `TestAst1603TrackerPinKeysAndPrivatePrepare`, revised private-prepare mocks, AST-1600 `candidate_id` stub fixes.
+- Resolves the AST-1602 intermediate `ImportError` Radia flagged — agent module loads cleanly on tip.
+
+## Recommended actions (downstream — not Radia)
+
+1. **Chuckles:** append artifact; post slim upshot; → Review Posted → User Testing (PROCEED).
+2. **Betty:** fill AST-1603 bible shasums at publish tip.
+3. **merge-child / prep-uat:** treat AST-1603 sub tip as carrying AST-1602 config work when rolling to ftr.
+
+context_tokens≈95000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: eb2c4e8e) agent land via artifact_key clean
+```

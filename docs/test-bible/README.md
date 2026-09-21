@@ -12,7 +12,7 @@ This is the reference to existing tests, including unit/component and integratio
 
 
 
-`docs/test-bible/` mirrors `tests/component/` (Python layer folders; React under `frontend/` with folder-level bible files).
+`docs/test-bible/` mirrors `tests/component/` (Python layer folders; React under `frontend/` and the WXT extension under `extension/` with folder-level bible files).
 
 Component files hold coverage maps and `### AST-NNN` manifest blocks for that module or folder.
 
@@ -40,7 +40,11 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 | Frontend | [`frontend/`](frontend/) | `tests/component/frontend/` |
 
+| Extension | [`extension/`](extension/) | `tests/component/extension/` |
+
 | Dev | [`dev/`](dev/) | `tests/component/dev/` |
+
+| Service | [`service/`](service/) | `tests/component/service/` |
 
 | Integration | [`integration/`](integration/) | `tests/integration/` |
 
@@ -57,6 +61,18 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 **Docs-only** (canon statute + proposed pattern + CODE_RULES pointer). Live edits on **`origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority`**: `canon/statutes/astral/dispatch/astral.dispatch.run-next-is-chain-authority.md` (active, Archie-approved) + statutes README/HARVEST register (active count **58**); `canon/patterns/dispatch/pattern.dispatch.run-next-chain-authority.md` (`status: proposed`) + patterns README/HARVEST; `docs/ASTRAL_CODE_RULES.md` §2.6.0 statute pointer + clarifying sentence. No `src/**`, no frozenset deletes, no boot SQL (siblings AST-1111–AST-1113).
 
 **No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute active + Archie frontmatter; pattern `proposed`; CODE_RULES §2.6.0 cites `astral.dispatch.run-next-is-chain-authority`; statutes README/HARVEST count **58**) — no pytest / zero-arg harness / branch-lock gate. Sibling anomaly remediations under parent **AST-1109** are out of scope.
+
+### AST-1260 · AST-1257 (claim-process-release / candidate law)
+
+**Docs-only** (canon statute + pattern + CODE_RULES §2.4 + `CANDIDATE_DATA_MODEL`). Live edits on **`origin/sub/AST-1257/AST-1260-tighten-claim-process-release-remove-conflicting-candidate-law`**: `canon/statutes/astral/batch/astral.batch.claim-process-release.md` (active, Archie-approved — ENTITY_TYPES pool claim; zero-row release note); `canon/patterns/batch/pattern.batch.entity-claim-process-release.md` (candidate `canonical_refs` + pool-parity Solution); `docs/ASTRAL_CODE_RULES.md` §2.4 candidate/ENTITY_TYPES wording; `docs/features/candidate/CANDIDATE_DATA_MODEL.md` (`batch_id` / `batch_created_at`; no “no batch primitives”). No `src/**`, no pytest. Product claim/dispatch remains siblings **AST-1258** / **AST-1259**.
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute Statement has `ENTITY_TYPES` + pool + zero-row release; `approved_by: Archie`; pattern lists `claim_candidate_batch` / `get_new_candidate_batch`; CODE_RULES §2.4 names candidate claim-queue duty; `CANDIDATE_DATA_MODEL` has lock columns on table + Snake_case DB columns and no “No batch primitives” / “not batch-processed”) — no pytest / zero-arg harness / branch-lock gate.
+
+### AST-1279 · AST-1275 (retire pass-threshold statute; score_floor pattern)
+
+**Docs-only** (canon statute soft-retire + approved pattern + CODE_RULES §2.1). Live edits on **`origin/sub/AST-1275/AST-1279-retire-pass-threshold-statute-author-score-floor-pattern`**: `canon/statutes/astral/config/astral.config.pass-threshold-vs-score-floor.md` (`status: retired`; Statement points at successor pattern); statutes README drops the active harvested row; statutes HARVEST crosswalk `retired (AST-1279)`; `canon/patterns/dispatch/pattern.dispatch.score-floor.md` (`status: approved`, `approved_by: Archie` via AST-1281) + patterns README (**seven** approved) / HARVEST; `docs/ASTRAL_CODE_RULES.md` §2.1 sole-floor subsection cites **`pattern.dispatch.score-floor`** (no live `pass_threshold` TASK_CONFIG teaching; §2.2 parenthetical drops `pass_threshold`). No `src/**` in this child’s stages (runtime: **AST-1277** / admin `0`: **AST-1278**).
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — retired statute `status: retired` + Statement names `pattern.dispatch.score-floor`; pattern `approved` + `approved_by: Archie`; patterns README lists the id as approved; CODE_RULES §2.1 cites the pattern and does not teach `pass_threshold` as a live TASK_CONFIG key; `rg pass_threshold canon/patterns` only anti-trigger / HARVEST wording) — no pytest / zero-arg harness / branch-lock gate. Component score_floor / strip coverage stays under **AST-1277** / **AST-1278** manifests.
 
 ### Retired monolith section map
 
@@ -300,10 +316,73 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** grep/read docs-acceptance on the five prose files under `~/team-chuckles` (+ installed `~/.cursor/skills/…` / agents) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-1002** out of scope.
 
+### AST-1627 · AST-1626 (core patt.artifact.* example enrichment)
+
+**Docs-only** (five singular draft directives gain harvested `# Examples`). Live edits on **`origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment`**: `canon/directives/draft/patt.artifact.{manage-catalog,write-operative,read-current,read-operative,no-coat-check}.md` — fenced Python snippets naming live `src/` symbols (`ARTIFACT_CONFIG`, `database.save_artifact` / `get_current_artifact` / `get_artifact`, `save_candidate_data`, `get_candidate_current`, `get_operative_base_resume`, coat-check surfaces as **FORBIDDEN** only). No `src/**`, no `tests/**`, no draft→`active/` promotion. Sibling **AST-1628** owns plural→singular rename + ui-consistency / traceability examples.
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip) — no pytest / zero-arg harness / branch-lock gate.
+
+## QA test manifest
+
+1. **Fences (AC1):** each of the five drafts has ≥1 fenced code block under `# Examples`.
+2. **Live symbols (AC2):** every callable in new fences exists under `src/` on `origin/dev`.
+3. **No product diff (AC3):** `git diff origin/dev -- src/ tests/` empty on publish tip.
+4. **Law headings (AC4):** `# Abstract` / `# Arc` / `# Applications` / `# Exceptions` remain on all five.
+5. **Wrong-shape (AC5):** greppable `do not` / `FORBIDDEN` on write-operative, read-current, read-operative, no-coat-check.
+6. **Sibling gate:** `patt.artifacts.ui-consistency.md` / `patt.artifacts.traceability.md` unmodified vs `origin/dev`.
+
+```bash
+# AC1
+rg -n '```' canon/directives/draft/patt.artifact.{manage-catalog,write-operative,read-current,read-operative,no-coat-check}.md
+# AC4
+rg -n '^# Abstract|^# Arc|^# Applications|^# Exceptions' canon/directives/draft/patt.artifact.{manage-catalog,write-operative,read-current,read-operative,no-coat-check}.md
+# AC5
+rg -n 'do not|FORBIDDEN|never UPDATE|never.*blob' canon/directives/draft/patt.artifact.{write-operative,read-current,read-operative,no-coat-check}.md
+# AC3
+git diff origin/dev -- src/ tests/
+```
+
+**Bible shasum:** fill after `merge-tests` — `git show origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment:docs/test-bible/README.md | shasum`
+
+### AST-1628 · AST-1626 (rename plural drafts + example enrichment)
+
+**Docs-only product** (plural → singular rename + `# Examples` on ui-consistency / traceability). Live edits on **`origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`**: `canon/directives/draft/patt.artifact.{ui-consistency,traceability}.md` (former `patt.artifacts.*` paths gone); `docs/features/**` cite sweep. No `src/**`. Sibling **AST-1627** owns the five core drafts — do not re-edit them here.
+
+**Betty this pass:** retarget hard-coded plural draft paths/ids under `docs/test-bible/**` + `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` (AST-1577 draft existence assert).
+
+## QA test manifest
+
+1. **Rename (AC1):** plural draft paths absent; singular files exist with matching frontmatter ids.
+2. **Examples (AC2):** ≥1 fenced block under `# Examples` on both singular drafts.
+3. **Cite sweep (AC3):** zero remaining `patt.artifacts.ui-consistency` / `patt.artifacts.traceability` hard-paths under `docs/features/` and (after this Betty pass) under `docs/test-bible/**` + the AST-1577 Vitest draft path assert — except the historical AST-1627 sibling-gate line documenting pre-1628 state.
+4. **No product src (AC4):** `git diff origin/dev -- src/` empty on engineer tip; Betty may land test-tree retarget only.
+5. **Sibling gate:** do not amend the five core AST-1627 drafts on this tip.
+6. **Revised Vitest:** `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — **`AST-1577: page and draft follow ui-consistency`** (singular path + id).
+
+```bash
+# AC1 / AC2
+test ! -f canon/directives/draft/patt.artifacts.ui-consistency.md
+test ! -f canon/directives/draft/patt.artifacts.traceability.md
+test -f canon/directives/draft/patt.artifact.ui-consistency.md
+test -f canon/directives/draft/patt.artifact.traceability.md
+rg -n '^id: patt.artifact.(ui-consistency|traceability)$' canon/directives/draft/patt.artifact.{ui-consistency,traceability}.md
+rg -n '```' canon/directives/draft/patt.artifact.{ui-consistency,traceability}.md
+# AC3 (expect only AST-1627 historical sibling-gate prose if any)
+rg -n 'patt\.artifacts\.(ui-consistency|traceability)' docs/features/ docs/test-bible/ tests/
+# AC4
+git diff origin/dev -- src/
+# Vitest (narrow)
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern='AST-1577: page and draft follow ui-consistency'
+```
+
+**Bible shasum (after publish):** `git show origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment:docs/test-bible/README.md | shasum`
+
 
 ## 2. Where tests live
 
-- **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`).
+- **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`; WXT extension under `tests/component/extension/`). **Service** microservices under `service/` map to `tests/component/service/` (see [`service/telescope.md`](service/telescope.md)).
 - **Integration tests:** `tests/integration/` — multi-layer in-process scenarios; see [`integration/README.md`](integration/README.md).
 - **Data layer carve-out (§4a):** `tests/component/data/database/` holds cluster files for `src/data/database.py`; see `tests/component/data/database/_README.md`.
 
@@ -322,12 +401,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 - When such a file reaches 100%, update **§7.12**, the **§7.13** tables (branch lock column), and **`LOCKED_AT_100`** in the same commit.
 - **`pragma: no cover`** is allowed only with a short in-file note and bible mention when a branch is impractical to hit in component tests (AST-390: `formatting.py` DOM sibling union + JSON heal edge paths; AST-391: `playwright.py` browser session/crawl paths and `anthropic.py` SDK/heal edge paths; AST-394: `api_admin.py` `update_dtask` `score_floor` elif false exit arc; **AST-471**: `roster.py` unreachable `job_ids` index guard after length parity — **AST-622** retired gazer board-batch legacy `_log.debug` stanza in favor of §1.5.1 contract lines).
 
-### 6b. Frontend (Vitest + RTL under `tests/component/frontend/`)
+### 6b. Frontend + extension (Vitest under `tests/component/frontend/` and `tests/component/extension/`)
 
 - **Risk-based**, not branch-count completeness: Prefer tests that anchor real regressions and user-visible flows over enforcing a percentage per source file (**AST-395**).
-- **No** mandated per-file 100% branch targets for `src/ui/frontend/src/**`. **`LOCKED_AT_100` in `scripts/testing/check_frontend_coverage.py` stays intentionally empty** unless Product adopts explicit frontend locks later.
-- `./scripts/testing/run_component_tests.sh` still runs Vitest with coverage and invokes `check_frontend_coverage.py`; the gate is **tests passing** plus the checker succeeding with **zero** locked files—not full branch saturation.
-- Detailed map: §7.13f.
+- **No** mandated per-file 100% branch targets for `src/ui/frontend/src/**` or `src/ui/extension/**`. **`LOCKED_AT_100` in `scripts/testing/check_frontend_coverage.py` stays intentionally empty** unless Product adopts explicit frontend locks later.
+- `./scripts/testing/run_component_tests.sh` still runs Vitest with coverage and invokes `check_frontend_coverage.py` for the SPA; the gate is **tests passing** plus the checker succeeding with **zero** locked files—not full branch saturation. The extension package runs `npm run test:component` on the same zero-arg path (**AST-1254**) with no separate branch-lock script.
+- Detailed map: §7.13f (SPA); **`docs/test-bible/extension/`** (WXT client).
 - **QA manifest rules (Betty — all UI tickets):** §6c.
 
 ### 6c. QA manifest rules — routed pages and filter UX (**AST-436** UAT lesson)
@@ -369,7 +448,7 @@ Python/component modules locked at **100%** branches (enforced by `scripts/testi
 - `src/utils/formatting.py`
 - `src/external/anthropic.py`
 - `src/external/gmail.py`
-- `src/external/playwright.py`
+- `src/external/telescope.py` (was `playwright.py` through AST-1726)
 - `src/core/monitor.py`
 - `src/core/timesheets.py`
 - `src/core/tracker.py`
@@ -426,7 +505,7 @@ Requires **Python 3.10+** (creates `.venv` on first run). `ASTRAL_DB_DIR` defaul
 
 With zero arguments the harness selects **`tests/component`** wholesale. Passing paths, node IDs, or **`pytest`** flags after the script name forwards them verbatim as the **`pytest`** target list (narrow manifest runs without silently expanding to the full tree). Only the default full selection runs **`check_per_file_coverage.py`**.
 
-When `src/ui/frontend/package.json` is present, the script also runs Vitest component tests under `tests/component/frontend/` — **only** when invoked with **zero** trailing arguments (narrowed pytest paths skip Vitest).
+When `src/ui/frontend/package.json` is present, the script also runs Vitest component tests under `tests/component/frontend/` — **only** when invoked with **zero** trailing arguments (narrowed pytest paths skip Vitest). When `src/ui/extension/package.json` is present, the same zero-arg path also runs `cd src/ui/extension && npm run test:component` (**AST-1254**).
 
 ### AST-664 (parent AST-598)
 

@@ -117,7 +117,7 @@ function renderInput(
               />
               <button
                 type="button"
-                className="dep-btn cancel"
+                className="btn secondary"
                 onClick={() => onChange(items.filter((_, j) => j !== i))}
               >
                 Remove
@@ -126,7 +126,7 @@ function renderInput(
           ))}
           <button
             type="button"
-            className="dep-btn cancel dep-string-list-add"
+            className="btn primary dep-string-list-add"
             onClick={() => onChange([...items, ""])}
           >
             Add

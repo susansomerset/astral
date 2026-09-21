@@ -1,3 +1,308 @@
+<!-- linear-archive: AST-1110 archived 2026-08-07 -->
+
+## Linear archive (AST-1110)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1110/statute-run-next-is-chain-authority-hard-coded-daisy-chain-in-configpy  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1109 — Hard-coded daisy chain in config.py  
+**Blocked by / blocks / related:** parent: AST-1109; blocks: AST-1113; blocks: AST-1112; blocks: AST-1111
+
+### Description
+
+## What this implements
+
+Land Archie-approved statute(s) + CODE_RULES pointer + catalog note for proposed `pattern.dispatch.run-next-chain-authority` / `astral.dispatch.run-next-is-chain-authority`. No product routing changes in this child. Blocks all anomaly remediations.
+
+## In scope
+
+- [X] `orch.roles.archie-approves-statutes` — statute lands only with Archie approval frontmatter
+- [X] `astral.dispatch.run-next-is-chain-authority` — new statute (this child’s deliverable)
+- [X] `astral.config.config-source-of-truth` — clarify config must not duplicate DB `run_next` topology
+- [X] `astral.standards.no-hardcoded-sets` — config shadow of `run_next` is not a conforming escape
+- [X] `astral.state.no-daisy-chain-in-run` — complements carve-out; membership must match `run_next` data
+- [X] `astral.docs.features-single-file-per-ticket` — plan at `docs/features/dispatcher/ast-1110-statute-run-next-is-chain-authority.md`
+- [X] `astral.standards.in-scope-only` — statute/pattern/CODE_RULES pointer only; no anomaly remediations
+
+## Considered but excluded
+
+- [X] `astral.standards.database-header-inventory` — boot SQL confirm/correct is AST-1113 only
+- [X] Product consult/dispatcher/craft routing — siblings AST-1111–AST-1113
+- [X] Deleting `JOB_ARTIFACT_ENTRY_TASK_KEYS` / hop_task_keys / craft_task_keys — siblings 2–4
+- [X] AST-1108 seed-data ghost cleanup — Foundation; related context only
+- [X] Approving `pattern.dispatch.run-next-chain-authority` — lands **proposed**; Archie approve later before implementation depends on catalog id
+- [X] Amending bodies of `astral.state.no-daisy-chain-in-run` or `astral.standards.no-hardcoded-sets` — new statute is the boundary clarification
+
+## Acceptance criteria
+
+1. [x] New Archie-approved statute under `canon/statutes/` bans config shadow of DB-owned `run_next` topology; CODE_RULES points at it — lands before anomaly remediations claim conformance.
+2. [x] Proposed catalog entry `pattern.dispatch.run-next-chain-authority` exists under `canon/patterns/` (`status: proposed`).
+3. [x] Statute registered in `canon/statutes/README.md` + `HARVEST.md` (active count includes this create).
+
+## Boundaries
+
+Does **not** change consult/dispatcher/craft routing. Does **not** delete config frozensets (siblings 2–4). Does **not** own AST-1108 seed cleanup.
+
+## Notes for planning
+
+Statute-first vertical decomposition — this child is the law gate for siblings.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1109-hard-coded-daisy-chain-in-configpy`, child `sub/AST-1109/AST-1110-statute-run-next-is-chain-authority`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-31T19:20:31.896Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1110
+**Publish ref:** `origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority` tip `fc651c68` (reviewed product tip `27130c72` + docs review append)
+**Overall:** DISCUSS
+
+Diff: `origin/dev...origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority` — layers `{docs}`; change_types `{add, modify}`; 9 paths (canon statute/pattern + registers, CODE_RULES §2.6.0, plan, test-bible README). No `src/**`.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | layers/paths require core/utils src |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers/paths require src/core |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers/paths require src/core |
+| astral.batch.batch-id-first | scoped | not-applicable | layers/paths require data/core src |
+| astral.batch.batch-id-format | scoped | not-applicable | layers/paths require core/data src |
+| astral.batch.claim-process-release | scoped | not-applicable | layers/paths require core/data src |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | layers/paths require core/data src |
+| astral.config.config-source-of-truth | scoped | not-applicable | layers/paths require src/** |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | layers/paths require core/data/utils src |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | layers/paths require src/scripts |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths artifacts/** / scripts/spikes/** unmatched |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under docs/features is feature plan, not spike notes |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | new statute’s applies_when is core/utils src; this diff is docs/canon only |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | layers/paths require dispatcher/config src |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single plan at docs/features/dispatcher/ast-1110-….md |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits touch test-bible/merge-tests only; features by engineer docs |
+| astral.git.engineer-test-tree-ban | scoped | conforms | AST-1110 test-bible edit is Betty docs(); no engineer test-tree |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers/paths require core/external src |
+| astral.layers.import-direction | scoped | not-applicable | layers/paths require src/** |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths require scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers/paths require ui/config src |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | layers/paths require src/core |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | layers/paths require src/core |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers/paths require src/ui |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | layers/paths require src/** |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers/paths require src/data |
+| astral.standards.debug-contract-gated | scoped | not-applicable | layers/paths require src/** |
+| astral.standards.dry-and-focused-functions | scoped | not-applicable | layers/paths require src/scripts |
+| astral.standards.in-scope-only | scoped | not-applicable | layers/paths require src/** |
+| astral.standards.logging-via-utils | scoped | not-applicable | layers/paths require src/** |
+| astral.standards.no-cross-contamination | scoped | not-applicable | layers/paths require src/** |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | layers/paths require src/** |
+| astral.standards.public-then-helpers | scoped | not-applicable | layers/paths require src/** |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers/paths require src/utils |
+| astral.state.core-decides-transitions | scoped | not-applicable | layers/paths require core/data src |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | layers/paths require core/data/config src |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers/paths require src/core |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers/paths require frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | layers/paths require src/ui |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers/paths require ui/scripts/config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests(AST-1110) one SHA from origin/tests |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests vocabulary on sub tip |
+| orch.git.flow-direction-inviolable | universal | conforms | publish to origin/sub/AST-1109/AST-1110-… only |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table sub under ftr/AST-1109 |
+| orch.git.merge-on-checkout | universal | conforms | no illegal merge recipe in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none in history reviewed |
+| orch.git.no-dev-agent-branches | universal | conforms | sub/AST-1109/AST-1110-… publish-ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | epic worktree astral-AST-1109 |
+| orch.git.three-permanent-branches | universal | conforms | no permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | pattern stays proposed; statute id from parent Arch definition |
+| orch.pipeline.plan-is-bible | universal | conforms | stages + Files Changed match landed canon/docs |
+| orch.pipeline.project-scoped-queues | universal | conforms | single-child Dispatcher scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | statute `approved_by: Archie` / `approved_at: 2026-07-31`; pattern proposed |
+| orch.roles.betty-owns-test-tree | universal | conforms | bible + merge-tests by Betty path; engineer no tests/** |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | implementer path through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | no Radia product edits; docs() review only |
+| orch.roles.pre-commit-path-bans | universal | conforms | canon/docs only; no banned product paths |
+
+Active-set count: **58** (matches HARVEST/README).
+
+## Pattern conformance
+
+- `pattern.dispatch.run-next-chain-authority` — **conforms** (cited deliverable; lands `status: proposed`, not approved)
+- No other pattern ids cited for implementation dependency
+
+## Plan adherence
+
+Stages 1–3 match tip: Archie-approved statute + register (58), proposed pattern + register, CODE_RULES §2.6.0 pointer. Self-Assessment Scope `Single-Component` matches docs/canon-only footprint. No AST-1111–1113 deletes / boot SQL / `src/**`. Betty bible note is expected Tests Passed path outside engineer Files Changed.
+
+## Findings
+
+### discuss (C4 stragglers)
+
+Joan plan-rubric Excluded list vs this sweep in-scope (statute scores themselves `conforms` above):
+
+1. `astral.debug.spikes-under-debug-dir` — excluded at plan time; `docs/features/**` in diff
+2. `astral.docs.features-single-file-per-ticket` — excluded at plan time; plan file in diff
+3. `astral.git.betty-no-src-or-features` — excluded at plan time; `docs/features/**` in diff
+4. `astral.git.engineer-test-tree-ban` — excluded at plan time; `docs/test-bible/**` in diff
+
+No fix-now. No product/layer/import/debug/external issues (§5a–§5g N/A — no `src/**`).
+
+### Notes
+
+Plan-rubric verdict attached (Joan APPROVED). Stragglers are plan Files Changed vs landed plan+bible path mismatch, not deliverable defects.
+
+**What’s solid:** statute/pattern SCHEMA paths, Archie frontmatter, proposed-only pattern, CODE_RULES pointer, register counts 58, sibling boundaries held.
+
+context_tokens≈52000
+
+#### chuckles — 2026-07-31T19:17:54.901Z
+[thread-missing] Radia Team store.db missing on host; minted 66e94f9d-7cc5-4173-ad21-68135118514f for review-child first-spawn.
+
+— Chuckles
+
+#### betty — 2026-07-31T19:16:11.955Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority` @ `f16f1ea5` (`merge-tests(AST-1110): origin/tests f0f5671da65a0a25e61e5eb8615005d48b56cade`)
+
+**Classification:** docs-only statute/pattern/CODE_RULES — no `src/**`; no pytest; no integration-scenario drift.
+
+1. **docs-acceptance — statute** — On publish tip, `canon/statutes/astral/dispatch/astral.dispatch.run-next-is-chain-authority.md` exists with `status: active`, `approved_by: Archie`, `approved_at: "2026-07-31"`, id `astral.dispatch.run-next-is-chain-authority`.
+2. **docs-acceptance — register** — `canon/statutes/README.md` lists the statute; active count text is **58**. `canon/statutes/HARVEST.md` has create (AST-1110) crosswalk row and **58 total active mappings**.
+3. **docs-acceptance — pattern** — `canon/patterns/dispatch/pattern.dispatch.run-next-chain-authority.md` has `status: proposed` (not approved); patterns README + HARVEST list it as proposed.
+4. **docs-acceptance — CODE_RULES** — `docs/ASTRAL_CODE_RULES.md` §2.6.0 has `**Statute:** \`astral.dispatch.run-next-is-chain-authority\`` and the clarifying sentence that config must not restate `run_next` hop membership/order.
+5. **No pytest** — zero-arg harness / branch-lock gate not required. Commit `test(AST-1110): docs-acceptance …` when green (no src fixes).
+
+**Broken / obsolete tests:** none (no product surface).
+
+**Bible (this pass):** `docs/test-bible/README.md` shasum `1b5f9785ac9eec97d26746331a433ca556d96642`
+
+— Betty
+
+#### chuckles — 2026-07-31T19:13:10.917Z
+[thread-missing] Betty Team store.db missing on host; minted 89442dba-5528-46e5-bb16-0c445b61f5b2 for qa-child first-spawn.
+
+— Chuckles
+
+#### joan — 2026-07-31T19:08:16.694Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1110
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 Archie-approved statute + CODE_RULES pointer before remediations | Stages 1 + 3 |
+| AC2 JOB_ARTIFACT_ENTRY_TASK_KEYS gone | N/A — boundary (AST-1111) |
+| AC3 resume hop_task_keys not authority | N/A — boundary (AST-1112) |
+| AC4 craft_task_keys not authority | N/A — boundary (AST-1113) |
+| AC5 craft boot SQL confirm/correct | N/A — boundary (AST-1113) |
+| AC6 product paths stop consulting retired lists | N/A — boundary (siblings 2–4) |
+
+### Child AC → plan stages
+
+| Child AC | Plan coverage |
+|----------|---------------|
+| 1. New Archie-approved statute + CODE_RULES pointer | Stages 1 + 3 |
+| 2. Proposed pattern.dispatch.run-next-chain-authority | Stage 2 |
+| 3. Register in README + HARVEST (active count includes create) | Stage 1 §§3–4 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 statute + register | Purpose/Functional scope “Statute first”; Architectural proposed statute id; child AC1/AC3 |
+| Stage 2 proposed pattern | Architectural “New patterns proposed”; child AC2; AUTHORING propose lifecycle |
+| Stage 3 CODE_RULES §2.6.0 pointer | Parent AC1 CODE_RULES pointer; complements no-daisy-chain carve-out |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Stage commits on sub publish-ref |
+| orch.git.flow-direction-inviolable | conforms | Publish only to origin/sub/… |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | sub/AST-1109/AST-1110-… only |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree astral-AST-1109 |
+| orch.git.three-permanent-branches | conforms | No permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Pattern stays proposed pending Archie; statute body from parent-named id |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed present |
+| orch.pipeline.project-scoped-queues | conforms | Single-child scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate-plan only |
+| orch.roles.archie-approves-statutes | conforms | Lands `approved_by: Archie` / `approved_at`; mirrors AST-1098 Notes (id approved on parent definition); pattern stays proposed |
+| orch.roles.betty-owns-test-tree | conforms | No tests/ edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Katherine) build path |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer implementer after Plan Approved |
+| orch.roles.pre-commit-path-bans | conforms | Canon/docs only; no banned product paths |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans
+
+**Excluded:** (layers ∩ plan {docs} empty, or paths match none of Files Changed)
+- astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation
+- astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only
+- astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ
+- astral.debug.no-repo-root-artifacts-dir — paths match none
+- astral.debug.spikes-under-debug-dir — paths match none
+- astral.dispatch.seed-auto-false — layers ∩ {docs} empty
+- astral.docs.features-single-file-per-ticket — paths docs/features/** match none of Files Changed
+- astral.git.betty-no-src-or-features, astral.git.engineer-test-tree-ban — paths match none
+- astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.scripts-exempt-from-layer-rules, astral.layers.ui-config-driven-business-logic
+- astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints
+- astral.standards.data-raises-caller-logs, astral.standards.database-header-inventory, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only
+- astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run
+- astral.ui.frontend-file-placement, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Notes:** Files Changed Layer cells `docs/canon` / `docs` → plan layer `docs` (rubric map). Corpus active count tip=57; Stage 1 bumps to 58.
+
+## Findings
+
+None fix-now.
+
+**acceptable:** Self-assessment Single-Component / Conf high / Risk Medium is honest; Medium risk (wording / pattern approve / register miss) is mitigated by verbatim Statement + proposed-only pattern + explicit README/HARVEST steps. Statute Statement preserves true config catalogs; violating examples name exactly the three tip shadows. Pattern AUTHORING respected (`proposed`, remediations bind statute first). No `src/**`; siblings own deletes/boot SQL.
+
+**R6:** Definition fidelity pass for statute-first child. No layer/import product violations. No config product edits. File placement under canon SCHEMA paths. DRY via AST-1098 precedent. No sibling scope creep.
+
+context_tokens≈48000
+
+— Joan
+
+#### katherine — 2026-07-31T19:04:54.396Z
+Plan published on `origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority` @ `252241ef`.
+
+[Plan doc](https://github.com/susansomerset/astral/blob/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority/docs/features/dispatcher/ast-1110-statute-run-next-is-chain-authority.md)
+
+**Scope:** Single-Component — one new statute + register, one proposed pattern + register, CODE_RULES §2.6.0 pointer; no `src/**`.
+
+**Conf:** high — mirrors AST-1098 statute landing + patterns propose lifecycle; parent already named both ids; violating examples are the three tip shadows.
+
+**Risk:** Medium — wrong statute wording could mis-bind sibling remediations or over-ban legitimate config catalogs; approving the pattern here would violate AUTHORING; missing README/HARVEST register leaves corpus incomplete.
+
+#### chuckles — 2026-07-31T19:01:39.347Z
+[thread-orphan] Joan session da0027e7-276d-4fe2-a6e6-65c8eb77e24d relocated from /home/susan/.cursor/chats/0f41bf986cfef9e06ea903e586d6d4d9/… → epic hash 117f212c4fcaac22ac7085f5eb813d1b. Same UUID retained for --resume.
+
+— Chuckles
+
+#### chuckles — 2026-07-31T19:01:21.122Z
+[thread-missing] Katherine Team store.db was nowhere on this host for the prior UUID; minted new session a7e3dff5-71ee-497b-9943-14de068278ea and persisted via populate-team. Continuing pipeline with first-spawn.
+
+— Chuckles
+
+---
+
 # Statute — run_next is chain authority
 
 **Linear:** [AST-1110](https://linear.app/astralcareermatch/issue/AST-1110/statute-run-next-is-chain-authority-hard-coded-daisy-chain-in-configpy)  

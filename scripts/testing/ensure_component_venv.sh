@@ -21,3 +21,10 @@ if [[ ! -x "$VENV/bin/python" ]]; then
 fi
 
 "$VENV/bin/python" -c 'import sys; assert sys.version_info >= (3, 10), sys.version'
+
+# Telescope service component tests (AST-1725+) — FastAPI TestClient deps.
+# Install fastapi/pydantic/httpx only (skip uvicorn[standard] — greenlet build
+# fails on some host Pythons; routes under test do not need uvicorn).
+if [[ -f "$ROOT/service/telescope/requirements.txt" ]]; then
+  "$VENV/bin/pip" install -q 'fastapi>=0.115.0,<1' 'pydantic>=2,<3' 'httpx>=0.27'
+fi

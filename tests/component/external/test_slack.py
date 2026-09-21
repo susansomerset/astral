@@ -172,3 +172,204 @@ class TestAst1105FetchUserProfileUsername:
         assert out["username"] == ""
         assert out["first"] == "A"
 
+
+def _slack_get_resp(payload: dict) -> MagicMock:
+    resp = MagicMock()
+    resp.raise_for_status = MagicMock()
+    resp.json = MagicMock(return_value=payload)
+    return resp
+
+
+def _method_from_url(url: str) -> str:
+    # https://slack.com/api/<method>
+    return str(url).rsplit("/", 1)[-1]
+
+
+# Branches: gate; message-author pool (not members / not users.list alone);
+# replies; soft-skip; bots/deleted filter; hard ok:false raises (AST-1667).
+class TestAst1667WorkspacePosterPool:
+    def test_requires_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", raising=False)
+        with pytest.raises(Exception):
+            slack_mod.list_workspace_posters()
+
+    def test_poster_pool_excludes_bots_deleted_and_never_posted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        calls: list[str] = []
+
+        def fake_get(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            method = _method_from_url(url)
+            calls.append(method)
+            params = kwargs.get("params") or {}
+            if method == "conversations.list":
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "channels": [{"id": "C1"}, {"id": "  "}, "skip"],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            if method == "conversations.history":
+                assert params.get("channel") == "C1"
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "messages": [
+                            {"user": "U_ZEBRA", "ts": "1.0", "text": "hi"},
+                            {"user": "U_BOT", "ts": "1.1", "text": "beep"},
+                            # Thread parent — reply_count pulls thread-only poster.
+                            {
+                                "user": "U_ADA",
+                                "ts": "2.0",
+                                "reply_count": 1,
+                                "text": "parent",
+                            },
+                            {"bot_id": "B1", "text": "no user field"},
+                            "skip",
+                        ],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            if method == "conversations.replies":
+                assert params.get("channel") == "C1"
+                assert params.get("ts") == "2.0"
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "messages": [
+                            {"user": "U_ADA", "ts": "2.0"},
+                            {"user": "U_THREAD", "ts": "2.1"},
+                        ],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            if method == "users.list":
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "members": [
+                            {"id": "U_ZEBRA", "name": "Zebra", "is_bot": False},
+                            {"id": "U_BOT", "name": "roboto", "is_bot": True},
+                            {"id": "U_ADA", "name": "ada", "deleted": False},
+                            {"id": "U_THREAD", "name": "ThreadOnly"},
+                            {"id": "U_GONE", "name": "gone", "deleted": True},
+                            # Present in workspace but never posted — must not appear.
+                            {"id": "U_LURKER", "name": "lurker"},
+                        ],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            raise AssertionError(f"unexpected Slack method {method}")
+
+        monkeypatch.setattr(slack_mod.requests, "get", fake_get)
+        out = slack_mod.list_workspace_posters()
+        assert out == [
+            {"slack_user_id": "U_ADA", "username": "ada"},
+            {"slack_user_id": "U_THREAD", "username": "ThreadOnly"},
+            {"slack_user_id": "U_ZEBRA", "username": "Zebra"},
+        ]
+        assert "conversations.members" not in calls
+        assert calls.count("conversations.list") == 1
+        assert calls.count("conversations.history") == 1
+        assert calls.count("conversations.replies") == 1
+        assert calls.count("users.list") == 1
+
+    def test_soft_skip_channel_continues(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+
+        def fake_get(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            method = _method_from_url(url)
+            params = kwargs.get("params") or {}
+            if method == "conversations.list":
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "channels": [{"id": "C_BAD"}, {"id": "C_OK"}],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            if method == "conversations.history":
+                if params.get("channel") == "C_BAD":
+                    return _slack_get_resp({"ok": False, "error": "not_in_channel"})
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "messages": [{"user": "U1", "ts": "1.0"}],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            if method == "users.list":
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "members": [{"id": "U1", "name": "one"}],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            raise AssertionError(f"unexpected Slack method {method}")
+
+        monkeypatch.setattr(slack_mod.requests, "get", fake_get)
+        assert slack_mod.list_workspace_posters() == [
+            {"slack_user_id": "U1", "username": "one"}
+        ]
+
+    def test_hard_failures_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+
+        monkeypatch.setattr(
+            slack_mod.requests,
+            "get",
+            MagicMock(return_value=_slack_get_resp({"ok": False, "error": "invalid_auth"})),
+        )
+        with pytest.raises(RuntimeError, match="conversations.list"):
+            slack_mod.list_workspace_posters()
+
+        def history_hard(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            method = _method_from_url(url)
+            if method == "conversations.list":
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "channels": [{"id": "C1"}],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            if method == "conversations.history":
+                return _slack_get_resp({"ok": False, "error": "invalid_auth"})
+            raise AssertionError(method)
+
+        monkeypatch.setattr(slack_mod.requests, "get", history_hard)
+        with pytest.raises(RuntimeError, match="conversations.history"):
+            slack_mod.list_workspace_posters()
+
+        def users_hard(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            method = _method_from_url(url)
+            if method == "conversations.list":
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "channels": [{"id": "C1"}],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            if method == "conversations.history":
+                return _slack_get_resp(
+                    {
+                        "ok": True,
+                        "messages": [{"user": "U1", "ts": "1.0"}],
+                        "response_metadata": {"next_cursor": ""},
+                    }
+                )
+            if method == "users.list":
+                return _slack_get_resp({"ok": False, "error": "fatal_users"})
+            raise AssertionError(method)
+
+        monkeypatch.setattr(slack_mod.requests, "get", users_hard)
+        with pytest.raises(RuntimeError, match="users.list"):
+            slack_mod.list_workspace_posters()
+

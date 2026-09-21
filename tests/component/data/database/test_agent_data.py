@@ -1,8 +1,9 @@
-"""Component tests for agent_data table cluster (AST-392, AST-977)."""
+"""Component tests for agent_data table cluster (AST-392, AST-977, AST-1377)."""
 
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from typing import Any, Optional
 
 import pytest
@@ -25,6 +26,41 @@ def _agent_data_cols(db: Any) -> set[str]:
         return {row[1] for row in conn.execute("PRAGMA table_info(agent_data)").fetchall()}
     finally:
         conn.close()
+
+
+def _create_legacy_agent_data_without_ref(db: Any, db_dir: Path) -> None:
+    """Point DB_PATH at db_dir and create pre-self-ref agent_data (no ref_agent_data_id)."""
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db._agent_data_schema_ensured = False
+    conn = sqlite3.connect(str(db_dir / "astral.db"))
+    try:
+        conn.execute(
+            """CREATE TABLE agent_data (
+                agent_data_id TEXT PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                task_key TEXT NOT NULL,
+                batch_id TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL,
+                block_type TEXT NOT NULL,
+                block_data BLOB,
+                token_size INTEGER DEFAULT 0
+            )"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _ref_column_pragma(db: Any) -> tuple[str, int, object]:
+    """Return (type, notnull, dflt_value) for agent_data.ref_agent_data_id."""
+    conn = db._get_connection()
+    try:
+        for row in conn.execute("PRAGMA table_info(agent_data)").fetchall():
+            if row[1] == "ref_agent_data_id":
+                return (row[2], row[3], row[4])
+    finally:
+        conn.close()
+    raise AssertionError("ref_agent_data_id missing from agent_data")
 
 
 class TestSaveAgentData:
@@ -354,3 +390,338 @@ class TestAst978BackfillAgentDataRefs:
         assert result["errors"] == 1
         assert result["skipped_already_ref"] == 1
 
+
+class TestAst1274ResolveNullBlockDataRef:
+    """AST-1274: null/empty local + populated ref resolves; populated ref always follows chain."""
+
+    def test_empty_string_block_data_with_ref_resolves(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_data(
+            "canon-1", "company", "t", "batch-1274", "SYSTEM", "canonical-body",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_data_schema(conn)
+            # Empty BLOB (not NULL) + populated ref — must follow, not return blank.
+            conn.execute(
+                """INSERT INTO agent_data
+                   (agent_data_id, entity_type, task_key, batch_id, created_at,
+                    block_type, block_data, token_size, ref_agent_data_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    "alias-empty", "company", "t", "batch-1274",
+                    "2026-01-02T00:00:00+00:00", "RESPONSE", "", 0, "canon-1",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        by_id = db.get_agent_data("alias-empty")
+        assert by_id is not None
+        assert by_id["block_data"] == "canonical-body"
+        by_ids = db.get_agent_data_for_ids(["alias-empty"])
+        assert by_ids["alias-empty"]["block_data"] == "canonical-body"
+
+
+    def test_populated_ref_follows_chain_even_with_local_body(self, sqlite_in_memory) -> None:
+        # Resolve discuss: product dropped has_local — populated ref always wins (plan Stage 1).
+        db = sqlite_in_memory
+        db.save_agent_data(
+            "canon-1", "company", "t", "batch-1274b", "SYSTEM", "from-ref",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        _insert_content_row(
+            db,
+            agent_data_id="alias-local",
+            plain="from-local",
+            created_at="2026-01-02T00:00:00+00:00",
+            ref_agent_data_id="canon-1",
+        )
+        row = db.get_agent_data("alias-local")
+        assert row is not None
+        assert row["block_data"] == "from-ref"
+        assert row["ref_agent_data_id"] == "canon-1"
+
+
+class TestAst1377EnsureRefAgentDataId:
+    """AST-1376/1377: legacy agent_data gains nullable ref_agent_data_id via ensure / bootstrap."""
+
+    def test_legacy_ensure_adds_nullable_ref_idempotent(
+        self, sqlite_in_memory, tmp_path, monkeypatch
+    ) -> None:
+        db = sqlite_in_memory
+        legacy = tmp_path / "legacy-1377"
+        monkeypatch.setenv("ASTRAL_DB_DIR", str(legacy))
+        monkeypatch.setattr(db, "DB_PATH", legacy / "astral.db")
+        _create_legacy_agent_data_without_ref(db, legacy)
+        assert "ref_agent_data_id" not in _agent_data_cols(db)
+
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_data_schema(conn)
+        finally:
+            conn.close()
+        cols_first = _agent_data_cols(db)
+        assert "ref_agent_data_id" in cols_first
+        col_type, notnull, dflt = _ref_column_pragma(db)
+        assert col_type.upper() == "TEXT"
+        assert notnull == 0
+        assert dflt is None
+
+        # Second ensure (flag reset like upsert path) is a no-op — column once, no error.
+        conn2 = db._get_connection()
+        try:
+            db.ensure_table_schema_for_upsert(conn2, "agent_data")
+        finally:
+            conn2.close()
+        assert _agent_data_cols(db) == cols_first
+        conn3 = db._get_connection()
+        try:
+            ref_rows = [
+                r for r in conn3.execute("PRAGMA table_info(agent_data)").fetchall()
+                if r[1] == "ref_agent_data_id"
+            ]
+        finally:
+            conn3.close()
+        assert len(ref_rows) == 1
+
+    def test_legacy_write_read_uses_ref_after_ensure(
+        self, sqlite_in_memory, tmp_path, monkeypatch
+    ) -> None:
+        db = sqlite_in_memory
+        legacy = tmp_path / "legacy-1377-rw"
+        monkeypatch.setenv("ASTRAL_DB_DIR", str(legacy))
+        monkeypatch.setattr(db, "DB_PATH", legacy / "astral.db")
+        _create_legacy_agent_data_without_ref(db, legacy)
+
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_data_schema(conn)
+        finally:
+            conn.close()
+
+        first = db.save_agent_data(
+            "canon-1377", "company", "qualify_job_listings", "batch-a", "SYSTEM", "shared-body",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        assert first["outcome"] == "new_content"
+        second = db.save_agent_data(
+            "audit-1377", "company", "qualify_job_listings", "batch-b", "RESPONSE", "shared-body",
+            created_at="2026-01-02T00:00:00+00:00",
+        )
+        assert second["outcome"] == "ref_existing"
+        assert second["ref_agent_data_id"] == "canon-1377"
+        row = db.get_agent_data("audit-1377")
+        assert row is not None
+        assert row["block_data"] == "shared-body"
+        assert row["ref_agent_data_id"] == "canon-1377"
+
+    def test_startup_upsert_registry_ensures_ref_column(
+        self, sqlite_in_memory, tmp_path, monkeypatch
+    ) -> None:
+        db = sqlite_in_memory
+        legacy = tmp_path / "legacy-1377-boot"
+        monkeypatch.setenv("ASTRAL_DB_DIR", str(legacy))
+        monkeypatch.setattr(db, "DB_PATH", legacy / "astral.db")
+        _create_legacy_agent_data_without_ref(db, legacy)
+        assert "ref_agent_data_id" not in _agent_data_cols(db)
+
+        assert db._UPSERT_LAZY_SCHEMA_HANDLERS["agent_data"] is db._ensure_agent_data_schema
+        db.ensure_all_upsert_registry_schemas_at_startup()
+        assert "ref_agent_data_id" in _agent_data_cols(db)
+        _type, notnull, dflt = _ref_column_pragma(db)
+        assert _type.upper() == "TEXT"
+        assert notnull == 0
+        assert dflt is None
+
+
+class TestAst1451ListAgentDataBatches:
+    """AST-1451 (revised AST-1534): one metadata row per batch_id, newest first; no block_data.
+
+    Unfiltered/no-cap list is retired — blank candidate → []; scoped list needs ledger join.
+    """
+
+    def test_blank_candidate_returns_empty_list(self, sqlite_in_memory) -> None:
+        assert sqlite_in_memory.list_agent_data_batches() == []
+        assert sqlite_in_memory.list_agent_data_batches(candidate_id="") == []
+        assert sqlite_in_memory.list_agent_data_batches(candidate_id=None) == []
+
+    def test_one_row_per_batch_newest_first_includes_adhoc_and_production(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_agent_data(
+            "old-sys",
+            "job",
+            "evaluate_jd",
+            "batch-prod",
+            "SYSTEM",
+            "sys-prod",
+            created_at="2026-01-01 00:00:00",
+            entity_id="job-old",
+        )
+        db.save_agent_data(
+            "old-task",
+            "job",
+            "evaluate_jd",
+            "batch-prod",
+            "TASK",
+            "user-prod",
+            created_at="2026-01-01 00:00:01",
+            entity_id="job-old",
+        )
+        db.save_dispatch_ledger(
+            "batch-prod", "evaluate_jd", "cand-1", "2026-01-01 00:00:00"
+        )
+        db.save_agent_data(
+            "new-sys",
+            "job",
+            "adhoc-evaluate_jd",
+            "batch-adhoc",
+            "SYSTEM",
+            "sys-adhoc",
+            created_at="2026-08-01 12:00:00",
+            entity_id="job-new",
+        )
+        db.save_dispatch_ledger(
+            "batch-adhoc", "adhoc-evaluate_jd", "cand-1", "2026-08-01 12:00:00"
+        )
+        rows = db.list_agent_data_batches(candidate_id="cand-1")
+        assert [r["batch_id"] for r in rows] == ["batch-adhoc", "batch-prod"]
+        assert rows[0]["task_key"] == "adhoc-evaluate_jd"
+        assert rows[0]["entity_id"] == "job-new"
+        assert rows[1]["task_key"] == "evaluate_jd"
+        assert rows[1]["entity_id"] == "job-old"
+        for row in rows:
+            assert set(row) >= {"batch_id", "created_at", "entity_id", "task_key"}
+            assert "block_data" not in row
+
+
+class TestAst1534ScopedListAgentDataBatches:
+    """AST-1534: candidate + optional task_key (adhoc- strip) + limit via dispatch_ledger join."""
+
+    def _seed(
+        self,
+        db: Any,
+        *,
+        batch_id: str,
+        task_key: str,
+        created_at: str,
+        candidate_id: str,
+        entity_id: str = "job-1",
+        ledger_task_key: Optional[str] = None,
+    ) -> None:
+        db.save_agent_data(
+            f"{batch_id}-sys",
+            "job",
+            task_key,
+            batch_id,
+            "SYSTEM",
+            "sys",
+            created_at=created_at,
+            entity_id=entity_id,
+        )
+        db.save_dispatch_ledger(
+            batch_id,
+            ledger_task_key or task_key,
+            candidate_id,
+            created_at,
+        )
+
+    def test_scopes_by_candidate_excludes_other_and_ledgerless(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        self._seed(
+            db,
+            batch_id="b-keep",
+            task_key="evaluate_jd",
+            created_at="2026-08-01 12:00:00",
+            candidate_id="cand-a",
+        )
+        self._seed(
+            db,
+            batch_id="b-other",
+            task_key="evaluate_jd",
+            created_at="2026-08-02 12:00:00",
+            candidate_id="cand-b",
+        )
+        # agent_data without ledger — INNER JOIN drops it
+        db.save_agent_data(
+            "orphan-sys",
+            "job",
+            "evaluate_jd",
+            "b-orphan",
+            "SYSTEM",
+            "sys",
+            created_at="2026-08-03 12:00:00",
+            entity_id="job-x",
+        )
+        rows = db.list_agent_data_batches(candidate_id="cand-a")
+        assert [r["batch_id"] for r in rows] == ["b-keep"]
+
+    def test_task_key_adhoc_prefix_equivalence(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed(
+            db,
+            batch_id="b-adhoc",
+            task_key="adhoc-evaluate_jd",
+            created_at="2026-08-02 00:00:00",
+            candidate_id="cand-1",
+        )
+        self._seed(
+            db,
+            batch_id="b-bare",
+            task_key="evaluate_jd",
+            created_at="2026-08-01 00:00:00",
+            candidate_id="cand-1",
+        )
+        self._seed(
+            db,
+            batch_id="b-other-task",
+            task_key="adhoc-grade_get",
+            created_at="2026-08-03 00:00:00",
+            candidate_id="cand-1",
+        )
+        # Catalog key matches both adhoc- and bare stored keys; query may also be adhoc-.
+        for query_key in ("evaluate_jd", "adhoc-evaluate_jd"):
+            rows = db.list_agent_data_batches(
+                candidate_id="cand-1", task_key=query_key
+            )
+            assert [r["batch_id"] for r in rows] == ["b-adhoc", "b-bare"], query_key
+
+    def test_empty_task_key_returns_all_for_candidate_newest_first(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        self._seed(
+            db,
+            batch_id="b-old",
+            task_key="grade_get",
+            created_at="2026-01-01 00:00:00",
+            candidate_id="cand-1",
+        )
+        self._seed(
+            db,
+            batch_id="b-new",
+            task_key="evaluate_jd",
+            created_at="2026-08-01 00:00:00",
+            candidate_id="cand-1",
+        )
+        rows = db.list_agent_data_batches(candidate_id="cand-1", task_key="")
+        assert [r["batch_id"] for r in rows] == ["b-new", "b-old"]
+
+    def test_limit_caps_newest_first(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        for i in range(5):
+            self._seed(
+                db,
+                batch_id=f"b-{i}",
+                task_key="evaluate_jd",
+                created_at=f"2026-08-0{i+1} 00:00:00",
+                candidate_id="cand-1",
+            )
+        rows = db.list_agent_data_batches(candidate_id="cand-1", limit=2)
+        assert [r["batch_id"] for r in rows] == ["b-4", "b-3"]
