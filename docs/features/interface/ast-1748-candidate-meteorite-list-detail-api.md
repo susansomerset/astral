@@ -256,3 +256,65 @@ context_tokens≈28000
 - **Publish ref:** `sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`
 - **Tip:** `40962aa8440e9076a63604a75298ea0ab1736007`
 - **Stages:** S1 list helper · S2 config constants · S3 list/detail GET
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1748
+**Publish ref:** dc4c9c6966e1abdf44ebb124126d75397f2216eb (`origin/sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`)
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+- **stat.logging.debug** — Joan **C/2** (plan Stage 3 specified `len(rows)` / `"hit"|"miss"` out-logs); diff logs full callee return (`rows`, `row`) per statute and `api_jobs.py` precedent → **A**.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** `docs/features/interface/ast-1748-candidate-meteorite-list-detail-api.md` Stage 3 vs `src/ui/api/api_meteorite.py`  
+  **Finding:** Plan text still documents truncated debug out-logs; implementation correctly logs full callee responses (`Response from list_meteorites_for_candidate: %s`, `rows`; `Response from get_meteorite: %s`, `row`). Canon-compliant on the tip; plan doc is stale on this point.  
+  **Recommendation:** Optional doc touch in resolve-child or leave as-is — code wins.
+
+### advisory
+
+- **Location:** Canon Scope (frozen list vs diff footprint)  
+  **Finding:** `astral.config.config-source-of-truth` and `astral.layers.import-direction` plainly govern `config.py` constants and `api_meteorite` imports but remain off the frozen list (Joan flagged at validate-plan).  
+  **Recommendation:** Archie may amend parent Canon Scope if those should be scored at review; do not widen the frozen list in-flight.
+
+- **Location:** `src/data/database.py` — `list_meteorites_for_candidate`  
+  **Finding:** No index on `candidate_id`; explicitly scoped out and acceptable for operator UI volumes.  
+  **Recommendation:** None.
+
+## What's solid
+
+- Three-file footprint matches explicit scope gate: `database.py` helper + header inventory, `config.py` `JOBS_METEORITES_*` constants, `api_meteorite.py` authenticated GET list/detail only.
+- `list_meteorites_for_candidate`: blank/`None` candidate → `[]` before connect; SQL `WHERE candidate_id = ?` with single bind; `ORDER BY state_changed_at DESC`; no data-layer logging.
+- API: `@require_auth` on both GETs; `{columns, meteorites}` / `{sections, meteorite}` shapes consume config literals; `link` / `astral_job_id` projected as stored (tests cover non-http link, blank job id).
+- No `logger.info` on idempotent GETs; 404 soft-fail without `logger.exception`; thrown failures → one `logger.exception` with route, exc type/message, and affirmative next step.
+- Land/create routes untouched. Betty manifest (`TestAst1748MeteoriteListDetailApi`, `TestAst1748ListMeteoritesForCandidate`) aligns with diff intent.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1748): Radia review — clean`, post slim upshot, move to **Review Posted** → datt **§3h** PROCEED path to User Testing.
+- Engineer: no canon fix-now items on this tip.
+
+context_tokens≈32000
+
