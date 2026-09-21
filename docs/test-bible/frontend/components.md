@@ -1569,3 +1569,21 @@ Job Detail / JAR chrome: `job_link` is an href / `window.open` target only for `
 **Broken / obsolete this pass:** none — existing https deeplink cases remain.
 
 **Integration:** none.
+
+### AST-1749 · AST-1741
+
+**Parent:** [AST-1741](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
+
+`MeteoriteDetailModal.tsx` — read-only detail (sections from API): http(s) link gate, job deeplink gate, 404 honesty, no Save footer. Page wiring: **`docs/test-bible/frontend/pages.md`** § AST-1749.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Link / deeplink / 404 / closed | `MeteoriteDetailModal.tsx` | **`test_MeteoriteDetailModal.test.tsx`** |
+
+**Broken / obsolete:** none — new component. Does not revise `JobMeteoritePane` tests.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+See **`docs/test-bible/frontend/pages.md`** § AST-1749 (shared numbered manifest).

@@ -4235,3 +4235,21 @@ Mailbox task key `meteorite_email` → `stage_email_meteorite`; `debug_func` →
 | Trimmed PLAYWRIGHT_CONFIG | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` (revised) |
 
 External map: [`docs/test-bible/external/telescope.md`](../external/telescope.md).
+
+### AST-1749 · AST-1741
+
+**Parent:** [AST-1741](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
+
+Jobs → Meteorites `NAV_CONFIG` item at `/jobs/meteorites` (enabled); Companies → Meteorite at `/companies/meteorite_list` unchanged. Page/modal: **`docs/test-bible/frontend/pages.md`** / **`components.md`** § AST-1749.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Jobs Meteorites nav + Companies untouched | `src/utils/config.py` | **`TestAst1749JobsMeteoritesNav`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+See **`docs/test-bible/frontend/pages.md`** § AST-1749.

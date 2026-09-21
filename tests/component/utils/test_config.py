@@ -5436,6 +5436,26 @@ class TestAst1495MeteoriteCompaniesNav:
         )
         assert meteorite.get("label") == "Meteorite"
 
+
+class TestAst1749JobsMeteoritesNav:
+    """AST-1749: Jobs → Meteorites nav; Companies → Meteorite untouched."""
+
+    def test_jobs_meteorites_nav_enabled(self) -> None:
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        item = next(it for it in jobs["items"] if it.get("path") == "/jobs/meteorites")
+        assert item.get("label") == "Meteorites"
+        assert item.get("enabled") is not False
+        labels = [it.get("label") for it in jobs["items"]]
+        assert labels.index("Meteorites") > labels.index("Applied")
+        assert labels.index("Meteorites") < labels.index("Responded")
+
+    def test_companies_meteorite_still_present(self) -> None:
+        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
+        meteorite = next(
+            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
+        )
+        assert meteorite.get("label") == "Meteorite"
+
 class TestAst1534AdhocImportConfigKeys:
     """AST-1534: UI_CONFIG import-list cap + picker visible-row literals."""
 
