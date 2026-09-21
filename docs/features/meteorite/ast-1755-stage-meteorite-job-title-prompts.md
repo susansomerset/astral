@@ -97,3 +97,45 @@ python3 -c 'import json; json.load(open("data/admin/agent_task.json"))'
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+**Ticket:** AST-1755
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `sub/AST-1753/AST-1755-stage-meteorite-job-title-prompts` @ `6e0c12f24581ec372a9ba159d6009a0e3566df1b`
+
+### Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | X | | catalog-only ticket; directive territory is `src/**` |
+| stat.logging.info.entity | X | | no `src/core/meteorite.py` edits in this child |
+
+### Traceability
+
+AC1→Stage 1 §2–3 + verify §5; AC2→Stage 1 §4 + verify §5; AC3→Stage 1 §1 + verify §5; AC4→Stage 1 AC4 note (existing `_stage_field` row map; no `meteorite.py` edit in scope)
+
+### Findings
+
+#### acceptable
+
+- **Location:** Stage 1 AC4 note  
+- **Finding:** AC4 (meteorite row `job_title` after a landable classify) is satisfied by prompt change plus the existing stage map at `_stage_field(job, "job_title")` in `src/core/meteorite.py`; the plan correctly forbids editing that file here and names the sibling boundary.  
+- **Recommendation:** None required for plan approval; Betty may still attach a behavioral check at Tests Ready if the bible already covers stage→row title persistence.
+
+#### discuss
+
+- **Location:** Stage 1 Done when / verify §5  
+- **Finding:** Verification steps are prompt- and schema-gates only; AC4 has no named manual or automated row-persistence check in the stage Done-when block (only the AC4 note).  
+- **Recommendation:** Optional: add one Done-when bullet pointing engineers to replay a landable classify fixture or parent UAT step for AC4 — not blocking because mechanism and code path are documented and present on `origin/sub/…/AST-1755…`.
+
+### R6 checklist (summary)
+
+- Definition fidelity: plan matches child Scope (`data/admin/agent_task.json` only); parent AC1–AC4 addressed; siblings AST-1756/AST-1757 explicitly excluded.  
+- DRY / scope: no duplicate extract path; no scope creep into `meteorite.py` or schema invention.  
+- Self-assessment: Estimate confirm `2 — agree` matches a single-file prompt append + user_prompt replace.  
+- Plan Discuss: status `Plan Ready`, assignee Joan, zero completed `[plan-discuss]` rounds.
+
+context_tokens≈18500
