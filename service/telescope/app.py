@@ -8,7 +8,7 @@ from typing import Any, Awaitable, Callable, Optional, Tuple, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from auth import require_bearer
 from browser import BrowserPool
@@ -27,13 +27,19 @@ from settings import settings
 configure_logging()
 _log = get_logger(__name__)
 
+# Expand = scroll + Load More on this URL only — not numbered / Next pagination (AST-1737).
+_EXPAND_DESC = (
+    "Infinite-scroll + Load More/Show More on the current document. "
+    "Does not navigate numbered pagination or Next-page URLs."
+)
+
 
 class TelescopeRequest(BaseModel):
     url: str
     selector: Optional[str] = None
     tag: Optional[str] = None
     class_name: Optional[str] = None
-    expand: bool = True
+    expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
     links: bool = True
 
@@ -43,7 +49,7 @@ class TelescopeHtmlRequest(BaseModel):
     selector: Optional[str] = None
     tag: Optional[str] = None
     class_name: Optional[str] = None
-    expand: bool = True
+    expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
 
 

@@ -759,6 +759,55 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 - AST-1732: when a filter matches, links stay scoped under match roots (dedupe by href).
 - Zero `src` imports under `service/telescope/`; capture stays browser-only.
 - Drop-in `_ensure_html` first-match unwrap for list html unchanged.
+
 ## Radia review-fix (AST-1736)
 
 Overall: CLEAN. PROCEED — tag/class_name filter fix. Resolve skipped.
+
+## Bug: AST-1737 — Telescope expand vs multi-page pagination
+
+### As-is
+
+`expand` (default on) runs `expand_page` in `service/telescope/interact.py`: infinite-scroll height growth (capped) then clicks `Load More` / `Show More` on the **same URL**. It does **not** follow numbered pagination, “Next” page controls, or `?page=N` URL changes. A listing split across 15 discrete result screens therefore yields only the first screen’s DOM/text after expand. OpenAPI / admin toggle label only say `expand` with no semantics, so UAT cannot tell load-more from multi-page. Pre-migration `playwright.load_all_jobs` was the same scroll + Load More loop — numbered multi-page was never part of that helper.
+
+### To-be
+
+Contract documents that **expand = load-more / infinite-scroll on the current URL only**. Discrete paginated screens (page 2…N / Next) stay out of expand; callers must request each page URL separately (platform already fans out multi-URL scrapes). No new numbered-pagination browser loop in this bug — that would be a new product capability beyond parent FS §3 / API contract (`expand` = load-all scroll + Load More).
+
+### Repro
+
+1. Admin Telescope (or `POST /telescope` with bearer): any URL whose results use **numbered pages** or Next (not a Load More button), `expand=true`, no selector.
+2. Observe: response covers only the first page’s listings, not all N pages × page size.
+3. Contrast: a URL that appends rows via infinite scroll / “Load More” — expand keeps scrolling/clicking until height/button stall (existing caps: 10 scrolls / 20 clicks, unchanged by this bug).
+
+### Root cause
+
+Ambiguous naming, not a migration regression. Parent and AST-1725 Stage 3 already defined expand as the port of `load_all_jobs` (scroll + Load More). Multi-page **URL** fan-out lives on the platform (`roster` page maps), not inside one Telescope request. UAT treated “pagination” as expand’s job; the shipped flag never meant that.
+
+### Proposed change
+
+Document-only — **do not** extend `expand_page` to click Next / page numbers.
+
+1. **`service/telescope/app.py`** — On `TelescopeRequest.expand` and `TelescopeHtmlRequest.expand`, use `pydantic.Field(default=True, description=...)` with description text that states expand runs infinite-scroll + Load More/Show More on the current document and does **not** navigate numbered pagination or Next-page URLs. Keep default `True`.
+2. **`service/telescope/interact.py`** — Replace/extend the `expand_page` docstring to the same contract (scroll then Load More/Show More; no Next / page-index navigation; soft-fail loop unchanged). No logic change to the scroll/click loops or their existing caps.
+3. **`src/ui/frontend/src/pages/AdminTelescope.tsx`** — On the expand checkbox label (or adjacent hint), surface the same wording so UAT sees e.g. `expand (scroll / Load More — not numbered pages)`. Do not add a separate pagination toggle.
+
+Out of this bug: implementing Next/page-N capture; changing scroll/click caps; platform roster multi-URL fan-out; `src/external/telescope.py` flag plumbing beyond what already passes `expand` through.
+
+### Blast radius
+
+- Admin + OpenAPI readers see clearer expand semantics; request/response JSON shape unchanged.
+- Call sites that assumed expand fetched every numbered page keep seeing first-page-only — that was always true; documentation makes it intentional.
+- Sibling bugs touching `capture_*` / selectors are orthogonal.
+- Betty: no behavior flip expected; optional assertion that Field description / admin copy exists is board’s call (TESTS), not a product change.
+
+### What must still hold
+
+- Parent FS §3 / Technical scope: expand default **on** = load-all scroll / Load More; cookie dismiss always; wait_ready default off; per-URL single navigation + capture.
+- AST-1725 AC: `expand_page` port of `load_all_jobs` behavior; bearer; no service cull; zero `src` imports under `service/telescope/`.
+- Platform drop-in still maps `load_all_jobs` → `page.expand = True` (AST-1726) without inventing a second pagination flag.
+- Parent non-goal: no depth/output limits **added** without Susan sign-off — this bug does not tighten or raise the existing scroll/click caps.
+
+## Radia review-fix (AST-1737)
+
+Overall: CLEAN. Expand contract documented. Clean-review shortcut → User Testing.
