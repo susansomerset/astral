@@ -25,6 +25,14 @@ function installPageApiMocks(handler: (url: string, init?: RequestInit) => Promi
   })
 }
 
+function pendingNotFoundResponse(): Response {
+  return {
+    ok: false,
+    status: 404,
+    json: async () => ({ error: "No recoverable generation" }),
+  } as Response
+}
+
 describe("ArtifactsCompanyWatchCriteria", () => {
   beforeEach(() => {
     localStorage.clear()
@@ -34,6 +42,9 @@ describe("ArtifactsCompanyWatchCriteria", () => {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
+      }
+      if (/\/api\/candidates\/[^/]+\/generate\/[^/]+\/pending$/.test(url)) {
+        return pendingNotFoundResponse()
       }
       if (url === "/api/candidates/c1" && !init) {
         return {
@@ -58,13 +69,16 @@ describe("ArtifactsCompanyWatchCriteria", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "Company Watch Criteria" })).toBeInTheDocument())
   })
 
-  it("AST-677: Generate POSTs craft_prefilter_rubric", async () => {
+  it("AST-1253: Regenerate Yes POSTs generate_artifacts (chain handoff)", async () => {
     let generateUrl = ""
     installPageApiMocks(async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
         } as Response
+      }
+      if (/\/api\/candidates\/[^/]+\/generate\/[^/]+\/pending$/.test(url)) {
+        return pendingNotFoundResponse()
       }
       if (url === "/api/candidates/c1" && !init) {
         return {
@@ -77,17 +91,9 @@ describe("ArtifactsCompanyWatchCriteria", () => {
           }),
         } as Response
       }
-      if (url === "/api/candidates/c1/generate/craft_prefilter_rubric" && init?.method === "POST") {
+      if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
         generateUrl = url
-        return {
-          ok: true,
-          json: async () => ({
-            success: true,
-            parsed_response: {
-              criteria: [{ label: "Generated", content: "New criterion", importance: 7 }],
-            },
-          }),
-        } as Response
+        return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
       }
       throw new Error(`unexpected api call: ${url}`)
     })
@@ -95,10 +101,12 @@ describe("ArtifactsCompanyWatchCriteria", () => {
     renderWithProviders(<ArtifactsCompanyWatchCriteria />)
     await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
-    await userEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1])
+    expect(screen.getByText(/Reset all artifact rubrics/i)).toBeInTheDocument()
+    expect(screen.getByText(/Job Description Criteria/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Yes" }))
+    await waitFor(() => expect(generateUrl).toBe("/api/candidates/c1/generate_artifacts"))
     await waitFor(() =>
-      expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument(),
+      expect(screen.getByText("Artifacts build requested — watch Execution History")).toBeInTheDocument(),
     )
-    expect(generateUrl).toBe("/api/candidates/c1/generate/craft_prefilter_rubric")
   })
 })

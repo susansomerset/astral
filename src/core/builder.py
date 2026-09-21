@@ -25,7 +25,13 @@ from src.core import tracker as tracker_mod
 from src.data import database
 from src.utils.config import (
     BUILD_CONFIG,
+    COVER_FROM_BLOCK_CONFIG,
+    RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
+    RESUME_STRUCTURE_EMPHASIS_TAG_NAMES,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
     get_cover_letter_render_token,
 )
 from src.utils.formatting import split_to_list
@@ -61,6 +67,15 @@ _KEY_TO_HEADING: Dict[str, str] = {
     "technical_skills": "Technical Skills",
 }
 
+_EMPHASIS_TAG_RE = re.compile(
+    r"</?(?:" + "|".join(re.escape(n) for n in RESUME_STRUCTURE_EMPHASIS_TAG_NAMES) + r")>",
+    re.IGNORECASE,
+)
+
+
+def _html_section_dom_id(sid: str) -> str:
+    return _KEY_TO_SECTION_ID[sid] if sid in _KEY_TO_SECTION_ID else sid.replace("_", "-")
+
 
 def _coerce_candidate_blob(raw: Dict[str, Any]) -> Dict[str, Any]:
     """Inner ``candidate_data`` dict, or unwrap a full ``get_candidate`` row.
@@ -76,6 +91,7 @@ def _coerce_candidate_blob(raw: Dict[str, Any]) -> Dict[str, Any]:
         out["_first"] = raw.get("first") or ""
         out["_last"] = raw.get("last") or ""
         out["_full"] = raw.get("full") or ""
+        out["_astral_candidate_id"] = str(raw.get("astral_candidate_id") or "").strip()
         return out
     return raw
 
@@ -85,24 +101,37 @@ def _builder_job_identifier(job: Dict[str, Any]) -> str:
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
 
 
-def _resume_content_source_label(job_data: dict, candidate_data: dict) -> str:
-    """Read-only label for which blob supplies resume sections (no raises)."""
-    artifacts = (job_data or {}).get("artifacts") or {}
-    rc = artifacts.get("resume_content")
-    if _is_nonempty_resume_dict(rc):
-        return "job_data.artifacts.resume_content"
-    br = ((candidate_data or {}).get("artifacts") or {}).get("base_resume")
+def _resume_content_source_label(
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    astral_job_id: Optional[str] = None,
+) -> str:
+    """Read-only label for which source supplies resume sections (no raises). AST-1593."""
+    jid = (astral_job_id or "").strip()
+    if jid:
+        body = tracker_mod.get_job_current(jid, "job.artifacts.job_resume")
+        if _is_nonempty_resume_dict(body):
+            return "get_job_current(job.artifacts.job_resume)"
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if _is_nonempty_resume_dict(br):
-        return "candidate_data.artifacts.base_resume"
+        return "get_candidate_current(candidate.artifacts.base_resume)"
     return "missing"
 
 
-def _cover_letter_source_label(job_data: dict, candidate_data: dict) -> Optional[str]:
-    """Read-only label for cover letter provenance, or None when no cover."""
-    artifacts = (job_data or {}).get("artifacts") or {}
-    cl = artifacts.get("cover_letter")
-    if isinstance(cl, dict) and _cover_letter_nonempty(cl):
-        return "job_data.artifacts.cover_letter"
+def _cover_letter_source_label(
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    astral_job_id: Optional[str] = None,
+) -> Optional[str]:
+    """Read-only label for cover letter provenance, or None when no cover. AST-1593."""
+    jid = (astral_job_id or "").strip()
+    if jid:
+        raw = tracker_mod.get_job_current(jid, "job.artifacts.cover_letter")
+        if isinstance(raw, dict) and _cover_letter_nonempty(raw):
+            return "get_job_current(job.artifacts.cover_letter)"
     sample = ((candidate_data or {}).get("context") or {}).get("raw_sample")
     if isinstance(sample, str) and sample.strip():
         return "candidate_data.context.raw_sample"
@@ -115,11 +144,12 @@ def _accent_source_label(candidate_data: dict) -> str:
     ac = structure.get("accent_color")
     if isinstance(ac, str) and ac.strip():
         return "resume_structure.accent_color"
-    br = ((candidate_data or {}).get("artifacts") or {}).get("base_resume")
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if isinstance(br, dict):
         legacy = br.get("accent_color")
         if isinstance(legacy, str) and legacy.strip():
-            return "artifacts.base_resume.accent_color"
+            return "get_candidate_current.accent_color"
     return "BUILD_CONFIG.default_style"
 
 
@@ -199,12 +229,13 @@ def build_resume_from_job(
     if debug:
         _log.set_debug_flag(True)
     identifier = _builder_job_identifier(job)
+    jid = str(job.get("astral_job_id") or "").strip() or None
     job_data = job.get("job_data")
     if not isinstance(job_data, dict):
         job_data = {}
     structure = candidate_mod.resolve_resume_structure(cd)
     try:
-        render = _resolve_resume_sections(job_data, cd)
+        render = _resolve_resume_sections(job_data, cd, astral_job_id=jid)
     except ValueError as exc:
         _emit_builder_failure(
             func="builder.build_resume_from_job",
@@ -213,10 +244,13 @@ def build_resume_from_job(
             debug=debug,
         )
         raise
+    _reject_unsupported_experience_shape(render)
     render = candidate_mod.filter_content_to_resume_structure(render, structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
     style = _merge_effective_style(cd)
-    cover = _resolve_cover_letter(job_data, cd)
+    cover = _resolve_cover_letter(job_data, cd, astral_job_id=jid)
     markers = _apply_resume_text_markers(render)
     ordered_body = _structure_ordered_body_ids(structure)
     titles = candidate_mod.resume_section_titles(structure)
@@ -231,11 +265,14 @@ def build_resume_from_job(
         cover_profile=cd.get("contact") or {},
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_resume_from_job",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
         content_keys = _render_content_keys(markers)
-        cover_src = _cover_letter_source_label(job_data, cd)
+        cover_src = _cover_letter_source_label(job_data, cd, astral_job_id=jid)
         kw_count = (
             len(split_to_list(str(kw), ","))
             if isinstance(kw, str) and kw.strip()
@@ -248,7 +285,9 @@ def build_resume_from_job(
             identifier=identifier,
             outcome="success — resume html",
         )
-        _log.debug_detail(f"resume_source={_resume_content_source_label(job_data, cd)!r}")
+        _log.debug_detail(
+            f"resume_source={_resume_content_source_label(job_data, cd, astral_job_id=jid)!r}"
+        )
         _log.debug_detail(f"enabled_sections={enabled!r}")
         _log.debug_detail(f"body_section_ids={ordered_body!r}")
         _log.debug_detail(f"render_keys={content_keys!r}")
@@ -315,10 +354,11 @@ def build_cover_letter_from_job(
     if debug:
         _log.set_debug_flag(True)
     identifier = _builder_job_identifier(job)
+    jid = str(job.get("astral_job_id") or "").strip() or None
     job_data = job.get("job_data")
     if not isinstance(job_data, dict):
         job_data = {}
-    cover = _resolve_cover_letter(job_data, cd)
+    cover = _resolve_cover_letter(job_data, cd, astral_job_id=jid)
     if cover is None:
         msg = "No cover letter content for job"
         _emit_builder_failure(
@@ -345,7 +385,7 @@ def build_cover_letter_from_job(
         fields, signature_image_src=sig_src, document_title=doc_title
     )
     if debug:
-        cover_src = _cover_letter_source_label(job_data, cd)
+        cover_src = _cover_letter_source_label(job_data, cd, astral_job_id=jid)
         _log.debug_index(
             func="builder.build_cover_letter_from_job",
             index=1,
@@ -383,15 +423,37 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         )
         raise ValueError(msg)
     cd = _coerce_candidate_blob(row)
-    br = (cd.get("artifacts") or {}).get("base_resume")
-    if not isinstance(br, dict) or not br:
-        msg = "Candidate missing artifacts.base_resume"
+    structure = candidate_mod.resolve_resume_structure(cd)
+    raw = candidate_mod.load_pilot_base_resume_for_candidate(candidate_id)
+    if debug:
+        _log.debug_index(
+            func="builder.build_base_resume",
+            index=1,
+            total=2,
+            identifier=identifier,
+            outcome="found",
+        )
+        _log.debug_detail(
+            f"found artifact_key=candidate.artifacts.base_resume "
+            f"current_read={'hit' if raw is not None else 'miss'}"
+        )
+    # Same ingest as candidate PUT / Base Resume Content display (list or dict).
+    if isinstance(raw, (list, dict)):
+        content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
+            raw, structure
+        )
+    else:
+        content = {}
+    if not content:
+        msg = "No printable base resume content for this candidate"
         _emit_builder_failure(
             func="builder.build_base_resume", identifier=identifier, message=msg, debug=debug
         )
         raise ValueError(msg)
-    structure = candidate_mod.resolve_resume_structure(cd)
-    render = candidate_mod.filter_content_to_resume_structure(dict(br), structure)
+    _reject_unsupported_experience_shape(content)
+    render = candidate_mod.filter_content_to_resume_structure(dict(content), structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)
@@ -406,18 +468,21 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         emit_prior_experience=bool((markers.get("prior_experience") or "").strip()),
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_base_resume",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
         content_keys = _render_content_keys(markers)
         _log.debug_index(
             func="builder.build_base_resume",
-            index=1,
-            total=1,
+            index=2,
+            total=2,
             identifier=identifier,
-            outcome="success — base resume html",
+            outcome="recorded — base resume html",
         )
-        _log.debug_detail("resume_source=candidate_data.artifacts.base_resume")
+        _log.debug_detail("resume_source=get_candidate_current(candidate.artifacts.base_resume)")
         _log.debug_detail(f"enabled_sections={enabled!r}")
         _log.debug_detail(f"body_section_ids={ordered_body!r}")
         _log.debug_detail(f"render_keys={content_keys!r}")
@@ -457,6 +522,7 @@ def build_session_base_resume(
             debug=debug,
         )
         raise ValueError(msg)
+    _reject_unsupported_experience_shape(base_resume)
     # Synthetic blob only — never get_candidate / selected-candidate contact.
     cd = {
         "artifacts": {
@@ -465,8 +531,10 @@ def build_session_base_resume(
         },
         "contact": {},
     }
-    structure = candidate_mod.resolve_resume_structure(cd)
+    structure = _resume_structure_for_emit(resume_structure)
     render = candidate_mod.filter_content_to_resume_structure(dict(base_resume), structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     # Skip _apply_contact_to_render_dict — contact/header from paste section strings.
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)
@@ -481,6 +549,9 @@ def build_session_base_resume(
         emit_prior_experience=bool((markers.get("prior_experience") or "").strip()),
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_session_base_resume",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -891,23 +962,30 @@ body {{
 """
 
 
-def _resolve_resume_sections(job_data: dict, candidate_data: dict) -> dict:
-    """Prefer job resume_content; else pin job_resume; else base_resume."""
-    artifacts = job_data.get("artifacts") or {}
-    rc = artifacts.get("resume_content")
-    if _is_nonempty_resume_dict(rc):
-        return dict(rc)
-    # AST-1100: resolve finalize_job_resume pin when legacy body missing.
-    pin = artifacts.get("job_resume")
-    if isinstance(pin, str) and pin.strip():
-        from src.core.tracker import resolve_job_artifact_agent_data_body
+def _reject_unsupported_experience_shape(content: dict) -> None:
+    """AST-1350: refuse emit when experience is present but not a job array."""
+    if "experience" not in content:
+        return
+    if candidate_mod.is_experience_job_array(content.get("experience")):
+        return
+    raise ValueError(BUILD_CONFIG["unsupported_resume_structure_message"])
 
-        body = resolve_job_artifact_agent_data_body(pin)
+
+def _resolve_resume_sections(
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    astral_job_id: Optional[str] = None,
+) -> dict:
+    """Catalog current job_resume via get_job_current; else candidate base_resume. AST-1593."""
+    _ = job_data  # retained for call-site compatibility; not SoT for resume body
+    jid = (astral_job_id or "").strip()
+    if jid:
+        body = tracker_mod.get_job_current(jid, "job.artifacts.job_resume")
         if _is_nonempty_resume_dict(body):
             return dict(body)
-    if isinstance(pin, dict) and _is_nonempty_resume_dict(pin):
-        return dict(pin)
-    br = (candidate_data.get("artifacts") or {}).get("base_resume")
+    cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+    br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
     if _is_nonempty_resume_dict(br):
         return dict(br)
     raise ValueError("No resume_content on job and no base_resume on candidate")
@@ -928,19 +1006,19 @@ def _cover_letter_fields_for_read(cl: dict) -> dict:
     }
 
 
-def _resolve_cover_letter(job_data: dict, candidate_data: dict) -> Optional[dict]:
-    """Job cover_letter dict if any field non-empty; else pin resolve; else sample_cover."""
-    artifacts = job_data.get("artifacts") or {}
-    cl = artifacts.get("cover_letter")
-    if isinstance(cl, dict) and _cover_letter_nonempty(cl):
-        return _cover_letter_fields_for_read(cl)
-    # AST-1100: cover_letter may be a RESPONSE agent_data_id pin string.
-    if isinstance(cl, str) and cl.strip():
-        from src.core.tracker import resolve_job_artifact_agent_data_body
-
-        body = resolve_job_artifact_agent_data_body(cl)
-        if isinstance(body, dict) and _cover_letter_nonempty(body):
-            return _cover_letter_fields_for_read(body)
+def _resolve_cover_letter(
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    astral_job_id: Optional[str] = None,
+) -> Optional[dict]:
+    """Catalog current cover_letter via get_job_current; else sample_cover. AST-1593."""
+    _ = job_data  # retained for call-site compatibility; not SoT for cover body
+    jid = (astral_job_id or "").strip()
+    if jid:
+        raw = tracker_mod.get_job_current(jid, "job.artifacts.cover_letter")
+        if isinstance(raw, dict) and _cover_letter_nonempty(raw):
+            return _cover_letter_fields_for_read(raw)
     sample = (candidate_data.get("context") or {}).get("raw_sample")
     if isinstance(sample, str) and sample.strip():
         # v1: entire sample string is body; re_line/signature empty until UI captures structured cover.
@@ -992,7 +1070,8 @@ def _merge_effective_style(candidate_data: dict) -> dict:
         colors["default_accent"] = ac.strip()
         colors["default_header"] = ac.strip()
     else:
-        br = (candidate_data.get("artifacts") or {}).get("base_resume")
+        cid = candidate_mod.candidate_id_for_current_read(candidate_data)
+        br = candidate_mod.load_pilot_base_resume_for_candidate(cid) if cid else None
         if isinstance(br, dict):
             legacy = br.get("accent_color")
             if isinstance(legacy, str) and legacy.strip():
@@ -1005,6 +1084,14 @@ def _structure_ordered_body_ids(resume_structure: dict) -> List[str]:
     """Enabled section ids for body emission (excludes contact/header trio)."""
     contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
     return [sid for sid in candidate_mod.enabled_resume_section_ids(resume_structure) if sid not in contact]
+
+
+def _resume_structure_for_emit(raw: dict) -> dict:
+    """Normalize when valid; keep raw when an extra lacks format so emit can skip it."""
+    try:
+        return candidate_mod.normalize_resume_structure(raw)
+    except ValueError:
+        return raw
 
 
 def _apply_resume_text_markers(render: dict) -> dict:
@@ -1024,22 +1111,106 @@ def _mark_resume_value(val: Any) -> Any:
 
 
 def _render_content_keys(markers: dict) -> List[str]:
-    """Keys present for Style D — strings with content, plus non-empty experience job arrays."""
+    """Keys present for Style D — strings with content, plus non-empty job arrays."""
     keys = [k for k, v in markers.items() if isinstance(v, str) and v.strip()]
-    exp = markers.get("experience")
-    if candidate_mod.is_experience_job_array(exp) and exp:
-        keys.append("experience")
+    for k, v in markers.items():
+        if candidate_mod.is_experience_job_array(v) and v:
+            keys.append(k)
     return sorted(set(keys))
 
 
 def _resume_site_markers(text: str) -> str:
-    """``__`` → NBSP, ``~~`` → non-breaking hyphen (legacy ResumeSite / PS pipeline)."""
+    """``__`` → NBSP, ``~~`` → non-breaking hyphen; authoring ``|`` → emit bullet (AST-1381)."""
     if not text:
         return text
     t = text.replace("__", "\u00a0")
     t = t.replace("~~", "\u2011")
-    t = t.replace(" • ", "\u00a0• ")
+    # Same authoring/emit separators as cover from-block; drop empty segments per line.
+    auth_sep = COVER_FROM_BLOCK_CONFIG["authoring_separator"]
+    emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
+    if auth_sep in t:
+        line_sep = COVER_FROM_BLOCK_CONFIG.get("line_separator") or "\n"
+        out_lines: List[str] = []
+        for line in t.replace("\r\n", "\n").split(line_sep):
+            keepers = [seg.strip() for seg in line.split(auth_sep) if seg.strip()]
+            out_lines.append(emit_sep.join(keepers))
+        t = line_sep.join(out_lines)
+    t = t.replace(emit_sep, "\u00a0• ")
     return t
+
+
+def _glue_word_cloud_bullet_separators(text: str) -> str:
+    """NBSP• then break after; inner spaces/hyphens non-breaking (AST-1536/1540/1552)."""
+    if not text:
+        return text
+    emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
+    glued = "\u00a0•\u00a0"
+    t = text.replace(emit_sep, glued).replace("\u00a0• ", glued)
+    t = t.replace(" ", "\u00a0")
+    t = t.replace("-", "\u2011")
+    # AST-1552: ordinary space after • (soft-wrap); keep NBSP before •
+    t = t.replace("\u00a0•\u00a0", "\u00a0• ")
+    return t
+
+
+def _emit_inline_emphasis_html(text: str) -> str:
+    """Escape HTML, then restore paired italic/bold tags from the config allowlist."""
+    if not text:
+        return ""
+    parts: List[str] = []
+    pos = 0
+    open_counts: Dict[str, int] = {}
+    for match in _EMPHASIS_TAG_RE.finditer(text):
+        parts.append(html.escape(text[pos:match.start()]))
+        raw = match.group(0)
+        name = raw.strip("</>").lower()
+        if raw.startswith("</"):
+            if open_counts.get(name, 0) > 0:
+                open_counts[name] -= 1
+                parts.append(f"</{name}>")
+            else:
+                parts.append(html.escape(raw))
+        else:
+            open_counts[name] = open_counts.get(name, 0) + 1
+            parts.append(f"<{name}>")
+        pos = match.end()
+    parts.append(html.escape(text[pos:]))
+    return "".join(parts)
+
+
+def _emit_bullet_list_html(text: str) -> str:
+    """Standalone section of lines as ``<li>`` items."""
+    items: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        items.append(f"        <li>{_emit_inline_emphasis_html(line)}</li>")
+    if not items:
+        return ""
+    return "      <ul>\n" + "\n".join(items) + "\n      </ul>"
+
+
+def _print_section_page_break_css(resume_structure: Optional[dict]) -> str:
+    """Map structure ``page_break_policy`` → print CSS (pattern.artifacts.resume-section-print-policy)."""
+    if not isinstance(resume_structure, dict):
+        return ""
+    sections = resume_structure.get("sections") or {}
+    lines: List[str] = []
+    for sid in _structure_ordered_body_ids(resume_structure):
+        spec = sections.get(sid) if isinstance(sections, dict) else None
+        if not isinstance(spec, dict):
+            spec = {}
+        policy = spec.get("page_break_policy")
+        if not isinstance(policy, str) or policy not in RESUME_STRUCTURE_PAGE_BREAK_POLICIES:
+            policy = RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+        dom = _html_section_dom_id(sid)
+        if policy == "page_break_before":
+            lines.append(f"  #{dom} {{ page-break-before: always; }}\n")
+        elif policy == "avoid_split":
+            lines.append(f"  #{dom} {{ page-break-inside: avoid; }}\n")
+        # normal → no section page-break rule
+    return "".join(lines)
 
 
 def _emit_html_document(
@@ -1053,6 +1224,9 @@ def _emit_html_document(
     cover_profile: Optional[dict] = None,
     body_section_ids: Optional[List[str]] = None,
     body_section_titles: Optional[Dict[str, str]] = None,
+    resume_structure: Optional[dict] = None,
+    debug: bool = False,
+    debug_func: str = "",
 ) -> str:
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -1068,7 +1242,7 @@ def _emit_html_document(
     text_tertiary = colors.get("text_tertiary", "#666")
     border_light = colors.get("border_light", "#e0e0e0")
     border_medium = colors.get("border_medium", "#ccc")
-    # emit_prior_experience still drives body-section inclusion via callers; print CSS always has the golden prior-experience break.
+    # emit_prior_experience still drives body-section inclusion; print page-breaks come from structure policy.
 
     name_raw = str(render.get("candidate_name") or "").strip()
     title_raw = str(render.get("candidate_title") or "").strip()
@@ -1097,6 +1271,9 @@ def _emit_html_document(
         render,
         body_section_ids or list(_RESUME_BODY_KEYS),
         body_section_titles or {},
+        resume_structure=resume_structure,
+        debug=debug,
+        debug_func=debug_func,
     )
 
     cover_html = ""
@@ -1263,12 +1440,12 @@ h2::after {{ margin-left: 12px; }}
   font-style: italic;
   font-size: 14.5px;
 }}
-.role ul {{
+section ul, .role ul {{
   margin: 4px 0 0;
   padding-left: 20px;
 }}
-.role li {{ margin-bottom: 6px; }}
-.role li:last-child {{ margin-bottom: 0; }}
+section li, .role li {{ margin-bottom: 6px; }}
+section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
 .education-list {{
   margin: 8px 0 0;
   margin-left: 0.5in;
@@ -1330,8 +1507,7 @@ h2::after {{ margin-left: 12px; }}
   body {{ background: #fff; padding: 0; }}
   h2 {{ page-break-after: avoid; }}
   #competencies {{ page-break-after: avoid; }}
-  #prior-experience {{ page-break-before: always; }}
-  .role {{ page-break-inside: avoid; }}
+{_print_section_page_break_css(resume_structure)}  .role {{ page-break-inside: avoid; }}
   p, li {{ orphans: 3; widows: 3; }}
 }}
 """
@@ -1373,10 +1549,10 @@ def _emit_education_list_html(text: str) -> str:
         if bullet in line:
             cred, _, rest = line.partition(bullet)
             rows.append(
-                f"        <p><strong>{html.escape(cred)}</strong>{bullet}{html.escape(rest)}</p>"
+                f"        <p><strong>{_emit_inline_emphasis_html(cred)}</strong>{bullet}{_emit_inline_emphasis_html(rest)}</p>"
             )
         else:
-            rows.append(f"        <p><strong>{html.escape(line)}</strong></p>")
+            rows.append(f"        <p><strong>{_emit_inline_emphasis_html(line)}</strong></p>")
     if not rows:
         return ""
     return "      <div class=\"education-list\">\n" + "\n".join(rows) + "\n      </div>"
@@ -1393,14 +1569,14 @@ def _emit_skills_grid_html(text: str) -> str:
             category, _, items = line.partition(": ")
             cats.append(
                 "        <div class=\"skill-category\">\n"
-                f"          <h4>{html.escape(category)}</h4>\n"
-                f"          <p>{html.escape(items)}</p>\n"
+                f"          <h4>{_emit_inline_emphasis_html(category)}</h4>\n"
+                f"          <p>{_emit_inline_emphasis_html(items)}</p>\n"
                 "        </div>"
             )
         else:
             cats.append(
                 "        <div class=\"skill-category\">\n"
-                f"          <p>{html.escape(line)}</p>\n"
+                f"          <p>{_emit_inline_emphasis_html(line)}</p>\n"
                 "        </div>"
             )
     if not cats:
@@ -1412,89 +1588,110 @@ def _emit_body_sections_html(
     render: dict,
     ordered_ids: List[str],
     titles: Dict[str, str],
+    resume_structure: Optional[dict] = None,
+    debug: bool = False,
+    debug_func: str = "",
 ) -> str:
     chunks: List[str] = []
+    skip_reasons: Dict[str, str] = {}
+    emitted_ids: set = set()
+    sections = (resume_structure or {}).get("sections") or {}
     for key in ordered_ids:
         raw = render.get(key)
+        spec = sections.get(key) or {}
+        fmt = spec.get("format") or RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.get(key)
         if raw is None:
+            skip_reasons[key] = "skipped — empty"
             continue
-        sid = _KEY_TO_SECTION_ID.get(key, key)
-        heading = html.escape(titles.get(key, _KEY_TO_HEADING.get(key, key.replace("_", " ").title())))
-        # Experience job array: emit per-role HTML before generic dict/list → JSON coercion.
-        if key == "experience" and candidate_mod.is_experience_job_array(raw):
+        if fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+            skip_reasons[key] = "skipped — missing format"
+            continue
+        sid = _html_section_dom_id(key)
+        heading = html.escape(
+            titles.get(key, _KEY_TO_HEADING.get(key, key.replace("_", " ").title()))
+        )
+        inner_html = ""
+        if fmt == "experience_detail":
+            if not candidate_mod.is_experience_job_array(raw):
+                # AST-1350: never omit Experience as leftover prose — refuse emit.
+                raise ValueError(BUILD_CONFIG["unsupported_resume_structure_message"])
             roles_html = _emit_experience_jobs_html(raw)
             if not roles_html.strip():
+                skip_reasons[key] = "skipped — empty"
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{roles_html}
-    </section>"""
-            )
-            continue
-        if isinstance(raw, (dict, list)):
-            text = _format_experience_value(raw)
+            inner_html = roles_html
         else:
-            text = str(raw) if raw is not None else ""
-        if not str(text).strip():
-            continue
-        if key == "professional_summary":
-            # Blank lines first; single-\n fallback (same as cover letter) → multiple .summary-intro
-            paras = _session_cover_letter_paragraphs(str(text))
-            body = "\n".join(
-                f'      <p class="summary-intro">{html.escape(p)}</p>' for p in paras
-            )
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{body}
-    </section>"""
-            )
-            continue
-        if key == "education_certifications":
-            edu_html = _emit_education_list_html(str(text))
-            if not edu_html.strip():
+            if isinstance(raw, str):
+                text = raw
+            elif isinstance(raw, list) and raw and all(not isinstance(item, dict) for item in raw):
+                text = "\n".join(str(item) for item in raw)
+            elif isinstance(raw, (dict, list)):
+                text = _format_experience_value(raw)
+            else:
+                text = str(raw) if raw is not None else ""
+            if not str(text).strip():
+                skip_reasons[key] = "skipped — empty"
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{edu_html}
-    </section>"""
-            )
-            continue
-        if key == "technical_skills":
-            skills_html = _emit_skills_grid_html(str(text))
-            if not skills_html.strip():
+            if fmt == "free_prose":
+                paras = _session_cover_letter_paragraphs(str(text))
+                inner_html = "\n".join(
+                    f'      <p class="summary-intro">{_emit_inline_emphasis_html(p)}</p>'
+                    for p in paras
+                )
+            elif fmt == "bullet_list":
+                inner_html = _emit_bullet_list_html(str(text))
+                if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
+                    continue
+            elif fmt == "word_cloud":
+                cloud_text = _glue_word_cloud_bullet_separators(str(text))
+                inner_html = (
+                    f'      <p class="competencies-list">{_emit_inline_emphasis_html(cloud_text)}</p>'
+                )
+            elif fmt == "dual_column":
+                inner_html = _emit_skills_grid_html(str(text))
+                if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
+                    continue
+            elif fmt == "indented_bold_single":
+                inner_html = _emit_education_list_html(str(text))
+                if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
+                    continue
+            else:
+                skip_reasons[key] = "skipped — empty"
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
+        emitted_ids.add(key)
+        chunks.append(
+            f"""    <section aria-labelledby="{sid}">
       <h2 id="{sid}">{heading}</h2>
-{skills_html}
+{inner_html}
     </section>"""
+        )
+    if debug:
+        enabled = candidate_mod.enabled_resume_section_ids(resume_structure or {})
+        total = len(enabled) or 1
+        contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+        for i, sid in enumerate(enabled, start=1):
+            spec = sections.get(sid) or {}
+            title = spec.get("title") or titles.get(sid) or ""
+            fmt = spec.get("format")
+            if sid in contact:
+                outcome = (
+                    "emitted" if str(render.get(sid) or "").strip() else "skipped — empty"
+                )
+            elif sid in emitted_ids:
+                outcome = "emitted"
+            else:
+                outcome = skip_reasons.get(sid, "skipped — empty")
+            _log.debug_index(
+                func=debug_func or "builder._emit_body_sections_html",
+                index=i,
+                total=total,
+                identifier=sid,
+                outcome=outcome,
             )
-            continue
-        inner = html.escape(str(text))
-        if key == "core_competencies":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <p class="competencies-list">{inner}</p>
-    </section>"""
-            )
-        elif key == "experience":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="prose-block">{inner}</div>
-    </section>"""
-            )
-        elif key == "prior_experience":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <p class="competencies-list">{inner}</p>
-    </section>"""
-            )
+            _log.debug_detail(f"title={title!r} format={fmt!r}")
     return "\n".join(chunks)
 
 
@@ -1521,13 +1718,36 @@ def _format_compact_location(dates: str, location: str, sep: str) -> str:
     return _resume_site_markers(text) if text else ""
 
 
+def _accomplishments_as_lines(raw: Any) -> List[str]:
+    """Normalize accomplishments to non-empty lines; coerce legacy str via newline-split (AST-1381)."""
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if item is not None and str(item).strip()]
+    if isinstance(raw, str) and raw.strip():
+        return [
+            ln.strip()
+            for ln in raw.replace("\r\n", "\n").split("\n")
+            if ln.strip()
+        ]
+    return []
+
+
+def _strip_one_leading_bullet_marker(line: str) -> str:
+    """Remove one leading •/-/* glyph so emit does not double-bullet."""
+    if not line:
+        return line
+    if line[0] in ("•", "\u2022", "-", "*"):
+        rest = line[1:].lstrip()
+        return rest
+    return line
+
+
 def _split_role_accomplishments(
-    accomplishments: str, lead_prefix: str
+    accomplishments: Any, lead_prefix: str
 ) -> Tuple[List[str], List[str]]:
-    """Split accomplishments into lead paragraphs (prefix lines) and bullet lines."""
+    """Split accomplishments (list[str] or legacy str) into leads vs bullet bodies."""
     leads: List[str] = []
     bullets: List[str] = []
-    for raw_line in accomplishments.split("\n"):
+    for raw_line in _accomplishments_as_lines(accomplishments):
         line = raw_line.strip()
         if not line:
             continue
@@ -1535,8 +1755,10 @@ def _split_role_accomplishments(
             rest = line.removeprefix(lead_prefix).strip()
             if rest:
                 leads.append(_resume_site_markers(rest))
-        else:
-            bullets.append(_resume_site_markers(line))
+            continue
+        body = _strip_one_leading_bullet_marker(line)
+        if body:
+            bullets.append(_resume_site_markers(body))
     return leads, bullets
 
 
@@ -1553,8 +1775,9 @@ def _emit_experience_jobs_html(jobs: list) -> str:
         company = str(item.get("company") or "").strip()
         dates = str(item.get("dates") or "").strip()
         location = str(item.get("location") or "").strip()
-        accomplishments = str(item.get("accomplishments") or "").strip()
-        if not (title or company or dates or location or accomplishments):
+        accomplishments = item.get("accomplishments")
+        acc_lines = _accomplishments_as_lines(accomplishments)
+        if not (title or company or dates or location or acc_lines):
             continue
 
         if title and company:
@@ -1573,19 +1796,19 @@ def _emit_experience_jobs_html(jobs: list) -> str:
         lines: List[str] = ['      <article class="role">', '        <div class="role-header">']
         if title_text:
             lines.append(
-                f'          <p class="compact-title"><strong>{html.escape(title_text)}</strong></p>'
+                f'          <p class="compact-title"><strong>{_emit_inline_emphasis_html(title_text)}</strong></p>'
             )
         if loc_text:
             lines.append(
-                f'          <p class="compact-location"><em>{html.escape(loc_text)}</em></p>'
+                f'          <p class="compact-location"><em>{_emit_inline_emphasis_html(loc_text)}</em></p>'
             )
         lines.append("        </div>")
         for lead in leads:
-            lines.append(f'        <p class="role-description">{html.escape(lead)}</p>')
+            lines.append(f'        <p class="role-description">{_emit_inline_emphasis_html(lead)}</p>')
         if bullets:
             lines.append("        <ul>")
             for bullet in bullets:
-                lines.append(f"          <li>{html.escape(bullet)}</li>")
+                lines.append(f"          <li>{_emit_inline_emphasis_html(bullet)}</li>")
             lines.append("        </ul>")
         lines.append("      </article>")
         role_chunks.append("\n".join(lines))

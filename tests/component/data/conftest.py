@@ -12,6 +12,7 @@ _SCHEMA_FLAGS = (
     "_candidate_schema_ensured",
     "_company_candidate_fk_ensured",
     "_company_job_scan_schema_ensured",
+    "_surfer_batch_schema_ensured",  # AST-1229
     "_agent_responses_table_sunset_applied",
     "_entity_agent_responses_column_sunset_applied",
     "_agent_schema_ensured",
@@ -25,6 +26,8 @@ _SCHEMA_FLAGS = (
     "_company_search_terms_migration_swept",
     "_rubric_vector_schema_ensured",
     "_vector_feedback_schema_ensured",
+    "_artifact_schema_ensured",  # AST-1352 / AST-1364 / singular+cid AST-1597
+    "_meteorite_schema_ensured",  # AST-1557
     "_rubric_vector_backfill_swept",
     "_ast723_rubric_token_migration_applied",
 )
