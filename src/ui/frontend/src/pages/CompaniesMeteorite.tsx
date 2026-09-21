@@ -10,7 +10,7 @@ interface Company {
   short_name: string
   company_name: string
   state: string
-  state_updated_at: string | null
+  state_changed_at: string | null
   [key: string]: unknown
 }
 
@@ -19,7 +19,7 @@ const METEORITE_COLUMNS: Column<Company>[] = [
   { key: "company_name", label: "Company", sortable: true },
   { key: "state", label: "State", sortable: true },
   {
-    key: "state_updated_at",
+    key: "state_changed_at",
     label: "State Updated",
     sortable: true,
     defaultDesc: true,

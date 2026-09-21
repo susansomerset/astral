@@ -851,12 +851,12 @@ def apply_config_table_upsert(
 
 # Company batch primitives (prefilter, locate job page, parse job page, gazer)
 # Allowed ORDER BY columns for company batch claims (set_company_batch / roster).
-COMPANY_BATCH_SORT_COLUMNS = frozenset({"rowid", "updated_at", "created_at", "state_updated_at", "last_scan_at"})
+COMPANY_BATCH_SORT_COLUMNS = frozenset({"rowid", "updated_at", "created_at", "state_changed_at", "last_scan_at"})
 
 BOARD_SEARCH_BATCH_SORT_COLUMNS = frozenset({"rowid", "updated_at", "created_at", "last_scan_at"})
 _UPDATE_COMPANY_ALLOWED = frozenset({
     "state", "company_name", "company_website", "job_site", "batch_id", "batch_created_at",
-    "company_data", "state_history", "last_scan_at", "updated_at", "state_updated_at",
+    "company_data", "state_history", "last_scan_at", "updated_at", "state_changed_at",
     "candidate_id",
 })
 
@@ -883,7 +883,7 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
                 state_history TEXT DEFAULT '[]',
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                state_updated_at TIMESTAMP,
+                state_changed_at TIMESTAMP,
                 originating_search_term TEXT
             )
         """)
@@ -931,6 +931,14 @@ def _ensure_company_schema(conn: sqlite3.Connection) -> None:
         if "originating_search_term" not in cols:
             try:
                 conn.execute("ALTER TABLE company ADD COLUMN originating_search_term TEXT")
+                conn.commit()
+            except sqlite3.OperationalError as e:
+                if "duplicate column name" not in str(e).lower():
+                    raise
+        # stat.entity.required-metadata: state_updated_at -> state_changed_at (naming parity w/ job/candidate).
+        if "state_updated_at" in cols and "state_changed_at" not in cols:
+            try:
+                conn.execute("ALTER TABLE company RENAME COLUMN state_updated_at TO state_changed_at")
                 conn.commit()
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
@@ -1162,7 +1170,7 @@ def save_company(
                 (short_name, state, company_name, company_website, job_site, batch_id, batch_created_at,
                  last_scan_at, company_data, state_history, candidate_id,
                  originating_search_term,
-                 created_at, updated_at, state_updated_at)
+                 created_at, updated_at, state_changed_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM company WHERE short_name = ?), CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             """, (
                 short_name,
@@ -1195,7 +1203,7 @@ def save_company(
 def update_company(short_name: str, **kwargs: Any) -> int:
     """Partial UPDATE: set only the columns passed. Allowlist enforced.
     company_data/state_history: dict/list serialized to JSON.
-    updated_at auto-set to now if not in kwargs; state_updated_at set when state changes.
+    updated_at auto-set to now if not in kwargs; state_changed_at set when state changes.
     Returns rowcount (0 or 1).
     """
     if not short_name or not short_name.strip():
@@ -1207,9 +1215,9 @@ def update_company(short_name: str, **kwargs: Any) -> int:
     if "updated_at" not in kwargs:
         cols.append("updated_at")
         kwargs["updated_at"] = now
-    if "state" in kwargs and "state_updated_at" not in kwargs:
-        cols.append("state_updated_at")
-        kwargs["state_updated_at"] = now
+    if "state" in kwargs and "state_changed_at" not in kwargs:
+        cols.append("state_changed_at")
+        kwargs["state_changed_at"] = now
     pairs = []
     params: List[Any] = []
     for c in cols:
@@ -3614,7 +3622,7 @@ def list_candidates() -> List[Dict[str, Any]]:
     return _run_with_retry(_with_conn)
 
 
-# Allowed ORDER BY columns for candidate pool claims (AST-1258).
+# Allowed ORDER BY columns for candidate batch claims (stat.dispatch.entity-state-bound).
 _CANDIDATE_BATCH_SORT_COLUMNS = frozenset({"rowid", "created_at", "updated_at", "state_changed_at"})
 
 
@@ -3623,14 +3631,21 @@ def claim_candidate_batch(
     state: str,
     limit: int,
     sort_by: Optional[str] = None,
+    candidate_id: Optional[str] = None,
     *,
     states: Optional[List[str]] = None,
 ) -> int:
-    """Claim up to limit unclaimed candidates in state (cross-candidate pool).
+    """Claim up to limit unclaimed candidates in state.
 
+    candidate_id: required; scopes claim to that candidate's own row via
+    astral_candidate_id (stat.dispatch.entity-state-bound — a candidate-entity dispatch_task
+    row processes only its own bound candidate, never a cross-candidate pool; batch is always 0 or 1).
     Sets batch_id, batch_created_at. Parameter order: batch_id first (caller owns it).
     Unclaimed = batch_id IS NULL OR batch_id = '' (same as job/company). Returns count claimed.
     """
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
     now = _utc_now()
     claim_states = states if states is not None else [state]
     state_sql, state_params = _state_in_sql(claim_states)
@@ -3644,12 +3659,13 @@ def claim_candidate_batch(
         conn = _get_connection()
         try:
             _ensure_candidate_schema(conn)
-            params = [batch_id, now, *state_params, int(limit)]
+            params = [batch_id, now, *state_params, cid, int(limit)]
             cur = conn.execute(
                 f"""UPDATE candidate SET batch_id = ?, batch_created_at = ?
                    WHERE astral_candidate_id IN (
                      SELECT astral_candidate_id FROM candidate
                      WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                       AND astral_candidate_id = ?
                      {order_clause}
                      LIMIT ?
                    )""",
@@ -3752,11 +3768,21 @@ def _ensure_meteorite_schema(conn: sqlite3.Connection) -> None:
                 batch_created_at TIMESTAMP,
                 created_at TIMESTAMP NOT NULL,
                 updated_at TIMESTAMP NOT NULL,
-                state_changed_at TIMESTAMP NOT NULL
+                state_changed_at TIMESTAMP NOT NULL,
+                state_history TEXT DEFAULT '[]'
             )
             """
         )
         conn.commit()
+    # stat.entity.required-metadata: migrate existing DBs missing state_history (parity with job/company/candidate).
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(meteorite)").fetchall()}
+    if "state_history" not in cols:
+        try:
+            conn.execute("ALTER TABLE meteorite ADD COLUMN state_history TEXT DEFAULT '[]'")
+            conn.commit()
+        except sqlite3.OperationalError as e:
+            if "duplicate column name" not in str(e).lower():
+                raise
     # AST-1689: migrate existing DBs — column name from METEORITE_CONFIG (AST-1688 literal).
     _ec_col = METEORITE_CONFIG["electronic_contact_column"]
     cols = {row[1] for row in conn.execute("PRAGMA table_info(meteorite)").fetchall()}
@@ -3788,17 +3814,32 @@ def _ensure_meteorite_schema(conn: sqlite3.Connection) -> None:
 
 
 def _meteorite_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    return _row_to_dict(row)
+    d = _row_to_dict(row)
+    if d.get("state_history"):
+        try:
+            d["state_history"] = json.loads(d["state_history"])
+        except (TypeError, ValueError):
+            d["state_history"] = []
+    else:
+        d["state_history"] = []
+    return d
 
 
 def claim_meteorite_batch(
     batch_id: str,
     state: str,
     limit: int,
+    candidate_id: Optional[str] = None,
     *,
     states: Optional[List[str]] = None,
 ) -> int:
-    """Claim up to limit unclaimed meteorite rows in state. batch_id first."""
+    """Claim up to limit unclaimed meteorite rows in state. batch_id first.
+    candidate_id: required; scopes claim via meteorite.candidate_id
+    (stat.dispatch.entity-state-bound — meteorite is bound to a candidate just like job/company).
+    """
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
     now = _utc_now()
     claim_states = states if states is not None else [state]
     state_sql, state_params = _state_in_sql(claim_states)
@@ -3807,12 +3848,13 @@ def claim_meteorite_batch(
         conn = _get_connection()
         try:
             _ensure_meteorite_schema(conn)
-            params = [batch_id, now, *state_params, int(limit)]
+            params = [batch_id, now, *state_params, cid, int(limit)]
             cur = conn.execute(
                 f"""UPDATE meteorite SET batch_id = ?, batch_created_at = ?
                    WHERE id IN (
                      SELECT id FROM meteorite
                      WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                       AND candidate_id = ?
                      ORDER BY rowid
                      LIMIT ?
                    )""",
@@ -3866,12 +3908,21 @@ def clear_meteorite_batch(batch_id: str) -> int:
 
 
 
-def count_meteorites_unclaimed_in_states(states: List[str]) -> int:
-    """Count unclaimed meteorite rows in the given state set (global pool).
+def count_meteorites_unclaimed_in_states(
+    states: List[str], candidate_id: Optional[str] = None
+) -> int:
+    """Count unclaimed meteorite rows in the given state set.
 
+    When candidate_id is set, count is scoped to that candidate only
+    (stat.dispatch.entity-state-bound — mirrors count_candidates_unclaimed_in_states).
     Unclaimed = batch_id IS NULL OR batch_id = '' — same predicate as claim_meteorite_batch.
     """
     state_sql, state_params = _state_in_sql(states)
+    cid = (candidate_id or "").strip()
+    extra_sql = " AND candidate_id = ?" if cid else ""
+    params: List[Any] = list(state_params)
+    if cid:
+        params.append(cid)
 
     def _with_conn() -> int:
         conn = _get_connection()
@@ -3879,8 +3930,8 @@ def count_meteorites_unclaimed_in_states(states: List[str]) -> int:
             _ensure_meteorite_schema(conn)
             row = conn.execute(
                 f"""SELECT COUNT(*) FROM meteorite
-                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')""",
-                tuple(state_params),
+                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = ''){extra_sql}""",
+                tuple(params),
             ).fetchone()
             return int(row[0])
         finally:
@@ -3905,19 +3956,23 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                 source_kind = row["source_kind"]
                 source_id = row["source_id"]
                 _ec_col = METEORITE_CONFIG["electronic_contact_column"]
+                # state defaults to NEW when omitted, but a caller-supplied state (e.g.
+                # NEW_EMAIL_ERROR from _new_email_error_row) is respected, not overridden.
+                row_state = row.get("state") or "NEW"
+                history = json.dumps([{"to_state": row_state, "timestamp": now}])
                 cur = conn.execute(
                     f"""INSERT INTO meteorite (
                         candidate_id, source_kind, source_id, source_ref, state,
                         content, classify_outcome, link, {_ec_col}, job_title,
                         employer_name, nag_count,
-                        error, created_at, updated_at, state_changed_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)""",
+                        error, created_at, updated_at, state_changed_at, state_history
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?)""",
                     (
                         candidate_id,
                         source_kind,
                         source_id,
                         row.get("source_ref"),
-                        row["state"],
+                        row_state,
                         row.get("content"),
                         row.get("classify_outcome"),
                         row.get("link"),
@@ -3928,6 +3983,7 @@ def insert_meteorite_rows(rows: List[Dict[str, Any]]) -> List[int]:
                         now,
                         now,
                         now,
+                        history,
                     ),
                 )
                 ids.append(int(cur.lastrowid))
@@ -4079,6 +4135,17 @@ def update_meteorite(meteorite_id: int, **fields: Any) -> None:
             if "state" in fields:
                 sets.append("state_changed_at = ?")
                 params.append(now)
+                # stat.entity.required-metadata: append transition, mirror job/company/candidate history shape.
+                existing = conn.execute(
+                    "SELECT state_history FROM meteorite WHERE id = ?", (int(meteorite_id),)
+                ).fetchone()
+                try:
+                    history = json.loads(existing["state_history"]) if existing and existing["state_history"] else []
+                except (TypeError, ValueError):
+                    history = []
+                history.append({"to_state": fields["state"], "timestamp": now})
+                sets.append("state_history = ?")
+                params.append(json.dumps(history))
             params.append(int(meteorite_id))
             conn.execute(
                 f"UPDATE meteorite SET {', '.join(sets)} WHERE id = ?",
@@ -4093,64 +4160,10 @@ def update_meteorite(meteorite_id: int, **fields: Any) -> None:
 
 
 
-def list_meteorites_for_retention(
-    *,
-    states: List[str],
-    older_than: str,
-    limit: Optional[int] = None,
-) -> List[Dict[str, Any]]:
-    """Rows in states with state_changed_at older than cutoff (caller owns day math)."""
-    state_sql, state_params = _state_in_sql(states)
-
-    def _with_conn() -> List[Dict[str, Any]]:
-        conn = _get_connection()
-        try:
-            _ensure_meteorite_schema(conn)
-            params: List[Any] = [*state_params, older_than]
-            lim_sql = ""
-            if limit is not None:
-                lim_sql = " LIMIT ?"
-                params.append(int(limit))
-            rows = conn.execute(
-                f"""SELECT * FROM meteorite
-                   WHERE {state_sql} AND state_changed_at < ?
-                   ORDER BY state_changed_at ASC{lim_sql}""",
-                tuple(params),
-            ).fetchall()
-            return [_meteorite_row_to_dict(r) for r in rows]
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
-def delete_meteorites_by_ids(ids: List[int]) -> int:
-    """Delete meteorite rows by id list. Empty list → 0."""
-    if not ids:
-        return 0
-
-    def _with_conn() -> int:
-        conn = _get_connection()
-        try:
-            _ensure_meteorite_schema(conn)
-            placeholders = ",".join("?" for _ in ids)
-            cur = conn.execute(
-                f"DELETE FROM meteorite WHERE id IN ({placeholders})",
-                tuple(int(i) for i in ids),
-            )
-            n = cur.rowcount
-            conn.commit()
-            return n
-        finally:
-            conn.close()
-
-    return _run_with_retry(_with_conn)
-
-
 def count_candidates_unclaimed_in_states(
     states: List[str], candidate_id: Optional[str] = None
 ) -> int:
-    """Count unclaimed candidates in the given state set (global pool; AST-1258).
+    """Count unclaimed candidates in the given state set.
 
     When candidate_id is set, count is that row only (0 or 1; AST-1432 Avail).
     """
@@ -8161,11 +8174,11 @@ def save_dispatch_task(
         _dispatch_sort_by_for,
     )
     if is_meteorite_email_mailbox_task_key(tk):
-        # Poller row seed (AST-1466): MAILBOX_CONFIG wins over admin form meta.
-        if not (entity_type and str(entity_type).strip()):
-            entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
-        if not (trigger_state and str(trigger_state).strip()):
-            trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
+        # Poller row seed (AST-1466): MAILBOX_CONFIG always wins over admin form meta —
+        # a mailbox poller has no entity/trigger binding at all (stat.dispatch.entity-state-bound
+        # carve-out), so caller-supplied entity_type/trigger_state are ignored, not merely filled in.
+        entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
+        trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
         sort_by = defaults["sort_by"]  # mailbox: always None — no entity/trigger sort helper
     else:
         if not (entity_type and str(entity_type).strip()):
@@ -8647,8 +8660,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
-    entity_type=meteorite counts the global unclaimed meteorite pool via
-    count_meteorites_unclaimed_in_states and does not require candidate_id.
+    entity_type=meteorite counts this row's candidate via count_meteorites_unclaimed_in_states
+    (stat.dispatch.entity-state-bound — meteorite is candidate-bound like job/company, not a pool).
     meteorite_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
     """
     entity_type = task.get("entity_type")
@@ -8656,7 +8669,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     candidate_id = task.get("candidate_id")
     if not entity_type or not state:
         return 0
-    if entity_type != "meteorite" and not candidate_id:
+    if not candidate_id:
         return 0
     if entity_type not in ENTITY_TYPES:
         return 0
@@ -8669,7 +8682,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     if not claim_states:
         return 0
     if entity_type == "meteorite":
-        return count_meteorites_unclaimed_in_states(claim_states)
+        return count_meteorites_unclaimed_in_states(claim_states, candidate_id=candidate_id)
     task_key = task.get("task_key", "")
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)

@@ -4476,15 +4476,18 @@ class TestAst1259CandidateBatchApi:
             batch_id="fixed-1259",
             limit=2,
             sort_by="updated_at",
+            candidate_id="c1",
             states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
         )
         assert bid == "fixed-1259"
         assert out == rows
+        # stat.dispatch.entity-state-bound: candidate_id passes through to the DB claim.
         claim.assert_called_once_with(
             "fixed-1259",
             "REQUESTED_ARTIFACTS",
             2,
             sort_by="updated_at",
+            candidate_id="c1",
             states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
         )
 

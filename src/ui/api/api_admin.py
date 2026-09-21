@@ -1165,6 +1165,11 @@ def _dispatch_task_key_trigger_error(
         return retired
     # stage_email_meteorite mailbox fold is candidate-bound: empty trigger = no state gate; otherwise CANDIDATE_STATES.
     if is_meteorite_email_mailbox_task_key(tk):
+        # stat.dispatch.entity-state-bound: a mailbox poller has no entity_type binding at all
+        # (METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"] is None) — reject any submitted value
+        # here instead of letting save_dispatch_task silently discard it later.
+        if entity_type is not None and str(entity_type).strip():
+            return f"task_key {tk!r} does not take an entity_type (mailbox poller has no entity binding)"
         ts = (trigger_state or "").strip()
         if not ts:
             return None
