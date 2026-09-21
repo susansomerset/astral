@@ -743,6 +743,15 @@ Platform admin / `src/external/telescope.py` already forward `selector` on `POST
 - Multi-match **text** behavior and HTML specials (AST-1729/1731) unchanged.
 - Boundaries: no Railway/CI; no platform `telescope.py` / admin proxy edits for this bug.
 
+## Resolution (AST-1735)
+
+**Date:** 2026-09-21  
+**Radia fix-now:** Restacked onto `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` (AST-1733 style/script strip + sibling tips). Kept AST-1735 `capture_links`: omit/`page` = document-wide; explicit `head`/`body` = element-scoped. Full `test_telescope_capture.py` green (incl. AST-1733 repro).
+
+## Radia review-fix (AST-1735)
+
+Overall: FIX-NOW — restack onto current ftr (include AST-1733 text strip); keep capture_links head/body scoping. Then User Testing.
+
 ## Bug: AST-1736 — Telescope HTML class filter (shaders) returns empty string
 
 ### As-is
