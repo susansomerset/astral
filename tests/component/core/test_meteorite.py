@@ -1428,7 +1428,10 @@ class TestAst1560RunScrapeMeteorite:
                 debug=True,
             )
 
-        assert out["total_errors"] == 1
+        # AST-1752: closed content is LINK_EXPIRED fail, not SCRAPE_ERROR.
+        assert out["total_failed"] == 1
+        assert out["total_errors"] == 0
+        assert db.get_meteorite(row_id)["state"] == "LINK_EXPIRED"
         err = db.get_meteorite(row_id)["error"] or ""
         assert "scrape_closed" in err, f"expected scrape_closed in error, got {err!r}"
         assert "signal=" in err, (
@@ -1445,6 +1448,61 @@ class TestAst1560RunScrapeMeteorite:
             "signal=" in r.getMessage() and "scrape_closed" in r.getMessage()
             for r in caplog.records
         ), "AST-1750: warning must carry the same diagnostic why string"
+        assert any(
+            "This row is LINK_EXPIRED" in r.getMessage() for r in caplog.records
+        ), "AST-1752: closed warning next step is LINK_EXPIRED"
+
+    @pytest.mark.asyncio
+    async def test_ast1752_missing_content_is_link_expired_fail(
+        self,
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """AST-1752 bug-repro: missing content verdict is LINK_EXPIRED fail, not SCRAPE_ERROR."""
+        import logging
+
+        db = sqlite_in_memory
+        cid = "cand-scp-missing"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "M"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="SCRAPE_LINK",
+            link="https://jobs.example.com/gone",
+        )
+        visible = "not a posting"
+
+        async def _fetch(_link, debug=False):
+            return (visible, "https://jobs.example.com/gone-final")
+
+        monkeypatch.setattr(meteorite_mod, "_land_fetch_link_text", _fetch)
+        monkeypatch.setattr("src.core.gazer._classify_jd", lambda _t: "missing")
+
+        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
+            out = await meteorite_mod.run_scrape_meteorite(
+                _ingress_task(
+                    batch_id="scrape-batch-missing",
+                    candidate_id=cid,
+                    task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+                )
+            )
+
+        assert out["total_failed"] == 1, (
+            "AST-1752: missing content must count as fail, not error"
+        )
+        assert out["total_errors"] == 0
+        assert out["total_passed"] == 0
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "LINK_EXPIRED"
+        err = row["error"] or ""
+        assert "scrape_missing" in err
+        assert "signal=None" in err
+        assert f"text_len={len(visible)}" in err
+        assert "final_url=" in err
+        assert any(
+            "This row is LINK_EXPIRED" in r.getMessage() for r in caplog.records
+        )
 
 
 @pytest.mark.skipif(

@@ -1653,7 +1653,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                 if not outcome:
                     update_meteorite(row_id, state="SCRAPE_ERROR", error="missing classify_outcome")
                     _row_miss(
-                        row_id, cid, "missing classify_outcome", "This row is ERROR",
+                        row_id, cid, "missing classify_outcome", "This row is SCRAPE_ERROR",
                     )
                     # AST-1751: ERROR arms bump total_errors only — not total_failed.
                     summary["total_errors"] += 1
@@ -1661,7 +1661,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                 if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
                     update_meteorite(row_id, state="SCRAPE_ERROR", error="skip outcome on row")
                     _row_miss(
-                        row_id, cid, "skip outcome on row", "This row is ERROR",
+                        row_id, cid, "skip outcome on row", "This row is SCRAPE_ERROR",
                     )
                     summary["total_errors"] += 1
                     continue
@@ -1669,7 +1669,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     link = (row.get("link") or "").strip()
                     if not _is_http_url(link):
                         update_meteorite(row_id, state="SCRAPE_ERROR", error="missing link")
-                        _row_miss(row_id, cid, "missing link", "This row is ERROR")
+                        _row_miss(row_id, cid, "missing link", "This row is SCRAPE_ERROR")
                         summary["total_errors"] += 1
                         continue
                     update_meteorite(row_id, state="SCRAPE_LINK", link=link)
@@ -1680,7 +1680,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     content = (row.get("content") or "").strip()
                     if not content:
                         update_meteorite(row_id, state="SCRAPE_ERROR", error="missing content")
-                        _row_miss(row_id, cid, "missing content", "This row is ERROR")
+                        _row_miss(row_id, cid, "missing content", "This row is SCRAPE_ERROR")
                         summary["total_errors"] += 1
                         continue
                     # AST-1703: email text rows must already carry breadcrumb on link.
@@ -1691,7 +1691,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                             row_id, state="SCRAPE_ERROR", error="missing breadcrumb link",
                         )
                         _row_miss(
-                            row_id, cid, "missing breadcrumb link", "This row is ERROR",
+                            row_id, cid, "missing breadcrumb link", "This row is SCRAPE_ERROR",
                         )
                         summary["total_errors"] += 1
                         continue
@@ -1701,7 +1701,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     continue
                 err = f"unhandled classify_outcome: {outcome}"
                 update_meteorite(row_id, state="SCRAPE_ERROR", error=err)
-                _row_miss(row_id, cid, err, "This row is ERROR")
+                _row_miss(row_id, cid, err, "This row is SCRAPE_ERROR")
                 summary["total_errors"] += 1
             except Exception as exc:
                 summary["total_errors"] += 1
@@ -1717,7 +1717,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
 
 @_with_log_debug
 async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: SCRAPE_LINK → READY | BOT_BLOCKED | ERROR (AST-1560)."""
+    """Dispatch runner: SCRAPE_LINK → READY | BOT_BLOCKED | LINK_EXPIRED | SCRAPE_ERROR (AST-1560)."""
     from src.core.gazer import _CONTACT_PAGE_STATUS, _classify_jd
 
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -1752,7 +1752,7 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
             try:
                 if not _is_http_url(link):
                     update_meteorite(row_id, state="SCRAPE_ERROR", error="missing link")
-                    _row_miss(row_id, cid, "missing link", "This row is ERROR")
+                    _row_miss(row_id, cid, "missing link", "This row is SCRAPE_ERROR")
                     # AST-1751: ERROR arms bump total_errors only — not total_failed.
                     summary["total_errors"] += 1
                     continue
@@ -1813,12 +1813,18 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                     resolved_url,
                     visible_text,
                 )
-                update_meteorite(
-                    row_id,
-                    state=status_map.get(page_status, "SCRAPE_ERROR"),
-                    error=err,
-                )
-                _row_miss(row_id, cid, err, "This row is ERROR")
+                if page_status in ("closed", "missing"):
+                    update_meteorite(
+                        row_id,
+                        state=status_map[page_status],
+                        error=err,
+                    )
+                    _row_miss(row_id, cid, err, "This row is LINK_EXPIRED")
+                    summary["total_failed"] += 1
+                    continue
+                state = status_map.get(page_status, "SCRAPE_ERROR")
+                update_meteorite(row_id, state=state, error=err)
+                _row_miss(row_id, cid, err, f"This row is {state}")
                 summary["total_errors"] += 1
             except Exception as exc:
                 summary["total_errors"] += 1
@@ -1887,7 +1893,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                         )
                         continue
                     update_meteorite(row_id, state="SCRAPE_ERROR", error="missing content")
-                    _row_miss(row_id, cid, "missing content", "This row is ERROR")
+                    _row_miss(row_id, cid, "missing content", "This row is SCRAPE_ERROR")
                     # AST-1751: ERROR arms bump total_errors only — not total_failed.
                     summary["total_errors"] += 1
                     continue
@@ -1920,7 +1926,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
 
                 err = str(save.get("error") or "land failed")
                 update_meteorite(row_id, state="SCRAPE_ERROR", error=err)
-                _row_miss(row_id, cid, err, "This row is ERROR")
+                _row_miss(row_id, cid, err, "This row is SCRAPE_ERROR")
                 summary["total_errors"] += 1
             except Exception as exc:
                 summary["total_errors"] += 1
