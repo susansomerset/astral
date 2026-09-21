@@ -52,7 +52,8 @@ from src.data.contact_listen import (
 from src.external.slack import (
     fetch_conversation_history,
     fetch_user_profile,
-    list_workspace_posters,
+    list_workspace_members,
+    list_workspace_posters,  # imported so unbound must not call it (AST-1738)
     parse_url_verification,
     post_message,
     verify_slack_signature,
@@ -706,27 +707,27 @@ def resolve_slack_user(
 
 
 def list_unbound_slack_users(*, debug: bool = False) -> list[dict]:
-    """Workspace posters whose Slack id is not bound on any non-deleted candidate."""
+    """Workspace members whose Slack id is not bound on any non-deleted candidate."""
     log = get_logger(__name__)
     if debug:
         log.set_debug_flag(True)
 
-    log.debug("Calling list_workspace_posters: []")
-    posters = list_workspace_posters()
-    log.debug("Response from list_workspace_posters: %s", posters)
+    log.debug("Calling list_workspace_members: []")
+    members = list_workspace_members()
+    log.debug("Response from list_workspace_members: %s", members)
 
     out: List[dict] = []
-    log.debug("Beginning unbound filter loop on %s items", len(posters))
-    for poster in posters:
-        if not isinstance(poster, dict):
+    log.debug("Beginning unbound filter loop on %s items", len(members))
+    for member in members:
+        if not isinstance(member, dict):
             continue
-        sid = poster.get("slack_user_id")
+        sid = member.get("slack_user_id")
         if not isinstance(sid, str) or not sid.strip():
             continue
         sid = sid.strip()
         if get_candidate_id_for_query(sid, debug=debug) is not None:
             continue
-        uname = poster.get("username")
+        uname = member.get("username")
         out.append(
             {
                 "slack_user_id": sid,
