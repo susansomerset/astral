@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { TabBar } from "../components/TabbedTextArea"
 import TokenTextarea from "../components/TokenTextarea"
+import Modal from "../components/Modal"
+import { BatchAgentDataPanes } from "../components/BatchAgentDataModal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
@@ -9,39 +11,75 @@ import { useLocalStorage } from "../lib/useLocalStorage"
 
 const LS = "adhoc:"  // localStorage key prefix
 
-type TabKey = "user" | "cache" | "nocache"
-type PreviewKey = "system" | "cache" | "nocache" | "user" | "live_content"
+type TabKey = "system" | "cache" | "cache_b" | "cache_c" | "cache_d" | "nocache" | "user"
+type PreviewKey = "system" | "cache_a" | "cache_b" | "cache_c" | "cache_d" | "nocache" | "user" | "live_content"
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "user", label: "User Prompt" },
-  { key: "cache", label: "Cache Prompt" },
-  { key: "nocache", label: "NoCache Prompt" },
+  { key: "system",  label: "System Prompt" },
+  { key: "cache",   label: "Cache Block A" },
+  { key: "cache_b", label: "Cache Block B" },
+  { key: "cache_c", label: "Cache Block C" },
+  { key: "cache_d", label: "Cache Block D" },
+  { key: "nocache", label: "No Cache Block" },
+  { key: "user",    label: "User Prompt" },
 ]
 
 const PREVIEW_TABS: { key: PreviewKey; label: string }[] = [
   { key: "system",       label: "System" },
-  { key: "cache",        label: "Cache" },
-  { key: "nocache",      label: "NoCache" },
+  { key: "cache_a",      label: "Cache A" },
+  { key: "cache_b",      label: "Cache B" },
+  { key: "cache_c",      label: "Cache C" },
+  { key: "cache_d",      label: "Cache D" },
+  { key: "nocache",      label: "No Cache" },
   { key: "user",         label: "User" },
   { key: "live_content", label: "Live Content" },
 ]
+
+// Layout mirrors of App.css .list-page-table th/td — used only to size the picker viewport.
+const ADHOC_IMPORT_PICKER_HEAD_PX = 33
+const ADHOC_IMPORT_PICKER_ROW_PX = 29
 
 interface TaskSummary {
   task_key: string
   user_prompt_len?: number
   cache_prompt_len?: number
+  cache_prompt_b_len?: number
+  cache_prompt_c_len?: number
+  cache_prompt_d_len?: number
   nocache_prompt_len?: number
+  system_prompt_len?: number
 }
 
 interface EntityOption { id: string; label: string }
 interface EntityMeta { entity_type: string; trigger_state: string; batch_mode: boolean; entities: EntityOption[] }
-interface PreviewData extends Record<PreviewKey, string> {}
+interface ImportRun {
+  batch_id: string
+  created_at: string | null
+  entity_id: string | null
+  task_key: string | null
+}
 
-function byteSize(s: string): string {
-  const b = new Blob([s]).size
-  if (b >= 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`
-  if (b >= 1024) return `${(b / 1024).toFixed(1)} KB`
-  return `${b} B`
+function taskHasExistingPrompts(t: TaskSummary): boolean {
+  return (
+    (t.system_prompt_len || 0) > 0 ||
+    (t.user_prompt_len || 0) > 0 ||
+    (t.cache_prompt_len || 0) > 0 ||
+    (t.cache_prompt_b_len || 0) > 0 ||
+    (t.cache_prompt_c_len || 0) > 0 ||
+    (t.cache_prompt_d_len || 0) > 0 ||
+    (t.nocache_prompt_len || 0) > 0
+  )
+}
+
+function previewField(tab: PreviewKey, data: Record<string, unknown> | null): string {
+  if (!data) return ""
+  const txt = (k: string): string => (typeof data[k] === "string" ? (data[k] as string) : "")
+  switch (tab) {
+    case "cache_a":
+      return txt("cache_a") || txt("cache")
+    default:
+      return txt(tab)
+  }
 }
 
 export default function AnthropicAdHoc() {
@@ -69,31 +107,52 @@ export default function AnthropicAdHoc() {
     : null
   const [userPrompt, setUserPrompt] = useLocalStorage<string>(`${LS}userPrompt`, "")
   const [cachePrompt, setCachePrompt] = useLocalStorage<string>(`${LS}cachePrompt`, "")
+  const [cachePromptB, setCachePromptB] = useLocalStorage<string>(`${LS}cachePromptB`, "")
+  const [cachePromptC, setCachePromptC] = useLocalStorage<string>(`${LS}cachePromptC`, "")
+  const [cachePromptD, setCachePromptD] = useLocalStorage<string>(`${LS}cachePromptD`, "")
   const [nocachePrompt, setNocachePrompt] = useLocalStorage<string>(`${LS}nocachePrompt`, "")
+  const [systemPrompt, setSystemPrompt] = useLocalStorage<string>(`${LS}systemPrompt`, "")
   const [activeTab, setActiveTab] = useLocalStorage<TabKey>(`${LS}activeTab`, "user")
 
   const [previewing, setPreviewing] = useState(false)
-  const [previewData, setPreviewData] = useState<PreviewData | null>(null)
+  const [previewData, setPreviewData] = useState<Record<string, unknown> | null>(null)
   const [previewTab, setPreviewTab] = useState<PreviewKey>("system")
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const [testing, setTesting] = useState(false)
-  const [response, setResponse] = useState<string | null>(null)
-  const [timesheet, setTimesheet] = useState<Record<string, unknown> | null>(null)
+  const [testBatchId, setTestBatchId] = useState<string | null>(null)
 
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [confirmTask, setConfirmTask] = useState<string | null>(null)
   const [confirmFetch, setConfirmFetch] = useState<string | null>(null)
+  const [importRuns, setImportRuns] = useState<ImportRun[]>([])
+  const [selectedImportBatchId, setSelectedImportBatchId] = useState<string>("")
+  const [importEntityLock, setImportEntityLock] = useState<string | null>(null)
+  const [confirmLoad, setConfirmLoad] = useState<string | null>(null)
+  const [importPickerVisibleRows, setImportPickerVisibleRows] = useState<number | null>(null)
   const saveRef = useRef<HTMLDivElement>(null)
   const isInitialMount = useRef(true)
+  const skipCatalogFetchRef = useRef(false)
 
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
   useEffect(() => {
+    api("/api/ui_config")
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(cfg => {
+        const n = cfg?.adhoc_import_picker_visible_rows
+        setImportPickerVisibleRows(typeof n === "number" && n > 0 ? n : null)
+      })
+      .catch(() => setImportPickerVisibleRows(null))
+  }, [])
+
+  useEffect(() => {
+    const qs = selectedId ? `?candidate_id=${encodeURIComponent(selectedId)}` : ""
     Promise.all([
       api("/api/admin/agents/ids").then(r => r.json()),
       api("/api/admin/tasks/meta/tokens").then(r => r.json()),
-      api("/api/admin/tasks").then(r => r.json()),
+      api(`/api/admin/tasks${qs}`).then(r => r.json()),
     ]).then(([agentData, tokData, taskData]) => {
       setAgentIds(Array.isArray(agentData) ? agentData : [])
       setTokenList(Array.isArray(tokData) ? tokData : [])
@@ -103,7 +162,36 @@ export default function AnthropicAdHoc() {
     // selection correctly triggers the entity + prompt-fetch logic
     if (!taskKey) isInitialMount.current = false
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [selectedId])
+
+  // AST-1535: scoped import list — candidate required; optional task_key filter.
+  useEffect(() => {
+    if (!selectedId) {
+      setImportRuns([])
+      setSelectedImportBatchId("")
+      return
+    }
+    const params = new URLSearchParams({ candidate_id: selectedId })
+    if (taskKey) params.set("task_key", taskKey)
+    let cancelled = false
+    api(`/api/admin/adhoc/runs?${params}`)
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => {
+        if (cancelled) return
+        const rows: ImportRun[] = Array.isArray(d) ? d : []
+        setImportRuns(rows)
+        setSelectedImportBatchId(prev =>
+          prev && rows.some(r => r.batch_id === prev) ? prev : ""
+        )
+      })
+      .catch(e => {
+        if (cancelled) return
+        setImportRuns([])
+        setSelectedImportBatchId("")
+        setToast({ text: e.message, variant: "error" })
+      })
+    return () => { cancelled = true }
+  }, [selectedId, taskKey])
 
   // Dismiss save-as dropdown on outside click
   useEffect(() => {
@@ -130,10 +218,15 @@ export default function AnthropicAdHoc() {
     // (user's own prompts are already restored from localStorage)
     if (isInitialMount.current) { isInitialMount.current = false; return }
 
+    if (skipCatalogFetchRef.current) {
+      skipCatalogFetchRef.current = false
+      return
+    }
+
     // User actively changed the task key — offer to load its prompts
     const existing = tasks.find(t => t.task_key === taskKey)
     if (!existing) return
-    if (userPrompt || cachePrompt || nocachePrompt) {
+    if (userPrompt || cachePrompt || cachePromptB || cachePromptC || cachePromptD || nocachePrompt || systemPrompt) {
       setConfirmFetch(taskKey)
     } else {
       doFetchFrom(taskKey)
@@ -141,13 +234,38 @@ export default function AnthropicAdHoc() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskKey, selectedId])
 
-  const hasContent = userPrompt.trim() || cachePrompt.trim() || nocachePrompt.trim()
+  const hasContent = [systemPrompt, userPrompt, cachePrompt, cachePromptB, cachePromptC, cachePromptD, nocachePrompt]
+    .some(s => s.trim())
+
+  function stripOneAdhocPrefix(raw: string): string {
+    const s = (raw || "").trim()
+    return s.startsWith("adhoc-") ? s.slice("adhoc-".length) : s
+  }
+
+  function textOfBlocks(blocks: { block_type?: string; block_data?: string }[], blockType: string): string {
+    return blocks
+      .filter(b => b.block_type === blockType)
+      .map(b => (typeof b.block_data === "string" ? b.block_data : ""))
+      .join("\n\n")
+  }
 
   // Explicit lexicographic task_key order (do not rely on API array order alone).
   const taskKeysSorted = useMemo(
     () => [...tasks].sort((a, b) => compareTaskKeys(a.task_key, b.task_key)),
     [tasks],
   )
+
+  function editorSegmentBody() {
+    return {
+      system_prompt: systemPrompt,
+      user_prompt: userPrompt,
+      cache_prompt: cachePrompt,
+      cache_prompt_b: cachePromptB,
+      cache_prompt_c: cachePromptC,
+      cache_prompt_d: cachePromptD,
+      nocache_prompt: nocachePrompt,
+    }
+  }
 
   function handlePreview() {
     if (!agentId) { setToast({ text: "Select an agent first", variant: "error" }); return }
@@ -158,11 +276,11 @@ export default function AnthropicAdHoc() {
       body: JSON.stringify({
         agent_id: agentId,
         task_key: taskKey || "",
-        entity_id: entityMeta_batchIds ? "" : (entityId || ""),
-        entity_ids: entityMeta_batchIds || undefined,
-        user_prompt: userPrompt,
-        cache_prompt: cachePrompt,
-        nocache_prompt: nocachePrompt,
+        entity_id: importEntityLock !== null
+          ? importEntityLock
+          : (entityMeta_batchIds ? "" : (entityId || "")),
+        entity_ids: importEntityLock !== null ? undefined : (entityMeta_batchIds || undefined),
+        ...editorSegmentBody(),
         candidate_id: selectedId || "",
       }),
     })
@@ -170,7 +288,11 @@ export default function AnthropicAdHoc() {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Preview failed") })
         return r.json()
       })
-      .then(data => { setPreviewData(data as PreviewData); setPreviewTab("system") })
+      .then(data => {
+        setPreviewData(data)
+        setPreviewTab("system")
+        setPreviewOpen(true)
+      })
       .catch(e => setToast({ text: e.message, variant: "error" }))
       .finally(() => setPreviewing(false))
   }
@@ -178,19 +300,18 @@ export default function AnthropicAdHoc() {
   function handleTest() {
     if (!agentId) { setToast({ text: "Select an agent first", variant: "error" }); return }
     setTesting(true)
-    setResponse(null)
-    setTimesheet(null)
+    setTestBatchId(null)
     api("/api/admin/adhoc/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         agent_id: agentId,
         task_key: taskKey || "",
-        entity_id: entityMeta_batchIds ? "" : (entityId || ""),
-        entity_ids: entityMeta_batchIds || undefined,
-        user_prompt: userPrompt,
-        cache_prompt: cachePrompt,
-        nocache_prompt: nocachePrompt,
+        entity_id: importEntityLock !== null
+          ? importEntityLock
+          : (entityMeta_batchIds ? "" : (entityId || "")),
+        entity_ids: importEntityLock !== null ? undefined : (entityMeta_batchIds || undefined),
+        ...editorSegmentBody(),
         candidate_id: selectedId || "",
       }),
     })
@@ -200,14 +321,52 @@ export default function AnthropicAdHoc() {
       })
       .then(data => {
         if (data.success) {
-          setResponse(data.response_text)
-          setTimesheet(data.timesheet || null)
+          const id = typeof data.batch_id === "string" ? data.batch_id.trim() : ""
+          if (id) setTestBatchId(id)
+          else setToast({ text: "Test succeeded without batch_id", variant: "error" })
         } else {
-          setResponse(`ERROR: ${data.error || "Unknown error"}`)
+          setToast({ text: data.error || "Unknown error", variant: "error" })
         }
       })
-      .catch(e => setResponse(`ERROR: ${e.message}`))
+      .catch(e => setToast({ text: e.message, variant: "error" }))
       .finally(() => setTesting(false))
+  }
+
+  function doLoad(batchId: string) {
+    setConfirmLoad(null)
+    api(`/api/agent_data/${encodeURIComponent(batchId)}`)
+      .then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || `HTTP ${r.status}`) })
+        return r.json()
+      })
+      .then(data => {
+        const blocks = Array.isArray(data) ? data : []
+        setSystemPrompt(textOfBlocks(blocks, "SYSTEM"))
+        setCachePrompt(textOfBlocks(blocks, "CACHE_A"))
+        setCachePromptB(textOfBlocks(blocks, "CACHE_B"))
+        setCachePromptC(textOfBlocks(blocks, "CACHE_C"))
+        setCachePromptD(textOfBlocks(blocks, "CACHE_D"))
+        setNocachePrompt(textOfBlocks(blocks, "NO_CACHE"))
+        setUserPrompt(textOfBlocks(blocks, "TASK"))
+        const run = importRuns.find(r => r.batch_id === batchId)
+        const catalog = stripOneAdhocPrefix(run?.task_key || "")
+        if (catalog !== taskKey) {
+          skipCatalogFetchRef.current = true
+          setTaskKey(catalog)
+        }
+        const restoredEntity = run?.entity_id == null ? "" : String(run.entity_id)
+        setEntityId(restoredEntity)
+        setImportEntityLock(restoredEntity)
+        setTestBatchId(batchId)
+        setToast({ text: `Loaded agent data ${batchId}`, variant: "success" })
+      })
+      .catch(e => setToast({ text: e.message, variant: "error" }))
+  }
+
+  function handleLoadClick() {
+    if (!selectedImportBatchId) return
+    if (hasContent) setConfirmLoad(selectedImportBatchId)
+    else doLoad(selectedImportBatchId)
   }
 
   function doFetchFrom(fetchKey: string) {
@@ -215,8 +374,12 @@ export default function AnthropicAdHoc() {
     api(`/api/admin/tasks/${fetchKey}`)
       .then(r => r.json())
       .then(data => {
+        setSystemPrompt(data.system_prompt || "")
         setUserPrompt(data.user_prompt || "")
         setCachePrompt(data.cache_prompt || "")
+        setCachePromptB(data.cache_prompt_b || "")
+        setCachePromptC(data.cache_prompt_c || "")
+        setCachePromptD(data.cache_prompt_d || "")
         setNocachePrompt(data.nocache_prompt || "")
         setToast({ text: `Loaded prompts from "${fetchKey}"`, variant: "success" })
       })
@@ -226,7 +389,7 @@ export default function AnthropicAdHoc() {
   function handleSaveAs(key: string) {
     setSaveAsOpen(false)
     const task = tasks.find(t => t.task_key === key)
-    const existing = task && ((task.user_prompt_len || 0) > 0 || (task.cache_prompt_len || 0) > 0 || (task.nocache_prompt_len || 0) > 0)
+    const existing = task && taskHasExistingPrompts(task)
     if (existing) { setConfirmTask(key); return }
     doSaveAs(key)
   }
@@ -236,7 +399,7 @@ export default function AnthropicAdHoc() {
     api(`/api/admin/tasks/${key}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent_id: agentId || undefined, user_prompt: userPrompt, cache_prompt: cachePrompt, nocache_prompt: nocachePrompt }),
+      body: JSON.stringify({ agent_id: agentId || undefined, ...editorSegmentBody() }),
     })
       .then(r => {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Save failed") })
@@ -244,22 +407,22 @@ export default function AnthropicAdHoc() {
       })
       .then(() => {
         setToast({ text: `Prompts saved to "${key}"`, variant: "success" })
-        api("/api/admin/tasks").then(r => r.json()).then(d => setTasks(Array.isArray(d) ? d : []))
+        const qs = selectedId ? `?candidate_id=${encodeURIComponent(selectedId)}` : ""
+        api(`/api/admin/tasks${qs}`).then(r => r.json()).then(d => setTasks(Array.isArray(d) ? d : []))
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
   }
 
-  function formatResponse(text: string): string {
-    try { return JSON.stringify(JSON.parse(text), null, 2) } catch { return text }
+  const editors: Record<TabKey, { value: string; onChange: (v: string) => void; placeholder: string; rows: number }> = {
+    system:  { value: systemPrompt,  onChange: setSystemPrompt,  placeholder: "Empty = use assigned agent content. {$SELECTED_AGENT} injects the agent system prompt at runtime.", rows: 16 },
+    cache:   { value: cachePrompt,   onChange: setCachePrompt,   placeholder: "Cache block A (ephemeral cached at API when non-empty).", rows: 22 },
+    cache_b: { value: cachePromptB,  onChange: setCachePromptB,  placeholder: "Cache block B (optional).", rows: 22 },
+    cache_c: { value: cachePromptC,  onChange: setCachePromptC,  placeholder: "Cache block C (optional).", rows: 22 },
+    cache_d: { value: cachePromptD,  onChange: setCachePromptD,  placeholder: "Cache block D (optional).", rows: 22 },
+    nocache: { value: nocachePrompt, onChange: setNocachePrompt, placeholder: "No-cache segment (dynamic context; not cached at API).", rows: 22 },
+    user:    { value: userPrompt,    onChange: setUserPrompt,    placeholder: "User prompt content...", rows: 16 },
   }
-
-  // Build preview tab label with byte size badge
-  const previewTabsWithSize = PREVIEW_TABS.map(t => ({
-    ...t,
-    label: previewData
-      ? `${t.label} (${byteSize(previewData[t.key] || "")})`
-      : t.label,
-  }))
+  const ed = editors[activeTab]
 
   return (
     <div style={{ padding: 24, maxWidth: 1100 }}>
@@ -275,7 +438,7 @@ export default function AnthropicAdHoc() {
       <div style={{ display: "flex", gap: 16, marginBottom: 12, alignItems: "flex-end" }}>
         <div className="dep-field" style={{ flex: 1, maxWidth: 340 }}>
           <label className="dep-field-label">Task Key <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(loads prompts + entities)</span></label>
-          <select className="dep-input" value={taskKey} onChange={e => setTaskKey(e.target.value)}>
+          <select className="dep-input" value={taskKey} onChange={e => { setImportEntityLock(null); setTaskKey(e.target.value) }}>
             <option value="">— No Task (ad hoc) —</option>
             {taskKeysSorted.map(t => <option key={t.task_key} value={t.task_key}>{t.task_key}</option>)}
           </select>
@@ -314,7 +477,7 @@ export default function AnthropicAdHoc() {
                   type="number" min={1} max={entityMeta.entities.length || 30}
                   className="dep-input"
                   value={batchCount}
-                  onChange={e => setBatchCount(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={e => { setImportEntityLock(null); setBatchCount(Math.max(1, parseInt(e.target.value) || 1)) }}
                   style={{ width: 64, textAlign: "center" }}
                 />
                 <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
@@ -325,11 +488,14 @@ export default function AnthropicAdHoc() {
               <select
                 className="dep-input"
                 value={entityId}
-                onChange={e => setEntityId(e.target.value)}
+                onChange={e => { setImportEntityLock(null); setEntityId(e.target.value) }}
                 style={{ fontSize: 13 }}
               >
                 <option value="">— No entity (ad hoc) —</option>
-                {entityMeta.entities.map(e => (
+                {(entityId && !entityMeta.entities.some(ent => ent.id === entityId)
+                  ? [...entityMeta.entities, { id: entityId, label: entityId }]
+                  : entityMeta.entities
+                ).map(e => (
                   <option key={e.id} value={e.id}>{e.label}</option>
                 ))}
               </select>
@@ -341,18 +507,59 @@ export default function AnthropicAdHoc() {
         </div>
       )}
 
+      <div
+        className="list-page-table-wrap list-page-table-wrap--scroll"
+        style={{
+          marginBottom: 16,
+          maxHeight: importPickerVisibleRows == null
+            ? undefined
+            : ADHOC_IMPORT_PICKER_HEAD_PX + importPickerVisibleRows * ADHOC_IMPORT_PICKER_ROW_PX,
+          overflowY: "auto",
+        }}
+      >        <table className="list-page-table">
+          <thead>
+            <tr>
+              <th>timestamp</th>
+              <th>entity_id</th>
+              <th>task_key</th>
+            </tr>
+          </thead>
+          <tbody>
+            {importRuns.map(run => (
+              <tr
+                key={run.batch_id}
+                className="clickable"
+                onClick={() => setSelectedImportBatchId(run.batch_id)}
+                style={selectedImportBatchId === run.batch_id ? { background: "var(--bg-card)" } : undefined}
+              >
+                <td>{run.created_at ?? ""}</td>
+                <td>{run.entity_id ?? ""}</td>
+                <td>{run.task_key ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* ── Action buttons ── */}
       <div style={{ marginBottom: 16, display: "flex", gap: 12, alignItems: "center" }}>
-        <button className="dep-btn cancel" onClick={handlePreview} disabled={previewing || !agentId}>
+        <button
+          className="btn primary"
+          disabled={!selectedImportBatchId}
+          onClick={handleLoadClick}
+        >
+          Load
+        </button>
+        <button className="btn secondary" onClick={handlePreview} disabled={previewing || !agentId}>
           {previewing ? "Loading..." : "Preview Prompt"}
         </button>
-        <button className="dep-btn save" onClick={handleTest} disabled={testing || !agentId} style={{ minWidth: 100 }}>
+        <button className="btn primary" onClick={handleTest} disabled={testing || !agentId}>
           {testing ? "Testing..." : "▶ Test"}
         </button>
 
         {/* SAVE AS */}
         <div ref={saveRef} style={{ position: "relative" }}>
-          <button className="dep-btn cancel" onClick={() => setSaveAsOpen(!saveAsOpen)} disabled={!hasContent}>
+          <button className="btn secondary" onClick={() => setSaveAsOpen(!saveAsOpen)} disabled={!hasContent}>
             Save As
           </button>
           {saveAsOpen && (
@@ -363,7 +570,7 @@ export default function AnthropicAdHoc() {
               maxHeight: 300, overflowY: "auto", minWidth: 280,
             }}>
               {taskKeysSorted.map(t => {
-                const hasExisting = (t.user_prompt_len || 0) > 0 || (t.cache_prompt_len || 0) > 0 || (t.nocache_prompt_len || 0) > 0
+                const hasExisting = taskHasExistingPrompts(t)
                 return (
                   <div key={t.task_key} onClick={() => handleSaveAs(t.task_key)} style={{
                     padding: "6px 12px", cursor: "pointer", fontSize: 13, fontFamily: "monospace",
@@ -388,8 +595,19 @@ export default function AnthropicAdHoc() {
             Replace current prompt content with prompts from <strong>{confirmFetch}</strong>?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-            <button className="dep-btn save" onClick={() => doFetchFrom(confirmFetch)} style={{ fontSize: 12, padding: "4px 12px" }}>Yes, Replace</button>
-            <button className="dep-btn cancel" onClick={() => setConfirmFetch(null)} style={{ fontSize: 12, padding: "4px 12px" }}>Cancel</button>
+            <button className="btn danger" onClick={() => doFetchFrom(confirmFetch)}>Yes, Replace</button>
+            <button className="btn secondary" onClick={() => setConfirmFetch(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {confirmLoad && (
+        <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-gold)" }}>
+          <span style={{ color: "var(--accent-gold)", fontSize: 13 }}>
+            Replace current prompt content with imported run?
+          </span>
+          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+            <button className="btn danger" onClick={() => doLoad(confirmLoad)}>Yes, Replace</button>
+            <button className="btn secondary" onClick={() => setConfirmLoad(null)}>Cancel</button>
           </div>
         </div>
       )}
@@ -399,8 +617,8 @@ export default function AnthropicAdHoc() {
             Overwrite existing prompts for <strong>{confirmTask}</strong>?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-            <button className="dep-btn save" onClick={() => doSaveAs(confirmTask)} style={{ fontSize: 12, padding: "4px 12px" }}>Yes, Overwrite</button>
-            <button className="dep-btn cancel" onClick={() => setConfirmTask(null)} style={{ fontSize: 12, padding: "4px 12px" }}>Cancel</button>
+            <button className="btn danger" onClick={() => doSaveAs(confirmTask)}>Yes, Overwrite</button>
+            <button className="btn secondary" onClick={() => setConfirmTask(null)}>Cancel</button>
           </div>
         </div>
       )}
@@ -409,67 +627,35 @@ export default function AnthropicAdHoc() {
       <div style={{ marginTop: 8 }}>
         <TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />
         <div style={{ marginTop: 12 }}>
-          {activeTab === "user" && (
-            <TokenTextarea className="dep-input" value={userPrompt} onChange={setUserPrompt}
-              tokens={tokenList} rows={16} placeholder="User prompt content..." />
-          )}
-          {activeTab === "cache" && (
-            <TokenTextarea className="dep-input" value={cachePrompt} onChange={setCachePrompt}
-              tokens={tokenList} rows={22} placeholder="Cache prompt content (large context blocks)..." />
-          )}
-          {activeTab === "nocache" && (
-            <TokenTextarea className="dep-input" value={nocachePrompt} onChange={setNocachePrompt}
-              tokens={tokenList} rows={22} placeholder="NoCache prompt content (dynamic context)..." />
-          )}
+          <TokenTextarea className="dep-input" value={ed.value} onChange={ed.onChange}
+            tokens={tokenList} rows={ed.rows} placeholder={ed.placeholder} />
         </div>
       </div>
 
-      {/* ── Preview area ── */}
-      {previewData && (
-        <div style={{ marginTop: 20 }}>
-          <h3 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)" }}>Resolved Prompt Preview</h3>
-          <TabBar tabs={previewTabsWithSize} active={previewTab} onChange={setPreviewTab} />
-          <pre style={{
-            marginTop: 12, padding: 16, borderRadius: 4,
-            background: "var(--bg-deep)", border: "1px solid var(--border)",
-            color: "var(--text-primary)", fontFamily: "monospace", fontSize: 12,
-            whiteSpace: "pre-wrap", wordBreak: "break-word",
-            maxHeight: 520, overflow: "auto",
-          }}>
-            {previewData[previewTab] || "(empty)"}
-          </pre>
-        </div>
-      )}
+      <Modal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={taskKey ? `Preview: ${taskKey}` : "Preview"}
+      >
+        <TabBar tabs={PREVIEW_TABS} active={previewTab} onChange={key => setPreviewTab(key)} />
+        <pre style={{
+          marginTop: 12, padding: 12, borderRadius: 4,
+          background: "var(--bg-deep)", border: "1px solid var(--border)",
+          color: "var(--text-primary)", fontFamily: "monospace", fontSize: 12,
+          whiteSpace: "pre-wrap", wordBreak: "break-word",
+          maxHeight: 500, overflow: "auto",
+        }}>
+          {previewField(previewTab, previewData) || "(empty)"}
+        </pre>
+      </Modal>
 
-      {/* ── Response area ── */}
-      {response !== null && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <h3 style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Response</h3>
-            {timesheet && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                {timesheet.duration ? `${Number(timesheet.duration).toFixed(1)}s` : ""}
-                {timesheet.inputtotal ? ` · ${timesheet.inputtotal} in` : ""}
-                {timesheet.outputtotal ? ` · ${timesheet.outputtotal} out` : ""}
-                {timesheet.inputcached ? ` · ${timesheet.inputcached} cached` : ""}
-              </span>
-            )}
-          </div>
-          <pre style={{
-            padding: 16, borderRadius: 4,
-            background: "var(--bg-deep)", border: "1px solid var(--border)",
-            color: response.startsWith("ERROR:") ? "#ff6b6b" : "var(--text-primary)",
-            fontFamily: "monospace", fontSize: 13,
-            whiteSpace: "pre-wrap", wordBreak: "break-word",
-            maxHeight: 600, overflow: "auto",
-          }}>
-            {formatResponse(response)}
-          </pre>
-        </div>
+      {testBatchId && (
+        <BatchAgentDataPanes
+          batchId={testBatchId}
+          candidateId={selectedId || undefined}
+          className="batch-agent-data-wrapper--page"
+        />
       )}
-
-      {/* ── Hydrated output (for abbreviated output_type tasks) ── */}
-      {/* Hydrated response section disabled for now — showing raw response is sufficient for debugging */}
 
       <Toast message={toast} onDone={clearToast} />
     </div>

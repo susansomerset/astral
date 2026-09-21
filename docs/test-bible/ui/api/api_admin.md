@@ -111,13 +111,14 @@ Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-739**).
 
 ### AST-750 · AST-743
 
-**`GET /api/admin/dispatch_tasks/score_floor_options`** returns `{"values": ["0.00", …, "10.00"]}` from **`dispatch_score_floor_option_labels()`** — mirrors **`state_options`** metadata pattern for the Scheduled Actions edit modal.
+**`GET /api/admin/dispatch_tasks/score_floor_options`** returns `{"values": ["0.00", …, "10.00"]}` from **`dispatch_score_floor_option_labels()`** — mirrors **`state_options`** metadata pattern for the Scheduled Actions edit modal. Zero-persist update: **`test_update_dispatch_task_scored_zero_score_floor`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Score floor catalog endpoint | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_scheduler_and_run_controls` (floors GET) |
+| Zero persist on update | same | `TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor` |
 
-Routed page + zero-save UX: **`docs/test-bible/frontend/pages.md`** (**AST-750**).
+Routed page + zero-save UX restored on **AST-1278**: **`docs/test-bible/frontend/pages.md`** (**AST-1278**).
 
 ### AST-740 · AST-734
 
@@ -534,4 +535,219 @@ Ad-hoc `qualify_meteorite` assemble lockstep with consult: numbered `job_link:` 
   tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
   tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
   -q
+```
+
+### AST-1394 · AST-1392 (show Ad Hoc Test body without type invalidation)
+
+**Parent:** [AST-1392](https://linear.app/astralcareermatch/issue/AST-1392). **Publish:** `origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation`.
+
+`POST /api/admin/adhoc/test` stringifies the extracted workbench body via **`_caller_response_blob`** so `response_text` is always a `str` (compact JSON for dict/list; already-`str` unchanged). Envelope still extracts **`agent_payload`** when present. Failure stays HTTP 500 / `success: false` — no fake success body. Persist/debug: **AST-1393**. Workbench chrome: **`docs/test-bible/frontend/pages.md`** § AST-1394.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Object/list/plain/numeric `response_text` | `src/ui/api/api_admin.py` (`adhoc_test`) | **`TestAst1394AdhocTestResponseText::test_success_response_text_is_serialized_str`** |
+| Provider failure 500, no `response_text` | same | **`test_failure_stays_500_without_success_body`**; existing **`TestAdhocRoutes::test_adhoc_preview_and_test`** |
+| String payload + numeric regression | same | **`TestAdhocRoutes::test_adhoc_preview_and_test`** (`"payload"` / `"123"`) |
+
+**Broken / obsolete this pass:** none — existing string/numeric assertions still hold.
+
+**Integration:** no existing scenario asserts Ad Hoc Test `response_text` — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Existing string/numeric + 500: `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test`
+2. Object/list/plain stringify + failure envelope: `tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText`
+
+**AST-1394** narrowed run (API; page chrome in **`frontend/pages.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test \
+  tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
+  -q
+```
+
+### AST-1411 · AST-1403 (Ad Hoc seven-segment resolve, assemble, persist)
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist`.
+
+`_resolve_adhoc` token-resolves seven body segments; Preview JSON always includes `cache_a`–`cache_d` (`cache` remains Cache A alias). Empty `system_prompt` in the body falls back to agent `content`; omitted key keeps the DB task system. Test forwards four caches into `run_adhoc_workbench_test` and returns `batch_id` on HTTP 200 and soft-fail 500. Persist/debug: **`docs/test-bible/core/agent.md`** § AST-1411. React editors / panes: sibling #2 / #3.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven-segment resolve + Preview keys; empty vs omitted System | `src/ui/api/api_admin.py` (`_resolve_adhoc`, `adhoc_preview`) | **`TestAst1411AdhocSevenSegment::test_resolve_preview_seven_segment_and_system_fallback`** |
+| Test forwards A/C; `batch_id` on 200 and 500 | same (`adhoc_test`) | **`test_adhoc_test_forwards_caches_and_returns_batch_id`** |
+| Preview mock shape (cache_a–d required by jsonify) | same | revised **`TestAdhocRoutes`** preview mocks |
+
+**Broken / obsolete this pass:** `TestAdhocRoutes` `_resolve_adhoc` mocks used by Preview lacked `cache_a`–`cache_d` (KeyError after Stage 1 jsonify). Test-only mocks that never hit Preview stay on `.get`.
+
+**Integration:** no existing scenario asserts Ad Hoc Preview cache_b–d / Test `batch_id` — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Existing preview/test envelopes (revised mocks): `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test`
+2. Preview still ledger-free: `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_does_not_create_dispatch_ledger`
+3. Stringify regression: `tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText`
+4. Seven-segment resolve/preview + Test identity: `tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment`
+
+**AST-1411** narrowed run (API; persist/debug in **`core/agent.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_does_not_create_dispatch_ledger \
+  tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
+  tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment \
+  -q
+```
+
+### AST-1412 · AST-1403 (Ad Hoc seven-segment `*_len` passthrough)
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save`.
+
+`_enrich_tasks` copies seven prompt-length ints onto list rows (`user_prompt_len`, `cache_prompt_len`, `cache_prompt_b/c/d_len`, `nocache_prompt_len`, `system_prompt_len`) so Agent Ad Hoc overwrite ● / `taskHasExistingPrompts` can see Cache-B-only content. Editors / Save As / Preview-Test bodies: **`docs/test-bible/frontend/pages.md`** § AST-1412.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven `*_len` including Cache-B-only | `src/ui/api/api_admin.py` (`_enrich_tasks`) | **`TestAst1412EnrichTaskLens::test_enrich_tasks_passes_seven_segment_lens_including_cache_b_only`** |
+
+**Broken / obsolete this pass:** none — existing `TestEnrichTasks` rows still assert token/cache branches; they did not pin B–D lens.
+
+**Integration:** no existing scenario asserts Ad Hoc overwrite ● from `*_len` — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Seven `*_len` passthrough: `tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens`
+
+**AST-1412** narrowed run (API; page in **`frontend/pages.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens \
+  -q
+```
+
+Ad Hoc import list route lives with parent **AST-1451** / scoped **AST-1534** in **`docs/test-bible/core/agent.md`** (`TestAst1451AdhocRuns`, `TestAst1534AdhocRunsScoped`).
+
+### AST-1618 · AST-1616
+
+**Parent:** [AST-1616](https://linear.app/astralcareermatch/issue/AST-1616). **Publish:** `origin/sub/AST-1616/AST-1618-persist-entity-type-admin`.
+
+Persist explicit `entity_type` on admin create/update; validate `trigger_state` against the submitted entity; recompute `sort_by` for the chosen entity + trigger. React Entity Type control = sibling **AST-1619**. Data insert sort path: **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1618.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| AC3 create entity | POST forwards `entity_type` into `save_dispatch_task` | `src/ui/api/api_admin.py` | **`TestAst1618PersistEntityTypeAdmin::test_create_forwards_entity_type`** |
+| AC4 update entity | PUT `entity_type` without `task_key` change; sort recomputed | same | **`test_update_entity_type_without_task_key`** |
+| AC5 validate pair | Helper + POST/PUT 400 on entity/trigger mismatch | same | **`test_trigger_error_honors_entity_override`**, **`test_create_rejects_entity_trigger_mismatch`**, **`test_update_rejects_mismatched_entity_trigger`** |
+| Empty/unknown/null | Empty/unknown 400; PUT `null` = omit | same | **`test_create_rejects_empty_and_unknown_entity`**, **`test_update_null_entity_type_treated_as_omit`** |
+
+**Broken / obsolete (Betty revised this pass):**
+
+- `TestAst773UpdateDispatchTaskTaskKey::test_update_dispatch_task_task_key_persists_derived_columns` — assert `sort_by` for effective trigger (`NEW`), not catalog default `PASSED_JD`.
+- `TestAst804CandidateDispatchAdminValidation::test_update_dispatch_task_trigger_state_only_candidate_row` — mock row must include `entity_type` (update sort recompute).
+- `TestDispatchTasks::test_update_dispatch_task_paths` — schedule-only PUT (no blank `trigger_state`); mock includes `entity_type`.
+
+**Integration:** no existing scenario covers admin entity_type persist — do not invent new integration coverage.
+
+## QA test manifest
+
+1. API entity_type create/update/validate: `tests/component/ui/api/test_api_admin.py::TestAst1618PersistEntityTypeAdmin`
+2. Revised update regressions: `TestAst773UpdateDispatchTaskTaskKey::test_update_dispatch_task_task_key_persists_derived_columns`, `TestAst804CandidateDispatchAdminValidation::test_update_dispatch_task_trigger_state_only_candidate_row`, `TestDispatchTasks::test_update_dispatch_task_paths`
+3. Data `save_dispatch_task` caller entity / sort: `tests/component/data/database/test_dispatch_tasks.py::TestAst1618SaveDispatchTaskCallerEntity` (primary map: **`docs/test-bible/data/database/dispatch_tasks.md`**)
+
+**AST-1618** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1618PersistEntityTypeAdmin \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_update_dispatch_task_task_key_persists_derived_columns \
+  tests/component/ui/api/test_api_admin.py::TestAst804CandidateDispatchAdminValidation::test_update_dispatch_task_trigger_state_only_candidate_row \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_update_dispatch_task_paths \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1618SaveDispatchTaskCallerEntity \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–3 — not zero-arg harness / branch-lock gate.
+
+**Product note for test-child:** `test_caller_entity_overrides_catalog_sort` encodes Stage 1 Done-when (`entity_type=company` + `trigger_state=WATCH` on `grade_do`). Today `save_dispatch_task` calls `dispatch_task_admin_defaults(tk, trigger_state=…)` before applying the caller entity, so a trigger valid only for the chosen entity raises `ValueError` (API 500). Fix the data path so defaults fill does not require the request trigger to be valid for the catalog entity when the caller supplied `entity_type`.
+
+### AST-1623 · AST-1620
+
+**Parent:** [AST-1620 — Treat meteorite as a first-class dispatch entity_type](https://linear.app/astralcareermatch/issue/AST-1620/treat-meteorite-as-a-first-class-dispatch-entity-type). **Publish:** `origin/sub/AST-1620/AST-1623-admin-available-state-options-ledger`.
+
+Admin `state_options` exposes `meteorite` via `dispatch_entity_state_registry`; `list_dtasks` Available counts meteorite rows without requiring `candidate_id`; create/update accept `meteorite` via `ENTITY_TYPES` (no parallel enum). Dispatcher ingress/notify ledger writes `entity_type="meteorite"`; `correct_meteorite_ingress_dispatch_entity_types` UPDATE-only NULL→meteorite for ingress/notify keys (boot from `start_scheduler`). Count helper: **AST-1622**; registries/seeds: **AST-1621**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| state_options + Available + create | `src/ui/api/api_admin.py` | **`TestAst1623AdminMeteoriteStateOptionsAvail`** |
+| Ledger entity_type + correction + boot | `src/core/dispatcher.py` | **`TestAst1623MeteoriteLedgerAndBackfill`** |
+| Boot stub for correction | same | revised **`_stub_scheduler_boot_provisions`** |
+
+**Broken / obsolete:** `_stub_scheduler_boot_provisions` — stub `correct_meteorite_ingress_dispatch_entity_types` so start_scheduler unit tests stay DB-free (correction was try/except-swallowed before).
+
+**Integration:** none — no existing scenario asserts meteorite state_options / NULL-cid Available / ingress ledger entity_type; do not invent.
+
+## QA test manifest
+
+1. Admin state_options + Available + create: `tests/component/ui/api/test_api_admin.py::TestAst1623AdminMeteoriteStateOptionsAvail`
+2. Ledger + correction + boot: `tests/component/core/test_dispatcher.py::TestAst1623MeteoriteLedgerAndBackfill`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1623AdminMeteoriteStateOptionsAvail \
+  tests/component/core/test_dispatcher.py::TestAst1623MeteoriteLedgerAndBackfill \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–2 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/ui/api/api_admin.md` — *(filled after publish)*
+
+
+### AST-1675 · AST-1671
+
+**Scope:** Admin form/meta and adhoc live-content key on **`prefilter_company`**. Grouping uses identity catalog key (shim deleted). Bare `prefilter` absent from picker.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| task_keys grouping + form meta | `src/ui/api/api_admin.py` | revised **`TestAst825PrefilterDispatchTaskKeysGrouping`** |
+| Adhoc homepage+nav | same | revised **`TestAdhocHelpers::test_build_adhoc_live_content_company_paths`**; **`TestApiAdminBranchGaps::test_build_adhoc_live_content_remaining_company_and_job_edges`** |
+
+**Broken / obsolete this pass:** AST-825 expecting `keys["prefilter"]`; adhoc live-content keyed on bare `prefilter`.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Picker grouping: `tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping`
+2. Adhoc live-content: `tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_company_paths` + `::TestApiAdminBranchGaps::test_build_adhoc_live_content_remaining_company_and_job_edges`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_company_paths \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_build_adhoc_live_content_remaining_company_and_job_edges \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/ui/api/api_admin.md` — *(filled after publish)*
+
+---
+
+### AST-1728 · AST-1721 (qa-fix bug-repro — admin Telescope API)
+
+**Board REVISE:** `POST /api/admin/telescope` + `admin_telescope_scrape` + nav Tools entry.
+
+| Area | Component tests |
+| --- | --- |
+| Route / helper / nav / page file | `tests/component/ui/api/test_api_admin_telescope.py::TestAst1728AdminTelescopeRepro` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin_telescope.py -q
 ```

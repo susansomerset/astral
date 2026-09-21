@@ -7,6 +7,7 @@ Public API lives on `src.data.database`. Cluster files under this directory map 
 | `test_schema.py` | `table_columns`, `apply_config_table_upsert`, encryption helpers |
 | `test_companies.py` | `company` |
 | `test_jobs.py` | `job` |
+| `test_meteorites.py` | `meteorite` (AST-1557 staging spine) |
 | `test_candidates.py` | `candidate` |
 | `test_agents.py` | `agent` |
 | `test_agent_tasks.py` | `agent_task` |
@@ -18,5 +19,6 @@ Public API lives on `src.data.database`. Cluster files under this directory map 
 | `test_dispatch_ledger.py` | `dispatch_ledger` |
 | `test_app_log.py` | `app_log` |
 | `test_state_helpers.py` | batch helpers, score floors, legacy wrappers |
+| `test_artifacts.py` | `artifacts` (AST-1352; rename AST-1364) |
 
 Adjust boundaries only with a Linear note and this file.

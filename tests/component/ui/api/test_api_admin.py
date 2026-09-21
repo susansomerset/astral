@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import threading
 import zlib
 from typing import Any
@@ -552,7 +553,7 @@ class TestAst739DispatchTaskKeysGrouping:
         assert keys["orphan_only"]["task_name"] == ""
 
 
-# AST-825: prefilter dispatch key resolves grouping via prefilter_company agent_task catalog.
+# AST-1675 / AST-825: lasting catalog key prefilter_company carries agent_task grouping meta.
 class TestAst825PrefilterDispatchTaskKeysGrouping:
     def test_dispatch_task_keys_prefilter_grouping_from_prefilter_company_catalog(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
@@ -571,13 +572,14 @@ class TestAst825PrefilterDispatchTaskKeysGrouping:
             else None,
         )
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
-        pf = keys["prefilter"]
+        pf = keys["prefilter_company"]
         assert pf["task_group_name"] == "Company Roster"
         assert pf["task_group_order"] == "3000"
         assert pf["task_seq"] == 5.0
         assert pf["task_name"] == "Prefilter Company"
         assert pf["entity_type"] == "company"
         assert pf["trigger_state"] == "HOMEPAGE_READY"
+        assert "prefilter" not in keys
 
 
 # AST-749: retired consult_* absent from task_keys even when list_dispatch_tasks returns legacy rows.
@@ -831,7 +833,7 @@ class TestAst785ListDtasksRobustness:
     reason="AST-1106 always-visible stamp not on this publish tip",
 )
 class TestAst1106ListDtasksAlwaysVisibleFlag:
-    def test_gaze_email_flag_true_other_false_avail_unchanged(
+    def test_meteorite_email_flag_true_other_false_avail_unchanged(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
@@ -840,7 +842,7 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
             lambda: [
                 {
                     "id": 1,
-                    "task_key": "gaze_email",
+                    "task_key": "meteorite_email",
                     "trigger_state": None,
                     "entity_type": None,
                     "candidate_id": None,
@@ -860,7 +862,7 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
         monkeypatch.setattr(
             admin_mod,
             "admin_always_visible_under_avail_gt0_dispatch_task_keys",
-            lambda: frozenset({"gaze_email"}),
+            lambda: frozenset({"meteorite_email"}),
         )
 
         def _count(row):
@@ -877,12 +879,12 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
 
 
 
-# AST-1135: list_dtasks stamps live bind-filtered available_count for gaze_email rows.
+# AST-1135 / AST-1467: list_dtasks stamps live bind-filtered available_count for mailbox rows.
 @pytest.mark.skipif(
-    not hasattr(admin_mod, "GAZE_EMAIL_CONFIG"),
-    reason="AST-1135 gaze Avail stamp not on this publish tip",
+    not hasattr(admin_mod, "is_meteorite_email_mailbox_task_key"),
+    reason="AST-1466 meteorite mailbox Avail stamp path on tip",
 )
-class TestAst1135ListDtasksGazeAvail:
+class TestAst1135ListDtasksMeteoriteMailboxAvail:
     def test_stamps_bound_counts_once(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -892,7 +894,7 @@ class TestAst1135ListDtasksGazeAvail:
             lambda: [
                 {
                     "id": 1,
-                    "task_key": "gaze_email",
+                    "task_key": "stage_email_meteorite",
                     "trigger_state": None,
                     "entity_type": None,
                     "candidate_id": "A",
@@ -900,7 +902,7 @@ class TestAst1135ListDtasksGazeAvail:
                 },
                 {
                     "id": 2,
-                    "task_key": "gaze_email",
+                    "task_key": "stage_email_meteorite",
                     "trigger_state": None,
                     "entity_type": None,
                     "candidate_id": "B",
@@ -977,7 +979,10 @@ class TestAst773UpdateDispatchTaskTaskKey:
         kw = update.call_args.kwargs
         assert kw["task_key"] == "grade_do"
         assert kw["entity_type"] == "job"
-        assert kw["sort_by"] == cfg.dispatch_task_admin_defaults("grade_do")["sort_by"]
+        # AST-1618: sort_by follows effective trigger (NEW), not catalog default PASSED_JD
+        assert kw["sort_by"] == cfg.dispatch_task_admin_defaults(
+            "grade_do", trigger_state="NEW"
+        )["sort_by"]
         assert kw["batch_call_mode"] == cfg.dispatch_task_admin_defaults("grade_do")["batch_call_mode"]
 
     def test_update_dispatch_task_invalid_task_key_trigger_combo_400(
@@ -1107,6 +1112,7 @@ class TestAst804CandidateDispatchAdminValidation:
             lambda task_id: {
                 "task_key": "intake_initiate_candidate",
                 "trigger_state": "ACTIVE_SEARCH",
+                "entity_type": "candidate",  # AST-1618: sort recompute needs row entity
                 "candidate_id": "c1",
                 "auto_mode": 0,
             },
@@ -1295,7 +1301,13 @@ class TestDispatchTasks:
         monkeypatch.setattr(
             admin_mod.database,
             "get_dispatch_task",
-            lambda task_id: {"task_key": "qualify_job_listings", "trigger_state": "VALID_TITLE", "candidate_id": "c1"},
+            lambda task_id: {
+                "task_key": "qualify_job_listings",
+                "trigger_state": "VALID_TITLE",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
         )
         assert admin_client.put(f"/api/admin/dispatch_tasks/1", json={}, headers=auth_headers).status_code == 400
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: "need key")
@@ -1307,7 +1319,8 @@ class TestDispatchTasks:
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
         update = MagicMock()
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
-        ok = admin_client.put(f"/api/admin/dispatch_tasks/1", json={"min_count": 2, "trigger_state": ""}, headers=auth_headers)
+        # Schedule-only update (no empty trigger — blank trigger_state is 400)
+        ok = admin_client.put(f"/api/admin/dispatch_tasks/1", json={"min_count": 2}, headers=auth_headers)
         assert ok.status_code == 200
         update.assert_called_once()
 
@@ -1344,7 +1357,7 @@ class TestAdhocHelpers:
 
     def test_build_adhoc_live_content_company_paths(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: {"entity_type": "company"})
-        assert admin_mod._build_adhoc_live_content("prefilter", "missing") == ""
+        assert admin_mod._build_adhoc_live_content("prefilter_company", "missing") == ""
         monkeypatch.setattr(
             admin_mod.database,
             "get_company",
@@ -1357,7 +1370,7 @@ class TestAdhocHelpers:
                 }
             },
         )
-        assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter", "acme")
+        assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter_company", "acme")
         # locate + select share nav_links preview; parse uses job_page_dom (AST-721).
         locate_s = admin_mod._build_adhoc_live_content("locate_job_page", "acme")
         sel_s = admin_mod._build_adhoc_live_content("select_job_page", "acme")
@@ -1540,6 +1553,10 @@ class TestAdhocRoutes:
                     "system": "s",
                     "user": "u",
                     "cache": "c",
+                    "cache_a": "c",
+                    "cache_b": "",
+                    "cache_c": "",
+                    "cache_d": "",
                     "nocache": "n",
                     "model_code": "claude-haiku-4-5",
                     "temperature": 0.1,
@@ -1609,6 +1626,10 @@ class TestAdhocRoutes:
                     "system": "s",
                     "user": "u",
                     "cache": "",
+                    "cache_a": "",
+                    "cache_b": "",
+                    "cache_c": "",
+                    "cache_d": "",
                     "nocache": "",
                     "model_code": "claude-haiku-4-5",
                     "temperature": 0.1,
@@ -1788,13 +1809,13 @@ class TestApiAdminBranchGaps:
             "get_company",
             lambda short_name: {"company_data": {"homepage_text": "", "website_content": "", "nav_links": []}},
         )
-        assert admin_mod._build_adhoc_live_content("prefilter", "acme") == ""
+        assert admin_mod._build_adhoc_live_content("prefilter_company", "acme") == ""
         monkeypatch.setattr(
             admin_mod.database,
             "get_company",
             lambda short_name: {"company_data": {"homepage_text": "home", "nav_links": ["a"]}},
         )
-        assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter", "acme")
+        assert "HOMEPAGE" in admin_mod._build_adhoc_live_content("prefilter_company", "acme")
         assert admin_mod._build_adhoc_live_content("select_job_page", "acme") != ""
         monkeypatch.setattr(
             admin_mod.database,
@@ -1810,7 +1831,8 @@ class TestApiAdminBranchGaps:
         )
         monkeypatch.setattr(admin_mod.database, "get_company", lambda short_name: {"job_site": "site"})
         assert admin_mod._build_adhoc_live_content("qualify_job_listings", "", ["j1"]) != ""
-        assert admin_mod._build_adhoc_live_content("validate_title", "", ["j1"]) == ""
+        # Retired validate_title has no dedicated live-content branch — single-entity JD/raw path.
+        assert "raw" in admin_mod._build_adhoc_live_content("validate_title", "j1")
         monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
         assert admin_mod._build_adhoc_live_content("qualify_job_listings", "", ["missing"]) == ""
         monkeypatch.setitem(admin_mod.TASK_CONFIG, "evaluate_jd", {**admin_mod.TASK_CONFIG["evaluate_jd"], "requires_company": True})
@@ -2878,11 +2900,12 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
 
     def test_mailbox_trigger_null_only_and_unsupported_craft_wording(self) -> None:
-        for tk in ("parse_meteorite_email", "meteorite_email", "gaze_email"):
+        for tk in ("parse_meteorite_email", "stage_email_meteorite"):
             assert admin_mod._dispatch_task_key_trigger_error(tk, None) is None
             assert admin_mod._dispatch_task_key_trigger_error(tk, "") is None
-            bad = admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH")
-            assert bad is not None and "mailbox poller" in bad
+            assert admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH") is None
+            bad = admin_mod._dispatch_task_key_trigger_error(tk, "METEORITE_NEW")
+            assert bad is not None and "not valid" in bad
         # Registered TASK_CONFIG without entity helper → unsupported, not Unknown.
         craft_err = admin_mod._dispatch_task_key_trigger_error("craft_do_rubric", "NEW")
         assert craft_err is not None and "unsupported entity_type" in craft_err
@@ -2920,10 +2943,10 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         assert mailbox.get_json()["id"] == 72
         assert save.call_count == 2
 
-    def test_list_dtasks_meteorite_mailbox_avail_without_gaze_email_row(
+    def test_list_dtasks_meteorite_mailbox_avail_without_extra_mailbox_row(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # need_gaze_counts + per-row stamp must fire for mailbox keys even with no gaze_email row.
+        # need_gaze_counts + per-row stamp must fire for mailbox keys without a legacy gaze row.
         monkeypatch.setattr(
             admin_mod,
             "list_dispatch_tasks",
@@ -2964,3 +2987,662 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         assert by[1]["available_count"] == 3
         assert by[2]["available_count"] == 9
         bound.assert_called_once_with()
+
+
+# Branches: adhoc/test success body via _caller_response_blob (dict/list JSON vs
+# plain str vs empty {}/[]; extract agent_payload vs whole parsed; 500 on fail).
+class TestAst1394AdhocTestResponseText:
+    """AST-1394: POST /api/admin/adhoc/test returns serialized body as str."""
+
+    def _patch_resolve(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "_resolve_adhoc",
+            lambda _body: (
+                {
+                    "system": "s",
+                    "user": "u",
+                    "cache": "c",
+                    "nocache": "n",
+                    "model_code": "claude-haiku-4-5",
+                    "temperature": 0.1,
+                    "max_tokens": 10,
+                    "candidate_id": "c1",
+                    "task_key_uuid": None,
+                    "api_key_override": None,
+                },
+                None,
+            ),
+        )
+
+    def _post_ok(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+        parsed: Any,
+        *,
+        task_key: str = "evaluate_jd",
+    ) -> Any:
+        async def run_ok(**_k: Any) -> dict[str, Any]:
+            return {"success": True, "parsed_response": parsed, "timesheet": {}}
+
+        self._patch_resolve(monkeypatch)
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_ok)
+        return admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": task_key},
+            headers=auth_headers,
+        )
+
+    @pytest.mark.parametrize(
+        "parsed, expected",
+        [
+            (
+                {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"search_terms": "alpha\nbeta"},
+                },
+                json.dumps({"search_terms": "alpha\nbeta"}, ensure_ascii=False, default=str),
+            ),
+            ({"agent_payload": {}}, "{}"),
+            ({"agent_payload": []}, "[]"),
+            ({"agent_payload": "payload"}, "payload"),
+            ("plain ok", "plain ok"),
+            (123, "123"),
+        ],
+        ids=[
+            "object-payload",
+            "empty-dict",
+            "empty-list",
+            "str-payload",
+            "plain-text",
+            "numeric",
+        ],
+    )
+    def test_success_response_text_is_serialized_str(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+        parsed: Any,
+        expected: str,
+    ) -> None:
+        resp = self._post_ok(admin_client, auth_headers, monkeypatch, parsed)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert isinstance(body["response_text"], str)
+        assert body["response_text"] == expected
+
+    def test_failure_stays_500_without_success_body(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def run_fail(**_k: Any) -> dict[str, Any]:
+            return {"success": False, "error": "nope"}
+
+        self._patch_resolve(monkeypatch)
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_fail)
+        resp = admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": "evaluate_jd"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 500
+        body = resp.get_json()
+        assert body["success"] is False
+        assert "response_text" not in body
+        assert body["error"] == "nope"
+
+
+# Branches: seven-segment _resolve_adhoc / Preview keys; empty System → agent content
+# when the editor sends the key; omitted key keeps the DB task system; Test forwards
+# cache_b–d and returns batch_id on 200 and soft-fail 500.
+class TestAst1411AdhocSevenSegment:
+    """AST-1411: Ad Hoc preview/test seven-segment resolve + Test identity."""
+
+    def _stub_agent(self, monkeypatch: pytest.MonkeyPatch, *, content: str = "agent-sys", task_system: str = "task-sys") -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent",
+            lambda agent_id: {
+                "agent_id": agent_id,
+                "content": content,
+                "brain_setting": cfg.BRAIN_LITTLE,
+                "temperature": 0.1,
+                "max_tokens": 10,
+            },
+        )
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda _task_key: {"task_key_uuid": "uuid-1411", "system_prompt": task_system},
+        )
+        # Cache/user slots resolve in api_admin; system uses agent.resolved_task_system (no tokens here).
+        monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text)
+
+    def test_resolve_preview_seven_segment_and_system_fallback(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub_agent(monkeypatch)
+        save_ad = MagicMock()
+        monkeypatch.setattr(admin_mod.database, "save_agent_data", save_ad)
+
+        seven = {
+            "agent_id": "a1",
+            "task_key": "evaluate_jd",
+            "system_prompt": "sys-ed",
+            "cache_prompt": "A",
+            "cache_prompt_c": "C",
+            "user_prompt": "U",
+        }
+        payload, err = admin_mod._resolve_adhoc(seven)
+        assert err is None
+        assert payload["system"] == "sys-ed"
+        assert payload["cache"] == payload["cache_a"] == "A"
+        assert payload["cache_c"] == "C"
+        assert payload["cache_b"] == payload["cache_d"] == ""
+        assert payload["user"] == "U"
+
+        preview = admin_client.post("/api/admin/adhoc/preview", json=seven, headers=auth_headers)
+        body = preview.get_json()
+        assert preview.status_code == 200
+        assert body["cache"] == body["cache_a"] == "A"
+        assert body["cache_c"] == "C"
+        assert body["cache_b"] == body["cache_d"] == ""
+        assert body["system"] == "sys-ed"
+        save_ad.assert_not_called()
+
+        # Empty editor System still sends agent content (production fallback). Omitted key keeps the task row.
+        empty_sys, err = admin_mod._resolve_adhoc(
+            {"agent_id": "a1", "task_key": "evaluate_jd", "system_prompt": ""}
+        )
+        assert err is None
+        assert empty_sys["system"] == "agent-sys"
+        omitted, err = admin_mod._resolve_adhoc({"agent_id": "a1", "task_key": "evaluate_jd"})
+        assert err is None
+        assert omitted["system"] == "task-sys"
+
+    def test_adhoc_test_forwards_caches_and_returns_batch_id(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        monkeypatch.setattr(
+            admin_mod,
+            "_resolve_adhoc",
+            lambda _body: (
+                {
+                    "system": "s",
+                    "user": "u",
+                    "cache": "A",
+                    "cache_a": "A",
+                    "cache_b": "",
+                    "cache_c": "C",
+                    "cache_d": "",
+                    "nocache": "",
+                    "model_code": "claude-haiku-4-5",
+                    "temperature": 0.1,
+                    "max_tokens": 10,
+                    "candidate_id": "c1",
+                    "task_key_uuid": None,
+                    "api_key_override": None,
+                },
+                None,
+            ),
+        )
+
+        async def run_ok(**kwargs: Any) -> dict[str, Any]:
+            captured.update(kwargs)
+            return {
+                "success": True,
+                "parsed_response": {"agent_payload": "ok"},
+                "timesheet": {},
+                "batch_id": "adhoc-evaluate_jd-1411",
+            }
+
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_ok)
+        ok = admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": "evaluate_jd"},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        assert ok.get_json()["batch_id"] == "adhoc-evaluate_jd-1411"
+        assert captured["cache_content"] == "A"
+        assert captured["cache_content_c"] == "C"
+        assert captured["cache_content_b"] is None
+        assert captured["cache_content_d"] is None
+
+        async def run_fail(**_k: Any) -> dict[str, Any]:
+            return {"success": False, "error": "nope", "batch_id": "adhoc-evaluate_jd-1411"}
+
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_fail)
+        failed = admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": "evaluate_jd"},
+            headers=auth_headers,
+        )
+        assert failed.status_code == 500
+        fail_body = failed.get_json()
+        assert fail_body["success"] is False
+        assert fail_body["batch_id"] == "adhoc-evaluate_jd-1411"
+        assert "response_text" not in fail_body
+
+
+# AST-1412: Ad Hoc overwrite ● / has-content reads seven *_len fields from _enrich_tasks.
+_LEN_KEYS = (
+    "user_prompt_len",
+    "cache_prompt_len",
+    "cache_prompt_b_len",
+    "cache_prompt_c_len",
+    "cache_prompt_d_len",
+    "nocache_prompt_len",
+    "system_prompt_len",
+)
+
+
+class TestAst1412EnrichTaskLens:
+    def test_enrich_tasks_passes_seven_segment_lens_including_cache_b_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = None
+        monkeypatch.setattr(admin_mod, "_get_connection", lambda: conn)
+        monkeypatch.setattr(
+            admin_mod.database,
+            "list_candidate_tasks",
+            lambda: [
+                {
+                    "task_key": "task_b_only",
+                    "task_key_uuid": None,
+                    "agent_id": "",
+                    "cache_prompt_len": 0,
+                    "cache_prompt_b_len": 9,
+                    "cache_prompt_c_len": 0,
+                    "cache_prompt_d_len": 0,
+                    "nocache_prompt_len": 0,
+                    "user_prompt_len": 0,
+                    "system_prompt_len": 0,
+                    "updated_at": "now",
+                }
+            ],
+        )
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: None)
+        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
+        rows = admin_mod._enrich_tasks("")
+        for key in _LEN_KEYS:
+            assert key in rows[0]
+            assert isinstance(rows[0][key], int)
+        assert rows[0]["cache_prompt_b_len"] == 9
+        assert rows[0]["cache_prompt_len"] == 0
+        assert rows[0]["system_prompt_len"] == 0
+
+
+class TestAst1451AdhocRuns:
+    """AST-1451 (revised AST-1534): GET /api/admin/adhoc/runs admin-auth; debug via ui_llm_debug."""
+
+    _ROWS = [
+        {
+            "batch_id": "b1",
+            "created_at": "2026-08-01 12:00:00",
+            "entity_id": "job-1",
+            "task_key": "evaluate_jd",
+        },
+        {
+            "batch_id": "b2",
+            "created_at": "2026-07-01 00:00:00",
+            "entity_id": None,
+            "task_key": "adhoc-evaluate_jd",
+        },
+    ]
+
+    def test_admin_returns_json_array_and_forwards_debug(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: list[bool] = []
+
+        def _list(*, debug: bool = False, **_kw) -> list[dict[str, Any]]:
+            seen.append(debug)
+            return list(self._ROWS)
+
+        monkeypatch.setattr(admin_mod, "list_agent_data_runs", _list)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
+        resp = admin_client.get("/api/admin/adhoc/runs", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == self._ROWS
+        assert seen == [True]
+
+    def test_unauthenticated_401(self, admin_client: FlaskClient) -> None:
+        assert admin_client.get("/api/admin/adhoc/runs").status_code == 401
+
+    def test_non_admin_403(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.get("/api/admin/adhoc/runs", headers=non_admin_headers)
+        assert resp.status_code == 403
+
+
+class TestAst1534AdhocRunsScoped:
+    """AST-1534: query params + config cap; blank candidate → []; ignore client limit."""
+
+    def test_forwards_candidate_task_and_config_limit(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+
+        def _list(**kw) -> list[dict[str, Any]]:
+            seen.append(kw)
+            return [
+                {
+                    "batch_id": "b1",
+                    "created_at": "2026-08-01 12:00:00",
+                    "entity_id": "job-1",
+                    "task_key": "adhoc-evaluate_jd",
+                }
+            ]
+
+        monkeypatch.setattr(admin_mod, "list_agent_data_runs", _list)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        monkeypatch.setitem(admin_mod.UI_CONFIG, "adhoc_import_runs_limit", 10)
+        resp = admin_client.get(
+            "/api/admin/adhoc/runs?candidate_id=cand-1&task_key=evaluate_jd&limit=999",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()[0]["batch_id"] == "b1"
+        assert seen == [
+            {
+                "candidate_id": "cand-1",
+                "task_key": "evaluate_jd",
+                "limit": 10,
+                "debug": False,
+            }
+        ]
+
+    def test_blank_candidate_passes_none(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: list[dict[str, Any]] = []
+
+        def _list(**kw) -> list[dict[str, Any]]:
+            seen.append(kw)
+            return []
+
+        monkeypatch.setattr(admin_mod, "list_agent_data_runs", _list)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        monkeypatch.setitem(admin_mod.UI_CONFIG, "adhoc_import_runs_limit", 10)
+        resp = admin_client.get("/api/admin/adhoc/runs", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == []
+        assert seen[0]["candidate_id"] is None
+        assert seen[0]["task_key"] is None
+        assert seen[0]["limit"] == 10
+
+
+# AST-1618: admin create/update persist explicit entity_type + sort for chosen entity.
+class TestAst1618PersistEntityTypeAdmin:
+    def test_trigger_error_honors_entity_override(self) -> None:
+        # grade_do catalog is job; company WEBSITE_FOUND is valid only with override
+        assert (
+            admin_mod._dispatch_task_key_trigger_error(
+                "grade_do", "WEBSITE_FOUND", entity_type="company"
+            )
+            is None
+        )
+        bad = admin_mod._dispatch_task_key_trigger_error(
+            "grade_do", "WEBSITE_FOUND", entity_type="job"
+        )
+        assert bad is not None and "grade_do" in bad
+        unsupported = admin_mod._dispatch_task_key_trigger_error(
+            "grade_do", "NEW", entity_type="not_an_entity"
+        )
+        assert unsupported is not None and "unsupported entity_type" in unsupported
+
+    def test_create_forwards_entity_type(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=1618)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "WATCH",
+                "entity_type": "company",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["entity_type"] == "company"
+        assert save.call_args.kwargs["trigger_state"] == "WATCH"
+
+    def test_create_rejects_entity_trigger_mismatch(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=1)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "WATCH",
+                "entity_type": "job",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "grade_do" in resp.get_json()["error"]
+        save.assert_not_called()
+
+    def test_create_rejects_empty_and_unknown_entity(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        empty = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "  ",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert empty.status_code == 400
+        assert "non-empty" in empty.get_json()["error"]
+        unknown = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "board_search",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert unknown.status_code == 400
+        assert "unsupported entity_type" in unknown.get_json()["error"]
+
+    def test_update_entity_type_without_task_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+                "sort_by": "latest_score",
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        # Keep trigger; switch entity to company with a company-valid trigger
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"entity_type": "company", "trigger_state": "WATCH"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        kw = update.call_args.kwargs
+        assert kw["entity_type"] == "company"
+        assert kw["sort_by"] == cfg._dispatch_sort_by_for("company", "WATCH")
+        assert "task_key" not in kw
+
+    def test_update_rejects_mismatched_entity_trigger(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"entity_type": "company"},  # PASSED_JD not in company registry
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        update.assert_not_called()
+
+    def test_update_null_entity_type_treated_as_omit(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"entity_type": None, "min_count": 3},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        kw = update.call_args.kwargs
+        assert kw["min_count"] == 3
+        assert "entity_type" not in kw
+
+
+class TestAst1623AdminMeteoriteStateOptionsAvail:
+    """AST-1623: state_options meteorite + Available without candidate_id short-circuit."""
+
+    def test_state_options_includes_meteorite(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        from src.utils.config import METEORITE_STATES, dispatch_entity_state_registry
+
+        states = admin_client.get("/api/admin/dispatch_tasks/state_options", headers=auth_headers).get_json()
+        assert "meteorite" in states
+        assert set(states["meteorite"]) == set(METEORITE_STATES)
+        assert states["meteorite"] == list(dispatch_entity_state_registry("meteorite").keys())
+        # Existing keys stay present (order not rebuilt from ENTITY_TYPES).
+        assert "job" in states and "company" in states and "candidate" in states
+
+    def test_list_dtasks_meteorite_avail_without_candidate_id(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "stage_meteorite",
+                    "trigger_state": "NEW",
+                    "entity_type": "meteorite",
+                    "candidate_id": None,
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "grade_do",
+                    "trigger_state": "PASSED_JD",
+                    "entity_type": "job",
+                    "candidate_id": None,
+                    "score_floor": None,
+                },
+                {
+                    "id": 3,
+                    "task_key": "scrape_meteorite",
+                    "trigger_state": "SCRAPE_LINK",
+                    "entity_type": "meteorite",
+                    "candidate_id": "c-x",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+
+        def count(row: dict[str, Any]) -> int:
+            return 7 if row.get("entity_type") == "meteorite" else 3
+
+        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", count)
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        by = {r["id"]: r for r in rows}
+        assert by[1]["available_count"] == 7
+        assert by[2]["available_count"] == 0  # job still requires candidate_id
+        assert by[3]["available_count"] == 7
+
+    def test_create_accepts_meteorite_entity_type(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=1623)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "NEW",
+                "entity_type": "meteorite",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["entity_type"] == "meteorite"
+        assert save.call_args.kwargs["trigger_state"] == "NEW"
+

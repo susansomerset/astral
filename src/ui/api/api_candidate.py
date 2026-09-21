@@ -19,13 +19,26 @@ from src.core.candidate import (
     delete_candidate as core_delete_candidate,
     enabled_resume_structure_sections,
     filter_base_resume_to_structure,
+    ingest_legacy_label_content_base_resume,
     get_candidate,
     get_pending_craft_generation,
+    hydrate_operative_base_resume_for_response,
+    hydrate_operative_bio_summary_for_response,
+    hydrate_operative_deal_breakers_for_response,
+    hydrate_operative_ideal_day_for_response,
+    hydrate_operative_backstory_for_response,
+    hydrate_operative_resume_structure_for_response,
+    hydrate_operative_strengths_for_response,
+    hydrate_operative_priorities_for_response,
+    hydrate_operative_writing_preferences_for_response,
+    hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
+    IllegalCandidateTransition,
     initiate_candidate,
     list_candidates as core_list_candidates,
     normalize_resume_structure,
     normalize_rubric_artifacts_on_save,
+    prepare_resume_structure_sections_for_save,
     resolve_resume_structure,
     run_candidate_artifact_generation,
     save_candidate_admin,
@@ -33,16 +46,29 @@ from src.core.candidate import (
     start_requested_artifacts,
     transition_candidate_state,
 )
+from src.core.contact import resolve_pinned_base_resume
 from src.utils.config import (
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
+    RESUME_STRUCTURE_BODY_FORMATS,
+    RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+    RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS,
+    RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+    RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     TASK_CONFIG,
     UI_CONFIG,
 )
 from src.utils.deploy_status import ui_llm_debug
+from src.utils.logging import get_logger
 
 candidate_bp = Blueprint("candidate", __name__, url_prefix="/api/candidates")
+logger = get_logger(__name__)
 
 _SENTINEL_CLEAR = ""
 
@@ -122,12 +148,61 @@ def get_candidate_resume_structure(candidate_id):
     if not candidate:
         return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
     cd = candidate.get("candidate_data") or {}
-    resolved = resolve_resume_structure(cd)
-    sections = enabled_resume_structure_sections(resolved)
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
+    resolved = hydrate_resume_structure_from_base_resume(
+        resolve_resume_structure(cd),
+        artifacts.get("base_resume"),
+    )
     accent = resolved.get("accent_color")
     if not isinstance(accent, str):
         accent = None
-    return jsonify({"sections": sections, "accent_color": accent})
+    required = set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+    all_sections = []
+    sections_map = resolved.get("sections") if isinstance(resolved.get("sections"), dict) else {}
+    for sid, spec in sorted(
+        sections_map.items(),
+        key=lambda kv: (
+            kv[1].get("order", 0) if isinstance(kv[1], dict) and isinstance(kv[1].get("order"), int) else 0,
+            kv[0],
+        ),
+    ):
+        if not isinstance(spec, dict):
+            continue
+        all_sections.append({
+            "id": sid,
+            "title": spec.get("title") or "",
+            "enabled": bool(spec.get("enabled")),
+            "order": spec.get("order") if isinstance(spec.get("order"), int) else 0,
+            "format": spec.get("format") if isinstance(spec.get("format"), str) else None,
+            "job_agent_editable": bool(spec.get("job_agent_editable")),
+            "required": sid in required,
+            "format_locked": sid == "experience" or sid in contact,
+            "page_break_policy": (
+                spec["page_break_policy"]
+                if isinstance(spec.get("page_break_policy"), str)
+                and spec["page_break_policy"] in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
+                else RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+            ),
+        })
+    catalog = {
+        "body_formats": list(RESUME_STRUCTURE_BODY_FORMATS),
+        "required_ids": list(RESUME_STRUCTURE_REQUIRED_SECTION_IDS),
+        "contact_ids": list(RESUME_STRUCTURE_CONTACT_SECTION_IDS),
+        "extra_id_pattern": RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+        "reserved_extra_ids": list(RESUME_STRUCTURE_RESERVED_EXTRA_IDS),
+        "new_extra_default_format": RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+        "page_break_policies": list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES),
+        "page_break_policy_labels": dict(RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS),
+        "page_break_policy_default": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        "page_break_policy_defaults": dict(RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID),
+    }
+    return jsonify({
+        "sections": enabled_resume_structure_sections(resolved),
+        "all_sections": all_sections,
+        "accent_color": accent,
+        "catalog": catalog,
+    })
 
 
 @candidate_bp.route("/<candidate_id>")
@@ -140,8 +215,34 @@ def get_candidate_detail(candidate_id):
     candidate["company_search_terms"] = company_search_terms_joined_text(candidate_id)
     cd = candidate.get("candidate_data") or {}
     hydrate_rubric_artifacts_for_response(candidate_id, cd)
+    hydrate_operative_base_resume_for_response(candidate_id, cd)
+    hydrate_operative_resume_structure_for_response(candidate_id, cd)
+    hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_priorities_for_response(candidate_id, cd)
+    hydrate_operative_deal_breakers_for_response(candidate_id, cd)
+    hydrate_operative_bio_summary_for_response(candidate_id, cd)
+    hydrate_operative_ideal_day_for_response(candidate_id, cd)
+    hydrate_operative_backstory_for_response(candidate_id, cd)
+    hydrate_operative_writing_preferences_for_response(candidate_id, cd)
     candidate["candidate_data"] = cd
     return jsonify(_sanitize_candidate(candidate))
+
+
+@candidate_bp.route("/<candidate_id>/operative/base_resume", methods=["GET"])
+@require_auth
+def get_operative_base_resume_api(candidate_id):
+    """AST-1585: pin→body for pilot base_resume (patt.artifact.read-operative)."""
+    if not get_candidate(candidate_id):
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    artifact_id = (request.args.get("artifact_id") or "").strip()
+    if not artifact_id:
+        return jsonify({"error": "artifact_id required"}), 400
+    body = resolve_pinned_base_resume(
+        candidate_id, artifact_id, debug=ui_llm_debug()
+    )
+    if body is None:
+        return jsonify({"error": "base_resume not found for pin"}), 404
+    return jsonify({"base_resume": body})
 
 
 @candidate_bp.route("", methods=["POST"])
@@ -178,12 +279,52 @@ def update_candidate_data(candidate_id):
     # AST-904: capture submitted rubric before apply deletes keys; re-stash on failure
     submitted_rubric = {}
     rubric_keys_to_clear = []
+    strengths_saved = False
+    priorities_saved = False
+    deal_breakers_saved = False
+    bio_summary_saved = False
+    ideal_day_saved = False
+    backstory_saved = False
+    writing_preferences_saved = False
+    resume_structure_saved = False
     try:
         state_override = body.pop("state", None)
         api_key = body.pop("api_key", None)
-        if not g.user.get("is_admin") and (state_override is not None or api_key is not None):
+        confirm_override = body.pop("confirm_state_override", False)
+        if not g.user.get("is_admin") and (
+            state_override is not None or api_key is not None or confirm_override is True
+        ):
             return jsonify({"error": "Admin access required"}), 403
+        base_resume_in_save = False
+        pilot_body = None
+        resume_structure_body = None
         if body:
+            # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1662 / AST-1665: catalog context leaves → operative save; do not library-merge.
+            strengths_body = None
+            priorities_body = None
+            deal_breakers_body = None
+            bio_summary_body = None
+            ideal_day_body = None
+            backstory_body = None
+            writing_preferences_body = None
+            ctx = body.get("context")
+            if isinstance(ctx, dict):
+                if "strengths" in ctx:
+                    strengths_body = ctx.pop("strengths")
+                if "priorities" in ctx:
+                    priorities_body = ctx.pop("priorities")
+                if "deal_breakers" in ctx:
+                    deal_breakers_body = ctx.pop("deal_breakers")
+                if "bio_summary" in ctx:
+                    bio_summary_body = ctx.pop("bio_summary")
+                if "ideal_day" in ctx:
+                    ideal_day_body = ctx.pop("ideal_day")
+                if "backstory" in ctx:
+                    backstory_body = ctx.pop("backstory")
+                if "writing_preferences" in ctx:
+                    writing_preferences_body = ctx.pop("writing_preferences")
+                if not ctx:
+                    body.pop("context", None)
             arts = body.get("artifacts")
             if isinstance(arts, dict):
                 apply_company_search_terms_save(candidate_id, arts)
@@ -191,15 +332,11 @@ def update_candidate_data(candidate_id):
                 cd = (candidate.get("candidate_data") or {}) if candidate else {}
                 resolved = resolve_resume_structure(cd)
                 section_ids = {s["id"] for s in enabled_resume_structure_sections(resolved)}
-                if "base_resume" in arts and isinstance(arts["base_resume"], dict):
-                    arts["base_resume"] = filter_base_resume_to_structure(
-                        arts["base_resume"], section_ids
-                    )
                 if "resume_structure" in arts and isinstance(arts["resume_structure"], dict):
                     rs_in = arts["resume_structure"]
                     merged = dict(resolved)
                     if isinstance(rs_in.get("sections"), dict):
-                        merged["sections"] = {**resolved.get("sections", {}), **rs_in["sections"]}
+                        merged["sections"] = prepare_resume_structure_sections_for_save(rs_in["sections"])
                     if "accent_color" in rs_in:
                         merged["accent_color"] = rs_in["accent_color"]
                     try:
@@ -208,7 +345,27 @@ def update_candidate_data(candidate_id):
                         msg = str(e)
                         if "accent" in msg.lower():
                             return jsonify({"error": "invalid accent_color"}), 400
-                        return jsonify({"error": "invalid resume_structure"}), 400
+                        return jsonify({"error": msg}), 400
+                if "base_resume" in arts and isinstance(arts["base_resume"], (list, dict)):
+                    content, ingested_struct = ingest_legacy_label_content_base_resume(
+                        arts["base_resume"], arts.get("resume_structure") or resolved
+                    )
+                    arts["base_resume"] = content
+                    arts["resume_structure"] = ingested_struct
+                    section_ids = {
+                        s["id"] for s in enabled_resume_structure_sections(ingested_struct)
+                    }
+                    arts["base_resume"] = filter_base_resume_to_structure(
+                        arts["base_resume"], section_ids
+                    )
+                    base_resume_in_save = True
+                pilot_body = None
+                if base_resume_in_save:
+                    # Operative write — do not library-merge the pilot body.
+                    pilot_body = arts.pop("base_resume", None)
+                # AST-1679: catalog owns resume_structure — pop after normalize/ingest for operative save.
+                if "resume_structure" in arts and isinstance(arts["resume_structure"], dict):
+                    resume_structure_body = arts.pop("resume_structure")
                 if not arts:
                     body.pop("artifacts", None)
                 else:
@@ -230,11 +387,92 @@ def update_candidate_data(candidate_id):
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
+            # Leaf-only PUT may leave body empty after pop — still operative-save.
+            # AST-1576 / AST-1679: pilot body outside nested if body: (leaf-only base_resume
+            # pops artifacts then empties body; must still land candidate.artifacts.base_resume).
+            if base_resume_in_save and pilot_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    TASK_CONFIG["craft_resume_base"]["artifact_key"],
+                    pilot_body,
+                )
+            if strengths_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.strengths",
+                    strengths_body,
+                )
+                strengths_saved = True
+            if priorities_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.priorities",
+                    priorities_body,
+                )
+                priorities_saved = True
+            if deal_breakers_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.deal_breakers",
+                    deal_breakers_body,
+                )
+                deal_breakers_saved = True
+            if bio_summary_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.bio_summary",
+                    bio_summary_body,
+                )
+                bio_summary_saved = True
+            if ideal_day_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.ideal_day",
+                    ideal_day_body,
+                )
+                ideal_day_saved = True
+            if backstory_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.backstory",
+                    backstory_body,
+                )
+                backstory_saved = True
+            if writing_preferences_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.context.writing_preferences",
+                    writing_preferences_body,
+                )
+                writing_preferences_saved = True
+            if resume_structure_body is not None:
+                save_candidate_data(
+                    candidate_id,
+                    "candidate.artifacts.resume_structure",
+                    resume_structure_body,
+                )
+                resume_structure_saved = True
+        # AST-1287 / AST-1288: illegal hops return code=illegal_candidate_transition
+        # with from_state/to_state; admin retry with confirm_state_override=true forces.
+        # Same-state in the PUT body is skipped here (not a core no-op).
         if state_override is not None:
-            try:
-                transition_candidate_state(candidate_id, state_override)
-            except ValueError as e:
-                return jsonify({"error": str(e)}), 400
+            current = get_candidate(candidate_id)
+            if state_override != (current or {}).get("state"):
+                try:
+                    transition_candidate_state(
+                        candidate_id,
+                        state_override,
+                        force=(confirm_override is True),
+                    )
+                except IllegalCandidateTransition as e:
+                    return jsonify({
+                        "error": str(e),
+                        "code": "illegal_candidate_transition",
+                        "from_state": e.from_state,
+                        "to_state": e.to_state,
+                    }), 400
+                except ValueError as e:
+                    return jsonify({"error": str(e)}), 400
         if api_key is not None:
             if api_key.strip():
                 save_candidate_admin(candidate_id, candidate_api_key=api_key.strip())
@@ -242,6 +480,12 @@ def update_candidate_data(candidate_id):
                 clear_candidate_api_key(candidate_id)
     except Exception as e:
         # Failed Save: keep submitted criteria recoverable via GET …/pending
+        logger.exception(
+            "%s | api update_candidate_data failed %s: %s — returning 400",
+            candidate_id,
+            type(e).__name__,
+            e,
+        )
         for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
             val = submitted_rubric.get(artifact_key)
             if isinstance(val, list) and val:
@@ -252,6 +496,41 @@ def update_candidate_data(candidate_id):
                     {"criteria": val},
                 )
         return jsonify({"error": str(e)}), 400
+    if strengths_saved or priorities_saved or deal_breakers_saved or bio_summary_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if ideal_day_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if backstory_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if writing_preferences_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
+    if resume_structure_saved:
+        logger.info(
+            "%s | api %s completed: PUT %s",
+            candidate_id,
+            f"/api/candidates/{candidate_id}/data",
+            200,
+        )
     updated = get_candidate(candidate_id)
     return jsonify(_sanitize_candidate(updated) if updated else {})
 

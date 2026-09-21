@@ -8,6 +8,8 @@
 | --- | --- | --- |
 | `src/ui/api/api_system.py` | `tests/component/ui/api/test_api_system.py` | yes |
 
+Public `GET /api/auth_passthrough` (AST-1440): **`docs/test-bible/ui/auth.md`** § AST-1440.
+
 ---
 
 ### AST-792
@@ -40,6 +42,22 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_
   -q
 ```
 
+### AST-1375 · AST-1371
+
+**Publish:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`.
+
+`GET /api/state_ui_manifest` includes `candidate.artifact_generate_inflight_hide_states` from `build_state_ui_manifest()` (rides with existing candidate keys; chain merge unchanged). Primary UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inflight hide key on manifest | `src/ui/api/api_system.py` (via config build) | **`TestAst1375InflightHideStatesManifest`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1375InflightHideStatesManifest \
+  -q
+```
+
 ### AST-1016 · AST-952
 
 `GET /api/ui_config` includes `preamble` from `PREAMBLE_CONFIG`. Primary: **`docs/test-bible/utils/config.md`** § AST-1016 — **`TestSystemAuthRoutes::test_ui_config_includes_preamble_config`**.
@@ -51,3 +69,113 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_
 | Behavior | Tests |
 | --- | --- |
 | ui_config cover_from_block slice | `TestSystemAuthRoutes::test_ui_config_includes_cover_from_block` |
+
+### AST-1351 · AST-1345
+
+**Publish:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`.
+
+`GET /api/ui_config` (system blueprint) exposes `experience_job_ui_fields` + `unsupported_resume_structure_message` from `BUILD_CONFIG`. Primary UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| ui_config field spine + message | `src/ui/api/api_system.py` | **`TestAst1351ExperienceJobUiConfig`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1351ExperienceJobUiConfig \
+  -q
+```
+
+### AST-1373 · AST-1372
+
+**Publish:** `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules`.
+
+Open `GET /api/auth_session_policy` returns non-secret session duration + extend cadence (no Bearer). Primary config helper: **`docs/test-bible/utils/config.md`** § AST-1373.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Public policy route | `src/ui/api/api_system.py` | **`TestAst1373AuthSessionPolicyRoute`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute \
+  -q
+```
+
+### AST-1386 · AST-1370
+
+**Publish:** `origin/sub/AST-1370/AST-1386-three-segment-admin-nav`.
+
+`_nav_config_for_user` omits every `admin_only` group via `nav_admin_only_group_labels()` (Operations / Admin / Tools). Admin response includes those three segments after Candidate; paste item labels **Resume Paste** / **Cover Letter Paste**; `admin_only` never appears in JSON. Primary config: **`docs/test-bible/utils/config.md`** § AST-1386.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Admin three segments + paste labels | `src/ui/api/api_system.py` | **`TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin`** |
+| Non-admin omit all admin_only | same | **`TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`** |
+| Agent Ad Hoc under Tools (revised) | same | **`TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label \
+  -q
+```
+
+### AST-1449 · AST-1444
+
+**Parent:** [AST-1444 — Remove navigation filter for selected candidate](https://linear.app/astralcareermatch/issue/AST-1444/remove-navigation-filter-for-selected-candidate). **Publish:** `origin/sub/AST-1444/AST-1449-ungate-candidate-facing-nav-by-state`.
+
+`/api/nav_config` no longer skips Jobs / Companies / Artifacts on group-level `visible`. Those groups are present for `NEW_CANDIDATE` and `RESUME_READY`. Applied / Responded stay `"enabled": False`. Non-admin omit of Operations / Admin / Tools unchanged. `NAV_CONFIG` drops the `visible` keys (config test revision). Code Rules §2.1 NAV_CONFIG bullet matches. No page-file product diff — §6c routed-page rule N/A. Sibling chrome line is AST-1450.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| HTTP: early-state candidate-facing groups | `src/ui/api/api_system.py` | **`TestSystemAuthRoutes::test_nav_config_early_state_keeps_candidate_facing_groups`** |
+| Resolver: groups present; stubs disabled | same | **`TestSystemNavHelpers::test_resolve_nav_keeps_candidate_facing_groups_and_stubs`** (replaces `test_resolve_nav_honors_visible_and_enabled_gates`) |
+| Item-level string `enabled` still gates | same | **`TestSystemNavHelpers::test_resolve_nav_uses_string_enabled_gate`** (existing) |
+| Non-admin omit admin_only | same | **`TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`** (existing) |
+| NAV_CONFIG has no group `visible` | `src/utils/config.py` | revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+| Docs contract | `docs/ASTRAL_CODE_RULES.md` | grep §2.1 NAV_CONFIG — `Group-level candidate-state \`visible\` is not used` |
+
+**Broken / obsolete:** `test_resolve_nav_honors_visible_and_enabled_gates` (`Jobs not in labels` at `RESUME_READY`); AST-970 `jobs["visible"] == "ACTIVE_SEARCH"` / companies / artifacts asserts; integration `test_nav_config_reflects_seeded_candidate_state` expected Jobs absent for `NEW_CANDIDATE`.
+
+**Integration (revised existing):** `tests/integration/scenarios/test_candidate_nav_api.py` — `NEW_CANDIDATE` still returns Jobs / Companies / Artifacts / Candidate. Map: [`integration/README.md`](../../integration/README.md). Do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_early_state_keeps_candidate_facing_groups \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_resolve_nav_keeps_candidate_facing_groups_and_stubs \
+  tests/component/ui/api/test_api_system.py::TestSystemNavHelpers::test_resolve_nav_uses_string_enabled_gate \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab \
+  -q
+./scripts/testing/run_integration_tests.sh \
+  tests/integration/scenarios/test_candidate_nav_api.py \
+  -q
+```
+
+**Pass criterion:** pytest green on the narrowed component + existing integration scenario — not zero-arg harness / branch-lock gate.
+
+
+### AST-1550 · AST-1541
+
+**Parent:** [AST-1541](https://linear.app/astralcareermatch/issue/AST-1541/add-discussion-tab-to-recommended-job-modal). **Publish:** `origin/sub/AST-1541/AST-1550-discussion-tab-config-story-task-name`.
+
+`GET /api/state_ui_manifest` attaches `jobs.recommended.report_discussion_sections` (ordered `{section_id, nav_label, default_expanded: false}` from hop walk + live `task_name`; blank name → `task_key`). Walk failure → `[]` (rest of manifest 200). Top-tab Discussion rides `report_top_tabs` from config. Primary hop walk: **`docs/test-bible/utils/config.md`** § AST-1550. Story enrichment: **`docs/test-bible/core/agent.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Sections + labels + soft-fail (length = hop walk) | `src/ui/api/api_system.py` | **`TestAst1550ReportDiscussionSections`** |
+
+**Broken / obsolete:** none for this endpoint (AST-1253 chain fields unchanged).
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1550ReportDiscussionSections \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+

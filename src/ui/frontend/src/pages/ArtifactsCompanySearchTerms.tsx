@@ -52,21 +52,26 @@ export default function CompanySearchTerms() {
   const isChainHandoff = chainTaskKeys.has(TASK_KEY)
   const canGenerate = generateStates.has(candidateState)
 
+  function applySearchTermsResponse(c: {
+    company_search_terms?: unknown
+    candidate_data?: { artifacts?: Record<string, unknown> }
+  }) {
+    const raw = c.company_search_terms
+    setText(typeof raw === "string" ? raw : "")
+    const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
+    const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
+    const termsHit = typeof raw === "string" && raw.trim() !== ""
+    setHasChainData(rubricHit || termsHit)
+    setLoaded(true)
+    setDirty(false)
+    setEverSaved(typeof raw === "string" && raw.trim() !== "")
+  }
+
   useEffect(() => {
     if (!selectedId) return
     setLoaded(false)
     setSnapshot(null)
-    api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
-      const raw = c.company_search_terms
-      setText(typeof raw === "string" ? raw : "")
-      const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
-      const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
-      const termsHit = typeof raw === "string" && raw.trim() !== ""
-      setHasChainData(rubricHit || termsHit)
-      setLoaded(true)
-      setDirty(false)
-      setEverSaved(typeof raw === "string" && raw.trim() !== "")
-    })
+    api(`/api/candidates/${selectedId}`).then(r => r.json()).then(applySearchTermsResponse)
   }, [selectedId, chainArtifactKeys])
 
   const doSave = useCallback(async (value: string) => {
@@ -160,9 +165,12 @@ export default function CompanySearchTerms() {
       setText(snapshot)
       setSnapshot(null)
       setDirty(false)
-    } else {
-      window.location.reload()
+      return
     }
+    if (!selectedId) return
+    api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
+      applySearchTermsResponse(c)
+    })
   }
 
   if (!selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>
@@ -178,7 +186,7 @@ export default function CompanySearchTerms() {
           <div className="dep-actions">
             {canGenerate && (
               <button
-                className={`dep-btn save${generating ? " in-flight" : ""}`}
+                className={`btn primary${generating ? " in-flight" : ""}`}
                 onClick={handleGenerateClick}
                 disabled={generating}
                 style={{ marginRight: 8 }}
@@ -188,8 +196,8 @@ export default function CompanySearchTerms() {
             )}
             {inReview ? (
               <>
-                <button className="dep-btn cancel" onClick={handleCancel}>Cancel</button>
-                <button className="dep-btn save" onClick={() => doSave(text)} disabled={saving}>
+                <button className="btn secondary" onClick={handleCancel}>Cancel</button>
+                <button className="btn primary" onClick={() => doSave(text)} disabled={saving}>
                   {saving ? "Saving..." : "Save"}
                 </button>
               </>
@@ -230,16 +238,15 @@ export default function CompanySearchTerms() {
             </p>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
               <button
-                className="dep-btn cancel"
+                className="btn secondary"
                 autoFocus
                 onClick={() => setConfirmRegen(false)}
               >
                 No
               </button>
               <button
-                className="dep-btn save"
+                className="btn danger"
                 onClick={() => void doRequestArtifacts()}
-                style={{ background: "#ff6b6b" }}
               >
                 Yes
               </button>

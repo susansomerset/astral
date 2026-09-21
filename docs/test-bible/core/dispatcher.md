@@ -82,7 +82,7 @@ Equivalent harness:
 | Touched path | Existing tests |
 | --- | --- |
 | `_run_unified` claim / chunk / batch-call / network skip | **`TestRunUnified`** (`test_returns_zero_without_debug_logging`, `test_ast502_chunked_evaluate_await_chunk0_sleep_once_then_gather_tails`, inflow rows) |
-| `_run_dispatch_loop` min_count / drain / max_runs / zero processed | **`TestRunDispatchLoop`** |
+| `_run_dispatch_loop` min_count / drain / max_runs / zero processed / Sweep vs Run | **`TestRunDispatchLoop`** |
 | `_dispatch_one` scheduler handoff | **`TestDispatchOne`** |
 | `_run_task` debug=False passthrough | **`TestRunTask::test_runs_without_debug_logging`** |
 | `_check_circuit_breaker` | **`TestCircuitBreaker`** |
@@ -106,7 +106,7 @@ Equivalent harness:
 
 ### AST-802 · AST-801
 
-**AST-802:** When **`inflow_discovery`** dispatch loop skips for **`available < min_count`** at first iteration with **`debug=True`**, emit eligibility reason via **`database.describe_candidate_inflow_discovery_eligibility`** → **`logger.debug_detail`**. Narrow exception to **AST-615** no log-string policy — **`eligibility:`** substring only.
+**AST-802:** When **`inflow_discovery`** dispatch loop skips for **`available < min_count`** at first iteration, emit eligibility reason via **`database.describe_candidate_inflow_discovery_eligibility`** → **`logger.debug`**. Narrow exception to **AST-615** no log-string policy — **`eligibility:`** substring only.
 
 | Behavior | Sources | Manifest tests |
 | --- | --- | --- |
@@ -184,12 +184,12 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 
 ### AST-1022 · AST-1018
 
-**AST-1022:** Candidate stage-dispatch rows seed **AUTO off** from `CANDIDATE_STAGE_DISPATCH.auto_mode`; `ensure_candidate_stage_dispatch_tasks` reads config (insert-missing only — never rewrites existing `auto_mode`). Tick Style D helper `_debug_log_auto_off_stage_skips` logs AUTO-off + `debug` stage rows that meet `min_count` (index N/M); does not spawn. `get_due_tasks` / CLICK `run_task(..., ui_initiated=True)` unchanged.
+**AST-1022:** Candidate stage-dispatch rows seed **AUTO off** from `CANDIDATE_STAGE_DISPATCH.auto_mode`; `ensure_candidate_stage_dispatch_tasks` reads config (insert-missing only — never rewrites existing `auto_mode`). Tick helper `_debug_log_auto_off_stage_skips` logs AUTO-off + `debug` stage rows that meet `min_count` (`Beginning`/`Calling`/`End`); does not spawn. `get_due_tasks` / CLICK `run_task(..., ui_initiated=True)` unchanged.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Config seed `auto_mode: False` | `src/utils/config.py` | **`TestAst1022HonorAutoOffStageDispatch`** (`test_config.py`) |
-| Ensure seed + persist; Style D skip; tick calls helper before spawn | `src/core/dispatcher.py` | **`TestAst1022HonorAutoOffStageDispatch`**; revised **`_run_one_tick`** / **`TestScheduler`** (list_dispatch_tasks stub) |
+| Ensure seed + persist; AUTO-off skip debug; tick calls helper before spawn | `src/core/dispatcher.py` | **`TestAst1022HonorAutoOffStageDispatch`**; revised **`_run_one_tick`** / **`TestScheduler`** (list_dispatch_tasks stub) |
 
 **Broken / obsolete:** tick unit helpers must stub `list_dispatch_tasks` (new side path) — same DB-free contract as AST-972 `age_stale` stub.
 
@@ -214,10 +214,10 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Ensure GDL + twin skip/insert; provision; scheduler hook | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (counts/trigger + retire revised **AST-1060**) |
+| Ensure GDL + twin skip/insert; provision helpers | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (counts/trigger + retire revised **AST-1060**; scheduler hook flipped **AST-1500**) |
 | Stage scheduler stub | `src/core/dispatcher.py` | revised **`TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision`** (stubs meteorite provision) |
 
-**Broken / obsolete:** AST-972 start_scheduler test — stub `provision_meteorite_dispatch_tasks` so the new try-path does not hit live DB; insert-count / evaluate_jd@METEORITE_NEW asserts revised by **AST-1060**.
+**Broken / obsolete:** AST-972 start_scheduler test — stub `provision_meteorite_dispatch_tasks` so the new try-path does not hit live DB; insert-count / evaluate_jd@METEORITE_NEW asserts revised by **AST-1060**. **AST-1500:** `test_start_scheduler_invokes_meteorite_provision` → `test_start_scheduler_does_not_invoke_meteorite_provision` (ban auto writers).
 
 **Integration:** none.
 
@@ -271,7 +271,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Ensure add/skip; missing config; provision wrapper; scheduler hook | `src/core/dispatcher.py` | **`TestAst1088GazeEmailDispatchProvision`** |
-| Stage / meteorite scheduler stubs | `src/core/dispatcher.py` | revised **`TestAst972…::test_start_scheduler_invokes_stage_provision`**, **`TestAst1054…::test_start_scheduler_invokes_meteorite_provision`** (stub gaze provision) |
+| Stage / meteorite scheduler stubs | `src/core/dispatcher.py` | revised **`TestAst972…::test_start_scheduler_invokes_stage_provision`**, **`TestAst1054…::test_start_scheduler_does_not_invoke_meteorite_provision`** (**AST-1500** ban) |
 
 **Broken / obsolete:** start_scheduler unit helpers must stub `provision_gaze_email_dispatch_task` so the new try-path does not hit live DB.
 
@@ -280,7 +280,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_dispatcher.py::TestAst1088GazeEmailDispatchProvision \
-  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision::test_start_scheduler_invokes_meteorite_provision \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision::test_start_scheduler_does_not_invoke_meteorite_provision \
   tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision \
   -q
 ```
@@ -411,3 +411,96 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
   tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
   -q
 ```
+
+### AST-1259 · AST-1257
+
+**Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity`.
+
+`_run_unified` for `entity_type=candidate` claims via `get_new_candidate_batch` (`dispatch_claim_states` + `batch_size`), forces per-entity process (`use_full_batch=False`), clears on empty early-exit and in `finally` (no unlocked `[ctx]` arm). Core wrappers: **`docs/test-bible/core/candidate.md`** § AST-1259. Data claim APIs: **AST-1258**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pool claim + clear; no job/company clear | `src/core/dispatcher.py` | revised **`TestRunUnified::test_ast505_candidate_entity_claims_without_company_clear`**; **`TestAst1259CandidatePoolClaim`** |
+| Empty claim clears; claimed → consult | same | revised **`TestAst972CandidateStageDispatch::test_run_unified_candidate_claim_gate`**; **`::test_empty_batch_clears_candidate_batch`** |
+| `batch_size` / claim states; multi-row per-entity | same | **`TestAst1259CandidatePoolClaim::test_claim_honors_batch_size_and_claim_states`** |
+
+**Broken / obsolete (Betty revision):** unlocked-`[ctx]` asserts in `test_ast505_candidate_entity_routes_ctx_without_company_clear` and ctx-state-only `test_run_unified_candidate_claim_gate`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast505_candidate_entity_claims_without_company_clear \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_run_unified_candidate_claim_gate \
+  tests/component/core/test_dispatcher.py::TestAst1259CandidatePoolClaim \
+  tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi \
+  -q
+```
+
+### AST-1500 · AST-1456
+
+**Parent:** [AST-1456 — Do not overwrite dispatch_task](https://linear.app/astralcareermatch/issue/AST-1456). **Publish:** `origin/sub/AST-1456/AST-1500-gap-dispatcher-provision-tests`. Gap child for AST-1496 board REVISE.
+
+Ban automatic `dispatch_task` writers on scheduler start; script hard-fail on `dispatch_task`. Product ban lands on sibling **AST-1496**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| start_scheduler no meteorite / fetch_email provision | `src/core/dispatcher.py` | revised **`TestAst1054…::test_start_scheduler_does_not_invoke_meteorite_provision`** |
+| start_scheduler no meteorite_email provision | same | revised **`TestAst1134…::test_start_scheduler_does_not_invoke_gaze_provision`** (ex-AST-1088) |
+| push/upsert CLI hard-fail | `scripts/push_tables_to_prod.py`, `scripts/upsert_tables_from_prod.py` | **`TestAst1500DispatchTaskScriptBan`** |
+| ensure content migrations left alone | `src/data/database.py` | revised **`TestAst703…::test_schema_leaves_dual_prefilter_rows_unchanged`** — see **`docs/test-bible/data/database/dispatch_tasks.md`** |
+
+**Broken / obsolete:** `test_start_scheduler_invokes_meteorite_provision`, `test_start_scheduler_invokes_gaze_provision`; TestAst703 HOMEPAGE_READY migration assert.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision::test_start_scheduler_does_not_invoke_meteorite_provision \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_start_scheduler_does_not_invoke_gaze_provision \
+  tests/component/scripts/test_ast1500_dispatch_task_script_ban.py::TestAst1500DispatchTaskScriptBan \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  -q
+```
+
+### AST-1559 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1559-check-inbox-monitoring-log`.
+
+Mailbox branch awaits **`check_inbox`** — revised **`TestAst1090GazeEmailDispatchOne`**.
+
+---
+
+### AST-1560 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
+
+`_dispatch_one` custom branch before mailbox / `_run_unified`: mints `entity_batch_id`, sets `task["entity_batch_id"]`, routes `stage_meteorite` / `scrape_meteorite` / `land_meteorite` through `_run_dispatch_loop` → `_run_task` (not consult). **Sweep** (UI + AUTO) is one batch; **Run** (CLICK) honours `max_runs`. **`TestRunDispatchLoop::test_sweep_ui_initiated_auto_is_one_batch`**, **`test_click_honours_max_runs`**, **`TestAst1560IngressTransitionDispatchOne`** (`test_click_loops_to_max_runs`). Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
+---
+
+### AST-1562 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
+
+`_dispatch_one` retention branch → `run_meteorite_retention` with minted `entity_batch_id` (after notify, before mailbox `check_inbox`). **`TestAst1562RetentionDispatchOne`**. Runners + config: **`docs/test-bible/core/meteorite.md`** § AST-1562.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1562.
+
+---
+
+### AST-1561 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1561-bot-blocked-estelle-recovery-apply-paste`.
+
+`_dispatch_one` notify branch → `run_notify_meteorite_bot_blocked` with minted `entity_batch_id`. **`TestAst1561BotBlockedNotifyDispatchOne`**. Runners + paste: **`docs/test-bible/core/meteorite.md`** § AST-1561.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1561.

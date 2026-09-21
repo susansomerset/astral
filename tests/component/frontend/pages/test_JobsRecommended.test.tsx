@@ -200,6 +200,32 @@ describe("JobsRecommended", () => {
       expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j-rec-only/skip", { method: "POST" }),
     )
   })
+
+  describe("AST-1410 silent refetch", () => {
+    it("Skip refreshes the list without Loading...", async () => {
+      const recommendedJob = {
+        ...sectionedJobs[0],
+        astral_job_id: "j-rec-silent",
+        job_title: "Silent Rec",
+      }
+      installBaseApiMocks(mockedApi, jobsViewHandler("recommended", [recommendedJob]))
+      renderWithProviders(<JobsRecommended />)
+      await waitFor(() => expect(screen.getByText("Silent Rec")).toBeInTheDocument())
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (typeof url === "string" && url.includes("view=recommended") && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      await userEvent.click(screen.getByRole("button", { name: "Skip" }))
+      expect(screen.getByText("Silent Rec")).toBeInTheDocument()
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      release({ ok: true, json: async () => [] } as Response)
+      await waitFor(() => expect(screen.getByText("No recommended jobs yet")).toBeInTheDocument())
+    })
+  })
 })
 
   it("AST-1057: prepends Meteorites for meteorite- company jobs; leaves vetted sections intact", async () => {
@@ -255,5 +281,46 @@ describe("JobsRecommended", () => {
     await waitFor(() => expect(screen.getByText("Rec Role")).toBeInTheDocument())
     expect(screen.queryByRole("heading", { name: /Meteorites/ })).not.toBeInTheDocument()
     expect(screen.getByRole("heading", { name: /Recommended \(2\)/ })).toBeInTheDocument()
+  })
+
+  // AST-1708/AST-1709: null company must not throw in isMeteoriteJob; stays out of Meteorites.
+  it("AST-1708/AST-1709: null company does not throw; stays out of Meteorites", async () => {
+    const mixed = [
+      ...sectionedJobs,
+      {
+        astral_job_id: "j-null-co",
+        job_title: "Null Company Rec",
+        company: null as unknown as string,
+        state: "RECOMMENDED",
+        state_changed_at: "2026-01-06T00:00:00Z",
+        jd_score: 1,
+        do_score: 1,
+        get_score: 1,
+        like_score: 1,
+      },
+      {
+        astral_job_id: "j-met-null-case",
+        job_title: "Meteorite Rec",
+        company: "meteorite-cand-1",
+        state: "RECOMMENDED",
+        state_changed_at: "2026-01-04T00:00:00Z",
+        jd_score: 8.0,
+        do_score: 8.0,
+        get_score: 8.0,
+        like_score: 8.0,
+      },
+    ]
+    installBaseApiMocks(mockedApi, jobsViewHandler("recommended", mixed))
+    renderWithProviders(<JobsRecommended />)
+    await waitFor(() => expect(screen.getByText("Null Company Rec")).toBeInTheDocument())
+
+    expect(screen.getByRole("heading", { name: /Meteorites \(1\)/ })).toBeInTheDocument()
+    const met = screen.getByRole("heading", { name: /Meteorites \(1\)/ }).parentElement!
+    expect(within(met).getByText("Meteorite Rec")).toBeInTheDocument()
+    expect(within(met).queryByText("Null Company Rec")).not.toBeInTheDocument()
+
+    expect(screen.getByRole("heading", { name: /Recommended \(3\)/ })).toBeInTheDocument()
+    const rec = screen.getByRole("heading", { name: /Recommended \(3\)/ }).parentElement!
+    expect(within(rec).getByText("Null Company Rec")).toBeInTheDocument()
   })
 

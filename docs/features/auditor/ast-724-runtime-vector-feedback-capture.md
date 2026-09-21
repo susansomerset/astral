@@ -366,3 +366,310 @@ No unresolved rule conflicts.
 2. **Debug contract (§1.5.1):** Clean parse emits per-vector `debug_index` headers (`index` 1..N); unparseable path adds an index header before the `debug_detail` line.
 
 **Publish:** `resolve(AST-724)` on `origin/sub/AST-378/AST-724-runtime-vector-feedback-capture`.
+
+## Bug: AST-1384 — craft_* must not emit vector_reviews feedback
+
+### As-is
+
+On a `craft_*` rubric run (e.g. `craft_get_rubric` for candidate `abrams`), the model returns authored `agent_payload.criteria` **and** feedback-style `agent_performance.vector_reviews` (compact codes like `TRRACAVK`). Craft is taught to emit those reviews because AST-724 gated the feedback `prompt_suffix` (and SUCCESS capture) on `is_rubric_backed_task`, which is true for all twelve keys — six consumer graders **plus** six craft authors via `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` / `rubric_owner_task_key`.
+
+### To-be
+
+`craft_*` rubric responses deliver complete `agent_payload.criteria` without emitting rubric-feedback `vector_reviews`. Grade/evaluate consumers still request and capture per-vector feedback as today. Craft SUCCESS does not persist `vector_feedback` rows for the craft run.
+
+### Repro
+
+1. Run UI/API generate for `craft_get_rubric` on candidate `abrams` (or any live candidate with Get craft).
+2. Inspect the SUCCESS envelope / pending craft generation payload.
+3. Observe: `agent_payload.criteria` present **and** `agent_performance.vector_reviews` populated with compact `CODE`+`R`+rel+`C`+cla+`V`+ver strings.
+4. After fix: same run yields complete criteria; `vector_reviews` absent (or not taught/captured); no new `vector_feedback` rows keyed to that craft `task_key` / batch.
+
+Explicitly **not** a `max_tokens` / truncation failure (Susan).
+
+### Root cause
+
+AST-724's single gate **`is_rubric_backed_task(task_key) := rubric_owner_task_key(task_key) is not None`** intentionally treated craft and consumer as the same envelope+capture surface (plan Decision under "Rubric-backed task set"). That was wrong for craft's job: craft **authors** criteria; feedback compact codes belong only on **grade/evaluate** consumers that score against an existing rubric.
+
+Two coupled effects in `do_task` (`src/core/agent.py`):
+
+1. **Teach:** when `is_rubric_backed_task`, append `RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]` → model emits `vector_reviews`.
+2. **Capture:** same gate takes `envelope_snapshot` and, on SUCCESS, calls `_capture_rubric_vector_feedback` → may insert `vector_feedback` / FEEDBACK blocks for craft runs.
+
+`rubric_owner_task_key` itself must stay dual-purpose (craft still resolves which owner rubric it authors). Only the **vector-feedback request + capture** path must exclude craft.
+
+### Proposed change
+
+Concrete enough for `make-fix` — no judgment calls:
+
+1. **`src/utils/config.py`** — add helper next to `is_rubric_backed_task`:
+
+   ```python
+   def is_vector_feedback_task(task_key: str) -> bool:
+       """True when task should request/capture vector_reviews (consumers only; not craft)."""
+       if task_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY:
+           return False
+       return rubric_owner_task_key(task_key) is not None
+   ```
+
+   - Leave **`is_rubric_backed_task`** unchanged (still True for craft — owner/rubric identity).
+   - Leave **`rubric_owner_task_key`** / **`task_keys_for_rubric_owner`** unchanged (Admin historical filter may still see old craft `task_key` rows; craft simply stops writing new ones).
+   - Do **not** change `RUBRIC_FEEDBACK_CONFIG` value codes or `prompt_suffix` text; only who receives the suffix.
+
+2. **`src/core/agent.py`** — switch the three feedback-path gates from `is_rubric_backed_task` to `is_vector_feedback_task`:
+
+   | Site | Current | Change |
+   |------|---------|--------|
+   | Prompt suffix injection (~after `resolve_tokens`) | `if is_rubric_backed_task(task_key):` append suffix | `if is_vector_feedback_task(task_key):` |
+   | `_normalize_rubric_envelope_for_capture` before snapshot | `if is_rubric_backed_task(...)` | `if is_vector_feedback_task(...)` |
+   | `envelope_snapshot = copy.deepcopy(parsed)` | `if is_rubric_backed_task(...) and "agent_performance" in parsed` | `if is_vector_feedback_task(...)` same condition |
+
+   With snapshot absent for craft, the existing SUCCESS `_capture_rubric_vector_feedback` block no-ops automatically — no separate early-return required inside the capture helper (optional defense-in-depth `if not is_vector_feedback_task: return` is fine but not required if the three gates above are complete).
+
+3. **Import:** add `is_vector_feedback_task` to the existing config import list in `agent.py`; keep `is_rubric_backed_task` only if still referenced elsewhere in that file after the swap (else drop unused import).
+
+4. **Out of scope (do not touch):** `CRAFT_RUBRIC_MAX_TOKENS` / truncation budget; Admin Vector Feedback UI; letter-grade / confidence validation; `rubric_feedback.py` parse rules; consumer grader prompt/capture behavior.
+
+### Blast radius
+
+| Area | Impact |
+|------|--------|
+| `grade_*` / `evaluate_*` / `prefilter_company` / `qualify_job_listings` | Unchanged — still `is_vector_feedback_task` True → suffix + capture. |
+| All keys in `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` (incl. `craft_evaluate_meteorite_rubric`) | Stop suffix + snapshot + capture. |
+| `is_rubric_backed_task` callers / bible | Semantics unchanged; Betty may add coverage for the new helper and craft exclusion. |
+| `task_keys_for_rubric_owner` / Admin AST-725 | Unchanged expansion; historical craft-run feedback rows remain queryable; no new craft rows after fix. |
+| Tests that assumed craft receives `prompt_suffix` or capture | Likely need Betty revise (`fix-board` TESTS) — engineer does not patch `tests/`. |
+
+### What must still hold
+
+From AST-724 / parent AST-1378 AC (do not regress):
+
+1. Consumer rubric-backed SUCCESS still requests `vector_reviews` via `prompt_suffix` and captures clean parses into `vector_feedback` (lenient: unparseable → FEEDBACK block only; never fails the task).
+2. Non-`success` `agent_performance` still skips capture.
+3. Craft SUCCESS still returns complete `agent_payload.criteria` under existing craft schema; craft `max_tokens` floor unchanged.
+4. `rubric_owner_task_key(craft_*)` still resolves the consumer owner for artifact authorship / pending craft paths.
+5. No Admin UI redesign; no letter-grade scoring math changes.
+
+## Review (Radia) — AST-1384
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No confidence validation paths touched |
+| `astral.agent.do-task-delegation` | scoped | conforms | Three `do_task` gates swapped; capture still via existing helper |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector validation logic changed |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch-id handling changed |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch-id format logic |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No dispatcher/claim paths |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No entity-agent-response queries |
+| `astral.config.config-source-of-truth` | scoped | conforms | New `is_vector_feedback_task` colocated with existing rubric gates in `config.py` |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env usage |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch/seed paths |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run_next changes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Bug patch appended to existing AST-724 feature doc |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Engineer diff only (Betty lane separate) |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | No `tests/` changes — correct fix-lane discipline |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | `agent.py` changes stay in core; no external/data imports added |
+| `astral.layers.import-direction` | scoped | conforms | Standard `src.utils.config` import in `agent.py` |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No scripts changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | No UI changes |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No consult/render paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No API auth changes |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No catalog/seed edits |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | Hot-path change is intentional narrow gate swap |
+| `astral.seed.define-approved` | scoped | not-applicable | No define/seed work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No operator rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No data-layer changes |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No DB/migrations |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Existing capture debug paths unchanged; craft simply skips snapshot |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Single-purpose 7-line helper |
+| `astral.standards.in-scope-only` | scoped | conforms | Touches only `config.py`, `agent.py`, plan doc — matches `## Proposed change` |
+| `astral.standards.logging-via-utils` | scoped | conforms | No new logging patterns introduced |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Symbol names are domain terms, not ticket ids |
+| `astral.standards.no-cross-contamination` | scoped | conforms | No utils→data or ui→data leakage |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Craft exclusion uses existing `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY`, not a new ad-hoc set |
+| `astral.standards.public-then-helpers` | scoped | conforms | Public helper placed adjacent to `is_rubric_backed_task` |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils→data imports added |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job state logic |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No daisy-chain paths |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | No frontend files |
+| `astral.ui.naming-conventions` | scoped | not-applicable | No UI naming |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No gunicorn config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Diff is product-only; Betty merge discipline unaffected |
+| `orch.git.commit-vocabulary` | universal | conforms | N/A to diff content |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Sub stacked on parent `ftr` as expected |
+| `orch.git.ftr-sub-topology` | universal | conforms | Branch topology matches fix-lane convention |
+| `orch.git.merge-on-checkout` | universal | conforms | N/A to diff content |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | N/A to diff content |
+| `orch.git.no-dev-agent-branches` | universal | conforms | N/A to diff content |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | N/A to diff content |
+| `orch.git.three-permanent-branches` | universal | conforms | N/A to diff content |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Plan already encodes Susan's truncation exclusion |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Implementation matches `## Proposed change` verbatim |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A to diff content |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | N/A to diff content |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A to diff content |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Engineer did not patch tests (Betty REVISE → AST-1385) |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A to diff content |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | N/A to diff content |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Diff paths are allowed (`src/`, `docs/features/`) |
+
+**Sweep:** 65 active statutes scored in-session. 0 `violates`. 0 `needs-discussion`.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | Bug patch cites no catalog patterns |
+
+## Plan adherence
+
+Diff implements `## Proposed change` exactly:
+
+1. **`is_vector_feedback_task`** added in `config.py` — craft keys excluded via `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY`, consumers still gated by `rubric_owner_task_key`.
+2. **`is_rubric_backed_task`** left unchanged (craft still rubric-backed for owner identity).
+3. **`agent.py`** — all three feedback-path gates swapped; unused `is_rubric_backed_task` import dropped.
+4. Out-of-scope areas untouched (Admin UI, `rubric_feedback.py`, `CRAFT_RUBRIC_MAX_TOKENS`, consumer behavior).
+
+Gate completeness verified: with `envelope_snapshot` absent for craft, the SUCCESS block at `agent.py:2886–2938` no-ops without needing a defense-in-depth guard inside `_capture_rubric_vector_feedback` — matches plan's optional note.
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — clean board opt-out. `fix-board` Betty REVISE deferred test coverage to sibling **AST-1385**; no `[bug-repro]` test in diff or qa-fix thread. Documented gap, not a fix-now on this ticket.
+
+**`## What must still hold`:** OK
+
+| # | Item | Verdict |
+|---|------|---------|
+| 1 | Consumer SUCCESS still gets `prompt_suffix` + capture | OK — non-craft rubric consumers remain `is_vector_feedback_task` True; three gates unchanged for them |
+| 2 | Non-`success` `agent_performance` skips capture | OK — `_capture_rubric_vector_feedback` status gate untouched (`agent.py:1466`) |
+| 3 | Craft SUCCESS criteria + `max_tokens` unchanged | OK — no craft schema or token-floor edits |
+| 4 | `rubric_owner_task_key(craft_*)` unchanged | OK — helper and `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` mapping untouched |
+| 5 | No Admin UI / letter-grade math changes | OK — no UI or scoring edits |
+
+## Findings
+
+*(none)*
+
+### Advisory
+
+- **`task_keys_for_rubric_owner` docstring** (`config.py:2240`) still says craft writes `vector_feedback` — pre-existing, slightly stale post-fix. Betty's AST-1385 bible/test work is the right home; not blocking.
+- **`docs/test-bible/utils/config.md`** still documents `is_rubric_backed_task` as the capture gate — same AST-1385 follow-up.
+
+## What's solid
+
+- Minimal, surgical diff — one helper, three gate swaps, no behavior change for consumers.
+- Uses the canonical craft key map already maintained for rubric ownership; no parallel hardcoded craft list.
+- Capture path remains envelope-snapshot-driven, so craft runs cannot accidentally persist feedback even if a model emits stray `vector_reviews`.
+
+## Frame diff
+
+```
+docs/features/auditor/ast-724-runtime-vector-feedback-capture.md  (+82 plan-fix patch)
+src/utils/config.py                                               (+is_vector_feedback_task)
+src/core/agent.py                                                 (3 gates + import swap)
+```
+
+## Chuckles branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (`ftr/AST-1378-*` exists) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+**Notes:** `no plan-rubric verdict attached` (fix-lane; Joan validate-plan not re-litigated). Betty test gap tracked on AST-1385.
+
+## Docs-acceptance (AST-1384)
+
+No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1385**.
+
+context_tokens≈N
+
+
+## Bug: AST-1385 — gap: tests for craft_* vector_feedback exclusion
+
+### As-is
+
+`docs/test-bible/utils/config.md` § AST-724 still documents **`is_rubric_backed_task`** as the gate for `do_task` prompt-suffix injection and vector-feedback capture. Component coverage stops at `TestAst724RubricBackedTask` (`is_rubric_backed_task` True for consumer **and** craft; `prompt_suffix` present). There is **no** bible row or assertion for **`is_vector_feedback_task`** / craft exclusion — the contract AST-1384 landed in product.
+
+Betty board on AST-1384: `[board-betty] TESTS: REVISE` — missing coverage for `is_vector_feedback_task` / craft exclusion (filed as this gap sibling instead of inline `qa-fix`).
+
+### To-be
+
+Bible + component tests assert:
+
+- **`is_vector_feedback_task`** is True for grade/evaluate / other consumer rubric keys and **False** for every key in `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY`.
+- **`is_rubric_backed_task`** remains True for craft (owner identity unchanged).
+- § AST-724 prose names **`is_vector_feedback_task`** as the teach/capture gate (not `is_rubric_backed_task`).
+
+Product fix stays on AST-1384 — this ticket owns **tests + bible only**.
+
+### Repro
+
+Against a tree **without** AST-1385 bible/tests (product may already include AST-1384):
+
+1. Read `docs/test-bible/utils/config.md` § AST-724 — gate prose still says `is_rubric_backed_task` for prompt/capture.
+2. Run `TestAst724RubricBackedTask` — passes, but never mentions `is_vector_feedback_task`.
+3. No failing assertion today proves craft is excluded from the feedback gate (gap, not a red product test).
+
+After this gap lands: new assertions green on the AST-1384 product tip; bible § AST-724 matches the split gate.
+
+### Root cause
+
+AST-724 bible/tests encoded the original single-gate decision (`is_rubric_backed_task` = consumer + craft). AST-1384 split teach/capture onto `is_vector_feedback_task` without a test-tree / bible update (engineer test-tree ban). Board correctly REVISE'd; orphaned mini-parent filed this gap child rather than blocking AST-1384 on inline `qa-fix`.
+
+### Proposed change
+
+**Owner of landing:** Betty (`tests/`, `docs/test-bible/**` only — via `qa-fix` / astral-tests publish to this sub). Engineer does **not** implement product code here and does **not** patch the test tree under `make-fix`.
+
+1. **`docs/test-bible/utils/config.md`** — § AST-724:
+
+   - Rewrite the gate sentence: **`is_vector_feedback_task`** gates `do_task` prompt-suffix injection and vector-feedback capture (consumers only); **`is_rubric_backed_task`** remains True for consumer **and** craft (rubric owner identity / `rubric_owner_task_key`).
+   - Extend the component-tests table with rows:
+
+     | Area | Source | Component tests |
+     | `is_vector_feedback_task` consumers True | `config.py` | new method under `TestAst724RubricBackedTask` or `TestAst1385VectorFeedbackTask` |
+     | craft keys False for `is_vector_feedback_task` | `config.py` | same — assert all `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` keys |
+     | craft still `is_rubric_backed_task` True | `config.py` | existing or adjacent assert |
+
+   - Add the new node id(s) to the § AST-724 narrowed-run bash block.
+
+2. **`tests/component/utils/test_config.py`** — add coverage (prefer extending `TestAst724RubricBackedTask` to keep the AST-724 narrowed run coherent, **or** a sibling class `TestAst1385VectorFeedbackTask` listed in that run):
+
+   ```python
+   def test_is_vector_feedback_consumers_only_excludes_craft(self) -> None:
+       assert cfg.is_vector_feedback_task("grade_get") is True
+       assert cfg.is_vector_feedback_task("prefilter_company") is True
+       assert cfg.is_vector_feedback_task("craft_get_rubric") is False
+       assert cfg.is_rubric_backed_task("craft_get_rubric") is True
+       for craft_key in cfg.CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY:
+           assert cfg.is_vector_feedback_task(craft_key) is False
+       assert cfg.is_vector_feedback_task("craft_resume_base") is False
+   ```
+
+3. **Out of scope:** re-implement AST-1384 product; change `agent.py` / `is_vector_feedback_task` body; raise `max_tokens`; Admin UI; rewrite `task_keys_for_rubric_owner` behavior (optional one-line bible note that Admin expansion may still list historical craft run keys is fine — do not change the helper in this gap).
+
+### Blast radius
+
+| Area | Impact |
+|------|--------|
+| AST-1384 product | Unchanged — already landed `is_vector_feedback_task` + three `do_task` gates. |
+| Existing `TestAst724RubricBackedTask` craft-backed asserts | Stay green (`is_rubric_backed_task` still True for craft). |
+| `TestAst724VectorFeedbackCapture` / rubric_feedback / DB rows | Unchanged unless Betty optionally adds a craft-skip note; not required by board. |
+| Other bible pages citing `is_rubric_backed_task` as capture gate | Update only `docs/test-bible/utils/config.md` § AST-724 unless a cross-link in `docs/test-bible/core/agent.md` still says the old gate — if so, one-line cross-fix there only. |
+
+### What must still hold
+
+1. AST-1384 product contract: craft excluded from teach/capture; consumers still included.
+2. `is_rubric_backed_task(craft_*)` remains True; `rubric_owner_task_key(craft_*)` unchanged.
+3. Existing AST-724 parse / capture / FEEDBACK-lenient tests stay green.
+4. No product max_tokens or Admin UI changes on this gap.
+
+## Review (Radia) — AST-1385
+
+Restacked publish-ref onto `ftr/AST-1378-no-feedback-reviews-on-craft` (plan + test + merge-tests only). Prior sibling stack pollution cleared. Ticket commit scope: bible + `test_is_vector_feedback_consumers_only_excludes_craft`. PROCEED after restack.

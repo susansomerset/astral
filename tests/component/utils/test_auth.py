@@ -103,6 +103,17 @@ class TestValidateBearerToken:
         out = auth_mod.validate_bearer_token("good-jwt")
         assert out == {"user_id": "uid-9", "name": "Ada", "is_admin": True}
 
+    def test_passes_remote_false_to_authenticator(self) -> None:
+        seen: list[bool] = []
+
+        def _auth(token: str, *, remote: bool = True) -> dict:
+            seen.append(remote)
+            return {"user_id": "uid-9", "name": "Ada", "email": None}
+
+        auth_mod.register_token_authenticator(_auth)
+        auth_mod.validate_bearer_token("good-jwt", remote=False)
+        assert seen == [False]
+
     def test_none_when_authenticator_raises(self) -> None:
         def _boom(_token: str) -> dict:
             raise RuntimeError("invalid jwt")
@@ -119,3 +130,54 @@ class TestValidateBearerToken:
             assert auth_mod.validate_bearer_token("stale-jwt") is None
         assert "Bearer token validation failed" in caplog.text
         assert "Stytch session_not_found — verify STYTCH_PROJECT_ID" in caplog.text
+
+
+class TestAst1440LocalOperator:
+    """AST-1440: synthetic always-admin operator + public passthrough payload."""
+
+    def test_identity_from_auth_config_always_admin(self) -> None:
+        from src.utils.config import AUTH_CONFIG
+
+        assert AUTH_CONFIG["local_operator"] == {
+            "user_id": "local-operator",
+            "name": "Local Operator",
+        }
+        out = auth_mod.local_operator_user()
+        assert out == {
+            "user_id": "local-operator",
+            "name": "Local Operator",
+            "is_admin": True,
+        }
+
+    def test_always_admin_without_admin_lists(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            auth_mod,
+            "AUTH_CONFIG",
+            {
+                "admin_user_ids": frozenset(),
+                "admin_emails": frozenset(),
+                "local_operator": {"user_id": "local-operator", "name": "Local Operator"},
+            },
+            raising=False,
+        )
+        out = auth_mod.local_operator_user()
+        assert out["is_admin"] is True
+        assert auth_mod.is_admin(user_id=out["user_id"], email=None) is False
+
+    def test_payload_true_when_local(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        assert auth_mod.local_auth_passthrough_payload() == {"local_auth_passthrough": True}
+
+    def test_payload_false_when_staging_or_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        assert auth_mod.local_auth_passthrough_payload() == {"local_auth_passthrough": False}
+        monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+        assert auth_mod.local_auth_passthrough_payload() == {"local_auth_passthrough": False}
+
+    def test_payload_has_only_boolean_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        payload = auth_mod.local_auth_passthrough_payload()
+        assert set(payload) == {"local_auth_passthrough"}
+        assert isinstance(payload["local_auth_passthrough"], bool)
+        for forbidden in ("stytch_secret", "stytch_project_id", "admin_user_ids", "admin_emails"):
+            assert forbidden not in payload

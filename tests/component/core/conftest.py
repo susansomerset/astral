@@ -36,6 +36,8 @@ _SCHEMA_FLAGS = (
     "_intake_session_schema_ensured",
     "_rubric_vector_schema_ensured",
     "_vector_feedback_schema_ensured",
+    "_artifact_schema_ensured",  # AST-1352 / AST-1364 / singular+cid AST-1597
+    "_meteorite_schema_ensured",  # AST-1557 staging table
     "_ast723_rubric_token_migration_applied",
 )
 
@@ -58,6 +60,34 @@ def seeded_db(sqlite_in_memory):
     db = sqlite_in_memory
     db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "Test"})
     return db
+
+
+@pytest.fixture(autouse=True)
+def _operative_current_read_stub(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Stub load_pilot_base_resume_for_candidate from operative_fixture registry."""
+    from src.core import candidate as candidate_mod
+
+    from tests.component.core.operative_fixture import (
+        OPERATIVE_BODY_BY_CID,
+        clear_operative_bases,
+    )
+
+    clear_operative_bases()
+    _real_load = candidate_mod.load_pilot_base_resume_for_candidate
+
+    def _load(cid: str):
+        key = (cid or "").strip()
+        if key in OPERATIVE_BODY_BY_CID:
+            return OPERATIVE_BODY_BY_CID[key]
+        return _real_load(cid)
+
+    monkeypatch.setattr(
+        candidate_mod,
+        "load_pilot_base_resume_for_candidate",
+        _load,
+    )
+    yield
+    clear_operative_bases()
 
 
 @pytest.fixture(autouse=True)

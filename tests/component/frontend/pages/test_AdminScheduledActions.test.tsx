@@ -383,13 +383,14 @@ describe("AdminScheduledActions", () => {
     localStorage.setItem("astral_selected_candidate", "c1")
     mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig })
     renderWithProviders(<ScheduledActions />)
-    await expandFirstPhaseSection()
-    await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
     const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
     const selects = within(modal).getAllByRole("combobox")
     await userEvent.selectOptions(selects[0], "watch_cos")
-    const stateOptions = Array.from(selects[1].querySelectorAll("option")).map(o => o.textContent)
+    // AST-1619: Task=0, Entity Type=1, Input State=2 — re-query after Task prefill
+    const inputState = within(modal).getAllByRole("combobox")[2]
+    const stateOptions = Array.from(inputState.querySelectorAll("option")).map(o => o.textContent)
     expect(stateOptions).toContain("WATCH")
     await userEvent.click(within(modal).getByRole("button", { name: "Cancel" }))
   }, 20000)
@@ -434,11 +435,9 @@ describe("AdminScheduledActions", () => {
   }, 20000)
 
   it("reloads dispatch tasks when a manual run thread finishes", async () => {
-    let poll = 0
+    let running = true
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/admin/scheduler/thread_status") {
-        poll += 1
-        const running = poll === 1
         return {
           ok: true,
           json: async () => ({
@@ -447,7 +446,7 @@ describe("AdminScheduledActions", () => {
         } as Response
       }
       if (url === "/api/admin/dispatch_tasks" && !init?.method) {
-        const avail = poll > 1 ? 99 : 12
+        const avail = running ? 12 : 99
         return { ok: true, json: async () => [{ ...dispatchTask, available_count: avail }] } as Response
       }
       if (url === "/api/admin/dispatch_tasks/task_keys") {
@@ -461,8 +460,8 @@ describe("AdminScheduledActions", () => {
       }
     })
     renderWithProviders(<ScheduledActions />)
-    await expandFirstPhaseSection()
     await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument())
+    running = false
     await vi.advanceTimersByTimeAsync(5000)
     await waitFor(() => expect(screen.getByText("99")).toBeInTheDocument())
   }, 20000)
@@ -920,7 +919,8 @@ describe("AdminScheduledActions", () => {
       const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
       const selects = within(modal).getAllByRole("combobox")
       await userEvent.selectOptions(selects[0], "scan_jobs")
-      await userEvent.selectOptions(selects[1], "NEW")
+      // AST-1619: Task=0, Entity Type=1 (prefills job), Input State=2
+      await userEvent.selectOptions(selects[2], "NEW")
       await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
       await waitFor(() => expect(screen.getByText("nope")).toBeInTheDocument())
       expect(window.alert).not.toHaveBeenCalled()
@@ -1084,7 +1084,8 @@ describe("AdminScheduledActions", () => {
       await userEvent.click(within(candidatePanel).getByText("inflow_discovery"))
       await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
       const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
-      const inputStateSelect = within(modal).getAllByRole("combobox")[1]
+      // AST-1619: Entity Type select inserted — Input State is combobox[2]
+      const inputStateSelect = within(modal).getAllByRole("combobox")[2]
       expect(within(inputStateSelect).getByRole("option", { name: "ACTIVE_SEARCH" })).toBeInTheDocument()
       expect(within(inputStateSelect).queryByRole("option", { name: "PASSED_JD" })).not.toBeInTheDocument()
     }, 20000)
@@ -1181,6 +1182,43 @@ describe("AdminScheduledActions", () => {
     }, 20000)
   })
 
+  // AST-1278 restores AST-750 zero-save UX (product loads score_floor_options; Number.isFinite save).
+  describe("AST-1278 score floor 0", () => {
+    it("AST-1278: edit save sends score_floor 0 when 0.00 selected", async () => {
+      let putBody: Record<string, unknown> | null = null
+      mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
+      // Capture edit PUT body without replacing the rest of mockApi handlers.
+      const prior = mockedApi.getMockImplementation()!
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.startsWith("/api/admin/dispatch_tasks/") && init?.method === "PUT") {
+          putBody = JSON.parse(String(init.body))
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return prior(url, init)
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      // Section header text (not Section/Group filter option)
+      const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await ensureSectionExpanded(jobPanel)
+      await userEvent.click(within(jobPanel).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
+      const floorRow = within(modal).getByText("Score Floor").closest(".modal-detail-row") as HTMLElement
+      const floorSelect = within(floorRow).getByRole("combobox")
+      const optionValues = Array.from(floorSelect.querySelectorAll("option")).map(
+        (o) => (o as HTMLOptionElement).value,
+      )
+      expect(optionValues[0]).toBe("0.00")
+      expect(optionValues).toHaveLength(21)
+      await userEvent.selectOptions(floorSelect, "0.00")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBody).not.toBeNull())
+      // Number.isFinite path — must not coerce 0 → 1 via falsy parseFloat
+      expect(putBody!.score_floor).toBe(0)
+    }, 20000)
+  })
+
   describe("AST-1215 alphabetical task_key dropdown", () => {
     it("Add Task modal options follow lexicographic catalog order (unsorted API keys)", async () => {
       // Deliberately unsorted object insertion — UI must not rely on Object.keys order alone.
@@ -1234,4 +1272,356 @@ describe("AdminScheduledActions", () => {
       expect(values).toEqual(["alpha_task", "fetch_jd", "meteorite_grade_do", "zebra_task"])
     }, 20000)
   })
+
+  it("AST-1301: labeled actions use catalog classes", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "+ Add Task" })).toHaveClass("btn", "primary")
+    expect(screen.getByRole("button", { name: "Stop All" })).toHaveClass("btn", "danger")
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Stop" })).toHaveClass("btn", "danger")
+    await userEvent.click(screen.getByRole("button", { name: "Stop All" }))
+    const kill = screen.getByText("Kill Running Threads").closest(".modal-card") as HTMLElement
+    expect(within(kill).getByRole("button", { name: "Cancel" })).toHaveClass("btn", "secondary")
+    expect(within(kill).getByRole("button", { name: "Kill Now" })).toHaveClass("btn", "danger")
+  }, 20000)
+
+  it("AST-1302: Add Task and Kill Running × are icon-control", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+    const addModal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+    const addClose = within(addModal).getByRole("button", { name: "Close" })
+    expect(addClose).toHaveClass("icon-control")
+    expect(addClose).not.toHaveClass("modal-close")
+    await userEvent.click(within(addModal).getByRole("button", { name: "Cancel" }))
+
+    await userEvent.click(screen.getByRole("button", { name: "Stop All" }))
+    const killModal = screen.getByText("Kill Running Threads").closest(".modal-card") as HTMLElement
+    const killClose = within(killModal).getByRole("button", { name: "Close" })
+    expect(killClose).toHaveClass("icon-control")
+    expect(killClose).not.toHaveClass("modal-close")
+  }, 20000)
+
+  it("AST-1318: row Run uses in-row; toolbar and modals stay full size", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Run" })).toHaveClass("btn", "primary", "in-row")
+    expect(screen.getByRole("button", { name: "Stop All" })).toHaveClass("btn", "danger")
+    expect(screen.getByRole("button", { name: "Stop All" })).not.toHaveClass("in-row")
+    expect(screen.getByRole("button", { name: "+ Add Task" })).toHaveClass("btn", "primary")
+    expect(screen.getByRole("button", { name: "+ Add Task" })).not.toHaveClass("in-row")
+
+    await userEvent.click(screen.getByRole("button", { name: "Stop All" }))
+    const kill = screen.getByText("Kill Running Threads").closest(".modal-card") as HTMLElement
+    expect(within(kill).getByRole("button", { name: "Cancel" })).toHaveClass("btn", "secondary")
+    expect(within(kill).getByRole("button", { name: "Cancel" })).not.toHaveClass("in-row")
+    expect(within(kill).getByRole("button", { name: "Kill Now" })).toHaveClass("btn", "danger")
+    expect(within(kill).getByRole("button", { name: "Kill Now" })).not.toHaveClass("in-row")
+    await userEvent.click(within(kill).getByRole("button", { name: "Cancel" }))
+
+    await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+    const add = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+    expect(within(add).getByRole("button", { name: "Cancel" })).toHaveClass("btn", "secondary")
+    expect(within(add).getByRole("button", { name: "Cancel" })).not.toHaveClass("in-row")
+    expect(within(add).getByRole("button", { name: "Save" })).toHaveClass("btn", "primary")
+    expect(within(add).getByRole("button", { name: "Save" })).not.toHaveClass("in-row")
+  }, 20000)
+
+  it("AST-1318: row Stop uses in-row", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Run" })).toHaveClass("btn", "primary", "in-row")
+    expect(within(tbody).getByRole("button", { name: "Stop" })).toHaveClass("btn", "danger", "in-row")
+  }, 20000)
+
+  it("AST-1318: row Draining uses in-row", async () => {
+    mockApi(true, {
+      threads: { 1: { running: true, draining: true, task_key: "scan_jobs", candidate_id: "c1", is_auto: false } },
+    })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Draining…" })).toHaveClass("btn", "danger", "in-row")
+  }, 20000)
+
+  it("AUTO off always labels Run; AUTO on with Avail > 0 labels Sweep", async () => {
+    mockApi(false, {
+      tasks: [
+        { ...dispatchTask, id: 1, auto_mode: 0, available_count: 12 },
+      ],
+      threads: {},
+    })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Run" })).toBeInTheDocument()
+    expect(within(tbody).queryByRole("button", { name: "Sweep" })).not.toBeInTheDocument()
+  }, 20000)
+
+  it("AUTO on with Avail > 0 labels Sweep", async () => {
+    mockApi(false, {
+      tasks: [
+        { ...dispatchTask, id: 1, auto_mode: 1, available_count: 12, min_count: 1 },
+      ],
+      threads: {},
+    })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Sweep" })).toBeInTheDocument()
+    expect(within(tbody).queryByRole("button", { name: "Run" })).not.toBeInTheDocument()
+  }, 20000)
+
+  describe("AST-1409 in-place live refresh", () => {
+    it("AUTO and Dbg toggles update the same row without Loading…", async () => {
+      mockApi(false, { threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+
+      const inner = mockedApi.getMockImplementation()!
+      let releaseTasks: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) {
+          return new Promise<Response>((resolve) => { releaseTasks = resolve })
+        }
+        return inner(url, init)
+      })
+
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      await userEvent.click(within(tbody).getAllByRole("button", { name: "OFF" })[0])
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+      releaseTasks({ ok: true, json: async () => [{ ...dispatchTask, auto_mode: 1, debug: 0 }] } as Response)
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("ON")).toBeInTheDocument())
+
+      await userEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "OFF" }))
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+      releaseTasks({ ok: true, json: async () => [{ ...dispatchTask, auto_mode: 1, debug: 1 }] } as Response)
+      await waitFor(() => expect(within(screen.getByRole("table")).getAllByRole("button", { name: "ON" })).toHaveLength(2))
+    }, 20000)
+
+    it("running→idle merges Avail and last-run; open Add Task draft survives", async () => {
+      let running = true
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/scheduler/thread_status") {
+          return {
+            ok: true,
+            json: async () => ({
+              1: { running, draining: false, task_key: "scan_jobs", candidate_id: "c1", is_auto: false },
+            }),
+          } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) {
+          return {
+            ok: true,
+            json: async () => [{
+              ...dispatchTask,
+              available_count: running ? 12 : 99,
+              last_run_at: running ? "2026-05-01T00:00:00Z" : "2026-06-15T12:00:00Z",
+            }],
+          } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/task_keys") {
+          return { ok: true, json: async () => taskKeysConfig } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/state_options") {
+          return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+      })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument())
+      running = false
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      const freqRow = within(modal).getByText("Freq (hrs)").closest(".modal-detail-row") as HTMLElement
+      const freq = within(freqRow).getByRole("spinbutton")
+      await userEvent.clear(freq)
+      await userEvent.type(freq, "7.5")
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+      await waitFor(() => expect(screen.getByText("99")).toBeInTheDocument())
+      expect(screen.getByText("6/15/26, 12:00:00 PM")).toBeInTheDocument()
+      expect(screen.getByText("Add Task")).toBeInTheDocument()
+      expect(within(freqRow).getByRole("spinbutton")).toHaveValue(7.5)
+    }, 20000)
+
+    it("reloads Avail after Run even when thread_status never reports running", async () => {
+      let avail = 12
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/scheduler/thread_status") {
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) {
+          return { ok: true, json: async () => [{ ...dispatchTask, available_count: avail }] } as Response
+        }
+        if (url.endsWith("/run")) {
+          avail = 7
+          return { ok: true, json: async () => ({ started: true }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/task_keys") {
+          return { ok: true, json: async () => taskKeysConfig } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/state_options") {
+          return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument())
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      await userEvent.click(within(tbody).getByRole("button", { name: "Run" }))
+      await vi.advanceTimersByTimeAsync(500)
+      await waitFor(() => expect(screen.getByText("7")).toBeInTheDocument())
+    }, 20000)
+  })
+
+  describe("AST-1619 editable Entity Type", () => {
+    const stateOpts = {
+      job: ["NEW", "PASSED_JD"],
+      company: ["WATCH", "WEBSITE_FOUND"],
+      candidate: ["ACTIVE_SEARCH"],
+    }
+
+    function entityTypeSelect(modal: HTMLElement) {
+      const row = within(modal).getByText("Entity Type").closest(".modal-detail-row") as HTMLElement
+      return within(row).getByRole("combobox")
+    }
+
+    function inputStateSelect(modal: HTMLElement) {
+      const row = within(modal).getByText("Input State").closest(".modal-detail-row") as HTMLElement
+      return within(row).getByRole("combobox")
+    }
+
+    it("Add Task Entity Type is a select (not readOnly text)", async () => {
+      localStorage.setItem("astral_selected_candidate", "c1")
+      mockApi(false, {
+        tasks: [dispatchTask],
+        taskKeysPayload: taskKeysConfig,
+        stateOptionsPayload: stateOpts,
+        threads: {},
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      const et = entityTypeSelect(modal)
+      expect(et.tagName).toBe("SELECT")
+      expect(et).not.toHaveAttribute("readOnly")
+      expect(et).not.toHaveStyle({ opacity: "0.7" })
+      expect(within(et).getByRole("option", { name: "job" })).toBeInTheDocument()
+      expect(within(et).getByRole("option", { name: "company" })).toBeInTheDocument()
+      expect(within(et).getByRole("option", { name: "candidate" })).toBeInTheDocument()
+      // Candidate on Add stays read-only / context-bound
+      const candRow = within(modal).getByText("Candidate").closest(".modal-detail-row") as HTMLElement
+      const candInput = within(candRow).getByRole("textbox")
+      expect(candInput).toHaveAttribute("readOnly")
+      expect(candInput).toHaveValue("c1")
+    }, 20000)
+
+    it("changing Entity Type swaps Input State options and clears invalid trigger", async () => {
+      localStorage.setItem("astral_selected_candidate", "c1")
+      mockApi(false, {
+        tasks: [dispatchTask],
+        taskKeysPayload: taskKeysConfig,
+        stateOptionsPayload: stateOpts,
+        threads: {},
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      await userEvent.selectOptions(within(modal).getAllByRole("combobox")[0], "scan_jobs")
+      expect(entityTypeSelect(modal)).toHaveValue("job")
+      expect(inputStateSelect(modal)).toHaveValue("NEW")
+      expect(within(inputStateSelect(modal)).getByRole("option", { name: "PASSED_JD" })).toBeInTheDocument()
+      expect(within(inputStateSelect(modal)).queryByRole("option", { name: "WATCH" })).not.toBeInTheDocument()
+      await userEvent.selectOptions(entityTypeSelect(modal), "company")
+      expect(inputStateSelect(modal)).toHaveValue("")
+      expect(within(inputStateSelect(modal)).getByRole("option", { name: "WATCH" })).toBeInTheDocument()
+      expect(within(inputStateSelect(modal)).queryByRole("option", { name: "PASSED_JD" })).not.toBeInTheDocument()
+    }, 20000)
+
+    it("Edit Save PUT body includes entity_type", async () => {
+      let putBody: Record<string, unknown> | null = null
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => adminCandidates } as Response
+        if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [dispatchTask] } as Response
+        if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => taskKeysConfig } as Response
+        if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => stateOpts } as Response
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+        if (url.startsWith("/api/admin/dispatch_tasks/") && init?.method === "PUT") {
+          putBody = JSON.parse(String(init.body))
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return { ok: false, json: async () => ({}) } as Response
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(within(screen.getByRole("table")).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
+      await userEvent.selectOptions(entityTypeSelect(modal), "company")
+      await userEvent.selectOptions(inputStateSelect(modal), "WATCH")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBody).not.toBeNull())
+      expect(putBody!.entity_type).toBe("company")
+      expect(putBody!.trigger_state).toBe("WATCH")
+    }, 20000)
+
+    it("Add Save POST body includes entity_type", async () => {
+      let postBody: Record<string, unknown> | null = null
+      localStorage.setItem("astral_selected_candidate", "c1")
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/candidates") return { ok: true, json: async () => adminCandidates } as Response
+        if (url === "/api/admin/scheduler/thread_status") return { ok: true, json: async () => ({}) } as Response
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) return { ok: true, json: async () => [dispatchTask] } as Response
+        if (url === "/api/admin/dispatch_tasks/task_keys") return { ok: true, json: async () => taskKeysConfig } as Response
+        if (url === "/api/admin/dispatch_tasks/state_options") return { ok: true, json: async () => stateOpts } as Response
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks" && init?.method === "POST") {
+          postBody = JSON.parse(String(init.body))
+          return { ok: true, json: async () => ({ id: 99 }) } as Response
+        }
+        return { ok: false, json: async () => ({}) } as Response
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      await userEvent.selectOptions(within(modal).getAllByRole("combobox")[0], "scan_jobs")
+      await userEvent.selectOptions(entityTypeSelect(modal), "company")
+      await userEvent.selectOptions(inputStateSelect(modal), "WATCH")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(postBody).not.toBeNull())
+      expect(postBody!.entity_type).toBe("company")
+      expect(postBody!.trigger_state).toBe("WATCH")
+      expect(postBody!.candidate_id).toBe("c1")
+    }, 20000)
+  })
+
 })

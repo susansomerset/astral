@@ -106,11 +106,12 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-950 · AST-858
 
-**AST-950:** `buildPhaseSectionGradeConfidenceRow` + `gradesForHeader` for Analysis section headers / `AgentAnalysisHeader` payloads.
+**AST-950 / AST-1327 / AST-1328:** `buildPhaseSectionGradeConfidenceRow(gradesRaw, job, gradesField)` builds Analysis header columns via `buildJobListRubricColumnsForGroup` / job-carried `*_rubric` (grades-only when snapshot absent) — **not** live `jobdesc_rubric` / `candidateArtifacts`. `gradesForHeader` still normalizes body payloads for `AgentAnalysisHeader`.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| **AST-950** | Grade+confidence header helper | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+| **AST-950** | Grade+confidence header helper (job-carried arity) | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+| **AST-1328** | Meteorite mismatch: header cell count follows `jd_rubric` ∩ graded vectors when live gazer artifact underlaps | same | same describe — **`AST-1328: header shows every job-carried vector when live jobdesc_rubric underlaps`** (bug-repro) |
 
 ---
 
@@ -179,6 +180,212 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_taskKeySort.test.ts
 ```
 
+### AST-1311 · AST-1307
+
+**Parent:** [AST-1307 — Please set the page title to Astral - &lt;full_name&gt;](https://linear.app/astralcareermatch/issue/AST-1307/please-set-the-page-title-to-astral-full-name). **Publish:** `origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate`.
+
+`browserTabTitle` formats `Astral` or `Astral - <Full Name>` from the list payload `full` column only (trim; no first+last join, no picker label). `CandidateProvider` applies `document.title` on `[selectedId, candidates]` and resets to `Astral` on unmount. §6c N/A (no `pages/` edit; no filter UX).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Formatter | `src/ui/frontend/src/lib/documentTitle.ts` | **`test_documentTitle.test.ts`** |
+| Apply + unmount reset | `src/ui/frontend/src/contexts/CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-1311 browser tab title`** |
+
+**Broken / obsolete:** none — existing CandidateContext selection tests stay valid (`full` absent → title `Astral`). `test_Authenticate` only passes `document.title` into `replaceState`, does not assert chrome text.
+
+**Integration:** none — SPA `document.title`; no `tests/integration/` scenario asserts tab chrome.
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_documentTitle.test.ts \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx
+```
+
 ### Extension Surfer libs (moved)
 
 **AST-1254** migrated `test_surfer*.test.ts` from `tests/component/frontend/lib/` → `tests/component/extension/lib/` (WXT Vitest project). Coverage maps live under **`docs/test-bible/extension/lib.md`** (AST-1236–AST-1239) and **`docs/test-bible/extension/scaffold.md`** (AST-1254). Do not re-add Surfer extension-lib manifests here.
+
+### AST-1348 · AST-1346
+
+**Parent:** [AST-1346](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome`.
+
+`jobScoreBreakdownForGradesField` + `formatPhaseSectionScoreTitle` (round for display; template from manifest). Modal wiring: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Breakdown lookup + title format | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-1348 phase score header helpers`** |
+
+**Broken / obsolete:** none — new helper.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  -t "AST-1348"
+```
+
+### AST-1374 · AST-1372
+
+**Parent:** [AST-1372 — Extend Stytch sessions](https://linear.app/astralcareermatch/issue/AST-1372). **Publish:** `origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend`.
+
+SPA consumes AST-1373 `GET /api/auth_session_policy`: authenticate handoff uses configured `session_duration_minutes` (hardcoded `60` removed); `AuthProvider` starts `startSessionExtendLoop` while a Stytch session exists. Does **not** invent policy API (**AST-1373**); does **not** redesign log-off (**AST-624/625**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Policy fetch | `authSessionPolicy.ts` | **`test_authSessionPolicy.test.ts`** |
+| Extend interval helper | `sessionExtend.ts` | **`test_sessionExtend.test.ts`** |
+| Handoff uses policy duration | `stytchAuthenticateHandoff.ts` | revised **`test_stytchAuthenticateHandoff.test.ts`** |
+| `/authenticate` page | `Authenticate.tsx` | revised **`test_Authenticate.test.tsx`** (§6c) |
+| AuthProvider extend wiring | `AuthContext.tsx` | revised **`test_AuthContext.test.tsx`** (+ `stytchMock` `getSync` / `authenticate`). **AST-1408** keys the loop on `sessionPresent` — see [`contexts.md`](contexts.md). |
+
+**Broken / obsolete this pass:** handoff + Authenticate expected `session_duration_minutes: 60` / unmocked policy fetch — revised to stub `GET /api/auth_session_policy` and assert configured `20`.
+
+**Integration:** no existing scenario asserts SPA session duration or extend cadence — no revision.
+
+## QA test manifest
+
+1. Policy fetch: `tests/component/frontend/lib/test_authSessionPolicy.test.ts`
+2. Extend loop helper: `tests/component/frontend/lib/test_sessionExtend.test.ts`
+3. Handoff (configured duration + no fallback): `tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts`
+4. Authenticate page §6c: `tests/component/frontend/pages/test_Authenticate.test.tsx`
+5. AuthContext extend start: `tests/component/frontend/contexts/test_AuthContext.test.tsx`
+
+**AST-1374** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_authSessionPolicy.test.ts \
+  ../../../tests/component/frontend/lib/test_sessionExtend.test.ts \
+  ../../../tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx \
+  ../../../tests/component/frontend/contexts/test_AuthContext.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1441 · AST-1438
+
+**Parent:** [AST-1438 — Disable authentication on localhost](https://linear.app/astralcareermatch/issue/AST-1438/disable-authentication-on-localhost). **Publish:** `origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh`.
+
+SPA consumes AST-1440 `GET /api/auth_passthrough`: fail-closed raw `fetch`; when `true`, AuthContext loads `/api/me` with no Stytch session and skips extend; RequireAuth renders children (no Login / Log-off); Authenticate navigates `/` without `authenticateByUrl`. Flask signal = **AST-1440**. Does **not** unwrap `StytchProvider`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Public-signal fetch | `authPassthrough.ts` | **`test_authPassthrough.test.ts`** |
+| `/api/me` without session; skip extend | `AuthContext.tsx` | **`test_AuthContext.test.tsx`** — **`AST-1441:*`** |
+| Skip Login / Log-off | `RequireAuth.tsx` | **`test_RequireAuth.test.tsx`** — **`AST-1441:*`** |
+| `/authenticate` page (§6c) | `Authenticate.tsx` | **`test_Authenticate.test.tsx`** — **`AST-1441:*`** |
+
+**Broken / obsolete:** existing AuthContext / RequireAuth / Authenticate suites assumed no `/api/auth_passthrough` wait — revised to `stubAuthPublicFetches(false)` (shared in `test-utils.tsx`). RequireAuth AST-1408 keep-mounted now `waitFor` (passthrough must settle). AdminRoute `useAuth` mocks include `localAuthPassthrough: false`.
+
+**Integration:** no existing scenario asserts SPA Login / extend — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Fail-closed fetch helper: `tests/component/frontend/lib/test_authPassthrough.test.ts`
+2. AuthContext passthrough `/api/me` + skip extend: `tests/component/frontend/contexts/test_AuthContext.test.tsx`
+3. RequireAuth skip Login/Log-off: `tests/component/frontend/components/test_RequireAuth.test.tsx`
+4. Authenticate page §6c skip handoff: `tests/component/frontend/pages/test_Authenticate.test.tsx`
+
+**AST-1441** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_authPassthrough.test.ts \
+  ../../../tests/component/frontend/contexts/test_AuthContext.test.tsx \
+  ../../../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1421 · AST-1419
+
+**Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control`.
+
+`copyJobSnapshotToClipboard` GETs `/api/jobs/<id>/copy` (encoded, no `?debug=`), `JSON.stringify(body, null, 2)`, `navigator.clipboard.writeText`. Returns `true` only on write success; non-OK / parse / clipboard reject return `false` with no throw. Chrome: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clipboard helper | `src/ui/frontend/src/lib/copyJobSnapshot.ts` | **`test_copyJobSnapshot.test.ts`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_copyJobSnapshot.test.ts
+```
+
+### AST-1482 · AST-1463
+
+**Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth`.
+
+Auth return-path: `sessionAuthMark.ts` capture/validate/consume on `astral-auth-return-path`; `RequireAuth` stores pathname+search on Login/LogOffScreen gate (not during bootstrap Loading, not when authenticated, not passthrough); `Authenticate` consumes stored path on success (passthrough still `/`). Does **not** own deeplink route/modal (**AST-1481**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Return-path helper | `sessionAuthMark.ts` | **`test_sessionAuthMark.test.ts`** — **`AST-1482 auth return path`** |
+| Capture on auth gate | `RequireAuth.tsx` | **`test_RequireAuth.test.tsx`** — **`AST-1482:*`** (Login + LogOffScreen capture; skip Loading/authed/passthrough) |
+| Restore after authenticate (§6c) | `Authenticate.tsx` | **`test_Authenticate.test.tsx`** — **`AST-1482:*`** (existing session / OAuth success / no-token → stored path; AST-1441 passthrough unchanged) |
+
+**Broken / obsolete:** none — existing AST-625/830/1441 asserts hold; success paths revised from always `/` when return path stored.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Return-path helper: `tests/component/frontend/lib/test_sessionAuthMark.test.ts` — **`AST-1482`**
+2. RequireAuth capture: `tests/component/frontend/components/test_RequireAuth.test.tsx` — **`AST-1482`**
+3. Authenticate restore (§6c): `tests/component/frontend/pages/test_Authenticate.test.tsx` — **`AST-1482`**
+
+**AST-1482** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_sessionAuthMark.test.ts \
+  ../../../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx \
+  --testNamePattern="AST-1482|navigates home when|navigates home after|AST-1441"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (publish tip):**
+
+- `docs/test-bible/frontend/lib.md` — `7be9f2eaeb94e425f4f8e6bd1dca957c1c3753c3`
+
+---
+
+### AST-1585 · AST-1571
+
+**Publish:** `origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`.
+
+`jobBaseResumeArtifactId` + `fetchOperativeBaseResume` for JAR source panel. Modal wiring: **`docs/test-bible/frontend/components.md`** § AST-1585.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pin parse + fetch helper | `recommendedJobReport.tsx` | **obsolete AST-1599** — JAR helpers deleted with panel |
+
+**Broken / obsolete under AST-1599:** `recommendedJobReport — AST-1585 operative base_resume helpers` describe removed.
+
+**Integration:** none.
+
+---
+
+### AST-1593 · AST-1588
+
+**Publish:** `origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers`.
+
+`printResumeVisible` / `materialsPreviewVisible` treat hydrated `job_resume` as SoT — `resume_content` is not required for job-resume visibility.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| print/materials SoT | `recommendedJobReport.tsx` | **`recommendedJobReport — AST-1593 catalog SoT`** + revised AST-581/948/1100 print helpers |
+
+**Broken / obsolete this pass:** asserts that `resume_content` alone makes print/materials visible.
