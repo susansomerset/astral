@@ -2425,3 +2425,123 @@ class TestAst1743IngestSkipFailed:
         assert out.get("error") in (None, "")
         archive.assert_called_once_with(mid)
 
+
+# Branches: text-outcome blank/missing jd_text → ingress_blob content; present jd_text wins;
+# degenerate empty blob still errors; URL empty jd_text unchanged; stage_meteorite wires blob (AST-1756).
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "_map_classify_jobs_to_meteorite_rows"),
+    reason="AST-1756 map helper not on this publish tip",
+)
+class TestAst1756IngressBlobJdTextFallback:
+    """AST-1756: text landable blank jd_text falls back to classify ingress blob."""
+
+    _BLOB = "Subject: Widget role\n\nFull JD body here."
+
+    def test_blank_jd_text_uses_ingress_blob(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{"jd_text": ""}],
+            candidate_id="c1",
+            source_kind="paste",
+            source_id="s1",
+            ingress_blob=self._BLOB,
+        )
+        assert err is None
+        assert rows and rows[0]["content"] == self._BLOB.strip()
+
+    def test_missing_jd_text_key_uses_ingress_blob(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{}],
+            candidate_id="c1",
+            source_kind="paste",
+            source_id="s1",
+            ingress_blob=self._BLOB,
+        )
+        assert err is None
+        assert rows[0]["content"] == self._BLOB.strip()
+
+    def test_present_jd_text_wins_over_blob(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{"jd_text": "  Ruth JD only  "}],
+            candidate_id="c1",
+            source_kind="paste",
+            source_id="s1",
+            ingress_blob=self._BLOB,
+        )
+        assert err is None
+        assert rows[0]["content"] == "Ruth JD only"
+
+    def test_blank_jd_text_and_blank_blob_still_errors(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{"jd_text": ""}],
+            candidate_id="c1",
+            source_kind="paste",
+            source_id="s1",
+            ingress_blob="   ",
+        )
+        assert rows == []
+        assert err == "text scrap missing jd_text"
+
+    def test_url_outcome_empty_jd_text_unchanged(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["url_scrape_outcomes"][0]
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{"job_link": "https://example.com/j", "jd_text": ""}],
+            candidate_id="c1",
+            source_kind="paste",
+            source_id="s1",
+            ingress_blob=self._BLOB,
+        )
+        assert err is None
+        assert rows[0]["content"] is None
+
+    @pytest.mark.asyncio
+    async def test_stage_meteorite_blank_jd_text_persists_blob(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        if not hasattr(meteorite_mod, "stage_meteorite"):
+            pytest.skip("stage_meteorite not on this publish tip")
+        db = sqlite_in_memory
+        cid = "cand-1756-blob"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        blob = self._BLOB
+
+        async def _classify(*_a, **_k):
+            return {
+                "success": True,
+                "outcome": outcome,
+                "jobs": [{"jd_text": ""}],
+                "error": None,
+                "batch_id": "b-1756",
+            }
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify)
+        out = await meteorite_mod.stage_meteorite(
+            cid, blob, source_kind="paste", source_id="paste-1756",
+        )
+        assert out.get("error") in (None, "")
+        rows = db.list_meteorites_by_source("paste", "paste-1756")
+        assert len(rows) == 1
+        assert rows[0]["content"] == blob.strip()
+        assert rows[0]["state"] == "READY"
+

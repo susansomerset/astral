@@ -599,3 +599,37 @@ Email text outcomes author non-http `meteorite.link` breadcrumbs (From/To + time
 ```
 
 **Bible shasum (publish tip):** `git show origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests:docs/test-bible/core/meteorite.md | shasum`
+
+### AST-1756 · AST-1753
+
+**Parent:** [AST-1753 — stage_email_meteorite enhancements](https://linear.app/astralcareermatch/issue/AST-1753/stage-email-meteorite-enhancements). **Publish:** `origin/sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob`.
+
+Text landable stage map: blank/missing `jd_text` → meteorite `content` from classify ingress blob (caller `stage_meteorite(..., blob=)`); non-empty `jd_text` still wins; empty blob + blank `jd_text` still returns `text scrap missing jd_text`; URL scrape empty-`jd_text` branch unchanged. Prompts / land `job_title=` are siblings **AST-1755** / **AST-1757**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Map fallback + prefer-Ruth + degenerate + URL unchanged | `src/core/meteorite.py` | **`TestAst1756IngressBlobJdTextFallback`** (map methods + stage persist) |
+| Prior text map with non-empty `jd_text` (still green) | same | **`TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none`** |
+| Prior READY text insert with Ruth `jd_text` (still green) | same | **`TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http`** |
+
+**Broken / obsolete this pass:** none — prior map tests always supplied non-empty `jd_text`; no assert required hard-fail when an ingress blob is present.
+
+**Integration:** no existing scenario asserts text-map `jd_text` / ingress-blob fallback — none revised; do not invent.
+
+## QA test manifest
+
+1. Ingress-blob fallback (AC5/AC6 + degenerate + URL + stage wire): `tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback`
+2. Prior text map (non-empty `jd_text`): `tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none`
+3. Prior READY text path: `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests` — `git show origin/sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob:docs/test-bible/core/meteorite.md | shasum`
