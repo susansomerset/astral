@@ -1191,3 +1191,7 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 - AST-1736: explicit `class_name` still means class (not tag-first heuristic) when that field is used.
 - Zero `src` imports under `service/telescope/`; bearer auth; no service-side cull.
 - Parent scope line “alongside tag/selector and class” — tag/selector read as one primary concept (this bug); `id` still owned by AST-1746.
+
+## Radia review-fix (AST-1744)
+
+Overall: FIX-NOW — restack onto current ftr; drop sibling scope/tests; keep unify tag/selector + class secondary.
