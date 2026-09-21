@@ -312,6 +312,29 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 
 ---
 
+### AST-1752 · AST-1721 (qa-fix bug-repro — closed/missing are LINK_EXPIRED fail)
+
+**Board REVISE:** `test_ast1750` scrape_closed `total_errors==1` becomes `LINK_EXPIRED` fail; `test_config` `METEORITE_STATES` set and `closed`/`missing`==`SCRAPE_ERROR`; no `LINK_EXPIRED` repro.
+
+| Area | Component tests |
+| --- | --- |
+| closed → LINK_EXPIRED fail + diagnostics | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url` (rewritten) |
+| missing → LINK_EXPIRED fail | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1752_missing_content_is_link_expired_fail` (**bug-repro**) |
+| state registry + page map | `test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry`, `TestAst1560IngressDispatchConfig::test_ingress_task_keys_and_triggers`, `TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers` |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1752_missing_content_is_link_expired_fail \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url \
+  tests/component/utils/test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_ingress_task_keys_and_triggers \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1562 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
