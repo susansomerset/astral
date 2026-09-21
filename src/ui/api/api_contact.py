@@ -10,6 +10,7 @@ from src.core.contact import (
     contact_is_production_deploy,
     contact_skills,
     list_estelle_activity,
+    list_unbound_slack_users,
     run_contact_skill,
     set_slack_debug_enabled,
     set_slack_listen_enabled,
@@ -22,6 +23,11 @@ from src.utils.logging import get_logger
 logger = get_logger(__name__)
 
 contact_bp = Blueprint("contact", __name__, url_prefix="/api/admin/contact")
+
+
+def _api_completed(candidate_id: str, route: str, method: str, status: int) -> None:
+    cid = (candidate_id or "").strip() or "-"
+    logger.info("%s | api %s completed: %s %s", cid, route, method, status)
 
 
 def _listen_payload() -> dict:
@@ -55,8 +61,12 @@ def contact_put_listen():
     except TypeError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.warning("[api_contact] listen set failed: %s", e)
+        logger.exception(
+            "%s | api %s\n  %s: %s\n  Returning 502",
+            "-", "/api/admin/contact/listen", type(e).__name__, e,
+        )
         return jsonify({"error": str(e)}), 502
+    _api_completed("-", "/api/admin/contact/listen", "PUT", 200)
     return jsonify(_listen_payload()), 200
 
 
@@ -91,8 +101,12 @@ def contact_put_debug():
     except TypeError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.warning("[api_contact] debug set failed: %s", e)
+        logger.exception(
+            "%s | api %s\n  %s: %s\n  Returning 502",
+            "-", "/api/admin/contact/debug", type(e).__name__, e,
+        )
         return jsonify({"error": str(e)}), 502
+    _api_completed("-", "/api/admin/contact/debug", "PUT", 200)
     return jsonify(_debug_payload()), 200
 
 
@@ -104,7 +118,29 @@ def contact_get_estelle_activity():
     try:
         users = list_estelle_activity(debug=debug)
     except Exception as e:
-        logger.warning("[api_contact] estelle_activity list failed: %s", e)
+        logger.exception(
+            "%s | api %s\n  %s: %s\n  Returning 502",
+            "-", "/api/admin/contact/estelle_activity", type(e).__name__, e,
+        )
+        return jsonify({"error": str(e)}), 502
+    return jsonify({"users": users}), 200
+
+
+@contact_bp.route("/unbound_slack_users", methods=["GET"])
+@require_admin
+def contact_get_unbound_slack_users():
+    # Idempotent GET — no progress info line (stat.logging.info.api).
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        users = list_unbound_slack_users(debug=debug)
+    except Exception as e:
+        logger.exception(
+            "- | api /api/admin/contact/unbound_slack_users failed: %s: %s\n"
+            "  Unbound list was not returned",
+            type(e).__name__,
+            e,
+        )
         return jsonify({"error": str(e)}), 502
     return jsonify({"users": users}), 200
 
@@ -148,6 +184,10 @@ def contact_run_skill(skill_key: str):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        logger.warning("[api_contact] skill failed key=%s: %s", skill_key, e)
+        logger.exception(
+            "%s | api %s\n  %s: %s\n  Returning 502",
+            cid or "-", f"/api/admin/contact/skills/{skill_key}", type(e).__name__, e,
+        )
         return jsonify({"error": str(e)}), 502
+    _api_completed(cid, f"/api/admin/contact/skills/{skill_key}", "POST", 200)
     return jsonify(result), 200

@@ -178,4 +178,28 @@ describe("JobsInReview", () => {
       )
     })
   })
+
+  describe("AST-1410 silent refetch", () => {
+    it("closing the job modal refreshes the list without Loading...", async () => {
+      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", jobs))
+      renderWithProviders(<JobsInReview />)
+      await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
+      await userEvent.click(screen.getByText("Alpha Role"))
+      await waitFor(() => expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j1"))
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (typeof url === "string" && url.includes("view=in_review") && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      await userEvent.click(screen.getByRole("button", { name: "Close" }))
+      expect(screen.getByText("Alpha Role")).toBeInTheDocument()
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      release({ ok: true, json: async () => jobs } as Response)
+      await waitFor(() => expect(screen.getByText("Alpha Role")).toBeInTheDocument())
+    })
+  })
 })

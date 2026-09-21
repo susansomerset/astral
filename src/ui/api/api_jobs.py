@@ -1,48 +1,146 @@
 """API endpoints for Jobs screens: list, detail, bulk state."""
 
 from datetime import datetime, timezone
+from typing import Optional
+
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_auth
-from src.core.roster import get_entity_agent_story
+from src.core.consult import _phase_score_breakdown
+from src.core.agent import get_entity_agent_story
+from src.core.roster import get_company, update_company
 from src.core.tracker import (
+    assemble_job_copy_snapshot,
     cancel_artifact_build,
     count_jobs,
     get_job,
     get_job_artifacts,
     hydrate_job_artifacts_for_display,
     job_misses_dispatch_score_floor,
+    legal_job_successor_states,
     list_jobs,
     list_jobs_below_dispatch_score_floor,
-    save_job_artifact_cover_letter,
-    save_job_artifact_resume_content,
+    persist_skipped_job_edits,
+    save_job_artifact,
     save_job_data,
     score_floor_by_trigger_for_candidate,
     set_candidate_result,
     start_artifact_build,
     transition_job_state,
 )
-from src.utils.config import IN_REVIEW_STATES, RECOMMENDED_JOB_STATES, SKIPPED_STATES
+from src.data.database import (
+    get_meteorite_by_astral_job_id,
+    get_meteorite_link_by_astral_job_id,
+)
+from src.utils.config import (
+    APPLIED_JOB_STATES,
+    IN_REVIEW_STATES,
+    METEORITE_CONFIG,
+    PHASE_SCORE_BREAKDOWN_KEY_SUFFIX,
+    RECOMMENDED_JOB_STATES,
+    SKIPPED_STATES,
+)
+from src.utils.deploy_status import ui_llm_debug
+from src.utils.logging import get_logger
 
 jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
+logger = get_logger(__name__)
+
+
+def _http_listing_url(raw) -> Optional[str]:
+    """Return stripped http(s) URL, else None. Non-http breadcrumbs → None."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    return None
 
 
 def _flatten_grades(job: dict) -> dict:
     """Lift grade dicts, scores, and job-carried rubrics from job_data for list/detail."""
     jd = job.get("job_data") or {}
+    # AST-1347: {prefix}_score_breakdown for Analysis phases
+    breakdown_keys = tuple(
+        f"{p}_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" for p in ("jd", "do", "get", "like")
+    )
     for key in (
         "joblist_grades", "joblist_score", "joblist_rubric",
         "jd_grades", "jd_score", "jd_rubric",
         "get_grades", "get_score", "get_rubric",
         "do_grades", "do_score", "do_rubric",
         "like_grades", "like_score", "like_rubric",
+        *breakdown_keys,
     ):
         if key in jd:
             job[key] = jd[key]
     # Prefer column latest_score; blob-only joblist_score (legacy) fills gap for list UI
     if job.get("latest_score") is None and jd.get("joblist_score") is not None:
         job["latest_score"] = jd["joblist_score"]
+    # AST-1348: derive missing breakdown at read (response only; never write job_data)
+    for prefix in ("jd", "do", "get", "like"):
+        bk = f"{prefix}_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"
+        if bk in job:
+            continue
+        sk = f"{prefix}_score"
+        score = job[sk] if sk in job else jd.get(sk)
+        grades = job.get(f"{prefix}_grades")
+        rubric = job.get(f"{prefix}_rubric")
+        if score is None or not isinstance(grades, list) or not grades:
+            continue
+        if not isinstance(rubric, list) or not rubric:
+            continue
+        try:
+            job[bk] = _phase_score_breakdown(rubric, grades)
+        except (ValueError, TypeError, KeyError):
+            pass
     return job
+
+
+def _attach_skipped_edit_meta(job: dict) -> dict:
+    state = job.get("state") or ""
+    editable = state in SKIPPED_STATES
+    job["fields_editable"] = editable
+    job["legal_next_states"] = legal_job_successor_states(state) if editable else []
+    return job
+
+
+def _list_applied_jobs_for_candidate(candidate_id: Optional[str]) -> list[dict]:
+    """Applied rows via company.candidate_id scope, plus stem/meteorite repair-on-read."""
+    rows = list_jobs(
+        states=list(APPLIED_JOB_STATES),
+        candidate_id=candidate_id,
+        order_by="state_changed_at",
+    )
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return rows
+
+    seen = {r.get("astral_job_id") for r in rows if r.get("astral_job_id")}
+    default_meteorite = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+    suffix = f"-{cid}"
+
+    for job in list_jobs(states=list(APPLIED_JOB_STATES), candidate_id=None, order_by="state_changed_at"):
+        jid = job.get("astral_job_id")
+        if not jid or jid in seen:
+            continue
+        co_name = (job.get("company") or "").strip()
+        if not co_name or (co_name != default_meteorite and not co_name.endswith(suffix)):
+            continue
+        company = get_company(co_name)
+        if not company:
+            continue
+        existing = (company.get("candidate_id") or "").strip()
+        if existing == cid:
+            rows.append(job)
+            seen.add(jid)
+        elif existing == "":
+            update_company(co_name, candidate_id=cid)
+            rows.append(job)
+            seen.add(jid)
+
+    rows.sort(key=lambda j: (j.get("state_changed_at") or ""), reverse=True)
+    return rows
 
 
 @jobs_bp.route("")
@@ -81,6 +179,9 @@ def list_view():
     elif view == "recommended":
         rows = list_jobs(states=list(RECOMMENDED_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
         return jsonify([_flatten_grades(r) for r in rows])
+    elif view == "applied":
+        rows = _list_applied_jobs_for_candidate(candidate_id)
+        return jsonify([_flatten_grades(r) for r in rows])
     else:
         return jsonify([])
 
@@ -113,18 +214,145 @@ def detail(astral_job_id):
     if not job:
         return jsonify({"error": "Not found"}), 404
     job = _flatten_grades(job)
-    # AST-1100: pin-slot strings → resolved bodies for JAR / ArtifactEditor (no persist).
+    _attach_skipped_edit_meta(job)
+    # AST-1100/1592: pin-resolve proposed_answers; re-hydrate with job id for catalog current-read.
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
-    art = hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))
+    art = hydrate_job_artifacts_for_display(
+        get_job_artifacts(job) or jd.get("artifacts"),
+        astral_job_id=astral_job_id,
+    )
     job["job_data"] = {**jd, "artifacts": art}
-    job["agent_story"] = get_entity_agent_story(job)
+    # AST-1274/AST-1354: secondary soft-fail — no stacktrace for expected missing pieces.
+    try:
+        job["agent_story"] = get_entity_agent_story(job)
+    except Exception as exc:
+        logger.warning(
+            "detail: get_entity_agent_story failed astral_job_id=%s: %s",
+            astral_job_id,
+            exc,
+        )
+        job["agent_story"] = []
+    # AST-1704: parent/track fields + employer for Job Detail consumers
+    job["company_id"] = job.get("company_id")
+    job["source"] = job.get("source")
+    job["source_entity_id"] = job.get("source_entity_id")
+    # AST-1691: reverse-link meteorite provenance for Recommended report pane.
+    try:
+        logger.debug(
+            "Calling get_meteorite_by_astral_job_id: [astral_job_id=%s]",
+            astral_job_id,
+        )
+        row = get_meteorite_by_astral_job_id(astral_job_id)
+        # Full row — stat.logging.debug: no truncation of callee response.
+        logger.debug("Response from get_meteorite_by_astral_job_id: %s", row)
+        if row is None:
+            job["related_meteorite"] = None
+        else:
+            job["related_meteorite"] = {
+                "id": row.get("id"),
+                "created_at": row.get("created_at"),
+                "updated_at": row.get("updated_at"),
+                "state_changed_at": row.get("state_changed_at"),
+                "estelle_notified_at": row.get("estelle_notified_at"),
+                "link": row.get("link"),
+                "classify_outcome": row.get("classify_outcome"),
+                "content": row.get("content"),
+                "state": row.get("state"),
+                "source_kind": row.get("source_kind"),
+                "source_id": row.get("source_id"),
+                "error": row.get("error"),
+            }
+    except Exception as exc:
+        logger.exception(
+            "%s | api %s related_meteorite lookup failed\n  %s: %s\n  Returning related_meteorite=null",
+            job.get("candidate_id") or "-",
+            f"/api/jobs/{astral_job_id}",
+            type(exc).__name__,
+            exc,
+        )
+        job["related_meteorite"] = None
+    # AST-1694: resolved http(s) listing href (job.job_link else meteorite.link).
+    listing = _http_listing_url(job.get("job_link"))
+    if listing is None:
+        try:
+            logger.debug(
+                "Calling get_meteorite_link_by_astral_job_id: [astral_job_id=%s]",
+                astral_job_id,
+            )
+            meta_link = get_meteorite_link_by_astral_job_id(astral_job_id)
+            logger.debug(
+                "Response from get_meteorite_link_by_astral_job_id: %s",
+                meta_link,
+            )
+            listing = _http_listing_url(meta_link)
+        except Exception as exc:
+            logger.exception(
+                "%s | api %s listing_href meteorite lookup failed\n  %s: %s\n"
+                "  Continuing with listing_href from job.job_link only",
+                job.get("candidate_id") or "-",
+                f"/api/jobs/{astral_job_id}",
+                type(exc).__name__,
+                exc,
+            )
+            listing = None
+    job["listing_href"] = listing
     return jsonify(job)
+
+
+@jobs_bp.route("/<astral_job_id>", methods=["PUT"])
+@require_auth
+def persist_skipped_edits(astral_job_id):
+    """Persist title/link/JD/state for a job currently in SKIPPED_STATES (AST-1453)."""
+    data = request.get_json(force=True) or {}
+    fields = {
+        k: data[k]
+        for k in ("job_title", "job_link", "job_description", "state")
+        if k in data
+    }
+    if not fields:
+        return jsonify({"error": "No valid fields to update"}), 400
+    if not get_job(astral_job_id):
+        return jsonify({"error": "Not found"}), 404
+    try:
+        persist_skipped_job_edits(astral_job_id, fields)
+    except ValueError as exc:
+        msg = str(exc)
+        if (
+            msg == "Job is not in a skipped state"
+            or msg.startswith("Invalid transition")
+            or msg == "job identity collision"
+        ):
+            return jsonify({"error": msg}), 409
+        if "not in allowed list" in msg:
+            return jsonify({"error": msg}), 409
+        return jsonify({"error": msg}), 400
+    return detail(astral_job_id)
+
+
+@jobs_bp.route("/<astral_job_id>/copy")
+@require_auth
+def copy_snapshot(astral_job_id):
+    """Diagnostic snapshot: stored job plus populated agent_data hops."""
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        snapshot = assemble_job_copy_snapshot(astral_job_id, debug=debug)
+    except Exception as exc:
+        logger.warning(
+            "copy_snapshot failed astral_job_id=%s: %s",
+            astral_job_id,
+            exc,
+        )
+        return jsonify({"error": str(exc)}), 500
+    if snapshot is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(snapshot)
 
 
 @jobs_bp.route("/<astral_job_id>/artifacts/resume_content", methods=["PUT"])
 @require_auth
 def put_job_resume_content(astral_job_id):
-    """Merge section-keyed resume draft into job_data.artifacts.resume_content (AST-553)."""
+    """AST-1556/1592: legacy URL → catalog job_resume write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -132,14 +360,14 @@ def put_job_resume_content(astral_job_id):
     body = data.get("resume_content")
     if not isinstance(body, dict):
         return jsonify({"error": "resume_content must be a dict"}), 400
-    save_job_artifact_resume_content(astral_job_id, body)
+    save_job_artifact(astral_job_id, "job.artifacts.job_resume", body)
     return jsonify({"ok": True})
 
 
 @jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
 @require_auth
 def put_job_resume_pin_key(astral_job_id):
-    """AST-1100: ArtifactEditor saves under remapped job_resume key (body dict replaces pin)."""
+    """AST-1556/1592: ArtifactEditor PUTs job_resume via catalog write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -147,14 +375,14 @@ def put_job_resume_pin_key(astral_job_id):
     body = data.get("job_resume")
     if not isinstance(body, dict):
         return jsonify({"error": "job_resume must be a dict"}), 400
-    save_job_data(astral_job_id, {"artifacts": {"job_resume": body}})
+    save_job_artifact(astral_job_id, "job.artifacts.job_resume", body)
     return jsonify({"ok": True})
 
 
 @jobs_bp.route("/<astral_job_id>/artifacts/cover_letter", methods=["PUT"])
 @require_auth
 def put_job_cover_letter(astral_job_id):
-    """Merge cover letter artifact into job_data.artifacts.cover_letter (AST-565)."""
+    """AST-1556/1592: persist cover letter via catalog write."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -162,7 +390,7 @@ def put_job_cover_letter(astral_job_id):
     body = data.get("cover_letter")
     if not isinstance(body, dict):
         return jsonify({"error": "cover_letter must be a dict"}), 400
-    save_job_artifact_cover_letter(astral_job_id, body)
+    save_job_artifact(astral_job_id, "job.artifacts.cover_letter", body)
     return jsonify({"ok": True})
 
 
@@ -281,6 +509,17 @@ def candidate_action(astral_job_id):
     to_state = _CANDIDATE_ACTION_STATE.get(action)
     if not to_state:
         return jsonify({"error": "invalid action"}), 400
+    candidate_id = (data.get("candidate_id") or request.args.get("candidate_id") or "").strip()
+    if candidate_id and action in _CANDIDATE_ACTION_STATE:
+        co_name = (job.get("company") or "").strip()
+        if co_name:
+            co = get_company(co_name)
+            if co:
+                existing = (co.get("candidate_id") or "").strip()
+                if existing == "":
+                    update_company(co["short_name"], candidate_id=candidate_id)
+                elif existing != candidate_id:
+                    return jsonify({"error": "Job belongs to another candidate"}), 409
     notes = data.get("notes")
     if action != "review":
         set_candidate_result(astral_job_id, action, notes=notes)

@@ -2,9 +2,9 @@
 
 **Purpose:** Catalog every code path that inserts, updates, or deletes rows in `agent_task` or `dispatch_task`, so Susan can tell which paths may recreate rows she deliberately removed.
 
-**How to use:** Check the **Automatic vs operator** and **Can recreate deleted rows?** columns before deleting dispatch or agent task rows. After AST-745, no automatic path re-inserts `*_RETRY` or `gaze_board` dispatch rows.
+**How to use:** Check the **Automatic vs operator** and **Can recreate deleted rows?** columns before deleting dispatch or agent task rows. After AST-745, no automatic path re-inserts `*_RETRY` or `gaze_board` dispatch rows. After AST-1496, no automatic path inserts or content-updates live `dispatch_task` rows (DDL ensure + runtime bookkeeping only).
 
-**Last updated:** AST-745 (2026-06-18)
+**Last updated:** AST-1496 (2026-08-26)
 
 ---
 
@@ -14,10 +14,11 @@
 
 | Path | Table | Operation | Trigger | Automatic vs operator | Idempotent? | Can recreate deleted rows? | Notes |
 |------|-------|-----------|---------|----------------------|-------------|---------------------------|-------|
-| `_ensure_dispatch_task_schema` — NULL-column backfill | dispatch_task | UPDATE | First DB connection that ensures dispatch schema | automatic | Yes | No | Fills NULL columns from `dispatch_task_admin_defaults` |
-| `_ensure_dispatch_task_schema` — `score_floor` backfill | dispatch_task | UPDATE | Same | automatic | Yes | No | Sets `score_floor = 1.0` where NULL on scored triggers |
-| `_ensure_dispatch_task_schema` — one-time migrations | dispatch_task | CREATE / ALTER / UPDATE / DELETE | Same, once per process | automatic | One-time per DB | No | Column adds, triple-unique rebuild, prefilter cutover |
-| `ensure_table_schema_for_upsert` → `_ensure_dispatch_task_schema` | dispatch_task | (indirect) | Config upsert / copy upsert preflight | automatic | Same as schema ensure | Indirect only | Does not insert rows by itself |
+| _(none — content writers banned AST-1496)_ | — | — | — | — | — | — | No automatic INSERT/content-UPDATE of live `dispatch_task` rows |
+| `_ensure_dispatch_task_schema` — schema DDL only | dispatch_task | CREATE / ALTER | First DB connection that ensures dispatch schema | automatic (DDL) | Yes | No | Table create, ADD COLUMN, structural unique rebuilds; **no** content backfill/retarget |
+| `ensure_table_schema_for_upsert` → `_ensure_dispatch_task_schema` | dispatch_task | (indirect) | Config upsert / copy upsert preflight | automatic (DDL) | Same as schema ensure | No | Schema only |
+| `update_dispatch_task(last_run_at=…)` | dispatch_task | UPDATE | Dispatcher after batch run | automatic runtime | Yes | No | Scheduler bookkeeping (not content seed) |
+| `update_dispatch_task(enabled=False)` | dispatch_task | UPDATE | Dispatcher max_runs exhausted | automatic runtime | Yes | No | Disables auto_mode |
 
 ### Operator-initiated
 
@@ -25,9 +26,7 @@
 |------|-------|-----------|---------|----------------------|-------------|---------------------------|-------|
 | `save_dispatch_task` | dispatch_task | INSERT | `POST /api/admin/dispatch_tasks` | operator | No | **Yes** | Manage Dispatch create |
 | `update_dispatch_task` | dispatch_task | UPDATE | `PUT /api/admin/dispatch_tasks/<id>` | operator | Yes | No | Manage Dispatch edit |
-| `update_dispatch_task(last_run_at=…)` | dispatch_task | UPDATE | Dispatcher after batch run | automatic runtime | Yes | No | Scheduler bookkeeping |
-| `update_dispatch_task(enabled=False)` | dispatch_task | UPDATE | Dispatcher max_runs exhausted | automatic runtime | Yes | No | Disables auto_mode |
-| `apply_config_table_upsert` | dispatch_task | INSERT or UPDATE | upsert_config_table; push/upsert scripts | operator | Per-row | **Yes** | Upserts rows in payload |
+| `apply_config_table_upsert` | dispatch_task | INSERT or UPDATE | Admin upsert_config_table only | operator | Per-row | **Yes** | Upserts rows in payload; **scripts push/upsert hard-fail on `dispatch_task` (AST-1496)** |
 | `apply_generic_table_copy_upsert` | dispatch_task | INSERT or UPDATE | `POST /api/admin/data/table_copy_upsert` | operator | Per-row | **Yes** | Copy Output paste |
 | `POST /api/admin/data/sql` | dispatch_task | Arbitrary | Admin raw SQL | operator | N/A | **Yes** | Susan-controlled |
 | Direct SQLite / external DBA | dispatch_task | Arbitrary | Manual | operator | N/A | **Yes** | Outside application |
@@ -66,6 +65,15 @@ The following **automatic recurring INSERT** paths were removed from `_ensure_di
 - **`_ensure_gaze_board_dispatch_tasks`** — `INSERT OR IGNORE` decommissioned `gaze_board` rows.
 
 Companion retry **entity** processing is unchanged: primary dispatch rows claim both primary and `*_RETRY` holding states via `dispatch_claim_states` in `src/utils/config.py`.
+
+## Removed AST-1496
+
+Ban on automatic `dispatch_task` content writers:
+
+- **`start_scheduler` provision** — no longer calls `provision_meteorite_dispatch_tasks`, `provision_meteorite_email_dispatch_tasks`, or `ensure_fetch_email_dispatch_task` (those helpers must not run from boot).
+- **`_ensure_dispatch_task_schema` content paths** — NULL-column / `score_floor` backfills and legacy content UPDATE/DELETE/INSERT retargets removed; DDL ensure remains.
+- **`scripts/push_tables_to_prod.py` / `scripts/upsert_tables_from_prod.py`** — hard-fail if `dispatch_task` is in the resolved table list.
+- **`SEED_CONFIG` `dispatch_task-*` / `METEORITE_DISPATCH_TASKS`** — demoted to Linear copy-paste / non-executable catalog only.
 
 ---
 
