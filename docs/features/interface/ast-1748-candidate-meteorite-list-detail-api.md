@@ -195,3 +195,59 @@ The plan is binding. The builder:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1748
+**Overall:** APPROVED
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref tip:** 126cdc1460f055586ea1b3a00248392bd308e8b9
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | Stage 3 forbids `logger.info` on idempotent list/detail GETs |
+| stat.logging.debug | C | 2 | Stage 3 out-logs use row-count / hit-miss, not full callee response |
+| stat.logging.error | A | | Handler `logger.exception` with facts + next step; 404 soft-fail without log |
+
+## Traceability
+
+AC2→S1+S3 list route; AC3→S1 blank→[] + S3 empty shape; AC4→S3 `_DETAIL_KEYS` + sections; AC5→S3 stored `link` (no rewrite); AC6→S3 `_LIST_KEYS`/`_DETAIL_KEYS` include `astral_job_id`; parent AC1/7/8→N/A (nav/UI grep/Companies nav — sibling or out of Scope)
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 3 — `meteorite_list_for_candidate` / `meteorite_detail` debug out-logs  
+  **Finding:** Out-logs plan `len(rows)` and `"hit"|"miss"` instead of the full callee return string. `stat.logging.debug` requires `Response from <fn>: <response string>` without truncation; `api_jobs.py` already logs the full `get_meteorite_by_astral_job_id` row.  
+  **Recommendation:** Align out-logs with statute (full row on detail; on list, log full row list or cite an explicit Resolution-backed exception before build).
+
+- **Location:** Canon Scope (ticket list vs plan footprint)  
+  **Finding:** Plan adds `config.py` constants and `database.py` list helper, but frozen list carries only logging statutes — `astral.config.config-source-of-truth` and `astral.layers.import-direction` plainly govern yet were omitted at Discussion.  
+  **Recommendation:** Archie may amend parent Canon Scope if those should be scored at review; do not widen the frozen list in-flight.
+
+- **Location:** Linear assignee vs validate-plan gate  
+  **Finding:** Ticket is `Plan Ready` with assignee Ada Lovelace, not Joan; Chuckles explicitly spawned this pass.  
+  **Recommendation:** Procedural only — no plan change required.
+
+### acceptable
+
+- **Location:** Stage 1 — no index on `candidate_id`  
+  **Finding:** Table scan acceptable for operator UI volumes; explicitly scoped out.  
+  **Recommendation:** None.
+
+- **Location:** Stage 2 — separate `JOBS_METEORITES_*` constants  
+  **Finding:** Differs from Recommended report sections by design; sibling owns nav.  
+  **Recommendation:** None.
+
+## R6 checklist (summary)
+
+- Definition fidelity: plan matches child Scope (three files, GET-only, no nav/routes/React/land changes). Explicit scope gate present.
+- DRY: `list_meteorites_for_candidate` mirrors existing `list_meteorites_by_source` / `get_meteorite` patterns on `origin/dev`.
+- Scope creep: none into AST-1749 nav/UI or retention/land routes.
+- Self-assessment: Estimate 3 — agree; stage decisions are specific and cited.
+
+context_tokens≈28000
+
