@@ -1,7 +1,8 @@
 """Slack Events API + Web API helpers (external layer only).
 
 Production: signature verify, URL challenge parse, chat.postMessage, users.info,
-workspace poster pool (``list_workspace_posters``).
+workspace poster pool (``list_workspace_posters``), workspace members
+(``list_workspace_members`` for Manage Candidates bind).
 Local/dev only: Socket Mode websocket helper (scripts/slack_socket_mode_dev.py).
 
 Secrets from ``os.environ[CONTACT_CONFIG[…_env]]`` at **call time** (strict) —
@@ -49,6 +50,7 @@ __all__ = [
     "fetch_conversation_history",
     "fetch_user_profile",
     "list_workspace_posters",
+    "list_workspace_members",
     "open_socket_mode_connection",
 ]
 
@@ -370,6 +372,52 @@ def list_workspace_posters() -> list[dict]:
     # Full payload on outer response (Joan validate note on debug callee-out).
     logger.debug("Response from list_workspace_posters: %s", out)
     return out
+
+
+def list_workspace_members() -> list[dict]:
+    """Return unique human workspace members/guests (slack_user_id + username).
+
+    Pool = paginated users.list humans (not is_bot / not deleted). Used for
+    Manage Candidates bind (AST-1738); not the poster-derived set.
+    """
+    require_controlled_external_io("slack.list_workspace_members")
+    logger.debug("Calling list_workspace_members: []")
+    rows: List[dict] = []
+    cursor = ""
+    logger.debug("Beginning users.list members loop on unknown items")
+    while True:
+        params: Dict[str, Any] = {"limit": _PAGE_LIMIT}
+        if cursor:
+            params["cursor"] = cursor
+        payload = _slack_bot_get("users.list", params)
+        if not payload.get("ok"):
+            raise RuntimeError(f"users.list failed: {payload.get('error')}")
+        members = payload.get("members") or []
+        if isinstance(members, list):
+            for user in members:
+                if not isinstance(user, dict):
+                    continue
+                if user.get("is_bot") or user.get("deleted"):
+                    continue
+                uid = user.get("id")
+                if not isinstance(uid, str) or not uid.strip():
+                    continue
+                rows.append(
+                    {
+                        "slack_user_id": uid.strip(),
+                        "username": str(user.get("name") or "").strip(),
+                    }
+                )
+        meta = payload.get("response_metadata") or {}
+        cursor = str(meta.get("next_cursor") or "").strip() if isinstance(meta, dict) else ""
+        if not cursor:
+            break
+    rows.sort(
+        key=lambda r: (str(r.get("username") or "").lower(), str(r.get("slack_user_id") or ""))
+    )
+    logger.debug("End users.list members loop after %s items", len(rows))
+    logger.debug("Response from list_workspace_members: %s", rows)
+    return rows
 
 
 def open_socket_mode_connection(handler: Callable[[dict], None]) -> None:
