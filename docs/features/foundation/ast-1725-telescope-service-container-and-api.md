@@ -952,3 +952,5 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 ## Radia review-fix (AST-1746)
 
 Overall: CLEAN / PROCEED — optional id filter; resolve-child skipped.
+
+- **docs-acceptance:** `test(AST-1746)` @ `e20341ce` already on `origin/ftr` via sibling merge stack; merge-tests still delivered on this sub.
