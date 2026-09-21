@@ -258,3 +258,88 @@ context_tokens≈72000
 
 ---
 context_tokens≈52000
+
+## Bug: AST-1761 — TASK_CONFIG UnboundLocalError in run_consult_task (anticipate_scan)
+
+Parent mini-epic: [AST-1758](https://linear.app/astralcareermatch/issue/AST-1758/dispatcher-error-for-anticipate-scan). Publish ref: `sub/AST-1758/AST-1761-fix-task-config-unboundlocal`.
+
+Orphaned-bug fix child — no ancestor checkbox checked on AST-1758; plan from AST-1761 `## Scope` + parent As-is/To-be/Proposed steps. This section patches the AST-1674 Stage 2 consult snippet that introduced the late import; it does not restate Stage 1–2 of the original apply work.
+
+**Canon (id-only for this delta):** same frozen list as AST-1674 plan header — `patt.entity.batch-processing`, `patt.entity.batch-criteria`, `stat.logging.info.entity`, `stat.logging.debug`, `stat.logging.warning`, `stat.logging.error`. Fix is import-only; no pattern/statute body change expected.
+
+### As-is
+
+Somerset dispatcher jobs `anticipate_scan` and `contemplate_job` enter `consult.run_consult_task` on the job dispatch-chain branch and raise `UnboundLocalError: cannot access local variable 'TASK_CONFIG' where it is not associated with a value` at `task_key in TASK_CONFIG` (~line 2706). The batch truncates; those hops never start.
+
+### To-be
+
+`anticipate_scan` / `contemplate_job` (and any other job dispatch-chain trigger that reaches that `elif`) run using the module-level `TASK_CONFIG`. The company `resolve_website` arm still builds `terminal_ok` from `TASK_CONFIG["resolve_website"]["pass_state"]` / `fail_state`. No UnboundLocalError.
+
+### Repro
+
+1. On Somerset, start a dispatcher job whose `task_key` is a job dispatch-chain trigger (`anticipate_scan` or `contemplate_job`) so `_run_unified` → `consult.run_consult_task` hits the company section fallthrough and then:
+
+   ```python
+   elif is_dispatch_chain_trigger((input_state or "").strip()) and task_key in TASK_CONFIG:
+   ```
+
+2. Observed (live ERROR logs, batch ids e.g. `anticipate_scan-1c55feea-…`, `contemplate_job-bac22ac5-…`):
+
+   ```text
+   UnboundLocalError: cannot access local variable 'TASK_CONFIG' where it is not associated with a value
+   … File "…/src/core/consult.py", line 2706, in run_consult_task
+       elif is_dispatch_chain_trigger(...) and task_key in TASK_CONFIG:
+   Truncating the batch
+   ```
+
+3. Confirm the function still contains a nested `from src.utils.config import TASK_CONFIG` under `if task_key == "resolve_website":` (AST-1674 Stage 2 consult arm, ~2542) while `TASK_CONFIG` is also imported at module level (~29).
+
+### Root cause
+
+AST-1674 Stage 2 step 3 documented (and landed) an explicit company branch:
+
+```python
+if task_key == "resolve_website":
+    from src.utils.config import TASK_CONFIG
+    terminal_ok = (
+        TASK_CONFIG["resolve_website"]["pass_state"],
+        TASK_CONFIG["resolve_website"]["fail_state"],
+    )
+    …
+```
+
+In Python, a `from … import TASK_CONFIG` anywhere in `run_consult_task` marks `TASK_CONFIG` as a **local** name for the entire function. Paths that never execute that arm — including job dispatch-chain triggers that reach `task_key in TASK_CONFIG` later in the same function — raise `UnboundLocalError` even though the module-level import at the top of `consult.py` is correct.
+
+`INFLOW_CONFIG` has a similar late import earlier in the company section; that is out of this ticket's Scope (and those arms run before the dispatch-chain `elif` when their `task_key` matches).
+
+### Proposed change
+
+AST-1761 `## Scope` gate: **only** `src/core/consult.py` / `run_consult_task` — delete the nested import; no new import, no new function, no `roster.py` / config / dispatch-chain logic changes.
+
+1. In `src/core/consult.py` `run_consult_task`, company section, `if task_key == "resolve_website":` block (immediately after the `INFLOW_CONFIG["resolve"]["task_key"]` arm): **delete** the line `from src.utils.config import TASK_CONFIG`.
+2. Leave the following unchanged so it uses the existing module-level binding (`from src.utils.config import (TASK_CONFIG, …)` at the top of the file):
+
+   ```python
+   terminal_ok = (
+       TASK_CONFIG["resolve_website"]["pass_state"],
+       TASK_CONFIG["resolve_website"]["fail_state"],
+   )
+   ```
+
+3. Do **not** edit the dispatch-chain `elif is_dispatch_chain_trigger(...) and task_key in TASK_CONFIG:` branch beyond restoring a bound name via step 1.
+4. Do **not** touch `src/core/roster.py`, `src/utils/config.py`, or `terminal_ok` / rollup values for `resolve_website`.
+
+### Blast radius
+
+- **Same function:** every later reference to `TASK_CONFIG` inside `run_consult_task` (dispatch-chain `elif`, any other fallthrough that reads `TASK_CONFIG`) currently risks the same UnboundLocalError when the `resolve_website` arm is not taken; deleting the nested import restores the module binding for all of them.
+- **Company `resolve_website` path:** still reads the same `pass_state` / `fail_state` keys; behavior should be identical once the name resolves.
+- **AST-1674 Stage 1 / `run_company_task`:** out of Scope; `roster.py` already uses module-level `TASK_CONFIG` (no late import in that WEBSITE_REVIEW block).
+- **Tests:** existing AST-1674 consult rollup tests that call `run_consult_task` with `task_key=resolve_website` should still pass; job dispatch-chain triggers should stop raising. No test-tree edits in this plan (Betty owns tests).
+
+### What must still hold
+
+- Module-level `TASK_CONFIG` import in `consult.py` remains the sole binding used by `run_consult_task` for this name.
+- `resolve_website` company consult arm still rolls up `WEBSITE_FOUND` / `NO_WEBSITE` as `total_passed` and hard errors as `total_errors` (AST-1674 Stage 2 Done when).
+- `run_company_task` `WEBSITE_REVIEW` → `resolve_website_company` routing and terminals unchanged.
+- No CSE re-query, no `TASK_CONFIG` key/value edits, no new SA keys, no dispatcher completion-line changes.
+- Original AST-1674 Canon Scope ids unchanged; this delta does not require new logging or batch-criteria behavior.
