@@ -1195,3 +1195,8 @@ All edits stay inside parent AST-1721 Component/Technical scope (`service/telesc
 ## Radia review-fix (AST-1744)
 
 Overall: FIX-NOW — restack onto current ftr; drop sibling scope/tests; keep unify tag/selector + class secondary.
+
+## Resolution (AST-1744)
+
+**Date:** 2026-09-21  
+**Radia fix-now:** Restacked onto `origin/ftr/AST-1721-astral-telescope-stateless-headless-scraping` (`sync(ftr)`). Kept AST-1744 product: unify tag/selector primary, class secondary (`tag.class`), Admin Tag+Class (no Selector). Betty stripped AST-1746-only tests/bible @ `360faa07`. Epic ftr also carries AST-1746 `id` secondary filter — merged into resolve_capture_query / Admin Id without reintroducing Selector XOR.
