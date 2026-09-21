@@ -292,6 +292,8 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 
 ### AST-1751 · AST-1721 (qa-fix bug-repro — ERROR not also fail; BOT_BLOCKED is fail)
 
+**QA-handoff (Ada):** `candidate_id=` on error-only repro; blocked assert uses `_row_miss`/`logger.warning` (`scrape blocked at`).
+
 **Board REVISE:** rewrite `TestAst1560RunScrapeMeteorite` BOT_BLOCKED `total_passed`→`total_failed`; missing ERROR-only `fail:0 error:N` (sibling omitted `total_failed`); stage/land double-bump holds may break.
 
 | Area | Component tests |
