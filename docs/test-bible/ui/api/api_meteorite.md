@@ -62,3 +62,35 @@
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1748 · AST-1741
+
+**Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`.
+
+Authenticated `GET /api/candidates/<candidate_id>/meteorites` → `{columns, meteorites}` (list projection, no `content`); `GET /api/meteorites/<id>` → `{sections, meteorite}` or 404. `link` / `astral_job_id` returned as stored. No `logger.info` on either GET. Data helper: **`docs/test-bible/data/database/meteorites.md`** § AST-1748.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List scope / empty / columns / no info | `src/ui/api/api_meteorite.py` | **`TestAst1748MeteoriteListDetailApi`** |
+| Detail content+metadata / link honesty / 404 / 500 | same | **`TestAst1748MeteoriteListDetailApi`** |
+
+**Broken / obsolete:** none for land/create routes — additive GETs only.
+
+**Integration:** harness registers system+candidate only — no existing meteorite scenario to revise; do not invent.
+
+## QA test manifest
+
+1. `tests/component/ui/api/test_api_meteorite.py::TestAst1748MeteoriteListDetailApi`
+2. `tests/component/data/database/test_meteorites.py::TestAst1748ListMeteoritesForCandidate`
+3. Land regression in same API module: `TestAst1042MeteoriteCreateApi` + `TestAst1471MeteoriteLandApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py \
+  tests/component/ui/api/test_api_meteorite.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests`.
