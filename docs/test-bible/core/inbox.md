@@ -322,3 +322,25 @@ cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/tes
 
 **Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1714-inbox-check-email-runner:docs/test-bible/core/inbox.md | shasum`
 
+### AST-1743 · AST-1740 (gap — skip→failed rollup)
+
+**Parent:** [AST-1740](https://linear.app/astralcareermatch/issue/AST-1740/meteorites-deemed-not-a-job-should-be-fails). **Sibling product:** AST-1742. **Publish:** `origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests`.
+
+Board REVISE on AST-1742: no node asserted `check_email` skip / `NOT_A_JOB` → failed. Product counter retarget is AST-1742; this gap lands the repro.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip after archive → failed | `src/core/inbox.py` | **`[bug-repro]`** `TestAst1714CheckEmail::test_skip_outcome_counts_failed_not_passed` |
+
+**Do not revise here:** `TestAst1559CheckInbox::test_skip_outcome_zero_rows_monitor_archive` (`check_inbox` leftover — out of AST-1742 Scope).
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1714CheckEmail::test_skip_outcome_counts_failed_not_passed \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests:docs/test-bible/core/inbox.md | shasum`
+
