@@ -349,15 +349,23 @@ async def _post_telescope(
         body["tag"] = tag
     if class_name is not None:
         body["class_name"] = class_name
-    resp = await _pool.request(
-        "POST", TELESCOPE_CONFIG["telescope_path"], json_body=body
-    )
+    path = TELESCOPE_CONFIG["telescope_path"]
+    # Statute debug: request params in, full JSON out — ContextVar gates emission.
+    _log.debug("Calling _post_telescope: [path=%s, body=%s]", path, body)
+    resp = await _pool.request("POST", path, json_body=body)
     if resp.status_code >= 400:
+        _log.debug(
+            "Response from _post_telescope: status=%s path=%s body=%s",
+            resp.status_code,
+            path,
+            resp.text,
+        )
         raise PlaywrightInfraError(
             "telescope_http_error",
             f"POST /telescope HTTP {resp.status_code}: {resp.text[:200]}",
         )
     data = resp.json()
+    _log.debug("Response from _post_telescope: %s", data)
     _log.info(
         "telescope ok path=/telescope final_url=%s",
         data.get("final_url"),
@@ -389,15 +397,22 @@ async def _post_telescope_html(
         body["tag"] = tag
     if class_name is not None:
         body["class_name"] = class_name
-    resp = await _pool.request(
-        "POST", TELESCOPE_CONFIG["telescope_html_path"], json_body=body
-    )
+    path = TELESCOPE_CONFIG["telescope_html_path"]
+    _log.debug("Calling _post_telescope_html: [path=%s, body=%s]", path, body)
+    resp = await _pool.request("POST", path, json_body=body)
     if resp.status_code >= 400:
+        _log.debug(
+            "Response from _post_telescope_html: status=%s path=%s body=%s",
+            resp.status_code,
+            path,
+            resp.text,
+        )
         raise PlaywrightInfraError(
             "telescope_http_error",
             f"POST /telescope/html HTTP {resp.status_code}: {resp.text[:200]}",
         )
     data = resp.json()
+    _log.debug("Response from _post_telescope_html: %s", data)
     html = data.get("html")
     if isinstance(html, list):
         html_len = sum(len(h or "") for h in html)

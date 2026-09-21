@@ -1788,8 +1788,41 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                     summary["total_passed"] += 1
                     continue
 
-                err = "empty visible text" if page_status == "ok" else f"scrape_{page_status}"
-                update_meteorite(row_id, state=status_map.get(page_status, "SCRAPE_ERROR"), error=err)
+                # Soft-fail diagnostic: who/why on warning + row.error; body on debug.
+                text_len = len(visible_text or "")
+                resolved_url = final_url or link
+                if page_status == "ok":
+                    err = (
+                        f"empty visible text text_len={text_len} "
+                        f"final_url={resolved_url}"
+                    )
+                else:
+                    signal = None
+                    if page_status == "closed":
+                        text_lower = (visible_text or "").lower()
+                        for sig in (
+                            TRACKER_CONFIG.get("jd_classifier", {}).get(
+                                "closed_signals", []
+                            )
+                        ):
+                            if sig.lower() in text_lower:
+                                signal = sig
+                                break
+                    err = (
+                        f"scrape_{page_status} signal={signal!r} "
+                        f"text_len={text_len} final_url={resolved_url}"
+                    )
+                logger.debug(
+                    "scrape soft-fail page_status=%s final_url=%s visible_text=%s",
+                    page_status,
+                    resolved_url,
+                    visible_text,
+                )
+                update_meteorite(
+                    row_id,
+                    state=status_map.get(page_status, "SCRAPE_ERROR"),
+                    error=err,
+                )
                 _row_miss(row_id, cid, err, "This row is ERROR")
                 summary["total_failed"] += 1
                 summary["total_errors"] += 1
