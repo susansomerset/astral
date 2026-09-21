@@ -2381,3 +2381,54 @@ class TestAst1713StageSavesRuthRow:
         assert not hasattr(consult_mod, "enrich_meteorite_land_packet")
         assert "consult" not in inspect.getsource(meteorite_mod)
 
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "ingest_candidate_email_message"),
+    reason="ingest_candidate_email_message not on this publish tip",
+)
+class TestAst1743IngestSkipFailed:
+    """AST-1743: ingest skip / NOT_A_JOB returns counter=failed (not passed)."""
+
+    @pytest.mark.asyncio
+    async def test_skip_outcome_returns_counter_failed(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1743 [bug-repro]: skip + archive success → counter failed."""
+        db = sqlite_in_memory
+        cid = "cand-1743-ingest"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Ing"})
+        mid = "msg-1743-ingest"
+        monkeypatch.setattr(
+            meteorite_mod,
+            "get_message_html",
+            lambda _m: {
+                "subject": "s",
+                "html_body": "<p>x</p>",
+                "from_address": "a@ex.com",
+                "to_address": "b@ex.com",
+                "date": "1",
+            },
+        )
+        monkeypatch.setattr(
+            meteorite_mod, "strip_extract_email_html", lambda *a, **k: "blob"
+        )
+        archive = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "archive_candidate_email", archive)
+
+        async def _stage(*_a, **_k):
+            return {
+                "outcome": "not_job_content",
+                "stage_outcome": "not_job_content",
+                "skipped": True,
+                "jobs": [],
+                "error": None,
+                "batch_id": "b",
+            }
+
+        monkeypatch.setattr(meteorite_mod, "stage_meteorite", _stage)
+        out = await meteorite_mod.ingest_candidate_email_message(cid, mid, debug=False)
+        assert out["counter"] == "failed"
+        assert out["outcome"] == "not_job_content"
+        assert out.get("error") in (None, "")
+        archive.assert_called_once_with(mid)
+
