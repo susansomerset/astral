@@ -234,3 +234,9 @@ context_tokens≈35000
 ---
 
 [plan-rubric] PROCEED (Commit: a506737b49189cec7996366f07f3dd803bf41a12) UI plan faithful
+
+## Review stub
+
+- **Publish ref:** `sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`
+- **Tip:** `244daefde30b58f2138ab8ac36205d70946d4b27`
+- **Stages:** S1 nav+route · S2 list · S3 detail modal (S2+S3 one commit)
