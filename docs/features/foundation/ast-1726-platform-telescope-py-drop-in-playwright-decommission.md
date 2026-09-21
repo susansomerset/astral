@@ -687,3 +687,7 @@ Radia `review-fix` overall FIX-NOW (`880d96ef`): drop/revert `data/admin/agent_t
 **Discuss — sibling merge-tests:** Left as-is (Betty shared `astral-tests` delivery); not product scope for this bug.
 
 **Advisory — plan match:** Confirmed; no further change.
+
+## Radia review-fix (AST-1734)
+
+Overall: REVIEW addressed — page-scroll fix kept; agent_task.json clear vs ftr/dev. Clean → User Testing.
