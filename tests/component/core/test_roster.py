@@ -98,10 +98,11 @@ def _ast603_prefilter_rubric_ctx() -> Dict[str, Any]:
     }
 
 
-def _encoded_prefilter_response(grades: List[Dict[str, Any]], **job_extra: Any) -> Dict[str, Any]:
-    job: Dict[str, Any] = {"grades": grades}
-    job.update(job_extra)
-    return {"jobs": [job]}
+def _encoded_prefilter_response(grades: List[Dict[str, Any]], **company_extra: Any) -> Dict[str, Any]:
+    # AST-1724: company-native payload (companies / company_id), not jobs / astral_job_id.
+    row: Dict[str, Any] = {"grades": grades}
+    row.update(company_extra)
+    return {"companies": [row]}
 
 
 _RC_VECTOR = "Reality Check"
@@ -1441,7 +1442,7 @@ class TestAst701ScrapeCompanyHomepageContent:
     async def test_playwright_infra_error_prefixes_failure_class(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         session = MagicMock()
         monkeypatch.setattr(
@@ -1807,16 +1808,16 @@ class TestAst718PrefilterPjlRouting:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "passco",
+                                "company_id": "passco",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
                                 "possible_job_links": [1],
                             },
                             {
-                                "astral_job_id": "nolinks",
+                                "company_id": "nolinks",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
@@ -1881,7 +1882,7 @@ class TestAst603ConsultParityHydration:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
                                 "grades": [
                                     {"vector": "Reality Check", "grade": "A", "confidence": 3},
@@ -2020,16 +2021,16 @@ class TestAst702PrefilterCompanyBatch:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "passco",
+                                "company_id": "passco",
                                 "grades": _prefilter_grades(
                                     {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
                                 ),
                                 "possible_job_links": [1],
                             },
                             {
-                                "astral_job_id": "failco",
+                                "company_id": "failco",
                                 "grades": _prefilter_grades(
                                     {"grade": "F", "vector": "fit", "confidence": 2, "reason": "nope"},
                                 ),
@@ -2208,9 +2209,9 @@ class TestAst707EmbeddedRcBatchHydration:
                 return_value={
                     "success": True,
                     "parsed_response": {
-                        "jobs": [
+                        "companies": [
                             {
-                                "astral_job_id": "acme",
+                                "company_id": "acme",
                                 "grades": [
                                     {"grade": "D", "vector": "Reality Check", "confidence": 3},
                                     {"grade": "B", "vector": "Mission & Product", "confidence": 3},
@@ -2247,6 +2248,127 @@ class TestAst707EmbeddedRcBatchHydration:
         saved_grades = save.call_args.args[1].get("prefilter_grades") or []
         rc_row = next(g for g in saved_grades if g.get("vector") == "Reality Check")
         assert rc_row.get("reason")
+
+
+class TestAst1724CompanyBatchCompanyIdContract:
+    """[bug-repro] AST-1724: company batch uses company_id / companies (not astral_job_id / jobs)."""
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_entities_use_company_id_not_astral_job_id(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "companies": [
+                        {
+                            "company_id": "acme",
+                            "grades": _prefilter_grades(
+                                {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
+                            ),
+                            "possible_job_links": [1],
+                        },
+                    ],
+                },
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        ctx = {**_prefilter_rubric_ctx(), "astral_candidate_id": "c1724"}
+        rubric = [
+            {
+                "code": "RC",
+                "label": "Reality Check",
+                "importance": 5,
+                "grade_descriptions": [{"grade": "A", "description": _RC_REASON}],
+            },
+            *ctx["candidate_data"]["artifacts"]["company_prefilter"],
+        ]
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            MagicMock(return_value=rubric),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {
+                    "homepage_text": "Acme homepage",
+                    "nav_links": "1: https://acme.com/careers",
+                },
+            },
+        ]
+        await roster_mod.prefilter_company_batch("batch-1724-ent", companies, ctx=ctx, debug=False)
+        ent = do_task.await_args.kwargs["ctx"]["batch_entities"][0]
+        assert ent["company_id"] == "acme"
+        assert ent["short_name"] == "acme"
+        assert "astral_job_id" not in ent
+
+    @pytest.mark.asyncio
+    async def test_prefilter_batch_reconciles_companies_company_id(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        transition = MagicMock()
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", save)
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "companies": [
+                            {
+                                "company_id": "acme",
+                                "grades": _prefilter_grades(
+                                    {"grade": "A", "vector": "fit", "confidence": 5, "reason": "yes"},
+                                ),
+                                "possible_job_links": [1],
+                            },
+                        ],
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        ctx = {**_prefilter_rubric_ctx(), "astral_candidate_id": "c1724"}
+        rubric = [
+            {
+                "code": "RC",
+                "label": "Reality Check",
+                "importance": 5,
+                "grade_descriptions": [{"grade": "A", "description": _RC_REASON}],
+            },
+            *ctx["candidate_data"]["artifacts"]["company_prefilter"],
+        ]
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            MagicMock(return_value=rubric),
+        )
+        companies = [
+            {
+                "short_name": "acme",
+                "state": "HOMEPAGE_READY",
+                "company_data": {
+                    "homepage_text": "Acme homepage",
+                    "nav_links": "1: https://acme.com/careers",
+                },
+            },
+        ]
+        out = await roster_mod.prefilter_company_batch(
+            "batch-1724-rec", companies, ctx=ctx, debug=False,
+        )
+        # Success must come from companies/company_id reconcile — not the old jobs shape.
+        assert out["passed"] == 1
+        assert out["failed"] == 0
+        assert out["total"] == 1
 
 
 @pytest.mark.skip(reason="AST-721: find_job_page monolith removed; covered by decomposed AST-718–721 tests")
@@ -4251,7 +4373,7 @@ class TestFinalize469BranchCoverage:
         monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=[]))
         monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
         log_note = MagicMock()
-        monkeypatch.setattr(roster_mod.logger, "test", log_note)
+        monkeypatch.setattr(roster_mod.logger, "debug", log_note)
         await roster_mod._finalize_joblist_titles_after_chain(
             {"job_titles": ["Y"], "response_type": "JOBLIST_TITLES"},
             {"parsed_response": {"job_container": "m", "job_tag": "a"}},
@@ -4409,7 +4531,7 @@ class TestAst505InflowDiscovery:
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
-        with caplog.at_level("WARNING", logger="src.core.roster"):
+        with caplog.at_level("ERROR", logger="src.core.roster"):
             out = await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
         assert out["total_errors"] == 1
         rows = {r["search_term"]: r["last_scan_at"] for r in db.list_company_search_terms("c1")}
@@ -4417,8 +4539,9 @@ class TestAst505InflowDiscovery:
         assert rows["bad"] is None
         assert db.get_company("ok_example") is not None
         combined = "\n".join(r.message for r in caplog.records)
-        assert "CSE failed for term 'bad'" in combined
-        assert "1 CSE term error(s) for candidate c1" in combined
+        assert "CSE search term 'bad'" in combined
+        assert "Continuing to the next search term" in combined
+        assert "CSE term error(s)" not in combined
 
     @pytest.mark.asyncio
     async def test_run_batch_searches_only_stale_terms(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4483,7 +4606,7 @@ class TestAst505InflowDiscovery:
 
 
 class TestAst837CsePaceDebug:
-    """AST-837 / AST-839: roster passes log.debug_detail as pace_detail when debug=True."""
+    """CSE pace_detail always calls logger.debug; logger ContextVar decides emit."""
 
     @pytest.mark.asyncio
     async def test_discovery_debug_streams_pace_detail_during_search(
@@ -4494,11 +4617,8 @@ class TestAst837CsePaceDebug:
         db.sync_company_search_terms("c1", ["fintech"])
         events: list[str] = []
 
-        def _debug_index(**kwargs: Any) -> None:
-            events.append(f"index:{kwargs.get('outcome')}")
-
-        def _debug_detail(msg: str) -> None:
-            events.append(f"detail:{msg}")
+        def _debug(message: str, *args: Any, **_kwargs: Any) -> None:
+            events.append(str(message) % args if args else str(message))
 
         def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
             pace_detail = kwargs.get("pace_detail")
@@ -4507,18 +4627,17 @@ class TestAst837CsePaceDebug:
             return [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
-        monkeypatch.setattr(roster_mod.logger, "debug_index", _debug_index)
-        monkeypatch.setattr(roster_mod.logger, "debug_detail", _debug_detail)
+        monkeypatch.setattr(roster_mod.logger, "debug", _debug)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
         await roster_mod.run_inflow_discovery_batch(cand, "batch-839", cand, True)
-        assert events[0] == "index:CSE search"
+        assert any("Calling search_google_cse" in e for e in events)
         http_idx = next(i for i, e in enumerate(events) if "CSE HTTP start=" in e)
-        complete_idx = next(i for i, e in enumerate(events) if e.startswith("detail:search complete:"))
+        complete_idx = next(i for i, e in enumerate(events) if "Response from search_google_cse" in e)
         assert http_idx < complete_idx
 
 
 class TestAst839CseDebugStreaming:
-    """AST-839: pre-search index header + search complete detail (no pace_lines buffer)."""
+    """CSE search always logs Calling/Response via logger.debug; pace_detail is the same channel."""
 
     @pytest.mark.asyncio
     async def test_resolve_debug_streams_pre_search_index_and_complete_detail(
@@ -4528,16 +4647,10 @@ class TestAst839CseDebugStreaming:
         db.save_company("acme", state="NEW", company_name="Acme Corp")
         events: list[str] = []
 
-        monkeypatch.setattr(
-            roster_mod.logger,
-            "debug_index",
-            lambda **kwargs: events.append(f"index:{kwargs.get('outcome')}"),
-        )
-        monkeypatch.setattr(
-            roster_mod.logger,
-            "debug_detail",
-            lambda msg: events.append(f"detail:{msg}"),
-        )
+        def _debug(message: str, *args: Any, **_kwargs: Any) -> None:
+            events.append(str(message) % args if args else str(message))
+
+        monkeypatch.setattr(roster_mod.logger, "debug", _debug)
         def _cse(**kwargs: Any) -> List[Dict[str, str]]:
             pace_detail = kwargs.get("pace_detail")
             if pace_detail is not None:
@@ -4552,13 +4665,13 @@ class TestAst839CseDebugStreaming:
         )
         entity = {"company_name": "Acme Corp", "company_website": ""}
         await roster_mod.resolve_company_website("acme", entity, {}, True)
-        assert events[0] == "index:CSE search"
+        assert any("Calling search_google_cse" in e for e in events)
         assert any("CSE HTTP start=" in e for e in events)
-        assert any(e.startswith("detail:search complete:") for e in events)
+        assert any("Response from search_google_cse" in e for e in events)
 
 
 class TestAst775InflowDiscoveryRecordNew:
-    """AST-775: discovery batch records NEW rows only — no inline vet_inflow_discovery."""
+    """AST-775/1673: discovery batch records DISCOVERED (land_state) — no inline vet."""
 
     def test_slug_from_discovery_url_hostname(self) -> None:
         assert roster_mod._slug_from_discovery_url("https://www.Acme.Corp/jobs") == "acme_corp"
@@ -4583,10 +4696,11 @@ class TestAst775InflowDiscoveryRecordNew:
         hit = {"title": "Hit Co", "url": "https://hit.example", "snippet": "about"}
         ok, outcome = roster_mod.record_inflow_discovery_hit("c775", hit, index=0)
         assert ok is True
-        assert "recorded NEW slug=hit_example" in outcome
+        # AST-1673: discovery lands DISCOVERED via INFLOW_CONFIG land_state.
+        assert "recorded DISCOVERED slug=hit_example" in outcome
         row = db.get_company("hit_example")
         assert row is not None
-        assert row["state"] == "NEW"
+        assert row["state"] == "DISCOVERED"
         cdata = row.get("company_data") or {}
         assert cdata.get("inflow_discovery_notes") == "https://hit.example"
         assert cdata.get("inflow_discovery_blurb") == "000|Hit Co|https://hit.example|about"
@@ -4746,12 +4860,12 @@ class TestAst776VetInflowDiscoveryCompany:
         monkeypatch.setattr(roster_mod, "vet_inflow_discovery_company", vet)
         monkeypatch.setattr(roster_mod, "resolve_company_website", resolve)
         entity = _company(
-            state="NEW",
+            state="DISCOVERED",
             company_website="",
             company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
         )
         out = await roster_mod.run_company_task(
-            "NEW",
+            "DISCOVERED",
             entity,
             "batch-776",
             {},
@@ -4768,9 +4882,9 @@ class TestAst776VetInflowDiscoveryCompany:
         resolve = AsyncMock(return_value={"success": True, "state": "NO_WEBSITE", "error": None})
         monkeypatch.setattr(roster_mod, "vet_inflow_discovery_company", vet)
         monkeypatch.setattr(roster_mod, "resolve_company_website", resolve)
-        entity = _company(state="NEW", company_website="")
+        entity = _company(state="DISCOVERED", company_website="")
         out = await roster_mod.run_company_task(
-            "NEW",
+            "DISCOVERED",
             entity,
             "batch-776",
             {},
@@ -4782,9 +4896,10 @@ class TestAst776VetInflowDiscoveryCompany:
         vet.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_run_company_task_new_without_key_errors(self) -> None:
-        entity = _company(state="NEW", company_website="")
-        out = await roster_mod.run_company_task("NEW", entity, "batch-776", {}, False)
+    async def test_run_company_task_discovered_without_key_errors(self) -> None:
+        # AST-1673: inflow routing is on DISCOVERED; missing task key still errors.
+        entity = _company(state="DISCOVERED", company_website="")
+        out = await roster_mod.run_company_task("DISCOVERED", entity, "batch-776", {}, False)
         assert out["total_errors"] == 1
 
     @pytest.mark.asyncio
@@ -4890,7 +5005,7 @@ class TestAst880VetInflowEncoded:
         out = await roster_mod.vet_inflow_discovery_company("co_d", entity, "batch-880", {}, False)
         assert out == {"success": True, "state": "WEBSITE_FOUND", "error": None}
         ctx = do_task.await_args.kwargs["ctx"]
-        assert ctx["batch_entities"] == [{"astral_job_id": "co_d", "short_name": "co_d"}]
+        assert ctx["batch_entities"] == [{"company_id": "co_d", "short_name": "co_d"}]
         assert ctx["batch_size"] == 1
 
     @pytest.mark.asyncio
@@ -4918,13 +5033,13 @@ class TestAst880VetInflowEncoded:
 
 
 class TestAst506InflowResolve:
-    """AST-506: Phase 2 CSE resolution + find_company_website → WEBSITE_FOUND | NO_WEBSITE."""
+    """AST-506/1673: CSE-only inflow_resolve_website → WEBSITE_REVIEW | NO_WEBSITE (no do_task)."""
 
     @pytest.mark.asyncio
     async def test_resolve_skips_when_website_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
         cse = MagicMock()
         monkeypatch.setattr(roster_mod, "search_google_cse", cse)
-        entity = _company(state="NEW", company_website="https://already.example")
+        entity = _company(state="DISCOVERED", company_website="https://already.example")
         out = await roster_mod.resolve_company_website("acme", entity, {}, False)
         assert out == {"success": True, "state": "WEBSITE_FOUND", "error": None}
         cse.assert_not_called()
@@ -4934,150 +5049,296 @@ class TestAst506InflowResolve:
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=[]))
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
-        entity = _company(state="NEW", company_website="")
+        do_task = AsyncMock()
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        entity = _company(state="DISCOVERED", company_website="")
         out = await roster_mod.resolve_company_website("acme", entity, {}, False)
         assert out["state"] == "NO_WEBSITE"
         transition.assert_called_once_with("acme", "NO_WEBSITE")
+        do_task.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_resolve_success_website_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_resolve_hits_persist_website_review(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1673 AC4: ≥1 hit → persist hit list + WEBSITE_REVIEW; never do_task.
         hits = [{"title": "Acme", "url": "https://acme.example", "snippet": "official"}]
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(
-                return_value={
-                    "success": True,
-                    "parsed_response": {"task_success": True, "website": "https://acme.example"},
-                }
-            ),
-        )
+        do_task = AsyncMock()
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        save_data = MagicMock()
         transition = MagicMock()
         update = MagicMock()
+        monkeypatch.setattr(roster_mod, "save_company_data", save_data)
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
         monkeypatch.setattr(roster_mod, "update_company", update)
-        entity = _company(state="NEW", company_website="")
+        entity = _company(state="DISCOVERED", company_website="")
         entity["company_name"] = "Acme Corp"
+        entity["batch_id"] = "batch-1673"
         out = await roster_mod.resolve_company_website("acme", entity, {}, False)
-        assert out["state"] == "WEBSITE_FOUND"
-        update.assert_called_once_with("acme", company_website="https://acme.example")
-        transition.assert_called_once_with("acme", "WEBSITE_FOUND")
-
-    @pytest.mark.asyncio
-    async def test_resolve_ai_decline_no_website(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        hits = [{"title": "Acme", "url": "https://acme.example", "snippet": ""}]
-        monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
-        monkeypatch.setattr(
-            roster_mod,
-            "do_task",
-            AsyncMock(return_value={"success": True, "parsed_response": {"task_success": False}}),
-        )
-        transition = MagicMock()
-        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
-        entity = _company(state="NEW", company_website="")
-        out = await roster_mod.resolve_company_website("acme", entity, {}, False)
-        assert out["state"] == "NO_WEBSITE"
-        transition.assert_called_once_with("acme", "NO_WEBSITE")
+        assert out == {"success": True, "state": "WEBSITE_REVIEW", "error": None}
+        save_data.assert_called_once_with("acme", {"inflow_resolve_website_hits": hits})
+        transition.assert_called_once_with("acme", "WEBSITE_REVIEW")
+        do_task.assert_not_awaited()
+        update.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_resolve_cse_failure_returns_error(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(side_effect=RuntimeError("quota")))
         transition = MagicMock()
         monkeypatch.setattr(roster_mod, "transition_company_state", transition)
-        entity = _company(state="NEW", company_website="")
+        entity = _company(state="DISCOVERED", company_website="")
         out = await roster_mod.resolve_company_website("acme", entity, {}, False)
         assert out["success"] is False
         assert out["error"] == "quota"
         transition.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_run_company_task_new_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_run_company_task_discovered_resolve_terminals(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             roster_mod,
             "resolve_company_website",
             AsyncMock(side_effect=[
-                {"success": True, "state": "WEBSITE_FOUND", "error": None},
+                {"success": True, "state": "WEBSITE_REVIEW", "error": None},
                 {"success": True, "state": "NO_WEBSITE", "error": None},
                 {"success": False, "state": None, "error": "boom"},
             ]),
         )
-        entity = _company(state="NEW", company_website="")
-        ok = await roster_mod.run_company_task("NEW", entity, "batch-506")
-        no_site = await roster_mod.run_company_task("NEW", entity, "batch-506")
-        err = await roster_mod.run_company_task("NEW", entity, "batch-506")
+        entity = _company(state="DISCOVERED", company_website="")
+        ok = await roster_mod.run_company_task(
+            "DISCOVERED", entity, "batch-506", {}, False, dispatch_task_key="inflow_resolve_website",
+        )
+        no_site = await roster_mod.run_company_task(
+            "DISCOVERED", entity, "batch-506", {}, False, dispatch_task_key="inflow_resolve_website",
+        )
+        err = await roster_mod.run_company_task(
+            "DISCOVERED", entity, "batch-506", {}, False, dispatch_task_key="inflow_resolve_website",
+        )
         assert ok["total_passed"] == 1
         assert no_site["total_passed"] == 1
         assert err["total_errors"] == 1
 
 
+class TestAst1673ConsultResolveFetchHop:
+    """AST-1673: consult routes inflow_resolve_website like fetch hop; NO_WEBSITE counts passed."""
+
+    @pytest.mark.asyncio
+    async def test_consult_resolve_counts_website_review_and_no_website_as_passed(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import consult as consult_mod
+
+        resolve = AsyncMock(
+            side_effect=[
+                {"success": True, "state": "WEBSITE_REVIEW", "error": None},
+                {"success": True, "state": "NO_WEBSITE", "error": None},
+                {"success": False, "state": None, "error": "cse boom"},
+            ],
+        )
+        monkeypatch.setattr(roster_mod, "resolve_company_website", resolve)
+        entities = [
+            {"short_name": "a", "company_state": "DISCOVERED"},
+            {"short_name": "b", "company_state": "DISCOVERED"},
+            {"short_name": "c", "company_state": "DISCOVERED"},
+        ]
+        out = await consult_mod.run_consult_task(
+            "company",
+            "DISCOVERED",
+            entities,
+            "batch-1673",
+            {"astral_candidate_id": "c1673"},
+            False,
+            dispatch_task_key="inflow_resolve_website",
+        )
+        assert out == {
+            "total_processed": 3,
+            "total_passed": 2,
+            "total_failed": 0,
+            "total_errors": 1,
+        }
+        assert resolve.await_count == 3
+
+
+class TestAst1674ResolveWebsiteApply:
+    """AST-1674: resolve_website AI apply on WEBSITE_REVIEW → WEBSITE_FOUND | NO_WEBSITE."""
+
+    def _review_entity(self, hits=None, **extra):
+        data = {"inflow_resolve_website_hits": hits if hits is not None else [
+            {"title": "Acme", "url": "https://acme.example", "snippet": "official"},
+        ]}
+        entity = _company(
+            state="WEBSITE_REVIEW",
+            company_website="",
+            company_data=data,
+        )
+        entity["company_name"] = "Acme Corp"
+        entity.update(extra)
+        return entity
+
+    @pytest.mark.asyncio
+    async def test_missing_hits_is_error_without_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        cse = MagicMock()
+        monkeypatch.setattr(roster_mod, "search_google_cse", cse)
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        entity = _company(state="WEBSITE_REVIEW", company_website="", company_data={})
+        out = await roster_mod.resolve_website_company("acme", entity, {}, False)
+        assert out["success"] is False
+        assert "inflow_resolve_website_hits" in (out.get("error") or "")
+        transition.assert_not_called()
+        update.assert_not_called()
+        cse.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_success_sets_website_and_website_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        do_task = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {"task_success": True, "website": "https://acme.example"},
+            }
+        )
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        cse = MagicMock()
+        monkeypatch.setattr(roster_mod, "search_google_cse", cse)
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        entity = self._review_entity()
+        out = await roster_mod.resolve_website_company("acme", entity, {}, False)
+        assert out == {"success": True, "state": "WEBSITE_FOUND", "error": None}
+        update.assert_called_once_with("acme", company_website="https://acme.example")
+        transition.assert_called_once_with("acme", "WEBSITE_FOUND")
+        cse.assert_not_called()
+        assert do_task.await_args.kwargs["task_key"] == "find_company_website"
+        live = do_task.await_args.kwargs["live_content"]
+        assert live.splitlines()[0] == "0|acme|"
+        assert "1|Acme|https://acme.example|official" in live
+
+    @pytest.mark.asyncio
+    async def test_decline_or_empty_website_is_no_website(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        do_task = AsyncMock(
+            return_value={"success": True, "parsed_response": {"task_success": False, "website": ""}},
+        )
+        monkeypatch.setattr(roster_mod, "do_task", do_task)
+        transition = MagicMock()
+        update = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "update_company", update)
+        out = await roster_mod.resolve_website_company("acme", self._review_entity(), {}, False)
+        assert out == {"success": True, "state": "NO_WEBSITE", "error": None}
+        transition.assert_called_once_with("acme", "NO_WEBSITE")
+        update.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_do_task_failure_leaves_website_review(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod, "do_task", AsyncMock(return_value={"success": False, "error": "llm down"}),
+        )
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        out = await roster_mod.resolve_website_company("acme", self._review_entity(), {}, False)
+        assert out["success"] is False
+        assert out["error"] == "llm down"
+        transition.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_run_company_task_routes_website_review(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        apply_hop = AsyncMock(return_value={"success": True, "state": "WEBSITE_FOUND", "error": None})
+        monkeypatch.setattr(roster_mod, "resolve_website_company", apply_hop)
+        entity = self._review_entity()
+        ok = await roster_mod.run_company_task(
+            "WEBSITE_REVIEW", entity, "batch-1674", {}, False, dispatch_task_key="resolve_website",
+        )
+        bad_key = await roster_mod.run_company_task(
+            "WEBSITE_REVIEW", entity, "batch-1674", {}, False, dispatch_task_key="inflow_resolve_website",
+        )
+        assert ok["total_passed"] == 1
+        apply_hop.assert_awaited_once()
+        assert bad_key["total_errors"] == 1
+
+    @pytest.mark.asyncio
+    async def test_consult_resolve_website_counts_terminals_and_errors(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import consult as consult_mod
+
+        apply_hop = AsyncMock(
+            side_effect=[
+                {"success": True, "state": "WEBSITE_FOUND", "error": None},
+                {"success": True, "state": "NO_WEBSITE", "error": None},
+                {"success": False, "state": None, "error": "missing hits"},
+            ],
+        )
+        monkeypatch.setattr(roster_mod, "resolve_website_company", apply_hop)
+        entities = [
+            {"short_name": "a", "company_state": "WEBSITE_REVIEW"},
+            {"short_name": "b", "company_state": "WEBSITE_REVIEW"},
+            {"short_name": "c", "company_state": "WEBSITE_REVIEW"},
+        ]
+        out = await consult_mod.run_consult_task(
+            "company",
+            "WEBSITE_REVIEW",
+            entities,
+            "batch-1674",
+            {"astral_candidate_id": "c1674"},
+            False,
+            dispatch_task_key="resolve_website",
+        )
+        assert out == {
+            "total_processed": 3,
+            "total_passed": 2,
+            "total_failed": 0,
+            "total_errors": 1,
+        }
+        assert apply_hop.await_count == 3
+
+
 class TestAst689ScrapeReadiness:
-    """AST-689: careers-list scrape readiness gate before select_job_page extract."""
+    """AST-689 readiness (AST-1726: Telescope wait_ready — listing selectors unavailable remotely)."""
 
     @pytest.mark.asyncio
     async def test_wait_for_careers_list_readiness_ready_on_listing_hits(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.external import playwright as pw_mod
-        from src.external.playwright import wait_for_careers_list_readiness
+        from src.external import telescope as pw_mod
+        from src.external.telescope import wait_for_careers_list_readiness
 
-        poll_n = {"n": 0}
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
 
-        async def count_side_effect() -> int:
-            poll_n["n"] += 1
-            return 0 if poll_n["n"] == 1 else 2
+        async def ensure_text(p, links=False):
+            p._text = "x" * 200
 
-        locator = MagicMock()
-        locator.count = AsyncMock(side_effect=count_side_effect)
-        page = MagicMock()
-        page.locator = MagicMock(return_value=locator)
-        page.wait_for_timeout = AsyncMock()
-        monkeypatch.setattr(
-            pw_mod,
-            "extract_visible_text",
-            AsyncMock(side_effect=[{"text": "x" * 100}, {"text": "x" * 200}]),
-        )
+        monkeypatch.setattr(pw_mod, "_ensure_text", ensure_text)
 
         result = await wait_for_careers_list_readiness(
             page,
-            {
-                "max_wait_ms": 5000,
-                "poll_interval_ms": 10,
-                "min_listing_hits": 1,
-                "listing_selectors": ["a[href*='/job']"],
-                "run_load_all_jobs": False,
-            },
+            {"run_load_all_jobs": False},
         )
         assert result["ready"] is True
         assert result["outcome"] == "ready"
-        assert result["listing_hits"] >= 1
+        assert result["visible_chars"] >= 1
+        assert page.wait_ready is True
 
     @pytest.mark.asyncio
     async def test_wait_for_careers_list_readiness_timeout(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.external import playwright as pw_mod
-        from src.external.playwright import wait_for_careers_list_readiness
+        from src.external import telescope as pw_mod
+        from src.external.telescope import wait_for_careers_list_readiness
 
-        locator = MagicMock()
-        locator.count = AsyncMock(return_value=0)
-        page = MagicMock()
-        page.locator = MagicMock(return_value=locator)
-        page.wait_for_timeout = AsyncMock()
-        monkeypatch.setattr(pw_mod, "extract_visible_text", AsyncMock(return_value={"text": "short"}))
+        page = pw_mod.PageHandle(url="https://example.com/jobs")
+
+        async def ensure_text(p, links=False):
+            p._text = ""
+
+        monkeypatch.setattr(pw_mod, "_ensure_text", ensure_text)
 
         result = await wait_for_careers_list_readiness(
             page,
-            {
-                "max_wait_ms": 100,
-                "poll_interval_ms": 50,
-                "stability_polls": 2,
-                "min_visible_chars": 400,
-                "min_listing_hits": 1,
-                "listing_selectors": ["a"],
-                "run_load_all_jobs": False,
-            },
+            {"run_load_all_jobs": False},
         )
+        # Empty visible text → outcome empty (not listing-selector timeout)
         assert result["ready"] is False
-        assert result["outcome"] == "timeout"
+        assert result["outcome"] == "empty"
 
     @pytest.mark.asyncio
     async def test_fetch_job_links_content_calls_readiness(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5339,11 +5600,10 @@ class TestAst877OriginatingSearchTerm:
         db.sync_company_search_terms("c877", ["fintech"])
         details: list[str] = []
 
-        monkeypatch.setattr(
-            roster_mod.logger,
-            "debug_detail",
-            lambda msg: details.append(msg),
-        )
+        def _debug(message: str, *args: Any, **_kwargs: Any) -> None:
+            details.append(str(message) % args if args else str(message))
+
+        monkeypatch.setattr(roster_mod.logger, "debug", _debug)
         monkeypatch.setattr(
             roster_mod,
             "search_google_cse",
@@ -5351,7 +5611,7 @@ class TestAst877OriginatingSearchTerm:
         )
         cand = {"astral_candidate_id": "c877", "candidate_data": {}}
         await roster_mod.run_inflow_discovery_batch(cand, "batch-877-dbg", cand, True)
-        assert any("originating_search_term='fintech'" in d for d in details)
+        assert any("term='fintech'" in d for d in details)
 
 
 def _mock_parse_batch_browser_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
@@ -5372,7 +5632,7 @@ class TestAst891ScrapeListPageInfra:
     async def test_infra_error_raises_playwright_infra(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         session = MagicMock()
         monkeypatch.setattr(
@@ -5422,7 +5682,7 @@ class TestAst891ParseDispatchInfraAndBatchSession:
     async def test_infra_scrape_retries_from_identified(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         company = self._identified_company()
         monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
@@ -5451,7 +5711,7 @@ class TestAst891ParseDispatchInfraAndBatchSession:
     async def test_infra_scrape_terminal_on_retry_state(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        from src.external.playwright import PlaywrightInfraError
+        from src.external.telescope import PlaywrightInfraError
 
         company = self._identified_company(state="JOBLIST_IDENTIFIED_RETRY")
         monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=company))
@@ -5548,13 +5808,12 @@ class TestAst891ParseJobListBatch:
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         _mock_parse_batch_browser_session(monkeypatch)
-        indexes: list = []
+        debugs: list[str] = []
         monkeypatch.setattr(
             roster_mod.logger,
-            "debug_index",
-            lambda **kwargs: indexes.append(kwargs),
+            "debug",
+            lambda message, *args, **_k: debugs.append(str(message) % args if args else str(message)),
         )
-        monkeypatch.setattr(roster_mod.logger, "debug_detail", lambda *_a, **_k: None)
         monkeypatch.setattr(
             roster_mod,
             "get_company",
@@ -5566,9 +5825,7 @@ class TestAst891ParseJobListBatch:
             AsyncMock(return_value={"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}),
         )
         await roster_mod.parse_job_list_batch("batch-891", [self._co("acme")], debug=True)
-        assert indexes
-        assert indexes[0]["func"] == "roster.parse_job_list_batch"
-        assert indexes[0]["identifier"] == "acme"
+        assert any("acme" in d and "run_parse_job_list_dispatch" in d for d in debugs)
 
 
 class TestAst897HoldStateOnBalanceRefusal:

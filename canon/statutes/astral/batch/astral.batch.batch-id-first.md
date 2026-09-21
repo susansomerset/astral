@@ -18,7 +18,7 @@ approved_at: "2026-07-22"
 
 # Statement
 
-Entity batch helpers use claim / get / clear with `batch_id` as the first parameter (ASTRAL_CODE_RULES §2.4). New batch APIs follow that signature order; callers pass the golden-ticket `batch_id` through claim → process → release.
+Entity batch helpers use claim / get / clear with `batch_id` as the first parameter. New batch APIs follow that signature order; callers pass the golden-ticket `batch_id` through claim → process → release.
 
 ## Rationale
 

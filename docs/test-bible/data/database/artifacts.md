@@ -83,7 +83,7 @@ Rename table/API from `astral_artifacts` / `save_astral_artifact` / `astral_arti
 
 1. Data PK fetch: `tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact`
 2. Candidate pin→body: `tests/component/core/test_candidate.py::TestAst1584GetOperativeBaseResume`
-3. **docs-acceptance** — draft `canon/directives/draft/patt.artifacts.traceability.md` on publish tip (id + versioned agent_id / agent_task_id / seed artifact id array / manual-edit inheritance; no product persist)
+3. **docs-acceptance** — draft `canon/directives/draft/patt.artifact.traceability.md` on publish tip (id + versioned agent_id / agent_task_id / seed artifact id array / manual-edit inheritance; no product persist)
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -94,9 +94,9 @@ Rename table/API from `astral_artifacts` / `save_astral_artifact` / `astral_arti
 
 ```bash
 # docs-acceptance (publish tip)
-test -f canon/directives/draft/patt.artifacts.traceability.md
-rg -n 'id: patt.artifacts.traceability|versioned `agent_id`|versioned `agent_task_id`|seed `artifact_id\[\]`|manual' \
-  canon/directives/draft/patt.artifacts.traceability.md
+test -f canon/directives/draft/patt.artifact.traceability.md
+rg -n 'id: patt.artifact.traceability|versioned `agent_id`|versioned `agent_task_id`|seed `artifact_id\[\]`|manual' \
+  canon/directives/draft/patt.artifact.traceability.md
 ```
 
 **Pass criterion:** pytest green on lines 1–2 + docs-acceptance line 3 — not zero-arg harness / branch-lock gate.
@@ -108,7 +108,7 @@ rg -n 'id: patt.artifacts.traceability|versioned `agent_id`|versioned `agent_tas
 
 **Parent:** [AST-1588 — Support job.artifacts.job_resume and job.artifacts.cover_letter as artifacts](https://linear.app/astralcareermatch/issue/AST-1588/support-jobartifactsjob-resume-and-jobartifactscover-letteras). **Publish:** `origin/sub/AST-1588/AST-1591-artifacts-table-source-references`.
 
-Data-layer `artifacts.source_artifact_ids` (TEXT JSON array of artifact_uuid strings, default `[]`): DDL/ensure + ALTER migrate; `save_artifact(..., source_artifact_ids=None)` persists; `get_current_artifact` / `get_artifact` / `list_artifacts` return `list[str]`. No UUID-existence or catalog validation. Catalog keys / tracker citation are siblings **AST-1590** / **AST-1592**. Draft alignment note on `canon/directives/draft/patt.artifacts.traceability.md` is docs-acceptance.
+Data-layer `artifacts.source_artifact_ids` (TEXT JSON array of artifact_uuid strings, default `[]`): DDL/ensure + ALTER migrate; `save_artifact(..., source_artifact_ids=None)` persists; `get_current_artifact` / `get_artifact` / `list_artifacts` return `list[str]`. No UUID-existence or catalog validation. Catalog keys / tracker citation are siblings **AST-1590** / **AST-1592**. Draft alignment note on `canon/directives/draft/patt.artifact.traceability.md` is docs-acceptance.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -130,7 +130,7 @@ Data-layer `artifacts.source_artifact_ids` (TEXT JSON array of artifact_uuid str
 3. Regression writers: `tests/component/data/database/test_artifacts.py::TestAst1352Artifacts`
 4. Regression rename: `tests/component/data/database/test_artifacts.py::TestAst1364RenameArtifacts`
 5. Regression get-by-uuid: `tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact`
-6. **docs-acceptance** — draft `canon/directives/draft/patt.artifacts.traceability.md` on publish tip names AST-1588 `source_artifact_ids` alignment
+6. **docs-acceptance** — draft `canon/directives/draft/patt.artifact.traceability.md` on publish tip names AST-1588 `source_artifact_ids` alignment
 
 ```bash
 ./scripts/testing/run_component_tests.sh   tests/component/data/database/test_artifacts.py   -q
@@ -138,7 +138,7 @@ Data-layer `artifacts.source_artifact_ids` (TEXT JSON array of artifact_uuid str
 
 ```bash
 # docs-acceptance (publish tip)
-rg -n 'AST-1588|source_artifact_ids'   canon/directives/draft/patt.artifacts.traceability.md
+rg -n 'AST-1588|source_artifact_ids'   canon/directives/draft/patt.artifact.traceability.md
 ```
 
 **Pass criterion:** pytest green on lines 1–5 + docs-acceptance line 6 — not zero-arg harness / branch-lock gate.

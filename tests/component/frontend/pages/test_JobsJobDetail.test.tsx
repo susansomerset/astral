@@ -214,3 +214,89 @@ describe("JobsJobDetail — AST-1481 deeplink modal host", () => {
     expect(callOrder.indexOf("job-prefetch")).toBeLessThan(callOrder.indexOf("company"))
   })
 })
+describe("JobsJobDetail — AST-1704 company_id align prefetch", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    navigate.mockReset()
+    mockedApi.mockReset()
+    stubAuthPublicFetches(true)
+  })
+
+  it("prefers company_id over legacy company for align", async () => {
+    localStorage.setItem("astral_selected_candidate", "c1")
+    const callOrder: string[] = []
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return jsonResponse({ user_id: "u1", name: "Test User", is_admin: true })
+      }
+      if (url === "/api/candidates") {
+        callOrder.push("candidates")
+        return jsonResponse([
+          { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} },
+          { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: {} },
+        ])
+      }
+      if (url === "/api/state_ui_manifest") {
+        return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
+      }
+      if (url === "/api/system/ui_config") {
+        return jsonResponse({ column_types: {} })
+      }
+      if (url === "/api/jobs/j-coid" && !init) {
+        // Wait for candidates hydrate so align path runs with company_id.
+        if (!callOrder.includes("candidates")) {
+          return new Promise<Response>((resolve) => {
+            const wait = () => {
+              if (callOrder.includes("candidates")) {
+                callOrder.push("job-prefetch")
+                resolve(
+                  jsonResponse({
+                    astral_job_id: "j-coid",
+                    job_title: "Owner Role",
+                    company: "LegacyAlias",
+                    company_id: "RealEmployer",
+                    state: "RECOMMENDED",
+                    job_data: { job_description: "JD", analysis_upshot: fullUpshot() },
+                  }),
+                )
+              } else {
+                setTimeout(wait, 5)
+              }
+            }
+            wait()
+          })
+        }
+        callOrder.push("job-prefetch")
+        return jsonResponse({
+          astral_job_id: "j-coid",
+          job_title: "Owner Role",
+          company: "LegacyAlias",
+          company_id: "RealEmployer",
+          state: "RECOMMENDED",
+          job_data: { job_description: "JD", analysis_upshot: fullUpshot() },
+        })
+      }
+      if (url === "/api/companies/RealEmployer") {
+        callOrder.push("align-company_id")
+        return jsonResponse({ candidate_id: "c2" })
+      }
+      if (url === "/api/companies/LegacyAlias") {
+        // JAR still loads website via job.company — not the page align SoT.
+        callOrder.push("jar-company")
+        return jsonResponse({ company_website: "https://legacy.example", candidate_id: "c2" })
+      }
+      if (url.startsWith("/api/candidates/") && url.endsWith("/resume_structure")) {
+        return jsonResponse({
+          sections: [{ id: "professional_summary", label: "Summary" }],
+          accent_color: null,
+        })
+      }
+      throw new Error(`unexpected api call: ${url}`)
+    })
+    renderDetail("/jobs/detail/j-coid")
+    await waitForReportShell()
+    expect(callOrder).toContain("align-company_id")
+    expect(callOrder.indexOf("job-prefetch")).toBeLessThan(callOrder.indexOf("align-company_id"))
+  })
+})
+

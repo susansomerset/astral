@@ -191,6 +191,38 @@ class TestAst1558InboxLandMeteoriteApi:
         assert ingest.await_args.args[:2] == ("cand-1", "m1")
         stage.assert_not_awaited()
 
+    def test_land_meteorite_counter_failed_counts_failed(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1743 [bug-repro]: ingest counter=failed → Land total_failed (not passed)."""
+        ingest = AsyncMock(
+            return_value={
+                "message_id": "m1",
+                "outcome": "not_job_content",
+                "astral_candidate_id": "cand-1",
+                "job_count": 0,
+                "error": None,
+                "counter": "failed",
+            }
+        )
+        monkeypatch.setattr("src.core.meteorite.ingest_candidate_email_message", ingest)
+        stage = AsyncMock()
+        monkeypatch.setattr("src.core.meteorite.stage_meteorite", stage)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        resp = inbox_client.post(
+            "/api/admin/inbox/land-meteorite",
+            headers=auth_headers,
+            json={"message_ids": ["m1"], "candidate_id": "cand-1"},
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["total_processed"] == 1
+        assert body["total_failed"] == 1
+        assert body["total_passed"] == 0
+        assert body["total_errors"] == 0
+        ingest.assert_awaited_once()
+        stage.assert_not_awaited()
+
     def test_land_meteorite_passes_debug(
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:

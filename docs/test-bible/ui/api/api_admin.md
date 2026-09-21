@@ -705,3 +705,49 @@ Admin `state_options` exposes `meteorite` via `dispatch_entity_state_registry`; 
 **Bible shasum (publish tip):**
 - `docs/test-bible/ui/api/api_admin.md` — *(filled after publish)*
 
+
+### AST-1675 · AST-1671
+
+**Scope:** Admin form/meta and adhoc live-content key on **`prefilter_company`**. Grouping uses identity catalog key (shim deleted). Bare `prefilter` absent from picker.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| task_keys grouping + form meta | `src/ui/api/api_admin.py` | revised **`TestAst825PrefilterDispatchTaskKeysGrouping`** |
+| Adhoc homepage+nav | same | revised **`TestAdhocHelpers::test_build_adhoc_live_content_company_paths`**; **`TestApiAdminBranchGaps::test_build_adhoc_live_content_remaining_company_and_job_edges`** |
+
+**Broken / obsolete this pass:** AST-825 expecting `keys["prefilter"]`; adhoc live-content keyed on bare `prefilter`.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Picker grouping: `tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping`
+2. Adhoc live-content: `tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_company_paths` + `::TestApiAdminBranchGaps::test_build_adhoc_live_content_remaining_company_and_job_edges`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_company_paths \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_build_adhoc_live_content_remaining_company_and_job_edges \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/ui/api/api_admin.md` — *(filled after publish)*
+
+---
+
+### AST-1728 · AST-1721 (qa-fix bug-repro — admin Telescope API)
+
+**Board REVISE:** `POST /api/admin/telescope` + `admin_telescope_scrape` + nav Tools entry.
+
+| Area | Component tests |
+| --- | --- |
+| Route / helper / nav / page file | `tests/component/ui/api/test_api_admin_telescope.py::TestAst1728AdminTelescopeRepro` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin_telescope.py -q
+```

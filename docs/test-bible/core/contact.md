@@ -37,13 +37,13 @@ Contact scaffold: `slack_listen_enabled`, `contact_skills` / `contact_skill_keys
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`.
 
-ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted `candidate_data` paths only via `save_candidate_data`; Style D when `debug=True`. Config inventory: **`docs/test-bible/utils/config.md`**. Admin HTTP: **`docs/test-bible/ui/api/api_contact.md`**.
+ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted paths via `save_candidate_data`. `save_candidate_profile` writes AST-1014 name columns (`first`/`last`/`pronouns`); `save_candidate_contact` writes `contact.*`. `logger.debug` always called (`log_debug` / `debug=` gates emit). Config inventory: **`docs/test-bible/utils/config.md`**. Admin HTTP: **`docs/test-bible/ui/api/api_contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Meta / allowlisted write / reject path·skill·missing / Style D on+off | `src/core/contact.py` | **`TestAst1071ContactSkillRunners`** |
+| Meta / allowlisted write / reject path·skill·missing / debug always-call | `src/core/contact.py` | **`TestAst1071ContactSkillRunners`** |
 
-**Broken / obsolete:** AST-1066 empty-skills asserts — revised in **`TestAst1066ContactScaffold`** / **`TestAst1066ContactConfig`**.
+**Broken / obsolete:** AST-1066 empty-skills asserts — revised in **`TestAst1066ContactScaffold`** / **`TestAst1066ContactConfig`**. Style D on/off asserts retired (logging statutes). `profile.*` skill paths retired (AST-1014; `save_candidate_data` refuses `profile`).
 
 **Integration:** no existing scenario asserts Contact skill runners — no revision.
 
@@ -83,13 +83,13 @@ ACL-gated `contact_skill_meta` / `run_contact_skill`: allowlisted `candidate_dat
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1068-slack-resolve-via-get-candidate-id`.
 
-`resolve_slack_user`: lookup via `get_candidate_id_for_query`; create PROSPECT only when `estelle_in_play=True` via `initiate_prospect_candidate(..., first=, last=)` (names from `users.info`; display_name fills `first` when empty); `handle_slack_event` accept wires resolve. Candidate: **`docs/test-bible/core/candidate.md`**. External: **`docs/test-bible/external/slack.md`**. Config: **`docs/test-bible/utils/config.md`**.
+`resolve_slack_user`: lookup via `get_candidate_id_for_query`; **AST-1668** retired create-on-miss (`initiate_prospect_candidate` removed from Contact) — miss + `estelle_in_play` fetches profile only (`created=False`, no PROSPECT); `handle_slack_event` accept wires resolve. Candidate: **`docs/test-bible/core/candidate.md`**. External: **`docs/test-bible/external/slack.md`**. Config: **`docs/test-bible/utils/config.md`**. Sibling unbound/recognition: **§ AST-1668** below.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Resolve hit/miss/create; Events accept wire | `src/core/contact.py` | **`TestAst1068ResolveSlackUser`** |
+| Resolve hit/miss lookup-only; Events accept wire | `src/core/contact.py` | **`TestAst1068ResolveSlackUser`** (revised **AST-1668**) |
 
-**Broken / obsolete:** **`TestAst1069ContactSlackIngress`** accept-path — revised to stub `resolve_slack_user`. Create asserts that expected `candidate_data.profile` — revised for AST-1014 `first=`/`last=` kwargs.
+**Broken / obsolete:** **`TestAst1069ContactSlackIngress`** accept-path — revised to stub `resolve_slack_user`. Create-on-miss asserts — **revised AST-1668** to lookup-only. Profile kwargs — revised for AST-1014 `first=`/`last=` kwargs.
 
 **Integration:** no existing scenario asserts Slack resolve / PROSPECT create — no revision.
 
@@ -133,13 +133,14 @@ Process-local conversation cache: `load_slack_conversation_context` returns Stag
 
 **Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1073-contact-estelle-turn-loop`.
 
-`run_contact_estelle_turn`: listen re-check → Slack context live_content → `do_task(contact_estelle_turn)` → `conversational_turn_from_do_task_result` → optional ACL `skill_calls` → Slack reply (non-prod prefix) on success/concern only; concern `admin_aside` → warning log (never Slack); Style D when `debug=True`. Hooked from `handle_slack_event` after accept + resolve + inbound append. Config: **`docs/test-bible/utils/config.md`**. Envelope: **`docs/test-bible/core/agent.md`** (AST-1072). Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+`run_contact_estelle_turn`: listen re-check → Slack context live_content → `do_task(contact_estelle_turn)` → `conversational_turn_from_do_task_result` → optional ACL `skill_calls` → Slack reply (non-prod prefix) on success/concern only; concern `admin_aside` stays off Slack (listen info line is emitted from `handle_slack_event` after an outcome, not from the turn). `logger.debug` always called (`debug=` / ContextVar gates emit). Hooked from `handle_slack_event` after accept + resolve + inbound append. Config: **`docs/test-bible/utils/config.md`**. Envelope: **`docs/test-bible/core/agent.md`** (AST-1072). Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Turn loop + handle_slack_event attach | `src/core/contact.py` | **`TestAst1073ContactEstelleTurnLoop`** |
+| Listen info pipe / listen-off / crash-without-outcome | `src/core/contact.py` | **`TestAst1069ContactSlackIngress`** (`test_handle_emits_contact_listen_info`, `test_handle_concern_listen_includes_aside`, `test_handle_listen_off`, `test_handle_turn_crash_skips_listen_info`) |
 
-**Broken / obsolete:** accept-path Contact tests stub `run_contact_estelle_turn` so ingress/resolve/context stay transport-focused (no live `do_task`). AST-786 catalog **43 → 46** on this tip.
+**Broken / obsolete:** accept-path Contact tests stub `run_contact_estelle_turn` so ingress/resolve/context stay transport-focused (no live `do_task`). AST-786 catalog **43 → 46** on this tip. Concern aside as `logger.warning` retired (logging statutes — aside rides the listen info line). Style D turn bookend retired (`test_debug_logs_do_task_and_response`).
 
 **Integration:** no existing scenario asserts Estelle turn loop — no revision; do not invent new integration coverage.
 
@@ -185,7 +186,7 @@ Durable listen re-read every `slack_listen_enabled()`; Events background `_run_h
 | --- | --- | --- |
 | Listen re-read + hear-ack + background log | `src/core/contact.py` | **`TestAst1101ChannelHearEvidence`** |
 
-**Broken / obsolete:** none — additive; ingress stubs with successful Estelle `slack_post` still skip hear-ack.
+**Broken / obsolete:** none — additive; ingress stubs with successful Estelle `slack_post` still skip hear-ack. Background failure string is `logger.exception` (logging statutes; was `logger.error(..., exc_info=True)`).
 
 **Integration:** none — do not invent new integration coverage.
 
@@ -245,22 +246,22 @@ Durable Contact Slack debug get/set: `slack_debug_enabled` / `set_slack_debug_en
 
 **Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1207-slack-events-contact-inbound-durable-debug`.
 
-Events/Socket ingress hydrates `debug` from `slack_debug_enabled()` (caller kwarg ignored); Style D found→recorded depth on Contact Slack path helpers (`load_slack_conversation_context`, `append_slack_conversation_message`, `contact_post_message`, `run_contact_estelle_turn` bookend, `handle_slack_event` accept bookend). Blueprint: **`docs/test-bible/ui/api/api_slack.md`**. Foundation SoT: **`docs/test-bible/core/contact.md`** (AST-1206).
+Events/Socket ingress hydrates `debug` from `slack_debug_enabled()` (caller kwarg ignored) and sets `log_debug` from that durable SoT; `logger.debug` always called on the Contact Slack path. Blueprint: **`docs/test-bible/ui/api/api_slack.md`**. Foundation SoT: **`docs/test-bible/core/contact.md`** (AST-1206).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Durable SoT on handle/receive; debug pass-through to turn | `src/core/contact.py` | **`TestAst1207DurableDebugSot`** |
 | Events blueprint SoT wire | `src/ui/api/api_slack.py` | **`TestAst1207SlackEventsDebugSot`** |
-| Estelle turn Style D bookend shape | `src/core/contact.py` | revised **`TestAst1073ContactEstelleTurnLoop::test_debug_style_d_index_and_detail`** |
+| Estelle turn debug call/response | `src/core/contact.py` | revised **`TestAst1073ContactEstelleTurnLoop::test_debug_logs_do_task_and_response`** |
 
-**Broken / obsolete:** AST-1073 turn Style D asserted single `outcome="success"` — revised to found→recorded (`["found","recorded"]`) for AST-1207 bookend. No Style D golden-string expansion (ticket / Radia).
+**Broken / obsolete:** Style D found→recorded bookend and `get_logger`/`set_debug_flag` mocks retired (logging statutes). Durable SoT still hydrates `debug=` / ContextVar.
 
 **Integration:** no existing scenario asserts Events durable debug SoT — no revision; do not invent new integration coverage.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_contact.py::TestAst1207DurableDebugSot \
-  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_debug_style_d_index_and_detail \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_debug_logs_do_task_and_response \
   tests/component/ui/api/test_api_slack.py::TestAst1207SlackEventsDebugSot \
   -q
 ```
@@ -275,7 +276,7 @@ Child #1: `CONTACT_TASK_CONFIG` block (six keys pre-registered), markup parse/st
 | --- | --- | --- |
 | Parse/strip/dispatch + turn strip/follow-up/live_content catalog | `src/core/contact.py` | **`TestAst1515ContactTaskMarkup`**, **`TestAst1515ContactEstelleTurnMarkup`** |
 
-**Broken / obsolete:** none at AST-1515 land. **AST-1516/AST-1518 revise:** `handler_unavailable` / turn fixtures retargeted to `create_contact_meteorite` (gazer + reads now resolve; meteorite create still AST-1517). **AST-1517 revise:** all six handlers resolve — `handler_unavailable` / turn fixtures mock `_resolve_contact_task_handler` → `None`. Gazer: **`docs/test-bible/core/gazer.md`** § AST-1516. Reads: **`docs/test-bible/core/tracker.md`** § AST-1518. Create: **`docs/test-bible/core/meteorite.md`** § AST-1517.
+**Broken / obsolete:** none at AST-1515 land. **AST-1516/AST-1518 revise:** `handler_unavailable` / turn fixtures retargeted to `create_contact_meteorite` (gazer + reads now resolve; meteorite create still AST-1517). **AST-1517 revise:** all six handlers resolve — `handler_unavailable` / turn fixtures mock `_resolve_contact_task_handler` → `None`. Style D dispatch bookend retired (`test_dispatch_debug_logs_loop`). Gazer: **`docs/test-bible/core/gazer.md`** § AST-1516. Reads: **`docs/test-bible/core/tracker.md`** § AST-1518. Create: **`docs/test-bible/core/meteorite.md`** § AST-1517.
 
 **Integration:** no existing scenario asserts contact-task markup dispatch — no revision; do not invent new integration coverage.
 
@@ -347,4 +348,80 @@ Contact `resolve_pinned_base_resume` (ownership + `get_operative_base_resume`); 
   tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi \
   -q
 ```
+
+
+---
+
+### AST-1668 · AST-1636
+
+**Parent:** [AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve`.
+
+`list_unbound_slack_users` (posters minus `get_candidate_id_for_query` hits); `resolve_slack_user` lookup-only (no PROSPECT mint); `handle_slack_event` known/unknown recognition posts + unknown skips Estelle/paste/hear-ack. Config keys: **`docs/test-bible/utils/config.md`** § AST-1668. Admin GET: **`docs/test-bible/ui/api/api_contact.md`** § AST-1668. External posters: **`docs/test-bible/external/slack.md`** § AST-1667.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unbound filter + recognition / unknown skip | `src/core/contact.py` | **`TestAst1668UnboundAndRecognition`** |
+| Revised resolve lookup-only | `src/core/contact.py` | **`TestAst1068ResolveSlackUser`** |
+| Revised hear-ack vs recognition | `src/core/contact.py` | **`TestAst1101ChannelHearEvidence`** |
+
+**Broken / obsolete this pass:** AST-1068 create-on-miss tests; AST-1101 hear-ack `post.assert_called_once` / `assert_not_called` (recognition now posts first).
+
+**Integration:** no existing scenario exercises Contact unbound / recognition — no revision; do not invent.
+
+## QA test manifest
+
+1. Core unbound + recognition: `tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition`
+2. Revised resolve: `tests/component/core/test_contact.py::TestAst1068ResolveSlackUser`
+3. Revised hear-ack: `tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence`
+4. Config recognition keys: `tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig`
+5. Admin GET unbound: `tests/component/ui/api/test_api_contact.py::TestAst1668UnboundSlackUsersApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition \
+  tests/component/core/test_contact.py::TestAst1068ResolveSlackUser \
+  tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence \
+  tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig \
+  tests/component/ui/api/test_api_contact.py::TestAst1668UnboundSlackUsersApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/contact.md` — *(filled after publish)*
+- `docs/test-bible/utils/config.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_contact.md` — *(filled after publish)*
+
+---
+
+### AST-1738 · AST-1636 (bug)
+
+**Parent:** [AST-1636](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1738-manage-candidates-slack-dropdown-empty`.
+
+UAT: Manage Candidates Slack dropdown empty because `list_unbound_slack_users` used poster pool. Fix: members via `list_workspace_members`, not `list_workspace_posters`. Board REVISE: revise AST-1668 unbound stub; land empty-poster≠empty-unbound repro.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| [bug-repro] unbound from members when posters empty | `src/core/contact.py` | **`TestAst1738UnboundMembersNotPosters`** |
+| Revised unbound pool stub (members + posters fallback) | same | **`TestAst1668UnboundAndRecognition::test_list_unbound_omits_bound_ids`** |
+
+**Broken / obsolete this pass:** AST-1668 unbound stub assumed `list_workspace_posters` — revised.
+
+## QA test manifest
+
+1. **[bug-repro]** `tests/component/core/test_contact.py::TestAst1738UnboundMembersNotPosters`
+2. Revised filter: `tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition::test_list_unbound_omits_bound_ids`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1738UnboundMembersNotPosters \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition::test_list_unbound_omits_bound_ids \
+  -q
+```
+
+**Pass criterion (test-fix):** repro flips red→green after make-fix; revised filter stays green.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/contact.md` — *(filled after publish)*
 

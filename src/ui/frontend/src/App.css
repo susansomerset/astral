@@ -2027,8 +2027,10 @@ input.side-tab-heading-editable:focus {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.dispatch-log-table td {
-  padding: 3px 10px;
+/* Nested in .list-page-table — that tbody td (5px) is more specific than .dispatch-log-table td. */
+.list-page-table .dispatch-log-table tbody td {
+  padding: calc(5px * 0.8) 10px;
+  line-height: calc(1.2 * 0.8);
   color: var(--text-primary);
   vertical-align: top;
 }

@@ -37,6 +37,10 @@ class TestIngestJobs:
         _, kwargs = save.call_args
         assert kwargs["company"] == "co"
         assert kwargs["state"] == "NEW"
+        # AST-1704: gazed ingest writes company parent SoT + employer company_id.
+        assert kwargs["source"] == cfg.SOURCE_ENTITY_TYPE_COMPANY
+        assert kwargs["source_entity_id"] == "co"
+        assert kwargs["company_id"] == "co"
 
     def test_counts_invalid_title_when_regex_filters_listing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(tracker_mod.database, "raw_job_listing_is_duplicate", lambda *args, **kwargs: False)
@@ -2407,4 +2411,80 @@ class TestAst1614StringJsonPrepare:
         assert isinstance(body, dict)
         assert body.get("Subject") == "Re: Role"
         assert body.get("Letter") == "Cover body for AST-1614"
+
+class TestAst1680JobResumeHydrateBeforeResolve:
+    """AST-1680: tracker prepare/filter hydrate→resolve when cid known (table SoT)."""
+
+    def _table_structure(self):
+        from src.core import candidate as candidate_mod
+
+        structure = candidate_mod.default_resume_structure()
+        # technical_skills is optional — safe disable signal (highlights is required).
+        structure["sections"]["technical_skills"]["enabled"] = False
+        return structure
+
+    def _stub_table_current(self, monkeypatch: pytest.MonkeyPatch, structure: dict) -> None:
+        from src.core import candidate as candidate_mod
+
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate_current",
+            lambda cid, key: structure
+            if cid == "c1680" and key == "candidate.artifacts.resume_structure"
+            else None,
+        )
+
+    def test_prepare_uses_table_current_when_blob_empty(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        table = self._table_structure()
+        self._stub_table_current(monkeypatch, table)
+        # Blob empty — without hydrate, resolve would use default (highlights enabled).
+        cd = {"artifacts": {}, "_astral_candidate_id": "c1680"}
+        prepared = tracker_mod._prepare_job_resume_content(
+            {
+                "professional_summary": "Job summary",
+                "technical_skills": "Should drop — disabled on table current",
+            },
+            cd,
+        )
+        assert prepared["professional_summary"] == "Job summary"
+        assert "technical_skills" not in prepared
+
+    def test_parsed_matches_shape_uses_table_enabled_sections(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        table = self._table_structure()
+        self._stub_table_current(monkeypatch, table)
+        cd = {"artifacts": {}, "_astral_candidate_id": "c1680"}
+        # Only technical_skills body — disabled on table current → False.
+        assert (
+            tracker_mod.parsed_matches_resume_content_shape(
+                {"technical_skills": "only this"}, cd
+            )
+            is False
+        )
+        assert (
+            tracker_mod.parsed_matches_resume_content_shape(
+                {"professional_summary": "ok"}, cd
+            )
+            is True
+        )
+
+    def test_prepare_without_cid_skips_hydrate(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as candidate_mod
+
+        spy = MagicMock(wraps=candidate_mod.hydrate_operative_resume_structure_for_response)
+        monkeypatch.setattr(
+            candidate_mod, "hydrate_operative_resume_structure_for_response", spy
+        )
+        structure = candidate_mod.default_resume_structure()
+        cd = {"artifacts": {"resume_structure": structure}}
+        prepared = tracker_mod._prepare_job_resume_content(
+            {"professional_summary": "s"}, cd
+        )
+        spy.assert_not_called()
+        assert prepared["professional_summary"] == "s"
 

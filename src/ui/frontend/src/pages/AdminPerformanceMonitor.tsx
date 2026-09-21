@@ -199,10 +199,10 @@ export default function PerformanceMonitor() {
     setFilter("date_to", dateToInput)
   }
 
-  const loadData = useCallback((showSpinner = false) => {
+  const loadData = useCallback((showSpinner = false, silent = false) => {
     beginRefresh(showSpinner)
     const qs = new URLSearchParams(filters).toString()
-    api(`/api/admin/dispatch_ledger${qs ? `?${qs}` : ""}`)
+    api(`/api/admin/dispatch_ledger${qs ? `?${qs}` : ""}`, silent ? { silent: true } : {})
       .then(r => r.json())
       .then(data => setRows(Array.isArray(data) ? data : []))
       .catch(() => setRows([]))
@@ -211,7 +211,7 @@ export default function PerformanceMonitor() {
 
   useEffect(() => {
     loadData(true)
-    const id = setInterval(() => loadData(), 15_000)
+    const id = setInterval(() => loadData(false, true), 15_000)
     return () => clearInterval(id)
   }, [loadData])
 
@@ -444,8 +444,12 @@ function LogViewer({
   const [copied, setCopied] = useState(false)
 
   const visibleLogs = useMemo(() => {
-    if (!logLevelFilter) return logs
-    return logs.filter(entry => entry.level === logLevelFilter)
+    const filtered = !logLevelFilter ? logs : logs.filter(entry => entry.level === logLevelFilter)
+    return [...filtered].sort((a, b) => {
+      const byTime = a.created_at.localeCompare(b.created_at)
+      if (byTime !== 0) return byTime
+      return a.id - b.id
+    })
   }, [logs, logLevelFilter])
 
   if (loading) return <div className="dispatch-log-panel"><p className="list-page-status">Loading logs...</p></div>

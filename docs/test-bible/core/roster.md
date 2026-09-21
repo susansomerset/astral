@@ -437,7 +437,7 @@ Gazer passthrough: **`docs/test-bible/core/gazer.md`** (**AST-715**).
 | --- | --- | --- |
 | Infra error prefix via **`batch_session`** | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` |
 
-Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). External classifier: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). External classifier: **`docs/test-bible/external/telescope.md`** (**AST-853**).
 
 ---
 
@@ -451,8 +451,21 @@ Gazer batch session wiring: **`docs/test-bible/core/gazer.md`** (**AST-853**). E
 | Fail-dest helpers | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst702PrefilterBatchHelpers` |
 | Monolithic dispatch removed | `src/core/roster.py` | `tests/component/core/test_roster.py::TestRunCompanyTask::test_website_found_monolithic_dispatch_removed` |
 | Debug passthrough on batch | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst698PrefilterDebugPassthrough::test_prefilter_company_batch_forwards_debug_to_do_task` |
+| Company-batch identity (`company_id` / `companies`) | `src/core/roster.py` | `tests/component/core/test_roster.py::TestAst1724CompanyBatchCompanyIdContract` (**[bug-repro]** AST-1724; green after AST-1723) |
+
+**Broken / obsolete (AST-1724):** fixtures that asserted company `batch_entities.astral_job_id` or `parsed_response.jobs` — revised to `company_id` / `companies` for AST-1723 to-be.
 
 Consult routing + config + dispatcher + database: **`docs/test-bible/core/consult.md`** · **`docs/test-bible/utils/config.md`** (**AST-702**).
+
+**AST-1724** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1724CompanyBatchCompanyIdContract \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts \
+  tests/component/core/test_roster.py::TestAst880VetInflowEncoded::test_vet_passes_batch_entities_to_do_task \
+  -q
+```
 
 ---
 
@@ -634,6 +647,8 @@ Migration CLI: **`docs/test-bible/dev/backfill_latest_only_rubric_entity_data.md
 
 **Broken / obsolete (Betty revision):** **AST-776** / **AST-822** roster mocks using **`action: slug|ignore`** — revised to **`grade` + required **`website`** in **AST-880** pass.
 
+**AST-1724:** **`TestAst880VetInflowEncoded::test_vet_passes_batch_entities_to_do_task`** expects **`company_id`** on **`batch_entities`** (`results[]` unchanged).
+
 **AST-880** narrowed run:
 
 ```bash
@@ -725,3 +740,71 @@ Consult / dispatcher / config: **`docs/test-bible/core/consult.md`** · **`docs/
 | Dedupe/normalize retired | `src/core/roster.py` | `TestAst726LatestOnlyRosterStory`, `TestAst727NormalizeAgentResponsesForBackfill` |
 
 **AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md` + agent story nodes in **`docs/test-bible/core/agent.md`**.
+
+### AST-1673 · AST-1670
+
+**Parent:** [AST-1670 — Split inflow website resolve into CSE fetch + find_company_website dispatch](https://linear.app/astralcareermatch/issue/AST-1670). **Publish:** `origin/sub/AST-1670/AST-1673-discovery-land-discovered-cse-fetch`.
+
+Discovery lands **`DISCOVERED`**; CSE-only **`resolve_company_website`** (persist hits → **`WEBSITE_REVIEW`** / zero → **`NO_WEBSITE`**, no **`do_task`**); claim/eligibility empty-website only on resolve/**`DISCOVERED`**. Config SSOT: **`docs/test-bible/utils/config.md`** § AST-1672. AI apply: sibling **AST-1674**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| land | Discovery record **`DISCOVERED`** | `src/core/roster.py` | **`TestAst775InflowDiscoveryRecordNew::test_record_hit_creates_new_with_blurb_and_notes`** |
+| 3 | CSE fetch has no **`do_task`** | same | **`TestAst506InflowResolve::{test_resolve_hits_persist_website_review,test_resolve_empty_hits_no_website}`** |
+| 4 | ≥1 hit → **`WEBSITE_REVIEW`** + hit list | same | **`TestAst506InflowResolve::test_resolve_hits_persist_website_review`** |
+| 5 | Zero hits → **`NO_WEBSITE`**, no AI | same | **`TestAst506InflowResolve::test_resolve_empty_hits_no_website`** |
+| 6 | Empty-website filter only resolve/**`DISCOVERED`** | `src/core/dispatcher.py`, `src/data/database.py` | **`TestRunUnified::{test_ast506_inflow_resolve_claims_empty_website_only,test_ast1673_inflow_resolve_on_new_skips_empty_website_filter}`**; **`TestAst506InflowResolveEligible`**; **`TestAst776InflowVetEligible`** |
+| — | Consult fetch-hop rollup (**`NO_WEBSITE`** = passed) | `src/core/consult.py` | **`TestAst1673ConsultResolveFetchHop`** |
+| — | **`run_company_task`** on **`DISCOVERED`** | `src/core/roster.py` | **`TestAst776VetInflowDiscoveryCompany`** routing tests; **`TestAst506InflowResolve::test_run_company_task_discovered_resolve_terminals`** |
+
+**Broken / obsolete (Betty revision this pass):** AST-775 **`recorded NEW`** / state **`NEW`**; AST-506 resolve **`do_task`/`WEBSITE_FOUND`** success + AI-decline paths; AST-776 **`run_company_task`** on **`NEW`**; DB **`count_company_new_*`** + claim **`NEW`**; dispatcher resolve trigger **`NEW`**.
+
+**Integration:** none — revise existing component only; do not invent new integration scenarios.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst775InflowDiscoveryRecordNew::test_record_hit_creates_new_with_blurb_and_notes \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst506InflowResolve \
+  tests/component/core/test_roster.py::TestAst1673ConsultResolveFetchHop \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst506InflowResolveEligible \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst776InflowVetEligible \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast506_inflow_resolve_claims_empty_website_only \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast1673_inflow_resolve_on_new_skips_empty_website_filter \
+  -q
+```
+
+### AST-1674 · AST-1670
+
+**Parent:** [AST-1670 — Split inflow website resolve into CSE fetch + find_company_website dispatch](https://linear.app/astralcareermatch/issue/AST-1670). **Publish:** `origin/sub/AST-1670/AST-1674-resolve-website-company-dispatch-apply`.
+
+**`resolve_website`** AI apply: load persisted CSE hits, rebuild slug + 1-based live_content, **`do_task(find_company_website)`**, land **`WEBSITE_FOUND`** / **`NO_WEBSITE`**. CSE fetch / SSOT: siblings **AST-1673** / **AST-1672**.
+
+| AC | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 6 | SA **`resolve_website`** on **`WEBSITE_REVIEW`**, agent **`find_company_website`** | `src/core/roster.py`, `src/core/consult.py` | **`TestAst1674ResolveWebsiteApply::{test_success_sets_website_and_website_found,test_run_company_task_routes_website_review,test_consult_resolve_website_counts_terminals_and_errors}`**; SSOT **`TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults`** |
+| 7 | Success writes website + **`WEBSITE_FOUND`**; decline/empty → **`NO_WEBSITE`** | `src/core/roster.py` | **`TestAst1674ResolveWebsiteApply::{test_success_sets_website_and_website_found,test_decline_or_empty_website_is_no_website,test_missing_hits_is_error_without_transition,test_do_task_failure_leaves_website_review}`** |
+
+**Broken / obsolete:** none — apply hop is new; CSE-only AST-506/1673 tests stay.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst1674ResolveWebsiteApply \
+  tests/component/utils/test_config.py::TestAst1672DiscoveredResolveRegistrySsot::test_resolve_website_task_and_admin_defaults \
+  -q
+```
+
+---
+
+### AST-1726 · AST-1721 (telescope drop-in — roster import / readiness)
+
+**Scope (Betty):** Retarget `src.external.playwright` imports → `telescope`; revise **AST-689** readiness asserts for Telescope `wait_ready` (empty text → `outcome=empty`, not listing-selector timeout). Infra error prefix `[playwright:…]` unchanged (drop-in public names).
+
+| Area | Component tests |
+| --- | --- |
+| Import + infra prefix | `TestAst701ScrapeCompanyHomepageContent::test_playwright_infra_error_prefixes_failure_class` |
+| Readiness ready / empty | `TestAst689ScrapeReadiness` |
+
+Canonical external map: [`external/telescope.md`](../external/telescope.md).

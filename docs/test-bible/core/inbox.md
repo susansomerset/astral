@@ -292,3 +292,55 @@ cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/tes
 ```
 
 **Pass criterion (test-fix):** [bug-repro] nodes flip red→green after AST-1608 `make-fix` — not zero-arg harness / branch-lock gate.
+
+### AST-1714 · AST-1711
+
+**Parent:** [AST-1711](https://linear.app/astralcareermatch/issue/AST-1711). **Publish:** `origin/sub/AST-1711/AST-1714-inbox-check-email-runner`.
+
+`inbox.check_email` is the candidate-bound mailbox runner: full assembled message (`assembled_html`) to `stage_meteorite`, archive on non-error, stamp `last_email_check`. Dispatcher mailbox branch awaits `inbox.check_email` (no `check_inbox`). Provision rewrites bound retired `meteorite_email` rows to `stage_email_meteorite` and deletes orphan retired-key rows. Admin mailbox gates stay on `is_meteorite_email_mailbox_task_key` (AST-1712). Classify/save stays **AST-1713**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Full-message stage + archive + dedup | `src/core/inbox.py` | **`TestAst1714CheckEmail`** |
+| Dispatcher mailbox route | `src/core/dispatcher.py` | revised **`TestAst1090GazeEmailDispatchOne`** |
+| Provision rewrite / orphan purge | `src/core/dispatcher.py` | revised **`TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates`** |
+
+**Broken / obsolete this pass:** `_dispatch_one` patches of `meteorite.check_inbox`; provision fixture that ignored retired-key rewrite / orphan delete.
+
+**Integration:** none — no existing scenario asserts the mailbox runner name.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1714CheckEmail \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_ensure_adds_then_skips \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1714-inbox-check-email-runner:docs/test-bible/core/inbox.md | shasum`
+
+### AST-1743 · AST-1740 (gap — skip→failed rollup)
+
+**Parent:** [AST-1740](https://linear.app/astralcareermatch/issue/AST-1740/meteorites-deemed-not-a-job-should-be-fails). **Sibling product:** AST-1742. **Publish:** `origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests`.
+
+Board REVISE on AST-1742: no node asserted `check_email` skip / `NOT_A_JOB` → failed. Product counter retarget is AST-1742; this gap lands the repro.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip after archive → failed | `src/core/inbox.py` | **`[bug-repro]`** `TestAst1714CheckEmail::test_skip_outcome_counts_failed_not_passed` |
+
+**Do not revise here:** `TestAst1559CheckInbox::test_skip_outcome_zero_rows_monitor_archive` (`check_inbox` leftover — out of AST-1742 Scope).
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1714CheckEmail::test_skip_outcome_counts_failed_not_passed \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests:docs/test-bible/core/inbox.md | shasum`
+

@@ -190,6 +190,8 @@ def inbox_land_meteorite():
             counter = row.get("counter")
             if counter == "error":
                 is_passed = False
+            elif counter == "failed":
+                is_passed = False
             elif counter == "passed":
                 is_passed = True
             else:

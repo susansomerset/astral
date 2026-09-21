@@ -36,6 +36,30 @@ Every versioned content slot the platform reads or writes is an **artifact key**
 5. **Verify** — Component test or manifest row: empty → write-operative → read-current → read-operative pin round-trip before switching production consumers.
 6. **Retire blob** — Same ticket removes or gates legacy blob writes for that content; migration tickets may backfill historical rows separately.
 
+# Examples
+
+Catalog SoT is `ARTIFACT_CONFIG` in `src/utils/config.py`. Callers import that dict — do not invent a wrapper module or hardcode key tuples in consumer prose.
+
+Registered lookup (pilot key):
+
+```python
+from src.utils.config import ARTIFACT_CONFIG
+
+key = "candidate.artifacts.base_resume"
+entry = ARTIFACT_CONFIG[key]  # KeyError if somehow absent from the closed set
+# entry["entity_type"], entry["candidate_scoped"], entry["body_shape"], entry["ingestion_owner"]
+```
+
+Unknown-key rejection (same shape as `save_candidate_data` / `get_candidate_current`):
+
+```python
+entry = ARTIFACT_CONFIG.get(artifact_key)
+if entry is None:
+    raise ValueError(f"unknown catalog key: {artifact_key!r}")
+```
+
+do not invent catalog keys in consumer code or dump the full key inventory in examples beyond what the snippet needs.
+
 # OPEN QUESTIONS / DECISIONS
 
 1. Whether catalog metadata lives beside `ARTIFACT_CONFIG` or a dedicated registry module — implementation detail; process unchanged.

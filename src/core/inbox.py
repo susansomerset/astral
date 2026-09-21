@@ -2,6 +2,7 @@
 Candidate-scoped Gmail list/filter (`fetch_candidate_email`) + archive
 (`archive_candidate_email`); thin unenriched `list_inbox_messages` for Manage
 Email All; keep `get_message_html` / assembled HTML / `strip_extract_email_html`.
+Mailbox runner `check_email` (AST-1714) stages bound messages via stage_meteorite.
 
 No From-then-To bind, no `fetch_email` runner, no land-bound stage entrypoints
 (AST-1558). Land for admin is owned by `api_inbox` → meteorite.
@@ -9,7 +10,10 @@ No From-then-To bind, no `fetch_email` runner, no land-bound stage entrypoints
 
 from __future__ import annotations
 
+import functools
 import html as html_module
+import inspect
+import os
 from email.utils import getaddresses, parseaddr
 from typing import Dict, Sequence
 
@@ -21,9 +25,35 @@ from src.external.gmail import (
 )
 from src.utils.config import INBOX_CREATE_JOB_CONFIG
 from src.utils.formatting import normalize_pasted_list_email_html
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, log_debug
 
 logger = get_logger(__name__)
+
+
+def _with_log_debug(fn):
+    """Set log_debug from debug= for this frame; nested set/reset is correct."""
+    if inspect.iscoroutinefunction(fn):
+        @functools.wraps(fn)
+        async def async_wrapper(*args, **kwargs):
+            bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+            bound.apply_defaults()
+            token = log_debug.set(bool(bound.arguments.get("debug", False)))
+            try:
+                return await fn(*args, **kwargs)
+            finally:
+                log_debug.reset(token)
+        return async_wrapper
+
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+        bound.apply_defaults()
+        token = log_debug.set(bool(bound.arguments.get("debug", False)))
+        try:
+            return fn(*args, **kwargs)
+        finally:
+            log_debug.reset(token)
+    return wrapper
 
 
 def list_inbox_messages(debug: bool = False) -> list[dict]:
@@ -129,7 +159,7 @@ def archive_candidate_email(message_id: str) -> None:
 
 
 def count_inbox_bound_by_candidate(*, debug: bool = False) -> Dict[str, int]:
-    """Live {candidate_id: n} for meteorite_email mailbox rows (alias From/To match)."""
+    """Live {candidate_id: n} for candidate-bound mailbox rows (alias From/To match)."""
     # Late: candidate aliases + dispatch task list (avoid module-top cycles).
     from src.core.candidate import email_aliases_for_candidate
     from src.data import database
@@ -160,6 +190,119 @@ def count_inbox_messages_bound_to_candidate(
     if not cid:
         return 0
     return len(fetch_candidate_email(email_aliases_for_candidate(cid), debug=debug))
+
+
+@_with_log_debug
+async def check_email(task: dict, *, debug: bool = False) -> dict[str, int]:
+    """Candidate-bound mailbox: aliases → fetch → stage_meteorite → archive → stamp."""
+    # Late: avoid import cycles (meteorite already imports inbox).
+    from src.core.candidate import email_aliases_for_candidate
+    from src.core.meteorite import stage_meteorite
+    from src.data.database import (
+        list_meteorites_by_source,
+        update_candidate_last_email_check,
+    )
+    from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+
+    cid = str((task or {}).get("candidate_id") or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+
+    env_user = (os.environ.get("GMAIL_USER") or "").casefold()
+    expected = (METEORITE_EMAIL_MAILBOX_CONFIG["account_address"] or "").casefold()
+    if env_user != expected:
+        logger.debug(
+            "account_mismatch GMAIL_USER=%r expected=%r", env_user, expected
+        )
+
+    aliases = email_aliases_for_candidate(cid)
+    logger.debug("Calling fetch_candidate_email: [aliases=%s]", aliases)
+    messages = fetch_candidate_email(aliases, debug=debug)
+    logger.debug("Response from fetch_candidate_email: %s", messages)
+    n = len(messages)
+    processed = passed = failed = errors = 0
+
+    logger.debug("Beginning inbox message loop on %s items", n)
+    for msg in messages:
+        processed += 1
+        mid = str(msg.get("id") or "").strip()
+        if not mid:
+            logger.warning(
+                "%s — %s\n  %s",
+                cid,
+                "message_id is required",
+                "This message is not being staged",
+            )
+            errors += 1
+            continue
+
+        existing = list_meteorites_by_source("email", mid)
+        if existing:
+            logger.warning(
+                "%s — %s\n  %s",
+                cid,
+                f"message {mid} already ingested",
+                "No new meteorite rows are being inserted",
+            )
+            try:
+                logger.debug("Calling archive_candidate_email: [message_id=%s]", mid)
+                archive_candidate_email(mid)
+                logger.debug("Response from archive_candidate_email: ok")
+                passed += 1
+            except Exception as exc:
+                logger.exception(
+                    "%s | inbox archive %s\n  %s: %s\n  The message was already ingested; archive did not finish",
+                    cid, mid, type(exc).__name__, exc,
+                )
+                errors += 1
+            continue
+
+        payload = get_message_with_assembled_html(mid)
+        blob = payload["assembled_html"]
+        logger.debug(
+            "Calling stage_meteorite: [candidate_id=%s, source_kind=email, source_id=%s]",
+            cid, mid,
+        )
+        stage = await stage_meteorite(
+            cid, blob, source_kind="email", source_id=mid, debug=debug,
+        )
+        logger.debug("Response from stage_meteorite: %s", stage)
+
+        if stage.get("error"):
+            errors += 1
+            continue
+
+        try:
+            logger.debug("Calling archive_candidate_email: [message_id=%s]", mid)
+            archive_candidate_email(mid)
+            logger.debug("Response from archive_candidate_email: ok")
+            # Skip / NOT_A_JOB → failed; landable READY/SCRAPE_LINK → passed (AST-1742).
+            if stage.get("skipped"):
+                failed += 1
+            else:
+                passed += 1
+        except Exception as exc:
+            next_step = (
+                "Classify skipped; archive did not finish"
+                if stage.get("skipped")
+                else "Meteorite rows were staged; archive did not finish"
+            )
+            logger.exception(
+                "%s | inbox archive %s\n  %s: %s\n  %s",
+                cid, mid, type(exc).__name__, exc, next_step,
+            )
+            errors += 1
+    logger.debug("End inbox message loop after %s items", n)
+
+    update_candidate_last_email_check(cid)
+    logger.debug("last_email_check stamped candidate_id=%s", cid)
+
+    return {
+        "total_processed": processed,
+        "total_passed": passed,
+        "total_failed": failed,
+        "total_errors": errors,
+    }
 
 
 def get_message_html(message_id: str) -> GmailMessageHtml:

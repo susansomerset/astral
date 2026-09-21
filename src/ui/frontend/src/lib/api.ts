@@ -17,13 +17,22 @@ export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): voi
   unauthorizedHandler = handler
 }
 
-async function api(path: string, options: RequestInit = {}): Promise<Response> {
-  const headers = new Headers(options.headers)
+export const SILENT_AUTH_HEADER = "X-Astral-Silent-Auth"
+
+/** `silent: true` — background poll; backend skips Stytch GetUser. Default verifies. */
+export type ApiOptions = RequestInit & { silent?: boolean }
+
+async function api(path: string, options: ApiOptions = {}): Promise<Response> {
+  const { silent, headers: headerInit, ...rest } = options
+  const headers = new Headers(headerInit)
   const token = authTokenGetter()
   if (token) {
     headers.set("Authorization", `Bearer ${token}`)
   }
-  const response = await fetch(path, { ...options, headers, credentials: "include" })
+  if (silent) {
+    headers.set(SILENT_AUTH_HEADER, "1")
+  }
+  const response = await fetch(path, { ...rest, headers, credentials: "include" })
   if (response.status === 401 && getHadSession()) {
     setLogOffReason("server-rejection")
     unauthorizedHandler?.()

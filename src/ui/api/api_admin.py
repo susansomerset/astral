@@ -26,11 +26,13 @@ from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
 from src.utils.cost_calculator import sum_calc_cost_components
+from src.external.telescope import PlaywrightInfraError, admin_telescope_scrape
 from src.core.dispatcher import (
     list_dispatch_ledger, get_dispatch_ledger, list_log_entries,
     list_dispatch_tasks, save_dispatch_task, update_dispatch_task,
     count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
+    meteorite_mailbox_trigger_allows,
 )
 from src.core.candidate import (
     build_candidate_token_view,
@@ -72,7 +74,6 @@ from src.utils.config import (
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
-    dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     _dispatch_entity_type_for_task_key,
@@ -921,7 +922,7 @@ def list_dtasks():
         try:
             bound_counts = count_inbox_bound_by_candidate()
         except Exception as exc:
-            logger.warning("list_dtasks: meteorite_email inbox bind counts failed: %s", exc)
+            logger.warning("list_dtasks: mailbox inbox bind counts failed: %s", exc)
             bound_counts = {}
     # Enrich each row with live available entity count
     for row in rows:
@@ -936,7 +937,10 @@ def list_dtasks():
         cid = row.get("candidate_id", "")
         if _inbox_avail_task_key((row.get("task_key") or "").strip()):
             cid_s = str(cid or "").strip()
-            row["available_count"] = int(bound_counts.get(cid_s, 0)) if cid_s else 0
+            if cid_s and meteorite_mailbox_trigger_allows(row):
+                row["available_count"] = int(bound_counts.get(cid_s, 0))
+            else:
+                row["available_count"] = 0
         else:
             try:
                 # Meteorite claim pool is global — count without requiring candidate_id (AST-1623).
@@ -976,18 +980,18 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
     """Scheduled Actions form defaults: TASK_CONFIG / mailbox keys use dispatch_task_admin_defaults
-    when defaults resolve; grouping fields from agent_task via dispatch_task_grouping_catalog_key;
+    when defaults resolve; grouping fields from agent_task (identity catalog key);
     entity/trigger keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
-    grouping_key = dispatch_task_grouping_catalog_key(task_key)
-    cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
+    grouping_key = catalog_key
+    cfg = TASK_CONFIG.get(catalog_key) or {}
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
     trigger_state = (ts or "") if ts is not None else ""
     # Prefer derived admin defaults (TASK_CONFIG + meteorite mailbox fold).
-    if task_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(task_key):
+    if catalog_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(catalog_key):
         try:
-            derived = dispatch_task_admin_defaults(task_key)
+            derived = dispatch_task_admin_defaults(catalog_key)
             entity_type = derived["entity_type"] or ""
             trigger_state = (
                 (derived["trigger_state"] or "")
@@ -999,18 +1003,18 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     # Helper-resolvable agent_task-only hops fill empty entity/trigger.
     if not entity_type:
         try:
-            entity_type = _dispatch_entity_type_for_task_key(task_key) or ""
+            entity_type = _dispatch_entity_type_for_task_key(catalog_key) or ""
         except KeyError:
             pass
     if not trigger_state:
         try:
-            trigger_state = _dispatch_trigger_state_for_task_key(task_key) or ""
+            trigger_state = _dispatch_trigger_state_for_task_key(catalog_key) or ""
         except KeyError:
             pass
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
-        "is_scored": dispatch_task_key_is_scored(task_key),
+        "is_scored": dispatch_task_key_is_scored(catalog_key),
         **_catalog_task_grouping_meta(grouping_key),
     }
 
@@ -1095,7 +1099,8 @@ def create_dtask():
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
-    retired = dispatch_task_key_retired_message(data.get("task_key", ""))
+    task_key = (data.get("task_key") or "").strip()
+    retired = dispatch_task_key_retired_message(task_key)
     if retired:
         return jsonify({"error": retired}), 400
     # Absent / JSON null → catalog defaults in save; non-empty must be ENTITY_TYPES.
@@ -1115,7 +1120,7 @@ def create_dtask():
         if err:
             return jsonify({"error": err}), 400
     tk_err = _dispatch_task_key_trigger_error(
-        data.get("task_key", ""),
+        task_key,
         data.get("trigger_state"),
         entity_type=submitted_entity,
     )
@@ -1124,7 +1129,7 @@ def create_dtask():
     try:
         task_id = save_dispatch_task(
             candidate_id=data["candidate_id"],
-            task_key=data["task_key"],
+            task_key=task_key,
             min_count=int(data["min_count"]),
             auto_mode=bool(data.get("auto_mode", False)),
             entity_type=submitted_entity,
@@ -1138,7 +1143,7 @@ def create_dtask():
             return jsonify({
                 "error": (
                     f"Dispatch row already exists for candidate '{data['candidate_id']}', "
-                    f"task_key '{data['task_key']}', trigger_state '{data['trigger_state']}'"
+                    f"task_key '{task_key}', trigger_state '{data['trigger_state']}'"
                 )
             }), 409
         return jsonify({"error": str(e)}), 500
@@ -1158,14 +1163,18 @@ def _dispatch_task_key_trigger_error(
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    # Mailbox identities (meteorite fold) — null/empty trigger only.
+    # stage_email_meteorite mailbox fold is candidate-bound: empty trigger = no state gate; otherwise CANDIDATE_STATES.
     if is_meteorite_email_mailbox_task_key(tk):
         ts = (trigger_state or "").strip()
-        if ts:
-            return (
-                f"task_key {tk!r} is a mailbox poller; trigger_state must be null/empty "
-                f"(got {trigger_state!r})"
-            )
+        if not ts:
+            return None
+        registry = dispatch_entity_state_registry("candidate")
+        registry_ts = ts
+        parsed = parse_dispatch_hop_label(ts)
+        if parsed:
+            registry_ts = parsed[0]
+        if registry_ts not in registry:
+            return f"task_key {tk!r} (candidate) is not valid for trigger_state {ts!r}"
         return None
     # Optional override from admin form; else catalog entity for task_key.
     if entity_type is not None and str(entity_type).strip():
@@ -1261,16 +1270,20 @@ def update_dtask(task_id):
         updates["batch_call_mode"] = defaults["batch_call_mode"]
     if entity_in_body:
         updates["entity_type"] = effective_entity_type
-    if (
-        ("task_key" in data or "trigger_state" in data or entity_in_body)
-        and not is_meteorite_email_mailbox_task_key(effective_task_key)
-    ):
-        try:
-            updates["sort_by"] = _dispatch_sort_by_for(
-                effective_entity_type, effective_trigger_state,
-            )
-        except KeyError as exc:
-            return jsonify({"error": str(exc)}), 400
+    if "task_key" in data or "trigger_state" in data or entity_in_body:
+        mailbox = is_meteorite_email_mailbox_task_key(effective_task_key)
+        ts_for_sort = str(effective_trigger_state or "").strip()
+        if mailbox and not ts_for_sort:
+            if "trigger_state" in data:
+                updates["sort_by"] = None
+        else:
+            et_sort = (effective_entity_type or "candidate") if mailbox else effective_entity_type
+            try:
+                updates["sort_by"] = _dispatch_sort_by_for(
+                    et_sort, effective_trigger_state,
+                )
+            except KeyError as exc:
+                return jsonify({"error": str(exc)}), 400
     trigger_state = data.get("trigger_state", row.get("trigger_state"))
     is_scored = dispatch_claim_uses_score_floor(trigger_state)
     for k in allowed:
@@ -1328,7 +1341,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         if not company:
             return ""
         cdata = company.get("company_data", {}) or {}
-        if task_key == "prefilter":
+        if task_key == "prefilter_company":
             homepage = cdata.get("homepage_text") or cdata.get("website_content") or ""
             nav_links = cdata.get("nav_links") or []
             parts = []
@@ -2054,3 +2067,50 @@ def download_db():
     """Send the raw SQLite file as a binary download."""
     db_path = ASTRAL_CONFIG["db_dir"] / "astral.db"
     return send_file(str(db_path), mimetype="application/octet-stream", as_attachment=True, download_name="astral.db")
+
+
+@admin_bp.route("/telescope", methods=["POST"])
+@require_admin
+def admin_telescope():
+    """Operator workbench — proxy to Telescope with scrape_meta (AST-1728)."""
+    body = request.get_json(silent=True) or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "url required"}), 400
+    response_type = (body.get("response_type") or "").strip().lower()
+    if response_type not in ("text", "html"):
+        return jsonify({"error": "response_type must be text or html"}), 400
+    expand = body.get("expand", True)
+    wait_ready = body.get("wait_ready", False)
+    links = body.get("links", True)
+    cull = body.get("cull", False)
+    selector = body.get("selector")
+    if selector is not None:
+        selector = str(selector).strip() or None
+    tag = body.get("tag")
+    if tag is not None:
+        tag = str(tag).strip() or None
+    class_name = body.get("class_name")
+    if class_name is not None:
+        class_name = str(class_name).strip() or None
+    try:
+        data = asyncio.run(
+            admin_telescope_scrape(
+                url,
+                response_type=response_type,
+                expand=bool(expand),
+                wait_ready=bool(wait_ready),
+                links=bool(links),
+                selector=selector,
+                tag=tag,
+                class_name=class_name,
+                cull=bool(cull),
+            )
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except PlaywrightInfraError as e:
+        return jsonify({"error": e.failure_class, "detail": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": "telescope_error", "detail": str(e)}), 502
+    return jsonify(data)

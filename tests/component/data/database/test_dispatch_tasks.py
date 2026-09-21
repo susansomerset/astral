@@ -183,31 +183,37 @@ class TestAst814InflowDiscoveryFreqHrs:
 
 
 class TestAst506InflowResolveEligible:
-    """AST-506: company NEW without website eligibility for inflow_resolve_website."""
+    """AST-506/1673: DISCOVERED without website eligibility for inflow_resolve_website."""
 
-    def test_count_new_without_website(self, sqlite_in_memory) -> None:
+    def test_count_discovered_without_website(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("no_site", state="NEW", candidate_id="c506", company_name="no_site")
+        db.save_company("no_site", state="DISCOVERED", candidate_id="c506", company_name="no_site")
         db.save_company(
             "has_site",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c506",
             company_website="https://has.example",
             company_name="has_site",
         )
-        assert db.count_company_new_without_website("c506") == 1
+        assert db.count_company_discovered_without_website("c506") == 1
 
     def test_count_excludes_claimed_batch(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("claimed", state="NEW", candidate_id="c506", company_name="claimed")
-        db.claim_company_batch("batch-506", "NEW", 1, candidate_id="c506", require_empty_website=True)
-        assert db.count_company_new_without_website("c506") == 0
+        db.save_company("claimed", state="DISCOVERED", candidate_id="c506", company_name="claimed")
+        db.claim_company_batch(
+            "batch-506", "DISCOVERED", 1, candidate_id="c506", require_empty_website=True,
+        )
+        assert db.count_company_discovered_without_website("c506") == 0
 
-    def test_claim_skips_new_with_website(self, sqlite_in_memory) -> None:
+    def test_claim_skips_discovered_with_website(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("skip_me", state="NEW", candidate_id="c506", company_website="https://x.example")
-        db.save_company("claim_me", state="NEW", candidate_id="c506", company_name="claim_me")
-        n = db.claim_company_batch("batch-506", "NEW", 10, candidate_id="c506", require_empty_website=True)
+        db.save_company(
+            "skip_me", state="DISCOVERED", candidate_id="c506", company_website="https://x.example",
+        )
+        db.save_company("claim_me", state="DISCOVERED", candidate_id="c506", company_name="claim_me")
+        n = db.claim_company_batch(
+            "batch-506", "DISCOVERED", 10, candidate_id="c506", require_empty_website=True,
+        )
         assert n == 1
         rows = db.get_company_batch("batch-506")
         assert len(rows) == 1
@@ -215,10 +221,10 @@ class TestAst506InflowResolveEligible:
 
     def test_count_eligible_for_dispatch_task_resolve(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        db.save_company("resolve_me", state="NEW", candidate_id="c506", company_name="resolve_me")
+        db.save_company("resolve_me", state="DISCOVERED", candidate_id="c506", company_name="resolve_me")
         task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "inflow_resolve_website",
             "candidate_id": "c506",
         }
@@ -228,51 +234,55 @@ class TestAst506InflowResolveEligible:
 
 
 class TestAst776InflowVetEligible:
-    """AST-776: vet vs resolve eligibility split on inflow_discovery_blurb."""
+    """AST-776/1673: vet vs resolve eligibility split on DISCOVERED + blurb."""
 
-    def test_count_new_pending_inflow_vet(self, sqlite_in_memory) -> None:
+    def test_count_discovered_pending_inflow_vet(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "vet_me",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="vet_me",
             company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
         )
-        db.save_company("no_blurb", state="NEW", candidate_id="c776", company_name="no_blurb")
-        assert db.count_company_new_pending_inflow_vet("c776") == 1
+        db.save_company("no_blurb", state="DISCOVERED", candidate_id="c776", company_name="no_blurb")
+        assert db.count_company_discovered_pending_inflow_vet("c776") == 1
 
-    def test_count_new_without_website_excludes_blurb(self, sqlite_in_memory) -> None:
+    def test_count_discovered_without_website_excludes_blurb(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "blurb_only",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="blurb_only",
             company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
         )
-        db.save_company("legacy_new", state="NEW", candidate_id="c776", company_name="legacy_new")
-        assert db.count_company_new_without_website("c776") == 1
+        db.save_company(
+            "legacy_discovered", state="DISCOVERED", candidate_id="c776", company_name="legacy_discovered",
+        )
+        assert db.count_company_discovered_without_website("c776") == 1
 
     def test_count_eligible_vet_vs_resolve_split(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_company(
             "vet_row",
-            state="NEW",
+            state="DISCOVERED",
             candidate_id="c776",
             company_name="vet_row",
             company_data={"inflow_discovery_blurb": "000|Co|https://vet.example|snip"},
         )
-        db.save_company("resolve_row", state="NEW", candidate_id="c776", company_name="resolve_row")
+        db.save_company(
+            "resolve_row", state="DISCOVERED", candidate_id="c776", company_name="resolve_row",
+        )
         vet_task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "vet_inflow_discovery",
             "candidate_id": "c776",
         }
         resolve_task = {
             "entity_type": "company",
-            "trigger_state": "NEW",
+            "trigger_state": "DISCOVERED",
             "task_key": "inflow_resolve_website",
             "candidate_id": "c776",
         }
@@ -435,7 +445,7 @@ class TestAst641UnionClaimCount:
         task = {
             "entity_type": "company",
             "trigger_state": "WEBSITE_FOUND",
-            "task_key": "prefilter",
+            "task_key": "prefilter_company",
             "candidate_id": cid,
         }
         assert db.count_eligible_for_dispatch_task(task) == 2
@@ -528,72 +538,17 @@ class TestAst745StopAutomaticDispatchRowSeeding:
         assert db.count_eligible_for_dispatch_task(task) == 2
 
 
-class TestAst702PrefilterDispatchMigration:
-    """AST-702: prefilter rows migrate to HOMEPAGE_READY batch mode; obsolete retry rows removed."""
+class TestAst1675PrefilterCatalogRetarget:
+    """AST-1675: company dispatch_task.task_key prefilter → prefilter_company (idempotent).
 
-    def test_schema_migrates_prefilter_base_row_to_homepage_ready(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_dispatch_task("c702", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND")
-        conn = db._get_connection()
-        try:
-            db._dispatch_task_schema_ensured = False
-            db._ensure_dispatch_task_schema(conn)
-            row = conn.execute(
-                "SELECT trigger_state, batch_call_mode FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter'",
-                ("c702",),
-            ).fetchone()
-            assert tuple(row) == ("HOMEPAGE_READY", 1)
-        finally:
-            conn.close()
-
-    def test_schema_deletes_obsolete_prefilter_retry_companion_row(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_dispatch_task("c702b", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
-        conn = db._get_connection()
-        try:
-            db._dispatch_task_schema_ensured = False
-            db._ensure_dispatch_task_schema(conn)
-            n = conn.execute(
-                "SELECT COUNT(*) FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND_RETRY'",
-                ("c702b",),
-            ).fetchone()[0]
-            assert n == 0
-        finally:
-            conn.close()
-
-class TestAst703PrefilterMigrationUniqueCollision:
-    """AST-703 / AST-1500: ensure must not rewrite curated prefilter dispatch_task content.
-
-    [bug-repro] AST-1500 — legacy dual rows stay byte-stable across `_ensure_dispatch_task_schema`
-    (no DELETE/UPDATE content migration). Fails while ensure still retargets to HOMEPAGE_READY.
+    Supersedes AST-702 HOMEPAGE_READY content migration and AST-823 reverse retarget;
+    revises AST-703/1500 dual-row stability to preserve trigger_state under the new key.
     """
 
-    def test_schema_leaves_dual_prefilter_rows_unchanged(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_dispatch_task("c703", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND")
-        db.save_dispatch_task("c703", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
-        conn = db._get_connection()
-        try:
-            db._dispatch_task_schema_ensured = False
-            db._ensure_dispatch_task_schema(conn)
-            rows = conn.execute(
-                "SELECT trigger_state FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter' ORDER BY trigger_state",
-                ("c703",),
-            ).fetchall()
-            assert [r[0] for r in rows] == ["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"]
-        finally:
-            conn.close()
-
-
-class TestAst823PrefilterDispatchMigration:
-    """AST-823 UAT: legacy prefilter_company dispatch rows and stale batch_call_mode retarget."""
-
-    def _insert_legacy_company_dispatch_row(
-        self, conn, candidate_id: str, task_key: str, trigger_state: str, batch_call_mode: int = 0,
+    def _insert_company_dispatch_row(
+        self, conn, candidate_id: str, task_key: str, trigger_state: str, batch_call_mode: int = 1,
     ) -> None:
+        # Raw insert — save_dispatch_task rejects bare leftover `prefilter` after alias drop.
         conn.execute(
             """
             INSERT INTO dispatch_task (
@@ -605,45 +560,108 @@ class TestAst823PrefilterDispatchMigration:
         )
         conn.commit()
 
-    def test_schema_retargets_prefilter_company_agent_key_row(self, sqlite_in_memory) -> None:
+    def test_schema_retargets_company_prefilter_to_prefilter_company(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         conn = db._get_connection()
         try:
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
-            self._insert_legacy_company_dispatch_row(
-                conn, "c823", "prefilter_company", "WEBSITE_FOUND",
-            )
+            self._insert_company_dispatch_row(conn, "c1675", "prefilter", "HOMEPAGE_READY")
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
             row = conn.execute(
-                "SELECT task_key, trigger_state, batch_call_mode FROM dispatch_task "
-                "WHERE candidate_id = ?",
-                ("c823",),
+                "SELECT task_key, trigger_state FROM dispatch_task WHERE candidate_id = ?",
+                ("c1675",),
             ).fetchone()
-            assert tuple(row) == ("prefilter", "HOMEPAGE_READY", 1)
+            assert tuple(row) == ("prefilter_company", "HOMEPAGE_READY")
+            leftover = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE task_key = 'prefilter' AND entity_type = 'company'",
+            ).fetchone()[0]
+            assert leftover == 0
         finally:
             conn.close()
 
-    def test_schema_enables_batch_call_mode_on_stale_homepage_ready_row(self, sqlite_in_memory) -> None:
+    def test_schema_preserves_dual_trigger_rows_under_new_key(self, sqlite_in_memory) -> None:
+        # AST-703/1500 intent: curated trigger_state pairs stay; only catalog key retargets.
         db = sqlite_in_memory
         conn = db._get_connection()
         try:
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
-            self._insert_legacy_company_dispatch_row(
-                conn, "c823b", "prefilter", "HOMEPAGE_READY", batch_call_mode=0,
+            self._insert_company_dispatch_row(conn, "c1675d", "prefilter", "WEBSITE_FOUND")
+            self._insert_company_dispatch_row(conn, "c1675d", "prefilter", "WEBSITE_FOUND_RETRY")
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT task_key, trigger_state FROM dispatch_task "
+                "WHERE candidate_id = ? ORDER BY trigger_state",
+                ("c1675d",),
+            ).fetchall()
+            assert [tuple(r) for r in rows] == [
+                ("prefilter_company", "WEBSITE_FOUND"),
+                ("prefilter_company", "WEBSITE_FOUND_RETRY"),
+            ]
+        finally:
+            conn.close()
+
+    def test_schema_deletes_old_row_when_prefilter_company_companion_exists(
+        self, sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            self._insert_company_dispatch_row(
+                conn, "c1675c", "prefilter_company", "HOMEPAGE_READY", batch_call_mode=1,
+            )
+            self._insert_company_dispatch_row(
+                conn, "c1675c", "prefilter", "HOMEPAGE_READY", batch_call_mode=0,
             )
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
-            row = conn.execute(
-                "SELECT trigger_state, batch_call_mode FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter'",
-                ("c823b",),
-            ).fetchone()
-            assert tuple(row) == ("HOMEPAGE_READY", 1)
+            rows = conn.execute(
+                "SELECT task_key, batch_call_mode FROM dispatch_task WHERE candidate_id = ?",
+                ("c1675c",),
+            ).fetchall()
+            assert len(rows) == 1
+            assert tuple(rows[0]) == ("prefilter_company", 1)
         finally:
             conn.close()
+
+    def test_schema_leaves_craft_prefilter_rubric_untouched(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            # craft_prefilter_rubric is not company-prefilter catalog — must survive ensure.
+            self._insert_company_dispatch_row(
+                conn, "c1675r", "craft_prefilter_rubric", "ACTIVE_SEARCH",
+            )
+            db._dispatch_task_schema_ensured = False
+            db._ensure_dispatch_task_schema(conn)
+            n = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'craft_prefilter_rubric'",
+                ("c1675r",),
+            ).fetchone()[0]
+            assert n == 1
+            leftover = conn.execute(
+                "SELECT COUNT(*) FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'prefilter_company'",
+                ("c1675r",),
+            ).fetchone()[0]
+            assert leftover == 0
+        finally:
+            conn.close()
+
+
+# Class aliases keep older bible node-id class names importable for regression greps.
+TestAst702PrefilterDispatchMigration = TestAst1675PrefilterCatalogRetarget
+TestAst703PrefilterMigrationUniqueCollision = TestAst1675PrefilterCatalogRetarget
+TestAst823PrefilterDispatchMigration = TestAst1675PrefilterCatalogRetarget
 
 
 class TestAst748ConsultToGradeDispatchMigration:
@@ -1154,7 +1172,7 @@ class TestAst882HomepageReadyClaimsWfr:
         task = {
             "entity_type": "company",
             "trigger_state": "HOMEPAGE_READY",
-            "task_key": "prefilter",
+            "task_key": "prefilter_company",
             "candidate_id": cid,
         }
         assert db.count_eligible_for_dispatch_task(task) == 2
@@ -1218,7 +1236,7 @@ class TestAst892FetchWebsiteExcludesSecondStrike:
         prefilter_task = {
             "entity_type": "company",
             "trigger_state": "HOMEPAGE_READY",
-            "task_key": "prefilter",
+            "task_key": "prefilter_company",
             "candidate_id": cid,
         }
         assert db.count_eligible_for_dispatch_task(prefilter_task) == 3
