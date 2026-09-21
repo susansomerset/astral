@@ -151,3 +151,68 @@ context_tokens≈26500
 | 1–2 | `079c0593` | `run_land_meteorite` + `land_meteorite` pass staged/enrich-preferred `job_title=` |
 
 **Betty note:** AC8/AC9 land preference cases deferred to qa-child (engineer test-tree ban).
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1757
+**Publish ref:** `17085cf80f99aa2ab1f99a0b5433d4623378dc17` (`origin/sub/AST-1753/AST-1757-land-staged-job-title-onto-job`)
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.info.entity | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored all three directives **A**; diff confirms same.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** `docs/uat-fixtures/AST-756/expected-agent_task.json`, `tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts`, `docs/test-bible/core/repo_admin_json.md` § AST-1755
+- **Finding:** Sibling **AST-1755** artifacts ride this publish ref via `merge-tests`, but `data/admin/agent_task.json` on this tip still lacks AST-1755 `job_title` prompts — fixture bytes ≠ catalog bytes. AST-1757 manifest correctly scopes to meteorite land tests only, so **Tests Passed** is valid.
+- **Recommendation:** No action on AST-1757 product; avoid running AST-1755 fixture lockstep outside its own ref. Chuckles may note for epic rollup hygiene.
+
+- **Location:** `tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback`
+- **Finding:** Sibling **AST-1756** test class merged without `ingress_blob` product code on this tip — would `TypeError` if run outside manifest.
+- **Recommendation:** Same merge-tests pattern as AST-1755/1756 reviews; manifest omission is correct.
+
+### advisory
+
+- **Location:** `docs/test-bible/core/meteorite.md` § AST-1757
+- **Finding:** Bible shasum line still reads “record after publish.”
+- **Recommendation:** Chuckles stamps on doc writeback.
+
+## What's solid
+
+- Product diff is minimal and plan-exact (~9 lines in `src/core/meteorite.py` only): `run_land_meteorite` passes `job_title=staged_title` from claimed row; `land_meteorite` uses `title_for_save = enrich_title or staged_title or None` (AC7–AC9).
+- No new `logger.debug` / `logger.info` / `_entity_info` lines — existing call/response pairs untouched; inline comments only.
+- Consumes staged `meteorite.job_title` through land save — no parallel title extract (`patt.task.daisy-chain`).
+- `TestAst1757LandStagedJobTitle` covers dispatch pass (AC7), enrich-blank→staged (AC8), enrich-wins-over-staged (AC9) — closes Joan’s plan-stage discuss on deferred behavioral proof.
+- Sibling boundaries hold: no `agent_task.json`, no stage-map / `ingress_blob`, no Tracker signature edits.
+- Estimate **2 — agree** still fits.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+- Append artifact; `docs()` push on publish ref.
+- Post slim upshot `--as radia`.
+- Move to **Review Posted** → **PROCEED** / User Testing path.
+
+```
+[code-rubric] PROCEED (Commit: 17085cf8) land job_title wiring clean
+```
