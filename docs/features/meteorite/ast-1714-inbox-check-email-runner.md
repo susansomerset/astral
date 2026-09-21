@@ -275,6 +275,7 @@ context_tokens≈62000
 
 context_tokens≈55000
 
+
 ## Bug: AST-1742 — NOT_A_JOB / BOT_BLOCKED rollup counts as fails
 
 Parent mini-epic: [AST-1740](https://linear.app/astralcareermatch/issue/AST-1740/meteorites-deemed-not-a-job-should-be-fails). Publish ref: `sub/AST-1740/AST-1742-fix-not-a-job-rollup-counts`.
@@ -367,3 +368,83 @@ Statutes (id-only until `make-fix`): `stat.logging.debug`; `stat.logging.error`;
 **Radia** `[code-rubric] REVIEW` @ `c32117ad`: product retarget OK; missing bug-repro coverage lives on sibling **AST-1743** (landed `[bug-repro]` @ `f31756b1`); restack/merge is a Chuckles `merge-child` concern, not a product fix-now.
 
 **Engineer resolve:** no product code changes — fix-now empty for this ticket. Advance to User Testing.
+
+## Bug: AST-1743 — gap: skip→failed rollup test coverage
+
+Parent mini-epic: [AST-1740](https://linear.app/astralcareermatch/issue/AST-1740/meteorites-deemed-not-a-job-should-be-fails). Sibling product: [AST-1742](https://linear.app/astralcareermatch/issue/AST-1742). Publish ref: `sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests`.
+
+Board trigger: `[board-betty] TESTS: REVISE` on AST-1742 — missing skip→failed coverage on `check_email` / ingest / `_land_all`.
+
+### As-is
+
+No bible-backed pytest node asserts that Ruth skip / `NOT_A_JOB` increments **failed** (not passed) on the scoped rollup paths. `TestAst1714CheckEmail` covers landable / stage-error / already-ingested only. `ingest_candidate_email_message` has no skip→`counter="failed"` assertion. Land `TestAst1558InboxLandMeteoriteApi` mocks landable ingest without a `counter="failed"` branch. Pre-AST-1742 product still counts skip as passed, so the hole is invisible in CI.
+
+### To-be
+
+Astral-tests component nodes (named in bible) assert skip→failed on all three Scope paths. They are red against pre-AST-1742 product and green once AST-1742’s counter retarget lands. No product code in this ticket.
+
+### Repro
+
+1. Fixture: candidate + inbox message; mock `stage_meteorite` / classify skip (`skipped=True`, outcome in `STAGE_METEORITE_CONFIG["skip_outcomes"]`, e.g. `not_job_content`) with successful archive.
+2. Call `inbox.check_email` (or `ingest_candidate_email_message` / Land `_land_all`).
+3. Pre-fix product: `total_passed == 1` / `counter="passed"` / `total_failed == 0` (broken contract). Post-AST-1742: `total_failed == 1` / `counter="failed"` / `total_passed == 0`, archive still called.
+
+### Root cause
+
+AST-1714 / AST-1713 locked skip-as-passed in product; component coverage never asserted the fail retarget on the live mailbox / Land paths. `TestAst1559CheckInbox::test_skip_outcome_zero_rows_monitor_archive` locks skip→passed on leftover `check_inbox` only — out of AST-1742 product Scope and not a substitute for `check_email` / ingest / `_land_all`.
+
+### Proposed change
+
+**Scope (tests + bible only — no `src/`):**
+
+1. **`tests/component/core/test_inbox.py` — extend `TestAst1714CheckEmail`**
+   - Add `[bug-repro]` method `test_skip_outcome_counts_failed_not_passed`:
+     - Same fixture pattern as `test_stages_assembled_html_and_archives`.
+     - Mock `stage_meteorite` → `skipped=True`, `outcome`/`stage_outcome` = `not_job_content` (or any configured skip outcome), `error=None`, `jobs=[]`.
+     - Mock successful `archive_candidate_email`.
+     - Assert: `total_processed == 1`, `total_failed == 1`, `total_passed == 0`, `total_errors == 0`; archive called once with message id.
+   - Do **not** change landable / error / dedup assertions (dedup stays passed per AST-1742 plan).
+
+2. **`tests/component/core/test_meteorite.py` — ingest counter**
+   - Add (or extend under a small `TestAst1743IngestSkipFailed` / existing ingest suite if present) a node that drives `ingest_candidate_email_message` through skip + successful archive.
+   - Assert returned row `counter == "failed"` (not `"passed"`); archive called; no requirement to assert Land toast fields here.
+
+3. **`tests/component/ui/api/test_api_inbox.py` — Land `_land_all`**
+   - Add `TestAst1558InboxLandMeteoriteApi::test_land_meteorite_counter_failed_counts_failed` (or sibling class):
+     - Mock `ingest_candidate_email_message` → `counter="failed"`, skip `outcome` (e.g. `not_job_content`), `error=None`, `job_count=0`.
+     - Assert response `total_failed == 1`, `total_passed == 0` (and `total_errors == 0` when no error key).
+   - Leaves landable happy-path and already_ingested→passed mocks unchanged.
+
+4. **Bible (Betty-owned paths on astral-tests → publish via merge-tests)**
+   - `docs/test-bible/core/inbox.md` — new `### AST-1743 · AST-1740` (or append under AST-1714) naming the `TestAst1714CheckEmail` skip→failed node + short manifest line.
+   - `docs/test-bible/core/meteorite.md` — name the ingest `counter="failed"` node.
+   - `docs/test-bible/ui/api/api_inbox.md` — name the Land `counter="failed"` node (AST-1611 / AST-1558 area).
+
+5. **Do not edit:** any `src/**` (AST-1742); `TestAst1559CheckInbox::test_skip_outcome_zero_rows_monitor_archive` (`check_inbox` leftover — out of product Scope); classify / `stage_meteorite` row-state tests beyond counter asserts.
+
+**Ordering:** land tests on astral-tests against AST-1742’s product tip (or expect red until AST-1742 `make-fix` is on the same tree). Gap ticket does not implement product counters.
+
+### Blast radius
+
+- Depends on sibling **AST-1742** product counter retarget for green CI.
+- Existing AST-1714 landable/error/dedup nodes and AST-1611 landable Land happy-path stay green.
+- Leftover `check_inbox` skip→passed assertion remains until a future ticket rewires that path — do not “fix” it here.
+
+### What must still hold
+
+- No product / `src/` changes on this ticket.
+- Archive-after-skip still asserted (archive called; counters only change).
+- Dedup / already-ingested still counts as passed (AST-1742 hygiene decision).
+- Stage-error still increments errors, not failed.
+- AST-1714 AC4/AC5 (assembled blob, provision rewrite) untouched.
+
+### Canon Scope (this bug)
+
+Patterns: (none — tests/bible only).
+
+Statutes: (none — no product files; inherit AST-1714 logging ids only if a future pass adds product).
+
+
+## Radia review (AST-1743)
+
+**PROCEED** — [bug-repro] skip→failed nodes OK (check_email / ingest / _land_all). Tests+bible only; product delta is sibling AST-1742. Clean §3h shortcut.
