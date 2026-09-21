@@ -327,6 +327,8 @@ async def _post_telescope(
     url: str,
     *,
     selector: Optional[str] = None,
+    tag: Optional[str] = None,
+    class_name: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
     links: bool = True,
@@ -343,6 +345,10 @@ async def _post_telescope(
     }
     if selector is not None:
         body["selector"] = selector
+    if tag is not None:
+        body["tag"] = tag
+    if class_name is not None:
+        body["class_name"] = class_name
     resp = await _pool.request(
         "POST", TELESCOPE_CONFIG["telescope_path"], json_body=body
     )
@@ -363,6 +369,8 @@ async def _post_telescope_html(
     url: str,
     *,
     selector: Optional[str] = None,
+    tag: Optional[str] = None,
+    class_name: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
 ) -> dict:
@@ -377,6 +385,10 @@ async def _post_telescope_html(
     }
     if selector is not None:
         body["selector"] = selector
+    if tag is not None:
+        body["tag"] = tag
+    if class_name is not None:
+        body["class_name"] = class_name
     resp = await _pool.request(
         "POST", TELESCOPE_CONFIG["telescope_html_path"], json_body=body
     )
@@ -420,6 +432,8 @@ async def admin_telescope_scrape(
     wait_ready: Optional[bool] = None,
     links: bool = True,
     selector: Optional[str] = None,
+    tag: Optional[str] = None,
+    class_name: Optional[str] = None,
     cull: bool = False,
 ) -> dict:
     """Admin workbench scrape — returns full Telescope JSON (incl. scrape_meta)."""
@@ -430,6 +444,8 @@ async def admin_telescope_scrape(
         data = await _post_telescope(
             url,
             selector=selector,
+            tag=tag,
+            class_name=class_name,
             expand=expand,
             wait_ready=wait_ready,
             links=links,
@@ -438,6 +454,8 @@ async def admin_telescope_scrape(
         data = await _post_telescope_html(
             url,
             selector=selector,
+            tag=tag,
+            class_name=class_name,
             expand=expand,
             wait_ready=wait_ready,
         )

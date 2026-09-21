@@ -12,7 +12,13 @@ from pydantic import BaseModel
 
 from auth import require_bearer
 from browser import BrowserPool
-from capture import capture_html, capture_links, capture_text
+from capture import (
+    CaptureQueryError,
+    capture_html,
+    capture_links,
+    capture_text,
+    resolve_capture_query,
+)
 from interact import dismiss_cookies, expand_page, navigate, wait_ready_generic
 from logging_util import configure_logging, get_logger
 from meta import build_scrape_meta
@@ -25,6 +31,8 @@ _log = get_logger(__name__)
 class TelescopeRequest(BaseModel):
     url: str
     selector: Optional[str] = None
+    tag: Optional[str] = None
+    class_name: Optional[str] = None
     expand: bool = True
     wait_ready: bool = False
     links: bool = True
@@ -33,8 +41,36 @@ class TelescopeRequest(BaseModel):
 class TelescopeHtmlRequest(BaseModel):
     url: str
     selector: Optional[str] = None
+    tag: Optional[str] = None
+    class_name: Optional[str] = None
     expand: bool = True
     wait_ready: bool = False
+
+
+def _resolve_body_selector(
+    *,
+    selector: Optional[str],
+    tag: Optional[str],
+    class_name: Optional[str],
+) -> Optional[str]:
+    """Map request filter fields to the CSS string capture_* expects; 400 on bad input."""
+    try:
+        resolved = resolve_capture_query(
+            selector=selector, tag=tag, class_name=class_name
+        )
+    except CaptureQueryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    # Log filter mode without dumping page content
+    if class_name and str(class_name).strip():
+        _log.info(
+            "telescope filter mode=tag/class tag=%s class_name=%s resolved=%s",
+            (tag or "").strip() or None,
+            str(class_name).strip(),
+            resolved,
+        )
+    elif selector and str(selector).strip():
+        _log.info("telescope filter mode=selector selector=%s", str(selector).strip())
+    return resolved
 
 
 @asynccontextmanager
@@ -133,14 +169,17 @@ async def post_telescope(request: Request, body: TelescopeRequest):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
+    sel = _resolve_body_selector(
+        selector=body.selector, tag=body.tag, class_name=body.class_name
+    )
     pool: BrowserPool = request.app.state.pool
 
     async def work(page):
-        text = await capture_text(page, body.selector)
+        text = await capture_text(page, sel)
         final_url = page.url
         out: dict = {"final_url": final_url, "text": text}
         if body.links:
-            out["links"] = await capture_links(page, body.selector)
+            out["links"] = await capture_links(page, sel)
         return out
 
     raw = await _run_browser_job(pool, url, body.expand, body.wait_ready, work)
@@ -169,10 +208,13 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
+    sel = _resolve_body_selector(
+        selector=body.selector, tag=body.tag, class_name=body.class_name
+    )
     pool: BrowserPool = request.app.state.pool
 
     async def work(page):
-        html = await capture_html(page, body.selector)
+        html = await capture_html(page, sel)
         return {"final_url": page.url, "html": html}
 
     raw = await _run_browser_job(pool, url, body.expand, body.wait_ready, work)

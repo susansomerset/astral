@@ -61,12 +61,17 @@ export default function AdminTelescope() {
   const [links, setLinks] = useState(true)
   const [cull, setCull] = useState(false)
   const [selector, setSelector] = useState("")
+  const [tag, setTag] = useState("")
+  const [className, setClassName] = useState("")
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ScrapeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [showJson, setShowJson] = useState(false)
   const clearToast = useCallback(() => setToast(null), [])
+
+  // Tag/class_name and CSS selector are mutually exclusive (service 400 if both).
+  const tagClassActive = Boolean(tag.trim() || className.trim())
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -83,7 +88,12 @@ export default function AdminTelescope() {
         links: responseType === "text" ? links : true,
         cull: responseType === "html" ? cull : false,
       }
-      if (selector.trim()) body.selector = selector.trim()
+      if (tagClassActive) {
+        if (tag.trim()) body.tag = tag.trim()
+        if (className.trim()) body.class_name = className.trim()
+      } else if (selector.trim()) {
+        body.selector = selector.trim()
+      }
       const res = await api("/api/admin/telescope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -193,11 +203,34 @@ export default function AdminTelescope() {
         </div>
 
         <label className="admin-telescope-field">
+          <span>Tag (optional)</span>
+          <input
+            type="text"
+            value={tag}
+            onChange={e => setTag(e.target.value)}
+            disabled={Boolean(selector.trim())}
+            placeholder="div / span / …"
+          />
+        </label>
+
+        <label className="admin-telescope-field">
+          <span>Class name (optional)</span>
+          <input
+            type="text"
+            value={className}
+            onChange={e => setClassName(e.target.value)}
+            disabled={Boolean(selector.trim())}
+            placeholder="shaders (no leading dot)"
+          />
+        </label>
+
+        <label className="admin-telescope-field">
           <span>Selector (optional)</span>
           <input
             type="text"
             value={selector}
             onChange={e => setSelector(e.target.value)}
+            disabled={tagClassActive}
             placeholder="css / page / body"
           />
         </label>
