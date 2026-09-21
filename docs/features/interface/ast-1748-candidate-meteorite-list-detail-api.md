@@ -254,5 +254,5 @@ context_tokens≈28000
 ## Review
 
 - **Publish ref:** `sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`
-- **Tip:** `ee5bd306438551eff8f40a3301f4b1e3c950ab50`
+- **Tip:** `40962aa8440e9076a63604a75298ea0ab1736007`
 - **Stages:** S1 list helper · S2 config constants · S3 list/detail GET
