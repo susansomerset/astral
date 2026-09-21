@@ -276,7 +276,11 @@ async def check_email(task: dict, *, debug: bool = False) -> dict[str, int]:
             logger.debug("Calling archive_candidate_email: [message_id=%s]", mid)
             archive_candidate_email(mid)
             logger.debug("Response from archive_candidate_email: ok")
-            passed += 1
+            # Skip / NOT_A_JOB → failed; landable READY/SCRAPE_LINK → passed (AST-1742).
+            if stage.get("skipped"):
+                failed += 1
+            else:
+                passed += 1
         except Exception as exc:
             next_step = (
                 "Classify skipped; archive did not finish"

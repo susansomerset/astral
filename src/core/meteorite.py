@@ -1415,7 +1415,7 @@ async def ingest_candidate_email_message(
     """One mid: dedup → classify → fan-out/skip → archive (shared by check_inbox + Land).
 
     Returns Land-shaped row: message_id, outcome, astral_candidate_id, optional error /
-    job_count / inserted_ids, plus counter passed|error for mailbox rollup.
+    job_count / inserted_ids, plus counter passed|failed|error for mailbox rollup.
     """
     err_key = METEORITE_CONFIG["land_outcome_error"]
     already = METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
@@ -1527,8 +1527,9 @@ async def ingest_candidate_email_message(
             logger.debug("Calling archive_candidate_email: [message_id=%s]", mid)
             archive_candidate_email(mid)
             logger.debug("Response from archive_candidate_email: ok")
+            # Skip / NOT_A_JOB → failed; landable → passed (AST-1742).
             if skipped:
-                return _row(str(stage.get("outcome")), counter="passed")
+                return _row(str(stage.get("outcome")), counter="failed")
             return _row(
                 str(stage.get("outcome")),
                 counter="passed",
