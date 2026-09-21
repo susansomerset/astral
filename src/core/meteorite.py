@@ -11,8 +11,7 @@ only — table ingress uses dispatch transition runners for map/land. Public lan
 scraps → optional Playwright visible text → qualify_meteorite packet enrich →
 per-row Ruth company_stem ensure → tracker.save_meteorite_job. check_inbox (AST-1559):
 aliases → fetch → inline classify → fan-out staging rows → archive; no Gmail I/O here —
-inbox owns fetch/archive. run_meteorite_retention (AST-1562): scheduled purge of old LANDED
-rows + warn stale ERROR/BOT_BLOCKED/ABANDONED; meteorite_email.py retired AST-1562.
+inbox owns fetch/archive.
 create_meteorite_job accepts optional stem= for legacy callers.
 create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
 """
@@ -23,7 +22,7 @@ import inspect
 import os
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,7 +37,6 @@ from src.core import tracker
 from src.data.database import (
     claim_meteorite_batch,
     clear_meteorite_batch,
-    delete_meteorites_by_ids,
     get_company,
     get_job,
     get_meteorite,
@@ -46,7 +44,6 @@ from src.data.database import (
     insert_meteorite_rows,
     list_meteorites_by_source,
     list_meteorites_by_state,
-    list_meteorites_for_retention,
     save_company,
     save_job,
     update_candidate_last_email_check,
@@ -59,8 +56,6 @@ from src.utils.config import (
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
     METEORITE_MONITORING_CONFIG,
-    METEORITE_RETENTION_CONFIG,
-    METEORITE_STATES_RETENTION,
     STAGE_METEORITE_CONFIG,
     TASK_CONFIG,
     TRACKER_CONFIG,
@@ -1632,13 +1627,16 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
     if not batch_id:
         raise ValueError("entity_batch_id is required")
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
 
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["stage_trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["stage_trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["stage_trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["stage_trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1735,12 +1733,16 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
         raise ValueError("entity_batch_id is required")
     status_map = cfg["scrape_page_status_states"]
 
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["scrape_trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["scrape_trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["scrape_trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["scrape_trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1820,15 +1822,20 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
     )
     land_states = ["READY", "BOT_BLOCKED"]
 
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, states=%s, limit=%s]",
-        batch_id, land_states, batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, states=%s, limit=%s, candidate_id=%s]",
+        batch_id, land_states, batch_size, entity_candidate_id,
     )
     claim_meteorite_batch(
         batch_id,
         cfg["land_trigger_state"],
         limit=batch_size,
+        candidate_id=entity_candidate_id,
         states=land_states,
     )
     rows = get_meteorite_batch(batch_id)
@@ -1914,12 +1921,16 @@ async def run_notify_meteorite_bot_blocked(
     if not batch_id:
         raise ValueError("entity_batch_id is required")
 
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -2021,95 +2032,6 @@ async def run_notify_meteorite_bot_blocked(
     finally:
         logger.debug("End notify meteorite loop after %s items", summary["total_processed"])
         clear_meteorite_batch(batch_id)
-    return summary
-
-
-@_with_log_debug
-async def run_meteorite_retention(
-    task: Dict[str, Any], *, debug: bool = False
-) -> Dict[str, int]:
-    """Dispatch runner: purge states from METEORITE_STATES_RETENTION["purge_states"] (includes NOT_A_JOB after AST-1712) + warn stale rows (AST-1562)."""
-    cfg = METEORITE_RETENTION_CONFIG
-    batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
-    now = datetime.now(timezone.utc)
-    landed_cutoff = (now - timedelta(days=int(cfg["landed_purge_days"]))).isoformat()
-    stale_cutoff = (now - timedelta(days=int(cfg["stale_list_days"]))).isoformat()
-    summary = dict(_ZERO_SUMMARY)
-
-    purge_states = list(METEORITE_STATES_RETENTION["purge_states"])
-    logger.debug(
-        "Calling list_meteorites_for_retention: [states=%s, older_than=%s]",
-        purge_states, landed_cutoff,
-    )
-    landed_rows = list_meteorites_for_retention(
-        states=purge_states, older_than=landed_cutoff, limit=batch_size
-    )
-    logger.debug("Response from list_meteorites_for_retention landed: %s", landed_rows)
-    if landed_rows:
-        # AST-1690: keep LANDED rows whose astral_job_id still hits a job row.
-        purge_ids: List[int] = []
-        row_states: Dict[int, str] = {}
-        skipped_count = 0
-        logger.debug(
-            "Beginning landed retention filter loop on %s items", len(landed_rows)
-        )
-        for row in landed_rows:
-            row_id = int(row["id"])
-            row_state = str(row.get("state") or "")
-            row_states[row_id] = row_state
-            jid = str(row.get("astral_job_id") or "").strip()
-            if jid:
-                logger.debug("Calling get_job: [astral_job_id=%s]", jid)
-                job_row = get_job(jid)
-                logger.debug("Response from get_job: %s", job_row)
-                if job_row is not None:
-                    skipped_count += 1
-                    _meteorite_state_info(
-                        row_id, "retention_kept", from_state=row_state
-                    )
-                    continue
-            purge_ids.append(row_id)
-        logger.debug(
-            "End landed retention filter loop after %s purge ids (%s skipped)",
-            len(purge_ids),
-            skipped_count,
-        )
-        if purge_ids:
-            logger.debug("Beginning landed purge loop on %s items", len(purge_ids))
-            n = delete_meteorites_by_ids(purge_ids)
-            summary["total_processed"] += n
-            summary["total_passed"] += n
-            for row_id in purge_ids:
-                _meteorite_state_info(
-                    row_id, "purged", from_state=row_states.get(row_id, "")
-                )
-            logger.debug("End landed purge loop after %s items", n)
-
-    stale_states = list(METEORITE_STATES_RETENTION["stale_list_states"])
-    logger.debug(
-        "Calling list_meteorites_for_retention: [states=%s, older_than=%s]",
-        stale_states, stale_cutoff,
-    )
-    stale_rows = list_meteorites_for_retention(
-        states=stale_states, older_than=stale_cutoff, limit=batch_size
-    )
-    logger.debug("Response from list_meteorites_for_retention stale: %s", stale_rows)
-    logger.debug("Beginning stale meteorite loop on %s items", len(stale_rows))
-    for row in stale_rows:
-        summary["total_processed"] += 1
-        row_id = int(row["id"])
-        cid = str(row.get("candidate_id") or "")
-        state = str(row.get("state") or "")
-        changed = row.get("state_changed_at") or row.get("updated_at") or ""
-        _row_miss(
-            row_id,
-            cid,
-            f"still {state} since {changed}",
-            "This row is not being purged",
-        )
-        summary["total_passed"] += 1
-    logger.debug("End stale meteorite loop after %s items", len(stale_rows))
-
     return summary
 
 
