@@ -1121,3 +1121,73 @@ Out of this bug: changing platform consumers that only read `href` (`extract_sit
 ## Radia review-fix (AST-1747)
 
 Overall: CLEAN / PROCEED — href dedupe with text[]; resolve-child skipped.
+
+## Bug: AST-1744 — Telescope tag/selector unified; class is secondary filter
+
+### As-is
+
+Admin Telescope exposes **Tag**, **Class name**, and **Selector** as three inputs. Tag/Class and Selector are mutually exclusive (filling one disables the other; `resolve_capture_query` returns HTTP 400 if `selector` is set together with `tag` or `class_name`). Operators treat `html` / `div` / `span` / `body` / `head` / `ul` as the same kind of filter but must pick which primary field means “element type,” and cannot combine a tag-like Selector with Class name.
+
+### To-be
+
+**Tag and Selector are the same primary filter** — element tag names (`html`, `div`, `span`, `body`, `head`, `ul`, plus existing `page` / empty whole-document specials). **Class name is a secondary filter**: when set, match elements within that tag that have `class="<classname>"` (CSS `{tag}.{classname}`, or `.{classname}` when no tag is set). Admin shows one primary field + Class name (always combinable). No separate competing Selector slot.
+
+### Repro
+
+1. Open Admin Telescope (or call `POST /telescope/html` with bearer).
+2. **As-is:** enter Tag `div` and also try Selector `span` — fields disable each other; or enter Selector `div` plus Class name `logo` — Class is disabled / request would 400 if both were sent.
+3. **To-be:** enter Tag `div` and Class name `logo` together → request resolves to CSS `div.logo` and returns matching outer HTML (0 → `""`, 1 → `str`, 2+ → `list[str]`). Tag alone `ul` → tag selector `ul`. Class alone `logo` → `.logo`. Same rules on `POST /telescope` text/links.
+
+### Root cause
+
+AST-1736 added explicit `tag` / `class_name` **beside** the existing `selector` field as an alternate exclusive mode so class intent would not depend on bare-token → `.class` retry. That fixed “I mean a class,” but left **two primary slots for one concept** (element type / CSS primary). The mutual-exclusion rule (`selector` XOR `tag`/`class_name`) is what makes Tag and Selector feel like different things to operators.
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture + contract; `src/external/telescope.py` / `src/ui/api/` pass-through as needed; `src/ui/frontend/` Admin Telescope). Do **not** implement optional `id` (AST-1746). Do **not** absorb AST-1745 (class outerHTML content correctness) beyond the unify/combine semantics below.
+
+1. **`service/telescope/capture.py` — unify primary; class is secondary**
+   - Rewrite `resolve_capture_query(*, selector, tag, class_name) -> str | None`:
+     - Strip all inputs.
+     - **Primary** = unified `tag` / `selector`: if both non-empty and unequal → `CaptureQueryError` (ambiguous primary); if both equal, use once; else use whichever is set.
+     - **`class_name` secondary (no longer XOR with primary):**
+       - Invalid token (`^[A-Za-z_][\w-]*$` fails) → `CaptureQueryError`.
+       - `class_name` + no primary (or primary is case-insensitive `page` / `body`) → return `.{class_name}` (class-only CSS; do not keep page/body specials when class filters).
+       - `class_name` + primary matching a simple tag/ident (`^[A-Za-z][\w-]*$`) → return `{primary}.{class_name}`.
+       - `class_name` + primary that is already complex CSS (leading `.` / `#` / `[`, combinators, spaces, `tag.class`, etc.) → `CaptureQueryError` (secondary class only combines with a bare tag primary or alone).
+     - Primary only → return it unchanged (existing `capture_*` empty / `page` / `body` branches + AST-1731 `_BARE_CLASS_RETRY` on selector-only bare tokens still apply).
+     - None set → `None`.
+   - Delete the old rule that rejects any non-empty `selector` together with `tag` or `class_name`.
+   - Keep `_BARE_CLASS_RETRY` for selector-only bare tokens (programmatic / back-compat); Admin’s preferred path is explicit `class_name`.
+
+2. **`service/telescope/app.py` — contract wording + logging**
+   - On `TelescopeRequest` / `TelescopeHtmlRequest`, document that `tag` and `selector` are **aliases for the same primary** (element tag / legacy CSS primary); `class_name` is an optional secondary filter.
+   - `_resolve_body_selector` logging: mode = primary (+ optional class), not “selector XOR tag/class.”
+   - Still map `CaptureQueryError` → HTTP 400 with `detail`.
+
+3. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — one primary + class**
+   - Remove the separate **Selector** input and all mutual-disable logic (`tagClassActive` / disabling Class when Selector is filled).
+   - Keep a single primary field labeled **Tag** (placeholder e.g. `html / div / span / body / head / ul`; `page` still accepted for whole-document text path).
+   - Keep **Class name** always enabled (secondary; placeholder without leading dot).
+   - Submit body: when Tag filled → send `tag` (omit `selector`); when Class filled → send `class_name`; both may be sent together. Do not send empty strings.
+
+4. **`src/external/telescope.py` + `src/ui/api/api_admin.py`**
+   - No new fields. Keep forwarding `selector` / `tag` / `class_name` when present. Adjust comments only if they still describe the old XOR rule. Callers may send `tag`+`class_name` together; `selector` remains a supported alias for the primary for non-Admin clients.
+
+### Blast radius
+
+- AST-1736 Admin path that sent only `class_name` / `tag` still works; combining Tag + Class becomes legal (was blocked).
+- Existing Betty / component asserts that `selector` + `class_name` → 400 (e.g. `test_ast1736_selector_plus_class_name_returns_400`) become wrong under the new contract — fix-board TESTS signal; do not edit `tests/` here.
+- Programmatic full-CSS `selector` without `class_name` unchanged; bare `selector` class retry unchanged.
+- Sibling AST-1745 (class must return outer HTML for `logo`) and AST-1746 (`id` secondary filter) stay separate; this bug only unifies primary + class secondary semantics.
+- Drop-in `_ensure_html` / core call shapes untouched.
+
+### What must still hold
+
+- Parent AC 3 / 5 / 14: contract endpoints, multi-match `""` / `str` / `list[str]`, Admin can submit optional filters and see raw body + scrape_meta.
+- AST-1729: empty / `page` / `body` specials when **no** `class_name` is set.
+- AST-1731: bare `selector`-only class retry + multi-match html shape.
+- AST-1732 / AST-1735: filtered links stay scoped under match roots.
+- AST-1736: explicit `class_name` still means class (not tag-first heuristic) when that field is used.
+- Zero `src` imports under `service/telescope/`; bearer auth; no service-side cull.
+- Parent scope line “alongside tag/selector and class” — tag/selector read as one primary concept (this bug); `id` still owned by AST-1746.
