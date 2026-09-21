@@ -162,7 +162,7 @@ export default function AdminTelescope() {
               checked={expand}
               onChange={e => setExpand(e.target.checked)}
             />{" "}
-            expand
+            expand (scroll / Load More — not numbered pages)
           </label>
           <label>
             <input
