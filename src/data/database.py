@@ -8171,11 +8171,11 @@ def save_dispatch_task(
         _dispatch_sort_by_for,
     )
     if is_meteorite_email_mailbox_task_key(tk):
-        # Poller row seed (AST-1466): MAILBOX_CONFIG wins over admin form meta.
-        if not (entity_type and str(entity_type).strip()):
-            entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
-        if not (trigger_state and str(trigger_state).strip()):
-            trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
+        # Poller row seed (AST-1466): MAILBOX_CONFIG always wins over admin form meta —
+        # a mailbox poller has no entity/trigger binding at all (stat.dispatch.entity-state-bound
+        # carve-out), so caller-supplied entity_type/trigger_state are ignored, not merely filled in.
+        entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
+        trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
         sort_by = defaults["sort_by"]  # mailbox: always None — no entity/trigger sort helper
     else:
         if not (entity_type and str(entity_type).strip()):

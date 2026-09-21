@@ -16,6 +16,24 @@ class TestSaveDispatchTask:
         assert row["candidate_id"] == "cand-1"
         assert row["task_key"] == "qualify_job_listings"
 
+    def test_mailbox_config_wins_over_caller_entity_and_trigger(self, seeded_db) -> None:
+        """stat.dispatch.entity-state-bound bug repro: a mailbox poller has no entity/trigger
+        binding — admin-form (or any caller) entity_type/trigger_state must be ignored, not
+        merely filled in when blank. Was: caller values silently won and got saved as-is."""
+        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+
+        db = seeded_db
+        task_id = db.save_dispatch_task(
+            "cand-1",
+            METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
+            entity_type="candidate",
+            trigger_state="ACTIVE_SEARCH",
+        )
+        row = db.get_dispatch_task(task_id)
+        assert row is not None
+        assert row["entity_type"] == METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
+        assert row["trigger_state"] == METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
+
 
 class TestAst525InflowDiscoveryEligible:
     """AST-525: per-term last_scan_at staleness; dispatch last_run_at ignored."""
