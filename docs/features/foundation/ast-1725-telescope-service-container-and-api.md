@@ -729,3 +729,6 @@ Out of this bug: implementing Next/page-N capture; changing scroll/click caps; p
 - AST-1725 AC: `expand_page` port of `load_all_jobs` behavior; bearer; no service cull; zero `src` imports under `service/telescope/`.
 - Platform drop-in still maps `load_all_jobs` → `page.expand = True` (AST-1726) without inventing a second pagination flag.
 - Parent non-goal: no depth/output limits **added** without Susan sign-off — this bug does not tighten or raise the existing scroll/click caps.
+## Radia review-fix (AST-1737)
+
+Overall: CLEAN. Expand contract documented. Clean-review shortcut → User Testing.
