@@ -238,5 +238,5 @@ context_tokens≈35000
 ## Review stub
 
 - **Publish ref:** `sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`
-- **Tip:** `244daefde30b58f2138ab8ac36205d70946d4b27`
+- **Tip:** `8c4ab30e994733dab0eaf6e98dcf029f4ce0c5f2`
 - **Stages:** S1 nav+route · S2 list · S3 detail modal (S2+S3 one commit)
