@@ -1173,6 +1173,10 @@ async def land_meteorite(
             if not mlink and row_link:
                 update_meteorite(mid, link=row_link)
                 mlink = row_link
+            # AST-1757: enrich title wins; else staged meteorite.job_title
+            enrich_title = (row.get("job_title") or "").strip()
+            staged_title = (mrow.get("job_title") or "").strip()
+            title_for_save = enrich_title or staged_title or None
             emp = _optional_real_company_id(company_stem=row_stem or None, candidate_id=cid)
             logger.debug(
                 "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
@@ -1183,7 +1187,7 @@ async def land_meteorite(
                 meteorite_id=mid,
                 company_id=emp,
                 company_job_id=row.get("company_job_id") or None,
-                job_title=row.get("job_title") or None,
+                job_title=title_for_save,
                 job_link=mlink or None,
                 job_data={jd_key: found_jd},
                 employer_name=found_emp or None,
@@ -1899,6 +1903,8 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     continue
 
                 link_text = (row.get("link") or "").strip()
+                # AST-1757: staged meteorite.job_title → job (dispatch has no enrich)
+                staged_title = (row.get("job_title") or "").strip() or None
                 logger.debug(
                     "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
                     cid, row_id,
@@ -1910,6 +1916,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     job_data={jd_key: content},
                     job_link=link_text or None,
                     company_job_id=None,
+                    job_title=staged_title,
                     employer_name=None,
                     debug=debug,
                 )
