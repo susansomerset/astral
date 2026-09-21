@@ -85,3 +85,56 @@ All Files Changed / Stages stay inside that set.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1757
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `sub/AST-1753/AST-1757-land-staged-job-title-onto-job` @ `b51b33a346838be6f0e90ac481a3f315b5b10260`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.info.entity | A | | |
+
+## Traceability
+
+AC7→Stage 1 §1–2 ( `run_land_meteorite` passes `job_title=staged_title` into `tracker.save_meteorite_job` ); AC8→Stage 2 §1 (enrich blank → meteorite row `job_title` via `title_for_save` ); AC9→Stage 2 §1 (enrich non-empty wins over staged column )
+
+## Findings
+
+### acceptable
+
+- **Location:** Stage 1 ⚠️ Decision — dispatch vs public enrich split  
+- **Finding:** `run_land_meteorite` has no enrich hop; staged column is the sole title source there. Public `land_meteorite` applies enrich-preferred / staged-fallback at save time — matches parent AC7 wording and AC8/AC9 enrich scenarios.  
+- **Recommendation:** None.
+
+- **Location:** Scope gate — paste/HTML create path (~line 376)  
+- **Finding:** Another `tracker.save_meteorite_job` call still omits `job_title=`; plan explicitly excludes non-dispatch create helpers. Parent AC7 names `run_land_meteorite` only — in scope.  
+- **Recommendation:** None.
+
+- **Location:** ## UAT fitness  
+- **Finding:** Plan documents correct AC8/AC9 outcomes, sibling boundaries, and rejected wrong fixes (staged-over-enrich, single-path wiring, invented titles) — stronger adversarial coverage than rg/py_compile alone.  
+- **Recommendation:** None.
+
+### discuss
+
+- **Location:** Stage 1–2 Done when / verify  
+- **Finding:** AC7 gate is `rg` + `py_compile`; AC8/AC9 have no inline epic-worktree assert script (unlike AST-1756). Behavioral proof deferred to Tests Ready / UAT.  
+- **Recommendation:** Optional: Betty lands land-path cases for enrich-empty vs enrich-present; not blocking plan approval given UAT fitness section and pinned edit sites.
+
+## R6 checklist (summary)
+
+- Definition fidelity: `src/core/meteorite.py` land paths only; parent AC7–AC9 addressed; siblings AST-1755/AST-1756 excluded; Tracker signature unchanged.  
+- DRY / scope: reuses existing `save_meteorite_job` kwarg and employer-name preference shape; no stage-map or prompt edits.  
+- Self-assessment: Estimate `2 — agree` matches two call-site edits and no new logging.  
+- Plan Discuss: status `Plan Ready`, assignee Joan, zero completed `[plan-discuss]` rounds.
+
+context_tokens≈26500
+
+[plan-rubric] PROCEED (Commit: b51b33a346838be6f0e90ac481a3f315b5b10260) Land staged job_title wiring
