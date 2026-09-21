@@ -251,3 +251,8 @@ AC2→S1+S3 list route; AC3→S1 blank→[] + S3 empty shape; AC4→S3 `_DETAIL_
 
 context_tokens≈28000
 
+## Review
+
+- **Publish ref:** `sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`
+- **Tip:** `ee5bd306438551eff8f40a3301f4b1e3c950ab50`
+- **Stages:** S1 list helper · S2 config constants · S3 list/detail GET
