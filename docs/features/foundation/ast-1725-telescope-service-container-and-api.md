@@ -954,3 +954,7 @@ Out of this bug: changing platform consumers that only read `href` (`extract_sit
 - AST-1732 / AST-1735: filtering selectors still scope which anchors are collected; omitted / `"page"` = whole document; `"body"` / `"head"` / CSS stay element-scoped.
 - Multi-match **page text** (`text` string vs list of blobs) unchanged.
 - No depth/output caps added; no Surfer/post-render fork; no Railway/CI edits.
+
+## Radia review-fix (AST-1747)
+
+Overall: CLEAN / PROCEED — href dedupe with text[]; resolve-child skipped.
