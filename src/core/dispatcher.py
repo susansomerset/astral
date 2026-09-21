@@ -310,6 +310,50 @@ def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
     }
 
 
+def ensure_meteorite_ingress_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent per-candidate insert of stage/scrape/land/notify meteorite rows.
+
+    stat.dispatch.entity-state-bound: these 4 task_keys were a single shared
+    NULL-candidate_id pool row each (AST-1560/1561); now bound per-candidate like
+    job/company so an inactive candidate's rows stop firing.
+    """
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    existing = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in database.list_dispatch_tasks_for_candidate(cid)
+    }
+    ingress = METEORITE_INGRESS_DISPATCH_CONFIG
+    entries = (
+        (ingress["stage_task_key"], ingress["stage_trigger_state"], ingress["batch_size"]),
+        (ingress["scrape_task_key"], ingress["scrape_trigger_state"], ingress["batch_size"]),
+        (ingress["land_task_key"], ingress["land_trigger_state"], ingress["batch_size"]),
+        (
+            METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],
+            METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"],
+            METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["batch_size"],
+        ),
+    )
+    added = 0
+    skipped = 0
+    for tk, ts, batch_size in entries:
+        if (tk, ts) in existing:
+            skipped += 1
+            continue
+        database.save_dispatch_task(
+            candidate_id=cid,
+            task_key=tk,
+            min_count=1,
+            auto_mode=False,
+            trigger_state=ts,
+            batch_size=batch_size,
+            freq_hrs=0.1,
+        )
+        added += 1
+    return {"candidate_id": cid, "added": added, "skipped": skipped}
+
+
 def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
     """Seed template + every candidate that already has dispatch rows (AST-1054)."""
     template_id = template_candidate_id()
@@ -337,6 +381,34 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
         "skipped": skipped,
         "skipped_missing_config": skipped_missing_config,
         "retired": retired,
+    }
+
+
+def provision_meteorite_ingress_dispatch_tasks() -> Dict[str, Any]:
+    """Standalone operator tool: seed template + every scheduled candidate's ingress rows.
+
+    Kept separate from provision_meteorite_dispatch_tasks (not auto-invoked at boot either,
+    per AST-1496's ban on automatic dispatch_task writers — operator runs this by hand).
+    """
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    if database.get_candidate(template_id) is None:
+        raise LookupError(f"Template candidate not found: {template_id}")
+    tstats = ensure_meteorite_ingress_dispatch_tasks(template_id)
+    added = int(tstats.get("added") or 0)
+    skipped = int(tstats.get("skipped") or 0)
+    touched = 0
+    for cid in database.list_candidate_ids_with_dispatch_tasks():
+        stats = ensure_meteorite_ingress_dispatch_tasks(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        touched += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_touched": touched,
+        "added": added,
+        "skipped": skipped,
     }
 
 

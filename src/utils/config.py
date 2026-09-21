@@ -3176,54 +3176,70 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
         ")",
     ),
-    # AST-1560: global meteorite ingress transition runners (NULL candidate_id pool).
+    # stat.dispatch.entity-state-bound: per-candidate meteorite ingress transition runners
+    # (was NULL candidate_id global pool pre-remediation; candidate_id now required to claim).
     "dispatch_task-meteorite-ingress": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at', "
+        ") SELECT c.candidate_id, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'stage_meteorite' "
         "    AND d.trigger_state = 'NEW'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK', 'updated_at', "
+        ") SELECT c.candidate_id, 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'scrape_meteorite' "
         "    AND d.trigger_state = 'SCRAPE_LINK'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'land_meteorite', 'meteorite', 'READY', 'updated_at', "
+        ") SELECT c.candidate_id, 'land_meteorite', 'meteorite', 'READY', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'land_meteorite' "
         "    AND d.trigger_state = 'READY'"
         ")",
     ),
-    # AST-1561: global BOT_BLOCKED Estelle notify runner (NULL candidate_id pool).
+    # stat.dispatch.entity-state-bound: per-candidate BOT_BLOCKED Estelle notify runner
+    # (was NULL candidate_id global pool pre-remediation).
     "dispatch_task-meteorite-bot-blocked-notify": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
+        ") SELECT c.candidate_id, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_bot_blocked_notify' "
         "    AND d.trigger_state = 'BOT_BLOCKED'"
+        ")",
+    ),
+    # stat.dispatch.entity-state-bound: one-time operator cleanup for legacy NULL-candidate_id
+    # rows from the pre-remediation global pool. Linear paste only, run once per environment
+    # AFTER the per-candidate rows above have been seeded — never auto-executed (AST-1496).
+    "dispatch_task-meteorite-ingress-retire-null-pool": (
+        "DELETE FROM dispatch_task "
+        "WHERE candidate_id IS NULL "
+        "  AND task_key IN ("
+        "'stage_meteorite', 'scrape_meteorite', 'land_meteorite', 'meteorite_bot_blocked_notify'"
         ")",
     ),
 }
@@ -3527,6 +3543,14 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "JD_READY"
     if task_key == "evaluate_meteorite":
         return "METEORITE_QUALIFIED"
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["stage_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["scrape_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["land_trigger_state"]
+    if task_key == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]:
+        return METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"]
     if task_key == "grade_do":
         return "PASSED_JD"
     if task_key == "grade_get":
@@ -3566,6 +3590,14 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
         return "company"
     if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"
+    # stat.dispatch.entity-state-bound: ingress/notify rows now per-candidate meteorite (was global NULL pool).
+    if task_key in (
+        METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+        METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],
+    ):
+        return "meteorite"
     cfg = TASK_CONFIG.get(task_key) or TASK_CONFIG.get(resolve_dispatch_task_config_key(task_key)) or {}
     et = cfg.get("entity_type")
     if isinstance(et, str) and et.strip():

@@ -4292,8 +4292,11 @@ class TestAst1529StageMeteoriteConfig:
         )
         assert "stage_meteorite" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
         assert "meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
-        with pytest.raises(KeyError, match="stage_meteorite"):
-            cfg._dispatch_trigger_state_for_task_key("stage_meteorite")
+        # stat.dispatch.entity-state-bound: stage_meteorite is now a real per-candidate
+        # meteorite-entity dispatch row (was unresolvable — that gap is what forced the old
+        # global NULL-candidate_id pool seed). meteorite_email stays fully retired.
+        assert cfg._dispatch_trigger_state_for_task_key("stage_meteorite") == "NEW"
+        assert cfg._dispatch_entity_type_for_task_key("stage_meteorite") == "meteorite"
         with pytest.raises(KeyError, match="meteorite_email"):
             cfg._dispatch_trigger_state_for_task_key("meteorite_email")
 
