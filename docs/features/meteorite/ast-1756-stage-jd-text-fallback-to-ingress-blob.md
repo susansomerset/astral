@@ -152,3 +152,49 @@ PY
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1756
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob` @ `d77f24154442c5fe2313b6b68d84bb5a8ccc6074`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | A | | |
+
+## Traceability
+
+AC5→Stage 1 §2–3 + verify §5 (blank/missing `jd_text` → stripped `ingress_blob`; degenerate empty blob still returns `text scrap missing jd_text`); AC6→Stage 1 §2 + verify §5 (non-empty `jd_text` wins over blob)
+
+## Findings
+
+### acceptable
+
+- **Location:** Stage 1 ⚠️ Decision — raw `blob` vs `live_content`  
+- **Finding:** Parent AC5 / Original brief target subject+body passed into `stage_meteorite`; `_classify_stage_blob` wraps that body as the Ruth `CONTENT:` section only — storing the caller `blob` matches what Ruth classified, not the `SOURCE_KIND`/`SOURCE_ID` framing.  
+- **Recommendation:** None.
+
+- **Location:** Scope gate — AST-1757 boundary  
+- **Finding:** Plan confines edits to `_map_classify_jobs_to_meteorite_rows` and one `stage_meteorite` call-site kwarg; explicitly excludes land/Tracker paths owned by sibling #3.  
+- **Recommendation:** None.
+
+### discuss
+
+- **Location:** Stage 1 verify §5 vs `tests/component/core/test_meteorite.py`  
+- **Finding:** Plan ships an inline epic-worktree verify script for AC5/AC6; existing component tests call `_map_classify_jobs_to_meteorite_rows` directly with non-empty `jd_text` only — no conflict with the new default `ingress_blob=""`, but no committed test yet covers blank-`jd_text` fallback.  
+- **Recommendation:** Optional: Betty may land a bible case at Tests Ready; not blocking plan approval.
+
+## R6 checklist (summary)
+
+- Definition fidelity: single-file `src/core/meteorite.py` stage-map slice; parent AC5–AC6 fully addressed; siblings AST-1755/AST-1757 excluded.  
+- DRY / scope: reuses existing map helper + caller `blob`; no parallel extract; URL/skip branches explicitly untouched.  
+- Self-assessment: Estimate `2 — agree` matches signature change, one loop branch, one call-site kwarg, and inline verify.  
+- Plan Discuss: status `Plan Ready`, assignee Joan, zero completed `[plan-discuss]` rounds.
+
+context_tokens≈22000
