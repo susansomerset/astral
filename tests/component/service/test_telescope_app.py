@@ -327,6 +327,76 @@ class TestTelescopeRoutes:
             "AST-1736: selector + class_name must be rejected as ambiguous"
         )
 
+    def test_ast1746_html_id_resolves_to_hash_id(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        """AST-1746 bug-repro: id 'hero' → capture_html gets '#hero'."""
+        client, _pool, headers = telescope_app_client
+        seen: dict[str, Any] = {}
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            page = MagicMock()
+            page.url = "https://example.com/h"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+
+        async def capt_html(page, selector=None):
+            seen["selector"] = selector
+            return '<div id="hero">hit</div>'
+
+        monkeypatch.setattr(app_mod, "capture_html", capt_html)
+
+        resp = client.post(
+            "/telescope/html",
+            headers=headers,
+            json={
+                "url": "https://example.com/h",
+                "id": "hero",
+                "expand": False,
+            },
+        )
+        assert resp.status_code == 200
+        assert seen.get("selector") == "#hero", (
+            "AST-1746: id must resolve to CSS #hero before capture_html"
+        )
+        html = resp.json().get("html") or ""
+        assert "hero" in html
+
+    def test_ast1746_selector_plus_id_returns_400(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        """AST-1746 bug-repro: selector + id together is ambiguous → 400."""
+        client, _pool, headers = telescope_app_client
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            page = MagicMock()
+            page.url = "https://example.com/x"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+        monkeypatch.setattr(
+            app_mod, "capture_html", AsyncMock(return_value="<div/>")
+        )
+
+        resp = client.post(
+            "/telescope/html",
+            headers=headers,
+            json={
+                "url": "https://example.com/x",
+                "selector": ".other",
+                "id": "hero",
+                "expand": False,
+            },
+        )
+        assert resp.status_code == 400, (
+            "AST-1746: selector + id must be rejected as ambiguous"
+        )
+
 
 class TestRunBrowserJobErrors:
     @pytest.mark.asyncio
