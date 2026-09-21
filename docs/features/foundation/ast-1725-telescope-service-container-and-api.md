@@ -154,7 +154,7 @@ Response:
 {
   "final_url": "<page.url after redirects>",
   "text": "<string>" | ["<blob>", "..."],
-  "links": [{"href": "...", "text": "..."}]
+  "links": [{"href": "...", "text": ["...", "..."]}]
 }
 ```
 
