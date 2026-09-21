@@ -60,7 +60,7 @@ _TAG_RE = re.compile(r"^[A-Za-z][\w-]*$")
 
 
 class CaptureQueryError(ValueError):
-    """Ambiguous or invalid tag/class_name/selector filter (maps to HTTP 400)."""
+    """Ambiguous or invalid tag/class_name/id/selector filter (maps to HTTP 400)."""
 
 
 def resolve_capture_query(
@@ -68,36 +68,61 @@ def resolve_capture_query(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
+    id: Optional[str] = None,
 ) -> Optional[str]:
-    """Build the CSS string for capture_* from selector and/or explicit tag/class.
+    """Build CSS for capture_* from unified tag/selector + optional class/id.
 
-    Returns None when nothing was set (whole-document / page defaults in capture_*).
-    Raises CaptureQueryError on ambiguity or invalid tokens.
+    ``tag`` and ``selector`` are the same primary slot (AST-1744). ``class_name``
+    and ``id`` are secondary filters (AST-1746 for id).
     """
     sel = (selector or "").strip()
     t = (tag or "").strip()
     cn = (class_name or "").strip()
+    eid = (id or "").strip()
 
-    if sel and (t or cn):
-        raise CaptureQueryError(
-            "ambiguous filter: use selector or tag/class_name, not both"
-        )
+    # Primary = unified tag/selector aliases
+    if sel and t and sel != t:
+        raise CaptureQueryError("ambiguous primary: tag and selector differ")
+    primary = t or sel or ""
+
+    # Explicit id → CSS #id (optionally with tag / class_name); no bare→# retry.
+    if eid:
+        if not _CLASS_NAME_RE.match(eid):
+            raise CaptureQueryError("invalid id")
+        if cn and not _CLASS_NAME_RE.match(cn):
+            raise CaptureQueryError("invalid class_name")
+        if primary:
+            if not _TAG_RE.match(primary):
+                raise CaptureQueryError(
+                    "id only combines with a bare tag primary (or alone)"
+                )
+            if cn:
+                return f"{primary}.{cn}#{eid}"
+            return f"{primary}#{eid}"
+        if cn:
+            return f".{cn}#{eid}"
+        return f"#{eid}"
 
     if cn:
         if not _CLASS_NAME_RE.match(cn):
             raise CaptureQueryError("invalid class_name")
-        if t:
-            if not _TAG_RE.match(t):
-                raise CaptureQueryError("invalid tag")
-            return f"{t}.{cn}"
-        return f".{cn}"
+        # page/body specials do not apply when class filters — class-only CSS
+        if not primary or primary.lower() in ("page", "body"):
+            return f".{cn}"
+        if not _TAG_RE.match(primary):
+            raise CaptureQueryError(
+                "class_name only combines with a bare tag primary (or alone)"
+            )
+        return f"{primary}.{cn}"
 
-    if t:
-        if not _TAG_RE.match(t):
+    if primary:
+        # Explicit tag path validates; selector-only may be full CSS / page / body
+        if t and not _TAG_RE.match(primary):
             raise CaptureQueryError("invalid tag")
-        return t
+        return primary
 
-    return sel or None
+    return None
+
 
 
 def _fold_blobs(blobs) -> Union[str, List[str]]:
