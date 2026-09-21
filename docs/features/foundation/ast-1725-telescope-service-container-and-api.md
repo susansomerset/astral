@@ -878,6 +878,92 @@ Out of this bug: implementing Next/page-N capture; changing scroll/click caps; p
 
 Overall: CLEAN. Expand contract documented. Clean-review shortcut → User Testing.
 
+## Bug: AST-1745 — Telescope class filter must return outer HTML for matching elements
+
+### As-is
+
+Specifying a class name (e.g. `logo`) does not return the outer HTML for the element(s) with that class.
+
+### To-be
+
+A class-name filter returns the outer HTML for the element(s) with that class — e.g. matching `class="logo"` yields the full opening tag + children, as in:
+
+```html
+<svg id="bLogo" role="img" class="logo" viewBox="0 0 24 24" aria-label="Microsoft Logo Image" filter="none" tabindex="0"><g class="squares">…</g></svg>
+```
+
+(0 matches → `""`; 1 → that string; 2+ → `list[str]` of each match’s outer HTML.)
+
+### Repro
+
+Component fixture (no live Microsoft URL required — ticket supplies the markup shape):
+
+1. DOM containing exactly one node like Susan’s exemplar: `<svg … class="logo" …>…</svg>` (no reliance on a `<logo>` tag existing).
+2. `POST /telescope/html` with bearer and body `{"url":"…","class_name":"logo","expand":false}` (no `selector`).
+3. **As-is failure modes that still miss the to-be:**
+   - Admin Response type left at default **text** + Class name `logo` → visible text of the SVG is empty/near-empty (not outer HTML).
+   - Response type **html** + Class name `logo` + **cull** on → platform `_cull_html` decomposes every `<svg>`, so the matched fragment becomes `""` even though the service returned the svg outer HTML.
+4. **To-be:** html response with `class_name: "logo"` returns non-empty `html` equal to that element’s `outerHTML` (attributes retained). Same shape for bare `selector: "logo"` after AST-1731 retry when no `<logo>` tag exists. Multi-match → `list[str]`.
+
+Admin Telescope: Response type html, Class name `logo`, cull off (and after this fix, cull on must not empty a root svg match).
+
+### Root cause
+
+Two layers already agree on the happy path, then a post-render step (and an Admin default) undo Susan’s exemplar:
+
+1. **Service capture is already outerHTML for CSS/class matches** — `service/telescope/capture.py` `_QUERY_HTML_JS` maps each node to `el.outerHTML`; AST-1736 `resolve_capture_query(class_name="logo")` → `.logo` (explicit class, not tag-first). AST-1731 bare-`selector` retry covers `selector: "logo"` the same way when no `<logo>` tag exists.
+2. **Platform `_cull_html` always `decompose()`s every `svg`** (`src/external/telescope.py`). Admin optional cull (and any caller that culls a class-scoped fragment) runs that helper on the service payload. When the match *is* the logo SVG, cull turns a correct outerHTML string into `""`. That is the defect that specifically erases the ticket’s example.
+3. **Admin Response type defaults to `text`** — class filter on an SVG then returns text capture (empty), not markup. The to-be is an **HTML** capture contract; operators must use Response type html (help copy should say so). Do not change text-endpoint semantics.
+
+Not this bug: Tag/Selector unify + class-as-secondary UX (AST-1744); optional `id` filter (AST-1746).
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture contract; `src/external/telescope.py` post-render cull; Admin Telescope copy). Do **not** absorb AST-1744 field unify or AST-1746 `id`.
+
+1. **`service/telescope/capture.py` — keep outerHTML contract (verify only)**
+   - CSS / `class_name`-resolved path must continue to return `outerHTML` per match with existing `_fold_blobs` (`""` / `str` / `list[str]`).
+   - Do **not** switch to `innerHTML`, text, or first-child-only. No change expected unless a tip regresses this; make-fix confirms against the fixture in Repro.
+
+2. **`src/external/telescope.py` — cull must not erase class-scoped SVG roots**
+   - In `_cull_html`, change the blanket “remove all svg” step so **top-level root `<svg>` nodes of a fragment** (input with no `<body>`, soup roots that are `svg`) are **preserved**. Still decompose **nested** `<svg>` under non-svg roots (icon sprites inside larger page/job HTML) — same intent as today’s whole-page cull.
+   - `admin_telescope_scrape` keeps optional `cull` default **false**; when `cull` is true and `html` is a string or `list[str]`, apply the updated helper to each blob so `class_name: "logo"` → svg outerHTML survives cull.
+   - Drop-in `cull_html_default` full-document paths unchanged in spirit (nested svgs still stripped inside body content).
+
+3. **`src/ui/frontend/src/pages/AdminTelescope.tsx` — operator contract copy**
+   - On the Class name field (placeholder or adjacent hint): class filter returns each match’s **outer HTML** when Response type is **html** (not text). No auto-switch of response type; no new request fields.
+
+4. **Pass-through** — `src/ui/api/api_admin.py` / `_post_telescope_html` already forward `class_name`; no new keys. Do not reintroduce selector XOR class rules (AST-1744 owns that surface).
+
+### Blast radius
+
+- Admin html + cull on + class-scoped SVG logos start returning markup instead of `""` — intentional for this UAT.
+- Whole-page / body-wrapped HTML still loses nested decorative SVGs under cull (job-list use case).
+- Text endpoint + class filter still returns visible text only (SVG → empty text remains correct for text mode).
+- AST-1731 / AST-1736 resolve + multi-match html shape unchanged.
+- Betty / qa-fix may need a repro that applies cull to an svg.logo fragment (red before cull-root fix, green after); do not edit `tests/` here.
+- Sibling AST-1744 / AST-1746 plans may touch the same Admin filter row — do not merge their field-model changes into this bug.
+
+### What must still hold
+
+- Parent AC 3: `POST /telescope/html` returns `final_url` + rendered `html`; bearer required; **no service-side cull**.
+- AST-1731: bare `selector` class retry + multi-match html `""` / `str` / `list[str]`.
+- AST-1736: explicit `class_name` → `.{class_name}` (or `{tag}.{class_name}`); ambiguous old XOR rules stay until AST-1744 lands.
+- AST-1729: empty / `page` / `body` specials when no class filter is in play.
+- AST-1728: admin cull default **off** so the pane shows raw service HTML unless the operator opts in.
+- Zero `src` imports under `service/telescope/`; capture stays browser-only.
+- Drop-in `_ensure_html` first-match unwrap for list html unchanged.
+
+## Radia review (AST-1745)
+
+**Overall:** CLEAN — `[code-rubric] PROCEED` @ `a830d0f0`.
+
+- **[bug-repro] OK** — `test_cull_html_preserves_root_svg_logo_outerhtml` + nested-SVG companion.
+- **What must still hold — OK** — service no cull; AST-1731/1736/1729/1728 holds; no `src` imports under service.
+- **Product:** `_cull_html` preserves fragment-root `<svg>`; Admin Class name hint notes outer HTML needs Response type html.
+- **§3h:** resolve-child skipped (clean review).
+
+- **docs-acceptance:** `test(AST-1745)` @ `ca61b293` already on `origin/ftr` via sibling merge stack; merge-tests still delivered on this sub.
 ## Bug: AST-1746 — Telescope add optional id filter parameter
 
 UAT-batch fix against amended AST-1721 Component/Technical scope (optional `id` secondary filter + admin control, alongside tag/selector/class). Lives on this plan doc because AST-1736’s tag/`class_name` contract + capture resolver are the sibling surface. Does not rewrite Stages 1–4 or other bug blocks.
