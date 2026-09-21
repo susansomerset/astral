@@ -24,6 +24,31 @@ async def test_capture_text_body_selector_uses_visible_text_js() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ast1733_capture_text_selector_strips_style_script_noscript() -> None:
+    """AST-1733 bug-repro: CSS selector path (e.g. head) must clone-and-strip style/script."""
+    page = MagicMock()
+    page.evaluate = AsyncMock(return_value=["Page Title"])
+    out = await capture_mod.capture_text(page, "head")
+    assert out == "Page Title"
+    call = page.evaluate.await_args
+    js = call.args[0]
+    # Pre-fix selector path is bare el.innerText — no clone / no style strip.
+    assert "cloneNode" in js, (
+        "AST-1733: selector capture_text must clone match roots before innerText"
+    )
+    assert "style, script, noscript" in js or (
+        "style" in js and "script" in js and "noscript" in js
+    ), (
+        "AST-1733: selector path must remove style/script/noscript before innerText"
+    )
+    # Page/body chrome strip must not apply on intentional CSS selectors.
+    assert "header, footer, nav" not in js, (
+        "AST-1733: selector path must not strip header/footer/nav (page/body-only)"
+    )
+    assert len(call.args) > 1 and call.args[1] == "head"
+
+
+@pytest.mark.asyncio
 async def test_capture_text_multi_match_returns_list() -> None:
     page = MagicMock()
     page.evaluate = AsyncMock(return_value=["one", "two", "three"])
@@ -101,6 +126,51 @@ async def test_ast1732_capture_links_multi_match_dedupes_by_href() -> None:
 
 
 @pytest.mark.asyncio
+async def test_ast1735_capture_links_body_is_scoped_not_whole_page() -> None:
+    """AST-1735 bug-repro: explicit 'body' scopes to <body>, not document-wide alias."""
+    page = MagicMock()
+    page.evaluate = AsyncMock(return_value=[])
+    await capture_mod.capture_links(page, "body")
+    call = page.evaluate.await_args
+    js = call.args[0]
+    assert len(call.args) > 1 and call.args[1] == "body", (
+        "AST-1735: capture_links('body') must pass 'body' into scoped evaluate, "
+        "not the zero-arg whole-document branch"
+    )
+    whole_page_only = (
+        "querySelectorAll('a[href]')" in js.replace('"', "'")
+        and "querySelectorAll(selector)" not in js
+        and "querySelectorAll(sel" not in js
+    )
+    assert not whole_page_only, (
+        "AST-1735: 'body' must not use document.querySelectorAll('a[href]') alone"
+    )
+
+
+@pytest.mark.asyncio
+async def test_ast1735_capture_links_head_scoped_and_page_stays_whole_document() -> None:
+    """AST-1735: head is element-scoped; omit/'page' stay whole-document."""
+    page_head = MagicMock()
+    page_head.evaluate = AsyncMock(return_value=[])
+    await capture_mod.capture_links(page_head, "head")
+    head_call = page_head.evaluate.await_args
+    assert len(head_call.args) > 1 and head_call.args[1] == "head", (
+        "AST-1735: capture_links('head') must use scoped evaluate with selector 'head'"
+    )
+
+    for whole in (None, "page"):
+        page = MagicMock()
+        page.evaluate = AsyncMock(return_value=[])
+        await capture_mod.capture_links(page, whole)
+        call = page.evaluate.await_args
+        js = call.args[0]
+        assert len(call.args) == 1, (
+            f"AST-1735: omit/'page' ({whole!r}) must keep whole-document evaluate"
+        )
+        assert "querySelectorAll('a[href]')" in js.replace('"', "'")
+
+
+@pytest.mark.asyncio
 async def test_capture_html_page_vs_body_vs_selector() -> None:
     page = MagicMock()
     page.evaluate = AsyncMock(side_effect=["<html/>", "<body/>", "<div/>"])
@@ -135,6 +205,20 @@ def _bare_class_retry_in_script(script: str) -> bool:
             or ".${" in script
             or "`.`" in script
         )
+    )
+
+
+@pytest.mark.asyncio
+async def test_ast1736_capture_links_bare_class_retries_as_class() -> None:
+    """AST-1736 bug-repro: scoped capture_links must bare→.class retry like html/text."""
+    page = MagicMock()
+    page.evaluate = AsyncMock(
+        return_value=[{"href": "https://ex.com/s", "text": "S"}]
+    )
+    await capture_mod.capture_links(page, "shaders")
+    js = page.evaluate.await_args.args[0]
+    assert _bare_class_retry_in_script(js), (
+        "AST-1736: capture_links scoped path must retry bare token as .{class}"
     )
 
 

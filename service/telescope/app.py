@@ -8,11 +8,17 @@ from typing import Any, Awaitable, Callable, Optional, Tuple, Union
 
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from auth import require_bearer
 from browser import BrowserPool
-from capture import capture_html, capture_links, capture_text
+from capture import (
+    CaptureQueryError,
+    capture_html,
+    capture_links,
+    capture_text,
+    resolve_capture_query,
+)
 from interact import dismiss_cookies, expand_page, navigate, wait_ready_generic
 from logging_util import configure_logging, get_logger
 from meta import build_scrape_meta
@@ -21,11 +27,19 @@ from settings import settings
 configure_logging()
 _log = get_logger(__name__)
 
+# Expand = scroll + Load More on this URL only — not numbered / Next pagination (AST-1737).
+_EXPAND_DESC = (
+    "Infinite-scroll + Load More/Show More on the current document. "
+    "Does not navigate numbered pagination or Next-page URLs."
+)
+
 
 class TelescopeRequest(BaseModel):
     url: str
     selector: Optional[str] = None
-    expand: bool = True
+    tag: Optional[str] = None
+    class_name: Optional[str] = None
+    expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
     links: bool = True
 
@@ -33,8 +47,36 @@ class TelescopeRequest(BaseModel):
 class TelescopeHtmlRequest(BaseModel):
     url: str
     selector: Optional[str] = None
-    expand: bool = True
+    tag: Optional[str] = None
+    class_name: Optional[str] = None
+    expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
+
+
+def _resolve_body_selector(
+    *,
+    selector: Optional[str],
+    tag: Optional[str],
+    class_name: Optional[str],
+) -> Optional[str]:
+    """Map request filter fields to the CSS string capture_* expects; 400 on bad input."""
+    try:
+        resolved = resolve_capture_query(
+            selector=selector, tag=tag, class_name=class_name
+        )
+    except CaptureQueryError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    # Log filter mode without dumping page content
+    if class_name and str(class_name).strip():
+        _log.info(
+            "telescope filter mode=tag/class tag=%s class_name=%s resolved=%s",
+            (tag or "").strip() or None,
+            str(class_name).strip(),
+            resolved,
+        )
+    elif selector and str(selector).strip():
+        _log.info("telescope filter mode=selector selector=%s", str(selector).strip())
+    return resolved
 
 
 @asynccontextmanager
@@ -133,14 +175,17 @@ async def post_telescope(request: Request, body: TelescopeRequest):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
+    sel = _resolve_body_selector(
+        selector=body.selector, tag=body.tag, class_name=body.class_name
+    )
     pool: BrowserPool = request.app.state.pool
 
     async def work(page):
-        text = await capture_text(page, body.selector)
+        text = await capture_text(page, sel)
         final_url = page.url
         out: dict = {"final_url": final_url, "text": text}
         if body.links:
-            out["links"] = await capture_links(page, body.selector)
+            out["links"] = await capture_links(page, sel)
         return out
 
     raw = await _run_browser_job(pool, url, body.expand, body.wait_ready, work)
@@ -169,10 +214,13 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
+    sel = _resolve_body_selector(
+        selector=body.selector, tag=body.tag, class_name=body.class_name
+    )
     pool: BrowserPool = request.app.state.pool
 
     async def work(page):
-        html = await capture_html(page, body.selector)
+        html = await capture_html(page, sel)
         return {"final_url": page.url, "html": html}
 
     raw = await _run_browser_job(pool, url, body.expand, body.wait_ready, work)
