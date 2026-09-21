@@ -58,6 +58,7 @@ app.register_blueprint(jobs_bp)
 from ui.api.api_meteorite import meteorite_bp  # noqa: E402
 app.register_blueprint(meteorite_bp)
 
+
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)
 
@@ -113,9 +114,16 @@ def _warn_stale_frontend_dist() -> None:
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path):
-    """Catch-all: React static assets. Never steal /candidate/* HTML routes."""
-    # Blueprint should match first; if not, do not serve SPA (would redirect to /jobs/recommended).
-    if path == "candidate" or path.startswith("candidate/"):
+    """Catch-all: React static assets. Do not SPA-fallback print HTML prefixes."""
+    # Print HTML (resume_html_bp). Blueprint matches first for real print
+    # routes; unmatched print-shaped paths must not SPA-fallback (AST-1117:
+    # React `*` → /jobs/recommended). Candidate SPA routes share /candidate/.
+    if (
+        path == "candidate/resume"
+        or path.startswith("candidate/resume/")
+        or path == "candidate/cover"
+        or path.startswith("candidate/cover/")
+    ):
         return jsonify({"error": "Not found"}), 404
     if (_DIST / path).is_file():
         return send_from_directory(_DIST, path)

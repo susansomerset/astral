@@ -1,3 +1,201 @@
+<!-- linear-archive: AST-1212 archived 2026-08-17 -->
+
+## Linear archive (AST-1212)
+
+**Archived:** 2026-08-17  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1212/rename-parse-meteorite-email-to-meteorite-email-rename-task-to  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1182 — Rename task to meteorite_email + AI payload as visible text/links  
+**Blocked by / blocks / related:** parent: AST-1182; blocks: AST-1213
+
+### Description
+
+## What this implements
+
+Owns the product rename: config task key and related literals, agent_task seed identity, and every caller that still names `parse_meteorite_email`. Does **not** change the AI live-payload shape (sibling #2) or review groupings / aliases (AST-1183 / AST-1184).
+
+## In scope
+
+- [X] `pattern.config.config-block` — task key + parse-mode literals stay in `METEORITE_EMAIL_PARSE_CONFIG` / `TASK_CONFIG`; callers read config
+- [X] `astral.config.config-source-of-truth` — live product key is `meteorite_email` in config only
+- [X] `astral.seed.agent-tables-in-repo-json` — Ruth `agent_task` row identity renames with the product key
+- [X] `astral.standards.names-not-ticket-ids` — domain key `meteorite_email`
+- [X] `astral.standards.no-hardcoded-sets` — no dual old/new key lists or compat shim
+- [X] `astral.standards.in-scope-only` — rename only; payload / groupings / aliases out
+- [X] `astral.agent.do-task-delegation` — gaze_email keeps invoking Ruth via `do_task` + config `task_key` (no core edit expected)
+- [X] `astral.git.engineer-test-tree-ban` — no `tests/` / bible edits on this ticket
+
+## Considered but excluded
+
+- [X] AI live-payload visible text/links + prompt rewrite — **AST-1213** (`src/core/gaze_email.py` payload assembly / prompts)
+- [X] Gaze Review → Meteorite Review grouping / section reshuffles — **AST-1183**
+- [X] `master_task_key` / task aliases — **AST-1184**
+- [X] UI grouping/sequence / alphabetical dropdowns — **AST-1185**
+- [X] evaluate_meteorite test / statute fold-in — **AST-1186**
+- [X] `METEORITE_DISPATCH_TASKS` / dispatch claim wiring — parse was never a dispatch claim task
+- [X] Blind whole-file AST-756 `cp` — catalog 53 vs fixture 51 drift (surgical row sync only)
+- [X] Compat alias keeping `parse_meteorite_email` as a live key — conflicts with AC
+
+## Acceptance criteria
+
+- [X] Product config and agent_task seed identify the Ruth meteorite-email parse task as `meteorite_email`; `parse_meteorite_email` is absent as a live task key / agent_task identity.
+- [X] All in-repo callers that invoked the old key now invoke `meteorite_email` (via config), and a dry run / known call path does not look up the old key.
+
+## Boundaries
+
+Does **not** change the AI live-payload shape (sibling #2). Does **not** own review groupings / aliases (AST-1183 / AST-1184).
+
+## Notes for planning
+
+Domain rename only — keep parse modes and response schema behavior intact under the new key. `gaze_email._ruth_parse` already uses `METEORITE_EMAIL_PARSE_CONFIG["task_key"]` — config rename flips the call path.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1182-rename-task-to-meteorite-email`, child `sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-06T06:04:51.801Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1212
+**Publish ref:** `25fc2c82` (docs-only review append at `75d02df9`)
+**Overall:** FIX-NOW
+
+## Plan adherence
+
+- Stage 1 (config rename) matches plan exactly — `TASK_CONFIG` key + `METEORITE_EMAIL_PARSE_CONFIG["task_key"]` renamed, no compat shim, `gaze_email.py` untouched (already config-driven).
+- Stage 2 (seed identity rename) matches the *intended* row-level content, but the write mechanism broke the plan's explicit "surgical, no whole-file rewrite" instruction at the byte level.
+- Exactly one `merge-tests(AST-1212)` commit; engineer commits never touch `tests/` or `docs/test-bible/**`.
+
+## Pattern conformance
+
+`pattern.config.config-block` — conforms (rename stays inside the existing `TASK_CONFIG` dict; no second source of truth introduced).
+
+## Findings
+
+**fix-now — file-wide re-encoding noise on two seed JSON files:**
+
+`data/admin/agent_task.json` (92 raw diff lines) and `docs/uat-fixtures/AST-756/expected-agent_task.json` (88 raw diff lines) touch far more than the single planned row. A structural diff keyed by `task_key_uuid` confirms only **1 row** actually changed content in each file (`task_key` / `task_name` / `updated_at`) — the remaining ~36 hunks per file are pure re-serialization: the file was re-emitted with `json.dump(..., ensure_ascii=True)` (Python's default) instead of the repo's established `ensure_ascii=False` convention, escaping every em-dash/curly-quote in every untouched prompt row (e.g. `—` → `\u2014`).
+
+Confirmed reproducible: re-dumping the tip's `agent_task.json` with `ensure_ascii=False` collapses the diff against `origin/dev` to exactly 3 lines (`task_key`, `task_name`, `updated_at`) — matching the plan's own Stage 2 intent ("Do not edit any other row"; "no whole-file `cp`"). The plan's structural verification script (comparing loaded Python dicts) passes today only because Python string equality ignores JSON escaping — it does not catch this at the raw-file/git-diff level.
+
+Violates `astral.standards.in-scope-only` (silent scope expansion across ~36 unrelated rows) and undercuts `astral.seed.agent-tables-in-repo-json`'s rationale (repo JSON as the durable, *reviewable* seed source). No functional/behavioral risk — content is semantically identical — but the diff noise must be cleaned up before User Testing: re-save both files preserving `ensure_ascii=False`, touching only the renamed row.
+
+## What's solid
+
+- No stray live `parse_meteorite_email` string anywhere in `src/` (verified — only historical "formerly …" comments remain).
+- `astral.standards.no-hardcoded-sets` conforms — no dual old/new key list; test asserts `"parse_meteorite_email" not in cfg.TASK_CONFIG`.
+- Commit vocabulary, branch topology (`sub/AST-1182/AST-1212-...`), and Linear status gates all conform.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; findings are diff-only)
+
+context_tokens≈50000
+— Radia
+
+#### betty — 2026-08-06T05:55:37.658Z
+## QA test manifest (AST-1212)
+
+**Publish:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email` @ `25fc2c82`
+**Betty SHA:** `71166aaf` — `merge-tests(AST-1212): origin/tests 71166aafc79d56d85dfa45a0d19ea315eb781d90`
+
+### Classification
+
+1. **Existing coverage (revised):** AST-1089 / AST-1144 / AST-786 / AST-1106 suites — same behaviors under live key `meteorite_email`.
+2. **Broken / obsolete (revised this pass):** asserts/skipifs still keyed on `parse_meteorite_email` in `test_config.py`, `test_repo_admin_json.py`, `test_agent.py`.
+3. **Gaps:** none beyond rename lockstep — catalog row ↔ `TASK_CONFIG["meteorite_email"]["agent_task"]` assert added on the Ruth shell test.
+
+**Integration:** no existing scenarios pin this task key — none revised.
+
+### Manifest (test-child)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/utils/test_config.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
+  tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```
+
+### Bible shasums (`origin/<publish-ref>`)
+
+- `docs/test-bible/utils/config.md` `b7b0cd8b3863bcfe567487373c09048b85b835ca`
+- `docs/test-bible/core/repo_admin_json.md` `c2814588e4a38b92a6c3c92e0ffb3d8dced71f3b`
+- `docs/test-bible/core/agent.md` `99b4c3ee35f568deeca5f88b264c0f84b2f63b27`
+
+— Betty
+
+#### joan — 2026-08-06T05:47:34.683Z
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1212
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email` @ `8fc8e20f`
+
+## Traceability
+
+AC1→S1+S2; AC2→S1 (config flip) + S2.5 (caller path check).
+
+## Findings
+
+**fix-now:** none.
+
+### discuss (non-blocking)
+
+1. **No cross-check that the two halves of AC1 agree.** `TASK_CONFIG["meteorite_email"]["agent_task"]` (S1) and the catalog row `task_key` (S2) are the config→seed identity link, and they are set in two separate commits with no gate tying them together. S1's import gate passes on the config side alone (`assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG` only checks TASK_CONFIG membership), and S2.5 verifies each side independently. I found **no** existing guard either — `tests/component/core/test_repo_admin_json.py` has zero `TASK_CONFIG` references. One line in S2's script would close it:
+
+```python
+assert any(r["task_key"] == c.TASK_CONFIG["meteorite_email"]["agent_task"] and r.get("current") == 1 for r in cat)
+```
+
+2. **Broken-test handoff is stated generically.** The self-review says expected asserts on the old key are "Betty's post–Code Complete work" — correct call, and `tests/` is rightly untouched. But the rename will break specific known files: `tests/component/utils/test_config.py` (indexes `TASK_CONFIG["parse_meteorite_email"]["response_schema"]…` → KeyError), `tests/component/core/test_repo_admin_json.py` (asserts a `current == 1` row with the old `task_key`, plus the AST-786 catalog key-set lock), `tests/component/core/test_agent.py`; bible pages `docs/test-bible/utils/config.md`, `core/repo_admin_json.md`, `core/agent.md`. AST-1196 set the precedent of naming the stale gate explicitly in-plan so the Tests Ready handoff is deterministic rather than discovered.
+
+### acceptable — verified against the tip
+
+- **Call-site inventory is complete.** A repo-wide sweep finds live `parse_meteorite_email` strings only in the three planned files. `src/core/gaze_email.py` has **zero** occurrences, so "leave the caller untouched" is a verified fact, not optimism — the config rename genuinely flips the call path.
+- **Every config fact the S1 gate asserts is real.** Dict key at `config.py:530`, immediately after the `qualify_meteorite` block (ends 527) as claimed; `requires_candidate_key: True` / `entity_type: None` / `trigger_state: None` are the current values, so the recheck script passes on a correct implementation rather than failing on a wrong premise; the two asserts quoted at 2392–2393 exist verbatim; `METEORITE_DISPATCH_TASKS` contains no parse key, so "do not add" is consistent with today's state. Exactly four live strings in the file (key, `context_format`, `agent_task`, `METEORITE_EMAIL_PARSE_CONFIG["task_key"]`) — all four are addressed.
+- **Catalog/fixture arithmetic is exact.** 53 and 51 rows; one `current == 1` old-key row (`college_intern_ruth`, `task_seq` 2.4); the old key appears **only** in `task_key` + `task_name` — no `master_task_key` field exists on the row, so the AST-1184 alias boundary is structurally safe, not just declared. The 53↔51 delta is precisely `evaluate_meteorite` + `craft_evaluate_meteorite_rubric` with no fixture-only rows, matching the plan's characterization. `task_key_uuid` is present and unique in both files, so the by-uuid pre/post diff script is sound.
+- **Runtime propagation holds, for a reason the plan does not state.** Startup apply routes to `database.apply_agent_task_repo_json_startup`, which upserts **by `task_key_uuid`**. Because the plan freezes the uuid, an already-seeded DB gets an in-place UPDATE and the old `task_key` is overwritten — no phantom `parse_meteorite_email` row survives. That is AC1's runtime half. "Do not change `task_key_uuid`" is load-bearing, not cosmetic.
+- **The fixture edit is permitted.** `astral.git.engineer-test-tree-ban` lists `tests/**`, `docs/test-bible/**`, `docs/ASTRAL_TEST_BIBLE.md`, `scripts/test_*.py`, `scripts/testing/**` — `docs/uat-fixtures/**` is not in scope, so the surgical sync is engineer work. Declining the inherited 53↔51 drift is the right `in-scope-only` call and matches AST-1196.
+- **`context_format` rename is safe.** It is label-only (`agent.py:1147`, "build context string … falls back to task_key") — nothing retrieves by the old label, and `meteorite_email_{index}` matches the sibling convention (`qualify_meteorite_{index}`).
+- **No compat alias** is the correct reading of the parent AC; a dual-key list would have tripped `no-hardcoded-sets`.
+- **Transient S1 tip inconsistency accepted.** Between the two commits, config points at an `agent_task` row that has not been renamed yet. Fine for a two-commit child that publishes one tip.
+
+**Considered:** scored in-session.
+
+## Verdict
+
+**APPROVED.** Self-assessment is honest: `Single-Component` / `high` / `Medium` matches what I found — a mechanical three-file rename whose only real hazard (a missed live string) I swept for and did not find. Boundaries hold: payload shape (AST-1213), groupings (AST-1183), aliases (AST-1184), dispatch wiring, and the test tree are all untouched.
+
+— Joan
+
+context_tokens≈121000
+
+#### ada — 2026-08-06T05:42:30.329Z
+Plan published on `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email` @ `8fc8e20f`.
+
+[Plan doc](https://github.com/susansomerset/astral/blob/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email/docs/features/meteorite/ast-1212-rename-parse-meteorite-email-to-meteorite-email.md)
+
+**Scope:** Single-Component — `TASK_CONFIG` / `METEORITE_EMAIL_PARSE_CONFIG` identity + one Ruth `agent_task` row (+ surgical AST-756 fixture sync); `gaze_email` already config-driven, left untouched.
+
+**Conf:** high — mechanical rename; parse modes / schema / prompts frozen for AST-1213; no compat shim.
+
+**Risk:** Medium — a missed live `parse_meteorite_email` string breaks the Ruth gaze_email hop; blast radius is that parse path, not qualify/evaluate GDL.
+
+Call-site inventory: only live product strings were in `src/utils/config.py` + `data/admin/agent_task.json` (+ fixture row). Fixture sync is surgical (53↔51 drift left alone).
+
+---
+
 # AST-1212 — Rename parse_meteorite_email to meteorite_email
 
 **Linear:** [AST-1212](https://linear.app/astralcareermatch/issue/AST-1212/rename-parse-meteorite-email-to-meteorite-email-rename-task-to)

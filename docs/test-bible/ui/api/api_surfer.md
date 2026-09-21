@@ -14,7 +14,7 @@
 
 **Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
 
-Authenticated `GET /api/surfer/pacing_config` returns a plain-dict copy of `SURFER_PACING_CONFIG` (dwell centre/spread, `max_tabs`, `mv3_idle_ceiling_seconds`). Blueprint registered on `server.py`. Config block: **`docs/test-bible/utils/config.md`**. Extension `dwell` / `createTabBudget`: **`docs/test-bible/frontend/lib.md`**.
+Authenticated `GET /api/surfer/pacing_config` returns a plain-dict copy of `SURFER_PACING_CONFIG` (dwell centre/spread, `max_tabs`, `mv3_idle_ceiling_seconds`). Blueprint registered on `server.py`. Config block: **`docs/test-bible/utils/config.md`**. Extension `dwell` / `createTabBudget`: **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -32,8 +32,8 @@ Authenticated `GET /api/surfer/pacing_config` returns a plain-dict copy of `SURF
   tests/component/utils/test_config.py::TestAst1236SurferPacingConfig \
   tests/component/ui/api/test_api_surfer.py \
   -q
-cd src/ui/frontend && npm run test:component -- \
-  ../../../tests/component/frontend/lib/test_surferPacingConfig.test.ts
+cd src/ui/extension && npm run test:component -- \
+  ../../../tests/component/extension/lib/test_surferPacingConfig.test.ts
 ```
 
 

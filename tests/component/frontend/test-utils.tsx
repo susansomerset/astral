@@ -2,6 +2,7 @@ import { render, type RenderOptions } from '@testing-library/react'
 import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom'
 import type { ReactElement, ReactNode } from 'react'
 import { StytchProvider } from '@stytch/react'
+import { vi } from 'vitest'
 import { UserPromptProvider } from '../../../src/ui/frontend/src/components/UserPrompt'
 import { AuthProvider } from '../../../src/ui/frontend/src/contexts/AuthContext'
 import { CandidateProvider } from '../../../src/ui/frontend/src/contexts/CandidateContext'
@@ -11,6 +12,47 @@ import { resetStytchTestState } from './stytchMock'
 type WrapperOptions = {
   router?: MemoryRouterProps
 }
+
+/** AST-1441: AuthProvider fetches /api/auth_passthrough then (non-local) /api/auth_session_policy. */
+export function stubAuthPublicFetches(passthrough = false) {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/api/auth_passthrough")) {
+        return Response.json({ local_auth_passthrough: passthrough })
+      }
+      if (url.includes("/api/auth_session_policy")) {
+        return Response.json({
+          session_duration_minutes: 20,
+          activity_extension_interval_minutes: 10,
+        })
+      }
+      return new Response("not found", { status: 404 })
+    }),
+  )
+}
+
+/** jsdom has no matchMedia — NavigationShell (AST-1286) needs it. Default = wide (≥1024). */
+export function stubNavViewport(isWide: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: isWide,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  })
+}
+
+// Install before any NavigationShell mount (including files that only import renderWithProviders).
+stubNavViewport(true)
 
 function AllProviders({ children, router }: { children: ReactNode } & WrapperOptions) {
   return (

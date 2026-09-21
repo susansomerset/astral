@@ -5,17 +5,18 @@ from __future__ import annotations
 import pytest
 
 
-# Branches: insert requires company/state; merge vs overwrite; read path.
+# Branches: insert requires state + parent (source_entity_id / company bridge); merge vs overwrite; read path.
 class TestSaveJob:
-    def test_insert_requires_company_and_state(self, sqlite_in_memory) -> None:
-        with pytest.raises(ValueError, match="company required"):
+    def test_insert_requires_state_and_parent(self, sqlite_in_memory) -> None:
+        # AST-1701: company alone is no longer enough — need source_entity_id (or company-parent bridge).
+        with pytest.raises(ValueError, match="source_entity_id required"):
             sqlite_in_memory.save_job("job-1", state="NEW")
         with pytest.raises(ValueError, match="state required"):
             sqlite_in_memory.save_job("job-1", company="acme")
 
     def test_insert_and_merge_update(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-1", company="acme", state="NEW", job_data={"title": "a"})
         db.save_job("job-1", job_data={"grade": 8}, merge=True)
         row = db.get_job("job-1")
@@ -25,7 +26,7 @@ class TestSaveJob:
 
     def test_overwrite_job_data(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-1", company="acme", state="NEW", job_data={"title": "a"})
         db.save_job("job-1", job_data={"title": "only"}, merge=False)
         row = db.get_job("job-1")
@@ -41,7 +42,7 @@ class TestGetJob:
 class TestRawJobListingIsDuplicate:
     def test_detects_existing_listing(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-1", company="acme", state="NEW", company_job_id="abc123")
         assert db.raw_job_listing_is_duplicate("acme", "prefix-abc123-suffix") is True
         assert db.raw_job_listing_is_duplicate("acme", "no-match") is False
@@ -51,7 +52,7 @@ class TestRawJobListingIsDuplicate:
 class TestAst732JobIdentityUniqueIndex:
     def test_ensure_job_schema_creates_partial_unique_index(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-idx", company="acme", state="NEW", job_title="Eng", company_job_id="x1")
         conn = db._get_connection()
         try:
@@ -70,7 +71,7 @@ class TestAst732JobIdentityUniqueIndex:
 
     def test_index_ensure_idempotent_on_second_open(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-a", company="acme", state="NEW", job_title="A", company_job_id="id-a")
         conn = db._get_connection()
         try:
@@ -87,7 +88,7 @@ class TestAst732JobIdentityUniqueIndex:
 class TestAst732SaveJobDuplicateBounce:
     def test_insert_duplicate_complete_triple_returns_false(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         assert db.save_job(
             "job-1", company="acme", state="NEW", job_title="Engineer", company_job_id="123"
         ) is True
@@ -99,13 +100,13 @@ class TestAst732SaveJobDuplicateBounce:
 
     def test_incomplete_identity_allows_multiple_inserts(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         assert db.save_job("job-1", company="acme", state="NEW", job_title="Same") is True
         assert db.save_job("job-2", company="acme", state="NEW", job_title="Same") is True
 
     def test_update_existing_row_still_returns_true(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-1", company="acme", state="NEW", job_title="Eng", company_job_id="99")
         assert db.save_job("job-1", state="RECOMMENDED") is True
         row = db.get_job("job-1")
@@ -117,7 +118,7 @@ class TestAst732SaveJobDuplicateBounce:
 class TestAst733JobIdentityHelpers:
     def test_get_job_id_by_identity_finds_canonical_excludes_self(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job(
             "canonical", company="acme", state="NEW", job_title="Eng", company_job_id="99"
         )
@@ -136,7 +137,7 @@ class TestAst733JobIdentityHelpers:
 
     def test_delete_job_removes_row(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job("job-del", company="acme", state="NEW", job_title="X")
         assert db.delete_job("job-del") is True
         assert db.get_job("job-del") is None
@@ -237,7 +238,7 @@ class TestAst908BelowDispatchScoreFloorViews:
 class TestAst1061MeteoriteEmailDedupeHelpers:
     def test_text_matches_known_company_job_id(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         db.save_job(
             "job-ext",
             company="acme",
@@ -250,7 +251,7 @@ class TestAst1061MeteoriteEmailDedupeHelpers:
 
     def test_job_link_exists(self, seeded_db) -> None:
         db = seeded_db
-        db.save_company("acme", state="IMPORTED")
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
         link = "https://jobs.example.com/posting/1"
         db.save_job("job-link", company="acme", state="NEW", job_link=link)
         assert db.job_link_exists(link) is True
@@ -347,3 +348,224 @@ class TestAst1146TextMatchesKnownCompanyJobIdMinLength:
             db.text_matches_known_company_job_id_for_candidate("cand-a", "anything 29 here")
             is None
         )
+
+
+# Branches: job.candidate_id ensure/backfill/guard; resolve on save; fail-loud list/claim/count;
+# scope via job.candidate_id (no company subquery).
+class TestAst1598JobCandidateId:
+    """AST-1598: required job.candidate_id + scoped helpers fail loud on omit."""
+
+    def test_inventory_lists_job_candidate_id(self, sqlite_in_memory) -> None:
+        doc = sqlite_in_memory.__doc__ or ""
+        assert "candidate_id (required owning candidate" in doc or (
+            "job" in doc and "candidate_id" in doc and "AST-1598" in doc
+        )
+        # AST-1701 inventory: company_id + source_entity_id; cid still required (AST-1598).
+        assert "company_id" in doc and "source_entity_id" in doc and "AST-1701" in doc
+
+    def test_ensure_adds_candidate_id_and_guards_without_company(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        # Fresh DB: job ensure must not require company table (Betty hold → aff5678f).
+        assert db.get_job("missing") is None
+        conn = db._get_connection()
+        try:
+            db._job_schema_ensured = False
+            db._ensure_job_schema(conn)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(job)").fetchall()}
+            assert "candidate_id" in cols
+        finally:
+            conn.close()
+
+    def test_ensure_backfills_from_company_when_present(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-bf")
+        # Pre-column row path: create job via save (stores cid), then simulate blank backfill.
+        assert db.save_job("job-bf", company="acme", state="NEW") is True
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE job SET candidate_id = '' WHERE astral_job_id = ?",
+                ("job-bf",),
+            )
+            conn.commit()
+            db._job_schema_ensured = False
+            db._ensure_job_schema(conn)
+            row = conn.execute(
+                "SELECT candidate_id FROM job WHERE astral_job_id = ?",
+                ("job-bf",),
+            ).fetchone()
+            assert row is not None
+            assert row[0] == "cand-bf"
+        finally:
+            conn.close()
+
+    def test_save_job_resolves_cid_from_company_and_returns_on_read(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-own")
+        assert db.save_job("job-1", company="acme", state="NEW") is True
+        row = db.get_job("job-1")
+        assert row is not None
+        assert row["candidate_id"] == "cand-own"
+
+    def test_save_job_explicit_cid_and_unresolved_raises(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-co")
+        assert (
+            db.save_job(
+                "job-x", company="acme", state="NEW", candidate_id="cand-explicit"
+            )
+            is True
+        )
+        assert db.get_job("job-x")["candidate_id"] == "cand-explicit"
+        db.save_company("orphan-co", state="IMPORTED")  # no candidate_id
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.save_job("job-orphan", company="orphan-co", state="NEW")
+
+    def test_list_claim_count_fail_loud_on_omit(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.list_jobs(states=["NEW"])
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.count_jobs(states=["NEW"])
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.claim_job_batch("batch-1", "NEW", limit=5)
+        with pytest.raises(ValueError, match="candidate_id required"):
+            db.list_jobs(candidate_id="   ")
+
+    def test_list_and_claim_scope_via_job_candidate_id(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("co-a", state="IMPORTED", candidate_id="cand-a")
+        db.save_company("co-b", state="IMPORTED", candidate_id="cand-b")
+        db.save_job("ja", company="co-a", state="NEW")
+        db.save_job("jb", company="co-b", state="NEW")
+        listed = db.list_jobs(candidate_id="cand-a", states=["NEW"])
+        assert {r["astral_job_id"] for r in listed} == {"ja"}
+        assert db.count_jobs(candidate_id="cand-a", states=["NEW"]) == 1
+        n = db.claim_job_batch("batch-a", "NEW", limit=10, candidate_id="cand-a")
+        assert n == 1
+        assert db.get_job("ja")["batch_id"] == "batch-a"
+        assert db.get_job("jb")["batch_id"] is None
+
+
+# Branches: SOURCE_ENTITY parent schema; company bridge; meteorite cid resolve; nullable
+# company_id; gazed rejected; ensure DDL-only (no parent UPDATE); operator SQL artifact.
+class TestAst1701SourceEntitySchema:
+    """AST-1701: job source_entity SSOT + writers + operator backfill SQL (no boot UPDATE)."""
+
+    def test_schema_company_id_nullable_and_source_entity_id(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._job_schema_ensured = False
+            db._ensure_job_schema(conn)
+            cols = {r[1]: r for r in conn.execute("PRAGMA table_info(job)").fetchall()}
+            assert "company_id" in cols and cols["company_id"][3] == 0  # nullable
+            assert "source_entity_id" in cols
+            assert "company" not in cols  # renamed
+            idx_sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='index' AND name='idx_job_identity_unique'"
+            ).fetchone()
+            assert idx_sql and idx_sql[0] and "company_id" in idx_sql[0]
+        finally:
+            conn.close()
+
+    def test_company_alias_bridges_source_entity_id_and_defaults_type(
+        self, sqlite_in_memory
+    ) -> None:
+        from src.utils.config import SOURCE_ENTITY_TYPE_COMPANY, SOURCE_ENTITY_TYPE_DEFAULT
+
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        assert db.save_job("job-co", company="acme", state="NEW") is True
+        row = db.get_job("job-co")
+        assert row is not None
+        assert row["source"] == SOURCE_ENTITY_TYPE_DEFAULT == SOURCE_ENTITY_TYPE_COMPANY
+        assert row["source_entity_id"] == "acme"
+        assert row["company_id"] == "acme"
+        assert row["company"] == "acme"  # in-module compat alias
+        assert row["candidate_id"] == "cand-1"
+
+    def test_meteorite_parent_resolves_cid_nullable_employer(
+        self, sqlite_in_memory
+    ) -> None:
+        from src.utils.config import SOURCE_ENTITY_TYPE_METEORITE
+
+        db = sqlite_in_memory
+        db.save_candidate("cand-m", state="NEW_CANDIDATE", candidate_data={"name": "M"})
+        mids = db.insert_meteorite_rows(
+            [{"candidate_id": "cand-m", "source_kind": "email", "source_id": "m1", "content": "jd"}]
+        )
+        mid = str(mids[0])
+        assert (
+            db.save_job(
+                "job-met",
+                state="METEORITE_NEW",
+                source=SOURCE_ENTITY_TYPE_METEORITE,
+                source_entity_id=mid,
+                company_id=None,
+            )
+            is True
+        )
+        row = db.get_job("job-met")
+        assert row is not None
+        assert row["source"] == SOURCE_ENTITY_TYPE_METEORITE
+        assert row["source_entity_id"] == mid
+        assert row["company_id"] in (None, "")
+        assert row["candidate_id"] == "cand-m"
+
+    def test_rejects_gazed_and_blank_parent(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        with pytest.raises(ValueError, match="not in allowed list"):
+            db.save_job("job-g", company="acme", state="NEW", source="gazed")
+        with pytest.raises(ValueError, match="source_entity_id required"):
+            db.save_job(
+                "job-blank",
+                state="NEW",
+                source="meteorite",
+                source_entity_id="  ",
+            )
+
+    def test_ensure_does_not_rewrite_parent_fields(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("acme", state="IMPORTED", candidate_id="cand-1")
+        assert db.save_job("job-keep", company="acme", state="NEW") is True
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE job SET source = 'gazed', source_entity_id = NULL WHERE astral_job_id = ?",
+                ("job-keep",),
+            )
+            conn.commit()
+            db._job_schema_ensured = False
+            db._ensure_job_schema(conn)
+            row = conn.execute(
+                "SELECT source, source_entity_id FROM job WHERE astral_job_id = ?",
+                ("job-keep",),
+            ).fetchone()
+            assert row is not None
+            assert row[0] == "gazed"
+            assert row[1] is None
+        finally:
+            conn.close()
+
+    def test_operator_sql_artifact_not_in_seed_config(self, sqlite_in_memory) -> None:
+        from pathlib import Path
+
+        from src.utils import config as cfg
+
+        sql_path = Path("data/sql/ast_1701_job_source_entity_backfill.sql")
+        assert sql_path.is_file()
+        body = sql_path.read_text()
+        assert "NOT imported by SEED_CONFIG" in body
+        assert "UPDATE job" in body
+        assert "source = 'meteorite'" in body or "source = 'company'" in body
+        seed_blob = repr(cfg.SEED_CONFIG)
+        assert "ast_1701" not in seed_blob
+        assert "job_source_entity_backfill" not in seed_blob

@@ -57,9 +57,12 @@ class TestValidateRuntimeCoupling:
 
 
 class TestBootstrapRuntime:
-    def test_runs_validation_sync_and_scheduler_in_order(
+    def test_runs_validation_schema_ensure_and_scheduler_in_order(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-1502 / AST-1497 kill-switch: validate → schema_ensure → scheduler only.
+        # Do not setattr apply_repo_admin_json_at_startup / sync_agent_tasks — make-fix
+        # dropped those imports from bootstrap.py (names are intentionally absent).
         calls: list[str] = []
 
         monkeypatch.setattr(
@@ -68,20 +71,9 @@ class TestBootstrapRuntime:
             lambda: calls.append("validate"),
         )
         monkeypatch.setattr(
-            bootstrap_mod,
-            "apply_repo_admin_json_at_startup",
-            lambda: calls.append("repo_json"),
-        )
-        monkeypatch.setattr(
             bootstrap_mod.database,
             "ensure_all_upsert_registry_schemas_at_startup",
             lambda: calls.append("schema_ensure"),
-        )
-        monkeypatch.setattr(bootstrap_mod, "get_task_keys", lambda: ["craft_resume_base"])
-        monkeypatch.setattr(
-            bootstrap_mod.database,
-            "sync_agent_tasks",
-            lambda keys: calls.append(f"sync:{keys!r}"),
         )
         monkeypatch.setattr(
             bootstrap_mod,
@@ -93,8 +85,6 @@ class TestBootstrapRuntime:
 
         assert calls == [
             "validate",
-            "repo_json",
             "schema_ensure",
-            "sync:['craft_resume_base']",
             "scheduler",
         ]

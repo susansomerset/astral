@@ -3,8 +3,32 @@ Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
-contact uniqueness enforcement on save (AST-1080).
-All writes go through database.save_candidate (upsert); state transition logic lives here.
+contact uniqueness enforcement on save (AST-1080),
+get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
+operative save_candidate_data(candidate_id, artifact_key, blob) + hydrate via
+get_current_artifact (AST-1576).
+get_operative_base_resume(artifact_uuid) pin→body for pilot
+candidate.artifacts.base_resume (AST-1584 / patt.artifact.read-operative).
+get_candidate_current(candidate_id, artifact_key) current-read by catalog key
+(AST-1586 / patt.artifact.read-current).
+Strengths (candidate.context.strengths) uses the same operative save +
+get_candidate_current hydrate path (AST-1633).
+Priorities (candidate.context.priorities) uses the same operative save +
+get_candidate_current hydrate path (AST-1652).
+Deal Breakers (candidate.context.deal_breakers) uses the same operative save +
+get_candidate_current hydrate path (AST-1655).
+Bio summary (candidate.context.bio_summary) uses the same operative save +
+get_candidate_current hydrate path (AST-1649).
+Ideal Day (candidate.context.ideal_day) uses the same operative save +
+get_candidate_current hydrate path (AST-1659).
+Backstory (candidate.context.backstory) uses the same operative save +
+get_candidate_current hydrate path (AST-1662).
+Writing Preferences (candidate.context.writing_preferences) uses the same
+operative save + get_candidate_current hydrate path (AST-1665).
+Resume structure (candidate.artifacts.resume_structure) uses the same
+operative save + get_candidate_current hydrate path (AST-1679).
+All writes go through database.save_candidate (upsert) or save_artifact (operative);
+state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
 never from Flask request handlers — AI calls don't belong in synchronous web requests.
@@ -17,7 +41,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.data import database
 from src.core.agent import (
@@ -32,6 +56,7 @@ from src.core import dispatcher as _dispatcher
 from src.utils import rubric_text
 from src.utils.config import (
     ASTRAL_CONFIG,
+    ARTIFACT_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_CONFIG,
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
@@ -43,17 +68,32 @@ from src.utils.config import (
     SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
+    CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
+    NAV_CONFIG,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     EMBEDDED_EVALUATE_JD_CRITERIA,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
+    RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
+    RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
+    RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_EXTRA_ID_PATTERN,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+    RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+    RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
+    TASK_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
+    dispatch_claim_states,
+    dispatch_hop_label,
+    is_valid_candidate_batch_claim_state,
+    parse_dispatch_hop_label,
     rubric_owner_task_key,
 )
 from src.utils.formatting import value_to_str
@@ -86,8 +126,14 @@ def build_candidate_token_view(candidate: dict) -> dict:
 
 
 def is_candidate_token_view(obj: object) -> bool:
-    """True when obj matches build_candidate_token_view output (not a DB row/raft)."""
+    """True when obj matches build_candidate_token_view output (not a DB row/raft).
+
+    Requires ``_astral_candidate_id`` key present so raw library ``candidate_data``
+    (contact/context/artifacts only) is not mistaken for a finished token view.
+    """
     if not isinstance(obj, dict) or "candidate_data" in obj:
+        return False
+    if "_astral_candidate_id" not in obj:
         return False
     return "first" in obj or "last" in obj or "full" in obj or "contact" in obj
 
@@ -735,26 +781,140 @@ def initiate_prospect_candidate(
 
 def save_candidate_data(
     candidate_id: str,
-    data: Dict[str, Any],
+    data_or_artifact_key: Any,
+    blob: Any = None,
     replace: bool = False,
     *,
+    source_artifact_ids: Optional[Sequence[str]] = None,
     debug: bool = False,
-) -> None:
-    """Merge (or replace) library blobs + optional name columns (AST-1014).
-    Pure data persistence — no AI calls. Rejects legacy ``profile`` writes."""
+) -> Optional[str]:
+    """Library merge (dict) or operative artifact write (artifact_key str) — AST-1576.
+
+    Dict path: merge/replace library blobs + optional name columns (AST-1014); returns None.
+    Str path: ARTIFACT_CONFIG → validate body_shape → save_artifact; returns new uuid.
+    Optional source_artifact_ids applies on the str path only (generative seed pins).
+    """
+    # Operative write-operative path (pilot: candidate.artifacts.base_resume).
+    if isinstance(data_or_artifact_key, str):
+        artifact_key = data_or_artifact_key.strip()
+        if not artifact_key:
+            raise ValueError("artifact_key required")
+        entry = ARTIFACT_CONFIG.get(artifact_key)
+        if entry is None:
+            raise ValueError(f"unknown catalog key: {artifact_key!r}")
+        if blob is None:
+            raise ValueError("artifact body required")
+        shape = BUILD_CONFIG["artifact_shapes"][entry["body_shape"]]
+        if entry["body_shape"] == "resume_content":
+            if not isinstance(blob, dict) or not blob:
+                raise ValueError("resume_content body must be a non-empty dict")
+            for key, spec in shape.items():
+                if isinstance(spec, dict) and spec.get("required") and key not in blob:
+                    raise ValueError(f"resume_content missing required key: {key!r}")
+        elif entry["body_shape"] == "plain_text":
+            # AST-1633: raw string body (BUILD_CONFIG sentinel "raw_string" — validate type here).
+            if not isinstance(blob, str) or not blob.strip():
+                raise ValueError("plain_text body must be a non-empty string")
+        elif entry["body_shape"] == "resume_structure":
+            # AST-1679: structure dict — BUILD_CONFIG sentinel "structure_dict"; validate via normalize.
+            if not isinstance(blob, dict) or not blob:
+                raise ValueError("resume_structure body must be a non-empty dict")
+            blob = normalize_resume_structure(blob)
+        artifact_type = artifact_key.rsplit(".", 1)[-1]
+        # AST-1635: identical-to-current → return existing pin; no retire+insert.
+        current_row = database.get_current_artifact(
+            entry["entity_type"], candidate_id, artifact_type
+        )
+        if current_row is not None and current_row.get("artifact_data") == blob:
+            return current_row.get("artifact_uuid")
+        new_uuid = database.save_artifact(
+            entry["entity_type"],
+            candidate_id,
+            artifact_type,
+            blob,
+            source_artifact_ids=source_artifact_ids,
+        )
+        if artifact_key == _STRENGTHS_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "strengths artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _PRIORITIES_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "priorities artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _DEAL_BREAKERS_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "deal_breakers artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _BIO_SUMMARY_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "bio_summary artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _IDEAL_DAY_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "ideal_day artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _BACKSTORY_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "backstory artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _WRITING_PREFERENCES_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "writing_preferences artifact saved",
+                new_uuid,
+                "-",
+            )
+        elif artifact_key == _RESUME_STRUCTURE_ARTIFACT_KEY:
+            logger.info(
+                "%s | candidate %s: %s (batch: %s)",
+                candidate_id,
+                "resume_structure artifact saved",
+                new_uuid,
+                "-",
+            )
+        return new_uuid
+
+    if not isinstance(data_or_artifact_key, dict):
+        raise ValueError("candidate data must be a dict or artifact_key str")
+    data = data_or_artifact_key
+
     logger.set_debug_flag(debug)
-    if not isinstance(data, dict):
-        raise ValueError("candidate data must be a dict")
     if "profile" in data:
         raise ValueError("profile was renamed to contact; refuse shadow write")
 
     col_kwargs: Dict[str, Any] = {}
-    blob: Dict[str, Any] = {}
+    blob_merge: Dict[str, Any] = {}
     for key, val in data.items():
         if key in _NAME_COLUMNS:
             col_kwargs[key] = "" if val is None else str(val)
         else:
-            blob[key] = val
+            blob_merge[key] = val
 
     # Empty/whitespace full → library join; omit full when first/last change → same
     if "full" in col_kwargs:
@@ -777,7 +937,7 @@ def save_candidate_data(
         if pref and pref not in PRONOUN_PREFERENCE_OPTIONS:
             raise ValueError(f"Invalid pronouns value: {pref!r}")
 
-    contact = blob.get("contact")
+    contact = blob_merge.get("contact")
     if isinstance(contact, dict):
         _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
@@ -808,15 +968,35 @@ def save_candidate_data(
         else:
             proposed = copy.deepcopy(contact)
         _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
-        blob["contact"] = proposed
+        blob_merge["contact"] = proposed
+
+    # AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659: catalog owns these context leaves — never library-merge SoT.
+    ctx = blob_merge.get("context")
+    if isinstance(ctx, dict):
+        cleaned = {k: v for k, v in ctx.items() if k not in _CONTEXT_OPERATIVE_LEAVES}
+        if cleaned:
+            blob_merge["context"] = cleaned
+        else:
+            blob_merge.pop("context", None)
+
+    # AST-1679: catalog owns artifacts.resume_structure — never library-merge that leaf.
+    arts = blob_merge.get("artifacts")
+    if isinstance(arts, dict):
+        cleaned_arts = {
+            k: v for k, v in arts.items() if k not in _ARTIFACTS_OPERATIVE_LEAVES
+        }
+        if cleaned_arts:
+            blob_merge["artifacts"] = cleaned_arts
+        else:
+            blob_merge.pop("artifacts", None)
 
     steps = []
     if col_kwargs:
         steps.append(("columns", sorted(col_kwargs.keys())))
     for bk in _LIBRARY_BLOB_KEYS:
-        if bk in blob:
+        if bk in blob_merge:
             steps.append((bk, "recorded"))
-    meta_keys = [k for k in blob if k not in _LIBRARY_BLOB_KEYS]
+    meta_keys = [k for k in blob_merge if k not in _LIBRARY_BLOB_KEYS]
     if meta_keys:
         steps.append(("meta", meta_keys))
 
@@ -833,14 +1013,15 @@ def save_candidate_data(
             logger.debug_detail(f"{label}={detail!r}")
 
     save_kwargs: Dict[str, Any] = dict(col_kwargs)
-    if blob:
-        save_kwargs["candidate_data"] = blob
+    if blob_merge:
+        save_kwargs["candidate_data"] = blob_merge
         save_kwargs["merge"] = not replace
     elif col_kwargs:
         pass
     else:
-        return
+        return None
     database.save_candidate(candidate_id, **save_kwargs)
+    return None
 
 
 def _topic_menu_key() -> str:
@@ -1221,6 +1402,23 @@ def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
     return surfer_consent_dto(candidate_id)
 
 
+def _assert_unique_rubric_codes(criteria: list, artifact_key: str) -> None:
+    """Reject duplicate two-letter codes within one rubric artifact list (AST-1513)."""
+    seen: Dict[str, str] = {}
+    for idx, item in enumerate(criteria):
+        if not isinstance(item, dict):
+            continue
+        label = (item.get("label") or item.get("code") or "").strip() or f"#{idx + 1}"
+        code = (item.get("code") or "").strip() or f"V{idx + 1:02d}"
+        code_key = code.upper()
+        if code_key in seen:
+            raise ValueError(
+                f"Rubric {artifact_key!r}: duplicate code {code!r} on vectors "
+                f"{seen[code_key]!r} and {label!r}"
+            )
+        seen[code_key] = label
+
+
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
     """For each rubric criteria artifact in ``artifacts``, parse trailing grade tables, set
     ``grade_descriptions``, and coerce ``importance`` (1–10). Mutates criterion dicts in place.
@@ -1247,6 +1445,7 @@ def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
                 item["importance"] = _normalize_importance_value(item.get("importance"), ci)
             except ValueError as e:
                 raise ValueError(f"Rubric {key!r}, vector {label!r}: {e}") from e
+        _assert_unique_rubric_codes(val, key)
 
 
 def _rubric_rows_to_criteria(rows: list) -> list:
@@ -1352,6 +1551,283 @@ def hydrate_rubric_artifacts_for_response(candidate_id: str, cd: dict) -> None:
         arts[artifact_key] = rubric_criteria_for_task(candidate_id, owner)
 
 
+def get_operative_base_resume(artifact_uuid: str) -> Optional[Any]:
+    """Pin→body for pilot candidate.artifacts.base_resume (patt.artifact.read-operative).
+
+    Returns deserialized artifact_data, or None on miss / non-pilot row.
+    No coat-check; no candidate_data blob fallback.
+    """
+    row = database.get_artifact(artifact_uuid)
+    if row is None:
+        return None
+    pilot_key = "candidate.artifacts.base_resume"
+    entry = ARTIFACT_CONFIG[pilot_key]
+    artifact_type = pilot_key.rsplit(".", 1)[-1]
+    if row.get("entity_type") != entry["entity_type"]:
+        return None
+    if row.get("artifact_type") != artifact_type:
+        return None
+    return row.get("artifact_data")
+
+
+def get_candidate_current(candidate_id: str, artifact_key: str) -> Optional[Any]:
+    """Current-read body for a catalog artifact key (patt.artifact.read-current).
+
+    Resolves ARTIFACT_CONFIG, calls database.get_current_artifact for the scoped
+    entity + leaf artifact_type. Returns deserialized artifact_data, or None on
+    miss. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    return row.get("artifact_data")
+
+
+def get_candidate_current_artifact_uuid(
+    candidate_id: str, artifact_key: str
+) -> Optional[str]:
+    """Current-read ``artifact_uuid`` for a catalog key (patt.artifact.read-current).
+
+    Same ARTIFACT_CONFIG / candidate_scoped / entity resolve as
+    ``get_candidate_current``, but returns ``artifact_uuid`` (or None on miss)
+    instead of ``artifact_data``. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    uuid = row.get("artifact_uuid")
+    if not isinstance(uuid, str) or not uuid.strip():
+        return None
+    return uuid
+
+
+def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current base_resume into candidate_data (display only)."""
+    if not isinstance(cd, dict):
+        return
+    pilot_key = "candidate.artifacts.base_resume"
+    body = get_candidate_current(candidate_id, pilot_key)
+    arts = cd.get("artifacts")
+    if body is None:
+        if isinstance(arts, dict) and "base_resume" in arts:
+            arts.pop("base_resume")
+        return
+    if not isinstance(arts, dict):
+        arts = {}
+        cd["artifacts"] = arts
+    arts["base_resume"] = body
+
+
+def hydrate_operative_resume_structure_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current resume_structure into candidate_data.artifacts (display only).
+
+    Miss → leave legacy artifacts.resume_structure blob untouched (parent AC7 migration window).
+    Hit → write current dict onto artifacts.resume_structure for the editor / resolve contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, dict):
+        return
+    arts = cd.get("artifacts")
+    if not isinstance(arts, dict):
+        arts = {}
+        cd["artifacts"] = arts
+    arts["resume_structure"] = body
+
+
+_STRENGTHS_ARTIFACT_KEY = "candidate.context.strengths"
+_BIO_SUMMARY_ARTIFACT_KEY = "candidate.context.bio_summary"
+_IDEAL_DAY_ARTIFACT_KEY = "candidate.context.ideal_day"
+_BACKSTORY_ARTIFACT_KEY = "candidate.context.backstory"
+_WRITING_PREFERENCES_ARTIFACT_KEY = "candidate.context.writing_preferences"
+_RESUME_STRUCTURE_ARTIFACT_KEY = "candidate.artifacts.resume_structure"
+# Catalog-owned context leaves — never durable library-merge SoT (AST-1633 / AST-1649 / AST-1652 / AST-1655 / AST-1659 / AST-1662 / AST-1665).
+_CONTEXT_OPERATIVE_LEAVES = frozenset(
+    {
+        "strengths",
+        "bio_summary",
+        "priorities",
+        "deal_breakers",
+        "ideal_day",
+        "backstory",
+        "writing_preferences",
+    }
+)
+# Catalog-owned artifacts leaf — never durable library-merge SoT (AST-1679).
+_ARTIFACTS_OPERATIVE_LEAVES = frozenset({"resume_structure"})
+
+
+def hydrate_operative_strengths_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Strengths into candidate_data.context (display only).
+
+    Miss → leave legacy context.strengths blob untouched (parent AC7 migration window).
+    Hit → write current string onto context.strengths for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _STRENGTHS_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["strengths"] = body
+
+
+_PRIORITIES_ARTIFACT_KEY = "candidate.context.priorities"
+_DEAL_BREAKERS_ARTIFACT_KEY = "candidate.context.deal_breakers"
+
+
+def hydrate_operative_priorities_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Priorities into candidate_data.context (display only).
+
+    Miss → leave legacy context.priorities blob untouched (parent AC7 / ticket AC6 migration window).
+    Hit → write current string onto context.priorities for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _PRIORITIES_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["priorities"] = body
+
+
+def hydrate_operative_deal_breakers_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Deal Breakers into candidate_data.context (display only).
+
+    Miss → leave legacy context.deal_breakers blob untouched (parent AC6 migration window).
+    Hit → write current string onto context.deal_breakers for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _DEAL_BREAKERS_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["deal_breakers"] = body
+
+
+def hydrate_operative_bio_summary_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current bio summary into candidate_data.context (display only).
+
+    Miss → leave legacy context.bio_summary blob untouched (parent AC8 / ticket AC6 migration window).
+    Hit → write current string onto context.bio_summary for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _BIO_SUMMARY_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["bio_summary"] = body
+
+
+def hydrate_operative_ideal_day_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Ideal Day into candidate_data.context (display only).
+
+    Miss → leave legacy context.ideal_day blob untouched (parent AC6 / ticket AC6 migration window).
+    Hit → write current string onto context.ideal_day for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _IDEAL_DAY_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["ideal_day"] = body
+
+
+def hydrate_operative_backstory_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Backstory into candidate_data.context (display only).
+
+    Miss → leave legacy context.backstory blob untouched (parent AC6 / ticket AC6 migration window).
+    Hit → write current string onto context.backstory for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _BACKSTORY_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["backstory"] = body
+
+
+def hydrate_operative_writing_preferences_for_response(candidate_id: str, cd: dict) -> None:
+    """Overlay operative current Writing Preferences into candidate_data.context (display only).
+
+    Miss → leave legacy context.writing_preferences blob untouched (parent AC6 migration window).
+    Hit → write current string onto context.writing_preferences for the editor contract.
+    """
+    if not isinstance(cd, dict):
+        return
+    body = get_candidate_current(candidate_id, _WRITING_PREFERENCES_ARTIFACT_KEY)
+    if body is None:
+        return
+    if not isinstance(body, str):
+        return
+    ctx = cd.get("context")
+    if not isinstance(ctx, dict):
+        ctx = {}
+        cd["context"] = ctx
+    ctx["writing_preferences"] = body
+
+
 def _normalize_search_term_lines(val: str) -> list[str]:
     return [line for line in (s.strip() for s in val.split("\n")) if line]
 
@@ -1435,7 +1911,23 @@ def apply_company_search_terms_save(candidate_id: str, artifacts: dict) -> None:
 
 def get_candidate(candidate_id: str) -> Optional[Dict[str, Any]]:
     """Fetch candidate by ID. Needed because the API layer can't import database directly."""
-    return database.get_candidate(candidate_id)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return None
+    cd = candidate.get("candidate_data")
+    if not isinstance(cd, dict):
+        cd = {}
+    hydrate_operative_base_resume_for_response(candidate_id, cd)
+    hydrate_operative_resume_structure_for_response(candidate_id, cd)
+    hydrate_operative_strengths_for_response(candidate_id, cd)
+    hydrate_operative_priorities_for_response(candidate_id, cd)
+    hydrate_operative_deal_breakers_for_response(candidate_id, cd)
+    hydrate_operative_bio_summary_for_response(candidate_id, cd)
+    hydrate_operative_ideal_day_for_response(candidate_id, cd)
+    hydrate_operative_backstory_for_response(candidate_id, cd)
+    hydrate_operative_writing_preferences_for_response(candidate_id, cd)
+    candidate["candidate_data"] = cd
+    return candidate
 
 
 def list_candidates(include_deleted: bool = False) -> list:
@@ -1444,6 +1936,45 @@ def list_candidates(include_deleted: bool = False) -> list:
     if include_deleted:
         return all_candidates
     return [c for c in all_candidates if c.get("state") != "DELETED"]
+
+
+# ---- Batch API ----
+def get_new_candidate_batch(
+    state: str,
+    limit: Optional[int] = None,
+    sort_by: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    context: Optional[str] = None,
+    *,
+    states: Optional[List[str]] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """Claim candidates for batch processing. Returns (batch_id, candidates).
+
+    Cross-candidate pool (AST-1258/1259) — no candidate_id / score_floor scope.
+    batch_id: when provided, uses this batch_id instead of generating a new one.
+    context: prefix for auto-generated batch_id (required when batch_id is not provided).
+    """
+    # Registry keys + REQUESTED_ARTIFACTS.<hop> runtime labels (AST-1388).
+    if states is None:
+        if not is_valid_candidate_batch_claim_state(state):
+            allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
+            raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
+    else:
+        for s in states:
+            if not is_valid_candidate_batch_claim_state(s):
+                allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
+                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
+    limit_val = limit if limit is not None else 10
+    if not batch_id and not context:
+        raise ValueError("batch_id or context is required for batch_id generation")
+    bid = batch_id or f"{context}-{uuid.uuid4()}"
+    database.claim_candidate_batch(bid, state, limit_val, sort_by=sort_by, states=states)
+    return (bid, database.get_candidate_batch(bid))
+
+
+def clear_candidate_batch(batch_id: str) -> int:
+    """Release batch. Returns count cleared."""
+    return database.clear_candidate_batch(batch_id)
 
 
 def _lookup_path_value(candidate: Dict[str, Any], dotted_path: str) -> str:
@@ -1463,6 +1994,43 @@ def _lookup_path_value(candidate: Dict[str, Any], dotted_path: str) -> str:
     if not isinstance(val, str):
         return ""
     return val.strip()
+
+
+def email_aliases_for_candidate(candidate_id: str) -> list[str]:
+    """Bare email addresses from CANDIDATE_LOOKUP_CONFIG paths (order-stable, unique)."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return []
+    row = get_candidate(cid)
+    if not row:
+        return []
+    seen: set[str] = set()
+    aliases: list[str] = []
+    for path in CANDIDATE_LOOKUP_CONFIG["email_paths"]:
+        raw = _lookup_path_value(row, path)
+        if not raw:
+            continue
+        _display, parsed = parseaddr(raw)
+        token = (parsed or raw).strip()
+        if "@" not in token:
+            continue
+        folded = token.casefold()
+        if folded in seen:
+            continue
+        seen.add(folded)
+        aliases.append(token)
+    for path in CANDIDATE_LOOKUP_CONFIG["email_list_paths"]:
+        for raw in _iter_uniqueness_path_values(row, path):
+            _display, parsed = parseaddr(raw)
+            token = (parsed or raw).strip()
+            if "@" not in token:
+                continue
+            folded = token.casefold()
+            if folded in seen:
+                continue
+            seen.add(folded)
+            aliases.append(token)
+    return aliases
 
 
 def get_candidate_id_for_query(
@@ -1506,6 +2074,11 @@ def get_candidate_id_for_query(
             v = _lookup_path_value(candidate, path)
             if v:
                 values.append(v.casefold() if casefold else v)
+        # List emails (extra_emails); do not walk uniqueness list_paths (websites).
+        for path in CANDIDATE_LOOKUP_CONFIG["email_list_paths"]:
+            for v in _iter_uniqueness_path_values(candidate, path):
+                if v:
+                    values.append(v.casefold() if casefold else v)
         if needle_cmp not in values:
             continue
         cid = (candidate.get("astral_candidate_id") or "").strip()
@@ -1618,6 +2191,17 @@ def delete_candidate(candidate_id: str) -> None:
     transition_candidate_state(candidate_id, "DELETED")
 
 
+class IllegalCandidateTransition(ValueError):
+    """prior_states rejected this hop; API maps to illegal_candidate_transition."""
+
+    def __init__(self, from_state: str, to_state: str):
+        self.from_state = from_state
+        self.to_state = to_state
+        super().__init__(
+            f"Invalid candidate state transition: {from_state} -> {to_state}"
+        )
+
+
 def _candidate_prior_states(to_state: str):
     cfg = CANDIDATE_STATES.get(to_state)
     if cfg is None:
@@ -1629,7 +2213,44 @@ def _candidate_state_allowed(from_state: str, to_state: str) -> bool:
     prior = _candidate_prior_states(to_state)
     if prior is None:
         return True
-    return from_state in prior
+    st = (from_state or "").strip()
+    if st in prior:
+        return True
+    # Runtime hop labels: trigger in prior_states counts (mirror tracker._job_state_matches_prior).
+    parsed = parse_dispatch_hop_label(st)
+    if parsed and parsed[0] in prior:
+        return True
+    return False
+
+
+def write_candidate_dispatch_hop_label(
+    candidate_id: str, trigger_state: str, completed_task_key: str,
+) -> str:
+    """Write runtime dispatch hop label to candidate.state (not a CANDIDATE_STATES key)."""
+    label = dispatch_hop_label(trigger_state, completed_task_key)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    from_state = (candidate.get("state") or "").strip()
+    history = _append_candidate_state_history(candidate, from_state, label, now)
+    database.save_candidate(candidate_id, state=label, state_history=history)
+    return label
+
+
+def requested_artifacts_dispatch_claim_states() -> List[str]:
+    """Bare trigger + retry + live-chain hop labels for craft_get_rubric @ REQUESTED_ARTIFACTS."""
+    trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    states: List[str] = list(dispatch_claim_states(trigger, "candidate"))
+    for tk in _walk_requested_artifacts_chain_task_keys():
+        states.append(dispatch_hop_label(trigger, tk))
+    seen: set[str] = set()
+    out: List[str] = []
+    for s in states:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
 
 
 def _start_candidate_reap_timer(candidate_id: str) -> None:
@@ -1713,18 +2334,31 @@ def purge_reap_due_candidates(*, now: Optional[datetime] = None) -> int:
     return n
 
 
-def transition_candidate_state(candidate_id: str, to_state: str) -> None:
+def transition_candidate_state(
+    candidate_id: str,
+    to_state: str,
+    *,
+    force: bool = False,
+) -> None:
     """Validate prior_states on CANDIDATE_STATES, then update state.
-    Raises ValueError if the hop is disallowed."""
+    Raises IllegalCandidateTransition if the hop is disallowed (unless force).
+    Unknown states raise ValueError even when force=True."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         raise ValueError(f"Candidate not found: {candidate_id}")
     if to_state not in CANDIDATE_STATES:
         raise ValueError(f"Unknown candidate state: {to_state}")
     from_state = candidate["state"]
-    if not _candidate_state_allowed(from_state, to_state):
-        raise ValueError(
-            f"Invalid candidate state transition: {from_state} -> {to_state}"
+    # One prior_states check: gate when not force; INFO when force bypasses.
+    allowed = _candidate_state_allowed(from_state, to_state)
+    if not force and not allowed:
+        raise IllegalCandidateTransition(from_state, to_state)
+    if force and not allowed:
+        logger.info(
+            "forced candidate state transition: %s %s -> %s",
+            candidate_id,
+            from_state,
+            to_state,
         )
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     history = _append_candidate_state_history(candidate, from_state, to_state, now)
@@ -1733,11 +2367,78 @@ def transition_candidate_state(candidate_id: str, to_state: str) -> None:
         _start_candidate_reap_timer(candidate_id)
 
 
-_CONTEXT_TEXT_KEYS = ("strengths", "priorities", "deal_breakers", "backstory")
+def start_requested_artifacts(candidate_id: str) -> str:
+    """UI/API handoff into REQUESTED_ARTIFACTS (AST-1253). Priors enforce legality."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    target = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    transition_candidate_state(candidate_id, target)
+    return target
+
+
+def _walk_requested_artifacts_chain_task_keys() -> list[str]:
+    """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
+    start = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]
+    out: list[str] = []
+    seen: set[str] = set()
+    key = (start or "").strip()
+    while key:
+        if key in seen:
+            raise RuntimeError(f"craft run_next cycle at {key!r}")
+        seen.add(key)
+        out.append(key)
+        key = (_current_agent_task_run_next(key) or "").strip()
+    return out
+
+
+def requested_artifacts_chain_task_keys() -> list[str]:
+    """Public: live craft chain task_keys in run_next order."""
+    return _walk_requested_artifacts_chain_task_keys()
+
+
+def is_requested_artifacts_chain_ui_task(task_key: str) -> bool:
+    """True when task_key is on the live REQUESTED_ARTIFACTS craft chain."""
+    tk = (task_key or "").strip()
+    if not tk:
+        return False
+    return tk in _walk_requested_artifacts_chain_task_keys()
+
+
+def _artifacts_nav_label_for_path(path: str) -> str:
+    """Resolve Artifacts NAV_CONFIG child label for a path string."""
+    for section in NAV_CONFIG:
+        if not isinstance(section, dict) or section.get("label") != "Artifacts":
+            continue
+        for item in section.get("items") or []:
+            if isinstance(item, dict) and item.get("path") == path:
+                label = (item.get("label") or "").strip()
+                if label:
+                    return label
+    return ""
+
+
+def requested_artifacts_chain_hop_labels() -> list[str]:
+    """Live walk order × NAV_CONFIG Artifacts labels (fallback: task_key)."""
+    labels: list[str] = []
+    for task_key in _walk_requested_artifacts_chain_task_keys():
+        path = CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH.get(task_key) or ""
+        labels.append(_artifacts_nav_label_for_path(path) or task_key)
+    return labels
+
+
+def requested_artifacts_chain_artifact_keys() -> list[str]:
+    """Rubric artifact keys only (excludes table-backed company_search_terms)."""
+    keys: list[str] = []
+    for task_key in _walk_requested_artifacts_chain_task_keys():
+        artifact = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+        if artifact:
+            keys.append(artifact)
+    return keys
 
 
 def check_context_complete(candidate_id: str) -> bool:
-    """True when all four context text fields are non-empty (no state write).
+    """True when all CANDIDATE_LIBRARY_CONFIG['context_completeness_keys'] are non-empty (no state write).
     Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
@@ -1748,7 +2449,9 @@ def check_context_complete(candidate_id: str) -> bool:
     if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
-    for key in _CONTEXT_TEXT_KEYS:
+    if not isinstance(ctx, dict):
+        ctx = {}
+    for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
         if not (ctx.get(key) or "").strip():
             return False
     return True
@@ -1792,6 +2495,43 @@ def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_RESUME_SECTION_EXTRA_ID_RE = re.compile(RESUME_STRUCTURE_EXTRA_ID_PATTERN)
+
+
+def _slug_resume_extra_section_id(title: str, used: set) -> str:
+    s = re.sub(r"[^a-z0-9]+", "_", title.strip().lower()).strip("_")
+    if not s or not s[0].isalpha():
+        s = ("s_" + s) if s else "section"
+    base = s
+    n = 2
+    while (
+        s in used
+        or s in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+        or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(s) is None
+    ):
+        s = f"{base}_{n}"
+        n += 1
+    used.add(s)
+    return s
+
+
+def _title_to_structure_section_id(title: str, structure: dict) -> Optional[str]:
+    needle = title.strip().casefold()
+
+    def _match(sections: Any) -> Optional[str]:
+        if not isinstance(sections, dict):
+            return None
+        for sid, spec in sections.items():
+            if not isinstance(spec, dict):
+                continue
+            if str(spec.get("title") or "").strip().casefold() == needle:
+                return sid
+        return None
+
+    hit = _match((structure or {}).get("sections"))
+    if hit is not None:
+        return hit
+    return _match(RESUME_STRUCTURE_DEFAULT.get("sections"))
 
 
 def default_resume_structure() -> dict:
@@ -1815,9 +2555,10 @@ def normalize_resume_structure(raw: dict) -> dict:
         if ac not in palette:
             raise ValueError("resume_structure.accent_color not in accent_palette")
         out["accent_color"] = ac
+    missing = [rid for rid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS if rid not in sections_in]
+    if missing:
+        raise ValueError(f"resume_structure missing required section(s): {missing}")
     for sid, spec in sections_in.items():
-        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
-            raise ValueError(f"unknown resume section id: {sid}")
         if not isinstance(spec, dict):
             raise ValueError(f"section {sid} must be a dict")
         sec_id = str(spec.get("id") or sid).strip()
@@ -1832,18 +2573,214 @@ def normalize_resume_structure(raw: dict) -> dict:
         order = spec.get("order")
         if not isinstance(order, int):
             raise ValueError(f"section {sid} order must be int")
-        job_ed = spec.get("job_agent_editable")
-        if not isinstance(job_ed, bool):
-            raise ValueError(f"section {sid} job_agent_editable must be boolean")
-        out["sections"][sid] = {
+        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS and "job_agent_editable" not in spec:
+            job_ed = True
+        else:
+            job_ed = spec.get("job_agent_editable")
+            if not isinstance(job_ed, bool):
+                raise ValueError(f"section {sid} job_agent_editable must be boolean")
+        if sid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS and enabled is False:
+            raise ValueError(f"required section {sid} cannot be disabled")
+        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+            if sid in RESUME_STRUCTURE_RESERVED_EXTRA_IDS:
+                raise ValueError(f"invalid extra section id: {sid}")
+            if _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is None:
+                raise ValueError(f"invalid extra section id: {sid}")
+        row: Dict[str, Any] = {
             "id": sid,
             "title": title.strip(),
             "enabled": enabled,
             "order": order,
             "job_agent_editable": job_ed,
         }
+        if sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
+            pass
+        elif sid == "experience":
+            fmt = spec.get("format")
+            if fmt is None or (isinstance(fmt, str) and not fmt.strip()):
+                fmt = RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["experience"]
+            elif fmt != "experience_detail":
+                raise ValueError("section experience format must be experience_detail")
+            row["format"] = "experience_detail"
+        else:
+            fmt = spec.get("format")
+            if fmt is None or (isinstance(fmt, str) and not str(fmt).strip()):
+                if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID:
+                    fmt = RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+                else:
+                    raise ValueError(f"section {sid} requires format")
+            if fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+                raise ValueError(
+                    f"section {sid} format must be one of {list(RESUME_STRUCTURE_BODY_FORMATS)}"
+                )
+            row["format"] = fmt
+        # AST-1474: coerce/validate page_break_policy (default keep-block-together).
+        raw_policy = spec.get("page_break_policy")
+        if raw_policy is None or (isinstance(raw_policy, str) and not raw_policy.strip()):
+            policy = RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+        elif (
+            isinstance(raw_policy, str)
+            and raw_policy in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
+        ):
+            policy = raw_policy
+        else:
+            raise ValueError(
+                f"section {sid} page_break_policy must be one of "
+                f"{list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES)}"
+            )
+        row["page_break_policy"] = policy
+        out["sections"][sid] = row
+    secs = out["sections"]
+    if "highlights" in secs and "experience" in secs:
+        ordered_ids = [
+            sid
+            for sid, _spec in sorted(
+                secs.items(),
+                key=lambda kv: (
+                    kv[1]["order"] if isinstance(kv[1].get("order"), int) else 0,
+                    kv[0],
+                ),
+            )
+        ]
+        ordered_ids = [sid for sid in ordered_ids if sid != "highlights"]
+        exp_i = ordered_ids.index("experience")
+        ordered_ids.insert(exp_i, "highlights")
+        for i, sid in enumerate(ordered_ids):
+            secs[sid]["order"] = i
     if not out["sections"]:
         raise ValueError("resume_structure must include at least one section")
+    return out
+
+
+def ingest_legacy_label_content_base_resume(raw_base: Any, structure: dict) -> tuple[dict, dict]:
+    """Map dict or {label, content} list → (id-keyed content, structure with extras)."""
+    if isinstance(structure, dict) and structure.get("sections"):
+        base_struct = normalize_resume_structure(structure)
+    else:
+        base_struct = default_resume_structure()
+    out_struct = copy.deepcopy(base_struct)
+    used = set(out_struct["sections"])
+    content: Dict[str, Any] = {}
+    if out_struct["sections"]:
+        next_order = 1 + max((spec.get("order") or 0) for spec in out_struct["sections"].values())
+    else:
+        next_order = 0
+
+    def _append_missing_section(sid: str, title: str) -> None:
+        nonlocal next_order
+        if sid in out_struct["sections"]:
+            return
+        fmt = (
+            RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+            if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID
+            else RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT
+        )
+        out_struct["sections"][sid] = {
+            "id": sid,
+            "title": title,
+            "enabled": True,
+            "order": next_order,
+            "job_agent_editable": True,
+            "format": fmt,
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        }
+        used.add(sid)
+        next_order += 1
+
+    if isinstance(raw_base, dict):
+        for k, v in raw_base.items():
+            if k in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or k == "accent_color":
+                continue
+            # Usable section id already, or display-label key (AST-1322 title-keyed dict).
+            if (
+                k in out_struct["sections"]
+                or k in RESUME_STRUCTURE_KNOWN_SECTION_IDS
+                or (
+                    _RESUME_SECTION_EXTRA_ID_RE.fullmatch(k) is not None
+                    and k not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+                )
+            ):
+                sid = k
+                if (
+                    sid not in out_struct["sections"]
+                    and _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is not None
+                    and sid not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+                ):
+                    _append_missing_section(sid, sid.replace("_", " ").title())
+            else:
+                sid = _title_to_structure_section_id(k, out_struct)
+                if sid is None:
+                    # Keep AST-519 orphan strip: invalid lowercase ids (e.g. 123bad).
+                    if k == k.lower() and " " not in k and "-" not in k:
+                        continue
+                    sid = _slug_resume_extra_section_id(k, used)
+                    _append_missing_section(sid, k)
+                elif sid not in out_struct["sections"]:
+                    _append_missing_section(sid, k)
+            if sid in content:
+                sid = _slug_resume_extra_section_id(k, used)
+                _append_missing_section(sid, k)
+            if sid == "experience" and not _is_experience_job_array(v):
+                continue
+            if _is_experience_job_array(v) and v:
+                content[sid] = v
+            elif isinstance(v, str):
+                content[sid] = v
+    elif isinstance(raw_base, list):
+        for item in raw_base:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            if not label:
+                continue
+            sid = _title_to_structure_section_id(label, out_struct)
+            if sid is None:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing_section(sid, label)
+            elif sid not in out_struct["sections"]:
+                _append_missing_section(sid, label)
+            if sid in content:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing_section(sid, label)
+            val = item.get("content")
+            if sid == "experience" and not _is_experience_job_array(val):
+                continue
+            if _is_experience_job_array(val) and val:
+                content[sid] = val
+            else:
+                content[sid] = str(val) if val is not None else ""
+
+    out_struct = normalize_resume_structure(out_struct)
+    return content, out_struct
+
+
+def slug_resume_section_id(title: str) -> str:
+    raw = (title or "").strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
+    if not slug or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(slug) is None:
+        raise ValueError("invalid extra section title")
+    if slug in RESUME_STRUCTURE_RESERVED_EXTRA_IDS:
+        raise ValueError(f"invalid extra section id: {slug}")
+    return slug
+
+
+def prepare_resume_structure_sections_for_save(sections_in) -> dict:
+    if not isinstance(sections_in, dict) or not sections_in:
+        raise ValueError("resume_structure.sections must be a non-empty dict")
+    out = {}
+    for sid, spec in sections_in.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"section {sid} must be a dict")
+        key = str(sid)
+        if key in RESUME_STRUCTURE_KNOWN_SECTION_IDS or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(key):
+            new_sid = key
+        else:
+            new_sid = slug_resume_section_id(str(spec.get("title") or ""))
+        if new_sid in out:
+            raise ValueError(f"duplicate section id after slug: {new_sid}")
+        row = dict(spec)
+        row["id"] = new_sid
+        out[new_sid] = row
     return out
 
 
@@ -1872,44 +2809,45 @@ def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
     for k, v in content.items():
         if k not in section_ids:
             continue
-        if k == "experience" and _is_experience_job_array(v):
+        if _is_experience_job_array(v) and v:
             out[k] = v
-        elif isinstance(v, str):
+        elif k != "experience" and isinstance(v, str):
             out[k] = v
         # else: drop unexpected shapes (do not str()-corrupt)
     return out
 
 
+_PILOT_BASE_RESUME_ARTIFACT_KEY = "candidate.artifacts.base_resume"
+
+
+def candidate_id_for_current_read(cd: dict) -> Optional[str]:
+    """Extract candidate id from token view or inner candidate_data for current-read."""
+    if not isinstance(cd, dict):
+        return None
+    cid = (cd.get("_astral_candidate_id") or cd.get("astral_candidate_id") or "").strip()
+    return cid or None
+
+
+def load_pilot_base_resume_for_candidate(candidate_id: str) -> Optional[Any]:
+    """Current-read pilot base_resume body for live/builder consumers (AST-1587)."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return None
+    return get_candidate_current(cid, _PILOT_BASE_RESUME_ARTIFACT_KEY)
+
+
 def format_base_resume_for_token(candidate_data: dict) -> str:
     """{$BASE_RESUME}: section-id-keyed JSON for agent prompts (AST-607), never markdown."""
     cd = candidate_data if isinstance(candidate_data, dict) else {}
-    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
-    raw = artifacts.get("base_resume")
+    cid = candidate_id_for_current_read(cd)
+    raw = load_pilot_base_resume_for_candidate(cid) if cid else None
     structure = resolve_resume_structure(cd)
-    sections = structure.get("sections") if isinstance(structure.get("sections"), dict) else {}
+    content, _struct = ingest_legacy_label_content_base_resume(raw, structure)
     section_ids = {
-        sid for sid, spec in sections.items() if isinstance(spec, dict) and spec.get("id")
-    }
-    title_to_id = {
-        (spec.get("title") or "").strip(): sid
-        for sid, spec in sections.items()
+        sid for sid, spec in _struct.get("sections", {}).items()
         if isinstance(spec, dict) and spec.get("id")
     }
-    if isinstance(raw, dict):
-        payload = filter_base_resume_to_structure(raw, section_ids)
-    elif isinstance(raw, list):
-        legacy: dict[str, str] = {}
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            label = (item.get("label") or "").strip()
-            sid = title_to_id.get(label)
-            if not sid or sid not in section_ids:
-                continue
-            legacy[sid] = str(item.get("content") if item.get("content") is not None else "")
-        payload = filter_base_resume_to_structure(legacy, section_ids)
-    else:
-        payload = {}
+    payload = filter_base_resume_to_structure(content, section_ids)
     return json.dumps(payload, indent=2) if payload else ""
 
 
@@ -1925,7 +2863,8 @@ def resolve_resume_structure(candidate_data: dict) -> dict:
             # Corrupt or legacy blob: bounded fallback to default (see test_resolve_falls_back_to_default_when_invalid).
             pass
     resolved = default_resume_structure()
-    br = artifacts.get("base_resume")
+    cid = candidate_id_for_current_read(cd)
+    br = load_pilot_base_resume_for_candidate(cid) if cid else None
     if isinstance(br, dict):
         ac = br.get("accent_color")
         if isinstance(ac, str) and ac.strip():
@@ -1940,8 +2879,116 @@ _CRAFT_RESUME_NESTED_CONTENT_KEYS = ("content", "text", "value", "body")
 _CRAFT_RESUME_CONTENT_DICT_KEYS = ("content", "section_content", "base_resume")
 
 
+def _normalize_job_accomplishments_list(raw: Any) -> Optional[list]:
+    """Return stripped string list, or None if shape is not a valid accomplishments list."""
+    if not isinstance(raw, list):
+        return None
+    out: list = []
+    for item in raw:
+        if not isinstance(item, str):
+            return None
+        s = item.strip()
+        if s:
+            out.append(s)
+    return out
+
+
 def _is_experience_job_array(val: Any) -> bool:
     return isinstance(val, list) and all(isinstance(item, dict) for item in val)
+
+
+def _is_resume_content_section_id(sid: str) -> bool:
+    if sid in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or sid == "accent_color":
+        return False
+    if sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+        return True
+    return _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is not None
+
+
+def _load_missing_section_format(sid: str) -> str:
+    """AST-1324 read-path default: known id map, else free_prose (not bullet_list extras default)."""
+    if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID:
+        return RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+    return RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["professional_summary"]
+
+
+def hydrate_resume_structure_from_base_resume(resolved: dict, base_resume: Any) -> dict:
+    """Read-only: union base_resume content keys into structure; missing body format → free_prose."""
+    out = copy.deepcopy(resolved) if isinstance(resolved, dict) else default_resume_structure()
+    sections = out.get("sections") if isinstance(out.get("sections"), dict) else {}
+    out["sections"] = sections
+    used = set(sections)
+    if sections:
+        next_order = 1 + max(
+            (spec.get("order") or 0) for spec in sections.values() if isinstance(spec, dict)
+        )
+    else:
+        next_order = 0
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+
+    def _append_missing(sid: str, title: str) -> None:
+        nonlocal next_order
+        if sid in sections:
+            return
+        row: Dict[str, Any] = {
+            "id": sid,
+            "title": title,
+            "enabled": True,
+            "order": next_order,
+            "job_agent_editable": True,
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        }
+        if sid not in contact:
+            row["format"] = _load_missing_section_format(sid)
+        sections[sid] = row
+        used.add(sid)
+        next_order += 1
+
+    def _fix_body_format(sid: str, spec: dict) -> None:
+        if sid in contact or sid == "experience":
+            return
+        fmt = spec.get("format")
+        if not isinstance(fmt, str) or fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+            spec["format"] = _load_missing_section_format(sid)
+
+    def _fill_page_break_policy(spec: dict) -> None:
+        # Soft-default for pre-epic blobs on read; PUT still validates via normalize.
+        raw = spec.get("page_break_policy")
+        if (
+            raw is None
+            or (isinstance(raw, str) and not raw.strip())
+            or raw not in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
+        ):
+            spec["page_break_policy"] = RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+
+    def _ensure_sid(sid: str, title: str) -> None:
+        if sid not in sections:
+            _append_missing(sid, title)
+        elif isinstance(sections.get(sid), dict):
+            _fix_body_format(sid, sections[sid])
+            _fill_page_break_policy(sections[sid])
+
+    if isinstance(base_resume, dict):
+        for k in base_resume:
+            if k in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or k == "accent_color":
+                continue
+            if _is_resume_content_section_id(k):
+                _ensure_sid(k, k.replace("_", " ").title())
+    elif isinstance(base_resume, list):
+        for item in base_resume:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            if not label:
+                continue
+            sid = _title_to_structure_section_id(label, out)
+            if sid is None:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing(sid, label)
+            else:
+                _ensure_sid(sid, label)
+
+    return out
 
 
 # Public alias for tracker / builder (AST-996 / AST-997 / AST-998).
@@ -1973,11 +3020,11 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
         sections = None
 
     def _promote(sid: str, val: Any) -> None:
-        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+        if not _is_resume_content_section_id(sid):
             return
-        if sid == "experience" and _is_experience_job_array(payload.get(sid)):
+        if _is_experience_job_array(payload.get(sid)):
             return
-        if sid == "experience" and _is_experience_job_array(val):
+        if _is_experience_job_array(val):
             payload[sid] = val
             return
         if _coerce_resume_section_string(payload.get(sid)):
@@ -1998,8 +3045,8 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
                 _promote(sid, val)
 
     # Direct keys on resume_structure (e.g. candidate_name) — not sections/content metadata.
-    for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
-        if sid in raw_struct:
+    for sid in list(raw_struct.keys()):
+        if _is_resume_content_section_id(sid):
             _promote(sid, raw_struct[sid])
 
     if sections is None:
@@ -2007,15 +3054,10 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
     for sid, spec in sections.items():
         if not isinstance(spec, dict) or not spec.get("enabled"):
             continue
-        if _coerce_resume_section_string(payload.get(sid)):
-            continue
         for ck in _CRAFT_RESUME_NESTED_CONTENT_KEYS:
             if ck not in spec:
                 continue
-            text = _coerce_resume_section_string(spec.get(ck))
-            if text:
-                payload[sid] = text
-                break
+            _promote(sid, spec.get(ck))
 
 
 def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
@@ -2034,7 +3076,6 @@ def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
             payload["resume_structure"] = default_resume_structure()
 
 
-_DRAFT_JOB_RESUME_METADATA_KEYS = frozenset({"astral_job_id", "company", "title", "task_success"})
 _DRAFT_JOB_RESUME_CONSULT_KEYS = frozenset(
     {"grades", "dealbreakers", "clarifications", "overall_assessment", "ja_notes"}
 )
@@ -2044,17 +3085,23 @@ _DRAFT_JOB_RESUME_SECTION_ALIASES = {
 }
 
 
-def _apply_draft_job_resume_section_aliases(inner: dict) -> None:
-    for alias, canonical in _DRAFT_JOB_RESUME_SECTION_ALIASES.items():
-        if alias not in inner:
-            continue
-        alias_val = inner.pop(alias)
-        if canonical not in inner or inner.get(canonical) in (None, ""):
-            inner[canonical] = alias_val
+def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
+    """Section keys from artifacts.base_resume (including extras); not ∩ KNOWN."""
+    cd = candidate_data if isinstance(candidate_data, dict) else {}
+    cid = candidate_id_for_current_read(cd)
+    base = load_pilot_base_resume_for_candidate(cid) if cid else None
+    if not isinstance(base, (dict, list)):
+        return []
+    structure = resolve_resume_structure(cd)
+    content, _ingested = ingest_legacy_label_content_base_resume(base, structure)
+    return sorted(k for k in content if _is_resume_content_section_id(k))
 
 
-def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
-    """Before draft_job_resume validation: flatten nested/wrapped section strings (AST-594)."""
+def normalize_draft_job_resume_agent_payload(parsed: dict, *, debug: bool = False) -> None:
+    """Before draft_job_resume validation: unwrap nested resume + flatten section strings (AST-594 / AST-1270).
+
+    When ``debug=True``, emit Style D unwrap trail (AST-1272) before the nest pop.
+    """
     if not isinstance(parsed, dict):
         return
     payload = parsed.get("agent_payload")
@@ -2064,10 +3111,40 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
         inner = parsed
     else:
         return
+    task_cfg = TASK_CONFIG["draft_job_resume"]
+    nest_key = task_cfg["nested_resume_key"]
+    meta = set(task_cfg["payload_metadata_keys"])
+    # Style D unwrap trail before pop — agent passes debug= on first do_task call only.
+    logger.set_debug_flag(debug)
+    nested = inner.get(nest_key)
+    if isinstance(nested, dict):
+        unwrap_outcome = "popped"
+        nested_section_count = len(nested)
+    elif nest_key in inner:
+        unwrap_outcome = "invalid"
+        nested_section_count = 0
+    else:
+        unwrap_outcome = "flat"
+        nested_section_count = 0
+    if debug:
+        logger.debug_index(
+            func="candidate.normalize_draft_job_resume_agent_payload",
+            index=1,
+            total=1,
+            identifier=str(inner.get("astral_job_id") or ""),
+            outcome=f"unwrap {unwrap_outcome}",
+        )
+        logger.debug_detail(f"found nest_key={nest_key!r} unwrap={unwrap_outcome}")
+        logger.debug_detail(f"found nested_section_count={nested_section_count}")
+    # Nested envelope: promote section bodies onto agent_payload; drop nest key.
+    if isinstance(nested, dict):
+        block = inner.pop(nest_key)
+        for sid, val in block.items():
+            inner[sid] = val
     if "resume_structure" in inner:
         _flatten_craft_resume_section_strings(inner)
-    for nest_key in _CRAFT_RESUME_CONTENT_DICT_KEYS:
-        block = inner.get(nest_key)
+    for promote_key in _CRAFT_RESUME_CONTENT_DICT_KEYS:
+        block = inner.get(promote_key)
         if not isinstance(block, dict):
             continue
         for sid, val in block.items():
@@ -2079,7 +3156,7 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
             if text:
                 inner[sid] = text
     for key, val in list(inner.items()):
-        if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
+        if key in meta or key == "resume_structure":
             continue
         if key == "experience" and _is_experience_job_array(val):
             continue
@@ -2094,8 +3171,8 @@ def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> N
     """Restore company/title/dates/location from base jobs matched by (company, title)."""
     if not isinstance(payload, dict) or not isinstance(candidate_data, dict):
         return
-    artifacts = candidate_data.get("artifacts")
-    base = artifacts.get("base_resume") if isinstance(artifacts, dict) else None
+    cid = candidate_id_for_current_read(candidate_data)
+    base = load_pilot_base_resume_for_candidate(cid) if cid else None
     if not isinstance(base, dict):
         return
     base_exp = base.get("experience")
@@ -2131,44 +3208,126 @@ def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> N
                 job[field] = ""
 
 
-def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Optional[str]:
-    """Catalog whitelist for draft_job_resume section keys; all sections optional."""
+def validate_draft_job_resume_payload(
+    parsed: dict, candidate_data: dict, *, debug: bool = False
+) -> Optional[str]:
+    """Whitelist draft_job_resume section keys against artifacts.base_resume (AST-1270).
+
+    When ``debug=True``, emit Style D whitelist / accepted / rejected trail (AST-1272).
+    """
+    # Second normalize stays quiet — unwrap Style D already fired on agent's first call.
     normalize_draft_job_resume_agent_payload(parsed)
+    logger.set_debug_flag(debug)
     payload = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
+    accepted: list[str] = []
+    rejected: list[str] = []
+    allowed: set = set()
+    err: Optional[str] = None
+
     if not isinstance(payload, dict):
-        return "agent_payload must be a dict"
-    structure = resolve_resume_structure(candidate_data)
-    allowed = set(enabled_resume_section_ids(structure))
-    if not allowed:
-        return "candidate has no enabled resume sections"
-    for key, val in payload.items():
-        if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
+        err = "agent_payload must be a dict"
+    else:
+        task_cfg = TASK_CONFIG["draft_job_resume"]
+        nest_key = task_cfg["nested_resume_key"]
+        meta = set(task_cfg["payload_metadata_keys"])
+        if nest_key in payload and not isinstance(payload.get(nest_key), dict):
+            err = f"{nest_key!r} must be an object of resume sections"
+        else:
+            allowed = set(draft_job_resume_allowed_section_keys(candidate_data))
+            if not allowed:
+                err = "candidate has no base_resume section keys"
+            else:
+                for key, val in payload.items():
+                    if key in meta or key == "resume_structure":
+                        continue
+                    if key in _DRAFT_JOB_RESUME_CONSULT_KEYS:
+                        rejected.append(key)
+                        err = f"Unknown or disallowed field '{key}' on draft_job_resume"
+                        break
+                    if key not in allowed:
+                        rejected.append(key)
+                        err = (
+                            f"Unknown resume section key '{key}' "
+                            f"(not in candidate base_resume keys: {sorted(allowed)})"
+                        )
+                        break
+                    if val is None or val == "":
+                        accepted.append(key)
+                        continue
+                    if key == "experience":
+                        # AST-1349: array-only success path (shared five-key contract); no string OK.
+                        # AST-1381: accomplishments must be string[] (reject prose string / mixed).
+                        if _is_experience_job_array(val) and val:
+                            bad_job = False
+                            for job in val:
+                                if not isinstance(job, dict):
+                                    rejected.append(key)
+                                    err = "Section 'experience' must be a job array"
+                                    bad_job = True
+                                    break
+                                if not isinstance(job.get("location"), str):
+                                    job["location"] = (
+                                        ""
+                                        if job.get("location") is None
+                                        else str(job.get("location") or "")
+                                    )
+                                acc = _normalize_job_accomplishments_list(
+                                    job.get("accomplishments")
+                                )
+                                if acc is None:
+                                    rejected.append(key)
+                                    err = (
+                                        "Section 'experience' job accomplishments "
+                                        "must be a list of strings"
+                                    )
+                                    bad_job = True
+                                    break
+                                job["accomplishments"] = acc
+                            if bad_job or err is not None:
+                                break
+                            accepted.append(key)
+                            continue
+                        rejected.append(key)
+                        err = "Section 'experience' must be a job array"
+                        break
+                    text = _coerce_resume_section_string(val)
+                    if text is None:
+                        rejected.append(key)
+                        err = f"Section '{key}' must be prose text (string or coercible list)"
+                        break
+                    if text != val:
+                        payload[key] = text
+                    accepted.append(key)
+                if err is None:
+                    pin_experience_job_facts_from_base(payload, candidate_data)
+
+    if debug:
+        ident = str(payload.get("astral_job_id") or "") if isinstance(payload, dict) else ""
+        outcome = "ok" if err is None else "reject"
+        logger.debug_index(
+            func="candidate.validate_draft_job_resume_payload",
+            index=1,
+            total=1,
+            identifier=ident,
+            outcome=outcome,
+        )
+        logger.debug_detail(
+            f"found whitelist_source=get_candidate_current "
+            f"artifact_key={_PILOT_BASE_RESUME_ARTIFACT_KEY!r} keys={sorted(allowed)}"
+        )
+        logger.debug_detail(f"recorded accepted_keys={sorted(accepted)}")
+        logger.debug_detail(f"recorded rejected_keys={sorted(rejected)}")
+        logger.debug_detail(f"recorded error={err if err is not None else 'none'}")
+    return err
+
+
+def _apply_draft_job_resume_section_aliases(inner: dict) -> None:
+    for alias, canonical in _DRAFT_JOB_RESUME_SECTION_ALIASES.items():
+        if alias not in inner:
             continue
-        if key in _DRAFT_JOB_RESUME_CONSULT_KEYS:
-            return f"Unknown or disallowed field '{key}' on draft_job_resume"
-        if key not in allowed:
-            return f"Unknown resume section key '{key}' (not in candidate catalog: {sorted(allowed)})"
-        if val is None or val == "":
-            continue
-        if key == "experience":
-            if _is_experience_job_array(val):
-                for job in val:
-                    if not isinstance(job, dict):
-                        return "Section 'experience' must be a job array or prose string"
-                    if not isinstance(job.get("location"), str):
-                        job["location"] = "" if job.get("location") is None else str(job.get("location") or "")
-                continue
-            if isinstance(val, str):
-                continue
-            if isinstance(val, (list, dict)):
-                return "Section 'experience' must be a job array or prose string"
-        text = _coerce_resume_section_string(val)
-        if text is None:
-            return f"Section '{key}' must be prose text (string or coercible list)"
-        if text != val:
-            payload[key] = text
-    pin_experience_job_facts_from_base(payload, candidate_data)
-    return None
+        alias_val = inner.pop(alias)
+        if canonical not in inner or inner.get(canonical) in (None, ""):
+            inner[canonical] = alias_val
 
 
 def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
@@ -2189,9 +3348,9 @@ def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
         if key not in parsed:
             continue
         val = parsed[key]
-        if key == "experience" and _is_experience_job_array(val):
+        if _is_experience_job_array(val) and val:
             content[key] = val
-        elif isinstance(val, str):
+        elif key != "experience" and isinstance(val, str):
             content[key] = val
     return structure, content
 
@@ -2230,10 +3389,17 @@ def filter_content_to_resume_structure(
     out: Dict[str, Any] = {}
     for key in allowed:
         val = content.get(key)
-        if key == "experience" and _is_experience_job_array(val) and val:
+        if _is_experience_job_array(val) and val:
             out[key] = val
+        elif key == "experience":
+            if isinstance(val, str) and val.strip():
+                out[key] = val
         elif isinstance(val, str) and val.strip():
             out[key] = val
+        elif isinstance(val, list) and val and all(not isinstance(item, dict) for item in val):
+            text = _coerce_resume_section_string(val)
+            if text:
+                out[key] = text
     return out
 
 
@@ -2268,10 +3434,11 @@ async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> D
         return {"success": False, "error": "parse_resume returned None parsed_response"}
 
     structure, content = split_craft_resume_base_payload(parsed)
-    database.save_candidate(
+    save_candidate_data(candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY, structure)
+    save_candidate_data(
         candidate_id,
-        candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-        merge=True,
+        TASK_CONFIG["craft_resume_base"]["artifact_key"],
+        content,
     )
     if debug:
         logger.debug_index(
@@ -2299,7 +3466,11 @@ def _debug_experience_jobs(log, content_or_parsed: Any) -> None:
                 f"dates={job.get('dates')!r} location={job.get('location')!r}"
             )
             acc = job.get("accomplishments")
-            if isinstance(acc, str) and acc.strip():
+            if isinstance(acc, list) and acc:
+                for line in truncate_debug_content("\n".join(str(x) for x in acc)):
+                    log.debug_detail(f"experience[{i}] accomplishments: {line}")
+            elif isinstance(acc, str) and acc.strip():
+                # Legacy string — still surface for Style D until Save rewrites to list.
                 for line in truncate_debug_content(acc):
                     log.debug_detail(f"experience[{i}] accomplishments: {line}")
             else:
@@ -2397,16 +3568,6 @@ def get_pending_craft_generation(
 
 def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: Any) -> None:
     """Persist craft success for REQUESTED_* dispatch (AST-972) — no nested ledger."""
-    if task_key == "craft_resume_base":
-        if not isinstance(parsed, dict):
-            raise ValueError("craft_resume_base parsed_response must be a dict")
-        structure, content = split_craft_resume_base_payload(parsed)
-        database.save_candidate(
-            candidate_id,
-            candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-            merge=True,
-        )
-        return
     if task_key == "craft_company_search_terms":
         if not isinstance(parsed, dict):
             raise ValueError("craft_company_search_terms parsed_response must be a dict")
@@ -2443,84 +3604,61 @@ def _requested_stage_failure_target(primary_state: str, current_state: str) -> s
     return error
 
 
-async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_RESUME → craft_resume_base → RESUME_READY / retry / error."""
-    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
-    logger.set_debug_flag(debug)
-    candidate = database.get_candidate(candidate_id)
-    if not candidate:
-        return {**zero, "total_processed": 1, "total_errors": 1}
-    stage = CANDIDATE_STAGE_DISPATCH["requested_resume"]
-    primary = stage["trigger_state"]
-    pass_state = stage["pass_state"]
-    craft_key = stage["craft_task_key"]
-    current = (candidate.get("state") or "").strip()
-    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("raw_resume") or ""
-    try:
-        response = await do_task(
-            task_key=craft_key,
-            live_content=live,
-            index=candidate_id,
-            ctx=candidate,
-            debug=debug,
-        )
-        if not response or not response.get("success"):
-            raise RuntimeError(
-                (response or {}).get("error") if response else "do_task returned None"
-            )
-        parsed = response.get("parsed_response")
-        _persist_craft_dispatch_success(candidate_id, craft_key, parsed)
-        transition_candidate_state(candidate_id, pass_state)
-        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-    except Exception as e:
-        logger.error("run_requested_resume_dispatch failed candidate_id=%s error=%s", candidate_id, e)
-        target = _requested_stage_failure_target(primary, current)
-        try:
-            transition_candidate_state(candidate_id, target)
-        except ValueError:
-            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
-        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-
-
-async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_ARTIFACTS → craft_* via run_next → ARTIFACTS_READY / retry / error."""
+async def run_requested_artifacts_dispatch(
+    candidate_id: str,
+    *,
+    debug: bool = False,
+    task_key: Optional[str] = None,
+    trigger_state: Optional[str] = None,
+    skip_daisy_chain: bool = False,
+) -> Dict[str, int]:
+    """Claim worker: live run_next craft chain from the dispatch row's task_key (AST-1252 / AST-1434)."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {**zero, "total_processed": 1, "total_errors": 1}
     stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-    primary = stage["trigger_state"]
+    raw_trigger = (trigger_state or "").strip() or stage["trigger_state"]
+    parsed_trig = parse_dispatch_hop_label(raw_trigger)
+    bare_trigger = parsed_trig[0] if parsed_trig else raw_trigger
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
-    craft_key = (stage.get("craft_task_key") or "").strip()
-    seen: set[str] = set()
+    start_key = (task_key or "").strip() or (stage.get("task_key") or "").strip()
     try:
-        while craft_key:
-            if craft_key in seen:
-                raise RuntimeError(f"craft run_next cycle at {craft_key!r}")
-            seen.add(craft_key)
-            # Refresh ctx each hop so later crafts see earlier persists.
-            candidate = database.get_candidate(candidate_id) or candidate
-            task_ctx = {**(candidate or {}), "suppress_run_next": True}
-            response = await do_task(
-                task_key=craft_key,
-                live_content="",
-                index=candidate_id,
-                ctx=task_ctx,
-                debug=debug,
+        # Native do_task run_next (hop ledgers); persist via ctx flag.
+        task_ctx = {
+            **(candidate or {}),
+            "astral_candidate_id": candidate_id,
+            "persist_candidate_craft_hops": True,
+            "dispatch_trigger_state": bare_trigger,
+        }
+        if skip_daisy_chain:
+            task_ctx["suppress_run_next"] = True
+        response = await do_task(
+            task_key=start_key,
+            live_content="",
+            index=candidate_id,
+            ctx=task_ctx,
+            debug=debug,
+        )
+        if not response or not response.get("success"):
+            raise RuntimeError(
+                (response or {}).get("error") if response else f"do_task None for {start_key}"
             )
-            if not response or not response.get("success"):
-                raise RuntimeError(
-                    (response or {}).get("error") if response else f"do_task None for {craft_key}"
-                )
-            _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
-            craft_key = _current_agent_task_run_next(craft_key)
-        transition_candidate_state(candidate_id, pass_state)
+        if not skip_daisy_chain and bare_trigger == stage["trigger_state"]:
+            transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
         logger.error("run_requested_artifacts_dispatch failed candidate_id=%s error=%s", candidate_id, e)
-        target = _requested_stage_failure_target(primary, current)
+        # AST-1388: leave last successful compound hop label; bare trigger still → retry/error.
+        after = ((database.get_candidate(candidate_id) or {}).get("state") or "").strip()
+        parsed = parse_dispatch_hop_label(after)
+        if parsed and parsed[0] == bare_trigger:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+        if bare_trigger not in CANDIDATE_STATES:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+        target = _requested_stage_failure_target(bare_trigger, current)
         try:
             transition_candidate_state(candidate_id, target)
         except ValueError:
@@ -2699,6 +3837,18 @@ def run_candidate_artifact_generation(
 ) -> Tuple[Dict[str, Any], int]:
     """Run a craft_* do_task with dispatch_ledger + log_batch_id; returns (json_body, http_status)."""
     logger.set_debug_flag(debug)
+    # AST-1253: chain craft keys hand off via generate_artifacts / REQUESTED_ARTIFACTS
+    if is_requested_artifacts_chain_ui_task(task_key):
+        return (
+            {
+                "success": False,
+                "error": (
+                    "Use POST /api/candidates/<id>/generate_artifacts "
+                    "(REQUESTED_ARTIFACTS dispatch chain); per-artifact UI generate retired for this task"
+                ),
+            },
+            409,
+        )
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return ({"error": f"Candidate not found: {candidate_id}"}, 404)
@@ -2893,10 +4043,13 @@ def run_candidate_artifact_generation(
                 )
         if task_key == "craft_resume_base" and parsed_response is not None:
             structure, content = split_craft_resume_base_payload(parsed_response)
-            database.save_candidate(
+            save_candidate_data(
+                candidate_id, _RESUME_STRUCTURE_ARTIFACT_KEY, structure
+            )
+            save_candidate_data(
                 candidate_id,
-                candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
-                merge=True,
+                TASK_CONFIG["craft_resume_base"]["artifact_key"],
+                content,
             )
             if debug:
                 logger.debug_index(
