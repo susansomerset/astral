@@ -90,3 +90,41 @@ Ticket **Scope** names only `src/core/consult.py`: scored-path all-literal-`X` c
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1760
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref tip:** `6a4a8918102f17b97c711940fff1f65010686664`
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| astral.batch.claim-process-release | A | | |
+| stat.logging.debug | A | | |
+
+## Traceability
+
+AC1→Stage1(1–3, smoke fail-dest); AC2→Stage1(1–3, smoke holding→terminal); AC3→Stage1(2–3, Done-when); AC4→Stage1(2⚠,5); AC5→Stage1(3⚠,5, smoke)
+
+## Findings
+
+### acceptable
+
+- **Location:** Plan — Estimate
+- **Finding:** No formal self-assessment / conf block; only `Confirm Chuckles estimate: 2 — agree`.
+- **Recommendation:** Acceptable for this slice; Betty owns AC3 unit/component verification at qa-child.
+
+### discuss
+
+- **Location:** Stage 1 step 4 vs `render_verdict` handler (~1464–1474)
+- **Finding:** Dedicated all-literal-`X` `logger.debug` is scoped to `_run_batch_consult`; single-entity scored applies (`len(entities)==1` → `render_verdict`) would still hit `_debug_incomplete_grade_set` with incomplete-grade field shape if the engineer relies on the subclass-only path.
+- **Recommendation:** On build, either add a parallel all-`X` debug branch in `render_verdict`'s `IncompleteGradeSetError` handler or implement step 4's preferred one-line `all literal X grade set …` in `_run_batch_consult` only — behavior is already correct via `_consult_batch_fail_dest`; message honesty is the only delta.
+
+context_tokens≈42000
