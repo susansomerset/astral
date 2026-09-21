@@ -685,3 +685,69 @@ Do **not** change `/telescope/html`, `capture_text`, auth, pool, Dockerfile, or 
 ## Radia review-fix (AST-1732)
 
 Restacked onto ftr after REVIEW; link-scoping + sibling capture_html/class fixes held. → User Testing.
+
+## Bug: AST-1733 — Telescope text scrape of head includes style/non-visible CSS
+
+### As-is
+
+`POST /telescope` with `selector` targeting the document head (e.g. `"head"`) returns style-sheet CSS and other non-visible head machinery mixed into the `text` payload (e.g. firework keyframes / `.medallion` rules from `<style>` blocks).
+
+### To-be
+
+Text scrape for any selector returns visible/meaningful text only — style sheets and other non-visible head machinery (`style` / `script` / `noscript`, plus the same hidden-attribute cull the page/body path already uses) are excluded. Meaningful head text such as `<title>` remains.
+
+### Repro
+
+1. Fixture page (or live URL) whose `<head>` contains a `<style>` block with distinctive CSS (e.g. `.firework::before { … }`) **and** a `<title>` with readable text.
+2. `POST /telescope` with bearer auth and body `{"url": "<that page>", "selector": "head", "expand": false, "links": false}`.
+3. **As-is:** response `text` contains CSS rule text (e.g. `div[data-rewards-widget].medallion .firework` / `radial-gradient`).
+4. **To-be:** response `text` contains the title (and any other meaningful text nodes under `head`) and does **not** contain stylesheet rule bodies or script source.
+
+Component (no live browser): `capture_text(page, "head")` must evaluate a clone-and-strip script (not bare `el.innerText`); assert the evaluate payload removes `style`/`script`/`noscript` before `innerText`.
+
+### Root cause
+
+AST-1725 Stage 3 `capture_text` has two paths:
+
+- **Page/body** (`None` / `""` / `"page"` / `"body"`): clones `document.body`, removes `style, script, noscript` (and chrome/hidden nodes), then `innerText`.
+- **CSS selector** (including `"head"`): `_QUERY_TEXT_JS` maps each match to `(el.innerText || '').trim()` with **no** strip.
+
+On a non-rendered subtree like `<head>`, Firefox still surfaces `<style>` contents through `innerText`, so selector-scoped capture leaks CSS. The defect is the selector-path omission of the strip the body path already applies — not navigation, auth, or HTML capture.
+
+### Proposed change
+
+All edits stay inside parent AST-1721 Component/Technical scope (`service/telescope/` capture). Platform post-render helpers are **not** required: the leak is at service text capture; Surfer-shared helpers must not become a second fork of this filter.
+
+1. **`service/telescope/capture.py` — strip non-visible machinery on the selector text path**
+   - Change `_QUERY_TEXT_JS` so each matched node is handled like the page/body path’s content filter, scoped to that node:
+     - `const root = el.cloneNode(true);`
+     - Remove `style, script, noscript` under `root` (same selector list as the body path).
+     - Remove the same hidden/aria-hidden/utility-hide set the body path already uses (`[hidden], [aria-hidden="true"], .hide, .hidden, .d-none, .visually-hidden, .sr-only, [style*="display:none"], [style*="display: none"]`).
+     - Return `(root.innerText || '').trim()`.
+   - Do **not** remove `header` / `footer` / `nav` / banner roles on the selector path — those chrome strips are page/body-only; a caller who selects those regions intentionally should still get their text.
+   - Keep bare-class retry (`_BARE_CLASS_RETRY`) and `_fold_blobs` multi-match shape unchanged.
+   - Page/body branch unchanged (already strips).
+
+2. **Out of scope for this bug**
+   - Do **not** change `capture_html` (HTML of `head` may still include `<style>` — raw markup is correct there).
+   - Do **not** change `capture_links`, auth, pool, Dockerfile, `src/**`, admin UI, or Railway/CI.
+
+### Blast radius
+
+- Any `POST /telescope` call with a CSS/`head` selector whose match tree contains embedded `<style>` / `<script>` / `<noscript>` (or hidden nodes) will return less text — intentional UAT fix.
+- Page/body default text path unchanged.
+- Callers that relied on scraping CSS-as-text via `selector: "head"` lose that (there is no supported use for style-as-text).
+- `tests/component/service/test_telescope_capture.py` may only cover page/body / class paths today; Betty may need a repro that selector-path evaluate strips `style` (fix-board TESTS signal). Do not edit `tests/` here.
+- Sibling bugs AST-1729/1731/1732 touch other capture functions; this change is confined to `_QUERY_TEXT_JS` / selector `capture_text` only — do not regress bare-class retry or HTML/link behavior.
+
+### What must still hold
+
+- Parent AC 3 / AST-1725: `/telescope` returns `final_url` + `text` (`str` or `list[str]`); bearer; expand default on; wait_ready default off; no service-side cull.
+- Parent AC 5: multi-match text shape (`""` / `str` / `list[str]`) unchanged.
+- Page/body path still uses the existing clone + chrome/style/hidden strip.
+- Explicit CSS selectors (including bare-class retry from AST-1731) still resolve the same nodes; only the per-node text extraction changes.
+- Zero `src` imports under `service/telescope/`; capture stays browser-only.
+- Boundaries: no Railway/CI, no platform `telescope.py` post-render fork of this strip, no Surfer extension.
+## Radia review-fix (AST-1733)
+
+Overall: CLEAN. Clean-review shortcut → User Testing (resolve skipped).

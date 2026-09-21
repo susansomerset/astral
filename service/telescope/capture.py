@@ -13,11 +13,18 @@ _BARE_CLASS_RETRY = """
     }
 """
 
+# Selector path: clone each match, strip style/script/noscript + hidden (AST-1733).
+# Do not strip header/footer/nav — those chrome removals are page/body-only.
 _QUERY_TEXT_JS = (
     """(selector) => {"""
     + _BARE_CLASS_RETRY
     + """
-    return nodes.map(el => (el.innerText || '').trim());
+    return nodes.map(el => {
+        const root = el.cloneNode(true);
+        root.querySelectorAll('style, script, noscript').forEach(n => n.remove());
+        root.querySelectorAll('[hidden], [aria-hidden="true"], .hide, .hidden, .d-none, .visually-hidden, .sr-only, [style*="display:none"], [style*="display: none"]').forEach(n => n.remove());
+        return (root.innerText || '').trim();
+    });
 }"""
 )
 
