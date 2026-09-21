@@ -171,3 +171,66 @@ Detail keys include full `content` plus AC metadata. `link` / `astral_job_id` ar
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1749
+**Overall:** APPROVED
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Publish ref tip:** a506737b49189cec7996366f07f3dd803bf41a12
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | Explicit scope gate: no Flask routes, no `logger.info`; GET-only consumption |
+| stat.logging.debug | A | | UI adds no `logger.debug`; honors AST-1748 API debug joints |
+| stat.logging.error | A | | Modal/list surface 404/failure honestly; no API error logging invented |
+
+## Traceability
+
+AC1→S1 NAV + route; AC2→S2 `selectedId` load/refetch; AC3→S2 empty `meteorites`/no placeholders; AC4→S3 sections + `meteorite_content`/provenance/timestamps; AC5→S3 `meteorite_link` http(s) gate; AC6→S3 `meteorite_job` deeplink gate; AC7→S2/S3 read-only gates (GET only); AC8→S1 preserve Companies → Meteorite nav/route
+
+## Findings
+
+### discuss
+
+- **Location:** Canon Scope vs plan footprint  
+  **Finding:** Frozen list carries only API logging statutes (honor-only on this UI child). Plan adds new frontend files under standard paths but `astral.ui.frontend-file-placement` (and other placement/scope statutes) were not selected at Discussion.  
+  **Recommendation:** Archie may amend parent Canon Scope if those should be scored at `review-child`; do not widen the frozen list in-flight.
+
+- **Location:** Canon Scope — honor-only logging ids  
+  **Finding:** All three cited statutes territorially govern `src/ui/api/**` / backend logging; this plan touches frontend + `NAV_CONFIG` only. Plan text still explicitly honors sibling contracts.  
+  **Recommendation:** Scope observation — intentional sibling parity with AST-1748; not a plan defect.
+
+- **Location:** Stage 3 — helper duplication  
+  **Finding:** Plan copies `JobMeteoritePane` http/JSON/field-row helpers into `MeteoriteDetailModal.tsx` rather than extracting shared code.  
+  **Recommendation:** Acceptable per Explicit scope gate (cannot edit `JobMeteoritePane.tsx`); note for future refactor if a third surface appears.
+
+- **Location:** Linear assignee vs validate-plan gate  
+  **Finding:** Ticket is `Plan Ready` with assignee Katherine Johnson, not Joan; Chuckles spawned this pass.  
+  **Recommendation:** Procedural only — no plan change required.
+
+### acceptable
+
+- **Location:** Stage 2 — `CompaniesMeteorite.tsx` pattern  
+  **Finding:** Plan correctly diverges where needed (API-driven columns vs hardcoded `METEORITE_COLUMNS`; clears rows when no candidate).  
+  **Recommendation:** None.
+
+- **Location:** Execution contract — AST-1748 dependency  
+  **Finding:** Sibling list/detail routes exist on `origin/ftr/AST-1741-add-meteorites-jobs-nav`; contract paths match plan.  
+  **Recommendation:** None.
+
+## R6 checklist (summary)
+
+- Definition fidelity: plan implements Jobs nav, list, modal, deeplink/link honesty, read-only, and Companies Meteorite preservation — no database/API/land scope.
+- Scope gate: all Files Changed rows and stages stay inside ticket ## Scope.
+- DRY: reuses `ListPage`, `Modal`, `ReportSectionList`, and JobMeteoritePane rendering patterns without editing out-of-scope files.
+- Self-assessment: Estimate 3 — agree; staged decisions are specific (nav placement, API column authority, modal composition).
+
+context_tokens≈35000
+
+---
+
+[plan-rubric] PROCEED (Commit: a506737b49189cec7996366f07f3dd803bf41a12) UI plan faithful
