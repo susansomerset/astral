@@ -63,6 +63,7 @@ export default function AdminTelescope() {
   // AST-1744 — Tag is the only primary; Class name is secondary (combinable).
   const [tag, setTag] = useState("")
   const [className, setClassName] = useState("")
+  const [elementId, setElementId] = useState("")
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ScrapeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -87,6 +88,7 @@ export default function AdminTelescope() {
       }
       if (tag.trim()) body.tag = tag.trim()
       if (className.trim()) body.class_name = className.trim()
+      if (elementId.trim()) body.id = elementId.trim()
       const res = await api("/api/admin/telescope", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -212,7 +214,21 @@ export default function AdminTelescope() {
             type="text"
             value={className}
             onChange={e => setClassName(e.target.value)}
-            placeholder="shaders (no leading dot)"
+            placeholder="logo / shaders (no leading dot)"
+          />
+          <span style={{ fontSize: 12, opacity: 0.75 }}>
+            Class matches return each element&apos;s outer HTML when Response type is html
+            (not text).
+          </span>
+        </label>
+
+        <label className="admin-telescope-field">
+          <span>Id (optional)</span>
+          <input
+            type="text"
+            value={elementId}
+            onChange={e => setElementId(e.target.value)}
+            placeholder="hero (no leading #)"
           />
         </label>
 
