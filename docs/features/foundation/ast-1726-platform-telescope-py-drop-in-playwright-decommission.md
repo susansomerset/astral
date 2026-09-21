@@ -763,3 +763,80 @@ Meteorite dispatch runners (AST-1560 era) hard-coded ERROR-family branches as `t
 - **What must still hold — OK** — four-key summary; AST-1689/1742 holds; meteorite.py only.
 - **§3h:** resolve-child skipped (clean review).
 
+## Bug: AST-1752 — Closed/missing content is LINK_EXPIRED fail, not SCRAPE_ERROR
+
+UAT-batch fix against amended AST-1721 Component/Technical scope (AST-1752 exception on `meteorite.py` + `config.py`). Lives on this plan doc because AST-1726 owns `src/core/meteorite.py` in the epic (same home as the AST-1751 block above). Does not rewrite Stages 1–4 or the AST-1751 block above. Diagnostic `why` strings from [AST-1750](ast-1725-telescope-service-container-and-api.md) stay; only state, counter, and next-step change for `closed` / `missing`.
+
+### As-is
+
+`_classify_jd` verdicts `closed` and `missing` go through `METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]` to `SCRAPE_ERROR`. `run_scrape_meteorite` then increments `total_errors` and warns via `_row_miss` → `logger.warning` with next step `This row is ERROR`. UAT (`meteorite 92`, Dice): `scrape_closed signal='no longer available' …` then `This row is ERROR`, dispatcher `scrape_meteorite pass:0 fail:0 error:5`. Nothing threw. The same next step `This row is ERROR` is passed for every other soft `SCRAPE_ERROR` arm in `run_stage_meteorite`, `run_scrape_meteorite` (missing link), and `run_land_meteorite`. Thrown faults already use `logger.exception`. `BOT_BLOCKED` already warns `This row is BOT_BLOCKED` and increments `total_failed` only. There is no `LINK_EXPIRED` state.
+
+### To-be
+
+`closed` and `missing` write terminal state `LINK_EXPIRED` and increment `total_failed` only. Five closed rows report `pass:0 fail:5 error:0`. The warning stays `logger.warning`; the next step is `This row is LINK_EXPIRED`. The AST-1750 `why` / row `error` string (`signal=`, `text_len=`, `final_url=`) stays on that warning. A row with no usable link stays `SCRAPE_ERROR`, `total_errors` only, next step `This row is SCRAPE_ERROR`. No soft arm's warning text is `This row is ERROR`. Exceptions stay `logger.exception` and `total_errors` only. `LINK_EXPIRED` does not trigger Estelle bot-block notify.
+
+### Repro
+
+No SQL seed. Fixture text returned as Telescope visible text for a meteorite row already in `SCRAPE_LINK` with an `http://` or `https://` `link`:
+
+1. **Closed.** `visible_text` = `Sorry, this job is no longer available.` (`TRACKER_CONFIG["jd_classifier"]["closed_signals"]` contains `no longer available`). After `run_scrape_meteorite`: row `state` is `LINK_EXPIRED`; `error` still contains `signal='no longer available'`, `text_len=`, and `final_url=`; warning next step is `This row is LINK_EXPIRED`; summary `total_failed=1`, `total_errors=0`. Live shape: the AST-1752 UAT line for meteorite 92 (`final_url=https://www.dice.com/job-detail/c5a9ffeb-c9c9-44a2-b0e4-59668a8d18b3`).
+2. **Missing.** `visible_text` = `not a posting` (shorter than `jd_classifier.min_meaningful_chars`, default 500; no closed/bot/cookie hit, so `_classify_jd` returns `missing`). Same outcomes as (1) with `page_status` `missing` and `signal=None` in the `why` string: `LINK_EXPIRED`, `total_failed` only, next step `This row is LINK_EXPIRED`.
+3. **Still an error.** `link` empty or not `http://` / `https://` (no fetch). State stays `SCRAPE_ERROR`, `total_errors=1`, `total_failed=0`, warning next step `This row is SCRAPE_ERROR`.
+
+### Root cause
+
+`scrape_page_status_states` maps `closed` and `missing` to `SCRAPE_ERROR`, and the scrape soft-fail tail always does `total_errors += 1` plus next step `This row is ERROR`. Those two verdicts are `_classify_jd` content judgments after Telescope already returned text. They are not a throw, a timeout, an HTTP 5xx, or a missing link. The next-step string says `ERROR` on a `logger.warning`, which names a log level instead of the meteorite state that was written.
+
+### Proposed change
+
+Files: `src/utils/config.py`, `src/core/meteorite.py` only. Do not edit `src/core/gazer.py` (`_classify_jd` / `_CONTACT_PAGE_STATUS` stay shared), `src/external/telescope.py`, `service/telescope/**`, `tests/`, or `docs/test-bible/**`.
+
+1. **`METEORITE_STATES` in `src/utils/config.py`** — add:
+
+   ```python
+   "LINK_EXPIRED": {
+       "prior_states": ["SCRAPE_LINK"],
+   },
+   ```
+
+   Add `"LINK_EXPIRED"` to the `assert set(METEORITE_STATES) == {…}` set. Do **not** add `LINK_EXPIRED` to `SCRAPE_LINK["prior_states"]` (no retry onto the scrape queue). Do **not** add `LINK_EXPIRED` to `ABANDONED["prior_states"]` (nag/stale cleanup stays `BOT_BLOCKED` and `SCRAPE_ERROR` only — not in this bug's scope).
+
+2. **`METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]`** — set `"closed"` and `"missing"` to `"LINK_EXPIRED"`. Leave `"blocked": "BOT_BLOCKED"` and `"ok": "READY"`. Widen the values assert from `{"READY", "BOT_BLOCKED", "SCRAPE_ERROR"}` to also include `"LINK_EXPIRED"`.
+
+3. **`METEORITE_BOT_BLOCKED_NOTIFY_CONFIG`** — do not edit. Leave `trigger_state` `BOT_BLOCKED` and the existing `assert _mid_notify["trigger_state"] == "BOT_BLOCKED"`. That already excludes `LINK_EXPIRED`.
+
+4. **`run_scrape_meteorite` in `src/core/meteorite.py`**
+
+   - Missing-link arm (no `http://` / `https://` link): keep `state="SCRAPE_ERROR"`, `error="missing link"`, `total_errors += 1` only. Change the `_row_miss` next step from `This row is ERROR` to `This row is SCRAPE_ERROR`.
+   - `page_status == "blocked"`: unchanged (`BOT_BLOCKED`, `total_failed` only, next step `This row is BOT_BLOCKED`, do not clear `electronic_contact`).
+   - `page_status == "ok"` and non-empty stripped text: unchanged (`READY`, `total_passed`).
+   - **Before** the shared soft-fail `update_meteorite`, if `page_status` is `closed` or `missing`: keep today's AST-1750 `err` build (closed-signal scan, `text_len`, `final_url`; `missing` keeps `signal=None`) and the ungated `logger.debug` of full `visible_text`. Then `update_meteorite(row_id, state=status_map[page_status], error=err)`, `_row_miss(row_id, cid, err, "This row is LINK_EXPIRED")`, `summary["total_failed"] += 1`, `continue`. Do not increment `total_errors`.
+   - Any remaining soft-fail fall-through (not closed/missing): keep `state=status_map.get(page_status, "SCRAPE_ERROR")` and `total_errors += 1`. Next step is `f"This row is {state}"`, not `This row is ERROR`. Do not send this arm to `LINK_EXPIRED`. (`_classify_jd("")` is `missing`, so this fall-through is not the closed/missing UAT path.)
+   - `except Exception`: unchanged — `logger.exception` with candidate, row id, exception type/message, and `Continuing to the next row`; `total_errors += 1` only. Do not add `_row_miss`. Do not call `logger.error` for a non-throw.
+   - Docstring: `SCRAPE_LINK → READY | BOT_BLOCKED | LINK_EXPIRED | SCRAPE_ERROR`.
+
+5. **Other soft `SCRAPE_ERROR` warnings** — where `_row_miss` is called with next step exactly `This row is ERROR` and the row is written `SCRAPE_ERROR`, change only that string to `This row is SCRAPE_ERROR`. Do not change those states or counters:
+
+   - `run_stage_meteorite`: missing classify_outcome, skip outcome on row, missing link, missing content, missing breadcrumb link, unhandled classify_outcome.
+   - `run_land_meteorite`: missing content (non-empty `BOT_BLOCKED` skip stays), land-failed `error` arm.
+
+   Leave `This row is BOT_BLOCKED`, `This row is ABANDONED`, and `This row is staying BOT_BLOCKED` as they are. Do not switch any of these `logger.warning` calls to `logger.error` (`stat.logging.error`: soft-fail with no throw is warning; error level is `logger.exception` on a throw).
+
+### Blast radius
+
+- Closed/missing batches that AST-1751 made `fail:0 error:N` become `fail:N error:0`. Genuine `SCRAPE_ERROR` and exception arms stay `total_errors` only.
+- AST-1750's `signal=` / `text_len=` / `final_url=` why-string and Telescope debug dump stay. Operators will see `LINK_EXPIRED` instead of `This row is ERROR` on that warning.
+- `meteorite_bot_blocked_notify` does not claim `LINK_EXPIRED` (trigger stays `BOT_BLOCKED`). `SCRAPE_LINK` retry priors stay `NEW` and `SCRAPE_ERROR` only, so an expired link is not scraped again. `ABANDONED` does not list `LINK_EXPIRED`.
+- Stage/land warning next steps that said `This row is ERROR` will say `This row is SCRAPE_ERROR`. Counters on those arms do not move.
+- Tests or bible rows that expect `closed`/`missing` → `SCRAPE_ERROR`, the phrase `This row is ERROR`, or `fail:0` on a closed batch will fail. Betty owns `tests/` and `docs/test-bible/**`. This ticket does not edit them.
+- Dispatcher summary stays four ints: `total_processed`, `total_passed`, `total_failed`, `total_errors`.
+
+### What must still hold
+
+- AST-1751: `SCRAPE_ERROR` and exception arms increment `total_errors` only, never also `total_failed`. `BOT_BLOCKED` increments `total_failed` only. AST-1742 inbox `NOT_A_JOB` / skip → fail is untouched.
+- AST-1750: closed/missing warning `why` and row `error` still include `signal=`, `text_len=`, and `final_url=`; `logger.debug` still logs full `visible_text`; no page HTML on the warning; no truncation and no `if debug` gate.
+- `stat.logging.warning`: one per-item warning for a soft miss. `stat.logging.error`: throws stay a single `logger.exception` (facts + next step + traceback). No `logger.error` on a non-throw. No pass/fail/error rollup at error level.
+- AST-1689: bot-block remains state-only (do not clear `electronic_contact`). Notify `trigger_state` stays `BOT_BLOCKED`.
+- `_classify_jd` is not renamed or forked. Telescope HTTP helpers and roster/gazer import paths stay as AST-1726 left them.
+- No depth or output limits.
+
