@@ -212,3 +212,12 @@ context_tokens≈18500
 - `patt.task.daisy-chain` scope met: teaches optional `job_title` at classify stage for same-pass row carry-through; no parallel extract path.
 
 context_tokens≈32000
+
+## Resolution
+
+**Date:** 2026-09-21  
+**Radia:** Overall CLEAN — no fix-now items (`[code-rubric] PROCEED` @ `8a338003`).
+
+**§9a:** Merged `origin/ftr/AST-1753-stage-email-meteorite-enhancements` into this publish tip so prep-uat / merge-child can land cleanly alongside sibling **AST-1756** (already on ftr). Product intake from ftr: `src/core/meteorite.py` ingress-blob `jd_text` fallback. Kept this child’s `stage_meteorite` job_title prompts + AST-756 fixture twin.
+
+**Dry-runs:** `origin/dev` clean; `origin/ftr/AST-1753-stage-email-meteorite-enhancements` clean.
