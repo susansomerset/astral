@@ -198,3 +198,7 @@ AC5→Stage 1 §2–3 + verify §5 (blank/missing `jd_text` → stripped `ingres
 - Plan Discuss: status `Plan Ready`, assignee Joan, zero completed `[plan-discuss]` rounds.
 
 context_tokens≈22000
+
+## Review stub (build-child)
+
+**Built:** `7d9fcbe1e8709c303415a123311cc76fd62e50b2` on `sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob`
