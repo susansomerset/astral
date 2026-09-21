@@ -209,6 +209,20 @@ def _bare_class_retry_in_script(script: str) -> bool:
 
 
 @pytest.mark.asyncio
+async def test_ast1736_capture_links_bare_class_retries_as_class() -> None:
+    """AST-1736 bug-repro: scoped capture_links must bare→.class retry like html/text."""
+    page = MagicMock()
+    page.evaluate = AsyncMock(
+        return_value=[{"href": "https://ex.com/s", "text": "S"}]
+    )
+    await capture_mod.capture_links(page, "shaders")
+    js = page.evaluate.await_args.args[0]
+    assert _bare_class_retry_in_script(js), (
+        "AST-1736: capture_links scoped path must retry bare token as .{class}"
+    )
+
+
+@pytest.mark.asyncio
 async def test_capture_html_bare_class_token_retries_as_class() -> None:
     """AST-1731 bug-repro: bare 'points-container' must match .class, not empty tag miss."""
 

@@ -164,3 +164,22 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
   tests/component/service/test_telescope_capture.py::test_ast1735_capture_links_body_is_scoped_not_whole_page \
   tests/component/service/test_telescope_capture.py::test_ast1735_capture_links_head_scoped_and_page_stays_whole_document -q
 ```
+
+---
+
+### AST-1736 · AST-1721 (qa-fix bug-repro — tag/class_name filter)
+
+**Board REVISE:** explicit `class_name` (e.g. `shaders`) → resolved `.class` html; `selector`+`class_name` → 400; `capture_links` bare→class retry. AST-1731 only covers bare `selector` heuristic.
+
+| Area | Component tests |
+| --- | --- |
+| `class_name` → `.shaders` into capture_html | `test_telescope_app.py::TestTelescopeRoutes::test_ast1736_html_class_name_resolves_to_dot_class` (**bug-repro**) |
+| Ambiguous selector+class_name → 400 | `test_telescope_app.py::TestTelescopeRoutes::test_ast1736_selector_plus_class_name_returns_400` (**bug-repro**) |
+| Links bare-class retry | `test_telescope_capture.py::test_ast1736_capture_links_bare_class_retries_as_class` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1736_html_class_name_resolves_to_dot_class \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1736_selector_plus_class_name_returns_400 \
+  tests/component/service/test_telescope_capture.py::test_ast1736_capture_links_bare_class_retries_as_class -q
+```

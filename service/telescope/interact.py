@@ -78,6 +78,11 @@ async def dismiss_cookies(page) -> bool:
 
 
 async def expand_page(page) -> None:
+    """Scroll + click Load More/Show More on the current URL only.
+
+    Does not follow numbered pagination, Next controls, or page-index URL
+    changes — callers must request each discrete page URL separately.
+    """
     _log.debug("Calling expand_page: []")
     initial_height = await page.evaluate("(document.body?.scrollHeight) ?? 0")
     if initial_height == 0:
