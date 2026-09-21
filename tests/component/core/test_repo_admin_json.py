@@ -844,12 +844,13 @@ class TestAst1529StageMeteoriteCatalogRow:
         assert "parse_meteorite_email" not in by
         row = by["stage_meteorite"]
         assert row["agent_id"] == "college_intern_ruth"
-        assert row["task_group_name"] == "Meteorite Review"
-        assert row["task_group_order"] == "4500"
+        # Land Meteorite / 4200 / seq 1 — post–mailbox cutover grouping (was Meteorite Review / 4500 / 2.0).
+        assert row["task_group_name"] == "Land Meteorite"
+        assert row["task_group_order"] == "4200"
         assert row["task_name"] == row["task_key"] == "stage_meteorite"
         assert row["task_key"] == TASK_CONFIG["stage_meteorite"]["agent_task"]
         assert row["task_key"] == STAGE_METEORITE_CONFIG["task_key"]
-        assert row["task_seq"] == 2.0
+        assert row["task_seq"] == 1
         cache = row["cache_prompt"]
         for outcome in self._OUTCOMES:
             assert outcome in cache
@@ -863,12 +864,15 @@ class TestAst1529StageMeteoriteCatalogRow:
         user = row["user_prompt"]
         assert "outcome" in user.lower()
         assert "jobs" in user.lower()
-        # Mailbox poller row remains non-live (no Ruth classify).
+        # Mailbox poller row remains non-live (no Ruth classify); same Land Meteorite group.
         mailbox = by["stage_email_meteorite"]
         assert mailbox["agent_id"] in ("", None)
+        assert mailbox["task_group_name"] == "Land Meteorite"
+        assert mailbox["task_group_order"] == "4200"
         assert not (mailbox.get("cache_prompt") or "").strip()
         assert not (mailbox.get("user_prompt") or "").strip()
-        assert by["qualify_meteorite"]["task_seq"] == 2.5
+        # qualify stays under Meteorite Review (not Land Meteorite).
+        assert by["qualify_meteorite"]["task_group_name"] == "Meteorite Review"
 
     def test_fixture_stage_meteorite_lockstep(self) -> None:
         cat = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
@@ -887,24 +891,32 @@ class TestAst1529StageMeteoriteCatalogRow:
         ).read_bytes()
 
 
-class TestAst1688StageMeteoriteElectronicContactPrompts:
-    """AST-1688: stage_meteorite prompts — metadata-first electronic_contact; never invent."""
+class TestAst1755StageMeteoriteJobTitlePrompts:
+    """AST-1755: stage_meteorite prompts — optional subject-prefer job_title; no $RESPONSE_SCHEMA."""
 
-    def test_cache_and_user_prompt_metadata_first(self) -> None:
+    def test_cache_and_user_prompt_job_title_optional(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         row = next(r for r in rows if r.get("task_key") == "stage_meteorite")
-        cache = row["cache_prompt"]
-        assert "## ELECTRONIC CONTACT (resume send)" in cache
-        assert "metadata" in cache.lower()
-        assert "Never invent addresses" in cache
-        assert "single_jd_no_link" in cache
-        assert "multi_jd_inline" in cache
-        user = row["user_prompt"]
-        assert "electronic_contact" in user
-        assert "metadata" in user.lower()
+        cache = row["cache_prompt"] or ""
+        user = row["user_prompt"] or ""
+        nocache = row.get("nocache_prompt") or ""
+        assert "## JOB TITLE (optional)" in cache
+        assert "Prefer the email" in cache
+        assert "Never invent titles" in cache
+        for outcome in (
+            "single_jd_no_link",
+            "single_jd_with_more",
+            "multi_jd_inline",
+            "link_list",
+        ):
+            assert outcome in cache
+        assert "job_title" in user
+        assert "prefer subject" in user.lower()
         assert "never invent" in user.lower()
+        for field in (cache, user, nocache):
+            assert "$RESPONSE_SCHEMA" not in field
 
-    def test_fixture_stage_meteorite_electronic_contact_lockstep(self) -> None:
+    def test_fixture_stage_meteorite_job_title_lockstep(self) -> None:
         cat = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         fix = json.loads(
             Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_text(
