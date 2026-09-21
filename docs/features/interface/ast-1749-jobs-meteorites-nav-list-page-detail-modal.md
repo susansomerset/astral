@@ -240,3 +240,74 @@ context_tokens≈35000
 - **Publish ref:** `sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`
 - **Tip:** `8c4ab30e994733dab0eaf6e98dcf029f4ce0c5f2`
 - **Stages:** S1 nav+route · S2 list · S3 detail modal (S2+S3 one commit)
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1749
+**Publish ref:** 1306049d829c0d90f6eebe9bfdc5d8c7d12d472c (`origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`)
+**Corpus:** 751624d7ebdf9bc441fc3d08a51ae751ea8026af
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** `origin/dev...origin/sub/AST-1749` — test tree  
+  **Finding:** Diff includes telescope test revisions for **AST-1744** / **AST-1745** / **AST-1746** (`test_telescope.py`, `test_telescope_app.py`, `test_telescope_capture.py`, `test_AdminTelescope.test.tsx`) with no AST-1749 product `src/**` changes in those areas — `merge-tests` stacked unrelated sibling work onto this publish ref.  
+  **Recommendation:** Note for Chuckles/merge hygiene; not a 1749 product defect. If parent rollup wants a clean per-child diff story, telescope tests should ride their own subs — do not block 1749 UT on this alone.
+
+- **Location:** `origin/dev...origin/sub/AST-1749` — `src/data/database.py`, `src/ui/api/api_meteorite.py`, `JOBS_METEORITES_*` in `config.py`  
+  **Finding:** Sibling **AST-1748** product scope appears in the three-dot diff because 1748 is not yet on `origin/dev` and this sub stacks the dependency (`blockedBy` 1748). Logging on the stacked API matches 1748 contract (no `logger.info` on GETs; full debug callee returns; handler `logger.exception` + 404 soft-fail).  
+  **Recommendation:** Expected integration-line behavior; score 1749 UI against its scope gate, not as 1748 re-review.
+
+- **Location:** Canon Scope vs plan footprint  
+  **Finding:** Frozen list is honor-only API logging; plan adds frontend + `NAV_CONFIG`. `astral.ui.frontend-file-placement` (and similar placement statutes) were not selected at Discussion (Joan flagged at validate-plan).  
+  **Recommendation:** Archie may amend parent Canon Scope if those should be scored at review; do not widen the frozen list in-flight.
+
+### advisory
+
+- **Location:** `MeteoriteDetailModal.tsx` — helper duplication  
+  **Finding:** http/JSON/field-row helpers copied from `JobMeteoritePane` per explicit scope gate (cannot edit pane).  
+  **Recommendation:** Acceptable; refactor only if a third surface appears.
+
+- **Location:** `config.py` on publish tip  
+  **Finding:** Besides the AST-1749 `NAV_CONFIG` item, diff also carries AST-1748 `JOBS_METEORITES_LIST_COLUMNS` / `JOBS_METEORITES_MODAL_SECTIONS` on the stacked branch.  
+  **Recommendation:** None for 1749 — list page correctly consumes column order from the API, not a duplicated TS constant.
+
+## What's solid
+
+- **Scope gate (1749-owned `src/**`):** `NAV_CONFIG` Jobs item `{label: "Meteorites", path: "/jobs/meteorites"}` after Applied / before Responded; Companies → Meteorite at `/companies/meteorite_list` unchanged; `routes.tsx` registers `jobs/meteorites`; `App.css` untouched.
+- **`JobsMeteorites.tsx`:** `useCandidate().selectedId`; no API call when no candidate; `GET /api/candidates/<id>/meteorites` only; columns from API response; candidate switch refetches; empty honesty via ListPage; row click opens modal; no mutate verbs to meteorite paths (test-asserted).
+- **`MeteoriteDetailModal.tsx`:** `GET /api/meteorites/<id>` only; `Modal` read-only (`showFooter={false}`, `size="wide"`); `ReportSectionList` driven by API `sections`; http(s) link gate; non-http plain text; JSON pretty-print in read-only textarea; `meteorite_job` deeplink only when `astral_job_id` non-empty after trim; 404/failure honest in-modal; no Save/land/qualify controls.
+- **Stacked AST-1748 API** (in diff, honor contract): list/detail GET logging compliant on tip.
+- **Tests:** `TestAst1749JobsMeteoritesNav`, `test_JobsMeteorites.test.tsx`, `test_MeteoriteDetailModal.test.tsx`, `test_routes.test.tsx` cover nav placement, candidate scope, empty honesty, link/deeplink gates, 404, read-only gates.
+
+## Recommended actions
+
+- Chuckles: append artifact, commit `docs(AST-1749): Radia review — clean`, post slim upshot, move to **Review Posted** → datt **§3h** PROCEED to User Testing.
+- Engineer: no canon fix-now items on this tip.
+
+[code-rubric] PROCEED (Commit: 1306049d829c0d90f6eebe9bfdc5d8c7d12d472c) Jobs Meteorites UI clean
+
+context_tokens≈28000
