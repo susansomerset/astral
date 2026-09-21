@@ -13,7 +13,7 @@ LOCKED_AT_100 = [
     "src/utils/formatting.py",
     "src/external/anthropic.py",
     "src/external/gmail.py",
-    "src/external/playwright.py",
+    "src/external/telescope.py",
     "src/core/monitor.py",
     "src/core/timesheets.py",
     "src/core/tracker.py",

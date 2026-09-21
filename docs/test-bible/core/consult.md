@@ -23,7 +23,7 @@
 
 ### AST-466 · AST-467 · AST-468 · AST-376
 
-Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title` inline-only, **`fetch_jd`**, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`pass_threshold`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. **`pass_threshold`** vs **`dispatch_task.score_floor`**: see **`docs/ASTRAL_CODE_RULES.md`** §2.1 (different lifecycle — not a numeric override).
+Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title` inline-only, **`fetch_jd`**, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`pass_threshold`** removed from **`TASK_CONFIG`** (**AST-1277**) — scored soft-fail reads **`dispatch_task.score_floor`**. **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. Law: **`pattern.dispatch.score-floor`** + CODE_RULES §2.1 (**AST-1279** retires `astral.config.pass-threshold-vs-score-floor`).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -698,9 +698,31 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
   -q
 ```
 
+### AST-1339 · AST-1319 (gap — tests)
+
+**Parent:** [AST-1319](https://linear.app/astralcareermatch/issue/AST-1319). **Publish:** `origin/sub/AST-1319/AST-1339-gap-meteorite-new-retry-tests`. Product: sibling **AST-1338**.
+
+`_consult_batch_fail_dest("METEORITE_NEW", qualify_meteorite error)` → **METEORITE_NEW_RETRY**; holding second strike → **METEORITE_ERROR_QUALIFY**. Does **not** claim content-gate → retry holding. Config / claim / UI twin: **`docs/test-bible/utils/config.md`** (**AST-1339**). Roster twin: **AST-898** above.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fail-dest meteorite matrix | `src/core/consult.py` | revised **`TestConsultBatchFailDest`** (`[bug-repro]` rows); twin also in **`TestAst1339MeteoriteNewRetryQualifyHolding::test_consult_batch_fail_dest_matrix`** |
+
+**Broken / obsolete:** none — additive meteorite rows on existing helper tests.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  -q
+```
+
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_consult_task`** routes **`candidate_requested_resume` / `candidate_requested_artifacts`** to stage workers.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`run_consult_task`** routes stage `task_key` (`craft_get_rubric`) to `run_requested_artifacts_dispatch`; wrapper keys no longer routed.
 
 ### AST-1054 · AST-1052
 
@@ -1004,6 +1026,27 @@ ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code,
   -q
 ```
 
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+`enrich_meteorite_land_packet` maps Ruth `company_stem` via `company_stem_response_key`; dispatch `qualify_meteorite` Style D logs stem on success when present (not persisted on job row — attach is **AST-1495**). Config schema: **`docs/test-bible/utils/config.md`**. Catalog prompts: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Land enrich map + strip + debug detail | `src/core/consult.py` | **`TestAst1494EnrichMeteoriteCompanyStem`** |
+| Dispatch debug stem on pass | `src/core/consult.py` | **`TestAst1494EnrichMeteoriteCompanyStem::test_dispatch_debug_logs_company_stem_when_present`** |
+
+**Broken / obsolete:** none — additive map on enrich output.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem \
+  -q
+```
+
 ### AST-1210 · AST-1186
 
 **Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`.
@@ -1027,3 +1070,303 @@ Locks standalone twin consult contract: Analysis-JD meteorite override via `_ent
   tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers \
   -q
 ```
+
+### AST-1277 · AST-1275
+
+**Parent:** [AST-1275 — Remove pass_threshold from task_config](https://linear.app/astralcareermatch/issue/AST-1275/remove-pass-threshold-from-task-config). **Publish:** `origin/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor`.
+
+Strip every **`TASK_CONFIG` `pass_threshold`**. Scored soft-fail / pass uses **`effective_dispatch_score_floor`** on the candidate’s matching **`dispatch_task`** row (`_dispatch_score_floor_for_task` via tracker `trigger_state=` + **`dispatch_row_task_key`** for `prefilter_company` → `prefilter`). Explicit **`0`** = no numeric soft-fail; NULL → **`1.0`**. Dealbreaker / technical-error paths unchanged. Config helpers: **`docs/test-bible/utils/config.md`**. Admin `0` dropdown: **AST-1278**. Statute retire + score_floor pattern + CODE_RULES: **AST-1279** (**`docs/test-bible/README.md`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helpers + strip keys | `src/utils/config.py` | **`TestAst1277ScoreFloorHelpers`** |
+| Floor lookup + soft-fail / zero floor | `src/core/consult.py` | **`TestAst1277DispatchScoreFloorVerdict`** |
+| Scored `render_verdict` fixtures | same | revised **`TestRenderVerdict`** (4 scored cases) + **`TestAst726…::test_apply_render_verdict_always_persists_notes_including_empty`** |
+| Claim normalizer reuse | `src/core/dispatcher.py` | existing **`TestRunUnified::test_uses_default_score_floor_for_scored_states`** |
+
+**Broken / obsolete:** scored `render_verdict` / apply paths that relied on empty table rubric + artifact `{rubric}_threshold` / `cfg["pass_threshold"]` — revised to table-backed rubric mock + dispatch row floor.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers \
+  tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict \
+  tests/component/core/test_consult.py::TestRenderVerdict \
+  tests/component/core/test_consult.py::TestAst726LatestOnlyConsultOutcomes::test_apply_render_verdict_always_persists_notes_including_empty \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_uses_default_score_floor_for_scored_states \
+  -q
+```
+
+### AST-1347 · AST-1346
+
+**Parent:** [AST-1346 — Add rubric score to analysis header](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown`.
+
+Persist `{prefix}_score_breakdown` `{earned, possible, max}` beside Analysis-phase grades/scores at score-save (`_phase_score_breakdown` shared with `_render_score` earned path). X/no-signal excluded from earned/possible; max uses full grade-set capacity. F2 / unscored omit the key. API lift: **`docs/test-bible/ui/api/api_jobs.md`**. Config constants: **`docs/test-bible/utils/config.md`**. Header chrome / read-time derive: sibling **AST-1348**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper + earned → 0–10 | `src/core/consult.py` (`_phase_score_breakdown`, `_render_score`) | **`TestAst1347PhaseScoreBreakdown`** (`test_breakdown_*`) |
+| Persist on verdict / evaluate_jd | same (`_apply_render_verdict_decoded_job`, `evaluate_jd_batch`) | **`TestAst1347PhaseScoreBreakdown`** (apply + evaluate_jd persist/omit) |
+| Config suffix + list columns | `src/utils/config.py` | **`TestAst1347PhaseScoreBreakdownConfig`** |
+| Flatten lift | `src/ui/api/api_jobs.py` | **`TestAst1347FlattenScoreBreakdown`** |
+
+**Broken / obsolete:** `TestEvaluateJdBatch::test_runs_debug_and_passing_job_path` / `test_logs_failed_vectors` — stub `_rubric_criteria_for_cfg` (table-backed AST-723); ctx artifact rubric is not the score source. Passing path also asserts `jd_score_breakdown`.
+
+**Integration:** none — no existing scenario pins Analysis score-save breakdown keys; do not invent new integration coverage.
+
+## QA test manifest
+
+1. **Existing coverage (bible-backed):** `TestRenderScore` / `TestRenderScoreBranches` / `TestAst1277DispatchScoreFloorVerdict` (0–10 + soft-fail unchanged); `TestFlattenGrades::test_lifts_job_data_fields_and_latest_score`.
+2. **Broken / obsolete:** revised `TestEvaluateJdBatch` two paths above (rubric stub + breakdown assert on pass).
+3. **Gaps (this pass):**
+   - `tests/component/core/test_consult.py::TestAst1347PhaseScoreBreakdown`
+   - `tests/component/utils/test_config.py::TestAst1347PhaseScoreBreakdownConfig`
+   - `tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1347PhaseScoreBreakdown \
+  tests/component/core/test_consult.py::TestRenderScore \
+  tests/component/core/test_consult.py::TestEvaluateJdBatch::test_runs_debug_and_passing_job_path \
+  tests/component/core/test_consult.py::TestEvaluateJdBatch::test_logs_failed_vectors \
+  tests/component/utils/test_config.py::TestAst1347PhaseScoreBreakdownConfig \
+  tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
+  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  -q
+```
+
+---
+
+### AST-1513 · AST-1510
+
+**Parent:** [AST-1510 — meteorite_grade_do incomplete grade set (duplicate Do rubric TP codes)](https://linear.app/astralcareermatch/issue/AST-1510). **Publish:** `origin/sub/AST-1510/AST-1513-reject-duplicate-do-rubric-codes`.
+
+Board REVISE: `_vector_labels_map` HT/TP duplicate-code collision (last-wins drops Hands-On label → incomplete grade set). Product fix lands on AST-1513 Step 3; this gap owns the [bug-repro] bar.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Decode map first-wins on duplicate codes | `src/core/consult.py` (`_vector_labels_map`) | **`TestAst1513DuplicateRubricCodes::test_vector_labels_map_first_wins_on_duplicate_tp`** (**[bug-repro]**) |
+| Symptom: incomplete grade set with duplicate TP decode | same + `_require_complete_grade_set` | **`TestAst1513DuplicateRubricCodes::test_duplicate_tp_codes_cause_incomplete_grade_set`** |
+
+**Broken / obsolete:** none — `TestRubricHelpers::test_maps_vector_labels` single-code happy path unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. First-wins map (bug-repro): `tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes::test_vector_labels_map_first_wins_on_duplicate_tp`
+2. Incomplete-grade symptom (documents collision): `tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes::test_duplicate_tp_codes_cause_incomplete_grade_set`
+
+**Pass criterion:** (1) red pre-fix, green after make-fix Step 3; (2) passes on both trees (symptom documentation).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes \
+  -q
+```
+
+---
+
+### AST-1530 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1530-core-stage-scrap-land`.
+
+`invoke_stage_meteorite`: validate candidate/source/blob; assemble `SOURCE_KIND` / `SOURCE_ID` / `CONTENT` live_content; `do_task("stage_meteorite")`; validate outcome against `STAGE_METEORITE_CONFIG`; clear jobs on skip outcomes. No claim/land. Public stage: **`docs/test-bible/core/meteorite.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gates + parse + live_content + skip job clear | `src/core/consult.py` | **`TestAst1530InvokeStageMeteorite`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1530InvokeStageMeteorite \
+  -q
+```
+
+
+### AST-1675 · AST-1671
+
+**Scope:** Consult company prefilter routes on **`prefilter_company` only** (no dual tuple). Score-floor lookup uses identity task_key (no `dispatch_row_task_key` shim). Bare leftover `prefilter` does not enter `prefilter_company_batch`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Single-route batch | `src/core/consult.py` | revised **`TestRunConsultTaskRoutes::test_routes_prefilter_company_batch`** |
+| Bare leftover non-route | same | **`TestRunConsultTaskRoutes::test_bare_prefilter_dispatch_key_does_not_route_to_batch`** |
+| Score-floor identity | same | revised **`TestAst1277DispatchScoreFloorVerdict::test_dispatch_score_floor_lookup_null_zero_and_prefilter_key`** |
+| Dispatcher claim union | `src/core/dispatcher.py` | revised **`TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states`** (`task_key=prefilter_company`) |
+
+**Broken / obsolete this pass:** AST-823 dual-route / legacy-key tests; score-floor shim mapping `prefilter_company` → `prefilter` rows.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Consult route + bare reject: `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch` + `::test_bare_prefilter_dispatch_key_does_not_route_to_batch`
+2. Score floor: `tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict::test_dispatch_score_floor_lookup_null_zero_and_prefilter_key`
+3. Dispatcher union: `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_bare_prefilter_dispatch_key_does_not_route_to_batch \
+  tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict::test_dispatch_score_floor_lookup_null_zero_and_prefilter_key \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/consult.md` — *(filled after publish)*
+
+### AST-1680 · AST-1677
+
+**Parent:** [AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table](https://linear.app/astralcareermatch/issue/AST-1677). **Publish:** `origin/sub/AST-1677/AST-1680-job-drafting-interface-rewires`.
+
+`build_job_token_context` hydrates operative structure onto a working `cd` copy when `candidate_id` / `_astral_candidate_id` is known, then assembles `RESUME_SECTION_CATALOG` via `resolve_resume_structure` / `enabled_resume_structure_sections` — table current wins when the library blob is empty/missing. `TOKEN_SOURCES["RESUME_SECTION_CATALOG"]` stays `special_case`. Tracker prepare/filter: **`docs/test-bible/core/tracker.md`** § AST-1680. Operative hydrate helper: sibling **AST-1679**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| hydrate→catalog (table-only + no-cid blob path) + token source_type | `src/core/consult.py` | **`TestAst1680JobDraftingHydrateCatalog`** |
+
+**Broken / obsolete this pass:** none — AST-513 catalog tests still seed a library blob (valid without cid).
+
+**Integration:** none — no existing scenario asserts table-only RESUME_SECTION_CATALOG; do not invent.
+
+## QA test manifest
+
+1. Consult catalog hydrate: `tests/component/core/test_consult.py::TestAst1680JobDraftingHydrateCatalog`
+2. Tracker prepare/filter hydrate: `tests/component/core/test_tracker.py::TestAst1680JobResumeHydrateBeforeResolve`
+3. Regression catalog (blob path): `tests/component/core/test_consult.py::TestAst513JobTokenContext::test_build_job_token_context_resume_section_catalog`
+4. Regression prepare: `tests/component/core/test_tracker.py::TestAst518JobResumeArtifacts::test_prepare_job_resume_content_strips_orphan_and_snapshots_contact`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1680JobDraftingHydrateCatalog \
+  tests/component/core/test_tracker.py::TestAst1680JobResumeHydrateBeforeResolve \
+  tests/component/core/test_consult.py::TestAst513JobTokenContext::test_build_job_token_context_resume_section_catalog \
+  tests/component/core/test_tracker.py::TestAst518JobResumeArtifacts::test_prepare_job_resume_content_strips_orphan_and_snapshots_contact \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/consult.md` — *(filled after publish)*
+- `docs/test-bible/core/tracker.md` — *(filled after publish)*
+
+---
+
+### AST-1693 · AST-1686
+
+**Parent:** [AST-1686](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link`.
+
+`qualify_meteorite` bot-blocked branch calls `tracker.persist_http_job_link` before state → BOT_BLOCKED (no `initialize_job`). Prior bot transition: **AST-1197** above. Tracker helper + land: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/core/meteorite.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Bot branch persist http job_link | `src/core/consult.py` | revised **`TestAst1197QualifyMeteoriteApply::test_challenge_input_jd_transitions_bot_blocked`** |
+
+**Broken / obsolete this pass:** `test_challenge_input_jd_transitions_bot_blocked` — must mock/assert `persist_http_job_link` (product now writes before transition).
+
+**Integration:** none.
+
+## QA test manifest
+
+See **`docs/test-bible/core/meteorite.md`** § AST-1693 (shared numbered list).
+
+**Bible shasum (publish tip):** filled with meteorite.md after publish.
+
+
+
+### AST-1699 · AST-1579
+
+**Parent:** [AST-1579 — Capture deduped source-artifact-id array](https://linear.app/astralcareermatch/issue/AST-1579). **Publish:** `origin/sub/AST-1579/AST-1699-persist-harvested-pins-consult-grade-analysis`.
+
+Consult grade/analysis persists write whole-run harvest as sibling job_data `*_source_artifact_ids` beside `{prefix}_grades` / `analysis_upshot` (empty list when harvest missing). Reads AST-1698 `do_task` `source_artifact_ids` — no second parse. Artifact-table threading: sibling **AST-1700**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Key stem + normalize helpers | `src/core/consult.py` | **`TestAst1699PersistHarvestedPinsConsult`** |
+| Grade save sibling (AC3) | same (`_apply_render_verdict_decoded_job` / `render_verdict`) | same |
+| Analysis upshot sibling (AC4) | same (`_run_analysis_upshot_batch`) | same |
+| Revised exact analysis saves (empty harvest → `[]`) | same | **`TestAnalysisUpshotPrepAndBatch480ExtraBranches`**, **`TestAnalysisUpshotPrepAndBatch480`**, **`TestAst1055MeteoriteConsultRoutes`** |
+
+**Broken / obsolete this pass:** analysis upshot `save_job_data` exact-dict asserts that omitted `analysis_upshot_source_artifact_ids`.
+
+**Integration:** none — no existing scenario asserts grade/upshot sibling pin keys; do not invent.
+
+## QA test manifest
+
+1. Helpers + grade/analysis sibling writes: `tests/component/core/test_consult.py::TestAst1699PersistHarvestedPinsConsult`
+2. Revised analysis exact-save paths: `tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches` · `TestAnalysisUpshotPrepAndBatch480` · `TestAst1055MeteoriteConsultRoutes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1699PersistHarvestedPinsConsult \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480 \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/consult.md` — *(filled after publish)*
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+Qualify / title-screen partition uses `_job_is_meteorite_track` (`source == meteorite`); real `company_id` must not flip meteorite-parented NEW jobs onto gazed title-pattern screen. Gazer skip + gazed ingest + Job Detail href: **`docs/test-bible/core/gazer.md`**, **`tracker.md`**, **`ui/api/api_jobs.md`**, **`frontend/components.md`**, **`frontend/pages.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Track helper + NEW partition | `src/core/consult.py` | **`TestAst1704MeteoriteTrackSoT`** |
+
+**Broken / obsolete this pass:** none in consult (gazer skip revised under gazer.md).
+
+**Integration:** none.
+
+## QA test manifest (AST-1704)
+
+1. Track SoT qualify: `tests/component/core/test_consult.py::TestAst1704MeteoriteTrackSoT`
+2. Title skip by source (revised): `tests/component/core/test_gazer.py::TestValidateTitleBatch::test_skips_meteorite_source_roster_still_fails`
+3. Gazed ingest parent fields: `tests/component/core/test_tracker.py::TestIngestJobs::test_counts_new_and_duplicate_rows`
+4. Jobs detail parent fields: `tests/component/ui/api/test_api_jobs.py::TestAst1704JobsDetailParentFields`
+5. Header http(s)-only href: `tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx` — pattern **`AST-1704`**
+6. Job Detail Link row: `tests/component/frontend/components/test_JobDetailModal.test.tsx` — pattern **`AST-1704`**
+7. JAR non-http chrome: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — pattern **`AST-1704`**
+8. Routed JobsJobDetail company_id align (§6c): `tests/component/frontend/pages/test_JobsJobDetail.test.tsx` — pattern **`AST-1704`**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1704MeteoriteTrackSoT \
+  tests/component/core/test_gazer.py::TestValidateTitleBatch::test_skips_meteorite_source_roster_still_fails \
+  tests/component/core/test_tracker.py::TestIngestJobs::test_counts_new_and_duplicate_rows \
+  tests/component/ui/api/test_api_jobs.py::TestAst1704JobsDetailParentFields \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx \
+  --testNamePattern='AST-1704'
+```
+
+**Pass criterion:** pytest + Vitest green on lines 1–8 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/consult.md`
+- `docs/test-bible/core/gazer.md`
+- `docs/test-bible/core/tracker.md`
+- `docs/test-bible/ui/api/api_jobs.md`
+- `docs/test-bible/frontend/components.md`
+- `docs/test-bible/frontend/pages.md`

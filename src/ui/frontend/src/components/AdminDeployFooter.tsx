@@ -35,8 +35,8 @@ export default function AdminDeployFooter() {
 
   useEffect(() => {
     if (authLoading) return
-    const fetchStatus = () =>
-      api("/api/deploy_status")
+    const fetchStatus = (silent = false) =>
+      api("/api/deploy_status", silent ? { silent: true } : {})
         .then(r => {
           if (!r.ok) throw new Error(`${r.status}`)
           return r.json()
@@ -47,7 +47,7 @@ export default function AdminDeployFooter() {
         })
         .catch(() => setError(true))
     fetchStatus()
-    const interval = setInterval(fetchStatus, 30_000)
+    const interval = setInterval(() => fetchStatus(true), 30_000)
     return () => clearInterval(interval)
   }, [authLoading])
 
