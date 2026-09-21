@@ -1,0 +1,58 @@
+name: Telescope image
+
+on:
+  push:
+    branches: [dev, main]
+    paths:
+      - 'service/telescope/**'
+      - '.github/workflows/telescope-image.yml'
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: 'Channel tag to publish'
+        required: true
+        default: 'production'
+        type: choice
+        options: [staging, production]
+
+jobs:
+  build-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      # main -> production, dev -> staging; manual dispatch uses the chosen channel.
+      - name: Resolve channel tag
+        id: chan
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ch="${{ github.event.inputs.channel }}"
+          elif [ "${{ github.ref_name }}" = "main" ]; then
+            ch="production"
+          else
+            ch="staging"
+          fi
+          echo "channel=$ch" >> "$GITHUB_OUTPUT"
+      # docker-container driver enables the GHA cache backend used below.
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Build context = repo root; the Dockerfile COPYs service/telescope/ (root-relative).
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: service/telescope/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/susansomerset/telescope:${{ steps.chan.outputs.channel }}
+            ghcr.io/susansomerset/telescope:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

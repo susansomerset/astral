@@ -6,6 +6,11 @@ _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
 
 ---
 
+
+### AST-1500 · AST-1456
+
+**Parent:** AST-1456. Gap for AST-1496 ban. **`TestAst703PrefilterMigrationUniqueCollision`** now asserts `_ensure_dispatch_task_schema` leaves dual prefilter rows unchanged (no HOMEPAGE_READY content migration). Primary ban coverage: **`docs/test-bible/core/dispatcher.md`** § AST-1500.
+
 ### AST-745 · AST-741
 
 **AST-745:** Remove recurring automatic `INSERT OR IGNORE` of separate `*_RETRY` companion dispatch rows and decommissioned `gaze_board` rows from `_ensure_dispatch_task_schema`. Companion entity claim stays on primary rows via `dispatch_claim_states` in config (no config diff). **`debug/startup_db_inventory.md`** catalogs all `agent_task` / `dispatch_task` mutators.
@@ -14,7 +19,7 @@ _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
 | --- | --- | --- | --- |
 | No retry re-seed | Deleted `*_RETRY` dispatch rows stay absent after schema ensure restart simulation | `src/data/database.py` | **`TestAst745StopAutomaticDispatchRowSeeding::test_schema_ensure_does_not_reinsert_deleted_retry_rows`** |
 | Companion claim intact | Primary `qualify_job_listings` / `VALID_TITLE` row counts jobs in `VALID_TITLE_RETRY` without a retry dispatch row | `src/data/database.py`, `src/utils/config.py` (`dispatch_claim_states`) | **`TestAst745StopAutomaticDispatchRowSeeding::test_primary_row_claims_retry_entities_without_retry_dispatch_row`**; regression **`TestAst641UnionClaimCount`** |
-| One-time migrations unchanged | Prefilter HOMEPAGE_READY cutover still runs | `src/data/database.py` | **`TestAst702PrefilterDispatchMigration`**, **`TestAst703PrefilterMigrationUniqueCollision`** |
+| One-time migrations unchanged | Prefilter HOMEPAGE_READY cutover still runs | `src/data/database.py` | **`TestAst702PrefilterDispatchMigration`**; **`TestAst703`** rewritten **AST-1500** (no ensure content rewrite) |
 | Inventory doc | Checked-in mutator catalog | `debug/startup_db_inventory.md` | Artifact audit (item 5) |
 
 **Broken / obsolete (Betty revised):** **`TestAst701FetchWebsiteRetrySeed`** (asserted retry row auto-insert — removed AST-745); **`TestAst702PrefilterDispatchMigration::test_retry_task_seed_omits_prefilter_website_found_retry`** (`_RETRY_TASK_SEED` symbol deleted).
@@ -244,7 +249,7 @@ Config claim helper: **`docs/test-bible/utils/config.md`** (**AST-882**).
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`count_eligible_for_dispatch_task`** splits candidate stage keys vs **`inflow_discovery`**; fixtures use **`ACTIVE_SEARCH`**.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`count_eligible_for_dispatch_task`** splits candidate stage keys vs **`inflow_discovery`**; fixtures use **`ACTIVE_SEARCH`**. **AST-1258** overturns inflow-only Avail for non-inflow stage keys (unclaimed pool) — see § AST-1258 below.
 
 ### AST-1000 · AST-995
 
@@ -356,3 +361,137 @@ Deletes `_gaze_email_available_count`; `count_eligible_for_dispatch_task` / `get
   tests/component/data/database/test_dispatch_tasks.py::TestAst1135DispatchTaskFreqAllows \
   -q
 ```
+
+### AST-1258 · AST-1257
+
+**Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis`.
+
+`count_eligible_for_dispatch_task` for `entity_type=candidate`: **`inflow_discovery`** keeps `count_candidate_inflow_discovery_eligible`; every other candidate claim-queue task reports **bound-candidate Avail 0/1** (`count_candidates_unclaimed_in_states(..., candidate_id=)` after **AST-1432**; product on sibling). Claim/get/clear stay the cross-candidate pool: **`docs/test-bible/data/database/candidates.md`** § AST-1258. Test gap: **AST-1436** below.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Non-inflow stage Avail = bound 0/1 (was pool; AST-1436) | `src/data/database.py` | **`TestAst972CandidateStageEligibility::test_candidate_stage_avail_is_unclaimed_pool`** (one row still 1) |
+| Bound Avail 1 then 0 when all matching rows locked | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_pool_count_zero_when_all_matching_rows_locked`** (rewrote pool-2 → bound 1) |
+| `inflow_discovery` still uses inflow helper | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_inflow_discovery_still_uses_inflow_helper`** |
+
+**Broken / obsolete (Betty revision):** `TestAst972CandidateStageEligibility::test_candidate_entity_avail_is_inflow_not_stage` (expected `0` via inflow helper) → renamed/revised to expect pool count `1` for one unclaimed `REQUESTED_ARTIFACTS` row.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1258CandidatePoolEligibility \
+  tests/component/data/database/test_candidates.py::TestAst1258CandidateBatchClaim \
+  -q
+```
+
+### AST-1436 · AST-1425
+
+**Parent:** [AST-1425](https://linear.app/astralcareermatch/issue/AST-1425). **Sibling product:** AST-1432 (Avail 0/1). **Publish:** `origin/sub/AST-1425/AST-1436-gap-tests-bound-candidate-avail`.
+
+Board REVISE on AST-1432: pool-2 on a bound row was wrong; two-candidate bound Avail (1, then 0 when bound locked / other unclaimed) had no coverage. Tests land red on the pre-fix tree; AST-1432 make-fix flips them green.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Two unclaimed → bound Avail 1; lock bound, other free → 0 | `src/data/database.py` | **`TestAst1436BoundCandidateAvail::test_two_unclaimed_bound_row_is_one_then_zero_when_bound_locked`** |
+| Invalidated pool-2 rewritten to bound 1 | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_pool_count_zero_when_all_matching_rows_locked`** |
+
+**Broken / obsolete (this pass):** `test_pool_count_zero_when_all_matching_rows_locked` no longer asserts pool `2` on a bound row.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1436BoundCandidateAvail \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1258CandidatePoolEligibility \
+  -q
+```
+
+### AST-1618 · AST-1616
+
+**Parent:** [AST-1616](https://linear.app/astralcareermatch/issue/AST-1616). **Publish:** `origin/sub/AST-1616/AST-1618-persist-entity-type-admin`.
+
+`save_dispatch_task` keeps caller `entity_type` and derives `sort_by` via `_dispatch_sort_by_for` for that entity + trigger; mailbox rows keep `sort_by=None`. Admin API surface: **`docs/test-bible/ui/api/api_admin.md`** § AST-1618.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Caller entity + non-catalog trigger (AC6 / Stage 1 Done-when) | `src/data/database.py` | **`TestAst1618SaveDispatchTaskCallerEntity::test_caller_entity_overrides_catalog_sort`** |
+| Overlap trigger NEW | same | **`test_caller_entity_with_catalog_valid_trigger`** |
+| Omit entity → catalog | same | **`test_omit_entity_keeps_catalog_defaults`** |
+| Mailbox null sort | same | **`test_mailbox_omit_entity_keeps_null_sort`**, **`test_mailbox_caller_entity_still_null_sort`** |
+
+## QA test manifest
+
+1. `tests/component/data/database/test_dispatch_tasks.py::TestAst1618SaveDispatchTaskCallerEntity`
+2. API siblings — see **`docs/test-bible/ui/api/api_admin.md`** § AST-1618
+
+**AST-1618** narrowed data run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1618SaveDispatchTaskCallerEntity \
+  -q
+```
+
+**Pass criterion:** pytest green — not zero-arg harness / branch-lock gate.
+
+### AST-1622 · AST-1620
+
+**Parent:** [AST-1620 — Treat meteorite as a first-class dispatch entity_type](https://linear.app/astralcareermatch/issue/AST-1620/treat-meteorite-as-a-first-class-dispatch-entity-type). **Publish:** `origin/sub/AST-1620/AST-1622-meteorite-count-eligible-auto-due`.
+
+`count_meteorites_unclaimed_in_states`; `count_eligible_for_dispatch_task` meteorite branch (no `candidate_id` required; global pool); `get_due_tasks` includes AUTO meteorite rows with NULL `candidate_id` when eligible ≥ `min_count`. ENTITY_TYPES registration is **AST-1621**; admin Available / ledger / backfill is **AST-1623**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unclaimed helper + empty states | `src/data/database.py` | **`TestAst1622MeteoriteCountEligibleDue::test_count_meteorites_unclaimed_in_states`** |
+| count_eligible null candidate + global pool | same | **`::test_count_eligible_null_candidate_meteorite`** |
+| Job still requires candidate_id | same | **`::test_count_eligible_job_still_requires_candidate_id`** |
+| get_due AUTO null-candidate meteorite | same | **`::test_get_due_includes_null_candidate_meteorite`** |
+
+**Broken / obsolete:** none — additive meteorite path; mailbox null-entity skip (**AST-1135**) unchanged.
+
+**Integration:** none — no existing scenario asserts meteorite count/due without candidate_id; do not invent.
+
+## QA test manifest
+
+1. Meteorite count helper + count_eligible + get_due: `tests/component/data/database/test_dispatch_tasks.py::TestAst1622MeteoriteCountEligibleDue`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1622MeteoriteCountEligibleDue \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest line — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/data/database/dispatch_tasks.md` — *(filled after publish)*
+
+
+### AST-1675 · AST-1671
+
+**Scope:** Idempotent schema-ensure retargets company `dispatch_task.task_key` **`prefilter` → `prefilter_company`**; collision deletes leftover when companion exists; **`craft_prefilter_rubric`** untouched. Supersedes AST-823 reverse retarget and AST-702 HOMEPAGE_READY content migration on this tip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retarget + dual trigger preserve + collision + rubric guard | `src/data/database.py` | **`TestAst1675PrefilterCatalogRetarget`** (aliases: TestAst702/703/823 class names) |
+
+**Broken / obsolete this pass:** AST-702 HOMEPAGE_READY rewrite; AST-823 `prefilter_company`→`prefilter`; AST-703 dual rows still keyed `prefilter`.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Schema retarget suite: `tests/component/data/database/test_dispatch_tasks.py::TestAst1675PrefilterCatalogRetarget`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1675PrefilterCatalogRetarget \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest line — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/data/database/dispatch_tasks.md` — *(filled after publish)*

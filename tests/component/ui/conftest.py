@@ -23,6 +23,12 @@ os.environ.setdefault("GOOGLE_REFRESH_TOKEN", "test-refresh-token")
 
 
 @pytest.fixture(autouse=True)
+def _ui_fail_closed_deploy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # AST-1440: host ASTRAL_DEPLOY_ENV=local would skip Stytch and flip 401 tests to 200.
+    monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _ui_default_anthropic_llm_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     from src.utils import config as cfg_mod
 
@@ -56,6 +62,7 @@ def _register_mock_authenticator(monkeypatch: pytest.MonkeyPatch) -> None:
         {
             "admin_user_ids": frozenset({"susan"}),
             "admin_emails": frozenset({"susan@susansomerset.com"}),
+            "local_operator": {"user_id": "local-operator", "name": "Local Operator"},
         },
         raising=False,
     )
@@ -77,6 +84,8 @@ _DB_SCHEMA_FLAGS = (
     "_candidate_schema_ensured",
     "_company_candidate_fk_ensured",
     "_company_job_scan_schema_ensured",
+    "_surfer_batch_schema_ensured",  # AST-1229
+    "_artifact_schema_ensured",  # AST-1352 / AST-1364 / singular+cid AST-1597
     "_agent_responses_table_sunset_applied",
     "_entity_agent_responses_column_sunset_applied",
     "_agent_schema_ensured",
@@ -227,6 +236,32 @@ def meteorite_client() -> Iterator[FlaskClient]:
     from ui.api.api_meteorite import meteorite_bp
 
     app.register_blueprint(meteorite_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def surfer_client() -> Iterator[FlaskClient]:
+    """AST-1236: Surfer pacing_config blueprint (@require_auth)."""
+    app = Flask(__name__)
+    from ui.api.api_surfer import surfer_bp
+
+    app.register_blueprint(surfer_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def surfer_consent_client() -> Iterator[FlaskClient]:
+    """AST-1235: Surfer consent GET/PUT under /api/candidates (@require_auth)."""
+    app = Flask(__name__)
+    from ui.api import api_surfer as mod
+
+    # Ada tip: surfer_bp serves consent. Combined local tip may expose surfer_consent_bp.
+    bp = getattr(mod, "surfer_consent_bp", mod.surfer_bp)
+    app.register_blueprint(bp)
     app.config["TESTING"] = True
     with app.test_client() as client:
         yield client

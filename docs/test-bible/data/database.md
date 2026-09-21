@@ -18,6 +18,8 @@
 
 Per-cluster manifest blocks: `data/database/<cluster>.md`.
 
+**AST-1557:** `meteorite` staging table cluster — `tests/component/data/database/test_meteorites.py` (see `data/database/meteorites.md`).
+
 ---
 
 ### AST-454 · AST-453

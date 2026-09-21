@@ -16,6 +16,27 @@ class TestSaveCandidate:
         with pytest.raises(ValueError, match="Invalid candidate state"):
             sqlite_in_memory.save_candidate("cand-1", state="NOT_A_STATE")
 
+    def test_update_accepts_requested_artifacts_hop_label(self, sqlite_in_memory) -> None:
+        from src.utils.config import CANDIDATE_STAGE_DISPATCH, dispatch_hop_label
+
+        db = sqlite_in_memory
+        db.save_candidate("cand-1", state="REQUESTED_ARTIFACTS")
+        hop = dispatch_hop_label(
+            CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"],
+            "craft_get_rubric",
+        )
+        db.save_candidate("cand-1", state=hop)
+        row = db.get_candidate("cand-1")
+        assert row is not None
+        assert row["state"] == hop
+
+    def test_rejects_unknown_hop_label(self, sqlite_in_memory) -> None:
+        sqlite_in_memory.save_candidate("cand-1", state="REQUESTED_ARTIFACTS")
+        with pytest.raises(ValueError, match="Invalid candidate state"):
+            sqlite_in_memory.save_candidate(
+                "cand-1", state="REQUESTED_ARTIFACTS.not_a_task",
+            )
+
     def test_insert_and_merge_update(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"bio": "a"})
@@ -41,6 +62,22 @@ class TestSaveCandidate:
         row = sqlite_in_memory.get_candidate("cand-1")
         assert row is not None
         assert row["candidate_api_key"] == "secret-key"
+
+
+class TestAst1417SaveCandidateHopLabelPersist:
+    """AST-1417 bug-repro: save_candidate persists REQUESTED_ARTIFACTS.<hop> (AST-1416)."""
+
+    def test_update_persists_requested_artifacts_hop_label(self, sqlite_in_memory) -> None:
+        from src.utils.config import CANDIDATE_STAGE_DISPATCH, dispatch_hop_label
+
+        trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        hop = dispatch_hop_label(trigger, "craft_get_rubric")
+        db = sqlite_in_memory
+        db.save_candidate("cand-1417", state=trigger, candidate_data={})
+        db.save_candidate("cand-1417", state=hop)
+        row = db.get_candidate("cand-1417")
+        assert row is not None
+        assert row["state"] == hop
 
 
 # Branches: blank id; missing row; list all.
@@ -317,3 +354,132 @@ class TestAst973LegacyCandidateMigration:
         finally:
             conn.close()
         assert "keep_deleted" in ids
+
+
+class TestAst1258CandidateBatchClaim:
+    """AST-1258: candidate batch_id columns + pool claim → get → clear (job/company parity)."""
+
+    def test_schema_has_nullable_batch_columns(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db._candidate_schema_ensured = False
+        conn = db._get_connection()
+        try:
+            db._ensure_candidate_schema(conn)
+            cols = {r[1]: r for r in conn.execute("PRAGMA table_info(candidate)").fetchall()}
+            assert "batch_id" in cols
+            assert "batch_created_at" in cols
+            assert cols["batch_id"][3] == 0  # nullable
+            assert cols["batch_created_at"][3] == 0
+        finally:
+            conn.close()
+
+    def test_save_leaves_batch_unclaimed(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1258u", state="REQUESTED_ARTIFACTS", candidate_data={})
+        row = db.get_candidate("c1258u")
+        assert row is not None
+        assert not row.get("batch_id")
+
+    def test_claim_get_clear_multi_row_pool(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1258a", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c1258b", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c1258c", state="ACTIVE_SEARCH", candidate_data={})  # wrong state
+        n = db.claim_candidate_batch("craft_get_rubric-test-uuid", "REQUESTED_ARTIFACTS", 2)
+        assert n == 2
+        rows = db.get_candidate_batch("craft_get_rubric-test-uuid")
+        assert {r["astral_candidate_id"] for r in rows} == {"c1258a", "c1258b"}
+        for r in rows:
+            assert r["batch_id"] == "craft_get_rubric-test-uuid"
+            assert r.get("batch_created_at")
+        # Second concurrent claim cannot steal locked rows
+        n2 = db.claim_candidate_batch("other-batch-uuid", "REQUESTED_ARTIFACTS", 2)
+        assert n2 == 0
+        assert db.get_candidate_batch("other-batch-uuid") == []
+        # Clear releases all rows in the batch
+        cleared = db.clear_candidate_batch("craft_get_rubric-test-uuid")
+        assert cleared == 2
+        for cid in ("c1258a", "c1258b"):
+            row = db.get_candidate(cid)
+            assert not row.get("batch_id")
+            assert not row.get("batch_created_at")
+        # Pool is claimable again after clear
+        n3 = db.claim_candidate_batch("reclaim-uuid", "REQUESTED_ARTIFACTS", 2)
+        assert n3 == 2
+
+    def test_claim_unions_retry_states(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1258p", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c1258r", state="REQUESTED_ARTIFACTS_RETRY", candidate_data={})
+        n = db.claim_candidate_batch(
+            "batch-1258-union",
+            "REQUESTED_ARTIFACTS",
+            10,
+            states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        )
+        assert n == 2
+        ids = {r["astral_candidate_id"] for r in db.get_candidate_batch("batch-1258-union")}
+        assert ids == {"c1258p", "c1258r"}
+
+
+
+class TestAst1502EnsureLeavesLiveCandidateContent:
+    """AST-1502 bug-repro (gap for AST-1497): ensure must not run content migrates on boot."""
+
+    def test_ensure_candidate_schema_leaves_artifacts_ready_without_content_migrates(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = sqlite_in_memory
+        # Live operator row (plan ## Repro): ARTIFACTS_READY must survive schema ensure.
+        db.save_candidate(
+            "somerset",
+            state="ARTIFACTS_READY",
+            candidate_data={
+                "contact": {"first": "Susan", "last": "Somerset"},
+                "context": {"bio_summary": "ops"},
+                "artifacts": {"base_resume": {"professional_summary": "ready"}},
+            },
+        )
+        before = db.get_candidate("somerset")
+        assert before is not None
+        assert before["state"] == "ARTIFACTS_READY"
+
+        content_calls: list[str] = []
+        monkeypatch.setattr(
+            db,
+            "_migrate_candidate_data_structure",
+            lambda _c: content_calls.append("data_structure"),
+        )
+        monkeypatch.setattr(
+            db,
+            "_migrate_pronoun_preference_backfill",
+            lambda _c: content_calls.append("pronoun_backfill"),
+        )
+        monkeypatch.setattr(
+            db,
+            "_migrate_context_arrays_to_text",
+            lambda _c: content_calls.append("context_arrays"),
+        )
+        monkeypatch.setattr(
+            db,
+            "_migrate_candidate_library_ast1014",
+            lambda _c: content_calls.append("library_ast1014"),
+        )
+        monkeypatch.setattr(
+            db,
+            "_legacy_candidate_migrate_conn",
+            lambda *_a, **_k: content_calls.append("legacy_migrate") or {},
+        )
+
+        db._candidate_schema_ensured = False
+        conn = db._get_connection()
+        try:
+            db._ensure_candidate_schema(conn)
+        finally:
+            conn.close()
+
+        after = db.get_candidate("somerset")
+        assert after is not None
+        assert after["state"] == "ARTIFACTS_READY"
+        # Kill-switch: content migrates must not ride inside schema ensure (AST-1497).
+        assert content_calls == []
