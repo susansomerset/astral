@@ -1,2 +1,10 @@
 import ContextTextPage from "../components/ContextTextPage"
-export default function Strengths() { return <ContextTextPage title="Strengths" contextKey="strengths" /> }
+export default function Strengths() {
+  return (
+    <ContextTextPage
+      title="Strengths"
+      contextKey="strengths"
+      bodyShape="plain_text"
+    />
+  )
+}

@@ -1,0 +1,95 @@
+---
+id: patt.artifact.traceability
+kind: pattern
+scope: [src/data/database.py, src/core/candidate.py, src/core/contact.py]
+point: >
+  Record which versioned agent + agent_task and which seed artifact ids produced a
+  derived artifact; manual edits inherit originating task sources.
+---
+
+# Abstract
+
+**Traceability** records the **generation circumstances** of a derived artifact
+version: the **versioned `agent_id`**, the **versioned `agent_task_id`**
+(`task_key_uuid`), and the **array of artifact ids** whose bodies seeded prompt
+tokens for that write. Later **manual** edits (UI or Estelle) create a new
+artifact version marked manual while **inheriting** those originating task
+sources — so explainability can still name the generative lineage after human
+revision. This pattern is **documentation only** until a dedicated implement
+ticket lands; read-operative / write-operative do **not** persist seed ids by
+themselves.
+
+# Arc
+
+1. **Before** — An agent (or craft chain) is about to write a derived operative
+   artifact, holding the active agent row, agent_task row, and the current
+   artifact ids used as prompt inputs.
+2. **During** — Persist provenance beside the new artifact version (exact column
+   / sidecar shape is implement-ticket work): versioned agent_id, versioned
+   agent_task_id, seed `artifact_id[]`.
+3. **After** — A UI or Estelle manual edit writes a new version via write-operative,
+   marks the version as manual, and copies forward the inherited originating
+   task sources (does not clear generative lineage).
+
+# Applications
+
+1. Explaining which prompt inputs seeded a job artifact build.
+2. Contact answers that must cite generative lineage after a human touch-up.
+3. Future grade/analysis explainability that needs seed pins beyond a single
+   output pin.
+
+# Exceptions
+
+1. **This epic (AST-1571)** — Draft only; no product persist/wire.
+2. **Read-operative / write-operative alone** — Pins identify a body; they do not
+   replace the seed-id array documented here.
+3. **Library blob fields** — Not a substitute for versioned provenance.
+
+# Implementation
+
+1. **Draft** — Land this file under `canon/directives/draft/`; cite from define /
+   plan tickets; do not treat as approved runtime law until Archie promotes.
+2. **AST-1588** — Lands `source_artifact_ids` persistence on the `artifacts` table
+   (data layer) so job_resume versions can cite base_resume; agent/task lineage and
+   full token-catalog harvest remain out of that epic.
+3. **Capture at generative write (AST-1579 seed-id slice)** — Prompt-time token
+   harvest ([AST-1698](https://linear.app/astralcareermatch/issue/AST-1698)) +
+   generative operative writes pass the harvest as `source_artifact_ids` via
+   `save_candidate_data` str-path / non-`job_resume` `save_job_artifact`
+   ([AST-1700](https://linear.app/astralcareermatch/issue/AST-1700)); consult
+   grade/analysis sibling job_data array is
+   [AST-1699](https://linear.app/astralcareermatch/issue/AST-1699). Versioned
+   `agent_id` / `agent_task_id` lineage remains implement-later.
+4. **Manual edit inheritance** — UI / Estelle write-operative paths that create a
+   new version after a human edit mark the version manual and copy inherited
+   originating task sources forward (implement ticket).
+5. **Consumers** — Prefer provenance records over reconstructing seeds from live
+   current rows.
+6. **Non-goal here** — No schema, no API field, no Contact/UI wire in AST-1584 /
+   AST-1585.
+
+# Examples
+
+**Live today** — `database.save_artifact(..., source_artifact_ids=...)` persists a JSON array of seed `artifact_uuid` strings on the new row (job_resume→base_resume citation via `tracker.save_job_artifact`; generative agent lands may also pass the harvested list for non-`job_resume` keys). **Still draft / illustrative** — versioned `agent_id` + versioned `agent_task_id` lineage remain **not** product-wired; do not invent those columns as live APIs.
+
+```python
+# Live: optional seed pins on the new artifact row (list[str] artifact_uuid)
+new_uuid = database.save_artifact(
+    entity_type,
+    entity_id,
+    artifact_type,
+    body,
+    source_artifact_ids=seed_uuids,  # e.g. [current base_resume uuid]; default []
+)
+# Job wrapper: tracker.save_job_artifact(...) auto-cites current base_resume for
+# job.artifacts.job_resume; other keys pass source_artifact_ids through.
+```
+
+do not treat versioned agent / agent_task columns as shipped in this draft’s examples — omit agent/task fences; state the gap in prose only (above).
+
+# OPEN QUESTIONS / DECISIONS
+
+1. Storage shape (columns on `artifacts` vs sidecar table) — deferred to the
+   implement ticket Archie approves after this draft.
+2. Whether every manual edit must require a non-empty inherited seed array when
+   the prior version had none (legacy rows) — deferred.

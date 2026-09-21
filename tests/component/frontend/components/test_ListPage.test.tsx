@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { dirname, resolve } from "node:path"
+import { fileURLToPath } from "node:url"
 import { fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
@@ -71,6 +74,8 @@ describe("ListPage", () => {
     await userEvent.click(screen.getByRole("columnheader", { name: /Name/ }))
     await userEvent.click(screen.getByRole("columnheader", { name: /Name/ }))
     await userEvent.click(screen.getAllByRole("checkbox")[0])
+    expect(screen.getByRole("button", { name: "Archive" })).toHaveClass("btn", "primary")
+    expect(screen.getByRole("button", { name: "Delete" })).toHaveClass("btn", "danger")
     await userEvent.click(screen.getByRole("button", { name: "Archive" }))
     expect(bulk).toHaveBeenCalledWith(["1", "2"])
     await userEvent.click(screen.getByText("more"))
@@ -130,5 +135,22 @@ describe("ListPage", () => {
       />,
     )
     await waitFor(() => expect(screen.getByText("Forty-two")).toBeInTheDocument())
+  })
+
+  it("AST-1301: App.css retires leftover labeled families", () => {
+    const css = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), "../../../../src/ui/frontend/src/App.css"),
+      "utf-8",
+    )
+    expect(css).toMatch(/\.btn\.primary\s*\{/)
+    expect(css).not.toMatch(/\.modal-btn\s*\{/)
+    expect(css).not.toMatch(/\.dep-btn\s*\{/)
+    expect(css).not.toMatch(/\.list-page-bulk-btn\s*\{/)
+    expect(css).not.toMatch(/\.timesheet-export-btn\s*\{/)
+    expect(css).not.toMatch(/\.entity-skip-btn\s*\{/)
+    expect(css).not.toMatch(/\.dispatch-log-copy-btn\s*\{/)
+    expect(css).not.toMatch(/\.recommended-report-copy-link\s*\{/)
+    expect(css).not.toMatch(/\.section-expand-chrome button\s*\{/)
+    expect(css).not.toMatch(/\.manage-email-toolbar button\s*\{/)
   })
 })

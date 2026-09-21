@@ -178,11 +178,27 @@ Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_gr
 
 **Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`.
 
-Idempotent `_apply_ast1113_craft_run_next_chain_migration` (wired from `_ensure_agent_task_schema` after AST-834) confirm/corrects craft `run_next` succession; skips missing rows (no ghost inserts). Admin JSON aligned on tip.
+**Superseded by AST-1264:** `_apply_ast1113_craft_run_next_chain_migration` is a **no-op** (repo JSON / live seed is craft `run_next` authority; schema-ensure must not rewrite edges). Hook call site retained.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Correct / idempotent / skip-missing | `src/data/database.py` | **`TestAst1113CraftRunNextChainMigration`** |
+| No-op migration (leaves links; no invent) | `src/data/database.py` | revised **`TestAst1113CraftRunNextChainMigration`** (`test_ast1264_*`) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
+  -q
+```
+
+### AST-1264 · AST-1243
+
+**Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1264-uat-craft-get-run-next`.
+
+UAT: `craft_get_rubric` persisted but `craft_do_rubric` never ran — fossil AST-1113 hot-path migration stomped succession. Neuter migration (this file). Agent CALLER reinject / hydrate skip: **`docs/test-bible/core/agent.md`** § AST-1264.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Migration no-op | `src/data/database.py` | revised **`TestAst1113CraftRunNextChainMigration`** |
 
 ```bash
 ./scripts/testing/run_component_tests.sh \

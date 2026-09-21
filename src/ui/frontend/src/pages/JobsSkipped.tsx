@@ -9,6 +9,7 @@ import CandidateJobRowActions from "../components/CandidateJobRowActions"
 import JobDetailModal from "../components/JobDetailModal"
 import { useCandidateJobActions } from "../hooks/useCandidateJobActions"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import {
   analysisTimeScoreForJob,
@@ -122,25 +123,25 @@ export default function Skipped() {
   const { manifest, loadState } = useStateUi()
   const { selectedId } = useCandidate()
   const [rows, setRows]     = useState<Job[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [sorts, setSorts]   = useState<Record<string, SortState>>({})
   const [toast, setToast]   = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
-  const load = useCallback(() => {
+  const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
-    setLoading(true)
+    beginRefresh(showSpinner)
     api(`/api/jobs?view=skipped&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
       .then(data => { setRows(Array.isArray(data) ? data : []); setSelected(new Set()) })
-      .finally(() => setLoading(false))
-  }, [selectedId])
+      .finally(() => endRefresh())
+  }, [selectedId, beginRefresh, endRefresh])
 
   const actions = useCandidateJobActions(load)
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(true) }, [load])
 
   useEffect(() => {
     if (actions.error) setToast({ text: actions.error, variant: "error" })
@@ -253,7 +254,7 @@ export default function Skipped() {
       <div className="list-page-header">
         <h1 className="list-page-title">Skipped</h1>
         {selected.size > 0 && (
-          <button className="list-page-bulk-btn" onClick={handleRetry}>Retry ({selected.size})</button>
+          <button className="btn primary" onClick={handleRetry}>Retry ({selected.size})</button>
         )}
       </div>
       {loading ? (
@@ -407,7 +408,11 @@ export default function Skipped() {
           )
         })
       )}
-      <JobDetailModal jobId={viewingId} onClose={() => { setViewingId(null); load() }} />
+      <JobDetailModal
+        jobId={viewingId}
+        onClose={() => { setViewingId(null); load() }}
+        onRefresh={load}
+      />
       <CandidateActionNotesModal
         open={!!actions.pending}
         action={actions.pending?.action ?? null}

@@ -12,37 +12,57 @@ interface Grade {
   confidence?: number
 }
 
+type RubricRow = { label?: string; content?: string; code?: string; importance?: number }
+
 interface Props {
   grades: Grade[]
+  /** Job-carried criteria for labels/order (AST-1327); preferred over live artifact. */
+  rubricItems?: RubricRow[] | null
+  /** Live candidate artifact key — content for “show rubric” only (snapshot omits content). */
   rubricArtifact?: string
 }
 
-export default function AgentAnalysisHeader({ grades, rubricArtifact }: Props) {
+function findRubricRow(list: RubricRow[], vector: string): RubricRow | null {
+  const gv = normalizeRubricVectorKey(vector || "")
+  return (
+    list.find(
+      r =>
+        (r.label && normalizeRubricVectorKey(r.label) === gv) ||
+        (r.code && normalizeRubricVectorKey(r.code) === gv),
+    ) ?? null
+  )
+}
+
+export default function AgentAnalysisHeader({ grades, rubricItems, rubricArtifact }: Props) {
   const [rubricVector, setRubricVector] = useState<string | null>(null)
   const { candidates, selectedId } = useCandidate()
   const candidate = candidates.find(c => c.astral_candidate_id === selectedId)
 
-  // Look up rubric content for the selected vector
+  // Live artifact — content for RubricModal only (AST-1063 snapshots omit content).
   const artifactRaw = rubricArtifact
-    ? (candidate?.candidate_data as Record<string, unknown> | undefined)?.artifacts as Record<string, unknown> | undefined
+    ? ((candidate?.candidate_data as Record<string, unknown> | undefined)?.artifacts as
+        | Record<string, unknown>
+        | undefined)
     : undefined
-  type RubricRow = { label?: string; content?: string; code?: string; importance?: number }
-  const rubricList: RubricRow[] = Array.isArray(artifactRaw?.[rubricArtifact!])
+  const liveList: RubricRow[] = Array.isArray(artifactRaw?.[rubricArtifact!])
     ? (artifactRaw![rubricArtifact!] as RubricRow[])
     : []
-  function rubricRowForVector(vector: string): RubricRow | null {
-    const gv = normalizeRubricVectorKey(vector || "")
-    return (
-      rubricList.find(r => (r.label && normalizeRubricVectorKey(r.label) === gv) || (r.code && normalizeRubricVectorKey(r.code) === gv)) ??
-      null
-    )
-  }
-  const rubricEntry = rubricVector ? rubricRowForVector(rubricVector) : null
+  // Labels: job-carried first; live only when no job-carried list (legacy callers).
+  const labelList: RubricRow[] =
+    Array.isArray(rubricItems) && rubricItems.length > 0 ? rubricItems : liveList
+
+  const labelRow = rubricVector ? findRubricRow(labelList, rubricVector) : null
+  // Content: prefer live row matched by vector/code from the label identity.
+  const contentRow = rubricVector
+    ? findRubricRow(liveList, rubricVector) ||
+      (labelRow?.code ? findRubricRow(liveList, labelRow.code) : null) ||
+      labelRow
+    : null
 
   return (
     <div className="analysis-header">
       {grades.map(g => {
-        const row = rubricArtifact ? rubricRowForVector(g.vector) : null
+        const row = findRubricRow(labelList, g.vector)
         const vectorLabel = row
           ? formatRubricVectorHeader(rubricItemImportance(row), row.label ?? g.vector, row.code)
           : g.vector
@@ -54,7 +74,7 @@ export default function AgentAnalysisHeader({ grades, rubricArtifact }: Props) {
               <ConfidenceBullets confidence={g.confidence} />
             </div>
             <span className="analysis-vector">{vectorLabel}</span>
-            {rubricArtifact && (
+            {(rubricArtifact || (Array.isArray(rubricItems) && rubricItems.length > 0)) && (
               <button className="analysis-rubric-link" onClick={() => setRubricVector(g.vector)}>
                 show rubric
               </button>
@@ -69,7 +89,7 @@ export default function AgentAnalysisHeader({ grades, rubricArtifact }: Props) {
           open
           onClose={() => setRubricVector(null)}
           vector={rubricVector}
-          content={rubricEntry?.content ?? null}
+          content={contentRow?.content ?? null}
         />
       )}
     </div>

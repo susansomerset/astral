@@ -1,9 +1,11 @@
 import { render } from "@testing-library/react"
-import { describe, expect, it } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import {
   artifactHasContent,
   buildPhaseSectionGradeConfidenceRow,
+  formatPhaseSectionScoreTitle,
   gradesForHeader,
+  jobScoreBreakdownForGradesField,
   materialsPreviewVisible,
   primaryActionsForState,
   anyReportArtifactContent,
@@ -23,24 +25,26 @@ describe("recommendedJobReport — AST-581 materialsPreviewVisible", () => {
     expect(materialsPreviewVisible("RECOMMENDED", {})).toBe(false)
   })
 
-  it("returns true on BUILD_ARTIFACTS when job_resume or resume_content has text", () => {
+  it("returns true on BUILD_ARTIFACTS when hydrated job_resume has text", () => {
     expect(
       materialsPreviewVisible("BUILD_ARTIFACTS", {
         job_resume: { professional_summary: "draft" },
       }),
     ).toBe(true)
+    // AST-1593: resume_content alone is not job-resume SoT
     expect(
       materialsPreviewVisible("BUILD_ARTIFACTS", {
         resume_content: { professional_summary: "legacy" },
       }),
-    ).toBe(true)
+    ).toBe(false)
   })
 })
 
 describe("recommendedJobReport — AST-948 print helpers", () => {
-  it("printResumeVisible follows resume_content via artifactHasContent", () => {
-    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(true)
-    expect(printResumeVisible({ resume_content: { professional_summary: "   " } })).toBe(false)
+  it("printResumeVisible follows hydrated job_resume via artifactHasContent", () => {
+    expect(printResumeVisible({ job_resume: { professional_summary: "x" } })).toBe(true)
+    expect(printResumeVisible({ job_resume: { professional_summary: "   " } })).toBe(false)
+    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(false)
     expect(printResumeVisible({})).toBe(false)
   })
 
@@ -58,9 +62,9 @@ describe("recommendedJobReport — AST-1100 pin-slot visibility", () => {
     expect(artifactHasContent({ job_resume: { professional_summary: "x" } }, "job_resume")).toBe(true)
   })
 
-  it("printResumeVisible accepts job_resume pin or legacy resume_content", () => {
+  it("printResumeVisible accepts job_resume pin; resume_content is not SoT", () => {
     expect(printResumeVisible({ job_resume: "pin-id" })).toBe(true)
-    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(true)
+    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(false)
     expect(printResumeVisible({})).toBe(false)
   })
 
@@ -86,17 +90,14 @@ describe("recommendedJobReport — AST-565", () => {
 })
 
 describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
-  it("buildPhaseSectionGradeConfidenceRow renders grade dots with ConfidenceBullets", () => {
+  it("buildPhaseSectionGradeConfidenceRow paints from job-carried jd_rubric", () => {
+    const grades = [{ vector: "Job Description (JD)", grade: "A", confidence: 4, reason: "ok" }]
+    const job = {
+      jd_grades: grades,
+      jd_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
+    }
     const { container } = render(
-      <>
-        {buildPhaseSectionGradeConfidenceRow(
-          [{ vector: "JD", grade: "A", confidence: 4, reason: "ok" }],
-          "jobdesc_rubric",
-          {
-            jobdesc_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
-          },
-        )}
-      </>,
+      <>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>,
     )
     expect(container.querySelector(".recommended-report-phase-grade-row")).toBeTruthy()
     expect(container.querySelector(".grade-dot.dot-a")).toHaveTextContent("A")
@@ -104,18 +105,39 @@ describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
     expect(container.querySelectorAll(".confidence-bullet--on").length).toBe(4)
   })
 
-  it("buildPhaseSectionGradeConfidenceRow falls back to array order without rubric", () => {
+  it("buildPhaseSectionGradeConfidenceRow falls back to grades-only when jd_rubric absent", () => {
+    const grades = [{ vector: "X", grade: "B", confidence: 2 }]
+    const job = { jd_grades: grades }
     const { container } = render(
-      <>
-        {buildPhaseSectionGradeConfidenceRow(
-          [{ vector: "X", grade: "B", confidence: 2 }],
-          undefined,
-          {},
-        )}
-      </>,
+      <>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>,
     )
     expect(container.querySelector(".grade-dot.dot-b")).toHaveTextContent("B")
     expect(container.querySelectorAll(".confidence-bullet--on").length).toBe(2)
+  })
+
+  // AST-1328 bug-repro: meteorite mismatch — header follows job-carried *_rubric, not live artifact underlap.
+  it("AST-1328: header shows every job-carried vector when live jobdesc_rubric underlaps", () => {
+    const grades = [
+      { vector: "Embedded/Firmware/Hardware Domain", grade: "A", confidence: 5 },
+      { vector: "Quality Check", grade: "B", confidence: 4 },
+    ]
+    const job = {
+      jd_grades: grades,
+      jd_rubric: [
+        { code: "EFW", label: "Embedded/Firmware/Hardware Domain", importance: 1, grade_descriptions: [] },
+        { code: "QC", label: "Quality Check", importance: 5, grade_descriptions: [] },
+      ],
+      // Decoy — helper must not read live candidate artifacts (AST-1327).
+      artifacts: {
+        jobdesc_rubric: [{ code: "QC", label: "Quality Check", importance: 5 }],
+      },
+    }
+    const { container } = render(
+      <>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>,
+    )
+    expect(container.querySelectorAll(".recommended-report-phase-grade-cell").length).toBe(2)
+    expect(container.querySelector(".grade-dot.dot-a")).toBeTruthy()
+    expect(container.querySelector(".grade-dot.dot-b")).toBeTruthy()
   })
 
   it("gradesForHeader normalizes array and object maps", () => {
@@ -126,7 +148,6 @@ describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
     expect(gradesForHeader(null)).toEqual([])
   })
 })
-
 describe("recommendedJobReport — AST-951 Artifacts helpers", () => {
   it("isArtifactsBuildInProgress covers base and hop, not ERROR", () => {
     expect(isArtifactsBuildInProgress("BUILD_ARTIFACTS")).toBe(true)
@@ -151,3 +172,49 @@ describe("recommendedJobReport — AST-951 Artifacts helpers", () => {
     ).toBe(true)
   })
 })
+
+describe("recommendedJobReport — AST-1348 phase score header helpers", () => {
+  const tpl =
+    STATE_UI_MANIFEST_FIXTURE.jobs.recommended.phase_score_header_title_template!
+
+  it("jobScoreBreakdownForGradesField reads top-level and job_data", () => {
+    const trio = { earned: 137.4, possible: 150.2, max: 320.9 }
+    expect(
+      jobScoreBreakdownForGradesField({ jd_score_breakdown: trio }, "jd_grades"),
+    ).toEqual(trio)
+    expect(
+      jobScoreBreakdownForGradesField(
+        { job_data: { do_score_breakdown: trio } },
+        "do_grades",
+      ),
+    ).toEqual(trio)
+    expect(jobScoreBreakdownForGradesField({}, "jd_grades")).toBeNull()
+    expect(jobScoreBreakdownForGradesField({ jd_score_breakdown: trio }, "jd_score")).toBeNull()
+    expect(
+      jobScoreBreakdownForGradesField(
+        { jd_score_breakdown: { earned: 1, possible: "x", max: 3 } },
+        "jd_grades",
+      ),
+    ).toBeNull()
+  })
+
+  it("formatPhaseSectionScoreTitle rounds and fills template", () => {
+    expect(
+      formatPhaseSectionScoreTitle(
+        "JD Analysis",
+        { earned: 137.4, possible: 150.2, max: 320.9 },
+        tpl,
+      ),
+    ).toBe("JD Analysis - score: 137 out of 150 possible (321 max total)")
+    expect(
+      formatPhaseSectionScoreTitle(
+        "DO Analysis",
+        { earned: 0, possible: 0, max: 300 },
+        "",
+      ),
+    ).toBe("DO Analysis - score: 0 out of 0 possible (300 max total)")
+  })
+})
+
+
+

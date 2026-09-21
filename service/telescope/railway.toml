@@ -1,0 +1,37 @@
+# Astral Telescope — Railway config-as-code (AST-1727 / Phase 1).
+# Point this Railway *service* Config-as-Code path at:
+#   /service/telescope/railway.toml
+# Do NOT set Railway Root Directory to /service/telescope — the Dockerfile
+# COPY paths are monorepo-root relative (`COPY service/telescope/ …`).
+# Build context = repository root; dockerfilePath below selects the image.
+#
+# Dashboard-only (not expressible / not safe in this file):
+#   - Create a *separate* Railway service from the platform (AC 9 / AC 12).
+#   - Private networking: no public domain / generate domain OFF for Telescope.
+#     Platform reaches it at http://<telescope-service-name>.railway.internal:8080
+#     (set TELESCOPE_BASE_URL / TELESCOPE_BASE_URLS on the *platform* service).
+#   - Shared secret: set TELESCOPE_BEARER_TOKEN on Telescope *and* platform
+#     (same value; never commit the secret).
+#   - Optional fan-out: after 1-replica validation, raise replicas in the
+#     dashboard (Phase 1 fixed fleet). Do not add Phase 2 autoscaler
+#     or third-party horizontal-scale hooks (AC 13).
+#   - /dev/shm: if Firefox flakes on shared memory, raise container disk or
+#     follow Railway shm guidance; Dockerfile documents --shm-size for local Docker.
+#   - Do NOT enable Railway healthcheckPath=/healthz — /healthz requires
+#     Authorization: Bearer (AST-1725); Railway probes cannot send that header.
+#     Verify with: curl -H "Authorization: Bearer $TELESCOPE_BEARER_TOKEN" \
+#       http://<private-host>:8080/healthz
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "service/telescope/Dockerfile"
+watchPatterns = ["service/telescope/**"]
+
+[deploy]
+# Phase 1: start at 1 replica; fan out manually in the dashboard later.
+numReplicas = 1
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
+# ~2 GiB per replica — matches parent “~2–4 pages in a 2GB container” +
+# TELESCOPE_MAX_CONCURRENT_PAGES default 3 (AST-1725 settings).
+limitOverride = { containers = { memoryBytes = 2147483648 } }
