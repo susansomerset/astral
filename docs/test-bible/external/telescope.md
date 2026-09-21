@@ -72,3 +72,19 @@ Gazer batch + roster scrape manifests: **`docs/test-bible/core/gazer.md`** · **
 ./scripts/testing/run_component_tests.sh \
   tests/component/external/test_telescope.py::TestAst1745CullPreservesRootSvgLogo -q
 ```
+
+---
+
+### AST-1750 · AST-1721 (qa-fix bug-repro — _post_telescope debug dump)
+
+**Board REVISE:** `_post_telescope` must emit ungated `logger.debug` callee-in (full request body) and callee-out (full response JSON) when `log_debug` is on; existing coverage has no HTTP-joint debug dump.
+
+| Area | Component tests |
+| --- | --- |
+| Debug request body + full response | `test_telescope.py::TestAst1750PostTelescopeDebugDump::test_post_telescope_debug_emits_request_body_and_full_response` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_telescope.py::TestAst1750PostTelescopeDebugDump -q
+```
+
