@@ -37,7 +37,6 @@ from src.utils.config import (
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
     METEORITE_BOT_BLOCKED_NOTIFY_CONFIG,
-    METEORITE_RETENTION_CONFIG,
     dispatch_claim_uses_score_floor,
     effective_dispatch_score_floor,
     dispatch_claim_states,
@@ -105,11 +104,6 @@ def _meteorite_ingress_runner(task_key: str):
 def _is_meteorite_bot_blocked_notify_task_key(task_key: str) -> bool:
     """True for BOT_BLOCKED Estelle notify runner (AST-1561)."""
     return (task_key or "").strip() == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]
-
-
-def _is_meteorite_retention_task_key(task_key: str) -> bool:
-    """True for scheduled meteorite retention runner (AST-1562)."""
-    return (task_key or "").strip() == METEORITE_RETENTION_CONFIG["task_key"]
 
 
 def _task_key_scored(task_key: str) -> bool:
@@ -316,6 +310,50 @@ def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
     }
 
 
+def ensure_meteorite_ingress_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent per-candidate insert of stage/scrape/land/notify meteorite rows.
+
+    stat.dispatch.entity-state-bound: these 4 task_keys were a single shared
+    NULL-candidate_id pool row each (AST-1560/1561); now bound per-candidate like
+    job/company so an inactive candidate's rows stop firing.
+    """
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    existing = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in database.list_dispatch_tasks_for_candidate(cid)
+    }
+    ingress = METEORITE_INGRESS_DISPATCH_CONFIG
+    entries = (
+        (ingress["stage_task_key"], ingress["stage_trigger_state"], ingress["batch_size"]),
+        (ingress["scrape_task_key"], ingress["scrape_trigger_state"], ingress["batch_size"]),
+        (ingress["land_task_key"], ingress["land_trigger_state"], ingress["batch_size"]),
+        (
+            METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],
+            METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"],
+            METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["batch_size"],
+        ),
+    )
+    added = 0
+    skipped = 0
+    for tk, ts, batch_size in entries:
+        if (tk, ts) in existing:
+            skipped += 1
+            continue
+        database.save_dispatch_task(
+            candidate_id=cid,
+            task_key=tk,
+            min_count=1,
+            auto_mode=False,
+            trigger_state=ts,
+            batch_size=batch_size,
+            freq_hrs=0.1,
+        )
+        added += 1
+    return {"candidate_id": cid, "added": added, "skipped": skipped}
+
+
 def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
     """Seed template + every candidate that already has dispatch rows (AST-1054)."""
     template_id = template_candidate_id()
@@ -343,6 +381,34 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
         "skipped": skipped,
         "skipped_missing_config": skipped_missing_config,
         "retired": retired,
+    }
+
+
+def provision_meteorite_ingress_dispatch_tasks() -> Dict[str, Any]:
+    """Standalone operator tool: seed template + every scheduled candidate's ingress rows.
+
+    Kept separate from provision_meteorite_dispatch_tasks (not auto-invoked at boot either,
+    per AST-1496's ban on automatic dispatch_task writers — operator runs this by hand).
+    """
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    if database.get_candidate(template_id) is None:
+        raise LookupError(f"Template candidate not found: {template_id}")
+    tstats = ensure_meteorite_ingress_dispatch_tasks(template_id)
+    added = int(tstats.get("added") or 0)
+    skipped = int(tstats.get("skipped") or 0)
+    touched = 0
+    for cid in database.list_candidate_ids_with_dispatch_tasks():
+        stats = ensure_meteorite_ingress_dispatch_tasks(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        touched += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_touched": touched,
+        "added": added,
+        "skipped": skipped,
     }
 
 
@@ -572,7 +638,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     bid             = ctx.get("entity_batch_id") or log_batch_id.get()
     dispatch_task_key = (task.get("task_key") or "").strip()
     use_full_batch = batch_call_mode or (dispatch_task_key == "parse_job_list")
-    # Candidate consult reads entities[0] only — force per-row gather for pool claims (AST-1259).
+    # Candidate consult reads entities[0] only — force per-row gather.
     if entity_type == "candidate":
         use_full_batch = False
     s               = dict(_SUMMARY_ZERO)
@@ -590,13 +656,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
             from src.core.candidate import requested_artifacts_dispatch_claim_states
             claim_states = requested_artifacts_dispatch_claim_states()
         logger.debug(
-            "Calling get_new_candidate_batch: [state=%s, limit=%s, sort_by=%s, batch_id=%s, states=%s]",
-            input_state, limit, sort_by, bid, claim_states,
+            "Calling get_new_candidate_batch: [state=%s, limit=%s, sort_by=%s, candidate_id=%s, batch_id=%s, states=%s]",
+            input_state, limit, sort_by, candidate_id, bid, claim_states,
         )
         bid, entities = get_new_candidate_batch(
             input_state,
             limit=limit,
             sort_by=sort_by,
+            candidate_id=candidate_id,
             batch_id=bid,
             states=claim_states,
         )
@@ -1014,108 +1081,6 @@ async def _dispatch_one_body(task: Dict, debug: bool) -> None:
         try:
             summary = await run_notify_meteorite_bot_blocked(task, debug=debug)
             logger.debug("Response from run_notify_meteorite_bot_blocked: %s", summary)
-            for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
-                accumulated[k] = int(summary.get(k, 0) or 0)
-        except asyncio.CancelledError:
-            final_status = "INTERRUPTED"
-            logger.warning(
-                "%s | dispatch %s %s\n  Killed by admin\n  The batch is stopping",
-                candidate_id or "-",
-                task.get("entity_type") or "-",
-                task_key,
-            )
-            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
-        except Exception as exc:
-            final_status = "FAILED"
-            logger.exception(
-                "%s | dispatch %s %s\n  %s: %s\n  Truncating the batch",
-                candidate_id or "-",
-                task.get("entity_type") or "-",
-                task_key,
-                type(exc).__name__,
-                exc,
-            )
-            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
-        finally:
-            if dispatch_ledger_id:
-                try:
-                    total_cost = compute_batch_cost(dispatch_ledger_id)
-                    total_processed = accumulated.get("total_processed", 0)
-                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
-                    database.update_dispatch_ledger(
-                        dispatch_ledger_id,
-                        status=final_status,
-                        completed_at=_now_iso(),
-                        total_cost=total_cost,
-                        entity_cost=round(entity_cost, 7),
-                        **accumulated,
-                    )
-                    if final_status == "COMPLETED":
-                        _log_dispatch_task_completed(
-                            candidate_id,
-                            task.get("entity_type"),
-                            task_key,
-                            accumulated.get("total_passed", 0),
-                            accumulated.get("total_failed", 0),
-                            accumulated.get("total_errors", 0),
-                            dispatch_ledger_id,
-                        )
-                except Exception as e:
-                    logger.exception(
-                        "%s | dispatch %s %s ledger=%s\n  %s: %s\n  The run is over; this batch was not recorded as finished.",
-                        candidate_id or "-",
-                        task.get("entity_type") or "-",
-                        task_key,
-                        dispatch_ledger_id,
-                        type(e).__name__,
-                        e,
-                    )
-            flush_log_buffer()
-            log_batch_id.set(None)
-            try:
-                _db_update_dispatch_task(task_id, last_run_at=_now_iso())
-            except Exception as e:
-                logger.exception(
-                    "%s | dispatch %s %s task_id=%s\n  %s: %s\n  The run is over; this task's last-run time was not saved.",
-                    candidate_id or "-",
-                    task.get("entity_type") or "-",
-                    task_key,
-                    task_id,
-                    type(e).__name__,
-                    e,
-                )
-        return
-
-    # AST-1562: scheduled retention — purge old LANDED + info-list stale rows.
-    if _is_meteorite_retention_task_key(task_key):
-        from src.core.meteorite import run_meteorite_retention
-
-        entity_batch_id = f"{task_key}-{uuid.uuid4()}"
-        ledger_cid = str(candidate_id or "").strip() or None
-        logger.debug(
-            "Calling run_meteorite_retention: [task_key=%s, entity_batch_id=%s, candidate_id=%s]",
-            task_key, entity_batch_id, ledger_cid,
-        )
-        database.save_dispatch_ledger(
-            entity_batch_id,
-            task_key,
-            ledger_cid,
-            _now_iso(),
-            "RUNNING",
-            entity_type=None,
-        )
-        log_batch_id.set(entity_batch_id)
-        dispatch_ledger_id = entity_batch_id
-        task["entity_batch_id"] = entity_batch_id
-        with _registry_lock:
-            entry = _task_registry.get(task_id)
-            if entry:
-                entry["asyncio_task"] = asyncio.current_task()
-        accumulated = dict(_SUMMARY_ZERO)
-        final_status = "COMPLETED"
-        try:
-            summary = await run_meteorite_retention(task, debug=debug)
-            logger.debug("Response from run_meteorite_retention: %s", summary)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
