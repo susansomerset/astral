@@ -63,6 +63,7 @@ export default function AdminTelescope() {
   const [selector, setSelector] = useState("")
   const [tag, setTag] = useState("")
   const [className, setClassName] = useState("")
+  const [elementId, setElementId] = useState("")
   const [busy, setBusy] = useState(false)
   const [result, setResult] = useState<ScrapeResult | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -70,8 +71,10 @@ export default function AdminTelescope() {
   const [showJson, setShowJson] = useState(false)
   const clearToast = useCallback(() => setToast(null), [])
 
-  // Tag/class_name and CSS selector are mutually exclusive (service 400 if both).
-  const tagClassActive = Boolean(tag.trim() || className.trim())
+  // Tag/class_name/id and CSS selector are mutually exclusive (service 400 if both).
+  const secondaryFilterActive = Boolean(
+    tag.trim() || className.trim() || elementId.trim(),
+  )
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault()
@@ -88,9 +91,10 @@ export default function AdminTelescope() {
         links: responseType === "text" ? links : true,
         cull: responseType === "html" ? cull : false,
       }
-      if (tagClassActive) {
+      if (secondaryFilterActive) {
         if (tag.trim()) body.tag = tag.trim()
         if (className.trim()) body.class_name = className.trim()
+        if (elementId.trim()) body.id = elementId.trim()
       } else if (selector.trim()) {
         body.selector = selector.trim()
       }
@@ -226,12 +230,23 @@ export default function AdminTelescope() {
         </label>
 
         <label className="admin-telescope-field">
+          <span>Id (optional)</span>
+          <input
+            type="text"
+            value={elementId}
+            onChange={e => setElementId(e.target.value)}
+            disabled={Boolean(selector.trim())}
+            placeholder="hero (no leading #)"
+          />
+        </label>
+
+        <label className="admin-telescope-field">
           <span>Selector (optional)</span>
           <input
             type="text"
             value={selector}
             onChange={e => setSelector(e.target.value)}
-            disabled={tagClassActive}
+            disabled={secondaryFilterActive}
             placeholder="css / page / body"
           />
         </label>

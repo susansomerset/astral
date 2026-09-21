@@ -39,6 +39,7 @@ class TelescopeRequest(BaseModel):
     selector: Optional[str] = None
     tag: Optional[str] = None
     class_name: Optional[str] = None
+    id: Optional[str] = None
     expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
     links: bool = True
@@ -49,6 +50,7 @@ class TelescopeHtmlRequest(BaseModel):
     selector: Optional[str] = None
     tag: Optional[str] = None
     class_name: Optional[str] = None
+    id: Optional[str] = None
     expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
 
@@ -58,20 +60,25 @@ def _resolve_body_selector(
     selector: Optional[str],
     tag: Optional[str],
     class_name: Optional[str],
+    id: Optional[str] = None,
 ) -> Optional[str]:
     """Map request filter fields to the CSS string capture_* expects; 400 on bad input."""
     try:
         resolved = resolve_capture_query(
-            selector=selector, tag=tag, class_name=class_name
+            selector=selector, tag=tag, class_name=class_name, id=id
         )
     except CaptureQueryError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     # Log filter mode without dumping page content
-    if class_name and str(class_name).strip():
+    t = (tag or "").strip()
+    cn = (class_name or "").strip() if class_name else ""
+    eid = (id or "").strip() if id else ""
+    if t or cn or eid:
         _log.info(
-            "telescope filter mode=tag/class tag=%s class_name=%s resolved=%s",
-            (tag or "").strip() or None,
-            str(class_name).strip(),
+            "telescope filter mode=tag/class/id tag=%s class_name=%s id=%s resolved=%s",
+            t or None,
+            cn or None,
+            eid or None,
             resolved,
         )
     elif selector and str(selector).strip():
@@ -176,7 +183,10 @@ async def post_telescope(request: Request, body: TelescopeRequest):
     if not url:
         raise HTTPException(status_code=400, detail="url required")
     sel = _resolve_body_selector(
-        selector=body.selector, tag=body.tag, class_name=body.class_name
+        selector=body.selector,
+        tag=body.tag,
+        class_name=body.class_name,
+        id=body.id,
     )
     pool: BrowserPool = request.app.state.pool
 
@@ -215,7 +225,10 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
     if not url:
         raise HTTPException(status_code=400, detail="url required")
     sel = _resolve_body_selector(
-        selector=body.selector, tag=body.tag, class_name=body.class_name
+        selector=body.selector,
+        tag=body.tag,
+        class_name=body.class_name,
+        id=body.id,
     )
     pool: BrowserPool = request.app.state.pool
 

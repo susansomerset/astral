@@ -62,7 +62,7 @@ _TAG_RE = re.compile(r"^[A-Za-z][\w-]*$")
 
 
 class CaptureQueryError(ValueError):
-    """Ambiguous or invalid tag/class_name/selector filter (maps to HTTP 400)."""
+    """Ambiguous or invalid tag/class_name/id/selector filter (maps to HTTP 400)."""
 
 
 def resolve_capture_query(
@@ -70,8 +70,9 @@ def resolve_capture_query(
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
+    id: Optional[str] = None,
 ) -> Optional[str]:
-    """Build the CSS string for capture_* from selector and/or explicit tag/class.
+    """Build the CSS string for capture_* from selector and/or explicit tag/class/id.
 
     Returns None when nothing was set (whole-document / page defaults in capture_*).
     Raises CaptureQueryError on ambiguity or invalid tokens.
@@ -79,11 +80,28 @@ def resolve_capture_query(
     sel = (selector or "").strip()
     t = (tag or "").strip()
     cn = (class_name or "").strip()
+    eid = (id or "").strip()
 
-    if sel and (t or cn):
+    if sel and (t or cn or eid):
         raise CaptureQueryError(
-            "ambiguous filter: use selector or tag/class_name, not both"
+            "ambiguous filter: use selector or tag/class_name/id, not both"
         )
+
+    # Explicit id → CSS #id (optionally with tag / class_name); no bare→# retry.
+    if eid:
+        if not _CLASS_NAME_RE.match(eid):
+            raise CaptureQueryError("invalid id")
+        if t and not _TAG_RE.match(t):
+            raise CaptureQueryError("invalid tag")
+        if cn and not _CLASS_NAME_RE.match(cn):
+            raise CaptureQueryError("invalid class_name")
+        if t and cn:
+            return f"{t}.{cn}#{eid}"
+        if t:
+            return f"{t}#{eid}"
+        if cn:
+            return f".{cn}#{eid}"
+        return f"#{eid}"
 
     if cn:
         if not _CLASS_NAME_RE.match(cn):
