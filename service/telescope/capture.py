@@ -60,8 +60,8 @@ async def capture_text(page, selector: str | None) -> Union[str, List[str]]:
 
 async def capture_links(page, selector: str | None = None) -> List[Dict[str, str]]:
     sel = (selector or "").strip()
-    # Whole-page (omit / page / body) — unchanged document-wide collect
-    if not sel or sel.lower() in ("page", "body"):
+    # Whole-document only for omit / "page"; explicit "body"/"head" are element-scoped (AST-1735)
+    if not sel or sel.lower() == "page":
         return await page.evaluate(
             """() => {
                 const links = Array.from(document.querySelectorAll('a[href]'));
