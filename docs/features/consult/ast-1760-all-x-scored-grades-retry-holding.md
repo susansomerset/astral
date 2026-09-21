@@ -137,3 +137,58 @@ context_tokens≈42000
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `eec4856b` | All-X scored grades → retry holding |
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1760
+**Publish ref:** `bb69043b4749aab68c2327290e85ed2c0f07abcf`
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`
+**Overall:** CLEAN
+
+## Canon scores
+
+| id | grade | effort | one-line |
+|----|-------|--------|----------|
+| patt.task.dispatch-retry | A | | |
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| astral.batch.claim-process-release | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned)
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `src/core/consult.py` — `_run_batch_consult` `except Exception` (~1708–1731)
+- **Finding:** `AllLiteralXGradeSetError` still flows through the existing `logger.exception` + `continue` path after the dedicated `logger.debug` line — same as `IncompleteGradeSetError` before batch fail-dest transition.
+- **Recommendation:** Acceptable; matches AST-1155 batch bad-grade handling. No change required unless Susan wants all-literal-X to suppress the exception traceback in logs.
+
+## What's solid
+
+- Subclass + raise-site design reuses AST-1155 fail-dest wiring without new holdings or `score_floor` edits.
+- Gate is correctly scoped to `_apply_render_verdict_decoded_job` scored branch (after complete-set, before `_render_score`); binary `_render_pass_fail` and informational `_render_score` callers stay untouched.
+- Dedicated all-literal-X `logger.debug` branches land in both `render_verdict` and `_run_batch_consult` — closes Joan’s plan-stage discuss item.
+- `TestAst1760AllLiteralXRetry` covers all eight manifest rows: gate, fail-dest matrix, floor-0 never-pass, partial-X scoring, binary AC5, first/second strike, mixed-batch sibling pass.
+
+## Recommended actions
+
+(none — artifact complete; Chuckles may advance to Review Posted)
+
+---
