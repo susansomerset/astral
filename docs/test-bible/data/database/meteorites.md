@@ -137,3 +137,34 @@ Meteorite-table `electronic_contact` column (CREATE + ALTER ensure), `_UPDATE_ME
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1748 · AST-1741
+
+**Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`.
+
+`list_meteorites_for_candidate(candidate_id)` — blank/None/`""` → `[]` without querying; otherwise all surviving rows for that candidate ordered by `state_changed_at DESC`. API list/detail: **`docs/test-bible/ui/api/api_meteorite.md`** § AST-1748. Config constants `JOBS_METEORITES_*` consumed by the API (not asserted here).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Candidate-scoped list + empty honesty + order | `src/data/database.py` | **`TestAst1748ListMeteoritesForCandidate`** |
+
+**Broken / obsolete this pass:** AST-1557 insert/claim seeds assumed insert forced `NEW` and state `ERROR` — revised for AST-1713 caller-state insert + live `SCRAPE_ERROR` (no product change on this ticket; tree drift after sync).
+
+**Integration:** none — no existing scenario exercises candidate meteorite list; do not invent.
+
+## QA test manifest
+
+1. Data helper: `tests/component/data/database/test_meteorites.py::TestAst1748ListMeteoritesForCandidate`
+2. API list/detail: `tests/component/ui/api/test_api_meteorite.py::TestAst1748MeteoriteListDetailApi`
+3. Regression (same modules): existing AST-1557 / AST-1689 / AST-1691 / AST-1694 / land classes in those files
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py \
+  tests/component/ui/api/test_api_meteorite.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests`.

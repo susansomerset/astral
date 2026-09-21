@@ -232,3 +232,139 @@ class TestAst1471MeteoriteLandApi:
             ).status_code
             == 401
         )
+
+
+# Branches: list/detail GET; empty honesty; field projection; 404/500; auth; no info log (AST-1748).
+class TestAst1748MeteoriteListDetailApi:
+    def _row(self, **overrides):
+        base = {
+            "id": 7,
+            "candidate_id": "cand-A",
+            "source_kind": "email",
+            "source_id": "mid-1",
+            "source_ref": None,
+            "state": "READY",
+            "content": '{"title": "X"}',
+            "classify_outcome": "link",
+            "link": "not-http",
+            "electronic_contact": None,
+            "job_title": "Engineer",
+            "employer_name": "Acme",
+            "astral_job_id": "job-99",
+            "error": None,
+            "created_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": "2024-01-02T00:00:00+00:00",
+            "state_changed_at": "2024-01-03T00:00:00+00:00",
+            "estelle_notified_at": None,
+        }
+        base.update(overrides)
+        return base
+
+    def test_list_scopes_candidate_and_returns_columns(
+        self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import JOBS_METEORITES_LIST_COLUMNS
+
+        seen: dict = {}
+
+        def _list(cid: str):
+            seen["cid"] = cid
+            return [self._row(candidate_id=cid, id=1), self._row(candidate_id=cid, id=2, content="heavy")]
+
+        monkeypatch.setattr(meteorite_api, "list_meteorites_for_candidate", _list)
+        info = MagicMock()
+        monkeypatch.setattr(meteorite_api.logger, "info", info)
+        resp = meteorite_client.get("/api/candidates/cand-A/meteorites", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert seen["cid"] == "cand-A"
+        assert body["columns"] == list(JOBS_METEORITES_LIST_COLUMNS)
+        assert [m["id"] for m in body["meteorites"]] == [1, 2]
+        assert all(m["candidate_id"] == "cand-A" for m in body["meteorites"])
+        # List projection omits heavy content
+        assert "content" not in body["meteorites"][0]
+        assert body["meteorites"][0]["link"] == "not-http"
+        assert body["meteorites"][0]["astral_job_id"] == "job-99"
+        info.assert_not_called()
+
+    def test_list_empty_honesty(
+        self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(meteorite_api, "list_meteorites_for_candidate", lambda _cid: [])
+        resp = meteorite_client.get("/api/candidates/cand-empty/meteorites", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["meteorites"] == []
+        assert "columns" in body
+
+    def test_list_requires_auth(self, meteorite_client: FlaskClient) -> None:
+        assert meteorite_client.get("/api/candidates/cand-A/meteorites").status_code == 401
+
+    def test_list_500_logs_exception(
+        self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            meteorite_api,
+            "list_meteorites_for_candidate",
+            MagicMock(side_effect=RuntimeError("db down")),
+        )
+        exc = MagicMock()
+        monkeypatch.setattr(meteorite_api.logger, "exception", exc)
+        resp = meteorite_client.get("/api/candidates/cand-A/meteorites", headers=auth_headers)
+        assert resp.status_code == 500
+        assert resp.get_json() == {"error": "meteorite list failed"}
+        exc.assert_called_once()
+
+    def test_detail_returns_content_metadata_and_stored_link(
+        self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import JOBS_METEORITES_MODAL_SECTIONS
+
+        row = self._row(link="ftp://weird", astral_job_id="")
+        monkeypatch.setattr(meteorite_api, "get_meteorite", lambda _mid: row)
+        info = MagicMock()
+        monkeypatch.setattr(meteorite_api.logger, "info", info)
+        resp = meteorite_client.get("/api/meteorites/7", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["sections"] == list(JOBS_METEORITES_MODAL_SECTIONS)
+        m = body["meteorite"]
+        assert m["content"] == row["content"]
+        assert m["state"] == "READY"
+        assert m["created_at"] and m["updated_at"] and m["state_changed_at"]
+        assert m["link"] == "ftp://weird"  # stored as-is; UI http(s)-gates
+        assert m["astral_job_id"] == ""  # blank returned so UI can gate
+        assert m["id"] == 7
+        assert m["source_kind"] == "email"
+        assert m["source_id"] == "mid-1"
+        assert m["classify_outcome"] == "link"
+        info.assert_not_called()
+
+    def test_detail_404(
+        self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(meteorite_api, "get_meteorite", lambda _mid: None)
+        exc = MagicMock()
+        monkeypatch.setattr(meteorite_api.logger, "exception", exc)
+        resp = meteorite_client.get("/api/meteorites/404", headers=auth_headers)
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": "meteorite not found"}
+        exc.assert_not_called()
+
+    def test_detail_requires_auth(self, meteorite_client: FlaskClient) -> None:
+        assert meteorite_client.get("/api/meteorites/7").status_code == 401
+
+    def test_detail_500_logs_exception(
+        self, meteorite_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            meteorite_api,
+            "get_meteorite",
+            MagicMock(side_effect=RuntimeError("db down")),
+        )
+        exc = MagicMock()
+        monkeypatch.setattr(meteorite_api.logger, "exception", exc)
+        resp = meteorite_client.get("/api/meteorites/7", headers=auth_headers)
+        assert resp.status_code == 500
+        assert resp.get_json() == {"error": "meteorite detail failed"}
+        exc.assert_called_once()

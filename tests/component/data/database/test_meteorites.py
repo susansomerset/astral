@@ -52,9 +52,9 @@ class TestAst1557MeteoriteSchema:
 
 
 class TestAst1557InsertMeteoriteRows:
-    """Fan-out insert forces NEW; empty list is a no-op."""
+    """Fan-out insert persists caller state (AST-1713); empty list is a no-op."""
 
-    def test_insert_n_rows_forces_new_and_unclaimed(self, sqlite_in_memory) -> None:
+    def test_insert_n_rows_persists_caller_state_and_unclaimed(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         ids = db.insert_meteorite_rows(
             [
@@ -63,7 +63,7 @@ class TestAst1557InsertMeteoriteRows:
                     "source_kind": "email",
                     "source_id": "mid-a",
                     "content": "jd-1",
-                    "state": "READY",  # ignored — force NEW
+                    "state": "READY",
                 },
                 {
                     "candidate_id": "c1",
@@ -71,15 +71,17 @@ class TestAst1557InsertMeteoriteRows:
                     "source_id": "mid-a",
                     "link": "https://example.com/job",
                     "classify_outcome": "link",
+                    "state": "NEW",
                 },
             ]
         )
         assert len(ids) == 2
         assert ids[0] != ids[1]
+        assert db.get_meteorite(ids[0])["state"] == "READY"
+        assert db.get_meteorite(ids[1])["state"] == "NEW"
         for mid in ids:
             row = db.get_meteorite(mid)
             assert row is not None
-            assert row["state"] == "NEW"
             assert not row.get("batch_id")
             assert row["nag_count"] == 0
             assert row["created_at"]
@@ -103,6 +105,7 @@ class TestAst1557MeteoriteBatchClaim:
                     "candidate_id": "c1557",
                     "source_kind": "email",
                     "source_id": f"mid-{i}",
+                    "state": "NEW",
                 }
                 for i in range(n)
             ]
@@ -138,12 +141,13 @@ class TestAst1557MeteoriteBatchClaim:
         db = sqlite_in_memory
         a = self._seed_new(db, 1)[0]
         b = self._seed_new(db, 1)[0]
-        db.update_meteorite(b, state="ERROR")
+        # ERROR retired — SCRAPE_ERROR is a live union peer of NEW.
+        db.update_meteorite(b, state="SCRAPE_ERROR")
         n = db.claim_meteorite_batch(
             "union-batch",
             "NEW",
             10,
-            states=["NEW", "ERROR"],
+            states=["NEW", "SCRAPE_ERROR"],
         )
         assert n == 2
         ids = {r["id"] for r in db.get_meteorite_batch("union-batch")}
@@ -157,8 +161,12 @@ class TestAst1557MeteoriteReadUpdate:
         db = sqlite_in_memory
         ids = db.insert_meteorite_rows(
             [
-                {"candidate_id": "c", "source_kind": "email", "source_id": "m1"},
-                {"candidate_id": "c", "source_kind": "email", "source_id": "m2"},
+                {"candidate_id": "c", "source_kind": "email", "source_id": "m1",
+                    "state": "NEW",
+                },
+                {"candidate_id": "c", "source_kind": "email", "source_id": "m2",
+                    "state": "NEW",
+                },
             ]
         )
         db.update_meteorite(ids[1], state="READY")
@@ -170,7 +178,9 @@ class TestAst1557MeteoriteReadUpdate:
     def test_update_whitelist_and_unknown_state(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         mid = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "m"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "m",
+                    "state": "NEW",
+                }]
         )[0]
         before = db.get_meteorite(mid)
         assert before is not None
@@ -196,7 +206,9 @@ class TestAst1557MeteoriteRetention:
     def test_list_for_retention_and_delete(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         mid = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "old"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "old",
+                    "state": "NEW",
+                }]
         )[0]
         db.update_meteorite(mid, state="LANDED")
         # Force an old state_changed_at so retention cutoff can match
@@ -210,7 +222,9 @@ class TestAst1557MeteoriteRetention:
         finally:
             conn.close()
         fresh = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "fresh"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "fresh",
+                    "state": "NEW",
+                }]
         )[0]
         db.update_meteorite(fresh, state="LANDED")
 
@@ -300,12 +314,14 @@ class TestAst1689ElectronicContactColumn:
                     "source_id": "mid-contact",
                     "content": "jd",
                     col: "hiring@example.com",
+                    "state": "NEW",
                 },
                 {
                     "candidate_id": "c1689",
                     "source_kind": "email",
                     "source_id": "mid-empty",
                     "content": "jd2",
+                    "state": "NEW",
                 },
             ]
         )
@@ -316,7 +332,9 @@ class TestAst1689ElectronicContactColumn:
         db = sqlite_in_memory
         col = METEORITE_CONFIG["electronic_contact_column"]
         mid = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "m"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "m",
+                    "state": "NEW",
+                }]
         )[0]
         db.update_meteorite(mid, **{col: "ops@example.com"})
         assert db.get_meteorite(mid)[col] == "ops@example.com"
@@ -334,20 +352,26 @@ class TestAst1694GetMeteoriteLinkByAstralJobId:
         db = sqlite_in_memory
         assert db.get_meteorite_link_by_astral_job_id("job-miss") is None
         older = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "old-link"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "old-link",
+                    "state": "NEW",
+                }]
         )[0]
         db.update_meteorite(
             older, state="LANDED", astral_job_id="job-1694", link="https://old.example/j"
         )
         newer = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "new-link"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "new-link",
+                    "state": "NEW",
+                }]
         )[0]
         db.update_meteorite(
             newer, state="LANDED", astral_job_id="job-1694", link="https://new.example/j"
         )
         assert db.get_meteorite_link_by_astral_job_id("job-1694") == "https://new.example/j"
         blank = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "blank-link"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "blank-link",
+                    "state": "NEW",
+                }]
         )[0]
         db.update_meteorite(blank, state="LANDED", astral_job_id="job-blank", link="  ")
         assert db.get_meteorite_link_by_astral_job_id("job-blank") is None
@@ -365,11 +389,15 @@ class TestAst1691GetMeteoriteByAstralJobId:
         db = sqlite_in_memory
         assert db.get_meteorite_by_astral_job_id("job-miss") is None
         older = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "old-link"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "old-link",
+                    "state": "NEW",
+                }]
         )[0]
         db.update_meteorite(older, state="LANDED", astral_job_id="job-1691")
         newer = db.insert_meteorite_rows(
-            [{"candidate_id": "c", "source_kind": "email", "source_id": "new-link"}]
+            [{"candidate_id": "c", "source_kind": "email", "source_id": "new-link",
+                    "state": "NEW",
+                }]
         )[0]
         db.update_meteorite(
             newer,
@@ -387,3 +415,69 @@ class TestAst1691GetMeteoriteByAstralJobId:
         assert row["content"] == "jd body"
         assert row["state"] == "LANDED"
 
+
+class TestAst1748ListMeteoritesForCandidate:
+    """AST-1748: candidate-scoped list ordered by state_changed_at DESC."""
+
+    def test_blank_candidate_returns_empty_without_rows(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.list_meteorites_for_candidate(None) == []  # type: ignore[arg-type]
+        assert db.list_meteorites_for_candidate("") == []
+        assert db.list_meteorites_for_candidate("   ") == []
+
+    def test_scopes_to_candidate_and_orders_by_state_changed_at_desc(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        a_old = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": "cand-A",
+                    "source_kind": "email",
+                    "source_id": "a-old",
+                    "state": "READY",
+                    "job_title": "Old A",
+                }
+            ]
+        )[0]
+        a_new = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": "cand-A",
+                    "source_kind": "email",
+                    "source_id": "a-new",
+                    "state": "LANDED",
+                    "link": "not-a-url",
+                }
+            ]
+        )[0]
+        b_only = db.insert_meteorite_rows(
+            [
+                {
+                    "candidate_id": "cand-B",
+                    "source_kind": "email",
+                    "source_id": "b-only",
+                    "state": "NEW",
+                }
+            ]
+        )[0]
+        conn = db._get_connection()
+        try:
+            conn.execute(
+                "UPDATE meteorite SET state_changed_at = ? WHERE id = ?",
+                ("2020-01-01T00:00:00+00:00", a_old),
+            )
+            conn.execute(
+                "UPDATE meteorite SET state_changed_at = ? WHERE id = ?",
+                ("2024-06-01T00:00:00+00:00", a_new),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        rows = db.list_meteorites_for_candidate("cand-A")
+        assert [r["id"] for r in rows] == [a_new, a_old]
+        assert all(r["candidate_id"] == "cand-A" for r in rows)
+        assert b_only not in {r["id"] for r in rows}
+        assert rows[0]["link"] == "not-a-url"
+        assert db.list_meteorites_for_candidate("cand-empty") == []
