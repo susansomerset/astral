@@ -1,5 +1,6 @@
 const HAD_SESSION_KEY = "astral-had-stytch-session"
 const LOGOFF_REASON_KEY = "astral-logoff-reason"
+const AUTH_RETURN_PATH_KEY = "astral-auth-return-path"
 
 export type LogOffReason = "timeout" | "server-rejection"
 
@@ -22,10 +23,45 @@ export function setLogOffReason(reason: LogOffReason): void {
   try { sessionStorage.setItem(LOGOFF_REASON_KEY, reason) } catch { /* private mode */ }
 }
 
-/** Clears both keys — call before Refresh reload so Login appears after reload. */
+/** Clears had-session + log-off keys — not auth return path (LogOff Refresh → Login re-capture). */
 export function clearSessionAuthMarks(): void {
   try {
     sessionStorage.removeItem(HAD_SESSION_KEY)
     sessionStorage.removeItem(LOGOFF_REASON_KEY)
   } catch { /* private mode */ }
+}
+
+export function isSafeAuthReturnPath(path: string): boolean {
+  const trimmed = path.trim()
+  if (!trimmed) return false
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) return false
+  if (
+    trimmed === "/authenticate"
+    || trimmed.startsWith("/authenticate?")
+    || trimmed.startsWith("/authenticate/")
+  ) {
+    return false
+  }
+  return true
+}
+
+export function captureAuthReturnPath(pathname: string, search: string): void {
+  const path = `${pathname}${search}`
+  if (!isSafeAuthReturnPath(path)) return
+  try { sessionStorage.setItem(AUTH_RETURN_PATH_KEY, path) } catch { /* private mode */ }
+}
+
+export function peekAuthReturnPath(): string | null {
+  try {
+    const v = sessionStorage.getItem(AUTH_RETURN_PATH_KEY)
+    return v && isSafeAuthReturnPath(v) ? v : null
+  } catch { return null }
+}
+
+export function consumeAuthReturnPath(): string | null {
+  try {
+    const v = sessionStorage.getItem(AUTH_RETURN_PATH_KEY)
+    sessionStorage.removeItem(AUTH_RETURN_PATH_KEY)
+    return v && isSafeAuthReturnPath(v) ? v : null
+  } catch { return null }
 }

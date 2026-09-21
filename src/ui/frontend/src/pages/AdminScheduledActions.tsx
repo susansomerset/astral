@@ -3,7 +3,9 @@ import { useCandidate } from "../contexts/CandidateContext"
 import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
+import { compareTaskKeys, sortedTaskKeys } from "../lib/taskKeySort"
 import Time from "../components/Time"
 import CollapsiblePanel from "../components/CollapsiblePanel"
 import SectionExpandChrome from "../components/SectionExpandChrome"
@@ -35,6 +37,7 @@ type DispatchFormState = {
   score_floor: string
   auto_mode: boolean
   debug: boolean
+  skip_daisy_chain: boolean
   entity_type: string
   is_scored: boolean
 }
@@ -46,6 +49,16 @@ function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMe
     entity_type: cfg?.entity_type || "",
     is_scored: !!cfg?.is_scored,
   }
+}
+
+function inputStatesForEntity(
+  entityType: string,
+  options: { job: string[]; company: string[]; candidate: string[] },
+): string[] {
+  if (Object.prototype.hasOwnProperty.call(options, entityType)) {
+    return options[entityType as keyof typeof options]
+  }
+  return []
 }
 
 interface DispatchTask {
@@ -62,6 +75,7 @@ interface DispatchTask {
   auto_mode: number
   debug: number
   skip_cache: number
+  skip_daisy_chain: number
   max_runs: number | null
   last_run_at: string | null
   updated_at: string | null
@@ -169,6 +183,9 @@ function ScheduledPhaseTable({
             const thread = threadStatus[row.id]
             const isRunning = thread?.running ?? false
             const isDraining = thread?.draining ?? false
+            const avail = row.available_count ?? 0
+            const isSweep = !!row.auto_mode && avail > 0
+            const sweepDisabled = !!row.auto_mode && avail >= (row.min_count || 1)
             return (
               <tr
                 key={row.id}
@@ -201,17 +218,17 @@ function ScheduledPhaseTable({
                 <td style={{ textAlign: "center" }}>
                   <div style={{ position: "relative", display: "inline-block" }}>
                     <button
-                      className="list-page-bulk-btn"
-                      style={{ padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
-                      disabled={isRunning || !!row.auto_mode}
+                      className="btn primary in-row"
+                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (sweepDisabled ? 0.25 : 1), pointerEvents: (isRunning || sweepDisabled) ? "none" : "auto" }}
+                      disabled={isRunning || sweepDisabled}
                       onClick={e => handleRun(e, row)}
                     >
-                      Run
+                      {isSweep ? "Sweep" : "Run"}
                     </button>
                     {isRunning && (
                       <button
-                        className="list-page-bulk-btn"
-                        style={{ position: "absolute", inset: 0, padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", background: isDraining ? "#7d6608" : "#c0392b", color: "#fff" }}
+                        className="btn danger in-row"
+                        style={{ position: "absolute", inset: 0, whiteSpace: "nowrap" }}
                         onClick={e => handleStop(e, row)}
                         disabled={isDraining}
                       >
@@ -263,20 +280,21 @@ export default function ScheduledActions() {
   const { selectedId } = useCandidate()
   const { candidateFilter, setCandidateFilter, candidates } = useAdminCandidateFilter()
   const [data, setData] = useState<DispatchTask[]>([])
-  const [loading, setLoading] = useState(true)
   const [sortCol, setSortCol] = useState<string>("_default")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
 
   const [allTaskKeys, setAllTaskKeys] = useState<Record<string, TaskKeyMeta>>({})
   const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[]; candidate: string[] }>({ job: [], company: [], candidate: [] })
+  const [scoreFloorOptions, setScoreFloorOptions] = useState<string[]>([])
   const didAutoOpenSectionRef = useRef(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
 
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
   const [editRow, setEditRow] = useState<DispatchTask | null>(null)
-  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, entity_type: "", is_scored: false })
+  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false })
   const [saving, setSaving] = useState(false)
 
   // Thread status (polled every 5s)
@@ -294,14 +312,14 @@ export default function ScheduledActions() {
   const frozenN = resolveFrozenDataColumns(uiConfig, FROZEN_DATA_COLUMNS)
   const truncateChars = resolveCellTruncateChars(uiConfig)
 
-  const loadThreadStatus = useCallback(async () => {
-    const res = await api("/api/admin/scheduler/thread_status")
+  const loadThreadStatus = useCallback(async (silent = false) => {
+    const res = await api("/api/admin/scheduler/thread_status", silent ? { silent: true } : {})
     if (res.ok) setThreadStatus(await res.json())
   }, [])
 
   useEffect(() => {
     loadThreadStatus()
-    pollRef.current = setInterval(loadThreadStatus, 5_000)
+    pollRef.current = setInterval(() => { void loadThreadStatus(true) }, 5_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [loadThreadStatus])
 
@@ -316,28 +334,19 @@ export default function ScheduledActions() {
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
   const [maxRunsFilter, setMaxRunsFilter] = useState("")
-  const scoreFloorOptions = useMemo(
-    () => Array.from({ length: 19 }, (_, i) => (1 + i * 0.5).toFixed(2)),
-    [],
-  )
   const inputStateOptions = useMemo(
-    () => (
-      form.entity_type === "company"
-        ? stateOptions.company
-        : form.entity_type === "candidate"
-          ? stateOptions.candidate
-          : stateOptions.job
-    ),
+    () => inputStatesForEntity(form.entity_type, stateOptions),
     [form.entity_type, stateOptions],
   )
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
+  const loadData = useCallback(async (showSpinner = false) => {
+    beginRefresh(showSpinner)
     try {
-      const [tasksRes, keysRes, statesRes] = await Promise.all([
+      const [tasksRes, keysRes, statesRes, floorsRes] = await Promise.all([
         api("/api/admin/dispatch_tasks"),
         api("/api/admin/dispatch_tasks/task_keys"),
         api("/api/admin/dispatch_tasks/state_options"),
+        api("/api/admin/dispatch_tasks/score_floor_options"),
       ])
       if (tasksRes.ok) setData(await tasksRes.json())
       else setToast({ text: `Failed to load dispatch tasks (${tasksRes.status})`, variant: "error" })
@@ -353,12 +362,16 @@ export default function ScheduledActions() {
           candidate: Array.isArray(states?.candidate) ? states.candidate : [],
         })
       }
+      if (floorsRes.ok) {
+        const floors = await floorsRes.json()
+        setScoreFloorOptions(Array.isArray(floors?.values) ? floors.values : [])
+      }
     } finally {
-      setLoading(false)
+      endRefresh()
     }
-  }, [])
+  }, [beginRefresh, endRefresh])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { loadData(true) }, [loadData])
 
   useEffect(() => {
     for (const row of data) {
@@ -369,7 +382,7 @@ export default function ScheduledActions() {
     }
   }, [threadStatus, data, loadData])
 
-  const taskKeys = useMemo(() => [...new Set(data.map(d => d.task_key))].sort(), [data])
+  const taskKeys = useMemo(() => sortedTaskKeys(new Set(data.map(d => d.task_key))), [data])
 
   const sectionGroupOptions = useMemo(() => {
     const seen = new Map<string, string>()
@@ -396,7 +409,7 @@ export default function ScheduledActions() {
         const as_ = allTaskKeys[a.task_key]?.task_seq ?? 999
         const bs_ = allTaskKeys[b.task_key]?.task_seq ?? 999
         if (as_ !== bs_) return sortDir === "asc" ? as_ - bs_ : bs_ - as_
-        const tk = a.task_key.localeCompare(b.task_key)
+        const tk = compareTaskKeys(a.task_key, b.task_key)
         if (tk !== 0) return tk
         if (!candidateFilter) {
           const av = a.available_count ?? 0
@@ -547,7 +560,27 @@ export default function ScheduledActions() {
       }
       return
     }
-    setTimeout(loadThreadStatus, 500)
+    const body = await res.json().catch(() => ({ started: true }))
+    if (body.started !== false) {
+      setThreadStatus(prev => ({
+        ...prev,
+        [row.id]: {
+          running: true,
+          draining: false,
+          task_key: row.task_key,
+          candidate_id: row.candidate_id ?? "",
+          is_auto: !!row.auto_mode,
+        },
+      }))
+    }
+    const watch = async () => {
+      const res = await api("/api/admin/scheduler/thread_status", { silent: true })
+      if (!res.ok) return
+      const next = await res.json() as Record<number, ThreadEntry>
+      setThreadStatus(next)
+      if (next[row.id]?.running) setTimeout(watch, 500)
+    }
+    setTimeout(watch, 500)
   }
 
   const handleStop = async (e: React.MouseEvent, row: DispatchTask) => {
@@ -574,7 +607,7 @@ export default function ScheduledActions() {
 
   const openAdd = () => {
     setEditRow(null)
-    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, entity_type: "", is_scored: false })
+    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false })
     setShowModal(true)
   }
   const openEdit = (row: DispatchTask) => {
@@ -595,6 +628,7 @@ export default function ScheduledActions() {
       score_floor: (row.score_floor ?? 1).toFixed(2),
       auto_mode: !!row.auto_mode,
       debug: !!row.debug,
+      skip_daisy_chain: !!row.skip_daisy_chain,
       entity_type: row.entity_type || cfg?.entity_type || "",
       is_scored: row.is_scored ?? !!cfg?.is_scored,
     })
@@ -613,11 +647,18 @@ export default function ScheduledActions() {
             min_count: parseInt(form.min_count, 10),
             trigger_state: form.trigger_state,
             task_key: form.task_key,
+            entity_type: form.entity_type,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
-            score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
+            score_floor: form.is_scored
+              ? (() => {
+                  const n = parseFloat(form.score_floor)
+                  return Number.isFinite(n) ? n : 1
+                })()
+              : null,
             auto_mode: form.auto_mode,
             debug: form.debug,
+            skip_daisy_chain: form.skip_daisy_chain,
           }),
         })
         if (!res.ok) {
@@ -636,12 +677,19 @@ export default function ScheduledActions() {
             candidate_id: form.candidate_id,
             task_key: form.task_key,
             trigger_state: form.trigger_state,
+            entity_type: form.entity_type,
             freq_hrs: parseFloat(form.freq_hrs) || 0,
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
-            score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
+            score_floor: form.is_scored
+              ? (() => {
+                  const n = parseFloat(form.score_floor)
+                  return Number.isFinite(n) ? n : 1
+                })()
+              : null,
             auto_mode: form.auto_mode,
+            skip_daisy_chain: form.skip_daisy_chain,
           }),
         })
         if (!res.ok) {
@@ -671,14 +719,13 @@ export default function ScheduledActions() {
             </span>
           )}
           <button
-            className="list-page-bulk-btn"
-            style={{ background: activeThreads.length > 0 ? "#c0392b" : undefined, color: activeThreads.length > 0 ? "#fff" : undefined }}
+            className="btn danger"
             onClick={() => setShowStopAll(true)}
             disabled={activeThreads.length === 0}
           >
             Stop All
           </button>
-          <button className="list-page-bulk-btn" onClick={openAdd}>+ Add Task</button>
+          <button className="btn primary" onClick={openAdd}>+ Add Task</button>
         </div>
       </div>
 
@@ -824,7 +871,7 @@ export default function ScheduledActions() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Kill Running Threads</span>
-              <button className="modal-close" onClick={() => setShowStopAll(false)}>&times;</button>
+              <button type="button" className="icon-control" onClick={() => setShowStopAll(false)} title="Close" aria-label="Close">×</button>
             </div>
             <div className="modal-body">
               <p style={{ marginBottom: "0.75rem" }}>The following tasks will be immediately killed:</p>
@@ -838,8 +885,8 @@ export default function ScheduledActions() {
               </ul>
             </div>
             <div className="modal-footer">
-              <button className="modal-btn cancel" onClick={() => setShowStopAll(false)}>Cancel</button>
-              <button className="modal-btn save" style={{ background: "#c0392b" }} onClick={handleKillAll} disabled={stoppingAll}>
+              <button className="btn secondary" onClick={() => setShowStopAll(false)}>Cancel</button>
+              <button className="btn danger" onClick={handleKillAll} disabled={stoppingAll}>
                 {stoppingAll ? "Killing…" : "Kill Now"}
               </button>
             </div>
@@ -853,7 +900,7 @@ export default function ScheduledActions() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{editRow ? "Edit Task" : "Add Task"}</span>
-              <button className="modal-close" onClick={() => setShowModal(false)}>&times;</button>
+              <button type="button" className="icon-control" onClick={() => setShowModal(false)} title="Close" aria-label="Close">×</button>
             </div>
             <div className="modal-body">
               {!editRow && (
@@ -881,12 +928,28 @@ export default function ScheduledActions() {
                   }
                 }}>
                   <option value="">Select…</option>
-                  {Object.keys(allTaskKeys).sort().map(k => <option key={k} value={k}>{k}</option>)}
+                  {sortedTaskKeys(Object.keys(allTaskKeys)).map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Entity Type</span>
-                <input type="text" value={form.entity_type} readOnly style={{ opacity: 0.7 }} />
+                <select
+                  value={form.entity_type}
+                  onChange={e => {
+                    const next = e.target.value
+                    const nextStates = inputStatesForEntity(next, stateOptions)
+                    setForm({
+                      ...form,
+                      entity_type: next,
+                      trigger_state: nextStates.includes(form.trigger_state) ? form.trigger_state : "",
+                    })
+                  }}
+                >
+                  <option value="">Select…</option>
+                  {Object.keys(stateOptions).map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Input State</span>
@@ -930,10 +993,14 @@ export default function ScheduledActions() {
                 <span className="modal-detail-label">Debug</span>
                 <input type="checkbox" checked={form.debug} onChange={e => setForm({ ...form, debug: e.target.checked })} />
               </div>
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Skip daisy chain</span>
+                <input type="checkbox" checked={form.skip_daisy_chain} onChange={e => setForm({ ...form, skip_daisy_chain: e.target.checked })} />
+              </div>
             </div>
             <div className="modal-footer">
-              <button className="modal-btn cancel" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="modal-btn save" onClick={handleSave} disabled={saving || (!editRow && !form.candidate_id)}>
+              <button className="btn secondary" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn primary" onClick={handleSave} disabled={saving || (!editRow && !form.candidate_id)}>
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

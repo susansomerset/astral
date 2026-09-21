@@ -68,12 +68,19 @@ describe("AdminManageCandidates", () => {
     mockedApi.mockReset()
   })
 
-  function mockApi(counts: Record<string, number> = { doe_jane: 3 }) {
+  function mockApi(
+    counts: Record<string, number> = { doe_jane: 3 },
+    unbound: { slack_user_id: string; username: string }[] = [],
+  ) {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts }) } as Response
+      // AST-1668 sibling GET — default empty so Add/Edit open does not throw Unhandled api.
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: unbound }) } as Response
+      }
       if (url === "/api/candidates" && init?.method === "POST") return { ok: true, json: async () => ({}) } as Response
       if (url === "/api/candidates/doe_jane/data" && init?.method === "PUT") return { ok: true, json: async () => ({}) } as Response
       if (url === "/api/candidates/doe_jane" && init?.method === "DELETE") return { ok: true, json: async () => ({}) } as Response
@@ -141,6 +148,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
       if (url === "/api/candidates" && init?.method === "POST") {
         postBody = JSON.parse(String(init.body))
         return { ok: true, json: async () => ({}) } as Response
@@ -190,6 +200,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
       if (url === "/api/candidates" && init?.method === "POST") {
         postBody = JSON.parse(String(init.body))
         return { ok: true, json: async () => ({}) } as Response
@@ -227,6 +240,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: {} }) } as Response
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
       if (url === "/api/candidates" && init?.method === "POST") {
         postBody = JSON.parse(String(init.body))
         return { ok: true, json: async () => ({}) } as Response
@@ -251,10 +267,16 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
       if (url === "/api/admin/dispatch_tasks/counts") {
         countsCalls += 1
         const n = setBody ? 7 : 3
         return { ok: true, json: async () => ({ counts: { doe_jane: n } }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
       }
       if (url === "/api/admin/dispatch_tasks/set_from_template" && init?.method === "POST") {
         setBody = JSON.parse(String(init.body))
@@ -307,8 +329,14 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
       if (url === "/api/admin/dispatch_tasks/counts") {
         return { ok: true, json: async () => ({ counts: { doe_jane: 1 } }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
       }
       if (url === "/api/admin/dispatch_tasks/set_from_template" && init?.method === "POST") {
         return { ok: false, json: async () => ({ error: "Candidate not found: doe_jane" }) } as Response
@@ -321,4 +349,354 @@ describe("AdminManageCandidates", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Set tasks" }))
     await waitFor(() => expect(screen.getByText("Candidate not found: doe_jane")).toBeInTheDocument())
   }, 15000)
+
+  // AST-1288: illegal-hop are-you-sure → confirm_state_override retry (AST-1287 contract)
+  const hopCandidate = {
+    ...candidate,
+    state: "NEW_CANDIDATE",
+  }
+
+  function mockIllegalHopApi(opts: {
+    onIllegal?: (body: Record<string, unknown>) => void
+    confirmOk?: boolean
+  } = {}) {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") {
+        return { json: async () => ["NEW_CANDIDATE", "ACTIVE_SEARCH", "NOT_A_STATE"] } as Response
+      }
+      if (url === "/api/candidates?include_deleted=true") {
+        return { json: async () => [hopCandidate] } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 0 } }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
+      if (url === "/api/candidates/doe_jane/data" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        if (body.confirm_state_override === true) {
+          return { ok: opts.confirmOk !== false, json: async () => (opts.confirmOk === false ? { error: "force failed" } : {}) } as Response
+        }
+        if (body.state === "ACTIVE_SEARCH") {
+          opts.onIllegal?.(body)
+          return {
+            ok: false,
+            json: async () => ({
+              error: "Invalid candidate state transition: NEW_CANDIDATE -> ACTIVE_SEARCH",
+              code: "illegal_candidate_transition",
+              from_state: "NEW_CANDIDATE",
+              to_state: "ACTIVE_SEARCH",
+            }),
+          } as Response
+        }
+        if (body.state === "NOT_A_STATE") {
+          return { ok: false, json: async () => ({ error: "Unknown candidate state: NOT_A_STATE" }) } as Response
+        }
+        return { ok: true, json: async () => ({}) } as Response
+      }
+    })
+  }
+
+  it("AST-1288: illegal hop shows from→to confirm; confirm retries with override", async () => {
+    const firstBodies: Record<string, unknown>[] = []
+    mockIllegalHopApi({ onIllegal: b => firstBodies.push(b) })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
+    fireEvent.change(comboboxByFieldLabel(editModal as HTMLElement, "State (admin override)"), {
+      target: { value: "ACTIVE_SEARCH" },
+    })
+    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Confirm illegal state change" })
+    expect(dialog).toHaveTextContent("NEW_CANDIDATE → ACTIVE_SEARCH")
+    expect(firstBodies[0]?.confirm_state_override).toBeUndefined()
+    await userEvent.click(within(dialog).getByRole("button", { name: "Change state" }))
+    await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
+    const puts = mockedApi.mock.calls.filter(
+      c => c[0] === "/api/candidates/doe_jane/data" && (c[1] as RequestInit)?.method === "PUT",
+    )
+    expect(puts).toHaveLength(2)
+    const retry = JSON.parse(String((puts[1][1] as RequestInit).body))
+    expect(retry.state).toBe("ACTIVE_SEARCH")
+    expect(retry.confirm_state_override).toBe(true)
+  }, 20000)
+
+  it("AST-1288: cancel illegal confirm leaves state unchanged and does not send override", async () => {
+    mockIllegalHopApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
+    fireEvent.change(comboboxByFieldLabel(editModal as HTMLElement, "State (admin override)"), {
+      target: { value: "ACTIVE_SEARCH" },
+    })
+    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Confirm illegal state change" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    await waitFor(() =>
+      expect(screen.getByText("State unchanged; other fields saved if they were.")).toBeInTheDocument(),
+    )
+    // Modal stays open; state select reset to from_state
+    expect(screen.getByText(/Edit: doe_jane/)).toBeInTheDocument()
+    expect(comboboxByFieldLabel(editModal as HTMLElement, "State (admin override)")).toHaveValue("NEW_CANDIDATE")
+    const puts = mockedApi.mock.calls.filter(
+      c => c[0] === "/api/candidates/doe_jane/data" && (c[1] as RequestInit)?.method === "PUT",
+    )
+    expect(puts).toHaveLength(1)
+    expect(JSON.parse(String((puts[0][1] as RequestInit).body)).confirm_state_override).toBeUndefined()
+  }, 20000)
+
+  it("AST-1288: legal hop saves without illegal-state confirm", async () => {
+    mockIllegalHopApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
+    fireEvent.change(textboxByFieldLabel(editModal as HTMLElement, "First Name"), {
+      target: { value: "Janet" },
+    })
+    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
+    expect(screen.queryByRole("alertdialog", { name: "Confirm illegal state change" })).toBeNull()
+    const puts = mockedApi.mock.calls.filter(
+      c => c[0] === "/api/candidates/doe_jane/data" && (c[1] as RequestInit)?.method === "PUT",
+    )
+    expect(puts).toHaveLength(1)
+    expect(JSON.parse(String((puts[0][1] as RequestInit).body)).confirm_state_override).toBeUndefined()
+  }, 20000)
+
+  it("AST-1288: unknown-state 400 does not open illegal confirm", async () => {
+    mockIllegalHopApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
+    fireEvent.change(comboboxByFieldLabel(editModal as HTMLElement, "State (admin override)"), {
+      target: { value: "NOT_A_STATE" },
+    })
+    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText(/Unknown candidate state/)).toBeInTheDocument())
+    expect(screen.queryByRole("alertdialog", { name: "Confirm illegal state change" })).toBeNull()
+  }, 20000)
+
+  it("AST-1302: row actions are icon-control (View/Edit/Delete SVGs + T)", async () => {
+    mockApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    const view = screen.getByRole("button", { name: "View" })
+    const edit = screen.getByRole("button", { name: "Edit" })
+    const del = screen.getByRole("button", { name: "Delete" })
+    const setTasks = screen.getByRole("button", { name: "Set dispatch tasks for doe_jane" })
+    expect(view).toHaveClass("icon-control")
+    expect(edit).toHaveClass("icon-control")
+    expect(del).toHaveClass("icon-control")
+    expect(setTasks).toHaveClass("icon-control")
+    expect(setTasks).toHaveTextContent("T")
+    expect(setTasks).not.toHaveTextContent("Set dispatch tasks")
+    expect(view).not.toHaveClass("list-page-edit-btn")
+    expect(setTasks).not.toHaveClass("dep-btn")
+  }, 20000)
+
+  // AST-1669: Manage Candidates Slack bind dropdown (§6c routed page).
+  it("AST-1669: add stamps slack_user_id + slack_username from unbound dropdown", async () => {
+    let postBody: Record<string, unknown> | null = null
+    let unboundCalls = 0
+    const unboundPool = [
+      { slack_user_id: "U_ADA", username: "ada.lovelace" },
+      { slack_user_id: "U_HEDY", username: "hedy.lamarr" },
+    ]
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        unboundCalls += 1
+        // After bind: pool drops U_ADA (AC6 — sibling GET omits bound id).
+        const users = unboundCalls > 1 ? unboundPool.filter(u => u.slack_user_id !== "U_ADA") : unboundPool
+        return { ok: true, json: async () => ({ users }) } as Response
+      }
+      if (url === "/api/candidates" && init?.method === "POST") {
+        postBody = JSON.parse(String(init.body))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole("button", { name: "+ Add Candidate" }))
+    const addModal = screen.getByText("Add Candidate").closest(".modal-card") as HTMLElement
+    await waitFor(() => expect(unboundCalls).toBeGreaterThanOrEqual(1))
+    const slackSelect = comboboxByFieldLabel(addModal, "Slack username")
+    expect(within(slackSelect).getByRole("option", { name: "— none —" })).toBeInTheDocument()
+    expect(within(slackSelect).getByRole("option", { name: "ada.lovelace" })).toBeInTheDocument()
+    expect(within(slackSelect).getByRole("option", { name: "hedy.lamarr" })).toBeInTheDocument()
+    // No Slack Web API from React — only sibling admin GET.
+    expect(mockedApi.mock.calls.every(c => !String(c[0]).includes("slack.com"))).toBe(true)
+
+    fireEvent.change(textboxByFieldLabel(addModal, "First Name"), { target: { value: "Ada" } })
+    fireEvent.change(textboxByFieldLabel(addModal, "Last Name"), { target: { value: "Lovelace" } })
+    await userEvent.selectOptions(slackSelect, "U_ADA")
+    await userEvent.click(within(addModal).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(postBody).not.toBeNull())
+    const contact = (postBody!.candidate_data as { contact: Record<string, string> }).contact
+    expect(contact.slack_user_id).toBe("U_ADA")
+    expect(contact.slack_username).toBe("ada.lovelace")
+    await waitFor(() => expect(unboundCalls).toBeGreaterThanOrEqual(2))
+  }, 20000)
+
+  it("AST-1669: edit prepends current bind; empty selection omits Slack keys", async () => {
+    const boundCandidate = {
+      ...candidate,
+      candidate_data: {
+        contact: {
+          contact_email: "jane@example.com",
+          slack_user_id: "U_BOUND",
+          slack_username: "jane.bound",
+        },
+      },
+    }
+    let putBody: Record<string, unknown> | null = null
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") {
+        return { json: async () => [boundCandidate] } as Response
+      }
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        // Bound id absent from unbound (already bound) — page prepends synthetic option.
+        return {
+          ok: true,
+          json: async () => ({ users: [{ slack_user_id: "U_FREE", username: "free.user" }] }),
+        } as Response
+      }
+      if (url === "/api/candidates/doe_jane/data" && init?.method === "PUT") {
+        putBody = JSON.parse(String(init.body))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
+    const slackSelect = comboboxByFieldLabel(editModal, "Slack username")
+    await waitFor(() => expect(slackSelect).toHaveValue("U_BOUND"))
+    expect(within(slackSelect).getByRole("option", { name: "jane.bound" })).toBeInTheDocument()
+    expect(within(slackSelect).getByRole("option", { name: "free.user" })).toBeInTheDocument()
+
+    // Empty selection → omit Slack keys (no accidental unbind).
+    await userEvent.selectOptions(slackSelect, "")
+    fireEvent.change(textboxByFieldLabel(editModal, "First Name"), { target: { value: "Janet" } })
+    await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(putBody).not.toBeNull())
+    const contact = putBody!.contact as Record<string, string>
+    expect(contact.contact_email).toBe("jane@example.com")
+    expect(contact.slack_user_id).toBeUndefined()
+    expect(contact.slack_username).toBeUndefined()
+  }, 20000)
+
+  it("AST-1669: add dropdown stamps slack_user_id + slack_username via admin GET", async () => {
+    let postBody: Record<string, unknown> | null = null
+    let unboundCalls = 0
+    const free = { slack_user_id: "U_FREE", username: "free.user" }
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        unboundCalls += 1
+        // After bind, sibling GET omits the newly bound id (AC6).
+        const users = unboundCalls <= 1 ? [free] : []
+        return { ok: true, json: async () => ({ users }) } as Response
+      }
+      if (url === "/api/candidates" && init?.method === "POST") {
+        postBody = JSON.parse(String(init.body))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "+ Add Candidate" }))
+    const addModal = screen.getByText("Add Candidate").closest(".modal-card") as HTMLElement
+    await waitFor(() => expect(comboboxByFieldLabel(addModal, "Slack username")).toBeInTheDocument())
+    const slackSelect = comboboxByFieldLabel(addModal, "Slack username")
+    expect(within(slackSelect).getByRole("option", { name: "— none —" })).toBeInTheDocument()
+    expect(within(slackSelect).getByRole("option", { name: "free.user" })).toBeInTheDocument()
+    // Already-bound usernames are not in the unbound GET — not shown as free choices.
+    expect(within(slackSelect).queryByRole("option", { name: "bound.other" })).toBeNull()
+    fireEvent.change(textboxByFieldLabel(addModal, "First Name"), { target: { value: "New" } })
+    fireEvent.change(textboxByFieldLabel(addModal, "Last Name"), { target: { value: "Bind" } })
+    await userEvent.selectOptions(slackSelect, "U_FREE")
+    await userEvent.click(within(addModal).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(postBody).not.toBeNull())
+    const contact = (postBody!.candidate_data as { contact: Record<string, string> }).contact
+    expect(contact.slack_user_id).toBe("U_FREE")
+    expect(contact.slack_username).toBe("free.user")
+    // Refresh unbound after bind (second GET).
+    await waitFor(() => expect(unboundCalls).toBeGreaterThanOrEqual(2))
+    // Pool source is admin GET only — never Slack Web API hosts.
+    const urls = mockedApi.mock.calls.map(c => String(c[0]))
+    expect(urls.some(u => u.includes("slack.com") || u.includes("users.list"))).toBe(false)
+    expect(urls).toContain("/api/admin/contact/unbound_slack_users")
+  }, 20000)
+
+  it("AST-1669: edit keeps current bind option; empty selection omits Slack keys", async () => {
+    let putBody: Record<string, unknown> | null = null
+    const boundCand = {
+      ...candidate,
+      candidate_data: {
+        contact: {
+          contact_email: "jane@example.com",
+          slack_user_id: "U_BOUND",
+          slack_username: "jane.slack",
+        },
+      },
+    }
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") return { json: async () => [boundCand] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return {
+          ok: true,
+          json: async () => ({ users: [{ slack_user_id: "U_FREE", username: "free.user" }] }),
+        } as Response
+      }
+      if (url === "/api/candidates/doe_jane/data" && init?.method === "PUT") {
+        putBody = JSON.parse(String(init.body))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
+    const slackSelect = comboboxByFieldLabel(editModal, "Slack username")
+    await waitFor(() => expect(within(slackSelect).getByRole("option", { name: "jane.slack" })).toBeInTheDocument())
+    expect(slackSelect).toHaveValue("U_BOUND")
+    expect(within(slackSelect).getByRole("option", { name: "free.user" })).toBeInTheDocument()
+    // Empty selection must not clear existing bind (omit Slack keys from PUT).
+    await userEvent.selectOptions(slackSelect, "")
+    await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(putBody).not.toBeNull())
+    const contact = putBody!.contact as Record<string, string>
+    expect(contact.slack_user_id).toBeUndefined()
+    expect(contact.slack_username).toBeUndefined()
+    expect(contact.contact_email).toBe("jane@example.com")
+  }, 20000)
+
 })

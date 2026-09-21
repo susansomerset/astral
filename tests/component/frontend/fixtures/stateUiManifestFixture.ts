@@ -141,6 +141,9 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         { field: "get_score", label: "GET" },
         { field: "like_score", label: "LIKE" },
       ],
+      // AST-1348 — Analysis section header score title template
+      phase_score_header_title_template:
+        "{phase_label} - score: {earned} out of {possible} possible ({max} max total)",
       primary_actions_by_state: {
         RECOMMENDED: [
           {
@@ -171,6 +174,21 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         { tab_id: "summary", nav_label: "Summary" },
         { tab_id: "analysis", nav_label: "Analysis" },
         { tab_id: "artifacts", nav_label: "Artifacts" },
+        // AST-1550 / AST-1551: Discussion after Artifacts
+        { tab_id: "discussion", nav_label: "Discussion" },
+      ],
+      // AST-1550: catalog slots — keys match TestAst1550ReportDiscussionSections._NINE
+      // (AST-1612: pane/JAR filter by RESPONSE; header count ≠ raw length when story empty)
+      report_discussion_sections: [
+        { section_id: "contemplate_job", nav_label: "Contemplate Job", default_expanded: false },
+        { section_id: "draft_job_resume", nav_label: "Draft Job Resume", default_expanded: false },
+        { section_id: "check_job_resume", nav_label: "Check Job Resume", default_expanded: false },
+        { section_id: "draft_cover_letter", nav_label: "Draft Cover Letter", default_expanded: false },
+        { section_id: "check_cover_letter", nav_label: "Check Cover Letter", default_expanded: false },
+        { section_id: "draft_application_responses", nav_label: "Draft Application Responses", default_expanded: false },
+        { section_id: "check_application_responses", nav_label: "Check Application Responses", default_expanded: false },
+        { section_id: "polish_application_package", nav_label: "Polish Application Package", default_expanded: false },
+        { section_id: "propose_application_responses", nav_label: "Propose Application Responses", default_expanded: false },
       ],
       report_summary_sections: [
         { section_id: "job_summary", nav_label: "Job Summary", default_expanded: true },
@@ -217,7 +235,51 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
       },
     },
   },
-  candidate: { artifact_generate_states: ["RESUME_READY", "ACTIVE_SEARCH"] },
+  // AST-1253: expanded generate states + live-chain fields (api_system merges walk).
+  // AST-1375: inflight hide list (Base Resume unsupported escape hatch consults this).
+  candidate: {
+    artifact_generate_states: [
+      "RESUME_READY",
+      "RESUME_READY_STALE",
+      "ARTIFACTS_READY",
+      "ARTIFACTS_READY_STALE",
+      "ACTIVE_SEARCH",
+      "PAUSE_SEARCH",
+    ],
+    artifact_generate_inflight_hide_states: [
+      "REQUESTED_ARTIFACTS",
+      "REQUESTED_ARTIFACTS_RETRY",
+    ],
+    artifacts_chain_task_keys: [
+      "craft_get_rubric",
+      "craft_do_rubric",
+      "craft_like_rubric",
+      "craft_jobdesc_rubric",
+      "craft_evaluate_meteorite_rubric",
+      "craft_joblist_rubric",
+      "craft_prefilter_rubric",
+      "craft_company_search_terms",
+    ],
+    artifacts_chain_hop_labels: [
+      "Get Job Criteria",
+      "Do Job Criteria",
+      "Like Job Criteria",
+      "Job Description Criteria",
+      "Meteorite Criteria",
+      "Job List Criteria",
+      "Company Watch Criteria",
+      "Company Search Terms",
+    ],
+    artifacts_chain_artifact_keys: [
+      "get_rubric",
+      "do_rubric",
+      "like_rubric",
+      "jobdesc_rubric",
+      "meteorite_jobdesc_rubric",
+      "joblist_rubric",
+      "company_prefilter",
+    ],
+  },
   company: {
     watch_readonly_states: ["WATCH"],
     bulk_transitions: {

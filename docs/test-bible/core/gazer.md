@@ -186,7 +186,7 @@ Consult inline validate: **`docs/test-bible/core/consult.md`** (**AST-797**).
 | Batch session wiring + scrape errors / pass | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch` |
 | Scrape timeout labeled infra error | `src/core/gazer.py` | `tests/component/core/test_gazer.py::TestFetchWebsiteBatch::test_scrape_timeout_fails_with_labeled_infra_error` |
 
-External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/playwright.md`** (**AST-853**). Roster infra error prefix: **`docs/test-bible/core/roster.md`** (**AST-853**).
+External taxonomy + **`get_page`** recovery: **`docs/test-bible/external/telescope.md`** (**AST-853**). Roster infra error prefix: **`docs/test-bible/core/roster.md`** (**AST-853**).
 
 **AST-853** narrowed run (gazer lines):
 
@@ -401,3 +401,38 @@ Shared `jd_classifier.bot_signals` widened so parent-captured Cloudflare interst
   -q
 ```
 
+### AST-1516 · AST-1414
+
+**Parent:** [AST-1414 — Estelle needs to be able to use our endpoints](https://linear.app/astralcareermatch/issue/AST-1414/estelle-needs-to-be-able-to-use-our-endpoints). **Publish:** `origin/sub/AST-1414/AST-1516-gazer-scrape-contact-task`.
+
+`contact_task_gazer_scrape`: one-URL Playwright scrape via `extract_page_scrape_contract`; `_classify_jd` → Estelle-facing `page_status` (`cookie`/`bot` → `blocked`); no job create/transition. Dispatch/follow-up owned by **AST-1515**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Handler payload + map + Style D + no persist | `src/core/gazer.py` | **`TestAst1516ContactTaskGazerScrape`** |
+
+**Broken / obsolete (AST-1515 revise this pass):** `TestAst1515ContactTaskMarkup` / turn fixtures that pinned `gazer_scrape` → `handler_unavailable` — retargeted to `create_contact_meteorite` (still missing until AST-1517). See **`docs/test-bible/core/contact.md`** § AST-1515.
+
+**Integration:** no existing scenario asserts contact-task gazer scrape — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestAst1516ContactTaskGazerScrape \
+  tests/component/core/test_contact.py::TestAst1515ContactTaskMarkup \
+  tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
+  -q
+```
+
+### AST-1704 · AST-1640
+
+**Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
+
+`validate_title_batch` skips title-pattern screen when `source == meteorite` (not `is_meteorite_company(company)`). Primary manifest: **`docs/test-bible/core/consult.md`** § AST-1704.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip meteorite source; roster peer fails | `src/core/gazer.py` | **`TestValidateTitleBatch::test_skips_meteorite_source_roster_still_fails`** (revised) |
+
+**Broken / obsolete this pass:** `test_skips_meteorite_company_roster_still_fails` — retargeted to `source` SoT (+ real `company_id` must stay skipped).
+
+**Integration:** none.

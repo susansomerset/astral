@@ -70,12 +70,12 @@ export function UserPromptProvider({ children }: { children: ReactNode }) {
               <p id="user-prompt-message" className="user-prompt-message">{pending.message}</p>
             </div>
             <div className="modal-footer">
-              <button type="button" className="modal-btn cancel" onClick={() => finish(false)}>
+              <button type="button" className="btn secondary" onClick={() => finish(false)}>
                 {pending.cancelLabel}
               </button>
               <button
                 type="button"
-                className={`modal-btn${pending.variant === "danger" ? " danger" : " save"}`}
+                className={pending.variant === "danger" ? "btn danger" : "btn primary"}
                 onClick={() => finish(true)}
               >
                 {pending.confirmLabel}

@@ -118,3 +118,229 @@ List enrichment: each row gets `candidate_match` (`matched` + `astral_candidate_
   tests/component/core/test_inbox.py::TestAst1135InboxBoundCounts \
   -q
 ```
+
+### AST-1313 · AST-1308
+
+**Parent:** [AST-1308 — Email bind where email is in the To: field (alone)](https://linear.app/astralcareermatch/issue/AST-1308/email-bind-where-email-is-in-the-to-field-alone). **Publish:** `origin/sub/AST-1308/AST-1313-from-then-to-bind-debug-source`.
+
+From unique hit wins; otherwise To binds only when exactly one remaining address after ignoring `INBOX_BIND_CONFIG["inbox_address"]` (alias of `GAZE_EMAIL_CONFIG["account_address"]`). Same helper for list enrichment and create rematch. Style D `func="inbox_bind"` (`bind_header` / `bind_address`); `candidate_match` stays `{matched, astral_candidate_id}`. Raw To field is **AST-1312**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `INBOX_BIND_CONFIG` | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst1313InboxBindConfig`** |
+| From-then-To list + create rematch + Style D | `src/core/inbox.py` | **`TestAst1313FromThenToBind`**; revised **`TestAst1047InboxFromBind::test_list_debug_emits_style_d`** (`inbox_bind`) |
+| Auth unchanged (AC6) | `src/ui/api/api_inbox.py` | existing **`TestAst1033InboxApi`** list/get auth; **`TestAst1049InboxCreateJobApi::test_create_job_requires_auth`**; **`TestAst1141InboxLandMeteoriteApi::test_land_meteorite_requires_auth`** |
+
+**Broken / obsolete:** **`TestAst1047InboxFromBind::test_list_debug_emits_style_d`** asserted `func="inbox_from_bind"` / `from_address=` — product now emits `inbox_bind` + `bind_header` / `bind_address` (revised).
+
+**Integration:** none — no existing inbox bind scenario; do not invent coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1313InboxBindConfig \
+  tests/component/core/test_inbox.py::TestAst1047InboxFromBind \
+  tests/component/core/test_inbox.py::TestAst1313FromThenToBind \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi::test_list_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi::test_get_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi::test_create_job_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1141InboxLandMeteoriteApi::test_land_meteorite_requires_auth \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+Email create/land paths: `create_meteorite_job_from_inbox_message` → `land_meteorite` (AST-1472); post-land Style D `company={land.get('company')!r}` when `debug=True`. Core land stem attach: **`docs/test-bible/core/meteorite.md`** (**AST-1495**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create rematch + land + company debug detail | `src/core/inbox.py` | revised **`TestAst1049CreateMeteoriteJobFromInboxMessage`**; revised **`TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses`** |
+
+**Broken / obsolete:** AST-1061 gazer ingest mocks / `mode=body` return shape — revised **AST-1495** to `land_meteorite` + `mode=land_meteorite`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/core/test_inbox.py::TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses \
+  -q
+```
+
+
+### AST-1531 · AST-1527
+
+**Parent:** [AST-1527 — Generalize Meteorite Ingress Point](https://linear.app/astralcareermatch/issue/AST-1527/generalize-meteorite-ingress-point). **Publish:** `origin/sub/AST-1527/AST-1531-caller-cutover-mailbox-inbox-contact`.
+
+`_land_bound_inbox_message` / `land_inbox_message_ids` / `run_fetch_email` stage stripped HTML with `source_kind="email"` / `source_id=mid` (empty strip → error, no stage). Legacy `create_meteorite_job_from_inbox_message` still lands directly (out of this cutover). Mailbox: **`docs/test-bible/core/meteorite_email.md`**. Contact: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Strip → stage + empty gate + selected-ids shell | `src/core/inbox.py` | **`TestAst1531InboxStageCutover`** |
+
+**Broken / obsolete:** none in Create strip path this pass.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1531InboxStageCutover \
+  -q
+```
+
+
+### AST-1537 · AST-1533
+
+**Parent:** [AST-1533 — Manage Email gives HTML for the body of the message, not for the header, and it must include both.](https://linear.app/astralcareermatch/issue/AST-1533/manage-email-gives-html-for-the-body-of-the-message-not-for-the-header). **Publish:** `origin/sub/AST-1533/AST-1537-email-header-body-html-land-qualify`.
+
+Shared header+body HTML assembly: `strip_extract_email_html` embeds From/To/Subject/Date via `INBOX_CREATE_JOB_CONFIG["subject_html_template"]`; land/create and `get_message_with_assembled_html` share that shape (`html_body` stays raw). Cross-module: **`docs/test-bible/core/meteorite_email.md`**, **`docs/test-bible/external/gmail.md`**, **`docs/test-bible/ui/api/api_inbox.md`**, **`docs/test-bible/utils/config.md`**. Sibling Manage Email React chrome = **AST-1538** (out of scope).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Header+body strip + escape | `src/core/inbox.py` | revised **`TestAst1049StripExtractEmailHtml`** |
+| Assembled get helper | `src/core/inbox.py` | **`TestAst1537AssembledHtmlGet`** |
+| Land staged blob includes headers | `src/core/inbox.py` | revised **`TestAst1531InboxStageCutover::test_land_bound_stages_stripped_html`** |
+
+**Broken / obsolete:** subject-only wrap asserts on strip/land — revised for From/To/Date classes + escaping.
+
+**Integration:** none — no existing inbox/email-header integration scenario; do not invent.
+
+## QA test manifest
+
+1. Config template placeholders: `tests/component/utils/test_config.py::TestAst1049InboxCreateJobConfig`
+2. Gmail Date on get: `tests/component/external/test_gmail.py::TestGetMessageHtml`
+3. Strip header+body: `tests/component/core/test_inbox.py::TestAst1049StripExtractEmailHtml`
+4. Assembled get: `tests/component/core/test_inbox.py::TestAst1537AssembledHtmlGet`
+5. Inbox land headers: `tests/component/core/test_inbox.py::TestAst1531InboxStageCutover`
+6. Mailbox shared strip: `tests/component/core/test_meteorite_email.py::TestAst1531MailboxStageCutover`
+7. API get assembled: `tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi`
+8. Paste-normalize still wraps: `tests/component/core/test_inbox.py::TestAst1131StripNormalizePastedList`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1049InboxCreateJobConfig \
+  tests/component/external/test_gmail.py::TestGetMessageHtml \
+  tests/component/core/test_inbox.py::TestAst1049StripExtractEmailHtml \
+  tests/component/core/test_inbox.py::TestAst1537AssembledHtmlGet \
+  tests/component/core/test_inbox.py::TestAst1531InboxStageCutover \
+  tests/component/core/test_inbox.py::TestAst1131StripNormalizePastedList \
+  tests/component/core/test_meteorite_email.py::TestAst1531MailboxStageCutover \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+### AST-1558 · AST-1555
+
+**Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1558-inbox-candidate-verbs-manage-email-filter`.
+
+Shrink inbox to candidate-scoped `fetch_candidate_email` / `archive_candidate_email` + unenriched `list_inbox_messages`; retire From-then-To bind, `run_fetch_email`, land-bound helpers, and `create_meteorite_job_from_inbox_message`. Config retirements: **`docs/test-bible/utils/config.md`** § AST-1558. Manage Email API/UI: **`docs/test-bible/ui/api/api_inbox.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unenriched list + Style D `inbox.list` | `src/core/inbox.py` | revised **`TestListInboxMessages`** |
+| Alias From/To filter + archive + deleted symbols | same | **`TestAst1558CandidateInboxVerbs`** |
+| Live Avail counts (alias-filtered; was stub `{}`/`0`) | same | revised **`TestAst1558CandidateInboxVerbs`** — see **AST-1611** |
+| Strip/normalize keepers | same | **`TestAst1049StripExtractEmailHtml`**, **`TestAst1131StripNormalizePastedList`**, **`TestGetMessageHtml`** |
+
+**Broken / obsolete (revised or removed this pass):** **`TestAst1047InboxFromBind`**, **`TestAst1313FromThenToBind`**, **`TestAst1049CreateMeteoriteJobFromInboxMessage`**, **`TestAst1135InboxBoundCounts`**, **`TestAst1531InboxStageCutover`** — bind/create/land-bound product surfaces deleted. Historical AST-1313 / AST-1495 / AST-1531 bible blocks above describe pre-1558 behavior; do not re-run those node ids. **`test_count_stubs_return_empty_and_zero`** — retired by **AST-1611** (live counts).
+
+**Integration:** none — no existing integration scenario asserts inbox bind / fetch_email; do not invent.
+
+### AST-1611 · AST-1606 (gap — live Avail + ingest Land for AST-1608)
+
+**Parent:** [AST-1606](https://linear.app/astralcareermatch/issue/AST-1606/meteorite-email-is-not-recognizing-bound-messages). **Sibling product:** AST-1608. **Publish:** `origin/sub/AST-1606/AST-1611-gap-tests-avail-land`.
+
+Board REVISE on AST-1608: AST-1558 count stubs `{}`/`0` and Land→`stage_meteorite` break under Proposed A/B; repro live Avail / ingest Land uncovered. Product fix lands on AST-1608; this gap owns the [bug-repro] bar + bible revision.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Live `count_inbox_messages_bound_to_candidate` | `src/core/inbox.py` | **`[bug-repro]`** `TestAst1558CandidateInboxVerbs::test_count_inbox_messages_bound_live_alias_match` |
+| Live `count_inbox_bound_by_candidate` map | same | **`TestAst1558CandidateInboxVerbs::test_count_inbox_bound_by_candidate_mailbox_map`** |
+| Land → ingest (not classify-only `stage_meteorite`) | `src/ui/api/api_inbox.py` | **`[bug-repro]`** `TestAst1558InboxLandMeteoriteApi::test_land_meteorite_happy_path` — primary: **`docs/test-bible/ui/api/api_inbox.md`** § AST-1611 |
+
+**Broken / obsolete this pass:** stub-count assert **`test_count_stubs_return_empty_and_zero`** (removed). Land mocks of classify-only `stage_meteorite` as the Land happy path (revised in place).
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. **[bug-repro]** live Avail: `tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs::test_count_inbox_messages_bound_live_alias_match`
+2. Mailbox Avail map: `tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs::test_count_inbox_bound_by_candidate_mailbox_map`
+3. Core inbox verbs (keepers): `tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs`
+4. Config retirements: `tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired`
+5. Manage Email API (+ Land [bug-repro]): `tests/component/ui/api/test_api_inbox.py` — see **`docs/test-bible/ui/api/api_inbox.md`** § AST-1611
+6. Manage Email page (§6c): `tests/component/frontend/pages/test_AdminManageEmail.test.tsx`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs \
+  tests/component/utils/test_config.py::TestAst1558FetchEmailBindRetired \
+  tests/component/ui/api/test_api_inbox.py::TestAst1558InboxLandMeteoriteApi \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+**Pass criterion (test-fix):** [bug-repro] nodes flip red→green after AST-1608 `make-fix` — not zero-arg harness / branch-lock gate.
+
+### AST-1714 · AST-1711
+
+**Parent:** [AST-1711](https://linear.app/astralcareermatch/issue/AST-1711). **Publish:** `origin/sub/AST-1711/AST-1714-inbox-check-email-runner`.
+
+`inbox.check_email` is the candidate-bound mailbox runner: full assembled message (`assembled_html`) to `stage_meteorite`, archive on non-error, stamp `last_email_check`. Dispatcher mailbox branch awaits `inbox.check_email` (no `check_inbox`). Provision rewrites bound retired `meteorite_email` rows to `stage_email_meteorite` and deletes orphan retired-key rows. Admin mailbox gates stay on `is_meteorite_email_mailbox_task_key` (AST-1712). Classify/save stays **AST-1713**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Full-message stage + archive + dedup | `src/core/inbox.py` | **`TestAst1714CheckEmail`** |
+| Dispatcher mailbox route | `src/core/dispatcher.py` | revised **`TestAst1090GazeEmailDispatchOne`** |
+| Provision rewrite / orphan purge | `src/core/dispatcher.py` | revised **`TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates`** |
+
+**Broken / obsolete this pass:** `_dispatch_one` patches of `meteorite.check_inbox`; provision fixture that ignored retired-key rewrite / orphan delete.
+
+**Integration:** none — no existing scenario asserts the mailbox runner name.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1714CheckEmail \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_ensure_adds_then_skips \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1714-inbox-check-email-runner:docs/test-bible/core/inbox.md | shasum`
+
+### AST-1743 · AST-1740 (gap — skip→failed rollup)
+
+**Parent:** [AST-1740](https://linear.app/astralcareermatch/issue/AST-1740/meteorites-deemed-not-a-job-should-be-fails). **Sibling product:** AST-1742. **Publish:** `origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests`.
+
+Board REVISE on AST-1742: no node asserted `check_email` skip / `NOT_A_JOB` → failed. Product counter retarget is AST-1742; this gap lands the repro.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip after archive → failed | `src/core/inbox.py` | **`[bug-repro]`** `TestAst1714CheckEmail::test_skip_outcome_counts_failed_not_passed` |
+
+**Do not revise here:** `TestAst1559CheckInbox::test_skip_outcome_zero_rows_monitor_archive` (`check_inbox` leftover — out of AST-1742 Scope).
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1714CheckEmail::test_skip_outcome_counts_failed_not_passed \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests:docs/test-bible/core/inbox.md | shasum`
+

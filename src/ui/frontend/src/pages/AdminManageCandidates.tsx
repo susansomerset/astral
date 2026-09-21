@@ -20,6 +20,21 @@ interface Candidate {
   [key: string]: unknown
 }
 
+type UnboundSlackUser = { slack_user_id: string; username: string }
+
+const EMPTY_ADD_FORM = { first: "", last: "", contact_email: "", pronouns: "", slack_user_id: "" }
+
+function slackBindFromSelection(
+  selectedId: string,
+  options: UnboundSlackUser[],
+): { slack_user_id: string; slack_username: string } | null {
+  const sid = selectedId.trim()
+  if (!sid) return null
+  const row = options.find(u => u.slack_user_id === sid)
+  if (!row) return null
+  return { slack_user_id: row.slack_user_id, slack_username: row.username }
+}
+
 function flattenCandidate(c: Candidate): Candidate & Record<string, unknown> {
   const cd = c.candidate_data || {}
   const contact = (cd.contact || {}) as Record<string, unknown>
@@ -104,10 +119,13 @@ export default function ManageCandidates() {
   const [validStates, setValidStates] = useState<string[]>([])
   const [viewing, setViewing] = useState<Candidate | null>(null)
   const [addOpen, setAddOpen] = useState(false)
-  const [addForm, setAddForm] = useState({ first: "", last: "", contact_email: "", pronouns: "" })
+  const [addForm, setAddForm] = useState(EMPTY_ADD_FORM)
   const [editOpen, setEditOpen] = useState(false)
   const [editTarget, setEditTarget] = useState<Candidate | null>(null)
-  const [editForm, setEditForm] = useState({ first: "", last: "", contact_email: "", pronouns: "", state: "", api_key: "" })
+  const [editForm, setEditForm] = useState({
+    first: "", last: "", contact_email: "", pronouns: "", state: "", api_key: "", slack_user_id: "",
+  })
+  const [unboundSlackUsers, setUnboundSlackUsers] = useState<UnboundSlackUser[]>([])
   const [showKey, setShowKey] = useState(false)
   const [clearKey, setClearKey] = useState(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
@@ -141,6 +159,37 @@ export default function ManageCandidates() {
       .catch(() => setDispatchTaskCounts({}))
   }, [])
 
+  // Sibling AST-1668 admin GET — unbound workspace posters only (no Slack Web API from React).
+  const loadUnboundSlackUsers = useCallback(() => {
+    return api("/api/admin/contact/unbound_slack_users")
+      .then(async r => {
+        if (!r.ok) {
+          const body = await r.json().catch(() => ({}))
+          throw new Error((body as { error?: string }).error || "Failed to load unbound Slack users")
+        }
+        return r.json()
+      })
+      .then(data => {
+        const raw = Array.isArray(data?.users) ? data.users : []
+        const users: UnboundSlackUser[] = []
+        for (const row of raw) {
+          if (!row || typeof row !== "object") continue
+          const sid = typeof row.slack_user_id === "string" ? row.slack_user_id.trim() : ""
+          const uname = typeof row.username === "string" ? row.username.trim() : ""
+          if (!sid || !uname) continue
+          users.push({ slack_user_id: sid, username: uname })
+        }
+        setUnboundSlackUsers(users)
+      })
+      .catch(e => {
+        setUnboundSlackUsers([])
+        setToast({
+          text: e instanceof Error ? e.message : "Failed to load unbound Slack users",
+          variant: "error",
+        })
+      })
+  }, [])
+
   useEffect(() => {
     api("/api/shapes/candidates").then(r => r.json()).then(s => setShapes(s))
     api("/api/candidates/states").then(r => r.json()).then(s => setValidStates(Array.isArray(s) ? s : []))
@@ -149,12 +198,20 @@ export default function ManageCandidates() {
   }, [loadAll, loadDispatchTaskCounts])
 
   function handleAddSave() {
-    const { first, last, contact_email, pronouns } = addForm
+    const { first, last, contact_email, pronouns, slack_user_id } = addForm
     if (!first.trim() || !last.trim()) {
       setToast({ text: "First and last name are required", variant: "error" })
       return
     }
     const candidateId = last.trim().toLowerCase().replace(/\s+/g, "_")
+    const contact: Record<string, string> = {
+      contact_email: contact_email.trim(),
+    }
+    const bind = slackBindFromSelection(slack_user_id, unboundSlackUsers)
+    if (bind) {
+      contact.slack_user_id = bind.slack_user_id
+      contact.slack_username = bind.slack_username
+    }
     api("/api/candidates", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -163,11 +220,7 @@ export default function ManageCandidates() {
         first: first.trim(),
         last: last.trim(),
         pronouns,
-        candidate_data: {
-          contact: {
-            contact_email: contact_email.trim(),
-          },
-        },
+        candidate_data: { contact },
       }),
     })
       .then(r => {
@@ -176,10 +229,11 @@ export default function ManageCandidates() {
       })
       .then(() => {
         setAddOpen(false)
-        setAddForm({ first: "", last: "", contact_email: "", pronouns: "" })
+        setAddForm(EMPTY_ADD_FORM)
         setToast({ text: `Candidate "${first} ${last}" created`, variant: "success" })
         loadAll()
         loadDispatchTaskCounts()
+        if (bind) void loadUnboundSlackUsers()
         refresh()
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
@@ -188,6 +242,7 @@ export default function ManageCandidates() {
   function openEdit(c: Candidate) {
     const cd = c.candidate_data || {}
     const contact = (cd.contact || {}) as Record<string, unknown>
+    const boundId = String(contact.slack_user_id ?? "").trim()
     setEditTarget(c)
     setEditForm({
       first: String(c.first ?? ""),
@@ -196,44 +251,112 @@ export default function ManageCandidates() {
       pronouns: String(c.pronouns ?? ""),
       state: c.state || "",
       api_key: "",
+      slack_user_id: boundId,
     })
     setShowKey(false)
     setClearKey(false)
     setEditOpen(true)
+    void loadUnboundSlackUsers()
   }
 
-  function handleEditSave() {
+  // Edit options = unbound pool + this candidate's current bind when not already unbound.
+  const editSlackOptions: UnboundSlackUser[] = (() => {
+    const opts = [...unboundSlackUsers]
+    if (!editTarget) return opts
+    const contact = ((editTarget.candidate_data || {}).contact || {}) as Record<string, unknown>
+    const sid = String(contact.slack_user_id ?? "").trim()
+    if (!sid || opts.some(u => u.slack_user_id === sid)) return opts
+    const uname = String(contact.slack_username ?? "").trim() || sid
+    return [{ slack_user_id: sid, username: uname }, ...opts]
+  })()
+
+  async function handleEditSave() {
     if (!editTarget) return
-    const { first, last, contact_email, pronouns, state, api_key } = editForm
+    const { first, last, contact_email, pronouns, state, api_key, slack_user_id } = editForm
+    const contact: Record<string, string> = {
+      contact_email: contact_email.trim(),
+    }
+    // Empty selection omits Slack keys — deep-merge leaves any existing bind intact.
+    const bind = slackBindFromSelection(slack_user_id, editSlackOptions)
+    if (bind) {
+      contact.slack_user_id = bind.slack_user_id
+      contact.slack_username = bind.slack_username
+    }
     const payload: Record<string, unknown> = {
       first: first.trim(),
       last: last.trim(),
       pronouns,
-      contact: {
-        contact_email: contact_email.trim(),
-      },
+      contact,
       state,
     }
     if (clearKey) payload.api_key = ""
     else if (api_key.trim()) payload.api_key = api_key.trim()
-    api(`/api/candidates/${editTarget.astral_candidate_id}/data`, {
+    const url = `/api/candidates/${editTarget.astral_candidate_id}/data`
+    const putOpts = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Update failed") })
-        return r.json()
+    }
+    const finishOk = () => {
+      setEditOpen(false)
+      setEditTarget(null)
+      setToast({ text: "Candidate updated", variant: "success" })
+      loadAll()
+      loadDispatchTaskCounts()
+      if (bind) void loadUnboundSlackUsers()
+      refresh()
+    }
+    try {
+      const r = await api(url, putOpts)
+      const body = await r.json().catch(() => ({} as Record<string, unknown>))
+      if (r.ok) {
+        finishOk()
+        return
+      }
+      // AST-1287: illegal hop → confirm; unknown-state 400 has no this code
+      if ((body as { code?: string }).code === "illegal_candidate_transition") {
+        const from_state = String(
+          (body as { from_state?: string }).from_state ?? editTarget.state ?? "",
+        )
+        const to_state = String(
+          (body as { to_state?: string }).to_state ?? payload.state ?? "",
+        )
+        const ok = await confirm(
+          `This state change is not allowed by the transition rules: ${from_state} → ${to_state}. Proceed anyway?`,
+          { title: "Confirm illegal state change", confirmLabel: "Change state", variant: "danger" },
+        )
+        if (!ok) {
+          // Cancel = skip state only; non-state fields may already be on the server
+          loadAll()
+          loadDispatchTaskCounts()
+          setEditForm(p => ({ ...p, state: from_state }))
+          setEditTarget(t => (t ? { ...t, state: from_state } : t))
+          setToast({ text: "State unchanged; other fields saved if they were.", variant: "info" })
+          return
+        }
+        const confirmR = await api(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, confirm_state_override: true }),
+        })
+        const confirmBody = await confirmR.json().catch(() => ({} as Record<string, unknown>))
+        if (confirmR.ok) {
+          finishOk()
+          return
+        }
+        setToast({
+          text: String((confirmBody as { error?: string }).error || "Update failed"),
+          variant: "error",
+        })
+        return
+      }
+      setToast({
+        text: String((body as { error?: string }).error || "Update failed"),
+        variant: "error",
       })
-      .then(() => {
-        setEditOpen(false)
-        setEditTarget(null)
-        setToast({ text: "Candidate updated", variant: "success" })
-        loadAll()
-        loadDispatchTaskCounts()
-        refresh()
-      })
-      .catch(e => setToast({ text: e.message, variant: "error" }))
+    } catch (e) {
+      setToast({ text: e instanceof Error ? e.message : "Update failed", variant: "error" })
+    }
   }
 
   async function handleDelete(c: Candidate) {
@@ -320,24 +443,24 @@ export default function ManageCandidates() {
       key: "_actions", label: "", sortable: false,
       render: (_, row) => (
         <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); setViewing(row) }} aria-label="View">
+          <button type="button" className="icon-control" onClick={e => { e.stopPropagation(); setViewing(row) }} title="View" aria-label="View">
             <ViewIcon />
           </button>
-          <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); openEdit(row) }} aria-label="Edit">
+          <button type="button" className="icon-control" onClick={e => { e.stopPropagation(); openEdit(row) }} title="Edit" aria-label="Edit">
             <EditIcon />
           </button>
-          <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); void handleDelete(row) }} aria-label="Delete" style={{ color: "var(--danger)" }}>
+          <button type="button" className="icon-control" onClick={e => { e.stopPropagation(); void handleDelete(row) }} title="Delete" aria-label="Delete">
             <DeleteIcon />
           </button>
           <button
             type="button"
-            className="dep-btn"
-            style={{ padding: "6px 10px", fontSize: 12 }}
+            className="icon-control"
+            title="Set dispatch tasks"
             aria-label={`Set dispatch tasks for ${row.astral_candidate_id}`}
             disabled={settingCandidateId === row.astral_candidate_id}
             onClick={e => { e.stopPropagation(); void handleSetDispatchTasks(row) }}
           >
-            Set dispatch tasks
+            T
           </button>
         </span>
       ),
@@ -351,7 +474,14 @@ export default function ManageCandidates() {
         columns={columns}
         rows={rows}
         actions={
-          <button className="dep-btn save" onClick={() => setAddOpen(true)} style={{ padding: "6px 14px", fontSize: 13 }}>
+          <button
+            className="btn primary"
+            onClick={() => {
+              setAddForm(EMPTY_ADD_FORM)
+              setAddOpen(true)
+              void loadUnboundSlackUsers()
+            }}
+          >
             + Add Candidate
           </button>
         }
@@ -369,7 +499,15 @@ export default function ManageCandidates() {
       </Modal>
 
       {/* Add modal */}
-      <Modal open={addOpen} onClose={() => setAddOpen(false)} title="Add Candidate" onSave={handleAddSave}>
+      <Modal
+        open={addOpen}
+        onClose={() => {
+          setAddOpen(false)
+          setAddForm(EMPTY_ADD_FORM)
+        }}
+        title="Add Candidate"
+        onSave={handleAddSave}
+      >
         <div className="dep-field">
           <label className="dep-field-label">First Name</label>
           <input className="dep-input" type="text" value={addForm.first} onChange={e => setAddForm(p => ({ ...p, first: e.target.value }))} />
@@ -382,6 +520,19 @@ export default function ManageCandidates() {
           <label className="dep-field-label">Email</label>
           <input className="dep-input" type="email" value={addForm.contact_email} onChange={e => setAddForm(p => ({ ...p, contact_email: e.target.value }))} />
         </div>
+        <div className="dep-field">
+          <label className="dep-field-label">Slack username</label>
+          <select
+            className="dep-input dep-select"
+            value={addForm.slack_user_id}
+            onChange={e => setAddForm(p => ({ ...p, slack_user_id: e.target.value }))}
+          >
+            <option value="">— none —</option>
+            {unboundSlackUsers.map(u => (
+              <option key={u.slack_user_id} value={u.slack_user_id}>{u.username}</option>
+            ))}
+          </select>
+        </div>
         {pronounField && (
           <PronounSelect
             field={pronounField}
@@ -392,7 +543,7 @@ export default function ManageCandidates() {
       </Modal>
 
       {/* Edit modal */}
-      <Modal open={editOpen} onClose={() => { setEditOpen(false); setEditTarget(null) }} title={editTarget ? `Edit: ${editTarget.astral_candidate_id}` : ""} onSave={handleEditSave}>
+      <Modal open={editOpen} onClose={() => { setEditOpen(false); setEditTarget(null) }} title={editTarget ? `Edit: ${editTarget.astral_candidate_id}` : ""} onSave={() => { void handleEditSave() }}>
         <div className="dep-field">
           <label className="dep-field-label">First Name</label>
           <input className="dep-input" type="text" value={editForm.first} onChange={e => setEditForm(p => ({ ...p, first: e.target.value }))} />
@@ -404,6 +555,19 @@ export default function ManageCandidates() {
         <div className="dep-field">
           <label className="dep-field-label">Email</label>
           <input className="dep-input" type="email" value={editForm.contact_email} onChange={e => setEditForm(p => ({ ...p, contact_email: e.target.value }))} />
+        </div>
+        <div className="dep-field">
+          <label className="dep-field-label">Slack username</label>
+          <select
+            className="dep-input dep-select"
+            value={editForm.slack_user_id}
+            onChange={e => setEditForm(p => ({ ...p, slack_user_id: e.target.value }))}
+          >
+            <option value="">— none —</option>
+            {editSlackOptions.map(u => (
+              <option key={u.slack_user_id} value={u.slack_user_id}>{u.username}</option>
+            ))}
+          </select>
         </div>
         {pronounField && (
           <PronounSelect
@@ -432,16 +596,15 @@ export default function ManageCandidates() {
             />
             <button
               type="button"
-              className="dep-btn"
+              className="btn secondary"
               onClick={() => setShowKey(v => !v)}
-              style={{ padding: "6px 10px", fontSize: 12 }}
             >
               {showKey ? "Hide" : "Show"}
             </button>
             {editTarget?.has_api_key && !editForm.api_key && !clearKey && (
               <button
                 type="button"
-                className="dep-btn"
+                className="btn danger"
                 onClick={() => {
                   void (async () => {
                     const ok = await confirm(
@@ -453,7 +616,6 @@ export default function ManageCandidates() {
                     setToast({ text: "Key will be cleared on save", variant: "info" })
                   })()
                 }}
-                style={{ padding: "6px 10px", fontSize: 12, color: "var(--danger)" }}
               >
                 Clear
               </button>

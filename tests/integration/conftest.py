@@ -21,6 +21,13 @@ os.environ.setdefault("GOOGLE_CLIENT_SECRET", "test-client-secret")
 os.environ.setdefault("GOOGLE_REFRESH_TOKEN", "test-refresh-token")
 os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 
+
+@pytest.fixture(autouse=True)
+def _integration_fail_closed_deploy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # AST-1440: set a non-local value so later config.py load_dotenv() cannot
+    # refill ASTRAL_DEPLOY_ENV=local from the epic worktree .env (delenv is not enough).
+    monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+
 _SCHEMA_FLAGS = (
     "_company_schema_ensured",
     "_job_schema_ensured",
@@ -64,6 +71,7 @@ def _register_mock_authenticator(monkeypatch: pytest.MonkeyPatch) -> None:
         {
             "admin_user_ids": frozenset({"susan"}),
             "admin_emails": frozenset({"susan@susansomerset.com"}),
+            "local_operator": {"user_id": "local-operator", "name": "Local Operator"},
         },
         raising=False,
     )
