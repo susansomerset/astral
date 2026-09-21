@@ -840,3 +840,11 @@ Files: `src/utils/config.py`, `src/core/meteorite.py` only. Do not edit `src/cor
 - `_classify_jd` is not renamed or forked. Telescope HTTP helpers and roster/gazer import paths stay as AST-1726 left them.
 - No depth or output limits.
 
+## Radia review (AST-1752)
+
+**Overall:** CLEAN — `[code-rubric] PROCEED` @ `37becf57`.
+
+- **[bug-repro] OK** — closed/missing → LINK_EXPIRED, total_failed, not total_errors.
+- **What must still hold — OK.**
+- **§3h:** resolve-child skipped (clean review).
+
