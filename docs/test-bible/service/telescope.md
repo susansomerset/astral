@@ -123,7 +123,7 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
 | Area | Component tests |
 | --- | --- |
 | Scoped evaluate (not whole-page `a[href]`) | `test_telescope_capture.py::test_ast1732_capture_links_scoped_to_selector` (**bug-repro**) |
-| Multi-match href dedupe in script | `test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href` (**bug-repro**) |
+| Multi-match href merge → `text[]` | `test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href` (rewritten AST-1747) |
 | App passes selector | `test_telescope_app.py::TestTelescopeRoutes::test_ast1732_post_telescope_passes_selector_to_capture_links` (**bug-repro**) |
 
 ```bash
@@ -220,4 +220,23 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
   tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1744_complex_selector_plus_class_name_still_400 -q
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx -t 'AST-1744'
+```
+
+---
+
+### AST-1747 · AST-1721 (qa-fix bug-repro — links href dedupe with text[])
+
+**Board REVISE:** href-unique `links[]` with `text` as deduped `list[str]` (e.g. `["Software Engineer","View role"]`); rewrite AST-1732 string-text + JS `seen`/first-wins asserts.
+
+| Area | Component tests |
+| --- | --- |
+| Fixture href merge + text[] | `test_telescope_capture.py::test_ast1747_capture_links_dedupes_href_with_text_array` (**bug-repro**) |
+| Single-label → one-element array | `test_telescope_capture.py::test_capture_links_filters_http` / `test_ast1732_capture_links_scoped_to_selector` |
+| Scoped multi-label merge | `test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href` |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_capture.py::test_ast1747_capture_links_dedupes_href_with_text_array \
+  tests/component/service/test_telescope_capture.py::test_capture_links_filters_http \
+  tests/component/service/test_telescope_capture.py::test_ast1732_capture_links_multi_match_dedupes_by_href -q
 ```
