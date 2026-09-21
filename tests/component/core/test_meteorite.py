@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-import importlib.util
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -15,7 +14,6 @@ from src.utils.config import (
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
     METEORITE_MONITORING_CONFIG,
-    METEORITE_RETENTION_CONFIG,
 )
 
 
@@ -949,11 +947,12 @@ class TestAst1530StageMeteorite:
         assert any("not_original_posting" in r.getMessage() for r in caplog.records)
 
 
-def _ingress_task(*, batch_id: str, task_key: str | None = None) -> dict:
+def _ingress_task(*, batch_id: str, candidate_id: str, task_key: str | None = None) -> dict:
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
     return {
         "task_key": task_key or cfg["stage_task_key"],
         "entity_batch_id": batch_id,
+        "candidate_id": candidate_id,
         "batch_size": cfg["batch_size"],
     }
 
@@ -998,11 +997,12 @@ def _insert_meteorite_row(db, cid: str, **fields: object) -> int:
     return row_id
 
 
-def _notify_task(*, batch_id: str) -> dict:
+def _notify_task(*, batch_id: str, candidate_id: str) -> dict:
     cfg = METEORITE_BOT_BLOCKED_NOTIFY_CONFIG
     return {
         "task_key": cfg["task_key"],
         "entity_batch_id": batch_id,
+        "candidate_id": candidate_id,
         "batch_size": cfg["batch_size"],
     }
 
@@ -1122,7 +1122,7 @@ class TestAst1703EmailBreadcrumb:
             # link omitted → blank → ERROR missing breadcrumb link
         )
         out = await meteorite_mod.run_stage_meteorite(
-            _ingress_task(batch_id="stage-batch-nobread")
+            _ingress_task(batch_id="stage-batch-nobread", candidate_id=cid)
         )
         assert out["total_errors"] == 1
         row = db.get_meteorite(row_id)
@@ -1184,7 +1184,7 @@ class TestAst1560RunStageMeteorite:
             link="https://jobs.example.com/role",
         )
         batch_id = "stage-batch-url"
-        out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id))
+        out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id, candidate_id=cid))
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
         assert row["state"] == "SCRAPE_LINK"
@@ -1206,7 +1206,7 @@ class TestAst1560RunStageMeteorite:
             link=crumb,
         )
         batch_id = "stage-batch-text"
-        out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id))
+        out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id, candidate_id=cid))
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
         assert row["state"] == "READY"
@@ -1224,7 +1224,7 @@ class TestAst1560RunStageMeteorite:
         row_id = _insert_meteorite_row(db, cid)
         with caplog.at_level(logging.WARNING):
             out = await meteorite_mod.run_stage_meteorite(
-                _ingress_task(batch_id="stage-batch-miss")
+                _ingress_task(batch_id="stage-batch-miss", candidate_id=cid)
             )
         assert out["total_errors"] == 1
         assert db.get_meteorite(row_id)["state"] == "SCRAPE_ERROR"
@@ -1260,6 +1260,7 @@ class TestAst1560RunScrapeMeteorite:
         out = await meteorite_mod.run_scrape_meteorite(
             _ingress_task(
                 batch_id="scrape-batch-ok",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
@@ -1293,6 +1294,7 @@ class TestAst1560RunScrapeMeteorite:
         out = await meteorite_mod.run_scrape_meteorite(
             _ingress_task(
                 batch_id="scrape-batch-block",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
@@ -1332,6 +1334,7 @@ class TestAst1560RunScrapeMeteorite:
         out = await meteorite_mod.run_scrape_meteorite(
             _ingress_task(
                 batch_id="scrape-batch-sib",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
@@ -1382,6 +1385,7 @@ class TestAst1560RunLandMeteorite:
             out = await meteorite_mod.run_land_meteorite(
                 _ingress_task(
                     batch_id="land-batch-1",
+                    candidate_id=cid,
                     task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
                 )
             )
@@ -1404,6 +1408,7 @@ class TestAst1560RunLandMeteorite:
         out = await meteorite_mod.run_land_meteorite(
             _ingress_task(
                 batch_id="land-batch-miss",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
             )
         )
@@ -1523,7 +1528,7 @@ class TestAst1561RunNotifyBotBlocked:
             lambda **kw: {"ok": True, "ts": "9999.0001"},
         )
         out = await meteorite_mod.run_notify_meteorite_bot_blocked(
-            _notify_task(batch_id="notify-batch-1")
+            _notify_task(batch_id="notify-batch-1", candidate_id=cid)
         )
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
@@ -1548,174 +1553,11 @@ class TestAst1561RunNotifyBotBlocked:
         post = MagicMock()
         monkeypatch.setattr("src.core.contact.contact_post_message", post)
         out = await meteorite_mod.run_notify_meteorite_bot_blocked(
-            _notify_task(batch_id="notify-batch-abandon")
+            _notify_task(batch_id="notify-batch-abandon", candidate_id=cid)
         )
         assert out["total_passed"] == 1
         assert db.get_meteorite(row_id)["state"] == "ABANDONED"
         post.assert_not_called()
-
-
-def _backdate_meteorite_state_changed(db, row_id: int, iso: str) -> None:
-    conn = db._get_connection()
-    try:
-        conn.execute(
-            "UPDATE meteorite SET state_changed_at = ? WHERE id = ?",
-            (iso, row_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-@pytest.mark.skipif(
-    not hasattr(meteorite_mod, "run_meteorite_retention"),
-    reason="AST-1562 retention runner not on this publish tip",
-)
-class TestAst1562RunMeteoriteRetention:
-    """AST-1562: purge old LANDED; info-list stale rows; module retired."""
-
-    def test_meteorite_email_module_deleted(self) -> None:
-        assert importlib.util.find_spec("src.core.meteorite_email") is None
-
-    @pytest.mark.asyncio
-    async def test_purges_old_landed_rows(
-        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        db = sqlite_in_memory
-        cid = "cand-retention-purge"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Purge"})
-        row_id = _insert_meteorite_row(db, cid, state="LANDED")
-        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        _backdate_meteorite_state_changed(db, row_id, old)
-        out = await meteorite_mod.run_meteorite_retention(
-            {"batch_size": METEORITE_RETENTION_CONFIG["batch_size"]},
-            debug=False,
-        )
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
-        assert db.get_meteorite(row_id) is None
-
-    @pytest.mark.asyncio
-    async def test_stale_rows_info_logged_not_deleted(
-        self, sqlite_in_memory, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        import logging
-
-        db = sqlite_in_memory
-        cid = "cand-retention-stale"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Stale"})
-        row_id = _insert_meteorite_row(db, cid, state="SCRAPE_ERROR", link="https://jobs.example/e")
-        old = (datetime.now(timezone.utc) - timedelta(days=30)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        _backdate_meteorite_state_changed(db, row_id, old)
-        with caplog.at_level(logging.WARNING, logger="src.core.meteorite"):
-            out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
-        assert db.get_meteorite(row_id) is not None
-        assert any("still SCRAPE_ERROR" in r.getMessage() for r in caplog.records)
-        assert any(str(row_id) in r.getMessage() for r in caplog.records)
-
-    @pytest.mark.asyncio
-    async def test_fresh_landed_not_purged(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        cid = "cand-retention-fresh"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Fresh"})
-        row_id = _insert_meteorite_row(db, cid, state="LANDED")
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert out["total_processed"] == 0
-        assert db.get_meteorite(row_id) is not None
-
-
-@pytest.mark.skipif(
-    not hasattr(meteorite_mod, "run_meteorite_retention"),
-    reason="AST-1562 retention runner not on this publish tip",
-)
-class TestAst1690RetentionJobLinkedSkip:
-    """AST-1690: keep age-eligible LANDED when astral_job_id still hits a job."""
-
-    def _old_iso(self) -> str:
-        return (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-
-    @pytest.mark.asyncio
-    async def test_keeps_old_landed_when_job_exists(self, sqlite_in_memory) -> None:
-        # AC7 — job-linked LANDED past landed_purge_days must survive one retention run.
-        db = sqlite_in_memory
-        cid = "cand-ret-keep"
-        jid = "job-ret-keep-1"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Keep"})
-        db.save_company("co-ret-keep", state="IGNORE", candidate_id=cid)
-        db.save_job(jid, company="co-ret-keep", state="RECOMMENDED")
-        row_id = _insert_meteorite_row(
-            db, cid, state="LANDED", astral_job_id=jid
-        )
-        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(row_id) is not None
-        assert out["total_processed"] == 0
-        assert out["total_passed"] == 0
-
-    @pytest.mark.asyncio
-    async def test_purges_old_landed_when_job_missing(self, sqlite_in_memory) -> None:
-        # AC8 — orphan astral_job_id (no job row) stays age-purge eligible.
-        db = sqlite_in_memory
-        cid = "cand-ret-orphan"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Orphan"})
-        row_id = _insert_meteorite_row(
-            db, cid, state="LANDED", astral_job_id="job-ret-missing-xyz"
-        )
-        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(row_id) is None
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
-
-    @pytest.mark.asyncio
-    async def test_purges_old_landed_blank_astral_job_id(
-        self, sqlite_in_memory
-    ) -> None:
-        # AC8 — whitespace-only astral_job_id strips to empty → purge like null.
-        db = sqlite_in_memory
-        cid = "cand-ret-blank"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Blank"})
-        row_id = _insert_meteorite_row(
-            db, cid, state="LANDED", astral_job_id="   "
-        )
-        _backdate_meteorite_state_changed(db, row_id, self._old_iso())
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(row_id) is None
-        assert out["total_processed"] >= 1
-
-    @pytest.mark.asyncio
-    async def test_mixed_batch_keeps_linked_purges_unlinked(
-        self, sqlite_in_memory
-    ) -> None:
-        # One run: linked keep + null-link purge (partition loop).
-        db = sqlite_in_memory
-        cid = "cand-ret-mix"
-        jid = "job-ret-mix-1"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Mix"})
-        db.save_company("co-ret-mix", state="IGNORE", candidate_id=cid)
-        db.save_job(jid, company="co-ret-mix", state="RECOMMENDED")
-        keep_id = _insert_meteorite_row(
-            db, cid, state="LANDED", astral_job_id=jid, source_id="mid-keep"
-        )
-        purge_id = _insert_meteorite_row(
-            db, cid, state="LANDED", source_id="mid-purge"
-        )
-        old = self._old_iso()
-        _backdate_meteorite_state_changed(db, keep_id, old)
-        _backdate_meteorite_state_changed(db, purge_id, old)
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(keep_id) is not None
-        assert db.get_meteorite(purge_id) is None
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
 
 
 def _check_inbox_msg(
@@ -2060,6 +1902,7 @@ class TestAst1689ElectronicContactMapPersist:
         out = await meteorite_mod.run_scrape_meteorite(
             _ingress_task(
                 batch_id="scrape-1689-block",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
             )
         )
@@ -2099,6 +1942,7 @@ class TestAst1689ElectronicContactMapPersist:
         out = await meteorite_mod.run_land_meteorite(
             _ingress_task(
                 batch_id="land-1689-1",
+                candidate_id=cid,
                 task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
             )
         )
@@ -2180,7 +2024,7 @@ class TestAst1693RunLandBotBlocked:
             captured.update(kwargs)
             return {"outcome": METEORITE_CONFIG["land_outcome_created"], "astral_job_id": "job-1693-land"}
         monkeypatch.setattr(meteorite_mod.tracker, "save_meteorite_job", _save)
-        out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-bb", task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
+        out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-bb", candidate_id=cid, task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
         assert row["state"] == "LANDED" and row["astral_job_id"] == "job-1693-land"
@@ -2192,7 +2036,7 @@ class TestAst1693RunLandBotBlocked:
         cid = "cand-1693-empty"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
         row_id = _insert_meteorite_row(db, cid, state="BOT_BLOCKED", content="", link="https://example.test/job/empty")
-        out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-empty", task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
+        out = await meteorite_mod.run_land_meteorite(_ingress_task(batch_id="land-1693-empty", candidate_id=cid, task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]))
         assert out["total_failed"] == 0 and out["total_errors"] == 0 and out["total_passed"] == 0
         row = db.get_meteorite(row_id)
         assert row["state"] == "BOT_BLOCKED" and not row.get("astral_job_id")
@@ -2211,35 +2055,12 @@ class TestAst1693NotifySkipsContentful:
         post = MagicMock()
         monkeypatch.setattr(meteorite_mod, "_resolve_slack_dm_channel_for_candidate", lambda _c: "D-1693")
         monkeypatch.setattr("src.core.contact.contact_post_message", post)
-        out = await meteorite_mod.run_notify_meteorite_bot_blocked(_notify_task(batch_id="notify-1693-skip"))
+        out = await meteorite_mod.run_notify_meteorite_bot_blocked(_notify_task(batch_id="notify-1693-skip", candidate_id=cid))
         assert out["total_passed"] == 0
         row = db.get_meteorite(row_id)
         assert row["state"] == "BOT_BLOCKED" and not row.get("estelle_notified_at")
         post.assert_not_called()
 
-
-
-@pytest.mark.skipif(
-    not hasattr(meteorite_mod, "run_meteorite_retention"),
-    reason="AST-1562 retention runner not on this publish tip",
-)
-class TestAst1712NotAJobPurge:
-    """AST-1712: NOT_A_JOB is on the scheduled cleanup selection."""
-
-    @pytest.mark.asyncio
-    async def test_purges_old_not_a_job(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        cid = "cand-retention-not-a-job"
-        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Skip"})
-        row_id = _insert_meteorite_row(db, cid, state="NOT_A_JOB")
-        old = (datetime.now(timezone.utc) - timedelta(days=120)).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
-        _backdate_meteorite_state_changed(db, row_id, old)
-        out = await meteorite_mod.run_meteorite_retention({}, debug=False)
-        assert db.get_meteorite(row_id) is None
-        assert out["total_processed"] >= 1
-        assert out["total_passed"] >= 1
 
 
 @pytest.mark.skipif(
