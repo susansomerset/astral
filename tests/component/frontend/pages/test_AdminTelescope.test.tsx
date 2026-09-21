@@ -1,5 +1,5 @@
 /**
- * AST-1728 / AST-1730 / AST-1734 — AdminTelescope page + panes + page scroll.
+ * AST-1728 / AST-1730 / AST-1734 / AST-1744 — AdminTelescope page + panes + filters.
  */
 import { screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
@@ -62,6 +62,28 @@ describe("AdminTelescope", () => {
       expect(wrap.style.overflow).not.toBe("hidden")
       expect(wrap.style.height === "" || wrap.style.height === "auto").toBe(true)
     }
+  })
+
+  it("AST-1744: single Tag primary + Class always enabled; no Selector slot", async () => {
+    const user = userEvent.setup()
+    renderWithProviders(<AdminTelescope />)
+
+    expect(screen.getByText(/^Tag \(optional\)/i)).toBeInTheDocument()
+    expect(screen.getByText(/Class name \(optional\)/i)).toBeInTheDocument()
+    // Separate Selector input removed — Tag is the only primary.
+    expect(screen.queryByText(/^Selector \(optional\)/i)).not.toBeInTheDocument()
+
+    const tagInput = screen.getByPlaceholderText(/div \/ span/i)
+    await user.type(tagInput, "div")
+    const classInput = screen.getByPlaceholderText(/no leading dot/i)
+    expect(classInput).not.toBeDisabled()
+  })
+
+  it("AST-1746: AdminTelescope exposes optional Id filter control", () => {
+    renderWithProviders(<AdminTelescope />)
+    // Pre-fix: Class name exists; Id secondary filter is absent.
+    expect(screen.getByText(/Class name/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Id\b/i)).toBeInTheDocument()
   })
 
   it("AST-1730: raw response is read-only scrollable wrapping textarea", async () => {

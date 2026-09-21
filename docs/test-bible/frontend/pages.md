@@ -2938,3 +2938,69 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
 ```
+
+---
+
+### AST-1744 · AST-1721 (qa-fix bug-repro — Admin single Tag primary)
+
+**Board REVISE:** remove separate Selector; Tag is sole primary; Class always enabled (secondary).
+
+| Area | Component tests |
+| --- | --- |
+| No Selector; Class enabled with Tag | `test_AdminTelescope.test.tsx` — **`AST-1744: single Tag primary + Class always enabled; no Selector slot`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx -t 'AST-1744'
+```
+
+---
+
+### AST-1746 · AST-1721 (qa-fix bug-repro — AdminTelescope Id control)
+
+**Board REVISE:** AdminTelescope must expose optional Id filter (alongside Class name); AST-1736 class-only.
+
+| Area | Component tests |
+| --- | --- |
+| Id control present | `test_AdminTelescope.test.tsx` — **`AST-1746: AdminTelescope exposes optional Id filter control`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx -t AST-1746
+```
+
+### AST-1749 · AST-1741
+
+**Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
+
+Jobs → Meteorites routed page (`JobsMeteorites.tsx`): candidate-scoped list from AST-1748 APIs, empty honesty, candidate switch refetch, row → detail modal. Nav/route/config: **`docs/test-bible/utils/config.md`** § AST-1749. Modal: **`docs/test-bible/frontend/components.md`** § AST-1749. §6c page render required.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Page list / empty / candidate switch / modal open | `JobsMeteorites.tsx` | **`test_JobsMeteorites.test.tsx`** |
+| Route registration | `routes.tsx` | **`test_routes.test.tsx`** (`jobs/meteorites`) |
+
+**Broken / obsolete:** none — additive page + route.
+
+**Integration:** `test_candidate_nav_api.py` asserts In Review by path lookup — not an exhaustive Jobs item list; no revision. Do not invent new integration scenarios.
+
+## QA test manifest
+
+1. Page: `tests/component/frontend/pages/test_JobsMeteorites.test.tsx`
+2. Modal: `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx`
+3. Nav config: `tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav`
+4. Route: `tests/component/frontend/test_routes.test.tsx` (jobs/meteorites assert)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav \
+  -q
+```
+
+**Pass criterion:** Vitest + pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests`.

@@ -56,3 +56,19 @@ Gazer batch + roster scrape manifests: **`docs/test-bible/core/gazer.md`** · **
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
 
 **Out of scope:** Railway/CI fence (**AST-1727**), service container (**AST-1725**), Surfer.
+
+---
+
+### AST-1745 · AST-1721 (qa-fix bug-repro — cull preserves root svg.logo)
+
+**Board REVISE:** `_cull_html` must preserve root `svg.logo` outerHTML on a class-scoped fragment; AST-1731/1736 cover capture resolve only, not platform cull erase.
+
+| Area | Component tests |
+| --- | --- |
+| Root svg.logo fragment survives cull | `test_telescope.py::TestAst1745CullPreservesRootSvgLogo::test_cull_html_preserves_root_svg_logo_outerhtml` (**bug-repro**) |
+| Nested svg under page content still stripped | `test_telescope.py::TestAst1745CullPreservesRootSvgLogo::test_cull_html_still_strips_nested_svg_under_page_content` |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_telescope.py::TestAst1745CullPreservesRootSvgLogo -q
+```

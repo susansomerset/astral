@@ -14,6 +14,7 @@ import Recommended from "./pages/JobsRecommended"
 import InReview from "./pages/JobsInReview"
 import Skipped from "./pages/JobsSkipped"
 import Applied from "./pages/JobsApplied"
+import JobsMeteorites from "./pages/JobsMeteorites"
 import Responded from "./pages/JobsResponded"
 import JobsJobDetail from "./pages/JobsJobDetail"
 
@@ -90,6 +91,7 @@ const routes: RouteObject[] = [
           { path: "jobs/skipped", element: <Skipped /> },
           { path: "jobs/recommended", element: <Recommended /> },
           { path: "jobs/applied", element: <Applied /> },
+          { path: "jobs/meteorites", element: <JobsMeteorites /> },
           { path: "jobs/responded", element: <Responded /> },
           { path: "jobs/detail/:jobId", element: <JobsJobDetail /> },
 
