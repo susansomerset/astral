@@ -183,3 +183,20 @@ Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth
   tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1736_selector_plus_class_name_returns_400 \
   tests/component/service/test_telescope_capture.py::test_ast1736_capture_links_bare_class_retries_as_class -q
 ```
+
+---
+
+### AST-1746 · AST-1721 (qa-fix bug-repro — optional id filter)
+
+**Board REVISE:** optional `id` (e.g. `hero` → `#hero`) into capture; `selector`+`id` → 400; Admin Id control. AST-1736 only covers `class_name`.
+
+| Area | Component tests |
+| --- | --- |
+| `id` → `#hero` into capture_html | `test_telescope_app.py::TestTelescopeRoutes::test_ast1746_html_id_resolves_to_hash_id` (**bug-repro**) |
+| Ambiguous selector+id → 400 | `test_telescope_app.py::TestTelescopeRoutes::test_ast1746_selector_plus_id_returns_400` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1746_html_id_resolves_to_hash_id \
+  tests/component/service/test_telescope_app.py::TestTelescopeRoutes::test_ast1746_selector_plus_id_returns_400 -q
+```

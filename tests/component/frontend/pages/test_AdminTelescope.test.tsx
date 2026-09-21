@@ -64,6 +64,13 @@ describe("AdminTelescope", () => {
     }
   })
 
+  it("AST-1746: AdminTelescope exposes optional Id filter control", () => {
+    renderWithProviders(<AdminTelescope />)
+    // Pre-fix: Class name exists; Id secondary filter is absent.
+    expect(screen.getByText(/Class name/i)).toBeInTheDocument()
+    expect(screen.getByText(/^Id\b/i)).toBeInTheDocument()
+  })
+
   it("AST-1730: raw response is read-only scrollable wrapping textarea", async () => {
     const user = userEvent.setup()
     renderWithProviders(<AdminTelescope />)
