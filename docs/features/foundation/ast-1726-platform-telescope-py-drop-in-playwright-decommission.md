@@ -691,3 +691,66 @@ Radia `review-fix` overall FIX-NOW (`880d96ef`): drop/revert `data/admin/agent_t
 ## Radia review-fix (AST-1734)
 
 Overall: REVIEW addressed — page-scroll fix kept; agent_task.json clear vs ftr/dev. Clean → User Testing.
+
+## Bug: AST-1751 — Errors must not count as fails; fails only BOT_BLOCKED and NOT_A_JOB
+
+UAT-batch fix against amended AST-1721 Component/Technical scope (`meteorite.py` scrape-batch counter exception). Lives on this plan doc because AST-1726 owns `src/core/meteorite.py` in the epic. Complements [AST-1742](https://linear.app/astralcareermatch/issue/AST-1742) (inbox / ingest `NOT_A_JOB` → fail); does not rewrite Stages 1–4 or other bug blocks above.
+
+### As-is
+
+`run_scrape_meteorite` (and sibling meteorite dispatch runners) treat ERROR / `SCRAPE_ERROR` / `scrape_closed` rows as **both** fail and error: each such row does `total_failed += 1` and `total_errors += 1`. Dispatcher logs then show both buckets moving together (UAT: `scrape_meteorite pass:0 fail:5 error:5` for five ERROR rows). Separately, scrape `BOT_BLOCKED` currently increments `total_passed`.
+
+### To-be
+
+Errors are errors only. `total_failed` is reserved for `BOT_BLOCKED` and `NOT_A_JOB` (meteorite-domain outcomes — classify/`stage_meteorite` for `NOT_A_JOB`, scrape page-status for `BOT_BLOCKED`), not for Telescope HTTP itself and not for ERROR / `SCRAPE_ERROR` / `scrape_closed`. A batch of five scrape ERROR rows must report `fail:0 error:5` (with `pass` unchanged aside from real READY successes).
+
+### Repro
+
+1. Candidate with ≥5 meteorite rows in `SCRAPE_LINK` whose Telescope scrape returns visible text that `_classify_jd` maps to a non-ok / non-blocked page status (e.g. `scrape_closed` → `SCRAPE_ERROR`), as in the AST-1750 UAT log.
+2. Run dispatch task `scrape_meteorite` for that candidate.
+3. Observe dispatcher completion line: `scrape_meteorite pass:0 fail:N error:N` with the same N (broken). Post-fix: `fail:0 error:N`.
+
+### Root cause
+
+Meteorite dispatch runners (AST-1560 era) hard-coded ERROR-family branches as `total_failed += 1` **and** `total_errors += 1` in the same arm. That made ERROR also look like a fail in operator rollups. AST-1742 fixed the inbox/`stage_meteorite` skip → fail contract and **explicitly deferred** scrape runners; this ticket is that deferred half. Telescope is a red herring for the counter bug — the double-bump is entirely in `meteorite.py` summary arithmetic after the fetch returns.
+
+### Proposed change
+
+**In scope (amended parent):** `src/core/meteorite.py` only — batch summary counters on scrape / sibling dispatch runners. No Telescope service, no `telescope.py`, no config, no UI.
+
+1. **`run_scrape_meteorite`** (observed UAT path)
+
+   - On every ERROR / `SCRAPE_ERROR` arm (missing link; empty / `scrape_*` closed path; bare `except` continuing to next row): increment **`total_errors` only** — remove the paired `total_failed += 1`.
+   - On `page_status == "blocked"` → `BOT_BLOCKED`: increment **`total_failed` only** (replace today's `total_passed += 1`). Do not increment `total_errors`. State transition / `_row_miss` / AST-1689 contact-column rules stay unchanged.
+   - `READY` success path stays `total_passed += 1`.
+
+2. **Sibling dispatch runners that still double-bump ERROR** — same ERROR→errors-only rule (remove the paired `total_failed += 1` on SCRAPE_ERROR / exception arms):
+
+   - `run_stage_meteorite` — missing classify_outcome, skip-outcome-on-row, missing link/content/breadcrumb, unhandled outcome, exception.
+   - `run_land_meteorite` — missing-content ERROR arm (non–empty-BOT_BLOCKED skip), land exception / SCRAPE_ERROR arms that currently double-bump.
+   - `run_notify_bot_blocked` (or current notify runner name) — only arms that today do **both** fail and error on an ERROR/exception path; leave pure-`total_failed` “staying BOT_BLOCKED” arms as fail-only.
+
+3. **Do not edit**
+
+   - `stage_meteorite` classify / insert / `NOT_A_JOB` row creation (AST-1742 already counts skip → fail on inbox/ingest).
+   - `inbox.check_email` / `ingest_candidate_email_message` / `api_inbox._land_all` (AST-1742).
+   - `src/external/telescope.py`, `service/telescope/**`, config keys, admin UI.
+   - Row state vocabulary (`SCRAPE_ERROR`, `BOT_BLOCKED`, `READY`, …) and transition guards — counters only.
+
+**Decision — scrape `BOT_BLOCKED`:** count as fail (not pass, not error). Parent Component reserves `total_failed` for `BOT_BLOCKED` / `NOT_A_JOB`; scrape is where `BOT_BLOCKED` is actually set today (`stage_meteorite` does not produce it).
+
+### Blast radius
+
+- Dispatcher / ledger / Performance Monitor rollups for `scrape_meteorite` (and stage/land/notify) will stop showing fail≈error on ERROR batches; ERROR-only batches drop `total_failed` to 0.
+- Scrape `BOT_BLOCKED` will start moving `total_failed` instead of `total_passed` — any operator habit or test that treated bot-block as pass must flip (Betty / fix-board).
+- AST-1742 inbox fail contract unchanged; AST-1750 (error detail logging) is a sibling, not this ticket.
+- Four-key summary shape `{total_processed, total_passed, total_failed, total_errors}` unchanged.
+
+### What must still hold
+
+- Return shape of dispatch runners remains the four int keys above.
+- `SCRAPE_LINK` → `READY` | `BOT_BLOCKED` | `SCRAPE_ERROR` state transitions and `_row_miss` / info logging strings unchanged aside from which counter increments.
+- AST-1689: bot-block is state-only (do not clear `electronic_contact`).
+- AST-1742: inbox / ingest `NOT_A_JOB` / skip → fail; ERROR-family → error — do not regress.
+- Telescope HTTP contract and import-path-only rewires for roster/gazer stay out of this bug.
+- No depth/output limits or new fail classes invented in Telescope responses.
