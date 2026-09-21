@@ -139,3 +139,16 @@ AC1→Stage 1 §2–3 + verify §5; AC2→Stage 1 §4 + verify §5; AC3→Stage 
 - Plan Discuss: status `Plan Ready`, assignee Joan, zero completed `[plan-discuss]` rounds.
 
 context_tokens≈18500
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1753/AST-1755-stage-meteorite-job-title-prompts`
+**Plan path:** `docs/features/meteorite/ast-1755-stage-meteorite-job-title-prompts.md`
+
+**Built tip:** `bdc024c56789cb28368068116e4a194d0a544a96` (`bdc024c5`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `bdc024c5` | `stage_meteorite` cache/user prompts: optional subject-prefer `job_title`; no `$RESPONSE_SCHEMA` |
+
+**Betty note:** Prompt-only; AC4 relies on existing `_stage_field(job, "job_title")` map — no `meteorite.py` edit in this child.
