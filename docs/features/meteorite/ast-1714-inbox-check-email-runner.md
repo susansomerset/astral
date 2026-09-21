@@ -449,3 +449,4 @@ Statutes: (none — no product files; inherit AST-1714 logging ids only if a fut
 
 **PROCEED** — [bug-repro] skip→failed nodes OK (check_email / ingest / _land_all). Tests+bible only; product delta is sibling AST-1742. Clean §3h shortcut.
 
+ 
