@@ -431,6 +431,106 @@ Smoke for make-fix / test-fix: (a) job with `candidate_id="somerset"` and `compa
 - Real `"Job not found"` / `"Candidate not found"` errors remain; only the ownership-resolve hard-fail string changes when neither `candidate_id` nor company lookup works.
 - `stat.logging.debug`: no new `logger.debug` / `print` in this builder change; keep existing `_emit_builder_failure` on the new raise path.
 
+## Bug: AST-1776 — Gap: builder print ownership test coverage
+
+Gap child from `[board-betty] TESTS: REVISE` on AST-1772. Product ownership fix is sibling **AST-1772** (`builder.build_resume` / `build_cover_letter` → `candidate_id`-first; error `"Job has no resolvable owning candidate"`). This ticket owns **tests + bible only** — no `src/` product edits.
+
+### As-is
+
+`tests/component/core/test_builder.py` still encodes company-short-name-mandatory ownership:
+
+- `TestBuildResume.test_raises_for_missing_job_company_or_candidate` — job `{"company": ""}` expects `ValueError` matching `"missing company"`; separate cases expect `"Company not found"` / `"no candidate_id"` from the company row path.
+- `TestBuildCoverLetterDebugPaths.test_company_and_candidate_failures_with_debug` — same `"missing company"` / company-row failure ladder with `debug=True`.
+- Success paths (`test_delegates_to_build_resume_from_job`, `TestBuildCoverLetterDebugPaths.test_success_with_debug`, `TestBuildResumeDebugPaths.test_success_delegates_with_debug`) always supply a non-blank `company` and stub `get_company` → `candidate_id`.
+
+`docs/test-bible/core/builder.md` (§ AST-623 coverage map) names `TestBuildResume` / `TestBuildCoverLetterDebugPaths` for the load chain but does not record null-`company_id` + populated `candidate_id` print success, nor the post–AST-1772 ownership error string. No `[bug-repro]` locks the AST-1772 to-be.
+
+### To-be
+
+Builder component coverage matches AST-1772: null/blank employer with non-blank `job.candidate_id` succeeds for both `build_resume` and `build_cover_letter`; failure cases that lack any resolvable owner expect `"Job has no resolvable owning candidate"` (not `"missing company"` / `"Company not found"` / company `"no candidate_id"`). Bible § builder names the revised + new nodes. A `[bug-repro]` class is red on pre–AST-1772 product and green once AST-1772 is on the tree.
+
+### Repro
+
+Against product **without** AST-1772 (current `build_resume` / `build_cover_letter` still gate on `job.get("company")`):
+
+```python
+job = {
+    "astral_job_id": "job-null-co",
+    "candidate_id": "cand-1",
+    "company": None,  # or "" / absent; company_id null
+    "job_data": {"artifacts": {"resume_content": _resume_blob(professional_summary="x")}},
+}
+# monkeypatch get_job → job; get_candidate → _candidate_row(...); do not stub get_company
+builder_mod.build_resume("job-null-co")
+# → ValueError: Job missing company short name
+```
+
+Same shape for `build_cover_letter` with a cover artifact → same error string. After AST-1772, both return HTML (or a real missing-artifact error — never the company-short-name message).
+
+### Root cause
+
+fix-board TESTS: REVISE on AST-1772: ownership tests and bible were written to the pre–AST-1701 / pre–AST-1772 company→`get_company` ladder. Product moves to `candidate_id`-first; coverage did not. Gap owns test + bible only.
+
+### Proposed change
+
+**In scope (test-tree / bible only — no `src/`):**
+
+1. **`tests/component/core/test_builder.py` — revise failure ladders**
+
+   - `TestBuildResume.test_raises_for_missing_job_company_or_candidate`:
+     - Keep `Job not found` and final `Candidate not found` (candidate_id present on job or via company stub, `get_candidate` → `None`).
+     - Replace the empty-`company` / `Company not found` / company-row empty-`candidate_id` cases with a single ownership-miss shape: job with blank/absent `company` **and** blank/absent `candidate_id` → `pytest.raises(ValueError, match="no resolvable owning candidate")` (literal from AST-1772: `"Job has no resolvable owning candidate"`).
+     - Optional retained company-fallback miss: job with `company="co"`, no `candidate_id`, `get_company` → `None` or `{"candidate_id": ""}` → same `"no resolvable owning candidate"` match (AST-1772 collapses those into the helper’s `None` path). Do **not** keep asserts for `"missing company"`, `"Company not found"`, or company `"no candidate_id"`.
+   - `TestBuildCoverLetterDebugPaths.test_company_and_candidate_failures_with_debug`: same rewrite for the ownership-miss ladder (`debug=True`); keep `Job not found` / `Candidate not found`.
+
+2. **`tests/component/core/test_builder.py` — null-company success (resume + cover)**
+
+   - Add under `TestBuildResume` (or the repro class — see step 3):  
+     `test_null_company_uses_job_candidate_id` — `get_job` returns `candidate_id="cand-1"`, `company`/`company_id` null or `""`, resume artifact present; stub `get_candidate` → `_candidate_row(...)`; stub or real `build_resume_from_job`; assert HTML/`"<html>ok</html>"`; assert `get_company` is **not** required (leave unstubbed or spy `call_count == 0`).
+   - Add under `TestBuildCoverLetterDebugPaths` (or the repro class):  
+     `test_null_company_uses_job_candidate_id` — same ownership shape with cover artifact; `build_cover_letter` returns body text / HTML; `get_company` not required.
+   - Leave existing company-present success cases (`test_delegates_to_build_resume_from_job`, `test_success_with_debug`, `test_success_delegates_with_debug`) green as company-fallback coverage.
+
+3. **`tests/component/core/test_builder.py` — `[bug-repro]` class**
+
+   - Add `TestAst1776BuilderPrintOwnership` with at least:
+     - `test_build_resume_null_company_candidate_id_succeeds` — fixture from **Repro**; assert no `ValueError` matching `company short name` / `missing company`; assert successful delegate or HTML containing summary text.
+     - `test_build_cover_letter_null_company_candidate_id_succeeds` — cover twin.
+   - Tag these `[bug-repro]` for qa-fix: **red** on pre–AST-1772 product, **green** once AST-1772 ownership helper is on the tree. Do not assert product internals beyond ownership resolve + entry-point success.
+
+4. **`docs/test-bible/core/builder.md`**
+
+   - Under **### AST-623 · AST-545** coverage map (or a short sibling **`### AST-1776 · AST-1772`** pointing at the same suite), record:
+     - Touched path: `build_resume` / `build_cover_letter` ownership (`candidate_id`-first; null `company_id` allowed).
+     - Manifest: **`TestBuildResume`** (revised failure ladder + null-company success), **`TestBuildCoverLetterDebugPaths`** (revised failure ladder + null-company success), **`TestAst1776BuilderPrintOwnership`** (`[bug-repro]`).
+     - **Broken / obsolete:** asserts expecting `"missing company"` / `"Company not found"` / company-row `"no candidate_id"` when the job has no resolvable owner after AST-1772 — replaced by `"Job has no resolvable owning candidate"`.
+     - Narrowed run:
+       ```bash
+       .venv/bin/python -m pytest \
+         tests/component/core/test_builder.py::TestBuildResume \
+         tests/component/core/test_builder.py::TestBuildCoverLetterDebugPaths \
+         tests/component/core/test_builder.py::TestAst1776BuilderPrintOwnership -q
+       ```
+     - Note dependency: product fix is sibling **AST-1772**; this gap does not edit `src/core/builder.py`.
+
+**Out of scope:** any `src/**` change; FE print tests; `api_resume_html` route tests; tracker `_candidate_id_for_job` unit coverage.
+
+**Landing note:** engineer test-tree ban — (1)–(4) land via Betty / qa-fix (or gap make-fix on astral-tests), not a product `code()` commit on this gap.
+
+### Blast radius
+
+- Only `test_builder.py` ownership entry-point classes + `docs/test-bible/core/builder.md`.
+- Company-present success paths must stay green (fallback still valid).
+- Gap branch must absorb sibling AST-1772 product before claiming Tests Passed / green `[bug-repro]`.
+- Full-file `LOCKED_AT_100` on `test_builder.py` (AST-623) — new branches from the ownership helper may need Betty’s branch-lock follow-through; do not expand scope into unrelated builder classes.
+
+### What must still hold
+
+- AST-1772 AC: null employer + `candidate_id` prints; company-parent fallback still prints; clear error only when neither path resolves.
+- AST-623 debug failure headers still fire on remaining `ValueError` paths (`Job not found`, ownership miss, `Candidate not found`) when `debug=True`.
+- `build_*_from_job` contracts, pin/current-read resume/cover resolve, and AST-581 resume/cover split unchanged.
+- No product code on this ticket.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
