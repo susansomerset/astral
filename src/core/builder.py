@@ -173,6 +173,24 @@ def _emit_builder_failure(
     )
 
 
+def _owning_candidate_id_from_job(job: Dict[str, Any]) -> Optional[str]:
+    """Prefer denormalized job.candidate_id; else company compat → company.candidate_id."""
+    direct = job.get("candidate_id")
+    if isinstance(direct, str) and direct.strip():
+        return direct.strip()
+    company_key = job.get("company")
+    if not isinstance(company_key, str) or not company_key.strip():
+        return None
+    company_row = database.get_company(company_key.strip())
+    if not company_row:
+        return None
+    cid = company_row.get("candidate_id")
+    if not cid:
+        return None
+    out = str(cid).strip()
+    return out or None
+
+
 def build_resume(job_id: str, *, debug: bool = False) -> str:
     """Load job + owning candidate by id, then render HTML (one DB read for job)."""
     job = tracker_mod.get_job(job_id)
@@ -182,23 +200,9 @@ def build_resume(job_id: str, *, debug: bool = False) -> str:
             func="builder.build_resume", identifier=job_id, message=msg, debug=debug
         )
         raise ValueError(msg)
-    company_key = job.get("company")
-    if not company_key or not isinstance(company_key, str):
-        msg = "Job missing company short name"
-        _emit_builder_failure(
-            func="builder.build_resume", identifier=job_id, message=msg, debug=debug
-        )
-        raise ValueError(msg)
-    company_row = database.get_company(company_key.strip())
-    if not company_row:
-        msg = f"Company not found: {company_key!r}"
-        _emit_builder_failure(
-            func="builder.build_resume", identifier=job_id, message=msg, debug=debug
-        )
-        raise ValueError(msg)
-    candidate_id = company_row.get("candidate_id")
+    candidate_id = _owning_candidate_id_from_job(job)
     if not candidate_id:
-        msg = f"Company {company_key!r} has no candidate_id"
+        msg = "Job has no resolvable owning candidate"
         _emit_builder_failure(
             func="builder.build_resume", identifier=job_id, message=msg, debug=debug
         )
@@ -312,23 +316,9 @@ def build_cover_letter(job_id: str, *, debug: bool = False) -> str:
             func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
         )
         raise ValueError(msg)
-    company_key = job.get("company")
-    if not company_key or not isinstance(company_key, str):
-        msg = "Job missing company short name"
-        _emit_builder_failure(
-            func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
-        )
-        raise ValueError(msg)
-    company_row = database.get_company(company_key.strip())
-    if not company_row:
-        msg = f"Company not found: {company_key!r}"
-        _emit_builder_failure(
-            func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
-        )
-        raise ValueError(msg)
-    candidate_id = company_row.get("candidate_id")
+    candidate_id = _owning_candidate_id_from_job(job)
     if not candidate_id:
-        msg = f"Company {company_key!r} has no candidate_id"
+        msg = "Job has no resolvable owning candidate"
         _emit_builder_failure(
             func="builder.build_cover_letter", identifier=job_id, message=msg, debug=debug
         )
