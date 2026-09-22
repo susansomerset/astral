@@ -31,5 +31,3 @@
 ```bash
 .venv/bin/python -m pytest tests/component/utils/test_debug_logging.py tests/component/utils/test_logging_batch.py -q
 ```
-
-**Console format:** stdout/stderr is `%(levelname)s %(name)s: %(message)s`. `_DatabaseLogHandler` stays `%(message)s` — `level` and `logger_name` are `app_log` columns (Execution History already prefixes them). **`TestConsoleFormat`**.

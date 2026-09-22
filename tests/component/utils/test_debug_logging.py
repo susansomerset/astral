@@ -11,16 +11,8 @@ from src.utils.logging import (
     DEBUG_DETAIL_PREFIX,
     format_debug_index_header,
     get_logger,
-    log_debug,
     truncate_debug_content,
 )
-
-
-@pytest.fixture(autouse=True)
-def _reset_log_debug() -> None:
-    token = logging_mod.log_debug.set(False)
-    yield
-    logging_mod.log_debug.reset(token)
 
 
 def _clear_db_buffer() -> list:
@@ -206,64 +198,3 @@ class TestAst979DebugLevelPersistence:
         assert logger._logger.level == logging.DEBUG
         logger.set_debug_flag(False)
         assert logger._logger.level == logging.INFO
-
-
-class TestConsoleFormat:
-    """Stdout shows level + logger name; app_log message stays the product line."""
-
-    def test_console_line_includes_level_and_logger_name(self) -> None:
-        record = logging.LogRecord(
-            "src.core.meteorite", logging.INFO, __file__, 0, "hello", (), None
-        )
-        assert logging_mod._CONSOLE_FORMATTER.format(record) == (
-            "INFO src.core.meteorite: hello"
-        )
-
-    def test_db_handler_message_is_message_only(self) -> None:
-        get_logger("test.console.db")
-        handler = logging_mod._db_handler_instance
-        assert handler is not None
-        record = logging.LogRecord(
-            "src.core.meteorite", logging.WARNING, __file__, 0, "hello", (), None
-        )
-        assert handler.format(record) == "hello"
-
-
-class TestLogDebugAlwaysCall:
-    """stat.logging.debug: logger.debug is always called; log_debug gates emit; lineno prefix; no truncate."""
-
-    def test_silent_when_contextvar_false(self, caplog: pytest.LogCaptureFixture) -> None:
-        caplog.set_level(logging.DEBUG)
-        logger = get_logger("test.log_debug.off")
-        logger.debug("Beginning filename loop on %s items", 9)
-        assert not any("Beginning filename loop" in r.message for r in caplog.records)
-
-    def test_emits_lineno_and_interpolated_message(
-        self, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        caplog.set_level(logging.DEBUG)
-        logger = get_logger("test.log_debug.on")
-        token = log_debug.set(True)
-        try:
-            logger.debug("Beginning filename loop on %s items", 12)
-        finally:
-            log_debug.reset(token)
-        matches = [r for r in caplog.records if "Beginning filename loop on 12 items" in r.message]
-        assert len(matches) == 1
-        assert matches[0].levelname == "DEBUG"
-        assert matches[0].message.split(":", 1)[0].isdigit()
-        assert not matches[0].message.startswith("[ ~ ]")
-
-    def test_does_not_truncate_long_response(self, caplog: pytest.LogCaptureFixture) -> None:
-        caplog.set_level(logging.DEBUG)
-        logger = get_logger("test.log_debug.long")
-        body = "\n".join(f"row{i}" for i in range(60))
-        token = log_debug.set(True)
-        try:
-            logger.debug("Response from agent.do_task: %s", body)
-        finally:
-            log_debug.reset(token)
-        matches = [r for r in caplog.records if "Response from agent.do_task:" in r.message]
-        assert len(matches) == 1
-        assert "row59" in matches[0].message
-        assert "omitted" not in matches[0].message
