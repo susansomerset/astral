@@ -160,3 +160,14 @@ No other files. Do not resurrect AST-1511’s ftr. Leave `RepoJsonDivergenceBann
 - New modals inherit scroll without a per-screen wrapper.
 - Show Differences (AST-1511 AC) remains fully reviewable end-to-end (wrapper and/or shell).
 - Dirty-close / footer / `showFooter={false}` / `stacked` overlay behavior on `Modal` unchanged.
+
+## Review — Radia (AST-1764)
+
+**Overall:** CLEAN / PROCEED @ `8a8510f4`
+
+**What must still hold:** OK (default Modal scroll; wide direct-child scroll via `min-height:0` + `overflow-y:auto`; nested SideTabPanel/email/batch owners preserved; dirty-close/footer untouched — Modal.tsx not in diff).
+
+**fix-now:** none. **discuss:** none.
+
+**Advisory:** sibling AST-1767 owns Betty TESTS: REVISE (shared Modal shell scroll coverage). Stale RepoJsonDivergenceBanner comment about overflow:hidden is out of scope.
+
