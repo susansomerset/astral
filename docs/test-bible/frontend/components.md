@@ -501,6 +501,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** `[bug-repro]` red on pre-fix product, green after make-fix; Vitest green on regression nodes post-fix.
 
+### AST-1767 · AST-1754 (gap — shared Modal shell scroll)
+
+**Parent:** [AST-1754 — All modals must be vertically scrollable](https://linear.app/astralcareermatch/issue/AST-1754). **Publish:** `origin/sub/AST-1754/AST-1767-gap-modal-shell-scroll-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-1764** — product shell scroll is **AST-1764**; this ticket is bible + component test only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared wide Modal shell scroll for tall direct children | `Modal.tsx` + `App.css` (product: **AST-1764**) | **`test_Modal.test.tsx`** — **`[bug-repro] AST-1767: wide Modal body scrolls tall direct children`** |
+
+**Does not obsolete AST-1511** — call-site Show Differences wrapper remains covered separately in `test_RepoJsonDivergenceBanner.test.tsx`.
+
+**Broken / obsolete this pass:** none — existing `test_Modal` AST-1301 / AST-1302 / AST-1334 nodes unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. **[bug-repro]** wide shell scroll (tall direct children, no call-site wrapper): `tests/component/frontend/components/test_Modal.test.tsx` — **`Modal — AST-1767`**
+2. Modal regression: same file — **`AST-1301`** / **`AST-1302`** / **`AST-1334`** nodes
+
+**AST-1767** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  -t "AST-1767"
+```
+
+**Pass criterion:** `[bug-repro]` red against pre-AST-1764 product (`overflow: hidden` on `.modal-card--wide .modal-body`); green once AST-1764 shell scroll (`overflow-y: auto` + `min-height: 0`) is present. Vitest green on Modal regression nodes.
 
 ### AST-948 · AST-858
 
