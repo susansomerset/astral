@@ -32,6 +32,5 @@ watchPatterns = ["service/telescope/**"]
 numReplicas = 1
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
-# ~2 GiB per replica — matches parent “~2–4 pages in a 2GB container” +
-# TELESCOPE_MAX_CONCURRENT_PAGES default 3 (AST-1725 settings).
+# ~2 GiB per replica — size batch_size on dispatch tasks to what one replica can sustain.
 limitOverride = { containers = { memoryBytes = 2147483648 } }

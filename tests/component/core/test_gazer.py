@@ -299,7 +299,7 @@ class TestFetchWebsiteBatch:
         )
 
     @pytest.mark.asyncio
-    async def test_scrape_timeout_fails_with_labeled_infra_error(
+    async def test_telescope_timeout_fails_with_labeled_infra_error(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(gazer_mod, "check_connectivity", AsyncMock(return_value=True))
@@ -308,19 +308,23 @@ class TestFetchWebsiteBatch:
         save = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_company_state", transition)
         monkeypatch.setattr(gazer_mod, "save_company_data", save)
-
-        async def _slow_scrape(*_args: Any, **_kwargs: Any) -> Dict[str, Any]:
-            await asyncio.sleep(5)
-            return {"company_website": "https://acme.com", "visible_text": "x", "error": None}
-
-        monkeypatch.setattr(gazer_mod, "scrape_company_homepage_content", _slow_scrape)
-        monkeypatch.setitem(gazer_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
-        companies = [{"short_name": "acme", "company_website": "https://acme.com"}]
+        monkeypatch.setattr(
+            gazer_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://acme.com",
+                    "visible_text": "",
+                    "error": "[playwright:telescope_timeout] timeout talking to telescope",
+                }
+            ),
+        )
+        companies = [{"short_name": "acme", "company_website": "https://acme.com", "state": "WEBSITE_FOUND"}]
         out = await gazer_mod.fetch_website_batch("batch-1", companies)
         assert out == {"passed": 0, "failed": 1, "errors": 0, "skipped": 0, "total": 1}
         transition.assert_called_once_with("acme", "WEBSITE_FOUND_RETRY")
         err = save.call_args[0][1][gazer_mod.ROSTER_CONFIG["company_data_keys"]["prefilter_company_notes"]]
-        assert err.startswith("[playwright:scrape_timeout]")
+        assert err.startswith("[playwright:telescope_timeout]")
 
 
 class TestFetchWebsiteFailRouting:

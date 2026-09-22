@@ -77,6 +77,22 @@ async def dismiss_cookies(page) -> bool:
         return False
 
 
+async def _expand_evaluate(page, expression: str, default: int = 0) -> int:
+    """Evaluate scroll metrics; soft-fail when the page navigates mid-expand."""
+    try:
+        return await page.evaluate(expression)
+    except Exception as exc:
+        msg = str(exc)
+        if "Execution context was destroyed" in msg or "Target closed" in msg:
+            _log.debug(
+                "expand_page evaluate soft-fail %s: %s",
+                type(exc).__name__,
+                exc,
+            )
+            return default
+        raise
+
+
 async def expand_page(page) -> None:
     """Scroll + click Load More/Show More on the current URL only.
 
@@ -84,16 +100,16 @@ async def expand_page(page) -> None:
     changes — callers must request each discrete page URL separately.
     """
     _log.debug("Calling expand_page: []")
-    initial_height = await page.evaluate("(document.body?.scrollHeight) ?? 0")
+    initial_height = await _expand_evaluate(page, "(document.body?.scrollHeight) ?? 0")
     if initial_height == 0:
         _log.debug("Response from expand_page: skipped empty body")
         return
     scroll_attempts = 0
     max_scrolls = 10
     while scroll_attempts < max_scrolls:
-        await page.evaluate("window.scrollTo(0, (document.body?.scrollHeight) ?? 0)")
+        await _expand_evaluate(page, "window.scrollTo(0, (document.body?.scrollHeight) ?? 0)")
         await page.wait_for_timeout(1500)
-        new_height = await page.evaluate("(document.body?.scrollHeight) ?? 0")
+        new_height = await _expand_evaluate(page, "(document.body?.scrollHeight) ?? 0")
         if new_height == initial_height:
             break
         initial_height = new_height

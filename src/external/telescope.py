@@ -173,7 +173,6 @@ class _TelescopePool:
     def __init__(self) -> None:
         self._rr = 0
         self._lock = asyncio.Lock()
-        self._sem = asyncio.Semaphore(int(TELESCOPE_CONFIG["max_in_flight"]))
         self._in_flight: Dict[str, int] = {}
         self._client: Optional[httpx.AsyncClient] = None
         # Loop-bound resources (client/lock/sem) must be rebuilt when the running
@@ -200,7 +199,7 @@ class _TelescopePool:
             self._loop = loop
             if self._client is None:
                 self._client = httpx.AsyncClient(
-                    timeout=float(TELESCOPE_CONFIG["client_timeout_seconds"])
+                    timeout=float(TELESCOPE_CONFIG["request_timeout_seconds"])
                 )
             return
         if self._loop is loop:
@@ -208,10 +207,9 @@ class _TelescopePool:
         # Loop actually changed (e.g. new asyncio.run) → rebuild loop-bound state.
         self._loop = loop
         self._client = httpx.AsyncClient(
-            timeout=float(TELESCOPE_CONFIG["client_timeout_seconds"])
+            timeout=float(TELESCOPE_CONFIG["request_timeout_seconds"])
         )
         self._lock = asyncio.Lock()
-        self._sem = asyncio.Semaphore(int(TELESCOPE_CONFIG["max_in_flight"]))
         self._in_flight = {}
 
     async def _get_client(self) -> httpx.AsyncClient:
@@ -255,66 +253,65 @@ class _TelescopePool:
         )
         last_err: Optional[BaseException] = None
         client = await self._get_client()
-        async with self._sem:
-            for attempt, base in enumerate(bases[:max_attempts]):
-                url = base.rstrip("/") + path
-                self._in_flight[base] = self._in_flight.get(base, 0) + 1
-                try:
-                    resp = await client.request(
-                        method, url, headers=headers, json=json_body
+        for attempt, base in enumerate(bases[:max_attempts]):
+            url = base.rstrip("/") + path
+            self._in_flight[base] = self._in_flight.get(base, 0) + 1
+            try:
+                resp = await client.request(
+                    method, url, headers=headers, json=json_body
+                )
+                if resp.status_code in (401, 403):
+                    _log.error(
+                        "telescope auth failed status=%s base=%s path=%s",
+                        resp.status_code,
+                        base,
+                        path,
                     )
-                    if resp.status_code in (401, 403):
-                        _log.error(
-                            "telescope auth failed status=%s base=%s path=%s",
-                            resp.status_code,
-                            base,
-                            path,
-                        )
-                        raise PlaywrightInfraError(
-                            "connectivity_failure",
-                            f"telescope auth {resp.status_code}",
-                        )
-                    if resp.status_code >= 500:
-                        _log.warning(
-                            "telescope 5xx status=%s base=%s path=%s",
-                            resp.status_code,
-                            base,
-                            path,
-                        )
-                        last_err = PlaywrightInfraError(
-                            "telescope_http_error",
-                            f"HTTP {resp.status_code} from {base}",
-                        )
-                        if attempt + 1 < max_attempts:
-                            continue
-                        raise last_err
-                    return resp
-                except PlaywrightInfraError:
-                    raise
-                except httpx.TimeoutException as e:
+                    raise PlaywrightInfraError(
+                        "connectivity_failure",
+                        f"telescope auth {resp.status_code}",
+                    )
+                if resp.status_code >= 500:
                     _log.warning(
-                        "telescope timeout base=%s path=%s: %s", base, path, e
+                        "telescope 5xx status=%s base=%s path=%s",
+                        resp.status_code,
+                        base,
+                        path,
                     )
                     last_err = PlaywrightInfraError(
-                        "telescope_timeout", f"timeout talking to {base}: {e}"
+                        "telescope_http_error",
+                        f"HTTP {resp.status_code} from {base}",
                     )
                     if attempt + 1 < max_attempts:
                         continue
-                    raise last_err from e
-                except httpx.HTTPError as e:
-                    _log.warning(
-                        "telescope connect error base=%s path=%s: %s", base, path, e
-                    )
-                    last_err = PlaywrightInfraError(
-                        "connectivity_failure", f"connect {base}: {e}"
-                    )
-                    if attempt + 1 < max_attempts:
-                        continue
-                    raise last_err from e
-                finally:
-                    self._in_flight[base] = max(
-                        0, self._in_flight.get(base, 1) - 1
-                    )
+                    raise last_err
+                return resp
+            except PlaywrightInfraError:
+                raise
+            except httpx.TimeoutException as e:
+                _log.warning(
+                    "telescope timeout base=%s path=%s: %s", base, path, e
+                )
+                last_err = PlaywrightInfraError(
+                    "telescope_timeout", f"timeout talking to {base}: {e}"
+                )
+                if attempt + 1 < max_attempts:
+                    continue
+                raise last_err from e
+            except httpx.HTTPError as e:
+                _log.warning(
+                    "telescope connect error base=%s path=%s: %s", base, path, e
+                )
+                last_err = PlaywrightInfraError(
+                    "connectivity_failure", f"connect {base}: {e}"
+                )
+                if attempt + 1 < max_attempts:
+                    continue
+                raise last_err from e
+            finally:
+                self._in_flight[base] = max(
+                    0, self._in_flight.get(base, 1) - 1
+                )
         raise last_err or PlaywrightInfraError(
             "connectivity_failure", "telescope request failed"
         )

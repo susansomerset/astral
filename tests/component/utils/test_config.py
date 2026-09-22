@@ -1309,7 +1309,7 @@ class TestAst721ParseJobListConfig:
         assert parse["retry_state"] == "JOBLIST_IDENTIFIED_RETRY"
         assert parse["terminal_fail_state"] == "COULD_NOT_PARSE_JOBLIST"
         assert parse["selected_pjl_url_key"] == "selected_pjl_url"
-        assert parse["max_concurrent"] == 3  # AST-891 batch semaphore
+        assert "max_concurrent" not in parse
 
     def test_locate_job_page_jobs_found_only(self) -> None:
         locate = cfg.ROSTER_CONFIG["locate_job_page"]
@@ -1487,7 +1487,7 @@ class TestAst853PlaywrightConfig:
 
     def test_playwright_config_keys(self) -> None:
         assert cfg.PLAYWRIGHT_CONFIG["context_recovery_max_attempts"] == 2
-        assert cfg.PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"] == 120
+        assert "company_scrape_timeout_seconds" not in cfg.PLAYWRIGHT_CONFIG
         assert "launch_max_attempts" not in cfg.PLAYWRIGHT_CONFIG
         assert "firefox_user_prefs" not in cfg.PLAYWRIGHT_CONFIG
 
@@ -1497,8 +1497,8 @@ class TestAst1726TelescopeConfig:
 
     def test_telescope_config_keys(self) -> None:
         assert cfg.TELESCOPE_CONFIG["bearer_env"] == "TELESCOPE_BEARER_TOKEN"
-        assert cfg.TELESCOPE_CONFIG["client_timeout_seconds"] == 60
-        assert cfg.TELESCOPE_CONFIG["max_in_flight"] == 15
+        assert cfg.TELESCOPE_CONFIG["request_timeout_seconds"] == 120
+        assert "max_in_flight" not in cfg.TELESCOPE_CONFIG
         assert cfg.TELESCOPE_CONFIG["cull_html_default"] is True
         assert cfg.TELESCOPE_CONFIG["default_expand"] is True
         assert cfg.TELESCOPE_CONFIG["default_wait_ready"] is False
