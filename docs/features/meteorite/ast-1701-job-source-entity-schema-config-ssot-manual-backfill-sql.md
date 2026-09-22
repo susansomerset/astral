@@ -451,3 +451,83 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1706 | sub/AST-1705/AST-1706-fix-get-job-batch-company-id |
 
 **Epic worktree:** `astral-AST-1705/` — one active sub checked out at a time.
+
+## Radia review (AST-1772)
+
+[code-rubric]
+
+**Ticket:** AST-1772  
+**Publish ref:** `8d96e8c275ed996642affa180bfddfc62ba9aa91` (`origin/sub/AST-1763/AST-1772-fix-print-resume-cover-without-company-short-name`)  
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`  
+**Overall:** FIX-NOW
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | `_owning_candidate_id_from_job` adds no `logger.debug` / `print`; existing `_emit_builder_failure` debug path unchanged |
+
+**Notes:** Linear Description has no formal **Canon Scope** block. Plan-fix records “no frozen Canon Scope on AST-1772” and informal `stat.logging.debug` discipline only — scored that directive from the patch, not an invented list.
+
+## Column diff vs plan stage
+
+no plan-stage scores attached — fix-board `[board-joan] CANON: OK` only; no `validate-plan` artifact for this bug.
+
+## Frame diff
+
+(none) — Acceptance criteria in Description remain accurate for the product change; test/bar gaps are findings, not frame rows.
+
+## Fix-specific checks
+
+**[bug-repro] FIX-NOW** — `[board-betty] TESTS: REVISE` flagged broken `TestBuildResume` / `TestBuildCoverLetterDebugPaths` assertions and missing null-company + `candidate_id` success coverage. Diff vs `origin/dev` has **no** test or bible changes and **no** `[bug-repro]` node. `qa-fix` (F4) did not land. Locally, `test_raises_for_missing_job_company_or_candidate` and `test_company_and_candidate_failures_with_debug` **fail** against tip (`match="missing company"` / `"Company not found"` / `"no candidate_id"` vs new `"Job has no resolvable owning candidate"`). Repro-first bar not met.
+
+**## What must still hold — OK**
+
+- AST-1701 nullable `company_id` + `_job_row_to_dict` `company` compat: helper uses `job.get("company")` after `get_job` (same as `tracker._candidate_id_for_job`).
+- AST-1598: denormalized `job.candidate_id` preferred first.
+- AST-1117 / routes / `build_*_from_job`: untouched.
+- Company-parent fallback via company row `candidate_id` preserved.
+- `"Job not found"` / `"Candidate not found"` paths intact.
+- No new debug/print noise in the touched builder block.
+
+## Findings
+
+### fix-now
+
+- **Location:** `tests/component/core/test_builder.py` — `TestBuildResume::test_raises_for_missing_job_company_or_candidate`, `TestBuildCoverLetterDebugPaths::test_company_and_candidate_failures_with_debug`  
+  **Finding:** Still assert retired error strings (`missing company`, `Company not found`, `no candidate_id`). Tip raises `Job has no resolvable owning candidate` for those ownership-resolve failures. Two failures confirmed on worktree @ `8d96e8c2`.  
+  **Recommendation:** Betty/`resolve-child`: update failure expectations per plan-fix To-be; add `[bug-repro]` success case — job with `candidate_id` set and null `company`/`company_id` prints (resume + cover).
+
+- **Location:** qa-fix / test-fix gate  
+  **Finding:** Board opted into `TESTS: REVISE`; no F4 manifest, no bible patch, status **Tests Passed** anyway.  
+  **Recommendation:** Route through `resolve-child`; do not advance to User Testing until builder manifest is green.
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on the ticket; plan-fix carries informal `stat.logging.debug` only. Process observation for Archie — not blocking product logic.  
+  **Recommendation:** Optional: add explicit Citations on bug tickets that inherit discipline-only bars.
+
+### advisory
+
+- **Location:** `src/core/builder.py` — ownership error surface  
+  **Finding:** Granular `"Company not found: …"` / `"Company … has no candidate_id"` strings removed in favor of single `"Job has no resolvable owning candidate"` — matches plan-fix **Proposed change** and **What must still hold**.  
+  **Recommendation:** None for resolve-child.
+
+## What's solid
+
+- `_owning_candidate_id_from_job` mirrors `tracker._candidate_id_for_job` preference order on the in-memory job dict (no second `get_job`).
+- `build_resume` and `build_cover_letter` share the helper and new error string; `build_*_from_job` / API / FE untouched.
+- Scope stays `src/core/builder.py` only (+ plan-fix doc); fits Estimate **2**.
+
+## Chuckles branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (findings, artifact complete) | **Orphaned** (AST-1763 mini-parent; diff base `origin/dev`) | → **Review Posted** → `resolve-child` on sub → re-review → then merge sub straight to `origin/dev` (finish-up-style; skip `merge-child` / `prep-uat`) |
+
+```
+[code-rubric] REVIEW (Commit: 8d96e8c2) builder tests red
+```
+
+context_tokens≈28000
