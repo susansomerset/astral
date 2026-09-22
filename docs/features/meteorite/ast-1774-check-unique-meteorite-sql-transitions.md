@@ -284,3 +284,64 @@ AC3 → Stage 1 steps 2–3 (stage `text_source_ref_outcomes` + scrape `ok` arm 
 - **Recommendation:** Optional polish for plan-child parity; not blocking — stages carry done-when gates and explicit ⚠️ decisions.
 
 context_tokens≈42000
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1774
+**Publish ref:** `15723c969b5143ebdd3fc778fa725ec574252442` (`origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions`)
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| patt.entity.batch-criteria | A | | |
+| astral.batch.claim-process-release | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.info.dispatcher | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: all five directives A; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Branch ancestry vs `origin/dev`** — three-dot diff includes AST-1773 config/catalog files (`src/utils/config.py`, `data/admin/*`, fixture twin) stacked under this sub after `resolve(AST-1773)`. Expected given `Relations: after AST-1773`; canon scored on AST-1774 product files only (`meteorite.py`, `dispatcher.py`, tests, bible § AST-1774).
+- **Null-peer threshold negative case untested** — `TestAst1774RunCheckUniqueMeteorite` covers ≥2 nullish LANDED → hook and SQL/content non-match → READY, but not the plan’s “single nullish LANDED peer → unique READY” branch (`len(nullish) >= 2` else promote). Code matches plan; optional Betty follow-up if Susan wants that edge pinned.
+- **`test_click_loops_to_max_runs`** — added in `bdd16c5d` (preserves ingress `max_runs` with four transition runners) but outside the numbered Betty manifest; harmless extra guard.
+
+## What's solid
+
+- **Stage/scrape retarget (AC3)** — `text_source_ref_outcomes` success and scrape `ok` arm write `CHECK_UNIQUE` via `status_map["ok"]`; URL→`SCRAPE_LINK` and error arms untouched.
+- **`run_check_unique_meteorite` (AC5–6)** — claim → `get_meteorite_batch` → process → `clear_meteorite_batch` in `finally`; match order SQL peers → null multi-peer → unique `READY`; `_title_employer_sql_peers` requires equal non-empty `job_title` + `employer_name` among same-candidate `LANDED` only; hook stub leaves `CHECK_UNIQUE` for AST-1775.
+- **Land gate (AC9)** — `run_land_meteorite` does not claim `CHECK_UNIQUE`; `apply_paste` still writes `READY` (boundary test).
+- **Dispatcher (Stage 3)** — `check_unique_task_key` in ingress transition set, runner map, and `ensure_meteorite_ingress_dispatch_tasks` entries; route test mints `entity_batch_id` through `_run_dispatch_loop`.
+- **Entity logging** — `CHECK_UNIQUE` and `READY` promotions use `_meteorite_state_info`; peer paths intentionally emit no state transition line.
+- **Batch criteria** — `batch_size` / `check_unique_trigger_state` read from `METEORITE_INGRESS_DISPATCH_CONFIG` and task dict, matching stage/scrape/land shape.
+- **Tests + bible** — `TestAst1774RunCheckUniqueMeteorite` (unique, SQL peers, null multi-peer, content/source_id non-match, land gate, paste boundary); revised stage/scrape assertions; dispatcher route + provision twins documented in `docs/test-bible/core/meteorite.md` and `dispatcher.md`.
+- **Estimate 5** fits scoped footprint (two product files + focused test layer).
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append this artifact to `docs/features/meteorite/ast-1774-check-unique-meteorite-sql-transitions.md`; commit `docs(AST-1774): Radia review — clean`.
+2. Post slim upshot via `linear_proxy.py --as radia save-comment`.
+3. Move to **Review Posted** → **User Testing** (PROCEED; no `resolve-child` round needed).
+
+context_tokens≈42000
