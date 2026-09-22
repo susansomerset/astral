@@ -297,3 +297,9 @@ AC1→S2.3,S3.6,8 · AC2→S2.7-8,S3.7,8 · AC3→S1.3,S2.4,S3.5-6 · AC4→S1.2
 - Missing `## Self-assessment` section: minor hygiene only (sibling plans often carry one); estimate confirm line present; no `!!-NONE` conf gap.
 - Fixture contract (QC/5/B before EFW/1/A) matches parent AC wording and extends existing AST-1328 tests with order assertions the current tests lack.
 ```
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips` @ `f590939d52f333f8e556d68b26a21b70d6361a61`
+
+Stages 1–2: `GRADE_RANK` / `sortRubricColumnsByImportanceAndGrade` / `formatGradeDotTooltipWithVectorLabel` / `sortGradesByRubricDisplayOrder` in `rubricDisplay.ts`; `buildPhaseSectionGradeConfidenceRow` importance+grade order + vector-prefixed tooltips; `AgentAnalysisHeader` detail rows share the same order. Stage 3 tests deferred to Betty (`sortJobListRubricColumns` unchanged; list pages still use `buildJobListRubricColumnsForGroup`).
