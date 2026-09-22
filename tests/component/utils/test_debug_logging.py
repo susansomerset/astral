@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import io
+import json
 import logging
+import sys
 
 import pytest
 
@@ -198,3 +201,185 @@ class TestAst979DebugLevelPersistence:
         assert logger._logger.level == logging.DEBUG
         logger.set_debug_flag(False)
         assert logger._logger.level == logging.INFO
+
+
+class TestConsoleFormat:
+    """Stdout shows level + logger name; app_log message stays the product line."""
+
+    def test_console_line_includes_level_and_logger_name(self) -> None:
+        record = logging.LogRecord(
+            "src.core.meteorite", logging.INFO, __file__, 0, "hello", (), None
+        )
+        assert logging_mod._CONSOLE_FORMATTER.format(record) == (
+            "INFO src.core.meteorite: hello"
+        )
+
+    def test_db_handler_message_is_message_only(self) -> None:
+        get_logger("test.console.db")
+        handler = logging_mod._db_handler_instance
+        assert handler is not None
+        record = logging.LogRecord(
+            "src.core.meteorite", logging.WARNING, __file__, 0, "hello", (), None
+        )
+        assert handler.format(record) == "hello"
+
+
+class TestAst1778RailwayConsoleTransport:
+    """Railway JSON level map + stdout console; DB handler path unchanged (AC1–5)."""
+
+    def test_railway_json_formatter_maps_levels(self) -> None:
+        fmt = logging_mod._RailwayJsonFormatter()
+        cases = (
+            (logging.DEBUG, "debug"),
+            (logging.INFO, "info"),
+            (logging.WARNING, "warn"),
+            (logging.ERROR, "error"),
+            (logging.CRITICAL, "error"),
+        )
+        for levelno, railway_level in cases:
+            record = logging.LogRecord(
+                "src.core.roster", levelno, __file__, 0, "progress line", (), None
+            )
+            payload = json.loads(fmt.format(record))
+            assert payload["level"] == railway_level
+            assert payload["message"] == "src.core.roster: progress line"
+            assert "WARNING" not in payload["level"]
+            assert "INFO" not in payload["level"]
+
+    def test_ensure_repoints_stderr_handler_to_stdout(self) -> None:
+        root = logging.getLogger()
+        # Drop prior console StreamHandlers so this case owns the only one.
+        for h in list(root.handlers):
+            if isinstance(h, logging_mod._DatabaseLogHandler):
+                continue
+            if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) in (
+                sys.stdout,
+                sys.stderr,
+            ):
+                root.removeHandler(h)
+        stderr_handler = logging.StreamHandler(sys.stderr)
+        root.addHandler(stderr_handler)
+        try:
+            logging_mod._ensure_stdout_console_handler()
+            assert stderr_handler.stream is sys.stdout
+        finally:
+            root.removeHandler(stderr_handler)
+
+    def test_apply_formatter_switches_on_railway_env(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        root = logging.getLogger()
+        handler = logging.StreamHandler(sys.stdout)
+        root.addHandler(handler)
+        try:
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+            logging_mod._apply_console_formatter()
+            assert handler.formatter is logging_mod._CONSOLE_FORMATTER
+
+            monkeypatch.setenv("RAILWAY_ENVIRONMENT", "production")
+            logging_mod._apply_console_formatter()
+            assert handler.formatter is logging_mod._RAILWAY_JSON_FORMATTER
+        finally:
+            root.removeHandler(handler)
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+            logging_mod._apply_console_formatter()
+
+    def test_off_railway_emit_is_plain_stdout_shape(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+        captured = io.StringIO()
+
+        class _StdoutCapture(logging.StreamHandler):
+            def __init__(self) -> None:
+                logging.Handler.__init__(self)
+                self.stream = sys.stdout
+
+            def emit(self, record: logging.LogRecord) -> None:
+                try:
+                    captured.write(self.format(record) + self.terminator)
+                except Exception:
+                    self.handleError(record)
+
+        for h in list(root.handlers):
+            if isinstance(h, logging_mod._DatabaseLogHandler):
+                continue
+            if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) in (
+                sys.stdout,
+                sys.stderr,
+            ):
+                root.removeHandler(h)
+        capture_h = _StdoutCapture()
+        root.addHandler(capture_h)
+        try:
+            logger = get_logger("test.ast1778.plain")
+            logger.info("healthy progress")
+            line = captured.getvalue().strip()
+            assert line == "INFO test.ast1778.plain: healthy progress"
+            assert not line.startswith("{")
+        finally:
+            root.removeHandler(capture_h)
+            logging_mod._apply_console_formatter()
+
+    def test_on_railway_emit_is_json_with_level(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT", "1")
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+        captured = io.StringIO()
+
+        class _StdoutCapture(logging.StreamHandler):
+            def __init__(self) -> None:
+                logging.Handler.__init__(self)
+                self.stream = sys.stdout
+
+            def emit(self, record: logging.LogRecord) -> None:
+                try:
+                    captured.write(self.format(record) + self.terminator)
+                except Exception:
+                    self.handleError(record)
+
+        for h in list(root.handlers):
+            if isinstance(h, logging_mod._DatabaseLogHandler):
+                continue
+            if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) in (
+                sys.stdout,
+                sys.stderr,
+            ):
+                root.removeHandler(h)
+        capture_h = _StdoutCapture()
+        root.addHandler(capture_h)
+        try:
+            logger = get_logger("test.ast1778.railway")
+            logger.warning("soft fail")
+            payload = json.loads(captured.getvalue().strip())
+            assert payload["level"] == "warn"
+            assert payload["message"] == "test.ast1778.railway: soft fail"
+        finally:
+            root.removeHandler(capture_h)
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+            logging_mod._apply_console_formatter()
+
+    def test_db_buffer_levels_unchanged_when_on_railway(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("RAILWAY_ENVIRONMENT", "1")
+        logging.getLogger().setLevel(logging.INFO)
+        try:
+            get_logger("test.ast1778.db.attach")
+            _clear_db_buffer()
+            logger = get_logger("test.ast1778.db")
+            logger.info("info row")
+            logger.warning("warn row")
+            logger.error("err row")
+            entries = _clear_db_buffer()
+            by_msg = {e["message"]: e["level"] for e in entries}
+            assert by_msg.get("info row") == "INFO"
+            assert by_msg.get("warn row") == "WARNING"
+            assert by_msg.get("err row") == "ERROR"
+        finally:
+            monkeypatch.delenv("RAILWAY_ENVIRONMENT", raising=False)
+            logging_mod._apply_console_formatter()
