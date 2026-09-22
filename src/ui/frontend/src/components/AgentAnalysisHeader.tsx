@@ -2,7 +2,7 @@ import { useState } from "react"
 import { useCandidate } from "../contexts/CandidateContext"
 import { ConfidenceBullets } from "./ConfidenceBullets"
 import RubricModal from "./RubricModal"
-import { formatRubricVectorHeader, normalizeRubricVectorKey, rubricItemImportance } from "../lib/rubricDisplay"
+import { formatRubricVectorHeader, normalizeRubricVectorKey, rubricItemImportance, sortGradesByRubricDisplayOrder } from "../lib/rubricDisplay"
 
 interface Grade {
   vector: string
@@ -51,6 +51,8 @@ export default function AgentAnalysisHeader({ grades, rubricItems, rubricArtifac
   const labelList: RubricRow[] =
     Array.isArray(rubricItems) && rubricItems.length > 0 ? rubricItems : liveList
 
+  const orderedGrades = sortGradesByRubricDisplayOrder(grades, rubricItems)
+
   const labelRow = rubricVector ? findRubricRow(labelList, rubricVector) : null
   // Content: prefer live row matched by vector/code from the label identity.
   const contentRow = rubricVector
@@ -61,7 +63,7 @@ export default function AgentAnalysisHeader({ grades, rubricItems, rubricArtifac
 
   return (
     <div className="analysis-header">
-      {grades.map(g => {
+      {orderedGrades.map(g => {
         const row = findRubricRow(labelList, g.vector)
         const vectorLabel = row
           ? formatRubricVectorHeader(rubricItemImportance(row), row.label ?? g.vector, row.code)
