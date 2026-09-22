@@ -118,3 +118,68 @@ context_tokens≈28000
 - **Publish ref:** `sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger`
 - **Code tip:** `29ada8206149520e81d63493a9e7faf56620a5cc`
 
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1778  
+**Publish ref:** `859f46e95b293cd516fa5e9272d7d16249261995` (`origin/sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger`)  
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.info | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored all four statutes **A**; product diff in `src/utils/logging.py` is transport-only and leaves `_PrefixedLogger` level methods, `log_debug` gating, and `_DatabaseLogHandler` semantics intact.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** `tests/component/utils/test_debug_logging.py` (`fad56323`)
+- **Finding:** `TestLogDebugAlwaysCall` (three tests: `log_debug` ContextVar gate, lineno prefix, no-truncate on `logger.debug`) was removed when `TestAst1778RailwayConsoleTransport` was added. It is not on Betty’s AST-1778 manifest, but it was the only direct `stat.logging.debug` coverage for raw `logger.debug()` on `origin/dev`.
+- **Recommendation:** Restore `TestLogDebugAlwaysCall` (and its `_reset_log_debug` autouse fixture) in `resolve-child` or a follow-up — not blocking PROCEED on product canon, but worth keeping the debug contract pinned.
+
+- **Location:** publish tip `859f46e9` (`merge-tests`)
+- **Finding:** Three-dot diff vs `origin/dev` spans 54 files (broad `origin/tests` resync: core/dispatcher/meteorite bibles and component tests). Product scope remains a single file: `src/utils/logging.py`.
+- **Recommendation:** Expected merge-tests workflow; no product scope smuggle. Chuckles/issue doc should treat AST-1778 product review as `logging.py` + utils test manifest; note merge-tests breadth for UAT/merge hygiene only.
+
+- **Location:** `src/utils/logging.py` — `_ensure_stdout_console_handler`
+- **Finding:** Plan step 4 drops the old `if not base_logger.handlers` gate (Joan’s “acceptable” note suggested keeping it); implementation always walks root handlers on every `get_logger` call. Behavior matches the written plan stage, not Joan’s optional idempotency aside.
+- **Recommendation:** No change required; idempotent root walk is correct for stderr→stdout repoint.
+
+## What's solid
+
+- Plan-faithful transport: stdout console, `RAILWAY_ENVIRONMENT`-only probe, `_RAILWAY_LEVEL` map (WARNING→`warn`, CRITICAL→`error`), `_RailwayJsonFormatter` with `level`+`message` and `exc_info` traceback append, stderr handler repoint, no `basicConfig` stderr default.
+- DB path hold: `_DatabaseLogHandler` / `_db_handler_stderr` untouched; `test_db_buffer_levels_unchanged_when_on_railway` asserts INFO/WARNING/ERROR column semantics.
+- AC6 clean: no new `logging.getLogger` / `basicConfig` product emit paths outside `utils/logging.py` in the product diff.
+- New `TestAst1778RailwayConsoleTransport` covers level map, stderr→stdout, env branch, plain vs JSON emit, and DB buffer hold per Betty manifest.
+
+## Recommended actions (downstream — not executed here)
+
+1. Chuckles: append this artifact to `docs/features/foundation/ast-1778-railway-faithful-console-transport-in-get-logger.md`, commit `docs(AST-1778): Radia review — clean`, push, post slim upshot `--as radia`, move to **Review Posted**.
+2. Optional `resolve-child`: restore `TestLogDebugAlwaysCall` removed in `fad56323`.
+
+```
+[code-rubric] PROCEED (Commit: 859f46e9) Transport faithful; canon clean
+
