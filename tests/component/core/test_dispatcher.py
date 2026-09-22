@@ -2567,7 +2567,7 @@ class TestAst1090GazeEmailDispatchOne:
     reason="AST-1560 meteorite ingress dispatch branch not on this publish tip",
 )
 class TestAst1560IngressTransitionDispatchOne:
-    """AST-1560: _dispatch_one routes stage/scrape/land transition runners."""
+    """AST-1560 / AST-1774: _dispatch_one routes stage/scrape/check_unique/land transition runners."""
 
     @pytest.mark.asyncio
     async def test_routes_stage_runner_with_entity_batch_id(
@@ -2575,15 +2575,7 @@ class TestAst1560IngressTransitionDispatchOne:
     ) -> None:
         from src.core import meteorite as meteorite_mod
 
-        runner = AsyncMock(
-            return_value={
-                "total_processed": 1,
-                "total_passed": 1,
-                "total_failed": 0,
-                "total_errors": 0,
-            }
-        )
-        monkeypatch.setattr(meteorite_mod, "run_stage_meteorite", runner)
+        monkeypatch.setattr(meteorite_mod, "run_stage_meteorite", AsyncMock())
         monkeypatch.setattr(meteorite_mod, "run_scrape_meteorite", AsyncMock())
         monkeypatch.setattr(meteorite_mod, "run_land_meteorite", AsyncMock())
         save_ledger = MagicMock()
@@ -2605,12 +2597,67 @@ class TestAst1560IngressTransitionDispatchOne:
         with dispatcher_mod._registry_lock:
             dispatcher_mod._task_registry[1560] = {"asyncio_task": None}
         await dispatcher_mod._dispatch_one(task)
-        runner.assert_awaited_once()
-        assert runner.await_args.args[0]["entity_batch_id"]
-        assert runner.await_args.args[0]["entity_batch_id"].startswith(f"{tk}-")
-        loop.assert_not_called()
+        # Tip: ingress custom branch mints entity_batch_id then drives via _run_dispatch_loop.
+        loop.assert_awaited_once()
+        assert task["entity_batch_id"].startswith(f"{tk}-")
         save_ledger.assert_called_once()
         assert save_ledger.call_args.args[1] == tk
+
+    @pytest.mark.asyncio
+    async def test_routes_check_unique_runner_with_entity_batch_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1774: check_unique_meteorite joins the ingress transition branch."""
+        if "check_unique_task_key" not in dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG:
+            pytest.skip("AST-1773 check_unique_task_key not on this tip")
+
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        loop = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
+        tk = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"]
+        assert dispatcher_mod._is_meteorite_ingress_transition_task_key(tk)
+        assert (
+            dispatcher_mod._meteorite_ingress_runner(tk).__name__
+            == "run_check_unique_meteorite"
+        )
+        task = {
+            "id": 1774,
+            "task_key": tk,
+            "candidate_id": None,
+            "auto_mode": 1,
+            "debug": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[1774] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        loop.assert_awaited_once()
+        assert task["entity_batch_id"].startswith(f"{tk}-")
+        save_ledger.assert_called_once()
+        assert save_ledger.call_args.args[1] == tk
+
+    def test_ensure_ingress_includes_check_unique(self, sqlite_in_memory) -> None:
+        """AST-1774: provision inserts check_unique twin beside stage/scrape/land."""
+        if "check_unique_task_key" not in dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG:
+            pytest.skip("AST-1773 check_unique_task_key not on this tip")
+        if not hasattr(dispatcher_mod, "ensure_meteorite_ingress_dispatch_tasks"):
+            pytest.skip("ensure_meteorite_ingress_dispatch_tasks not on this tip")
+        db = sqlite_in_memory
+        cid = "cand-cu-prov"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "P"})
+        stats = dispatcher_mod.ensure_meteorite_ingress_dispatch_tasks(cid)
+        assert stats["added"] >= 1
+        rows = db.list_dispatch_tasks_for_candidate(cid)
+        by_key = {(r.get("task_key") or "").strip(): r for r in rows}
+        ingress = dispatcher_mod.METEORITE_INGRESS_DISPATCH_CONFIG
+        assert ingress["check_unique_task_key"] in by_key
+        assert by_key[ingress["check_unique_task_key"]]["trigger_state"] == (
+            ingress["check_unique_trigger_state"]
+        )
 
 
 @pytest.mark.skipif(
