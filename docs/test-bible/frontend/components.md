@@ -1616,3 +1616,35 @@ Job Detail / JAR chrome: `job_link` is an href / `window.open` target only for `
 ## QA test manifest
 
 See **`docs/test-bible/frontend/pages.md`** § AST-1749 (shared numbered manifest).
+
+---
+
+### AST-1771 · AST-1770
+
+**Parent:** [AST-1770 — Vector Icons are out of sequence](https://linear.app/astralcareermatch/issue/AST-1770/vector-icons-are-out-of-sequence). **Publish:** `origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips`.
+
+`AgentAnalysisHeader` + JAR Analysis tab: detail rows and header grade dots share importance-then-grade order; header tooltips prefix vector label. Helpers: **`docs/test-bible/frontend/lib.md`** § AST-1771.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Detail vector order | `AgentAnalysisHeader.tsx` | **`test_AgentAnalysisHeader.test.tsx`** — **`AST-1771: detail rows match importance+grade order`** (+ api mock importOriginal keeper) |
+| JAR header + expanded order | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — extends **`AST-1328: Analysis header uses job-carried jd_rubric…`** with QC-before-EFW + tooltip + `.analysis-vector` order |
+
+**Broken / obsolete:** none beyond api mock repair above. **Integration:** none revised. §6c N/A (modal/component, not routed page).
+
+## QA test manifest
+
+1. Detail: `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx` — `--testNamePattern="AST-1771"`
+2. JAR e2e: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1328"`
+3. Lib helpers + header unit: see **`docs/test-bible/frontend/lib.md`** § AST-1771
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1771|AST-1328|sortRubricColumnsByImportanceAndGrade|formatGradeDotTooltipWithVectorLabel|gradeRank|sortJobListRubricColumns"
+```
+
+**Bible shasum (after publish):** fill — `git show origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips:docs/test-bible/frontend/components.md | shasum`

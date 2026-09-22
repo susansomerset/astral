@@ -140,6 +140,30 @@ describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
     expect(container.querySelector(".grade-dot.dot-b")).toBeTruthy()
   })
 
+  // AST-1771: same fixture — header left-to-right is importance then grade (QC/B before EFW/A).
+  it("AST-1771: header grade dots order QC before EFW with vector-prefixed tooltip", () => {
+    const grades = [
+      { vector: "Embedded/Firmware/Hardware Domain", grade: "A", confidence: 5, reason: "fit" },
+      { vector: "Quality Check", grade: "B", confidence: 4, reason: "ok" },
+    ]
+    const job = {
+      jd_grades: grades,
+      jd_rubric: [
+        { code: "EFW", label: "Embedded/Firmware/Hardware Domain", importance: 1, grade_descriptions: [] },
+        { code: "QC", label: "Quality Check", importance: 5, grade_descriptions: [] },
+      ],
+    }
+    const { container } = render(
+      <>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>,
+    )
+    const cells = container.querySelectorAll(".recommended-report-phase-grade-cell")
+    expect(cells.length).toBe(2)
+    expect(cells[0].querySelector(".grade-dot.dot-b")).toBeTruthy()
+    expect(cells[1].querySelector(".grade-dot.dot-a")).toBeTruthy()
+    const firstTitle = cells[0].querySelector(".grade-dot")?.getAttribute("title") ?? ""
+    expect(firstTitle.startsWith("Quality Check")).toBe(true)
+  })
+
   it("gradesForHeader normalizes array and object maps", () => {
     expect(gradesForHeader([{ vector: "JD", grade: "A", confidence: 3 }])).toEqual([
       { vector: "JD", grade: "A", confidence: 3, reason: undefined },

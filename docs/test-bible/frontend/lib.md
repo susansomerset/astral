@@ -389,3 +389,35 @@ npm run test:component -- \
 | print/materials SoT | `recommendedJobReport.tsx` | **`recommendedJobReport — AST-1593 catalog SoT`** + revised AST-581/948/1100 print helpers |
 
 **Broken / obsolete this pass:** asserts that `resume_content` alone makes print/materials visible.
+
+---
+
+### AST-1771 · AST-1770
+
+**Parent:** [AST-1770 — Vector Icons are out of sequence](https://linear.app/astralcareermatch/issue/AST-1770/vector-icons-are-out-of-sequence). **Publish:** `origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips`.
+
+Recommended Job Report Analysis: shared importance-then-grade sort + vector-prefixed grade-dot tooltips. `sortJobListRubricColumns` unchanged (Skipped/In Review lists). Component wiring: **`docs/test-bible/frontend/components.md`** § AST-1771.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Grade rank / sort / tooltip prefix | `lib/rubricDisplay.ts` | **`test_rubricDisplay.test.ts`** — **`AST-1771 importance+grade sort and vector-prefixed tooltips`** |
+| Phase header grade row order + tooltip | `lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`AST-1771: header grade dots order QC before EFW with vector-prefixed tooltip`** |
+
+**Broken / obsolete this pass:** `test_AgentAnalysisHeader.test.tsx` api mock — AuthContext needs `setAuthTokenGetter` / `setUnauthorizedHandler` (importOriginal); revised in same commit. No integration scenarios.
+
+## QA test manifest
+
+1. Helpers: `tests/component/frontend/lib/test_rubricDisplay.test.ts` — `--testNamePattern="AST-1771|gradeRank|sortRubricColumnsByImportanceAndGrade|formatGradeDotTooltipWithVectorLabel|sortJobListRubricColumns"`
+2. Header row: `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — `--testNamePattern="AST-1771|AST-1328"`
+3. Detail + JAR: see **`docs/test-bible/frontend/components.md`** § AST-1771
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1771|AST-1328|sortRubricColumnsByImportanceAndGrade|formatGradeDotTooltipWithVectorLabel|gradeRank|sortJobListRubricColumns"
+```
+
+**Bible shasum (after publish):** fill — `git show origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips:docs/test-bible/frontend/lib.md | shasum`
