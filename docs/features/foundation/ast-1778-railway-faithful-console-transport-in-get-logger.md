@@ -113,3 +113,8 @@ context_tokens≈28000
 
 [plan-rubric] PROCEED (Commit: e498799d) Transport plan faithful
 
+## Review
+
+- **Publish ref:** `sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger`
+- **Code tip:** _(filled at Code Complete)_
+
