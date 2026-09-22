@@ -512,6 +512,39 @@ describe("AdminPerformanceMonitor", () => {
       expect(screen.queryByText("verbose info line")).not.toBeInTheDocument()
       expect(logCalls.length).toBe(before)
     }, 20000)
+
+    it("renders and copies log rows oldest-first by created_at", async () => {
+      const newestFirst = [
+        { id: 12, level: "INFO", logger_name: "core", message: "later line", batch_id: "batch-1", created_at: "2026-05-01T10:00:02Z" },
+        { id: 11, level: "INFO", logger_name: "core", message: "earlier line", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" },
+      ]
+      installBaseApiMocks(mockedApi, async (url: string) => {
+        if (url.startsWith("/api/admin/dispatch_ledger/batch-1/logs")) {
+          return { json: async () => newestFirst } as Response
+        }
+        if (url.startsWith("/api/agent_data/")) return { json: async () => [] } as Response
+        if (url.startsWith("/api/admin/timesheets?batch_id=")) return { json: async () => [] } as Response
+        if (url.startsWith("/api/admin/dispatch_ledger")) {
+          return { json: async () => [ledgerRow] } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => candidateFixture } as Response
+        }
+      })
+      renderPerformanceMonitor()
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      await userEvent.click(within(screen.getByRole("table")).getByText("task_a"))
+      await waitFor(() => expect(screen.getByText("earlier line")).toBeInTheDocument())
+      const messages = [...document.querySelectorAll(".dispatch-log-msg")].map(el => el.textContent)
+      expect(messages).toEqual(["earlier line", "later line"])
+      await userEvent.click(screen.getByTitle("Copy logs to clipboard"))
+      expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+        [
+          "[2026-05-01T10:00:01Z] INFO core: earlier line",
+          "[2026-05-01T10:00:02Z] INFO core: later line",
+        ].join("\n"),
+      )
+    }, 15000)
   })
 
   describe("AST-634 admin candidate filter", () => {

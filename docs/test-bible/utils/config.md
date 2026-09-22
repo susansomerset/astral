@@ -1478,13 +1478,13 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`.
 
-`CONTACT_CONFIG["skills"]`: `save_candidate_profile` + `save_candidate_contact` with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+`CONTACT_CONFIG["skills"]`: `save_candidate_profile` (name columns `first`/`last`/`pronouns`) + `save_candidate_contact` (`contact.contact_email` / `contact.reply_email`) with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
 
-**Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
+**Broken / obsolete:** AST-1066 empty-skills asserts — revised above. `profile.*` allowed_paths retired (AST-1014 name columns / contact blob).
 
 **Integration:** none.
 
@@ -3459,14 +3459,6 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-
-### AST-1691 · AST-1685
-
-Meteorite top tab + sections. Primary: meteorites.md § AST-1691.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Tabs/sections | `src/utils/config.py` | **`TestAst1691MeteoriteReportConfig`** |
 
 ### AST-1612 · AST-1607
 

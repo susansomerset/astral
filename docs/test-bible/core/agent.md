@@ -1407,7 +1407,7 @@ See **`docs/test-bible/core/candidate.md`** § AST-1679 (shared numbered list).
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/agent.md` — *(filled after publish)*
 
-### AST-1683 · AST-1681 (Contact-shaped BASE_RESUME current-read — test gap for AST-1682)
+### AST-1683 · AST-1682 · AST-1681 (Contact-shaped BASE_RESUME current-read — test gap for AST-1682)
 
 **Parent:** [AST-1681](https://linear.app/astralcareermatch/issue/AST-1681). **Sibling product fix:** AST-1682. **Publish:** `origin/sub/AST-1681/AST-1683-cover-contact-base-resume-current-read`.
 
@@ -1435,83 +1435,3 @@ Board REVISE (copied from AST-1682): Contact-shaped `do_task(index=cid, ctx=None
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/agent.md` — *(filled after publish)*
-
-### AST-1698 · AST-1579
-
-**Parent:** [AST-1579 — Capture deduped source-artifact-id array](https://linear.app/astralcareermatch/issue/AST-1579). **Publish:** `origin/sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper`.
-
-Prompt-time source-pin harvest: parse `{$TOKEN}` via `_TOKEN_RE` / `TOKEN_SOURCES.source_type == "artifact"`, resolve current `artifact_uuid` per catalog key, dedupe, attach `source_artifact_ids` on `do_task` result. No job_data siblings / save-signature threading (siblings AST-1699 / AST-1700). Config parse: **`docs/test-bible/utils/config.md`** § AST-1698. Candidate UUID helper: **`docs/test-bible/core/candidate.md`** § AST-1698.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Harvest entry (AC1 dedupe + miss/empty cid) | `src/core/agent.py` | **`TestAst1698HarvestSourceArtifactIds`** |
-| `do_task` attaches `source_artifact_ids` | same | **`TestAst1698HarvestSourceArtifactIds::test_do_task_attaches_source_artifact_ids`** |
-| Config key parse (no pinnable allowlist) | `src/utils/config.py` | **`TestAst1698ListArtifactKeysInPromptTexts`** |
-| Current uuid-by-key | `src/core/candidate.py` | **`TestAst1698GetCandidateCurrentArtifactUuid`** |
-
-**Broken / obsolete this pass:** none — additive helpers; existing TOKEN_SOURCES / get_candidate_current suites unchanged.
-
-**Integration:** none — no existing scenario asserts `source_artifact_ids` / harvest; do not invent.
-
-## QA test manifest
-
-1. Harvest AC1 + miss/empty + non-artifact skip: `tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds`
-2. Config parse/dedupe: `tests/component/utils/test_config.py::TestAst1698ListArtifactKeysInPromptTexts`
-3. Candidate uuid helper: `tests/component/core/test_candidate.py::TestAst1698GetCandidateCurrentArtifactUuid`
-4. AC2 (catalog reuse, no parallel allowlist): `rg -n 'list_artifact_keys_in_prompt_texts|harvest_source_artifact_ids|get_artifact_key_for_token|_TOKEN_RE' src/utils/config.py src/core/agent.py` — expect helpers; fail if a new frozenset/tuple of pinnable token names appears beside harvest.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
-  tests/component/utils/test_config.py::TestAst1698ListArtifactKeysInPromptTexts \
-  tests/component/core/test_candidate.py::TestAst1698GetCandidateCurrentArtifactUuid \
-  -q
-```
-
-**Pass criterion:** pytest green on manifest lines 1–3 + AC2 grep — not zero-arg harness / branch-lock gate.
-
-**Bible shasum (publish tip):**
-- `docs/test-bible/core/agent.md` — *(filled after publish)*
-- `docs/test-bible/utils/config.md` — *(filled after publish)*
-- `docs/test-bible/core/candidate.md` — *(filled after publish)*
-
-### AST-1700 · AST-1579
-
-**Parent:** [AST-1579 — Capture deduped source-artifact-id array](https://linear.app/astralcareermatch/issue/AST-1579). **Publish:** `origin/sub/AST-1579/AST-1700-thread-harvest-generative-artifact-writes`.
-
-Thread AST-1698 harvest into generative lands: `do_task` passes `list(source_artifact_ids)` into non-`job_resume` / all `save_job_artifact` call sites and operative str-path `save_candidate_data` (dict-path structure merge left without sources). Tracker job_resume auto-cite unchanged (no tracker edit). Draft traceability Implementation alignment. Candidate optional sources: **`docs/test-bible/core/candidate.md`** § AST-1700. Existing job_resume ignore: **`docs/test-bible/core/tracker.md`** § AST-1592.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Craft str-path land passes harvest | `src/core/agent.py` | **`TestAst1700ThreadHarvestGenerativeLands::test_craft_str_path_passes_harvest_not_dict_path`** |
-| Cover-letter catalog land passes harvest | same | **`TestAst1700ThreadHarvestGenerativeLands::test_cover_letter_land_passes_harvest`** |
-| Job-resume land still passes list (tracker ignores) | same | **`TestAst1700ThreadHarvestGenerativeLands::test_job_resume_land_still_passes_harvest_list`** |
-| Candidate str-path optional sources | `src/core/candidate.py` | **`TestAst1700SaveCandidateDataSourceArtifactIds`** |
-| Job_resume auto-cite ignore (AC6) | `src/core/tracker.py` | **`TestAst1592TrackerCatalogWriteReadCitation`** (existing) |
-
-**Broken / obsolete this pass:** none — kwargs additive; AST-1603 / AST-1576 spies still match on positional args.
-
-**Integration:** none — no existing scenario asserts generative `source_artifact_ids` pass-through; do not invent.
-
-## QA test manifest
-
-1. Agent generative lands: `tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands`
-2. Candidate optional sources: `tests/component/core/test_candidate.py::TestAst1700SaveCandidateDataSourceArtifactIds`
-3. AC6 existing tracker auto-cite: `tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_cites_current_base_resume_uuid` · `test_job_resume_empty_sources_when_no_base_resume` · `test_cover_letter_passes_caller_sources`
-4. AC7 docs-acceptance (draft stays draft + Implementation names AST-1698/AST-1700): `rg -n 'AST-1698|AST-1700|status:' canon/directives/draft/patt.artifact.traceability.md` — expect Implementation harvest/land wording; file remains under `draft/`; no agent/task lineage columns as live product.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands \
-  tests/component/core/test_candidate.py::TestAst1700SaveCandidateDataSourceArtifactIds \
-  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_cites_current_base_resume_uuid \
-  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_empty_sources_when_no_base_resume \
-  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation::test_cover_letter_passes_caller_sources \
-  -q
-```
-
-**Pass criterion:** pytest green on lines 1–3 + AC7 grep — not zero-arg harness / branch-lock gate.
-
-**Bible shasum (publish tip):**
-- `docs/test-bible/core/agent.md` — *(filled after publish)*
-- `docs/test-bible/core/candidate.md` — *(filled after publish)*

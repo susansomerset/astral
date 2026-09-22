@@ -5460,11 +5460,8 @@ class TestAst1197QualifyMeteoriteApply:
         bot_state = TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"]
         transition = MagicMock()
         initialize = MagicMock()
-        persist = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
-        # AST-1693: bot branch writes http job_link before transition (no initialize_job).
-        monkeypatch.setattr(consult_mod.tracker, "persist_http_job_link", persist)
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -5493,7 +5490,6 @@ class TestAst1197QualifyMeteoriteApply:
         assert out["passed"] == 0
         assert out["failed"] == 1
         initialize.assert_not_called()
-        persist.assert_called_once_with("j-bot", "https://jobs.example.com/blocked")
         assert transition.call_args.args[2] == bot_state
 
     @pytest.mark.asyncio
