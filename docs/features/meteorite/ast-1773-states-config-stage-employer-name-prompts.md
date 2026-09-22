@@ -281,15 +281,15 @@ Confirm Chuckles estimate: 3 — agree
 
 ## Review (build stub)
 
-**Publish ref:** 
-**Plan path:** 
+**Publish ref:** `origin/sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts`
+**Plan path:** `docs/features/meteorite/ast-1773-states-config-stage-employer-name-prompts.md`
 
-**Built tip:**  ()
+**Built tip:** `fe330b0fff5ed4121c6191f10cddc85ef000ba50` (`fe330b0f`)
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1–2 |  | CHECK_UNIQUE/DUPLICATE registry, ingress retarget, review_duplicate TASK_CONFIG + SEED |
-| 3 |  | stage employer_name prompts + review_duplicate agent_task + check_unique dispatch_task |
+| 1–2 | `bde3c0cc` | CHECK_UNIQUE/DUPLICATE registry, ingress retarget, review_duplicate TASK_CONFIG + SEED |
+| 3 | `6e69d0db` | stage employer_name prompts + review_duplicate agent_task + check_unique dispatch_task |
 
 ## Joan validate
 
