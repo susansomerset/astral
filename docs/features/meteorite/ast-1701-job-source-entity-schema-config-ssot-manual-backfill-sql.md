@@ -563,18 +563,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/0f76620d650d7b1640f39ad155da7742/eca3082c-eb7a-4df1-a3ff-bc48066b98d4/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/04a57f8a-59bf-4e90-bc97-473c1037bbed/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/0f76620d650d7b1640f39ad155da7742/cc622d7a-465e-4f5d-a272-25a1fda6b285/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/aa05640dc12dab0e9c6a040b46f3842f/3081f423-d94f-46e6-b5a5-5e3431809710/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/db9f59cd-52fb-4dc5-b5f6-1b61eac21609/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/aa05640dc12dab0e9c6a040b46f3842f/72031393-6283-48cb-b54d-94fd7ca51006/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1705 (parent) | ftr/AST-1705-qualify-meteorite-is-failing |
-| AST-1706 | sub/AST-1705/AST-1706-fix-get-job-batch-company-id |
+| AST-1763 (parent) | ftr/AST-1763-remove-company-name-validation-error-on-print-resume-and-print-cover-letter |
+| AST-1772 | sub/AST-1763/AST-1772-fix-print-resume-cover-without-company-short-name |
+| AST-1776 | sub/AST-1763/AST-1776-gap-builder-print-ownership-test-coverage |
 
-**Epic worktree:** `astral-AST-1705/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-1763/` — one active sub checked out at a time.
 
 ## Radia review (AST-1772)
 
