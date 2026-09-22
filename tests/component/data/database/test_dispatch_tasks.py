@@ -252,7 +252,7 @@ class TestAst506InflowResolveEligible:
 
 
 class TestAst776InflowVetEligible:
-    """AST-776/1673: vet vs resolve eligibility split on DISCOVERED + blurb."""
+    """AST-776 helpers + Avail uses dispatch trigger_state (not hardcoded DISCOVERED)."""
 
     def test_count_discovered_pending_inflow_vet(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -304,8 +304,37 @@ class TestAst776InflowVetEligible:
             "task_key": "inflow_resolve_website",
             "candidate_id": "c776",
         }
-        assert db.count_eligible_for_dispatch_task(vet_task) == 1
-        assert db.count_eligible_for_dispatch_task(resolve_task) == 1
+        assert db.count_eligible_for_dispatch_task(vet_task) == 2
+        assert db.count_eligible_for_dispatch_task(resolve_task) == 2
+
+    def test_count_eligible_uses_dispatch_trigger_state_not_hardcoded_discovered(
+        self, sqlite_in_memory,
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_company(
+            "disc_row",
+            state="DISCOVERED",
+            candidate_id="c776",
+            company_name="disc_row",
+            company_data={"inflow_discovery_blurb": "000|Co|https://co.example|snip"},
+        )
+        db.save_company("new_row", state="NEW", candidate_id="c776", company_name="new_row")
+        vet_new = {
+            "entity_type": "company",
+            "trigger_state": "NEW",
+            "task_key": "vet_inflow_discovery",
+            "candidate_id": "c776",
+        }
+        vet_disc = {
+            "entity_type": "company",
+            "trigger_state": "DISCOVERED",
+            "task_key": "vet_inflow_discovery",
+            "candidate_id": "c776",
+        }
+        assert db.count_eligible_for_dispatch_task(vet_new) == 1
+        assert db.count_eligible_for_dispatch_task(vet_disc) == 1
+        assert db.count_company_discovered_pending_inflow_vet("c776") == 1
+
 
 class TestAst508PrefilterPassedEligible:
     """AST-508: company dispatch score_floor on claim/count for PREFILTER_PASSED."""
