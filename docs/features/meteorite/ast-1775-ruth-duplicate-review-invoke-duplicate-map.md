@@ -188,3 +188,8 @@ AC7 → Stage 1 steps 2–4 (`_review_duplicate_live_content` CHECK_UNIQUE + LAN
 - **Recommendation:** Accept for this epic; rescue/cleanup epics can key off the prefix if needed.
 
 context_tokens≈52000
+
+## Review
+
+- **Commit:** `edf50a4c8b7e3edf57bfd1264eeee9346896ecf3`
+- **Publish ref:** `sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map`
