@@ -8098,6 +8098,37 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
     if old_rows:
         conn.commit()
 
+    # adhoc/resolve-avail-counts-logic: inflow company dispatch rows must match DISCOVERED land state.
+    inflow_company_keys = (
+        INFLOW_CONFIG["vet"]["task_key"],
+        INFLOW_CONFIG["resolve"]["task_key"],
+    )
+    discovered_ts = INFLOW_CONFIG["vet"]["dispatch_trigger_state"]
+    stale_rows = conn.execute(
+        "SELECT id, candidate_id, task_key, trigger_state FROM dispatch_task "
+        "WHERE entity_type = 'company' AND task_key IN (?, ?) "
+        "AND trigger_state IS NOT NULL AND TRIM(trigger_state) != ?",
+        (*inflow_company_keys, discovered_ts),
+    ).fetchall()
+    for did, cand_id, tk, old_ts in stale_rows:
+        existing = conn.execute(
+            "SELECT id FROM dispatch_task "
+            "WHERE candidate_id IS ? AND task_key = ? AND trigger_state = ? AND id != ?",
+            (cand_id, tk, discovered_ts, did),
+        ).fetchone()
+        if existing:
+            conn.execute("DELETE FROM dispatch_task WHERE id = ?", (did,))
+            continue
+        try:
+            conn.execute(
+                "UPDATE dispatch_task SET trigger_state = ? WHERE id = ?",
+                (discovered_ts, did),
+            )
+        except sqlite3.IntegrityError:
+            conn.execute("DELETE FROM dispatch_task WHERE id = ?", (did,))
+    if stale_rows:
+        conn.commit()
+
     _dispatch_task_schema_ensured = True
 
 
@@ -8679,7 +8710,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     """Count eligible entities for this dispatch row (unclaimed + scan cadence for WATCH).
 
     Candidate non-inflow Avail is this row's candidate only (0 or 1: unclaimed and in
-    claim_states). inflow_discovery still uses count_candidate_inflow_discovery_eligible.
+    claim_states). Only entity_type=candidate uses task-specific Avail helpers (inflow_discovery).
+    Company/job/meteorite Avail use trigger_state + claim_states aligned with claim batches.
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
@@ -8717,10 +8749,8 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
             )
         return count_candidates_unclaimed_in_states(claim_states, candidate_id=candidate_id)
     if entity_type == "company":
-        if task_key == INFLOW_CONFIG["vet"]["task_key"]:
-            return count_company_discovered_pending_inflow_vet(candidate_id)
-        if task_key == INFLOW_CONFIG["resolve"]["task_key"]:
-            return count_company_discovered_without_website(candidate_id)
+        # Company Avail follows dispatch row trigger_state + claim_states (same as claim_*_batch).
+        # Custom Avail helpers are reserved for entity_type=candidate only (inflow_discovery above).
         if (task_key or "").strip() == "fetch_website":
             return count_companies_eligible_for_fetch_website(candidate_id, claim_states)
         floor_raw = task.get("score_floor")
