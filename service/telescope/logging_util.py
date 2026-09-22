@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import logging
-import os
 import sys
+
+from settings import settings
 
 
 def configure_logging() -> None:
-    level_name = os.environ.get("TELESCOPE_LOG_LEVEL", "INFO").upper()
+    level_name = settings.log_level.upper()
     level = getattr(logging, level_name, logging.INFO)
     root = logging.getLogger()
     if root.handlers:

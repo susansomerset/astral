@@ -61,12 +61,12 @@ def telescope_app_client(bearer_headers):
 
 
 class TestTelescopeRequestDefaults:
-    def test_expand_links_on_wait_ready_off(self) -> None:
+    def test_expand_fields_default_wait_ready_off(self) -> None:
         import app as app_mod
 
         body = app_mod.TelescopeRequest(url="https://example.com")
         assert body.expand is True
-        assert body.links is True
+        assert body.fields == ["text", "links"]
         assert body.wait_ready is False
 
     def test_html_request_defaults(self) -> None:
@@ -187,7 +187,7 @@ class TestTelescopeRoutes:
             json={
                 "url": "https://example.com/jobs",
                 "selector": ".job-list",
-                "links": True,
+                "fields": ["text", "links"],
             },
         )
         assert resp.status_code == 200
@@ -195,7 +195,7 @@ class TestTelescopeRoutes:
             "AST-1732: POST /telescope must call capture_links(page, body.selector)"
         )
 
-    def test_post_telescope_links_false_omits_links(
+    def test_post_telescope_text_only_omits_links(
         self, telescope_app_client, monkeypatch
     ) -> None:
         client, _pool, headers = telescope_app_client
@@ -217,11 +217,92 @@ class TestTelescopeRoutes:
         resp = client.post(
             "/telescope",
             headers=headers,
-            json={"url": "https://example.com", "links": False},
+            json={"url": "https://example.com", "fields": ["text"]},
         )
         assert resp.status_code == 200
         assert "links" not in resp.json()
         links_mock.assert_not_awaited()
+
+    def test_post_telescope_text_and_links_one_load(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        client, _pool, headers = telescope_app_client
+        job_calls = {"n": 0}
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            job_calls["n"] += 1
+            page = MagicMock()
+            page.url = "https://example.com/final"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+        monkeypatch.setattr(
+            app_mod, "capture_text", AsyncMock(return_value="body text")
+        )
+        monkeypatch.setattr(
+            app_mod,
+            "capture_links",
+            AsyncMock(return_value=[{"href": "https://a.com", "text": "A"}]),
+        )
+
+        resp = client.post(
+            "/telescope",
+            headers=headers,
+            json={"url": "https://example.com", "fields": ["text", "links"]},
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["text"] == "body text"
+        assert data["links"] == [{"href": "https://a.com", "text": "A"}]
+        assert job_calls["n"] == 1
+
+    def test_post_telescope_all_fields_one_load(
+        self, telescope_app_client, monkeypatch
+    ) -> None:
+        client, _pool, headers = telescope_app_client
+        seen: dict[str, bool] = {}
+
+        async def fake_run(pool_arg, url, expand, wait_ready, work):
+            page = MagicMock()
+            page.url = "https://example.com/all"
+            return await work(page)
+
+        import app as app_mod
+
+        monkeypatch.setattr(app_mod, "_run_browser_job", fake_run)
+
+        async def capt_text(page, selector):
+            seen["text"] = True
+            return "t"
+
+        async def capt_links(page, selector=None):
+            seen["links"] = True
+            return []
+
+        async def capt_html(page, selector=None):
+            seen["html"] = True
+            return "<html/>"
+
+        monkeypatch.setattr(app_mod, "capture_text", capt_text)
+        monkeypatch.setattr(app_mod, "capture_links", capt_links)
+        monkeypatch.setattr(app_mod, "capture_html", capt_html)
+
+        resp = client.post(
+            "/telescope",
+            headers=headers,
+            json={
+                "url": "https://example.com",
+                "fields": ["text", "links", "html"],
+            },
+        )
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["text"] == "t"
+        assert data["links"] == []
+        assert data["html"] == "<html/>"
+        assert seen == {"text": True, "links": True, "html": True}
 
     def test_post_telescope_empty_url_400(self, telescope_app_client) -> None:
         client, _pool, headers = telescope_app_client
@@ -252,10 +333,10 @@ class TestTelescopeRoutes:
             json={"url": "https://example.com"},
         )
         assert resp.status_code == 200
-        assert resp.json() == {
-            "final_url": "https://example.com/h",
-            "html": "<html/>",
-        }
+        data = resp.json()
+        assert data["final_url"] == "https://example.com/h"
+        assert data["html"] == "<html/>"
+        assert "scrape_meta" in data
 
     def test_ast1736_html_class_name_resolves_to_dot_class(
         self, telescope_app_client, monkeypatch
@@ -424,11 +505,17 @@ class TestRunBrowserJobErrors:
         pool = _fake_pool()
 
         @asynccontextmanager
-        async def hanging_page():
-            await asyncio.sleep(10)
+        async def ok_page():
             yield MagicMock()
 
-        pool.page = hanging_page
+        pool.page = ok_page
+
+        async def slow_navigate(page, url):
+            await asyncio.sleep(10)
+
+        monkeypatch.setattr(app_mod, "navigate", slow_navigate)
+        monkeypatch.setattr(app_mod, "dismiss_cookies", AsyncMock(return_value=False))
+        monkeypatch.setattr(app_mod, "expand_page", AsyncMock())
 
         with pytest.raises(HTTPException) as exc:
             await app_mod._run_browser_job(
@@ -438,14 +525,61 @@ class TestRunBrowserJobErrors:
         assert exc.value.detail == "timeout"
 
     @pytest.mark.asyncio
-    async def test_scrape_failed_raises_502(self) -> None:
+    async def test_slot_wait_does_not_count_against_scrape_timeout(
+        self, monkeypatch
+    ) -> None:
+        """Queue wait for pool.page() must not consume the scrape timeout budget."""
         import app as app_mod
-        from fastapi import HTTPException
+        from dataclasses import replace
 
+        monkeypatch.setattr(
+            app_mod,
+            "settings",
+            replace(app_mod.settings, request_timeout_seconds=0.05),
+        )
         pool = _fake_pool()
 
         @asynccontextmanager
+        async def slow_acquire_page():
+            await asyncio.sleep(0.2)
+            yield MagicMock()
+
+        pool.page = slow_acquire_page
+        monkeypatch.setattr(app_mod, "navigate", AsyncMock())
+        monkeypatch.setattr(app_mod, "dismiss_cookies", AsyncMock(return_value=False))
+        monkeypatch.setattr(app_mod, "expand_page", AsyncMock())
+        work = AsyncMock(return_value={"ok": True})
+
+        result, cookies = await app_mod._run_browser_job(
+            pool, "https://example.com", False, False, work
+        )
+        assert result == {"ok": True}
+        assert cookies is False
+
+    @pytest.mark.asyncio
+    async def test_scrape_failed_raises_502_after_retries(self, monkeypatch) -> None:
+        import app as app_mod
+        from dataclasses import replace
+        from fastapi import HTTPException
+
+        monkeypatch.setattr(
+            app_mod,
+            "settings",
+            replace(
+                app_mod.settings,
+                scrape_retry_count=2,
+                scrape_retry_base_delay_seconds=0.0,
+            ),
+        )
+        sleep_mock = AsyncMock()
+        monkeypatch.setattr(app_mod.asyncio, "sleep", sleep_mock)
+
+        pool = _fake_pool()
+        calls = {"n": 0}
+
+        @asynccontextmanager
         async def boom_page():
+            calls["n"] += 1
             raise RuntimeError("firefox died")
             yield  # pragma: no cover
 
@@ -457,6 +591,84 @@ class TestRunBrowserJobErrors:
             )
         assert exc.value.status_code == 502
         assert exc.value.detail == "scrape_failed"
+        assert calls["n"] == 3
+        assert sleep_mock.await_count == 2
+        sleep_mock.assert_any_await(0.0)
+        sleep_mock.assert_any_await(0.0)
+
+    @pytest.mark.asyncio
+    async def test_scrape_retry_succeeds_on_second_attempt(self, monkeypatch) -> None:
+        import app as app_mod
+        from dataclasses import replace
+
+        monkeypatch.setattr(
+            app_mod,
+            "settings",
+            replace(
+                app_mod.settings,
+                scrape_retry_count=3,
+                scrape_retry_base_delay_seconds=0.0,
+            ),
+        )
+        monkeypatch.setattr(app_mod.asyncio, "sleep", AsyncMock())
+        monkeypatch.setattr(app_mod, "navigate", AsyncMock())
+        monkeypatch.setattr(app_mod, "dismiss_cookies", AsyncMock(return_value=False))
+        monkeypatch.setattr(app_mod, "expand_page", AsyncMock())
+
+        pool = _fake_pool()
+        work = AsyncMock(
+            side_effect=[RuntimeError("document.body is null"), {"ok": True}]
+        )
+
+        @asynccontextmanager
+        async def ok_page():
+            yield MagicMock()
+
+        pool.page = ok_page
+
+        result, cookies = await app_mod._run_browser_job(
+            pool, "https://example.com", False, False, work
+        )
+        assert result == {"ok": True}
+        assert cookies is False
+        assert work.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_scrape_retry_telescoping_delays(self, monkeypatch) -> None:
+        import app as app_mod
+        from dataclasses import replace
+        from fastapi import HTTPException
+
+        monkeypatch.setattr(
+            app_mod,
+            "settings",
+            replace(
+                app_mod.settings,
+                scrape_retry_count=3,
+                scrape_retry_base_delay_seconds=2.0,
+            ),
+        )
+        sleep_mock = AsyncMock()
+        monkeypatch.setattr(app_mod.asyncio, "sleep", sleep_mock)
+        monkeypatch.setattr(app_mod, "navigate", AsyncMock())
+        monkeypatch.setattr(app_mod, "dismiss_cookies", AsyncMock(return_value=False))
+        monkeypatch.setattr(app_mod, "expand_page", AsyncMock())
+
+        pool = _fake_pool()
+        work = AsyncMock(side_effect=RuntimeError("flake"))
+
+        @asynccontextmanager
+        async def ok_page():
+            yield MagicMock()
+
+        pool.page = ok_page
+
+        with pytest.raises(HTTPException):
+            await app_mod._run_browser_job(
+                pool, "https://example.com", False, False, work
+            )
+
+        assert sleep_mock.await_args_list == [((2.0,),), ((4.0,),), ((8.0,),)]
 
 
 class TestAst1728ScrapeMeta:
@@ -485,7 +697,7 @@ class TestAst1728ScrapeMeta:
         resp = client.post(
             "/telescope",
             headers=headers,
-            json={"url": "https://example.com", "links": False},
+            json={"url": "https://example.com", "fields": ["text"]},
         )
         assert resp.status_code == 200
         data = resp.json()
