@@ -5540,13 +5540,17 @@ class TestAst1557MeteoriteStates:
     """AST-1557: METEORITE_STATES staging registry (not JOB_STATES)."""
 
     def test_seven_keys_and_new_entry(self) -> None:
+        # AST-1773: CHECK_UNIQUE + DUPLICATE join the closed set; READY priors via uniqueness hop.
         assert set(cfg.METEORITE_STATES) == {
-            "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
+            "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
         }
         assert "ERROR" not in cfg.METEORITE_STATES
         assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
         assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["CHECK_UNIQUE"]["prior_states"] == ["NEW", "SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["DUPLICATE"]["prior_states"] == ["CHECK_UNIQUE"]
+        assert cfg.METEORITE_STATES["READY"]["prior_states"] == ["CHECK_UNIQUE", "BOT_BLOCKED"]
         assert all("prior_states" in entry for entry in cfg.METEORITE_STATES.values())
 
     def test_distinct_from_job_states_meteorite_labels(self) -> None:
@@ -5573,14 +5577,22 @@ class TestAst1560IngressDispatchConfig:
         assert ingress["stage_task_key"] == "stage_meteorite"
         assert ingress["scrape_task_key"] == "scrape_meteorite"
         assert ingress["land_task_key"] == "land_meteorite"
+        # AST-1773: uniqueness hop between scrape success and land.
+        assert ingress["check_unique_task_key"] == "check_unique_meteorite"
         assert ingress["stage_task_key"] == cfg.STAGE_METEORITE_CONFIG["task_key"]
         assert ingress["stage_trigger_state"] == "NEW"
         assert ingress["scrape_trigger_state"] == "SCRAPE_LINK"
+        assert ingress["check_unique_trigger_state"] == "CHECK_UNIQUE"
         assert ingress["land_trigger_state"] == "READY"
-        for tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
+        for tr in (
+            "stage_trigger_state",
+            "scrape_trigger_state",
+            "check_unique_trigger_state",
+            "land_trigger_state",
+        ):
             assert ingress[tr] in cfg.METEORITE_STATES
         assert set(ingress["scrape_page_status_states"].values()) <= {
-            "READY",
+            "CHECK_UNIQUE",
             "BOT_BLOCKED",
             "SCRAPE_ERROR",
             "LINK_EXPIRED",
@@ -5589,7 +5601,7 @@ class TestAst1560IngressDispatchConfig:
         assert page["closed"] == "LINK_EXPIRED"
         assert page["missing"] == "LINK_EXPIRED"
         assert page["blocked"] == "BOT_BLOCKED"
-        assert page["ok"] == "READY"
+        assert page["ok"] == "CHECK_UNIQUE"
 
     def test_seed_catalog_has_ingress_dispatch_rows(self) -> None:
         assert "dispatch_task-meteorite-ingress" in cfg.SEED_CONFIG
@@ -5598,6 +5610,8 @@ class TestAst1560IngressDispatchConfig:
         assert "stage_meteorite" in blob
         assert "scrape_meteorite" in blob
         assert "land_meteorite" in blob
+        assert "check_unique_meteorite" in blob
+        assert "CHECK_UNIQUE" in blob
 
 
 class TestAst1561BotBlockedNotifyConfig:
@@ -6383,16 +6397,22 @@ class TestAst1621MeteoriteEntityTypeRegistry:
         ingress_blob = ingress if isinstance(ingress, str) else "\n".join(ingress)
         assert ", 'stage_meteorite', 'meteorite', 'NEW'" in ingress_blob
         assert ", 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK'" in ingress_blob
+        assert ", 'check_unique_meteorite', 'meteorite', 'CHECK_UNIQUE'" in ingress_blob
         assert ", 'land_meteorite', 'meteorite', 'READY'" in ingress_blob
         # Fail shape from AC3 — NULL still in entity_type column for these keys.
         assert ", 'stage_meteorite', NULL," not in ingress_blob
         assert ", 'scrape_meteorite', NULL," not in ingress_blob
+        assert ", 'check_unique_meteorite', NULL," not in ingress_blob
         assert ", 'land_meteorite', NULL," not in ingress_blob
 
         notify = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
         notify_blob = notify if isinstance(notify, str) else "\n".join(notify)
         assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED'" in notify_blob
         assert ", 'meteorite_bot_blocked_notify', NULL," not in notify_blob
+
+        retire = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress-retire-null-pool"]
+        retire_blob = retire if isinstance(retire, str) else "\n".join(retire)
+        assert "check_unique_meteorite" in retire_blob
 
 
 class TestAst1602RetireJobBodyReplicaConfigAuthority:
@@ -6646,9 +6666,10 @@ class TestAst1712MailboxKeyAndClassifyStates:
         }
 
     def test_classify_states_and_no_dispatch_triggers(self) -> None:
+        # AST-1773: closed set includes CHECK_UNIQUE / DUPLICATE; scrape ok → CHECK_UNIQUE.
         assert set(cfg.METEORITE_STATES) == {
-            "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
+            "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
         }
         assert "ERROR" not in cfg.METEORITE_STATES
         assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
@@ -6659,10 +6680,50 @@ class TestAst1712MailboxKeyAndClassifyStates:
         page = cfg.METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]
         assert page["closed"] == "LINK_EXPIRED"
         assert page["missing"] == "LINK_EXPIRED"
+        assert page["ok"] == "CHECK_UNIQUE"
         forbidden = {"NEW_EMAIL_ERROR", "NOT_A_JOB"}
         for entry in cfg.METEORITE_DISPATCH_TASKS:
             assert entry.get("trigger_state") not in forbidden
         ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
-        for key in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
+        for key in (
+            "stage_trigger_state",
+            "scrape_trigger_state",
+            "check_unique_trigger_state",
+            "land_trigger_state",
+        ):
             assert ingress[key] not in forbidden
         assert cfg.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"] not in forbidden
+
+
+class TestAst1773CheckUniqueRegistryAndCatalogs:
+    """AST-1773: CHECK_UNIQUE/DUPLICATE registry, ingress retarget, review_duplicate, employer_name."""
+
+    def test_dispatch_helpers_for_check_unique(self) -> None:
+        assert cfg._dispatch_trigger_state_for_task_key("check_unique_meteorite") == "CHECK_UNIQUE"
+        assert cfg._dispatch_entity_type_for_task_key("check_unique_meteorite") == "meteorite"
+        ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
+        assert ingress["land_trigger_state"] == "READY"
+        assert ingress["scrape_page_status_states"]["ok"] == "CHECK_UNIQUE"
+        # Landable gate: DUPLICATE / CHECK_UNIQUE are not land triggers.
+        assert ingress["land_trigger_state"] not in ("DUPLICATE", "CHECK_UNIQUE")
+
+    def test_stage_employer_name_optional_no_company_name(self) -> None:
+        items = cfg.TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert items["employer_name"]["required"] is False
+        assert "company_name" not in items
+        # Row-state names stay out of Ruth classify outcomes (exactly six).
+        assert len(cfg.STAGE_METEORITE_CONFIG["outcomes"]) == 6
+        assert "CHECK_UNIQUE" not in cfg.STAGE_METEORITE_CONFIG["outcomes"]
+        assert "DUPLICATE" not in cfg.STAGE_METEORITE_CONFIG["outcomes"]
+
+    def test_review_duplicate_meteorite_config_and_task(self) -> None:
+        rev = cfg.REVIEW_DUPLICATE_METEORITE_CONFIG
+        assert rev["task_key"] == "review_duplicate_meteorite"
+        assert rev["outcomes"] == ("duplicate", "not_duplicate")
+        assert rev["peer_id_response_key"] == "peer_meteorite_id"
+        tc = cfg.TASK_CONFIG["review_duplicate_meteorite"]
+        assert tc["agent_task"] == rev["task_key"]
+        assert tc["response_schema"]["outcome"]["enum"] == list(rev["outcomes"])
+        assert rev["peer_id_response_key"] in tc["response_schema"]
+        assert tc["response_schema"]["peer_meteorite_id"]["required"] is False
+        assert tc["context_format"] == "review_duplicate_meteorite_{index}"

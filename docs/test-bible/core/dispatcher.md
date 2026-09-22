@@ -483,6 +483,18 @@ Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
 
 ---
 
+### AST-1774 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions`.
+
+Ingress adds `check_unique_meteorite` twin of stage/scrape (provision via `_ensure_ingress_transition_tasks` + route in `_run_dispatch_loop` / `_dispatch_one`). Assertions live on **`TestAst1560IngressTransitionDispatchOne`** (`test_routes_check_unique_…`, `test_ensure_ingress_includes_check_unique`). Runners + stage/scrape retarget: **`docs/test-bible/core/meteorite.md`** § AST-1774.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1774.
+
+---
+
 ### AST-1562 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
