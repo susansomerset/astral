@@ -1,3 +1,75 @@
+<!-- linear-archive: AST-1627 archived 2026-09-22 -->
+
+## Linear archive (AST-1627)
+
+**Archived:** 2026-09-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1627/core-pattartifact-example-enrichment-update-pattartifacts-directives  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1626 — update patt.artifacts.* directives with code examples  
+**Blocked by / blocks / related:** parent: AST-1626; blocks: AST-1628
+
+### Description
+
+## What this implements
+
+Add harvested code examples to the five singular drafts (`manage-catalog`, `write-operative`, `read-current`, `read-operative`, `no-coat-check`). Does **not** own the ui-consistency / traceability rename+examples (sibling #2). Docs-only; no product code; no draft promotion.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.read-operative`; `patt.artifact.no-coat-check`; `astral.standards.in-scope-only`; `astral.config.config-source-of-truth`
+
+## Scope
+
+- [X] `canon/directives/draft/patt.artifact.manage-catalog.md` — **modified** — add worked examples for catalog register/lookup using the live config + helper path.
+- [X] `canon/directives/draft/patt.artifact.write-operative.md` — **modified** — add worked examples for retire+insert write via data-layer + entity-owned save.
+- [X] `canon/directives/draft/patt.artifact.read-current.md` — **modified** — add worked examples for current-row load (data-layer + entity wrapper + API/UI hydrate boundary).
+- [X] `canon/directives/draft/patt.artifact.read-operative.md` — **modified** — add worked examples for pin→body fetch by artifact uuid / scoped operative read.
+- [X] `canon/directives/draft/patt.artifact.no-coat-check.md` — **modified** — add worked forbidden vs required examples (lazy blob fetch vs pre-ingest / artifact read) drawn from live correct paths; no new ban surfaces.
+- [X] `patt.artifact.manage-catalog.md` — New Examples (or Implementation subsection) showing catalog entry resolve for a registered key and rejection of unknown keys via the live catalog/config accessors — no key inventory dump beyond what an example snippet needs.
+- [X] `patt.artifact.write-operative.md` — New examples showing data-layer `save_artifact` retire+insert and the entity-owned operative save that validates body shape then delegates — return uuid/pin called out in the snippet comments.
+- [X] `patt.artifact.read-current.md` — New examples showing `get_current_artifact` and the entity-owned current-read wrapper used by GET hydrate / editor load.
+- [X] `patt.artifact.read-operative.md` — New examples showing by-uuid `get_artifact` (or equivalent) and the pilot pin→body helper used for explainability / Contact-style operative resolve.
+- [X] `patt.artifact.no-coat-check.md` — New examples contrasting a forbidden mid-turn blob/coat-check style call with the required pre-load + read-current/read-operative sequence.
+
+## Acceptance criteria
+
+- [X] 1. **Examples present** — For every file listed in Component scope, ```` rg -n '```' canon/directives/draft/patt.artifact.*.md ```` shows at least one fenced code block under that file’s Examples / Implementation examples subsection. Fail: any in-scope draft has zero fenced example blocks after the change.
+- [X] 2. **Live symbols only** — Every example call names a symbol that exists on `origin/dev` under `src/`. Fail: invents a helper not in tree.
+- [X] 3. **No product diff** — `git diff origin/dev -- src/ tests/` empty on publish ref.
+- [X] 4. **Law sections intact** — Abstract / Arc / Applications / Exceptions headings remain.
+- [X] 5. **Wrong-shape ruled out** — Each write/read draft’s examples include a one-line “do not” adjacent to the positive snippet.
+
+## Boundaries
+
+- [X] Does **not** own ui-consistency / traceability rename or examples (sibling #2). Does **not** promote drafts to active. Does **not** change product/runtime code.
+
+## Notes for planning
+
+Docs-acceptance only — no invented `test()` for product. Harvest examples from live pilot paths on origin/dev.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1626-update-patt-artifact-directives-with-code-examples`, child `sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-10T20:36:58.284Z
+[code-rubric] PROCEED (Commit: 90649699) five-draft Examples harvest clean
+
+#### betty — 2026-09-10T20:33:46.845Z
+`origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment` @ `90649699` · docs-acceptance ready
+
+#### joan — 2026-09-10T20:26:01.799Z
+[plan-rubric] PROCEED (Commit: ee95b46) five-draft examples harvest
+
+#### ada — 2026-09-10T20:23:22.895Z
+`origin/sub/AST-1626/AST-1627-core-patt-artifact-example-enrichment` @ `ee95b46dcc55e7345a8e68a0e8d4b891c41dfbe7` · plan ready five drafts
+
+---
+
 # Core patt.artifact.* example enrichment
 
 **Linear:** [AST-1627](https://linear.app/astralcareermatch/issue/AST-1627/core-pattartifact-example-enrichment-update-pattartifacts-directives)

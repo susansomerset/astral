@@ -1,3 +1,74 @@
+<!-- linear-archive: AST-1628 archived 2026-09-22 -->
+
+## Linear archive (AST-1628)
+
+**Archived:** 2026-09-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1628/rename-plural-drafts-example-enrichment-update-pattartifacts  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1626 — update patt.artifacts.* directives with code examples  
+**Blocked by / blocks / related:** parent: AST-1626
+
+### Description
+
+## What this implements
+
+After sibling #1: rename `patt.artifacts.ui-consistency` / `patt.artifacts.traceability` → singular `patt.artifact.*` (paths + frontmatter ids), add harvested examples, and sweep in-repo cites of the old plural paths. Does **not** re-edit the five core drafts. Docs-only; no product code; no draft promotion.
+
+## Citations
+
+`patt.artifact.ui-consistency`; `patt.artifact.traceability`; `astral.standards.in-scope-only`; `astral.standards.names-not-ticket-ids`
+
+## Scope
+
+- [X] `canon/directives/draft/patt.artifacts.ui-consistency.md` — **deleted** — renamed to singular id path.
+- [X] `canon/directives/draft/patt.artifact.ui-consistency.md` — **new** (rename from plural) — same body + worked examples for `bodyShape`-parameterized editor + leaf save/reload; frontmatter `id: patt.artifact.ui-consistency`.
+- [X] `canon/directives/draft/patt.artifacts.traceability.md` — **deleted** — renamed to singular id path.
+- [X] `canon/directives/draft/patt.artifact.traceability.md` — **new** (rename from plural) — same body + worked examples for provenance fields that already exist on the live write path; frontmatter `id: patt.artifact.traceability`; mark still-unimplemented lineage as illustrative.
+- [X] `patt.artifact.ui-consistency.md` — Rename from `patt.artifacts.ui-consistency.md`; update frontmatter id; add examples showing page pass of `bodyShape` into shared `ArtifactEditor` and leaf artifacts PUT/GET for the pilot shape — no new frontend catalog fetch.
+- [X] `patt.artifact.traceability.md` — Rename from `patt.artifacts.traceability.md`; update frontmatter id; add examples showing how a generative write records seed artifact ids on the new row when the live column/kwarg exists; explicitly label any agent/task lineage still draft-only.
+- [X] In-repo cite sweep for those two renames — update docs/features (engineer). test-bible + tests path retarget → Betty at qa-child (test-tree ban).
+
+## Acceptance criteria
+
+- [X] 1. Plural paths gone; singular replacements exist with matching frontmatter ids.
+- [X] 2. Examples present on both renamed drafts (fenced blocks).
+- [X] 3. In-repo cites of old plural paths for those two drafts updated under `docs/features/` (Betty owns `docs/test-bible/**` + `tests/**` retarget).
+- [X] 4. No `src/` product/runtime diff. Betty may retarget test-tree cites (`docs/test-bible/**` / `tests/**`) under standard test ownership — not an engineer product change.
+
+## Boundaries
+
+- [X] After sibling #1. Does **not** re-edit the five core singular drafts. Does **not** promote to active.
+
+## Notes for planning
+
+Archie: rename all to artifact to match database table and component name.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1626-update-patt-artifact-directives-with-code-examples`, child `sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-09-10T20:55:12.764Z
+[merge-child] blocked: validate-sub-log — git pull merge on sub (`9867a3cc Merge remote-tracking branch 'origin/ftr/…'`). Drop that tip merge and re-merge with sync-child / `sync(ftr): origin/ftr/<parent-segment>` message, then republish. @Ada Lovelace
+
+#### radia — 2026-09-10T20:52:25.545Z
+[code-rubric] PROCEED (Commit: c9496457) singular rename + cites clean
+
+#### betty — 2026-09-10T20:48:57.314Z
+`origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment` @ `c9496457` · plural cites retargeted
+
+#### joan — 2026-09-10T20:41:58.810Z
+[plan-rubric] PROCEED (Commit: a2431a0) rename plural drafts+examples
+
+#### ada — 2026-09-10T20:40:12.006Z
+`origin/sub/AST-1626/AST-1628-rename-plural-drafts-example-enrichment` @ `a2431a0e660a271df1f4e7cc38b90c654ed3311c` · plan ready rename+examples
+
+---
+
 # Rename plural drafts + example enrichment
 
 **Linear:** [AST-1628](https://linear.app/astralcareermatch/issue/AST-1628/rename-plural-drafts-example-enrichment-update-pattartifacts)
