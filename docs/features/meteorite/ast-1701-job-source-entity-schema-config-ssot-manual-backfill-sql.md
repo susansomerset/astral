@@ -369,6 +369,68 @@ Smoke for make-fix / test-fix: call `get_job_batch` against a migrated DB with (
 - `stat.logging.debug`: no new `logger.debug` / `print` in this one-line fix.
 - No change to claim criteria, `clear_job_batch`, or source-entity parent fields (`source` / `source_entity_id`).
 
+## Bug: AST-1772 — print resume/cover without company short name
+
+Orphaned fix child of AST-1763 (mini-parent bug; no UAT ancestor epic). AST-1701 made `job.company_id` nullable and denormalized `job.candidate_id` (AST-1598), but `builder.build_resume` / `build_cover_letter` still hard-require `job.get("company")` before load. Print HTML entry path (AST-1117 routes / JAR fetch-then-blob) is fine — ownership resolve in builder is the lagging consumer. Canon for this delta: no frozen Canon Scope on AST-1772; keep `stat.logging.debug` discipline (no new debug/print noise in `src/core/builder.py`); do not invent UI business rules.
+
+### As-is
+
+On Recommended (`/jobs/recommended`), Print Resume / Print Cover Letter call `GET /candidate/resume|<job_id>` / `cover/<job_id>` → `builder.build_resume` / `build_cover_letter`. Those functions gate on `job.get("company")` and raise `ValueError("Job missing company short name")` when the employer short name is missing/null. After AST-1701, meteorite (and other) jobs can have null `company_id` / compat `company` while `candidate_id` is already on the job row. `api_resume_html` forwards that `ValueError` as JSON `{"error":"Job missing company short name"}`; the print tab shows that JSON instead of HTML.
+
+### To-be
+
+Print Resume and Print Cover Letter render the job's resume/cover HTML whenever the owning candidate can be resolved — prefer denormalized `job.candidate_id`, fall back to `company` / `company_id` → `get_company` → `candidate_id` only when the direct field is absent. Missing employer short name alone must not hard-fail print. Raise a clear ownership error only when neither path resolves a candidate. Company-parent jobs with a real employer still print unchanged.
+
+### Repro
+
+1. Open `/jobs/recommended` as candidate `somerset` (or any session whose jobs include a row with non-blank `candidate_id` and null `company_id` / `company` — typical post–AST-1701 meteorite job).
+2. Open JAR for that job → **Print Resume** (or **Print Cover Letter**).
+3. Observe new tab body: `{"error":"Job missing company short name"}` (cover path same string), not printable HTML.
+4. Control: same Print actions on a company-parent job with non-null `company_id` still return HTML today — must keep working after the fix.
+
+Diagnostic timestamp from parent AST-1763: `2026-09-21T23:53:39.335Z`, route `/jobs/recommended`, message `Job missing company short name`.
+
+### Root cause
+
+`build_resume` and `build_cover_letter` still use the pre–AST-1701 ownership chain (`company` short name → `get_company` → `company.candidate_id`) and treat a missing/null `job.company` as a hard error before ever reading `job.candidate_id`. Tracker already prefers `job.candidate_id` in `_candidate_id_for_job`; builder print entry points never adopted that preference.
+
+### Proposed change
+
+All edits in `src/core/builder.py` only. Leave `tracker._candidate_id_for_job`, `api_resume_html.py`, `JobAnalysisReportModal.tsx`, and `build_*_from_job` unchanged.
+
+1. Add a private helper `_owning_candidate_id_from_job(job: Dict[str, Any]) -> Optional[str]` next to the other builder load helpers. Behavior (mirror `tracker._candidate_id_for_job`, but on the already-loaded job dict — no second `get_job`):
+   - If `job.get("candidate_id")` is a non-blank `str`, return `strip()` of it.
+   - Else take `company_key = job.get("company")` (compat alias of nullable `company_id` from `_job_row_to_dict`). If it is a non-blank `str`, `database.get_company(company_key.strip())`; if that row has a non-blank `candidate_id`, return it as `str`.
+   - Else return `None` (null/blank employer with no denormalized `candidate_id`, missing company row, or company row without `candidate_id`).
+
+2. In `build_resume`, after `tracker_mod.get_job(job_id)` succeeds, **replace** the block from `company_key = job.get("company")` through the `"Company … has no candidate_id"` raise with:
+   - `candidate_id = _owning_candidate_id_from_job(job)`
+   - If falsy: `_emit_builder_failure(..., message=...)` then `raise ValueError("Job has no resolvable owning candidate")` — do **not** raise `"Job missing company short name"`.
+   - Keep the existing `candidate_mod.get_candidate(str(candidate_id))` / `"Candidate not found: …"` path and the `build_resume_from_job(...)` return unchanged.
+
+3. In `build_cover_letter`, apply the **identical** ownership-resolve replacement (same helper, same new error string, same keep of candidate-not-found + `build_cover_letter_from_job`).
+
+4. Do not wire builder to call `tracker._candidate_id_for_job` (would re-fetch the job); do not change tracker's company fallback. No schema / FE / route changes.
+
+Smoke for make-fix / test-fix: (a) job with `candidate_id="somerset"` and `company_id`/`company` null → `build_resume` / `build_cover_letter` return HTML (or the real missing-artifact error if pins empty — never `"Job missing company short name"`); (b) job with real `company_id` and no denormalized `candidate_id` but company row has `candidate_id` → still prints; (c) job with neither resolvable path → `ValueError("Job has no resolvable owning candidate")` forwarded by `api_resume_html` as JSON `error`.
+
+### Blast radius
+
+- Call path: JAR Print Resume / Print Cover Letter → `api_resume_html` → `build_resume` / `build_cover_letter` → (unchanged) `build_*_from_job`.
+- Any other caller of `build_resume` / `build_cover_letter` by job id (preview materials, direct `/candidate/resume|cover/<id>`) gets the same ownership resolve.
+- Shared: `tracker._candidate_id_for_job` stays the SoT preference for tracker-internal use; builder helper intentionally duplicates the preference on the in-memory job to avoid a second DB read and a cross-module private call.
+- Out of scope (explicit): HTML emit, FE print buttons, `job` DDL, tracker land/writes.
+- Tests: existing builder tests that assert `"Job missing company short name"` will need Betty/fix-board attention; product tree must not invent that string for null-employer + present `candidate_id` jobs after the fix.
+
+### What must still hold
+
+- AST-1701: `company_id` remains nullable; `_job_row_to_dict` `company` compat alias remains; no resurrection of required employer short name on job.
+- AST-1598: denormalized `job.candidate_id` is a valid ownership source for print.
+- AST-1117 / AST-605: Print still opens Flask HTML via `/candidate/resume|<id>` and `/candidate/cover/<id>` (pin-resolved bodies via existing `build_*_from_job`); routing/proxy unchanged.
+- Company-parent jobs with a resolvable employer still print resume and cover letter.
+- Real `"Job not found"` / `"Candidate not found"` errors remain; only the ownership-resolve hard-fail string changes when neither `candidate_id` nor company lookup works.
+- `stat.logging.debug`: no new `logger.debug` / `print` in this builder change; keep existing `_emit_builder_failure` on the new raise path.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
