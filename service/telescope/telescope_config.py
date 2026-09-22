@@ -7,6 +7,10 @@ Secrets (bearer token) stay in env via settings.py.
 
 REQUEST_TIMEOUT_SECONDS = 120
 
+# Scrape retries after Playwright/page flake (initial attempt + 3 retries).
+SCRAPE_RETRY_COUNT = 3
+SCRAPE_RETRY_BASE_DELAY_SECONDS = 2.0
+
 # Pooled mode (AST-1725): W Firefox processes, fresh context per HTTP call.
 BROWSER_PER_REQUEST = False
 BROWSER_POOL_SIZE = 10

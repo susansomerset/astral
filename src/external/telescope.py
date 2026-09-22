@@ -319,27 +319,33 @@ class _TelescopePool:
 
 _pool = _TelescopePool()
 
+CAPTURE_FIELDS = frozenset({"text", "links", "html"})
+
 
 async def _post_telescope(
     url: str,
     *,
+    fields: List[str],
     selector: Optional[str] = None,
     tag: Optional[str] = None,
     class_name: Optional[str] = None,
     id: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
-    links: bool = True,
 ) -> dict:
+    """One POST /telescope — one page load, only requested capture keys in response."""
+    want = [f for f in fields if f in CAPTURE_FIELDS]
+    if not want:
+        raise ValueError("fields must include at least one of: text, links, html")
     body: Dict[str, Any] = {
         "url": url,
+        "fields": want,
         "expand": TELESCOPE_CONFIG["default_expand"] if expand is None else expand,
         "wait_ready": (
             TELESCOPE_CONFIG["default_wait_ready"]
             if wait_ready is None
             else wait_ready
         ),
-        "links": links,
     }
     if selector is not None:
         body["selector"] = selector
@@ -350,7 +356,6 @@ async def _post_telescope(
     if id is not None:
         body["id"] = id
     path = TELESCOPE_CONFIG["telescope_path"]
-    # Statute debug: request params in, full JSON out — ContextVar gates emission.
     _log.debug("Calling _post_telescope: [path=%s, body=%s]", path, body)
     resp = await _pool.request("POST", path, json_body=body)
     if resp.status_code >= 400:
@@ -367,64 +372,9 @@ async def _post_telescope(
     data = resp.json()
     _log.debug("Response from _post_telescope: %s", data)
     _log.info(
-        "telescope ok path=/telescope final_url=%s",
+        "telescope ok path=/telescope fields=%s final_url=%s",
+        want,
         data.get("final_url"),
-    )
-    return data
-
-
-async def _post_telescope_html(
-    url: str,
-    *,
-    selector: Optional[str] = None,
-    tag: Optional[str] = None,
-    class_name: Optional[str] = None,
-    id: Optional[str] = None,
-    expand: Optional[bool] = None,
-    wait_ready: Optional[bool] = None,
-) -> dict:
-    body: Dict[str, Any] = {
-        "url": url,
-        "expand": TELESCOPE_CONFIG["default_expand"] if expand is None else expand,
-        "wait_ready": (
-            TELESCOPE_CONFIG["default_wait_ready"]
-            if wait_ready is None
-            else wait_ready
-        ),
-    }
-    if selector is not None:
-        body["selector"] = selector
-    if tag is not None:
-        body["tag"] = tag
-    if class_name is not None:
-        body["class_name"] = class_name
-    if id is not None:
-        body["id"] = id
-    path = TELESCOPE_CONFIG["telescope_html_path"]
-    _log.debug("Calling _post_telescope_html: [path=%s, body=%s]", path, body)
-    resp = await _pool.request("POST", path, json_body=body)
-    if resp.status_code >= 400:
-        _log.debug(
-            "Response from _post_telescope_html: status=%s path=%s body=%s",
-            resp.status_code,
-            path,
-            resp.text,
-        )
-        raise PlaywrightInfraError(
-            "telescope_http_error",
-            f"POST /telescope/html HTTP {resp.status_code}: {resp.text[:200]}",
-        )
-    data = resp.json()
-    _log.debug("Response from _post_telescope_html: %s", data)
-    html = data.get("html")
-    if isinstance(html, list):
-        html_len = sum(len(h or "") for h in html)
-    else:
-        html_len = len(html or "")
-    _log.info(
-        "telescope ok path=/telescope/html final_url=%s html_len=%s",
-        data.get("final_url"),
-        html_len,
     )
     return data
 
@@ -460,19 +410,23 @@ async def admin_telescope_scrape(
     if rt not in ("text", "html"):
         raise ValueError("response_type must be text or html")
     if rt == "text":
+        scrape_fields = ["text"]
+        if links:
+            scrape_fields.append("links")
         data = await _post_telescope(
             url,
+            fields=scrape_fields,
             selector=selector,
             tag=tag,
             class_name=class_name,
             id=id,
             expand=expand,
             wait_ready=wait_ready,
-            links=links,
         )
     else:
-        data = await _post_telescope_html(
+        data = await _post_telescope(
             url,
+            fields=["html"],
             selector=selector,
             tag=tag,
             class_name=class_name,
@@ -494,34 +448,60 @@ async def admin_telescope_scrape(
     return data
 
 
-async def _ensure_text(page: PageHandle, *, links: bool = False) -> None:
+async def _ensure_fields(page: PageHandle, *fields: str) -> None:
+    """Fetch any missing capture fields in one Telescope POST."""
     if page._closed:
         raise PlaywrightInfraError("context_closed", "page is closed")
-    if page._text is not None and (not links or page._links is not None):
+    need: List[str] = []
+    for field in fields:
+        if field not in CAPTURE_FIELDS:
+            continue
+        if field == "text" and page._text is None:
+            need.append("text")
+        elif field == "links" and page._links is None:
+            need.append("links")
+        elif field == "html" and page._html is None:
+            need.append("html")
+    if not need:
         return
     if not (page.url or "").strip():
-        page._text = ""
-        page._links = []
+        if "text" in need:
+            page._text = ""
+        if "links" in need:
+            page._links = []
+        if "html" in need:
+            page._html = ""
         return
     data = await _post_telescope(
         page.url,
+        fields=need,
         expand=page.expand,
         wait_ready=page.wait_ready,
-        links=links,
     )
-    text = data.get("text")
-    if isinstance(text, list):
-        page._text = "\n\n".join(t for t in text if t)
-    else:
-        page._text = text or ""
-    if "links" in data:
+    if "text" in need:
+        text = data.get("text")
+        if isinstance(text, list):
+            page._text = "\n\n".join(t for t in text if t)
+        else:
+            page._text = text or ""
+    if "links" in need:
         page._links = data.get("links") or []
-    elif links:
-        page._links = []
+    if "html" in need:
+        html = data.get("html") or ""
+        if isinstance(html, list):
+            html = html[0] if html else ""
+        page._html = html
     final = data.get("final_url")
     if final:
         page._final_url = final
         page.url = final
+
+
+async def _ensure_text(page: PageHandle, *, links: bool = False) -> None:
+    want = ["text"]
+    if links:
+        want.append("links")
+    await _ensure_fields(page, *want)
 
 
 async def _ensure_html(
@@ -535,14 +515,14 @@ async def _ensure_html(
     if not (page.url or "").strip():
         page._html = ""
         return ""
-    data = await _post_telescope_html(
+    data = await _post_telescope(
         page.url,
+        fields=["html"],
         selector=selector,
         expand=page.expand,
         wait_ready=page.wait_ready,
     )
     html = data.get("html") or ""
-    # Drop-in parsers expect one DOM string — unwrap first match from multi-match list.
     if isinstance(html, list):
         html = html[0] if html else ""
     if selector is None:
@@ -696,7 +676,8 @@ async def extract_visible_text(page: PageHandle) -> Dict[str, Any]:
 
 
 async def extract_page_scrape_contract(page: PageHandle) -> Dict[str, Any]:
-    vt = await extract_visible_text(page)
+    await _ensure_fields(page, "text", "links")
+    vt = {"text": page._text or "", "url": page._final_url or page.url}
     nav_urls: List[str] = []
     nav_error: Optional[str] = None
     try:
