@@ -135,23 +135,52 @@ class TestBuildResume:
         with pytest.raises(ValueError, match="Job not found"):
             builder_mod.build_resume("job-1")
 
+        # AST-1776 / AST-1772: blank employer + no candidate_id → ownership miss (not company-short-name).
         monkeypatch.setattr(builder_mod.tracker_mod, "get_job", lambda job_id: {"company": ""})
-        with pytest.raises(ValueError, match="missing company"):
+        with pytest.raises(ValueError, match="no resolvable owning candidate"):
             builder_mod.build_resume("job-1")
 
         monkeypatch.setattr(builder_mod.tracker_mod, "get_job", lambda job_id: {"company": "co"})
         monkeypatch.setattr(builder_mod.database, "get_company", lambda short_name: None)
-        with pytest.raises(ValueError, match="Company not found"):
+        with pytest.raises(ValueError, match="no resolvable owning candidate"):
             builder_mod.build_resume("job-1")
 
         monkeypatch.setattr(builder_mod.database, "get_company", lambda short_name: {"candidate_id": ""})
-        with pytest.raises(ValueError, match="no candidate_id"):
+        with pytest.raises(ValueError, match="no resolvable owning candidate"):
             builder_mod.build_resume("job-1")
 
         monkeypatch.setattr(builder_mod.database, "get_company", lambda short_name: {"candidate_id": "cand-1"})
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda candidate_id: None)
         with pytest.raises(ValueError, match="Candidate not found"):
             builder_mod.build_resume("job-1")
+
+    def test_null_company_uses_job_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Null/blank employer with denormalized candidate_id must print (AST-1772 ownership).
+        company_calls: list[Any] = []
+
+        def _get_company(short_name: str) -> None:
+            company_calls.append(short_name)
+            return None
+
+        monkeypatch.setattr(
+            builder_mod.tracker_mod,
+            "get_job",
+            lambda job_id: {
+                "astral_job_id": job_id,
+                "candidate_id": "cand-1",
+                "company": None,
+                "job_data": {"artifacts": {"resume_content": _resume_blob(professional_summary="Summary")}},
+            },
+        )
+        monkeypatch.setattr(builder_mod.database, "get_company", _get_company)
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(base_resume=_resume_blob()),
+        )
+        monkeypatch.setattr(builder_mod, "build_resume_from_job", MagicMock(return_value="<html>ok</html>"))
+        assert builder_mod.build_resume("job-1") == "<html>ok</html>"
+        assert company_calls == []
 
     def test_delegates_to_build_resume_from_job(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -781,12 +810,13 @@ class TestBuildCoverLetterDebugPaths:
         assert "Hi" in html
 
     def test_company_and_candidate_failures_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1776 / AST-1772: ownership miss collapses company-ladder errors.
         monkeypatch.setattr(
             builder_mod.tracker_mod,
             "get_job",
             lambda job_id: {"astral_job_id": job_id, "company": ""},
         )
-        with pytest.raises(ValueError, match="missing company"):
+        with pytest.raises(ValueError, match="no resolvable owning candidate"):
             builder_mod.build_cover_letter("job-1", debug=True)
 
         monkeypatch.setattr(
@@ -795,7 +825,7 @@ class TestBuildCoverLetterDebugPaths:
             lambda job_id: {"astral_job_id": job_id, "company": "co"},
         )
         monkeypatch.setattr(builder_mod.database, "get_company", lambda short_name: None)
-        with pytest.raises(ValueError, match="Company not found"):
+        with pytest.raises(ValueError, match="no resolvable owning candidate"):
             builder_mod.build_cover_letter("job-1", debug=True)
 
         monkeypatch.setattr(
@@ -803,7 +833,7 @@ class TestBuildCoverLetterDebugPaths:
             "get_company",
             lambda short_name: {"candidate_id": ""},
         )
-        with pytest.raises(ValueError, match="no candidate_id"):
+        with pytest.raises(ValueError, match="no resolvable owning candidate"):
             builder_mod.build_cover_letter("job-1", debug=True)
 
         monkeypatch.setattr(
@@ -814,6 +844,77 @@ class TestBuildCoverLetterDebugPaths:
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda candidate_id: None)
         with pytest.raises(ValueError, match="Candidate not found"):
             builder_mod.build_cover_letter("job-1", debug=True)
+
+    def test_null_company_uses_job_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        company_calls: list[Any] = []
+
+        def _get_company(short_name: str) -> None:
+            company_calls.append(short_name)
+            return None
+
+        job = {
+            "astral_job_id": "job-1",
+            "candidate_id": "cand-1",
+            "company": None,
+            "job_data": {
+                "artifacts": {"cover_letter": {"re_line": "Re", "body": "Hi", "signature": ""}}
+            },
+        }
+        monkeypatch.setattr(builder_mod.tracker_mod, "get_job", lambda job_id: job)
+        monkeypatch.setattr(builder_mod.database, "get_company", _get_company)
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(base_resume=_resume_blob()),
+        )
+        _seed_job_catalog_currents(monkeypatch, job)
+        html = builder_mod.build_cover_letter("job-1", debug=True)
+        assert "Hi" in html
+        assert company_calls == []
+
+
+class TestAst1776BuilderPrintOwnership:
+    """[bug-repro] AST-1776 — null company + job.candidate_id must print (product AST-1772)."""
+
+    def test_build_resume_null_company_candidate_id_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {
+            "astral_job_id": "job-null-co",
+            "candidate_id": "cand-1",
+            "company": None,
+            "job_data": {"artifacts": {"resume_content": _resume_blob(professional_summary="x")}},
+        }
+        monkeypatch.setattr(builder_mod.tracker_mod, "get_job", lambda job_id: job)
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(base_resume=_resume_blob()),
+        )
+        monkeypatch.setattr(builder_mod, "build_resume_from_job", MagicMock(return_value="<html>x</html>"))
+        html = builder_mod.build_resume("job-null-co")
+        assert "company short name" not in html.lower()
+        assert "missing company" not in html.lower()
+        assert html == "<html>x</html>"
+
+    def test_build_cover_letter_null_company_candidate_id_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        job = {
+            "astral_job_id": "job-null-co-cl",
+            "candidate_id": "cand-1",
+            "company": None,
+            "job_data": {
+                "artifacts": {"cover_letter": {"re_line": "Re", "body": "Cover body", "signature": ""}}
+            },
+        }
+        monkeypatch.setattr(builder_mod.tracker_mod, "get_job", lambda job_id: job)
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(base_resume=_resume_blob()),
+        )
+        _seed_job_catalog_currents(monkeypatch, job)
+        html = builder_mod.build_cover_letter("job-null-co-cl")
+        assert "company short name" not in html.lower()
+        assert "missing company" not in html.lower()
+        assert "Cover body" in html
 
 
 class TestBuildCoverLetterFromJobDebugPaths:
