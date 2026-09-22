@@ -19,6 +19,8 @@ from telescope_config import (
     PORT,
     RECYCLE_AFTER_N,
     REQUEST_TIMEOUT_SECONDS,
+    SCRAPE_RETRY_BASE_DELAY_SECONDS,
+    SCRAPE_RETRY_COUNT,
     VIEWPORT,
     WAIT_READY_MAX_MS,
     WAIT_READY_MIN_CHARS,
@@ -34,6 +36,8 @@ class Settings:
     browser_pool_size: int
     max_contexts_per_browser: int
     request_timeout_seconds: float
+    scrape_retry_count: int
+    scrape_retry_base_delay_seconds: float
     recycle_after_n: int
     port: int
     log_level: str
@@ -71,6 +75,8 @@ def load_settings() -> Settings:
         browser_pool_size=BROWSER_POOL_SIZE,
         max_contexts_per_browser=MAX_CONTEXTS_PER_BROWSER,
         request_timeout_seconds=float(REQUEST_TIMEOUT_SECONDS),
+        scrape_retry_count=SCRAPE_RETRY_COUNT,
+        scrape_retry_base_delay_seconds=SCRAPE_RETRY_BASE_DELAY_SECONDS,
         recycle_after_n=RECYCLE_AFTER_N,
         port=PORT,
         log_level=LOG_LEVEL,
