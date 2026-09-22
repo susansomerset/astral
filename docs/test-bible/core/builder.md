@@ -45,6 +45,36 @@ Equivalent harness:
 
 ---
 
+### AST-1776 · AST-1772
+
+**Gap** from `[board-betty] TESTS: REVISE` on product sibling **AST-1772** (builder print ownership: `candidate_id`-first; null `company_id` allowed; error `"Job has no resolvable owning candidate"`). This ticket is **tests + bible only** — no `src/core/builder.py` on the gap branch.
+
+| Touched path | Manifest tests |
+| --- | --- |
+| `build_resume` / `build_cover_letter` ownership | **`TestBuildResume`** (revised failure ladder + `test_null_company_uses_job_candidate_id`), **`TestBuildCoverLetterDebugPaths`** (same), **`TestAst1776BuilderPrintOwnership`** (`[bug-repro]`) |
+
+**Broken / obsolete:** asserts expecting `"missing company"` / `"Company not found"` / company-row `"no candidate_id"` when the job has no resolvable owner — replaced by `"Job has no resolvable owning candidate"`.
+
+**AST-1776** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_builder.py::TestBuildResume \
+  tests/component/core/test_builder.py::TestBuildCoverLetterDebugPaths \
+  tests/component/core/test_builder.py::TestAst1776BuilderPrintOwnership -q
+```
+
+**Dependency:** product fix is sibling **AST-1772**; `[bug-repro]` is red on pre-fix product and green once AST-1772 ownership helper is on the tree.
+
+## QA test manifest
+
+1. `[bug-repro]` `TestAst1776BuilderPrintOwnership::test_build_resume_null_company_candidate_id_succeeds`
+2. `[bug-repro]` `TestAst1776BuilderPrintOwnership::test_build_cover_letter_null_company_candidate_id_succeeds`
+3. Revised ownership ladders: `TestBuildResume::test_raises_for_missing_job_company_or_candidate`, `TestBuildCoverLetterDebugPaths::test_company_and_candidate_failures_with_debug`
+4. Null-company success: `TestBuildResume::test_null_company_uses_job_candidate_id`, `TestBuildCoverLetterDebugPaths::test_null_company_uses_job_candidate_id`
+
+---
+
 ### AST-998 · AST-994
 
 **AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html`. **AST-1304** removed the leftover-prose Experience fallback (string Experience is not a `div.prose-block`). `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**. **Role chrome** (subheader/meta/accomplishments) was superseded by **AST-1008** golden article classes — **`TestAst998ExperienceJobRender`** asserts the current golden emit shape.
