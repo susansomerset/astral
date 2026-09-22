@@ -220,3 +220,80 @@ const rubric = [
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1771
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f69
+**Publish ref:** `sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips` @ `94fce7f2135c53f6ca1ab536dacce2b58e001f1d`
+
+## Canon scores
+
+(no directives on frozen Canon Scope — child Citations: none (active catalog); parent declares no applicable statutes; presentational frontend-only slice; nothing to score)
+
+## Traceability
+
+AC1→S2.3,S3.6,8 · AC2→S2.7-8,S3.7,8 · AC3→S1.3,S2.4,S3.5-6 · AC4→S1.2⚠️,S2.5,S2.9
+
+## Findings
+
+### discuss — Assignee gate (procedural)
+
+- **Severity:** discuss
+- **Location:** Linear ticket state
+- **Finding:** Status is Plan Ready (valid), but assignee is Katherine Johnson, not Joan. `validate-plan` §1 expects Joan assigned before this pass.
+- **Recommendation:** Chuckles restores implementer after posting; no plan change.
+
+### discuss — Empty Canon Scope is intentional
+
+- **Severity:** discuss
+- **Location:** Ticket Description Citations; parent Architectural definition
+- **Finding:** Frozen directive list is empty by dispatch design ("none (active catalog)"), not an omitted Canon Scope. Parent explicitly states no active-catalog statutes govern rubric display ordering; AST-1063 / AST-1321 are honor-only job-carried rubric conventions, not scored directives.
+- **Recommendation:** No Canon Scope amendment required unless Archie wants Radia comparability on placement/scope statutes for this frontend slice.
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Plan footprint vs frozen list
+- **Finding:** `astral.standards.in-scope-only` plainly governs the shared-component blast radius but is absent from the frozen list. Plan behavior stays inside the ticket's Files Changed table and parent Component scope.
+- **Recommendation:** Archie may amend Canon Scope at Discussion if scope discipline should be an explicit graded column for interface children; do not widen the list in-flight.
+
+### discuss — AgentAnalysisHeader is a shared component
+
+- **Severity:** discuss
+- **Location:** Stage 2 §6–8; `AgentAnalysisHeader.tsx` consumers
+- **Finding:** Sorting inside `AgentAnalysisHeader` also affects `AgentStoryTab` (entity story grades), not only `JobAnalysisReportModal`. Parent Component scope names this file; boundaries exclude list tables and Summary/Artifacts tabs but not story panes. Existing `test_AgentStoryTab.test.tsx` uses a single vector and should not regress; multi-vector story entries would reorder by grade when `rubricItems` is absent.
+- **Recommendation:** Optional one-line blast-radius note in the plan for UAT awareness; acceptable side effect unless Susan wants story-tab order frozen (then sort at the Recommended modal call site instead).
+
+### acceptable — New test file
+
+- **Severity:** acceptable
+- **Location:** Stage 3 §7; Files Changed table
+- **Finding:** `test_AgentAnalysisHeader.test.tsx` does not exist on the branch yet; plan correctly creates it. Consistent with parent Component scope.
+- **Recommendation:** None.
+
+### acceptable — Confidence now included in header tooltips
+
+- **Severity:** acceptable
+- **Location:** Stage 2 §4 vs current `gradeAndConfidenceForCol` (reason only, no confidence in `formatGradeDotTooltip`)
+- **Finding:** Plan explicitly passes `confidence` into `formatGradeDotTooltipWithVectorLabel`, fixing a pre-existing gap relative to list-table tooltips.
+- **Recommendation:** None.
+
+### acceptable — AC4 guard is explicit
+
+- **Severity:** acceptable
+- **Location:** Stage 1 §2 ⚠️ Decision; Stage 2 §5, §9
+- **Finding:** New `sortRubricColumnsByImportanceAndGrade` leaves `sortJobListRubricColumns` untouched; `buildPhaseTabGradeDots` stays on importance+code sort; grep verification step guards JobsInReview/JobsSkipped.
+- **Recommendation:** None.
+
+## R6 checklist (summary)
+
+- Definition fidelity: plan implements parent Purpose/Functional scope for Recommended Analysis header row, detail body, and tooltip prefix; no scope creep into list tables, persistence, or consult scoring.
+- Files Changed and Stages align with ticket `## Scope` and parent Component scope.
+- DRY: new helpers in `rubricDisplay.ts` rather than duplicating sort in two call sites; does not extend `sortJobListRubricColumns` (correct per AC4).
+- Missing `## Self-assessment` section: minor hygiene only (sibling plans often carry one); estimate confirm line present; no `!!-NONE` conf gap.
+- Fixture contract (QC/5/B before EFW/1/A) matches parent AC wording and extends existing AST-1328 tests with order assertions the current tests lack.
+```
