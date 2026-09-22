@@ -300,6 +300,53 @@ AC1→S2.3,S3.6,8 · AC2→S2.7-8,S3.7,8 · AC3→S1.3,S2.4,S3.5-6 · AC4→S1.2
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips` @ `f590939d52f333f8e556d68b26a21b70d6361a61`
+**Built:** `origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips` @ `9b5fa6311aadd98c411d9a3ecb23deaf62942e02`
 
-Stages 1–2: `GRADE_RANK` / `sortRubricColumnsByImportanceAndGrade` / `formatGradeDotTooltipWithVectorLabel` / `sortGradesByRubricDisplayOrder` in `rubricDisplay.ts`; `buildPhaseSectionGradeConfidenceRow` importance+grade order + vector-prefixed tooltips; `AgentAnalysisHeader` detail rows share the same order. Stage 3 tests deferred to Betty (`sortJobListRubricColumns` unchanged; list pages still use `buildJobListRubricColumnsForGroup`).
+Stages 1–2: `GRADE_RANK` / `sortRubricColumnsByImportanceAndGrade` / `formatGradeDotTooltipWithVectorLabel` / `sortGradesByRubricDisplayOrder` in `rubricDisplay.ts`; `buildPhaseSectionGradeConfidenceRow` importance+grade order + vector-prefixed tooltips; `AgentAnalysisHeader` detail rows share the same order. Stage 3 tests landed by Betty @ `9b5fa631` (`sortJobListRubricColumns` unchanged; list pages still use `buildJobListRubricColumnsForGroup`).
+
+## Radia review
+
+```
+[code-rubric]
+
+**Ticket:** AST-1771
+**Publish ref:** `9b5fa6311aadd98c411d9a3ecb23deaf62942e02` (`origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips`)
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`
+**Overall:** CLEAN
+
+## Canon scores
+
+(empty frozen Canon Scope — Citations: none (active catalog); presentational frontend-only slice per dispatch; no directives to score)
+
+## Column diff vs plan stage
+
+(aligned) — Joan: empty Canon Scope, nothing to score; code review confirms no applicable active-catalog directives on the frozen list
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### advisory — AgentStoryTab blast radius (Joan pre-flagged; acceptable)
+
+**Location:** `AgentAnalysisHeader.tsx` → `sortGradesByRubricDisplayOrder(grades, rubricItems)`; `AgentStoryTab.tsx` passes `vector_grades` + `rubricArtifact` only (no `rubricItems`)
+**Finding:** Sorting inside the shared header also reorders multi-vector **entity story** panes. When `rubricItems` is absent, the sort fallback uses `RUBRIC_DEFAULT_IMPORTANCE` for every vector, so order is grade-then-code rather than live-artifact importance. Single-vector story fixtures are unaffected; JAR passes job-carried `rubricItems` and gets the intended QC-before-EFW order.
+**Recommendation:** UAT note only — acceptable per Joan plan discuss unless Susan wants story-tab order frozen (then sort at the JAR call site instead of inside the shared component).
+
+### advisory — `sortGradesByRubricDisplayOrder` ignores `labelList` fallback
+
+**Location:** `AgentAnalysisHeader.tsx` L51–54 vs L54
+**Finding:** Labels resolve via `labelList` (`rubricItems` ?? live artifact), but sort receives only `rubricItems`. Callers with `rubricArtifact` but no job-carried rubric (Story tab) do not sort by live artifact importance even though labels may come from that artifact. Matches Joan's story-tab observation; not a Recommended-report defect.
+**Recommendation:** Optional `resolve-child` pass `labelList` into the sort helper if story-tab multi-vector ordering should honor live artifact importance — out of ticket AC scope.
+
+## What's solid
+
+- **Stage 1:** `GRADE_RANK`, `gradeRank`, `sortRubricColumnsByImportanceAndGrade`, `formatGradeDotTooltipWithVectorLabel`, `sortGradesByRubricDisplayOrder` exported from `rubricDisplay.ts`; `sortJobListRubricColumns` body unchanged (importance desc, code asc).
+- **Stage 2 — header row:** `buildPhaseSectionGradeConfidenceRow` uses `sortRubricColumnsByImportanceAndGrade` on `buildJobListRubricColumnsForGroup` output; tooltips via `formatGradeDotTooltipWithVectorLabel` with `reason` + `confidence` (closes pre-existing confidence gap vs list cells).
+- **Stage 2 — detail:** `AgentAnalysisHeader` maps `orderedGrades` from the shared sort helper.
+- **AC4 boundary:** `buildPhaseTabGradeDots` still calls `sortJobListRubricColumns`; `JobsInReview.tsx` / `JobsSkipped.tsx` untouched; list columns still flow through `buildJobListRubricColumnsForGroup` → `buildJobListRubricColumnsFromArtifact` → internal `sortJobListRubricColumns` (importance+code only).
+- **Tests:** AST-1328 fixture extended in `test_JobAnalysisReportModal`; unit coverage in `test_rubricDisplay`, `test_recommendedJobReport`, `test_AgentAnalysisHeader` (api mock `importOriginal` keeper); manifest-aligned with Betty's bible nodes @ `9b5fa631`.
+- **Plan fidelity:** Diff footprint matches Files Changed table; no consult scoring, persistence, or list-table changes.
+- **Estimate footprint:** Confirmed 2 — ~86 LOC product helpers/wiring + focused component tests; proportionate.
+```
