@@ -278,6 +278,19 @@ python3 -m py_compile src/utils/config.py
 
 Confirm Chuckles estimate: 3 — agree
 
+
+## Review (build stub)
+
+**Publish ref:** 
+**Plan path:** 
+
+**Built tip:**  ()
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 |  | CHECK_UNIQUE/DUPLICATE registry, ingress retarget, review_duplicate TASK_CONFIG + SEED |
+| 3 |  | stage employer_name prompts + review_duplicate agent_task + check_unique dispatch_task |
+
 ## Joan validate
 
 ```text
