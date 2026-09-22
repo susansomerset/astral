@@ -531,3 +531,12 @@ no plan-stage scores attached — fix-board `[board-joan] CANON: OK` only; no `v
 ```
 
 context_tokens≈28000
+
+## Resolution (AST-1772)
+
+**2026-09-22** — resolve-child, clean product path.
+
+- **Product / fix-now (code):** none. Radia Linear upshot: product OK; `_owning_candidate_id_from_job` + `build_resume` / `build_cover_letter` match plan-fix. No `src/` edits this pass.
+- **Test-tree fix-now:** owned by sibling gap **AST-1776** (board `TESTS: REVISE` → gap child; engineer test-tree ban). Not resolved on this ticket.
+- **Discuss / advisory:** no action (Canon Scope process note for Archie; error-string collapse already plan-aligned).
+- **Tip:** `origin/sub/AST-1763/AST-1772-fix-print-resume-cover-without-company-short-name` after this resolve commit.
