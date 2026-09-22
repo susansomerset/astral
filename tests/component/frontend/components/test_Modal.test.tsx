@@ -1,12 +1,42 @@
+import { readFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ReactNode } from 'react'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import Modal from '../../../../src/ui/frontend/src/components/Modal'
 import { UserPromptProvider } from '../../../../src/ui/frontend/src/components/UserPrompt'
 
+const appCssPath = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../../src/ui/frontend/src/App.css',
+)
+
 function wrap(node: ReactNode) {
   return <UserPromptProvider>{node}</UserPromptProvider>
+}
+
+/** jsdom does not apply App.css imports — inject the product wide-body rule so getComputedStyle tracks App.css. */
+function injectWideModalShellCssFromProduct(): string {
+  const css = readFileSync(appCssPath, 'utf-8')
+  const rule = css.match(/\.modal-card--wide \.modal-body\s*\{[^}]*\}/)
+  expect(rule, 'App.css must define .modal-card--wide .modal-body').toBeTruthy()
+  const style = document.createElement('style')
+  style.setAttribute('data-test', 'ast-1767-wide-modal-shell')
+  // Pin card height so tall direct children overflow the shell body.
+  style.textContent = `
+    .modal-card--wide {
+      display: flex;
+      flex-direction: column;
+      height: 240px;
+      overflow: hidden;
+    }
+    .modal-header { flex-shrink: 0; }
+    ${rule![0]}
+  `
+  document.head.appendChild(style)
+  return rule![0]
 }
 
 describe('Modal', () => {
@@ -132,5 +162,38 @@ describe('Modal', () => {
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: 'Close' }))
     expect(onClose).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('Modal — AST-1767', () => {
+  afterEach(() => {
+    document.querySelectorAll('style[data-test="ast-1767-wide-modal-shell"]').forEach((el) => el.remove())
+  })
+
+  it('[bug-repro] AST-1767: wide Modal body scrolls tall direct children', () => {
+    const wideBodyRule = injectWideModalShellCssFromProduct()
+    // Source gate: AST-1764 shell contract (red when wide body still uses overflow: hidden).
+    expect(wideBodyRule).toMatch(/overflow-y:\s*auto/)
+    expect(wideBodyRule).toMatch(/min-height:\s*0/)
+
+    render(
+      wrap(
+        <Modal open onClose={vi.fn()} title="Shell scroll" size="wide" showFooter={false}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} style={{ minHeight: 120 }}>
+              {i === 5 ? 'below-fold-marker' : `marker-${i + 1}`}
+            </div>
+          ))}
+        </Modal>,
+      ),
+    )
+
+    const modalBody = document.querySelector('.modal-card--wide .modal-body') as HTMLElement
+    expect(modalBody).toBeTruthy()
+    expect(getComputedStyle(modalBody).overflowY).toMatch(/auto|scroll/)
+
+    const marker = screen.getByText('below-fold-marker')
+    modalBody.scrollTop = modalBody.scrollHeight
+    expect(marker).toBeVisible()
   })
 })

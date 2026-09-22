@@ -263,3 +263,27 @@ context_tokens≈22000
 
 ```
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/1786172eef19f4f5e3ba961e6212187c/69533cff-9e6b-460a-b8a3-2fa1a332c413/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/1786172eef19f4f5e3ba961e6212187c/f35048ed-2283-464e-8d9c-66c66fec8a4d/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/1786172eef19f4f5e3ba961e6212187c/23a43a00-5a53-4b91-8335-417301da3946/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/05136b00-d28f-4a29-b66e-be1d1de0dbf8/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/1786172eef19f4f5e3ba961e6212187c/3d6f62af-c96e-4ba9-befe-079ff067755b/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1753 (parent) | ftr/AST-1753-stage-email-meteorite-enhancements |
+| AST-1755 | sub/AST-1753/AST-1755-stage-meteorite-job-title-prompts |
+| AST-1756 | sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob |
+| AST-1757 | sub/AST-1753/AST-1757-land-staged-job-title-onto-job |
+
+**Epic worktree:** `astral-AST-1753/` — one active sub checked out at a time.

@@ -753,6 +753,23 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     logger.debug("Beginning %s claim loop on %s items", entity_type, entity_total)
     logger.debug("End %s claim loop after %s items", entity_type, entity_total)
     if not entities:
+        eligible = int(task.get("available_count") or 0)
+        if eligible > 0:
+            logger.warning(
+                "%s | dispatch %s %s\n  Avail was %d but claim returned 0 entities (trigger_state=%s)\n  This batch is not running",
+                ctx.get("astral_candidate_id") or task.get("candidate_id") or "-",
+                entity_type or "-",
+                dispatch_task_key or task.get("task_key") or "-",
+                eligible,
+                input_state or task.get("trigger_state") or "-",
+            )
+        logger.debug(
+            "skipped — empty claim task_key=%s entity_type=%s trigger_state=%s available_count=%s",
+            dispatch_task_key or task.get("task_key"),
+            entity_type,
+            input_state or task.get("trigger_state"),
+            eligible,
+        )
         if entity_type == "job" and bid:
             clear_job_batch(bid)
         elif entity_type == "candidate" and bid:
