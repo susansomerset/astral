@@ -635,3 +635,26 @@ Live `stage_meteorite` Ruth row (six outcome literals in `cache_prompt`; seq `2.
 
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/repo_admin_json.md`
+
+### AST-1773 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts`.
+
+`stage_meteorite` prompts gain `## EMPLOYER NAME (optional)` (never invent; no `company_name`); new Ruth `review_duplicate_meteorite` row (Land Meteorite / 4200 / seq 5); `dispatch_task.json` gains `check_unique_meteorite` (`trigger_state=CHECK_UNIQUE`). Catalog frozenset **56 → 57** (`review_duplicate_meteorite`; also locks tip `scrape_meteorite` / `land_meteorite` shells). AST-756 fixture whole-file twin synced. Config SSOT: **`docs/test-bible/utils/config.md`** § AST-1773.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Employer prompts + review row + dispatch + fixture | `data/admin/agent_task.json`, `data/admin/dispatch_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1773StageEmployerNameAndReviewDuplicateCatalog`** |
+| Catalog membership 57 | same | revised **`TestAst786AgentTaskRepoJsonSeed`** |
+| Prior job_title prompts still green | same | **`TestAst1755StageMeteoriteJobTitlePrompts`** |
+| Prior stage Ruth shell + fixture | same | **`TestAst1529StageMeteoriteCatalogRow`** |
+
+**Broken / obsolete this pass:**
+- AST-756 `expected-agent_task.json` twin (pre-employer / missing `review_duplicate_meteorite`) — synced.
+- Catalog lock **54** (missing tip `scrape_meteorite` / `land_meteorite` / `review_duplicate_meteorite`) — revised to **57**.
+
+**Integration:** none — no existing scenario asserts these catalog keys.
+
+## QA test manifest
+
+Primary numbered list: **`docs/test-bible/utils/config.md`** § AST-1773 (includes this module’s node ids).

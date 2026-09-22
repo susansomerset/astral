@@ -49,10 +49,11 @@ Config sections:
   SOURCE_ENTITY_TYPES — job ingest parent + track SoT company|meteorite (repurposed job.source; AST-1701); JOB_SOURCES aliases until sibling #2
   JOB_LINK_BREADCRUMB_FORMAT / CONTACT_TIMEZONE_CLOCK_LABELS — email breadcrumb + timezone clock helpers (AST-1701; authored by sibling #3)
   METEORITE_CONFIG — placeholder employer templates (not job parents after AST-1640) + job-create defaults + land/source_entity_type/dedupe (AST-1469 / AST-1701); meteorite-row electronic-contact column literal (AST-1688)
-  METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
+  METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557); `CHECK_UNIQUE` / `DUPLICATE` uniqueness gate (AST-1773)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
-  METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
+  METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560); check_unique hop (AST-1773)
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
+  REVIEW_DUPLICATE_METEORITE_CONFIG — Ruth duplicate-review closed outcomes + peer id key (AST-1773)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -585,6 +586,21 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
         "agent_task": "stage_meteorite",
+    },
+    # AST-1773: Ruth duplicate-review (invoke owned by AST-1775); outcome enum lockstep below.
+    "review_duplicate_meteorite": {
+        "response_format": "json",
+        "output_type": "fields",
+        "scored": False,
+        "response_schema": {
+            "outcome": {"type": "str", "required": True},
+            "peer_meteorite_id": {"type": "str", "required": False},
+        },
+        "context_format": "review_duplicate_meteorite_{index}",
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "review_duplicate_meteorite",
     },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
@@ -2640,9 +2656,13 @@ METEORITE_STATES = {
     "SCRAPE_LINK": {
         "prior_states": ["NEW", "SCRAPE_ERROR"],  # link outcomes; retry from SCRAPE_ERROR
     },
+    # AST-1773: uniqueness gate before land (stage/scrape landable success → CHECK_UNIQUE)
+    "CHECK_UNIQUE": {
+        "prior_states": ["NEW", "SCRAPE_LINK"],
+    },
     "READY": {
-        # text fan-out from NEW; scrape success; Estelle paste recovery
-        "prior_states": ["NEW", "SCRAPE_LINK", "BOT_BLOCKED"],
+        # uniqueness hop promote; Estelle paste recovery (not stage/scrape success)
+        "prior_states": ["CHECK_UNIQUE", "BOT_BLOCKED"],
     },
     "BOT_BLOCKED": {
         "prior_states": ["SCRAPE_LINK"],
@@ -2659,6 +2679,10 @@ METEORITE_STATES = {
     "NEW_EMAIL_ERROR": {
         "prior_states": None,  # insert-legal; not a dispatch trigger; human resets via NEW
     },
+    # AST-1773: terminal duplicate hold (from CHECK_UNIQUE only; scheduled cleanup later)
+    "DUPLICATE": {
+        "prior_states": ["CHECK_UNIQUE"],
+    },
     "LANDED": {
         "prior_states": ["READY"],
     },
@@ -2668,8 +2692,8 @@ METEORITE_STATES = {
 }
 
 assert set(METEORITE_STATES) == {
-    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
-    "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
+    "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+    "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
 }
 assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
 assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
@@ -2681,17 +2705,20 @@ for _ms, _mcfg in METEORITE_STATES.items():
         assert all(p in METEORITE_STATES for p in _priors), _ms
 
 # AST-1560: dispatcher-driven meteorite row transitions (not Ruth classify — inline in check_inbox).
+# AST-1773: check_unique hop between stage/scrape success and land (land stays READY).
 METEORITE_INGRESS_DISPATCH_CONFIG = {
     "stage_task_key": "stage_meteorite",
     "scrape_task_key": "scrape_meteorite",
+    "check_unique_task_key": "check_unique_meteorite",
     "land_task_key": "land_meteorite",
     "stage_trigger_state": "NEW",
     "scrape_trigger_state": "SCRAPE_LINK",
+    "check_unique_trigger_state": "CHECK_UNIQUE",
     "land_trigger_state": "READY",
     "batch_size": 10,
     "scrape_page_status_states": {
         "blocked": "BOT_BLOCKED",
-        "ok": "READY",
+        "ok": "CHECK_UNIQUE",
         "closed": "LINK_EXPIRED",
         "missing": "LINK_EXPIRED",
     },
@@ -2700,14 +2727,20 @@ _mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
 assert len({
     _mid_ingress["stage_task_key"],
     _mid_ingress["scrape_task_key"],
+    _mid_ingress["check_unique_task_key"],
     _mid_ingress["land_task_key"],
-}) == 3
-for _tk in ("stage_task_key", "scrape_task_key", "land_task_key"):
+}) == 4
+for _tk in ("stage_task_key", "scrape_task_key", "check_unique_task_key", "land_task_key"):
     assert isinstance(_mid_ingress[_tk], str) and _mid_ingress[_tk]
-for _tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
+for _tr in (
+    "stage_trigger_state",
+    "scrape_trigger_state",
+    "check_unique_trigger_state",
+    "land_trigger_state",
+):
     assert _mid_ingress[_tr] in METEORITE_STATES
 assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
-    "READY", "BOT_BLOCKED", "SCRAPE_ERROR", "LINK_EXPIRED",
+    "CHECK_UNIQUE", "BOT_BLOCKED", "SCRAPE_ERROR", "LINK_EXPIRED",
 }
 
 # AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
@@ -3002,9 +3035,42 @@ assert (
     ]["required"]
     is False
 )
+# AST-1773: employer_name stays optional; never invent a company_name schema key.
+assert (
+    TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"][
+        "employer_name"
+    ]["required"]
+    is False
+)
+assert (
+    "company_name"
+    not in TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+)
 # Outcome vocabulary and text source-ref partition unchanged (AST-1529).
 assert "single_jd_no_link" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
 assert "multi_jd_inline" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
+
+# AST-1773: Ruth duplicate-review after SQL/null-peer detection (invoke owned by AST-1775).
+REVIEW_DUPLICATE_METEORITE_CONFIG = {
+    "task_key": "review_duplicate_meteorite",
+    "outcomes": ("duplicate", "not_duplicate"),
+    "peer_id_response_key": "peer_meteorite_id",
+}
+assert isinstance(REVIEW_DUPLICATE_METEORITE_CONFIG["task_key"], str) and REVIEW_DUPLICATE_METEORITE_CONFIG["task_key"]
+assert len(REVIEW_DUPLICATE_METEORITE_CONFIG["outcomes"]) == 2
+assert len(set(REVIEW_DUPLICATE_METEORITE_CONFIG["outcomes"])) == 2
+assert REVIEW_DUPLICATE_METEORITE_CONFIG["peer_id_response_key"] == "peer_meteorite_id"
+TASK_CONFIG["review_duplicate_meteorite"]["response_schema"]["outcome"]["enum"] = list(
+    REVIEW_DUPLICATE_METEORITE_CONFIG["outcomes"]
+)
+assert (
+    TASK_CONFIG["review_duplicate_meteorite"]["agent_task"]
+    == REVIEW_DUPLICATE_METEORITE_CONFIG["task_key"]
+)
+assert (
+    REVIEW_DUPLICATE_METEORITE_CONFIG["peer_id_response_key"]
+    in TASK_CONFIG["review_duplicate_meteorite"]["response_schema"]
+)
 
 # AST-1529: parse_modes Ruth classify RETIRED — live classify is stage_meteorite.
 # Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
@@ -3218,6 +3284,19 @@ SEED_CONFIG = {
         "    AND d.task_key = 'land_meteorite' "
         "    AND d.trigger_state = 'READY'"
         ")",
+        # AST-1773: uniqueness gate before land
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'check_unique_meteorite', 'meteorite', 'CHECK_UNIQUE', 'updated_at', "
+        "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'check_unique_meteorite' "
+        "    AND d.trigger_state = 'CHECK_UNIQUE'"
+        ")",
     ),
     # stat.dispatch.entity-state-bound: per-candidate BOT_BLOCKED Estelle notify runner
     # (was NULL candidate_id global pool pre-remediation).
@@ -3242,7 +3321,8 @@ SEED_CONFIG = {
         "DELETE FROM dispatch_task "
         "WHERE candidate_id IS NULL "
         "  AND task_key IN ("
-        "'stage_meteorite', 'scrape_meteorite', 'land_meteorite', 'meteorite_bot_blocked_notify'"
+        "'stage_meteorite', 'scrape_meteorite', 'check_unique_meteorite', "
+        "'land_meteorite', 'meteorite_bot_blocked_notify'"
         ")",
     ),
 }
@@ -3583,6 +3663,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return METEORITE_INGRESS_DISPATCH_CONFIG["stage_trigger_state"]
     if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]:
         return METEORITE_INGRESS_DISPATCH_CONFIG["scrape_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_trigger_state"]
     if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]:
         return METEORITE_INGRESS_DISPATCH_CONFIG["land_trigger_state"]
     if task_key == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]:
@@ -3630,6 +3712,7 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if task_key in (
         METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
         METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
         METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
         METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],
     ):
