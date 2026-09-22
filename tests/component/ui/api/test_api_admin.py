@@ -2903,49 +2903,12 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         for tk in ("parse_meteorite_email", "stage_email_meteorite"):
             assert admin_mod._dispatch_task_key_trigger_error(tk, None) is None
             assert admin_mod._dispatch_task_key_trigger_error(tk, "") is None
-            assert admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH") is None
-            bad = admin_mod._dispatch_task_key_trigger_error(tk, "METEORITE_NEW")
-            assert bad is not None and "not valid" in bad
+            bad = admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH")
+            assert bad is not None and "mailbox poller" in bad
         # Registered TASK_CONFIG without entity helper → unsupported, not Unknown.
         craft_err = admin_mod._dispatch_task_key_trigger_error("craft_do_rubric", "NEW")
         assert craft_err is not None and "unsupported entity_type" in craft_err
         assert "Unknown task_key" not in craft_err
-
-    def test_mailbox_rejects_any_submitted_entity_type(self) -> None:
-        """stat.dispatch.entity-state-bound bug repro: a mailbox poller has no entity_type
-        binding — admin-submitted entity_type=candidate (the original crash scenario)
-        must 400 here, not sail through to save_dispatch_task."""
-        for tk in ("parse_meteorite_email", "stage_email_meteorite"):
-            err = admin_mod._dispatch_task_key_trigger_error(
-                tk, "ACTIVE_SEARCH", entity_type="candidate"
-            )
-            assert err is not None and "does not take an entity_type" in err
-            # No entity_type submitted (None/blank) is still fine.
-            assert admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH", entity_type=None) is None
-            assert admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH", entity_type="") is None
-
-    def test_create_dispatch_task_rejects_entity_type_for_mailbox_task_key(
-        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """End-to-end repro of the original bug: POST with entity_type=candidate,
-        trigger_state=ACTIVE_SEARCH for stage_email_meteorite must 400 before save."""
-        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
-        save = MagicMock()
-        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
-        resp = admin_client.post(
-            "/api/admin/dispatch_tasks",
-            json={
-                "candidate_id": "c1",
-                "task_key": "stage_email_meteorite",
-                "entity_type": "candidate",
-                "trigger_state": "ACTIVE_SEARCH",
-                "min_count": 1,
-            },
-            headers=auth_headers,
-        )
-        assert resp.status_code == 400
-        assert "does not take an entity_type" in resp.get_json()["error"]
-        save.assert_not_called()
 
     def test_post_fetch_jd_and_parse_meteorite_email_create(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch

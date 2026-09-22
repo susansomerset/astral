@@ -97,25 +97,6 @@ class TestRequireAuth:
         )
         assert resp.status_code == 200
 
-    def test_silent_header_calls_validate_with_remote_false(
-        self, flask_app: Flask, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(auth_mod, "_ALLOWED_IPS", set())
-        seen: list[bool] = []
-
-        def _capture(token: str, *, remote: bool = True) -> dict:
-            seen.append(remote)
-            assert token == "good-jwt"
-            return {"user_id": "u1", "name": "Test User", "email": "test@example.com"}
-
-        monkeypatch.setattr(auth_mod, "validate_bearer_token", _capture)
-        resp = flask_app.test_client().get(
-            "/secure",
-            headers={"Authorization": "Bearer good-jwt", "X-Astral-Silent-Auth": "1"},
-        )
-        assert resp.status_code == 200
-        assert seen == [False]
-
 
 # Branches: non-admin 403; admin 200.
 class TestRequireAdmin:

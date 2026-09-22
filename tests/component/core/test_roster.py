@@ -4373,7 +4373,7 @@ class TestFinalize469BranchCoverage:
         monkeypatch.setattr(roster_mod, "find_job_containers", MagicMock(return_value=[]))
         monkeypatch.setattr(roster_mod, "_save_company", MagicMock())
         log_note = MagicMock()
-        monkeypatch.setattr(roster_mod.logger, "debug", log_note)
+        monkeypatch.setattr(roster_mod.logger, "test", log_note)
         await roster_mod._finalize_joblist_titles_after_chain(
             {"job_titles": ["Y"], "response_type": "JOBLIST_TITLES"},
             {"parsed_response": {"job_container": "m", "job_tag": "a"}},
@@ -4531,7 +4531,7 @@ class TestAst505InflowDiscovery:
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
-        with caplog.at_level("ERROR", logger="src.core.roster"):
+        with caplog.at_level("WARNING", logger="src.core.roster"):
             out = await roster_mod.run_inflow_discovery_batch(cand, "b", {}, False)
         assert out["total_errors"] == 1
         rows = {r["search_term"]: r["last_scan_at"] for r in db.list_company_search_terms("c1")}
@@ -4539,9 +4539,8 @@ class TestAst505InflowDiscovery:
         assert rows["bad"] is None
         assert db.get_company("ok_example") is not None
         combined = "\n".join(r.message for r in caplog.records)
-        assert "CSE search term 'bad'" in combined
-        assert "Continuing to the next search term" in combined
-        assert "CSE term error(s)" not in combined
+        assert "CSE failed for term 'bad'" in combined
+        assert "1 CSE term error(s) for candidate c1" in combined
 
     @pytest.mark.asyncio
     async def test_run_batch_searches_only_stale_terms(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4606,7 +4605,7 @@ class TestAst505InflowDiscovery:
 
 
 class TestAst837CsePaceDebug:
-    """CSE pace_detail always calls logger.debug; logger ContextVar decides emit."""
+    """AST-837 / AST-839: roster passes log.debug_detail as pace_detail when debug=True."""
 
     @pytest.mark.asyncio
     async def test_discovery_debug_streams_pace_detail_during_search(
@@ -4617,8 +4616,11 @@ class TestAst837CsePaceDebug:
         db.sync_company_search_terms("c1", ["fintech"])
         events: list[str] = []
 
-        def _debug(message: str, *args: Any, **_kwargs: Any) -> None:
-            events.append(str(message) % args if args else str(message))
+        def _debug_index(**kwargs: Any) -> None:
+            events.append(f"index:{kwargs.get('outcome')}")
+
+        def _debug_detail(msg: str) -> None:
+            events.append(f"detail:{msg}")
 
         def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
             pace_detail = kwargs.get("pace_detail")
@@ -4627,17 +4629,18 @@ class TestAst837CsePaceDebug:
             return [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
 
         monkeypatch.setattr(roster_mod, "search_google_cse", _cse)
-        monkeypatch.setattr(roster_mod.logger, "debug", _debug)
+        monkeypatch.setattr(roster_mod.logger, "debug_index", _debug_index)
+        monkeypatch.setattr(roster_mod.logger, "debug_detail", _debug_detail)
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
         await roster_mod.run_inflow_discovery_batch(cand, "batch-839", cand, True)
-        assert any("Calling search_google_cse" in e for e in events)
+        assert events[0] == "index:CSE search"
         http_idx = next(i for i, e in enumerate(events) if "CSE HTTP start=" in e)
-        complete_idx = next(i for i, e in enumerate(events) if "Response from search_google_cse" in e)
+        complete_idx = next(i for i, e in enumerate(events) if e.startswith("detail:search complete:"))
         assert http_idx < complete_idx
 
 
 class TestAst839CseDebugStreaming:
-    """CSE search always logs Calling/Response via logger.debug; pace_detail is the same channel."""
+    """AST-839: pre-search index header + search complete detail (no pace_lines buffer)."""
 
     @pytest.mark.asyncio
     async def test_resolve_debug_streams_pre_search_index_and_complete_detail(
@@ -4647,10 +4650,16 @@ class TestAst839CseDebugStreaming:
         db.save_company("acme", state="NEW", company_name="Acme Corp")
         events: list[str] = []
 
-        def _debug(message: str, *args: Any, **_kwargs: Any) -> None:
-            events.append(str(message) % args if args else str(message))
-
-        monkeypatch.setattr(roster_mod.logger, "debug", _debug)
+        monkeypatch.setattr(
+            roster_mod.logger,
+            "debug_index",
+            lambda **kwargs: events.append(f"index:{kwargs.get('outcome')}"),
+        )
+        monkeypatch.setattr(
+            roster_mod.logger,
+            "debug_detail",
+            lambda msg: events.append(f"detail:{msg}"),
+        )
         def _cse(**kwargs: Any) -> List[Dict[str, str]]:
             pace_detail = kwargs.get("pace_detail")
             if pace_detail is not None:
@@ -4665,9 +4674,9 @@ class TestAst839CseDebugStreaming:
         )
         entity = {"company_name": "Acme Corp", "company_website": ""}
         await roster_mod.resolve_company_website("acme", entity, {}, True)
-        assert any("Calling search_google_cse" in e for e in events)
+        assert events[0] == "index:CSE search"
         assert any("CSE HTTP start=" in e for e in events)
-        assert any("Response from search_google_cse" in e for e in events)
+        assert any(e.startswith("detail:search complete:") for e in events)
 
 
 class TestAst775InflowDiscoveryRecordNew:
@@ -5600,10 +5609,11 @@ class TestAst877OriginatingSearchTerm:
         db.sync_company_search_terms("c877", ["fintech"])
         details: list[str] = []
 
-        def _debug(message: str, *args: Any, **_kwargs: Any) -> None:
-            details.append(str(message) % args if args else str(message))
-
-        monkeypatch.setattr(roster_mod.logger, "debug", _debug)
+        monkeypatch.setattr(
+            roster_mod.logger,
+            "debug_detail",
+            lambda msg: details.append(msg),
+        )
         monkeypatch.setattr(
             roster_mod,
             "search_google_cse",
@@ -5611,7 +5621,7 @@ class TestAst877OriginatingSearchTerm:
         )
         cand = {"astral_candidate_id": "c877", "candidate_data": {}}
         await roster_mod.run_inflow_discovery_batch(cand, "batch-877-dbg", cand, True)
-        assert any("term='fintech'" in d for d in details)
+        assert any("originating_search_term='fintech'" in d for d in details)
 
 
 def _mock_parse_batch_browser_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
@@ -5762,6 +5772,29 @@ class TestAst891ParseJobListBatch:
         assert seen == [batch_session, batch_session]
 
     @pytest.mark.asyncio
+    async def test_scrape_timeout_labeled_infra_and_counts_passed(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        _mock_parse_batch_browser_session(monkeypatch)
+        save = MagicMock()
+        monkeypatch.setattr(roster_mod, "_save_parse_dispatch_failure", save)
+        save.return_value = {
+            "state": "JOBLIST_IDENTIFIED_RETRY",
+            "response_type": "PARSE_DISPATCH_INFRA",
+        }
+
+        async def _slow(*_a, **_k):
+            await asyncio.sleep(5)
+            return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
+
+        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _slow)
+        monkeypatch.setitem(roster_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
+        out = await roster_mod.parse_job_list_batch("batch-891", [self._co("acme")])
+        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
+        assert save.call_args.kwargs["response_type"] == "PARSE_DISPATCH_INFRA"
+        assert save.call_args.kwargs["notes"].startswith("[playwright:scrape_timeout]")
+
+    @pytest.mark.asyncio
     async def test_unhandled_gather_exception_increments_errors_and_continues(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -5785,12 +5818,13 @@ class TestAst891ParseJobListBatch:
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         _mock_parse_batch_browser_session(monkeypatch)
-        debugs: list[str] = []
+        indexes: list = []
         monkeypatch.setattr(
             roster_mod.logger,
-            "debug",
-            lambda message, *args, **_k: debugs.append(str(message) % args if args else str(message)),
+            "debug_index",
+            lambda **kwargs: indexes.append(kwargs),
         )
+        monkeypatch.setattr(roster_mod.logger, "debug_detail", lambda *_a, **_k: None)
         monkeypatch.setattr(
             roster_mod,
             "get_company",
@@ -5802,7 +5836,9 @@ class TestAst891ParseJobListBatch:
             AsyncMock(return_value={"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}),
         )
         await roster_mod.parse_job_list_batch("batch-891", [self._co("acme")], debug=True)
-        assert any("acme" in d and "run_parse_job_list_dispatch" in d for d in debugs)
+        assert indexes
+        assert indexes[0]["func"] == "roster.parse_job_list_batch"
+        assert indexes[0]["identifier"] == "acme"
 
 
 class TestAst897HoldStateOnBalanceRefusal:

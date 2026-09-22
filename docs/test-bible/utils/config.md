@@ -1478,13 +1478,13 @@ Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_E
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1071-contact-config-acl-entity-save-skills`.
 
-`CONTACT_CONFIG["skills"]`: `save_candidate_profile` (name columns `first`/`last`/`pronouns`) + `save_candidate_contact` (`contact.contact_email` / `contact.reply_email`) with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+`CONTACT_CONFIG["skills"]`: `save_candidate_profile` + `save_candidate_contact` with `entity`/`write`/`description`/`allowed_paths` (no `contact.slack_user_id`; keys ∉ `TASK_CONFIG`). Core runners + admin API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Two skill ACL entries + path inventory | `src/utils/config.py` | **`TestAst1071ContactSkillsConfig`** |
 
-**Broken / obsolete:** AST-1066 empty-skills asserts — revised above. `profile.*` allowed_paths retired (AST-1014 name columns / contact blob).
+**Broken / obsolete:** AST-1066 empty-skills asserts — revised above.
 
 **Integration:** none.
 
@@ -3460,6 +3460,14 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 
+### AST-1691 · AST-1685
+
+Meteorite top tab + sections. Primary: meteorites.md § AST-1691.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tabs/sections | `src/utils/config.py` | **`TestAst1691MeteoriteReportConfig`** |
+
 ### AST-1612 · AST-1607
 
 **Parent:** [AST-1607](https://linear.app/astralcareermatch/issue/AST-1607/artifacts-discussion-is-incomplete). **Publish:** `origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`. Product: **AST-1609** (`origin/sub/AST-1607/AST-1609-fix-artifacts-discussion-incomplete`).
@@ -4259,3 +4267,52 @@ Jobs → Meteorites `NAV_CONFIG` item at `/jobs/meteorites` (enabled); Companies
 ## QA test manifest
 
 See **`docs/test-bible/frontend/pages.md`** § AST-1749.
+
+### AST-1773 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts`.
+
+`METEORITE_STATES` gains `CHECK_UNIQUE` / `DUPLICATE`; `READY` priors become `CHECK_UNIQUE` + `BOT_BLOCKED`; scrape `"ok"` → `CHECK_UNIQUE`; land trigger stays `READY`; `check_unique_meteorite` ingress key + SEED/retire; optional `employer_name` pin (no `company_name`); `REVIEW_DUPLICATE_METEORITE_CONFIG` + `TASK_CONFIG["review_duplicate_meteorite"]`. Catalog prompts / dispatch row: **`docs/test-bible/core/repo_admin_json.md`** § AST-1773. SQL runner / Ruth invoke stay siblings **AST-1774** / **AST-1775**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry + ingress + review_duplicate + employer pin | `src/utils/config.py` | **`TestAst1773CheckUniqueRegistryAndCatalogs`**; revised **`TestAst1557MeteoriteStates::test_seven_keys_and_new_entry`**, **`TestAst1560IngressDispatchConfig`**, **`TestAst1712…::test_classify_states_and_no_dispatch_triggers`**, **`TestAst1621…::test_ingress_and_bot_blocked_seeds_entity_type_meteorite`** |
+
+**Broken / obsolete this pass:**
+- Exact `METEORITE_STATES` sets and scrape `ok`→`READY` in **`TestAst1557`**, **`TestAst1560`**, **`TestAst1712`** — revised for `CHECK_UNIQUE` / `DUPLICATE`.
+- Ingress seed without `check_unique_meteorite` — revised.
+- Retention partition asserts inside **`TestAst1712…::test_classify_states…`** (product no longer exports `METEORITE_STATES_RETENTION` on `origin/dev`) — dropped from that method; full retention classes stay for a separate pass.
+
+**Integration:** none — no existing scenario asserts `CHECK_UNIQUE` / `check_unique_meteorite` / `review_duplicate_meteorite`.
+
+## QA test manifest
+
+1. Registry + ingress + review_duplicate + employer pin: `tests/component/utils/test_config.py::TestAst1773CheckUniqueRegistryAndCatalogs`
+2. Closed-set + priors (revised): `tests/component/utils/test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry`
+3. Ingress config + seed (revised): `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig`
+4. Classify closed set (revised): `tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers`
+5. Entity-type seed + retire (revised): `tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry::test_ingress_and_bot_blocked_seeds_entity_type_meteorite`
+6. Catalog prompts + review row + dispatch + fixture: `tests/component/core/test_repo_admin_json.py::TestAst1773StageEmployerNameAndReviewDuplicateCatalog`
+7. Catalog membership 57: `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_57_current_catalog_keys`
+8. Prior job_title prompts: `tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts`
+9. Prior stage Ruth shell: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+10. Fixture byte identity: `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1773CheckUniqueRegistryAndCatalogs \
+  tests/component/utils/test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers \
+  tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry::test_ingress_and_bot_blocked_seeds_entity_type_meteorite \
+  tests/component/core/test_repo_admin_json.py::TestAst1773StageEmployerNameAndReviewDuplicateCatalog \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_57_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/utils/config.md`
+- `docs/test-bible/core/repo_admin_json.md`

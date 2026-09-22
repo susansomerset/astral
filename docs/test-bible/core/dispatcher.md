@@ -82,7 +82,7 @@ Equivalent harness:
 | Touched path | Existing tests |
 | --- | --- |
 | `_run_unified` claim / chunk / batch-call / network skip | **`TestRunUnified`** (`test_returns_zero_without_debug_logging`, `test_ast502_chunked_evaluate_await_chunk0_sleep_once_then_gather_tails`, inflow rows) |
-| `_run_dispatch_loop` min_count / drain / max_runs / zero processed / Sweep vs Run | **`TestRunDispatchLoop`** |
+| `_run_dispatch_loop` min_count / drain / max_runs / zero processed | **`TestRunDispatchLoop`** |
 | `_dispatch_one` scheduler handoff | **`TestDispatchOne`** |
 | `_run_task` debug=False passthrough | **`TestRunTask::test_runs_without_debug_logging`** |
 | `_check_circuit_breaker` | **`TestCircuitBreaker`** |
@@ -106,7 +106,7 @@ Equivalent harness:
 
 ### AST-802 · AST-801
 
-**AST-802:** When **`inflow_discovery`** dispatch loop skips for **`available < min_count`** at first iteration, emit eligibility reason via **`database.describe_candidate_inflow_discovery_eligibility`** → **`logger.debug`**. Narrow exception to **AST-615** no log-string policy — **`eligibility:`** substring only.
+**AST-802:** When **`inflow_discovery`** dispatch loop skips for **`available < min_count`** at first iteration with **`debug=True`**, emit eligibility reason via **`database.describe_candidate_inflow_discovery_eligibility`** → **`logger.debug_detail`**. Narrow exception to **AST-615** no log-string policy — **`eligibility:`** substring only.
 
 | Behavior | Sources | Manifest tests |
 | --- | --- | --- |
@@ -184,12 +184,12 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 
 ### AST-1022 · AST-1018
 
-**AST-1022:** Candidate stage-dispatch rows seed **AUTO off** from `CANDIDATE_STAGE_DISPATCH.auto_mode`; `ensure_candidate_stage_dispatch_tasks` reads config (insert-missing only — never rewrites existing `auto_mode`). Tick helper `_debug_log_auto_off_stage_skips` logs AUTO-off + `debug` stage rows that meet `min_count` (`Beginning`/`Calling`/`End`); does not spawn. `get_due_tasks` / CLICK `run_task(..., ui_initiated=True)` unchanged.
+**AST-1022:** Candidate stage-dispatch rows seed **AUTO off** from `CANDIDATE_STAGE_DISPATCH.auto_mode`; `ensure_candidate_stage_dispatch_tasks` reads config (insert-missing only — never rewrites existing `auto_mode`). Tick Style D helper `_debug_log_auto_off_stage_skips` logs AUTO-off + `debug` stage rows that meet `min_count` (index N/M); does not spawn. `get_due_tasks` / CLICK `run_task(..., ui_initiated=True)` unchanged.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Config seed `auto_mode: False` | `src/utils/config.py` | **`TestAst1022HonorAutoOffStageDispatch`** (`test_config.py`) |
-| Ensure seed + persist; AUTO-off skip debug; tick calls helper before spawn | `src/core/dispatcher.py` | **`TestAst1022HonorAutoOffStageDispatch`**; revised **`_run_one_tick`** / **`TestScheduler`** (list_dispatch_tasks stub) |
+| Ensure seed + persist; Style D skip; tick calls helper before spawn | `src/core/dispatcher.py` | **`TestAst1022HonorAutoOffStageDispatch`**; revised **`_run_one_tick`** / **`TestScheduler`** (list_dispatch_tasks stub) |
 
 **Broken / obsolete:** tick unit helpers must stub `list_dispatch_tasks` (new side path) — same DB-free contract as AST-972 `age_stale` stub.
 
@@ -475,11 +475,23 @@ Mailbox branch awaits **`check_inbox`** — revised **`TestAst1090GazeEmailDispa
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1560-stage-scrape-land-transitions`.
 
-`_dispatch_one` custom branch before mailbox / `_run_unified`: mints `entity_batch_id`, sets `task["entity_batch_id"]`, routes `stage_meteorite` / `scrape_meteorite` / `land_meteorite` through `_run_dispatch_loop` → `_run_task` (not consult). **Sweep** (UI + AUTO) is one batch; **Run** (CLICK) honours `max_runs`. **`TestRunDispatchLoop::test_sweep_ui_initiated_auto_is_one_batch`**, **`test_click_honours_max_runs`**, **`TestAst1560IngressTransitionDispatchOne`** (`test_click_loops_to_max_runs`). Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+`_dispatch_one` custom branch before mailbox / `_run_unified`: mints `entity_batch_id`, sets `task["entity_batch_id"]`, routes `stage_meteorite` / `scrape_meteorite` / `land_meteorite` to meteorite transition runners (not consult). **`TestAst1560IngressTransitionDispatchOne`**. Runners: **`docs/test-bible/core/meteorite.md`** § AST-1560.
 
 **Integration:** none revised.
 
 Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1560.
+
+---
+
+### AST-1774 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions`.
+
+Ingress adds `check_unique_meteorite` twin of stage/scrape (provision via `_ensure_ingress_transition_tasks` + route in `_run_dispatch_loop` / `_dispatch_one`). Assertions live on **`TestAst1560IngressTransitionDispatchOne`** (`test_routes_check_unique_…`, `test_ensure_ingress_includes_check_unique`). Runners + stage/scrape retarget: **`docs/test-bible/core/meteorite.md`** § AST-1774.
+
+**Integration:** none revised.
+
+Primary numbered manifest: **`docs/test-bible/core/meteorite.md`** § AST-1774.
 
 ---
 
