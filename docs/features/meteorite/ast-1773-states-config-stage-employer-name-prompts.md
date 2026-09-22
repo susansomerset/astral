@@ -277,3 +277,29 @@ python3 -m py_compile src/utils/config.py
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```text
+[plan-rubric]
+**Ticket:** AST-1773
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts` @ `4e0d2929b0fa1461065d7c6050684f2b1ed268e5`
+
+## Canon scores
+
+astral.dispatch.entity-state-bound | A | | Stage 1 wires CHECK_UNIQUE registry + ingress keys, helper branches, SEED INSERT, and dispatch_task row with trigger_state CHECK_UNIQUE
+astral.entity.required-metadata | X | | id-only; no `src/data/database.py` or new entity columns in this slice
+stat.logging.debug | X | | id-only; config/catalog only — no new `logger.debug` call sites (siblings own noisy match detail)
+
+## Traceability
+
+AC1 → Stage 1 step 5 (employer_name optional pin) + Stage 3 steps 1–3 (prompts teach optional `employer_name`); AC2 → Stage 3 `## EMPLOYER NAME (optional)` + user_prompt never-invent language; AC3 → Stage 1 step 4 (six Ruth outcomes unchanged; row states only in registry); AC4 → Stage 1 steps 2–3 (`land_trigger_state` stays `READY`; CHECK_UNIQUE/DUPLICATE not landable); AC5 → Stage 1 step 1 (closed `METEORITE_STATES` set + import asserts). Parent AC3 / AC5–AC8 → N/A (AST-1774 / AST-1775 per plan **AC partition**).
+
+## Findings
+
+(none — no fix-now or discuss items)
+
+context_tokens≈55000
+```
