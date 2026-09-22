@@ -664,6 +664,20 @@ describe("JobAnalysisReportModal — AST-950 Analysis tab grades and confidence"
     )
     expect(document.querySelector(".grade-dot.dot-a")).toBeTruthy()
     expect(document.querySelector(".grade-dot.dot-b")).toBeTruthy()
+
+    // AST-1771: header + expanded detail share importance+grade order (QC before EFW).
+    const headerCells = document.querySelectorAll(".recommended-report-phase-grade-cell")
+    expect(headerCells[0].querySelector(".grade-dot.dot-b")).toBeTruthy()
+    expect(headerCells[1].querySelector(".grade-dot.dot-a")).toBeTruthy()
+    const firstDotTitle = headerCells[0].querySelector(".grade-dot")?.getAttribute("title") ?? ""
+    expect(firstDotTitle.startsWith("Quality Check")).toBe(true)
+
+    const expands = screen.getAllByRole("button", { name: "Expand section" })
+    await userEvent.click(expands[0])
+    await waitFor(() => expect(document.querySelectorAll(".analysis-vector").length).toBe(2))
+    const vectors = Array.from(document.querySelectorAll(".analysis-vector")).map(el => el.textContent ?? "")
+    expect(vectors[0]).toMatch(/Quality Check/)
+    expect(vectors[1]).toMatch(/Embedded|Firmware/)
   })
 })
 describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
