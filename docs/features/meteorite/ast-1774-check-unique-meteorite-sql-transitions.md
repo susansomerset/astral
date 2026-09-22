@@ -243,3 +243,33 @@ async def run_check_unique_meteorite(task: Dict[str, Any], *, debug: bool = Fals
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1774
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions` @ `ee50f95f102cbccea49e6bebbc901b9659d7d747`
+
+## Canon scores
+
+patt.entity.batch-processing | A |
+patt.entity.batch-criteria | A |
+astral.batch.claim-process-release | A |
+stat.logging.info.entity | A |
+stat.logging.info.dispatcher | A |
+
+## Traceability
+
+AC3 → Stage 1 steps 2–3 (stage `text_source_ref_outcomes` + scrape `ok` arm → `CHECK_UNIQUE`; `apply_paste` / `run_land_meteorite` inspect-only unchanged); AC4 → Stage 2 steps 2–3, 5 (`_landed_peers_for_candidate` LANDED-only; `_title_employer_sql_peers` same-candidate equal non-empty `job_title` + `employer_name`; explicit ban on email/message/JD equality); AC5 → Stage 2 step 4 else-branch (`update_meteorite` → `READY` + `_meteorite_state_info` from `CHECK_UNIQUE`); AC6 → Stage 1 step 4 + Stage 3 (land runner/claim set untouched; `CHECK_UNIQUE` routed as ingress transition only). Parent AC1–2, AC4, AC7–8, AC10 → N/A (AST-1773 registry/prompts; AST-1775 Ruth invoke/map per plan **AC partition**).
+
+## Findings
+
+### acceptable — No `## Self-assessment` block
+- **Severity:** acceptable
+- **Location:** Plan structure — Estimate confirm only
+- **Finding:** Prior meteorite plans sometimes carry a self-assessment paragraph; this plan stops at estimate confirm.
+- **Recommendation:** Optional polish for plan-child parity; not blocking — stages carry done-when gates and explicit ⚠️ decisions.
+
+context_tokens≈42000
