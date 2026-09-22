@@ -116,5 +116,5 @@ context_tokens≈28000
 ## Review
 
 - **Publish ref:** `sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger`
-- **Code tip:** _(filled at Code Complete)_
+- **Code tip:** `29ada8206149520e81d63493a9e7faf56620a5cc`
 
