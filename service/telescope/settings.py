@@ -79,7 +79,8 @@ def load_settings() -> Settings:
         scrape_retry_base_delay_seconds=SCRAPE_RETRY_BASE_DELAY_SECONDS,
         recycle_after_n=RECYCLE_AFTER_N,
         port=PORT,
-        log_level=LOG_LEVEL,
+        log_level=(os.environ.get("TELESCOPE_LOG_LEVEL") or LOG_LEVEL).strip()
+        or LOG_LEVEL,
         page_goto_timeout_ms=PAGE_GOTO_TIMEOUT_MS,
         launch_timeout_ms=LAUNCH_TIMEOUT_MS,
         launch_max_attempts=LAUNCH_MAX_ATTEMPTS,

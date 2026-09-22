@@ -6,6 +6,7 @@ import time
 from typing import Any, Dict
 
 from logging_util import get_logger
+from scrape_debug import scrape_debug_event
 from settings import settings
 
 _log = get_logger(__name__)
@@ -13,6 +14,11 @@ _log = get_logger(__name__)
 
 async def navigate(page, url: str) -> None:
     _log.debug("Calling navigate: [url=%s]", url)
+    scrape_debug_event(
+        "navigate_start",
+        page_id=id(page),
+        url=url,
+    )
     await page.goto(
         url,
         wait_until="domcontentloaded",
@@ -20,6 +26,12 @@ async def navigate(page, url: str) -> None:
     )
     await page.wait_for_timeout(500)
     _log.debug("Response from navigate: final_url=%s", page.url)
+    scrape_debug_event(
+        "navigate_done",
+        page_id=id(page),
+        requested_url=url,
+        final_url=page.url,
+    )
 
 
 async def _try_dismiss_cookie_banner(page) -> bool:
@@ -195,4 +207,12 @@ async def wait_ready_generic(page) -> Dict[str, Any]:
         "wait_ms": wait_ms,
     }
     _log.debug("Response from wait_ready_generic: %s", result)
+    scrape_debug_event(
+        "ready_state",
+        page_id=id(page),
+        ready=ready,
+        outcome=outcome,
+        visible_chars=visible_chars,
+        wait_ms=wait_ms,
+    )
     return result

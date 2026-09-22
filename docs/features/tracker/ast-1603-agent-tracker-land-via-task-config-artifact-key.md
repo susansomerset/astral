@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-1603 archived 2026-09-22 -->
+
+## Linear archive (AST-1603)
+
+**Archived:** 2026-09-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1603/agent-tracker-land-via-task-configartifact-key-rip-out-job-specific  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1601 — Rip out job-specific artifact pin helpers; match candidate catalog pattern  
+**Blocked by / blocks / related:** parent: AST-1601
+
+### Description
+
+## What this implements
+
+After #1: rewire `do_task` finalize land to `TASK_CONFIG.artifact_key` → `save_job_artifact`; remove body-replica map branches; collapse/remove `prepare_job_replica_body` as a required public peer; strip `job_resume` / `cover_letter` from pin-key vocabulary; keep proposed_answers pin resolve and generic catalog write/read. Does not re-own config registration (#1). Does not catalog `proposed_answers`.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `astral.standards.dry-and-focused-functions`; `astral.standards.public-then-helpers`; `astral.standards.debug-contract-gated`; `astral.layers.import-direction`; `astral.standards.in-scope-only`
+
+## Scope
+
+`src/core/agent.py` — **modified** — finalize land uses `TASK_CONFIG` `artifact_key` → `save_job_artifact`; remove imports/branches on `JOB_ARTIFACT_BODY_REPLICA_BY_TASK`. `src/core/tracker.py` — **modified** — remove or privatize job-only replica-prepare peer (`prepare_job_replica_body`) so land does not depend on a parallel public helper; strip `job_resume` / `cover_letter` from pin-key vocabulary (`_JOB_ARTIFACT_PIN_KEYS` and peers); keep proposed_answers pin resolve; keep generic `save_job_artifact` / `get_job_current`. `src/core/agent.py` — Replace body-replica map lookup with `TASK_CONFIG.get(task_key, {}).get("artifact_key")`; when present and hop succeeds with index, prepare body then `save_job_artifact(index, artifact_key, body)`. Proposed_answers pin branch unchanged. Debug skips stay Style D / debug-gated. `src/core/tracker.py` — Body prepare for finalize land either moves beside the generic write as a private helper or stays callable without being a job-only public peer required by a parallel map. `_JOB_ARTIFACT_PIN_KEYS` (or successor) lists only remaining pin slots (`proposed_answers`); hydrate continues overlaying catalog currents for the two keys via `get_job_current`. No new type-specific public save for job_resume / cover_letter.
+
+## Acceptance criteria
+
+- [X] 3. Successful finalize hops persist bodies only via `save_job_artifact(entity_id, catalog_key, body)` driven by `TASK_CONFIG` `artifact_key` — same calling shape candidate uses for catalog str-path save.
+- [X] 4. No production pin write or pin-key list treats `job_resume` or `cover_letter` as agent_data pin slots.
+- [X] 5. `get_job_current` / hydrate for those two keys still serves display from the artifacts table (AST-1588 SoT preserved).
+- [X] 6. `proposed_answers` pin path (`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` + `pin_job_artifact_agent_data_id`) still works unchanged.
+
+## Boundaries
+
+- [X] Does not re-own config registration (#1). Does not catalog `proposed_answers`. No coat-check. No new body-validation gates.
+
+## Notes for planning
+
+Citations above. After #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Primary catalog land: `tests/component/core/test_agent.py::TestAst1603DoTaskCatalogLandViaArtifactKey`
+2. Revised finalize mid-chain / propose pin: `tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin`
+3. Revised body replica nodes: `tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica`
+4. Revised store-fail land: `tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand`
+5. Tracker pin keys + private prepare: `tests/component/core/test_tracker.py::TestAst1603TrackerPinKeysAndPrivatePrepare`
+6. Revised prepare coat-check helpers: `tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers`
+7. Revised catalog write/read citation: `tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation`
+8. Revised table-SoT saves (candidate_id stub): `tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_job_resume_body_writes_artifacts_table_not_job_data` + `test_save_cover_letter_writes_artifacts_table_not_job_data`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1603DoTaskCatalogLandViaArtifactKey \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  tests/component/core/test_agent.py::TestAst1554DoTaskBodyReplica \
+  tests/component/core/test_agent.py::TestAst1600DoTaskBodyReplicaLand \
+  tests/component/core/test_tracker.py::TestAst1603TrackerPinKeysAndPrivatePrepare \
+  tests/component/core/test_tracker.py::TestAst1554BodyReplicaPersistHelpers \
+  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_job_resume_body_writes_artifacts_table_not_job_data \
+  tests/component/core/test_tracker.py::TestAst1556JobArtifactsTableSoT::test_save_cover_letter_writes_artifacts_table_not_job_data \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/agent.md` — `f0ce1e6f20c6bcf4fb8c98333e80b287ed4f7f2ad486391bda4184bd90731e72`
+* `docs/test-bible/core/tracker.md` — `a13f234718b4c2228b79f434b4bfab46dd7e4a68bc25ec5c33ec389f452fcebc`
+
+**Broken / obsolete revised:** public `prepare_job_replica_body` mocks/calls; body-replica map land; `_candidate_id_for_job → None` stubs under save_job_artifact (AST-1600 cid required).
+
+### Comments
+
+#### radia — 2026-09-07T00:45:52.545Z
+[code-rubric] PROCEED (Commit: eb2c4e8e) agent land via artifact_key clean
+
+#### betty — 2026-09-07T00:42:10.971Z
+origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key @ eb2c4e8e · artifact_key land tests
+
+#### joan — 2026-09-07T00:34:30.389Z
+[plan-rubric] PROCEED (Commit: bef33598) agent land plan clean
+
+#### hedy — 2026-09-07T00:32:28.127Z
+`origin/sub/AST-1601/AST-1603-agent-tracker-land-via-task-config-artifact-key` @ `bef3359881751500ee482c3e22a901439f3500a8` · plan ready
+
+---
+
 # AST-1603: Agent + tracker land via TASK_CONFIG.artifact_key
 
 **Linear:** [AST-1603](https://linear.app/astralcareermatch/issue/AST-1603)

@@ -1,3 +1,93 @@
+<!-- linear-archive: AST-1602 archived 2026-09-22 -->
+
+## Linear archive (AST-1602)
+
+**Archived:** 2026-09-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1602/retire-job-body-replica-config-authority-rip-out-job-specific-artifact  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1601 — Rip out job-specific artifact pin helpers; match candidate catalog pattern  
+**Blocked by / blocks / related:** parent: AST-1601; blocks: AST-1603
+
+### Description
+
+## What this implements
+
+Owns config-only alignment: put `artifact_key` on the two finalize TASK_CONFIG rows, delete `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` and its asserts, derive editable job catalog leaf types from catalog / `artifact_key` values. Does not rewire agent or tracker call sites (sibling #2). Blocks #2.
+
+## Citations
+
+`pattern.config.config-block`; `patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`
+
+## Scope
+
+`src/utils/config.py` — **modified** — add `artifact_key` on `finalize_job_resume` / `finalize_cover_letter` TASK_CONFIG entries; delete `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` and its asserts; re-derive `JOB_EDITABLE_ARTIFACT_TYPES` (or equivalent) from catalog / task `artifact_key` values; leave `proposed_answers` pin map untouched. `src/utils/config.py` — Set `artifact_key` to `job.artifacts.job_resume` / `job.artifacts.cover_letter` on the two finalize TASK_CONFIG rows (mirroring `craft_resume_base`). Delete `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` and every assert/derivation that treats it as SoT. Derive editable job catalog leaf types from those `artifact_key` values (or from `ARTIFACT_CONFIG` job-scoped keys that are operator-editable). Keep `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` for `propose_application_responses` only.
+
+## Acceptance criteria
+
+- [X] `TASK_CONFIG["finalize_job_resume"]` and `TASK_CONFIG["finalize_cover_letter"]` each expose `artifact_key` equal to the matching `ARTIFACT_CONFIG` key.
+- [X] `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` does not exist in config (production caller import removal is AST-1603 per Boundaries).
+- [X] `proposed_answers` pin path (`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` + `pin_job_artifact_agent_data_id`) still works unchanged.
+- [X] Sibling non-catalog blobs (`notes`, `resume_content`, `application_responses`) are not added to `ARTIFACT_CONFIG`.
+
+## Boundaries
+
+- [X] Does not rewire agent or tracker call sites (sibling #2).
+- [X] Does not catalog `proposed_answers`.
+
+## Notes for planning
+
+Citations above. Config-only slice.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Primary finalize artifact_key authority: `tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority`
+2. Revised pin/body-replica class: `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig`
+3. Revised catalog + editable derivation: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys`
+4. Pilot membership regression: `tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey`
+5. JAR leaf tabs regression: `tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys` + `TestAst1116CoverLetterDataShapes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority \
+  tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys \
+  tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey \
+  tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
+  tests/component/utils/test_config.py::TestAst1116CoverLetterDataShapes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/utils/config.md` — `1131063da4e37c1049571b8e2a363507d28c1bc5b8a059931a58fe0095999462`
+
+**Broken / obsolete revised this pass:** `JOB_ARTIFACT_BODY_REPLICA_BY_TASK` asserts in TestAst1099 / TestAst1590. Agent body-replica import breakage is intentional until AST-1603 — not on this manifest.
+
+### Comments
+
+#### radia — 2026-09-07T00:26:23.279Z
+[code-rubric] REVIEW (Commit: a5cca41c) config clean; agent import deferred
+
+#### betty — 2026-09-07T00:23:24.465Z
+origin/sub/AST-1601/AST-1602-retire-job-body-replica-config-authority @ a5cca41c · body-replica asserts retired
+
+#### joan — 2026-09-07T00:17:59.664Z
+[plan-rubric] PROCEED (Commit: 0951955c) config authority plan clean
+
+#### ada — 2026-09-07T00:15:56.524Z
+`origin/sub/AST-1601/AST-1602-retire-job-body-replica-config-authority` @ `0951955c93a4b308bff7ca6f22a42eb2c8a72ecd` · config authority plan
+
+---
+
 # AST-1602: Retire job body-replica config authority
 
 **Linear:** [AST-1602](https://linear.app/astralcareermatch/issue/AST-1602)

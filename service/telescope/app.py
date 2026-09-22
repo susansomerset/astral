@@ -22,6 +22,12 @@ from capture import (
 from interact import dismiss_cookies, expand_page, navigate, wait_ready_generic
 from logging_util import configure_logging, get_logger
 from meta import build_scrape_meta
+from scrape_debug import (
+    disable_scrape_debug,
+    enable_scrape_debug,
+    log_scrape_capture,
+    scrape_debug_event,
+)
 from settings import settings
 
 configure_logging()
@@ -69,6 +75,13 @@ class _TelescopeScrapeBody(BaseModel):
     id: Optional[str] = Field(default=None, description=_ID_DESC)
     expand: bool = Field(default=True, description=_EXPAND_DESC)
     wait_ready: bool = False
+    debug: bool = Field(
+        default=False,
+        description=(
+            "When true, emit structured scrape debug events to the service console "
+            "(Firefox slot, context lifecycle, navigation, ready state, capture sizes)."
+        ),
+    )
 
 
 class TelescopeRequest(_TelescopeScrapeBody):
@@ -164,7 +177,10 @@ async def _run_browser_job(
             await expand_page(page)
         if wait_ready:
             await wait_ready_generic(page)
-        return await work(page)
+        result = await work(page)
+        if isinstance(result, dict):
+            log_scrape_capture(result)
+        return result
 
     max_attempts = settings.scrape_retry_count + 1
     last_exc: Optional[Exception] = None
@@ -278,27 +294,46 @@ async def post_telescope(request: Request, body: TelescopeRequest):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
-    sel = _resolve_body_selector(
-        selector=body.selector,
-        tag=body.tag,
-        class_name=body.class_name,
-        id=body.id,
-    )
-    pool: BrowserPool = request.app.state.pool
-    result = await _scrape_with_fields(
-        pool,
-        url=url,
-        expand=body.expand,
-        wait_ready=body.wait_ready,
-        sel=sel,
-        fields=body.fields,
-    )
-    _log.info(
-        "telescope ok method=/telescope final_url=%s fields=%s",
-        result.get("final_url"),
-        list(body.fields),
-    )
-    return result
+    debug_token = enable_scrape_debug() if body.debug else None
+    try:
+        scrape_debug_event(
+            "request_start",
+            method="/telescope",
+            url=url,
+            fields=list(body.fields),
+            expand=body.expand,
+            wait_ready=body.wait_ready,
+        )
+        sel = _resolve_body_selector(
+            selector=body.selector,
+            tag=body.tag,
+            class_name=body.class_name,
+            id=body.id,
+        )
+        pool: BrowserPool = request.app.state.pool
+        result = await _scrape_with_fields(
+            pool,
+            url=url,
+            expand=body.expand,
+            wait_ready=body.wait_ready,
+            sel=sel,
+            fields=body.fields,
+        )
+        _log.info(
+            "telescope ok method=/telescope final_url=%s fields=%s",
+            result.get("final_url"),
+            list(body.fields),
+        )
+        scrape_debug_event(
+            "request_done",
+            method="/telescope",
+            final_url=result.get("final_url"),
+            fields=list(body.fields),
+        )
+        return result
+    finally:
+        if debug_token is not None:
+            disable_scrape_debug(debug_token)
 
 
 @app.post("/telescope/html", dependencies=[Depends(require_bearer)])
@@ -306,29 +341,48 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
-    sel = _resolve_body_selector(
-        selector=body.selector,
-        tag=body.tag,
-        class_name=body.class_name,
-        id=body.id,
-    )
-    pool: BrowserPool = request.app.state.pool
-    result = await _scrape_with_fields(
-        pool,
-        url=url,
-        expand=body.expand,
-        wait_ready=body.wait_ready,
-        sel=sel,
-        fields=["html"],
-    )
-    html = result.get("html")
-    if isinstance(html, list):
-        html_len = sum(len(h or "") for h in html)
-    else:
-        html_len = len(html or "")
-    _log.info(
-        "telescope ok method=/telescope/html final_url=%s html_len=%d",
-        result.get("final_url"),
-        html_len,
-    )
-    return result
+    debug_token = enable_scrape_debug() if body.debug else None
+    try:
+        scrape_debug_event(
+            "request_start",
+            method="/telescope/html",
+            url=url,
+            fields=["html"],
+            expand=body.expand,
+            wait_ready=body.wait_ready,
+        )
+        sel = _resolve_body_selector(
+            selector=body.selector,
+            tag=body.tag,
+            class_name=body.class_name,
+            id=body.id,
+        )
+        pool: BrowserPool = request.app.state.pool
+        result = await _scrape_with_fields(
+            pool,
+            url=url,
+            expand=body.expand,
+            wait_ready=body.wait_ready,
+            sel=sel,
+            fields=["html"],
+        )
+        html = result.get("html")
+        if isinstance(html, list):
+            html_len = sum(len(h or "") for h in html)
+        else:
+            html_len = len(html or "")
+        _log.info(
+            "telescope ok method=/telescope/html final_url=%s html_len=%d",
+            result.get("final_url"),
+            html_len,
+        )
+        scrape_debug_event(
+            "request_done",
+            method="/telescope/html",
+            final_url=result.get("final_url"),
+            html_chars=html_len,
+        )
+        return result
+    finally:
+        if debug_token is not None:
+            disable_scrape_debug(debug_token)

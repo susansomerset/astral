@@ -1,3 +1,68 @@
+<!-- linear-archive: AST-1596 archived 2026-09-22 -->
+
+## Linear archive (AST-1596)
+
+**Archived:** 2026-09-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1596/token-catalog-source-type-typing-split-token-config-add-source-type  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1578 — Split token config: add source-type field (data_field / artifact / special_case) to token catalog, decommission implicit token-list-only model  
+**Blocked by / blocks / related:** parent: AST-1578
+
+### Description
+
+## What this implements
+
+Land `source_type` (+ `artifact_key` on artifact entries) on every `TOKEN_SOURCES` row per the parent classification, config constant for allowed types, startup asserts, and optional thin by-type / artifact-key getters. Does **not** own prompt parsing, claim qualifiers, pin capture, resolve-path rewires, or new `ARTIFACT_CONFIG` keys.
+
+## Citations
+
+`pattern.config.config-block`; `patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.standards.in-scope-only`
+
+## Scope
+
+`src/utils/config.py` — `source_type` / `artifact_key` on `TOKEN_SOURCES`; allowed-type constant; startup asserts; optional thin getters (prose above)
+
+## Acceptance criteria
+
+- [X] Importing `src.utils.config` exposes every `TOKEN_SOURCES` entry with a valid `source_type` of `data_field`, `artifact`, or `special_case`.
+- [X] `BASE_RESUME` is `source_type: artifact` with `artifact_key` equal to `candidate.artifacts.base_resume` and that key exists in `ARTIFACT_CONFIG`.
+- [X] No other current `TOKEN_SOURCES` name is typed `artifact` unless it also has a registered `ARTIFACT_CONFIG` key (today: none besides `BASE_RESUME`).
+- [X] Startup asserts reject missing/invalid `source_type`, artifact entries without a catalog key, and non-artifact entries that carry `artifact_key`.
+- [X] `TOKEN_SOURCES` remains a separate top-level registry from `ARTIFACT_CONFIG` (artifact tokens reference keys; they are not nested inside the artifact catalog).
+- [X] Existing `resolve_tokens` outcomes for unchanged inputs are preserved (no consumer read-current rewire in this epic).
+- [X] Admin token-list endpoints that already return token name lists still function (names unchanged).
+
+## Boundaries
+
+- [X] Does not own prompt parsing, claim qualifiers, pin capture, resolve-path rewires, or new `ARTIFACT_CONFIG` keys (sibling tickets).
+
+## Notes for planning
+
+Parent classification: artifact = BASE_RESUME only; data_field = other candidate path tokens; special_case = chain / pronoun / rubric / config / output_type / job sources. Keep existing `source` / `path` / `serialize` for resolve until consumer rewire siblings land.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-06T03:10:32.759Z
+[code-rubric] PROCEED (Commit: 84fd7635) typed catalog clean
+
+#### betty — 2026-09-06T03:07:21.419Z
+`origin/sub/AST-1578/AST-1596-token-catalog-source-type-typing` @ `84fd7635` · manifest + revisions
+
+#### joan — 2026-09-06T02:54:46.382Z
+[plan-rubric] PROCEED (Commit: bd45f1d631c86198621de8e117964d6ae1f72f3b) typed catalog ready
+
+#### ada — 2026-09-06T02:52:50.617Z
+`origin/sub/AST-1578/AST-1596-token-catalog-source-type-typing` @ `bd45f1d631c86198621de8e117964d6ae1f72f3b` · plan published
+
+---
+
 # Token catalog source_type typing
 
 **Linear:** [AST-1596](https://linear.app/astralcareermatch/issue/AST-1596/token-catalog-source-type-typing-split-token-config-add-source-type)
