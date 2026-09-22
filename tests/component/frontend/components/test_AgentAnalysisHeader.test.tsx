@@ -5,9 +5,11 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import AgentAnalysisHeader from "../../../../src/ui/frontend/src/components/AgentAnalysisHeader"
 import { renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+// AuthContext registers token/401 hooks on mount — keep named exports (AST-1771 keeper).
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -100,5 +102,22 @@ describe("AgentAnalysisHeader", () => {
       />,
     )
     await waitFor(() => expect(screen.getByRole("button", { name: "show rubric" })).toBeInTheDocument())
+  })
+
+  // AST-1771: detail rows share importance+grade order with Recommended header (consult lists EFW first).
+  it("AST-1771: detail rows match importance+grade order", async () => {
+    const grades = [
+      { vector: "Embedded/Firmware/Hardware Domain", grade: "A", confidence: 5, reason: "fit" },
+      { vector: "Quality Check", grade: "B", confidence: 4, reason: "ok" },
+    ]
+    const rubric = [
+      { code: "EFW", label: "Embedded/Firmware/Hardware Domain", importance: 1, grade_descriptions: [] },
+      { code: "QC", label: "Quality Check", importance: 5, grade_descriptions: [] },
+    ]
+    renderWithProviders(<AgentAnalysisHeader grades={grades} rubricItems={rubric} />)
+    await waitFor(() => expect(document.querySelectorAll(".analysis-vector").length).toBe(2))
+    const vectors = Array.from(document.querySelectorAll(".analysis-vector")).map(el => el.textContent ?? "")
+    expect(vectors[0]).toMatch(/Quality Check/)
+    expect(vectors[1]).toMatch(/Embedded|Firmware/)
   })
 })
