@@ -156,25 +156,25 @@ async def _run_browser_job(
 ) -> Tuple[Any, bool]:
     cookies_dismissed = False
 
-    async def _job() -> Any:
+    async def _scrape(page: Any) -> Any:
         nonlocal cookies_dismissed
-        async with pool.page() as page:
-            await navigate(page, url)
-            cookies_dismissed = await dismiss_cookies(page)
-            if expand:
-                await expand_page(page)
-            if wait_ready:
-                await wait_ready_generic(page)
-            return await work(page)
+        await navigate(page, url)
+        cookies_dismissed = await dismiss_cookies(page)
+        if expand:
+            await expand_page(page)
+        if wait_ready:
+            await wait_ready_generic(page)
+        return await work(page)
 
     max_attempts = settings.scrape_retry_count + 1
     last_exc: Optional[Exception] = None
     for attempt in range(max_attempts):
         try:
-            result = await asyncio.wait_for(
-                _job(),
-                timeout=settings.request_timeout_seconds,
-            )
+            async with pool.page() as page:
+                result = await asyncio.wait_for(
+                    _scrape(page),
+                    timeout=settings.request_timeout_seconds,
+                )
             return result, cookies_dismissed
         except asyncio.TimeoutError:
             _log.warning(

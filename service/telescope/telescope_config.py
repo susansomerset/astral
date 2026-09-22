@@ -5,6 +5,7 @@ Import fence forbids reading src/ from service/telescope/.
 Secrets (bearer token) stay in env via settings.py.
 """
 
+# Scrape budget only — starts after a pool slot/page is acquired (not queue wait).
 REQUEST_TIMEOUT_SECONDS = 120
 
 # Scrape retries after Playwright/page flake (initial attempt + 3 retries).
