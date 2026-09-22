@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import asyncio
 from contextlib import asynccontextmanager
-from typing import AsyncIterator, Optional
+from dataclasses import dataclass, field
+from typing import AsyncIterator, List, Optional
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
@@ -14,8 +15,20 @@ from settings import settings
 _log = get_logger(__name__)
 
 
+@dataclass
+class _BrowserSlot:
+    """One Firefox process in the pool — fresh context per acquire."""
+
+    slot_id: int
+    browser: Optional[Browser] = None
+    request_count: int = 0
+    active_pages: int = 0
+    recycle_pending: bool = False
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+
+
 class BrowserPool:
-    """Pooled: one Firefox per replica, fresh context per URL.
+    """Pooled: up to W Firefox processes, fresh context per URL.
 
     Ephemeral (``settings.browser_per_request``): launch Firefox per scrape,
     close browser + context before returning.
@@ -24,23 +37,33 @@ class BrowserPool:
     def __init__(self) -> None:
         self._playwright = None
         self._playwright_cm = None
-        self._browser: Optional[Browser] = None
-        self._lock = asyncio.Lock()
-        self._request_count = 0
+        self._slots: List[_BrowserSlot] = []
+        self._pool_lock = asyncio.Lock()
+        self._slot_available = asyncio.Condition(self._pool_lock)
+        self._pool_size = settings.browser_pool_size
+        self._max_contexts_per_browser = settings.max_contexts_per_browser
         self._recycle_after_n = settings.recycle_after_n
-        self._active_pages = 0
-        self._recycle_pending = False
 
     async def start(self) -> None:
         self._playwright_cm = async_playwright()
         self._playwright = await self._playwright_cm.__aenter__()
-        if not settings.browser_per_request:
-            await self._launch_pooled()
 
     async def stop(self) -> None:
-        async with self._lock:
-            if not settings.browser_per_request:
-                await self._close_browser_best_effort()
+        if settings.browser_per_request:
+            if self._playwright_cm is not None:
+                try:
+                    await self._playwright_cm.__aexit__(None, None, None)
+                except Exception:
+                    pass
+                self._playwright_cm = None
+                self._playwright = None
+            return
+
+        async with self._pool_lock:
+            for slot in self._slots:
+                async with slot.lock:
+                    await self._close_slot_browser_best_effort(slot)
+            self._slots.clear()
             if self._playwright_cm is not None:
                 try:
                     await self._playwright_cm.__aexit__(None, None, None)
@@ -52,27 +75,81 @@ class BrowserPool:
     async def recover(self, reason: str) -> None:
         if settings.browser_per_request:
             return
-        async with self._lock:
-            await self._recover_locked(reason)
+        async with self._pool_lock:
+            slots = list(self._slots)
+        for slot in slots:
+            async with slot.lock:
+                await self._recover_slot_locked(slot, reason)
 
-    async def _recover_locked(self, reason: str) -> None:
-        _log.warning("telescope browser recover reason=%s", reason)
-        await self._close_browser_best_effort()
-        await self._launch_pooled()
-        self._request_count = 0
-        self._recycle_pending = False
+    def _slot_has_capacity(self, slot: _BrowserSlot) -> bool:
+        if slot.recycle_pending:
+            return False
+        if slot.request_count >= self._recycle_after_n:
+            return False
+        if slot.active_pages >= self._max_contexts_per_browser:
+            return False
+        return True
 
-    async def _recover_when_idle_locked(self, reason: str) -> None:
+    def _pick_slot(self) -> Optional[_BrowserSlot]:
+        candidates = [s for s in self._slots if self._slot_has_capacity(s)]
+        if not candidates:
+            return None
+        return min(candidates, key=lambda s: s.active_pages)
+
+    async def _acquire_slot(self) -> _BrowserSlot:
+        async with self._pool_lock:
+            while True:
+                slot = self._pick_slot()
+                if slot is not None:
+                    slot.active_pages += 1
+                    return slot
+                if len(self._slots) < self._pool_size:
+                    slot = _BrowserSlot(slot_id=len(self._slots))
+                    self._slots.append(slot)
+                    slot.active_pages += 1
+                    return slot
+                await self._slot_available.wait()
+
+    async def _release_slot(self, slot: _BrowserSlot) -> None:
+        recycle_now = False
+        async with self._pool_lock:
+            slot.request_count += 1
+            slot.active_pages -= 1
+            if slot.request_count >= self._recycle_after_n and slot.active_pages > 0:
+                slot.recycle_pending = True
+            if slot.active_pages == 0 and (
+                slot.recycle_pending or slot.request_count >= self._recycle_after_n
+            ):
+                recycle_now = True
+            self._slot_available.notify_all()
+
+        if recycle_now:
+            async with slot.lock:
+                await self._recover_when_idle_locked(slot, "recycle")
+
+    async def _recover_slot_locked(self, slot: _BrowserSlot, reason: str) -> None:
+        _log.warning(
+            "telescope browser recover reason=%s slot_id=%d",
+            reason,
+            slot.slot_id,
+        )
+        await self._close_slot_browser_best_effort(slot)
+        slot.browser = await self._launch_firefox()
+        slot.request_count = 0
+        slot.recycle_pending = False
+
+    async def _recover_when_idle_locked(self, slot: _BrowserSlot, reason: str) -> None:
         """Count-based recycle must not close Firefox while other pages are in use."""
-        if self._active_pages > 0:
-            self._recycle_pending = True
+        if slot.active_pages > 0:
+            slot.recycle_pending = True
             _log.info(
-                "telescope recycle deferred reason=%s active_pages=%d",
+                "telescope recycle deferred reason=%s slot_id=%d active_pages=%d",
                 reason,
-                self._active_pages,
+                slot.slot_id,
+                slot.active_pages,
             )
             return
-        await self._recover_locked(reason)
+        await self._recover_slot_locked(slot, reason)
 
     async def _launch_firefox(self) -> Browser:
         assert self._playwright is not None
@@ -105,17 +182,14 @@ class BrowserPool:
         )
         raise RuntimeError(f"Firefox launch failed: {last_err}") from last_err
 
-    async def _launch_pooled(self) -> None:
-        self._browser = await self._launch_firefox()
-
-    async def _close_browser_best_effort(self) -> None:
-        if self._browser is None:
+    async def _close_slot_browser_best_effort(self, slot: _BrowserSlot) -> None:
+        if slot.browser is None:
             return
         try:
-            await self._browser.close()
+            await slot.browser.close()
         except Exception:
             pass
-        self._browser = None
+        slot.browser = None
 
     async def _close_ephemeral_best_effort(
         self,
@@ -135,13 +209,22 @@ class BrowserPool:
                 pass
             _log.info("telescope firefox closed ephemeral")
 
-    def _browser_connected(self) -> bool:
-        if self._browser is None:
+    def _browser_connected(self, browser: Optional[Browser]) -> bool:
+        if browser is None:
             return False
         try:
-            return self._browser.is_connected()
+            return browser.is_connected()
         except Exception:
             return False
+
+    async def _ensure_slot_browser(self, slot: _BrowserSlot) -> None:
+        async with slot.lock:
+            if self._browser_connected(slot.browser):
+                return
+            if slot.browser is not None:
+                await self._recover_slot_locked(slot, "disconnected")
+                return
+            slot.browser = await self._launch_firefox()
 
     @asynccontextmanager
     async def _ephemeral_page(self) -> AsyncIterator[Page]:
@@ -157,30 +240,26 @@ class BrowserPool:
 
     @asynccontextmanager
     async def _pooled_page(self) -> AsyncIterator[Page]:
-        # Concurrency is governed by dispatch batch_size on the platform — no local cap.
-        async with self._lock:
-            disconnected = not self._browser_connected()
-            need_recycle = self._request_count >= self._recycle_after_n
-            if disconnected:
-                await self._recover_locked("disconnected")
-            elif need_recycle or self._recycle_pending:
-                await self._recover_when_idle_locked("recycle")
-            assert self._browser is not None
-            context = await self._browser.new_context(viewport=settings.viewport)
-            page = await context.new_page()
-            self._active_pages += 1
+        slot = await self._acquire_slot()
         try:
-            yield page
-        finally:
+            await self._ensure_slot_browser(slot)
+            async with slot.lock:
+                if slot.recycle_pending:
+                    raise RuntimeError(
+                        f"slot {slot.slot_id} is retiring — should not acquire"
+                    )
+                assert slot.browser is not None
+                context = await slot.browser.new_context(viewport=settings.viewport)
+                page = await context.new_page()
             try:
-                await context.close()
-            except Exception:
-                pass
-            async with self._lock:
-                self._request_count += 1
-                self._active_pages -= 1
-                if self._active_pages == 0 and self._recycle_pending:
-                    await self._recover_when_idle_locked("recycle")
+                yield page
+            finally:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
+        finally:
+            await self._release_slot(slot)
 
     @asynccontextmanager
     async def page(self) -> AsyncIterator[Page]:
@@ -192,12 +271,16 @@ class BrowserPool:
             yield page
 
     async def health_poke(self) -> bool:
-        async with self.page() as page:
-            await page.goto(
-                "about:blank",
-                wait_until="domcontentloaded",
-                timeout=settings.page_goto_timeout_ms,
-            )
         if settings.browser_per_request:
+            async with self.page() as page:
+                await page.goto(
+                    "about:blank",
+                    wait_until="domcontentloaded",
+                    timeout=settings.page_goto_timeout_ms,
+                )
             return True
-        return self._browser_connected()
+        # Pooled: any live browser is enough — no context churn on health probes.
+        async with self._pool_lock:
+            return any(
+                self._browser_connected(slot.browser) for slot in self._slots
+            ) or self._playwright is not None
