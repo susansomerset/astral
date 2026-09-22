@@ -505,11 +505,17 @@ class TestRunBrowserJobErrors:
         pool = _fake_pool()
 
         @asynccontextmanager
-        async def hanging_page():
-            await asyncio.sleep(10)
+        async def ok_page():
             yield MagicMock()
 
-        pool.page = hanging_page
+        pool.page = ok_page
+
+        async def slow_navigate(page, url):
+            await asyncio.sleep(10)
+
+        monkeypatch.setattr(app_mod, "navigate", slow_navigate)
+        monkeypatch.setattr(app_mod, "dismiss_cookies", AsyncMock(return_value=False))
+        monkeypatch.setattr(app_mod, "expand_page", AsyncMock())
 
         with pytest.raises(HTTPException) as exc:
             await app_mod._run_browser_job(
@@ -517,6 +523,38 @@ class TestRunBrowserJobErrors:
             )
         assert exc.value.status_code == 504
         assert exc.value.detail == "timeout"
+
+    @pytest.mark.asyncio
+    async def test_slot_wait_does_not_count_against_scrape_timeout(
+        self, monkeypatch
+    ) -> None:
+        """Queue wait for pool.page() must not consume the scrape timeout budget."""
+        import app as app_mod
+        from dataclasses import replace
+
+        monkeypatch.setattr(
+            app_mod,
+            "settings",
+            replace(app_mod.settings, request_timeout_seconds=0.05),
+        )
+        pool = _fake_pool()
+
+        @asynccontextmanager
+        async def slow_acquire_page():
+            await asyncio.sleep(0.2)
+            yield MagicMock()
+
+        pool.page = slow_acquire_page
+        monkeypatch.setattr(app_mod, "navigate", AsyncMock())
+        monkeypatch.setattr(app_mod, "dismiss_cookies", AsyncMock(return_value=False))
+        monkeypatch.setattr(app_mod, "expand_page", AsyncMock())
+        work = AsyncMock(return_value={"ok": True})
+
+        result, cookies = await app_mod._run_browser_job(
+            pool, "https://example.com", False, False, work
+        )
+        assert result == {"ok": True}
+        assert cookies is False
 
     @pytest.mark.asyncio
     async def test_scrape_failed_raises_502_after_retries(self, monkeypatch) -> None:
