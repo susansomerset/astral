@@ -357,9 +357,7 @@ class TestAst973LegacyCandidateMigration:
 
 
 class TestAst1258CandidateBatchClaim:
-    """stat.dispatch.entity-state-bound: candidate batch_id columns + per-candidate claim ->
-    get -> clear. A candidate-entity claim is scoped to its own candidate_id, never a
-    cross-candidate pool (was AST-1258/1259)."""
+    """AST-1258: candidate batch_id columns + pool claim → get → clear (job/company parity)."""
 
     def test_schema_has_nullable_batch_columns(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -382,61 +380,46 @@ class TestAst1258CandidateBatchClaim:
         assert row is not None
         assert not row.get("batch_id")
 
-    def test_claim_requires_candidate_id(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_candidate("c1258a", state="REQUESTED_ARTIFACTS", candidate_data={})
-        with pytest.raises(ValueError, match="candidate_id"):
-            db.claim_candidate_batch("no-cid-batch", "REQUESTED_ARTIFACTS", 2)
-
-    def test_claim_get_clear_scoped_to_own_candidate(self, sqlite_in_memory) -> None:
+    def test_claim_get_clear_multi_row_pool(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_candidate("c1258a", state="REQUESTED_ARTIFACTS", candidate_data={})
         db.save_candidate("c1258b", state="REQUESTED_ARTIFACTS", candidate_data={})
         db.save_candidate("c1258c", state="ACTIVE_SEARCH", candidate_data={})  # wrong state
-        # Claiming c1258a never pulls in c1258b, even though both match state (no pool).
-        n = db.claim_candidate_batch(
-            "craft_get_rubric-test-uuid", "REQUESTED_ARTIFACTS", 2, candidate_id="c1258a"
-        )
-        assert n == 1
+        n = db.claim_candidate_batch("craft_get_rubric-test-uuid", "REQUESTED_ARTIFACTS", 2)
+        assert n == 2
         rows = db.get_candidate_batch("craft_get_rubric-test-uuid")
-        assert {r["astral_candidate_id"] for r in rows} == {"c1258a"}
+        assert {r["astral_candidate_id"] for r in rows} == {"c1258a", "c1258b"}
         for r in rows:
             assert r["batch_id"] == "craft_get_rubric-test-uuid"
             assert r.get("batch_created_at")
-        # Second concurrent claim of the same candidate cannot steal the locked row
-        n2 = db.claim_candidate_batch("other-batch-uuid", "REQUESTED_ARTIFACTS", 2, candidate_id="c1258a")
+        # Second concurrent claim cannot steal locked rows
+        n2 = db.claim_candidate_batch("other-batch-uuid", "REQUESTED_ARTIFACTS", 2)
         assert n2 == 0
         assert db.get_candidate_batch("other-batch-uuid") == []
-        # A different candidate's own claim is unaffected by c1258a's lock
-        n2b = db.claim_candidate_batch("other-batch-uuid", "REQUESTED_ARTIFACTS", 2, candidate_id="c1258b")
-        assert n2b == 1
-        # Clear releases the row in the batch
+        # Clear releases all rows in the batch
         cleared = db.clear_candidate_batch("craft_get_rubric-test-uuid")
-        assert cleared == 1
-        row = db.get_candidate("c1258a")
-        assert not row.get("batch_id")
-        assert not row.get("batch_created_at")
-        # Reclaimable again after clear
-        n3 = db.claim_candidate_batch("reclaim-uuid", "REQUESTED_ARTIFACTS", 2, candidate_id="c1258a")
-        assert n3 == 1
+        assert cleared == 2
+        for cid in ("c1258a", "c1258b"):
+            row = db.get_candidate(cid)
+            assert not row.get("batch_id")
+            assert not row.get("batch_created_at")
+        # Pool is claimable again after clear
+        n3 = db.claim_candidate_batch("reclaim-uuid", "REQUESTED_ARTIFACTS", 2)
+        assert n3 == 2
 
     def test_claim_unions_retry_states(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_candidate("c1258p", state="REQUESTED_ARTIFACTS", candidate_data={})
         db.save_candidate("c1258r", state="REQUESTED_ARTIFACTS_RETRY", candidate_data={})
-        # states union still applies per-candidate: c1258r is claimable via its own candidate_id
-        # even though it's sitting in the RETRY state, not the primary trigger state.
         n = db.claim_candidate_batch(
             "batch-1258-union",
             "REQUESTED_ARTIFACTS",
             10,
-            candidate_id="c1258r",
             states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
         )
-        assert n == 1
+        assert n == 2
         ids = {r["astral_candidate_id"] for r in db.get_candidate_batch("batch-1258-union")}
-        assert ids == {"c1258r"}
-        assert db.get_candidate("c1258p").get("batch_id") is None  # not swept in
+        assert ids == {"c1258p", "c1258r"}
 
 
 

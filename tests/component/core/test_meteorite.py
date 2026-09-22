@@ -983,6 +983,7 @@ def _insert_meteorite_row(db, cid: str, **fields: object) -> int:
             "estelle_notified_at",
             "astral_job_id",  # AST-1690 retention skip fixtures
             "job_title",  # AST-1757 staged title fixtures
+            "employer_name",  # AST-1774 check_unique peer fixtures
             *(
                 [METEORITE_CONFIG["electronic_contact_column"]]
                 if "electronic_contact_column" in METEORITE_CONFIG
@@ -1166,7 +1167,7 @@ class TestAst1703EmailBreadcrumb:
 
 
 class TestAst1560RunStageMeteorite:
-    """AST-1560: NEW → SCRAPE_LINK | READY via dispatch claim batch."""
+    """AST-1560 / AST-1774: NEW → SCRAPE_LINK | CHECK_UNIQUE via dispatch claim batch."""
 
     @pytest.mark.asyncio
     async def test_entity_batch_id_required(self) -> None:
@@ -1199,7 +1200,8 @@ class TestAst1560RunStageMeteorite:
         db = sqlite_in_memory
         cid = "cand-stg-text"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "T"})
-        # AST-1703: email text rows require non-http breadcrumb on link before READY.
+        # AST-1703: email text rows require non-http breadcrumb on link before landable success.
+        # AST-1774: landable success is CHECK_UNIQUE (not READY).
         crumb = "From:a@x.com 9/17 14:05 Eastern To:b@y.com"
         row_id = _insert_meteorite_row(
             db,
@@ -1212,7 +1214,7 @@ class TestAst1560RunStageMeteorite:
         out = await meteorite_mod.run_stage_meteorite(_ingress_task(batch_id=batch_id, candidate_id=cid))
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
-        assert row["state"] == "READY"
+        assert row["state"] == "CHECK_UNIQUE"
         assert row["link"] == crumb
 
     @pytest.mark.asyncio
@@ -1241,7 +1243,7 @@ class TestAst1560RunStageMeteorite:
     reason="AST-1560 run_scrape_meteorite not on this publish tip",
 )
 class TestAst1560RunScrapeMeteorite:
-    """AST-1560: SCRAPE_LINK → READY | BOT_BLOCKED | ERROR."""
+    """AST-1560 / AST-1774: SCRAPE_LINK → CHECK_UNIQUE | BOT_BLOCKED | ERROR."""
 
     @pytest.mark.asyncio
     async def test_ok_visible_text_to_ready(
@@ -1271,7 +1273,8 @@ class TestAst1560RunScrapeMeteorite:
         )
         assert out["total_passed"] == 1
         row = db.get_meteorite(row_id)
-        assert row["state"] == "READY"
+        # AST-1774: scrape ok uses status_map["ok"] → CHECK_UNIQUE.
+        assert row["state"] == "CHECK_UNIQUE"
         assert row["content"].startswith("Visible JD")
         assert row["link"] == "https://jobs.example.com/final"
 
@@ -1358,7 +1361,7 @@ class TestAst1560RunScrapeMeteorite:
         assert out["total_failed"] == 0
         assert out["total_errors"] == 1
         assert db.get_meteorite(bad_id)["state"] == "SCRAPE_ERROR"
-        assert db.get_meteorite(good_id)["state"] == "READY"
+        assert db.get_meteorite(good_id)["state"] == "CHECK_UNIQUE"
 
     @pytest.mark.asyncio
     async def test_ast1751_error_only_batch_fail_zero_error_n(
@@ -2669,3 +2672,456 @@ class TestAst1757LandStagedJobTitle:
         job = db.get_job(out["outcomes"][0]["astral_job_id"])
         assert job["job_title"] == "Enrich Preferred Title"
 
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "run_check_unique_meteorite"),
+    reason="AST-1774 run_check_unique_meteorite not on this publish tip",
+)
+class TestAst1774RunCheckUniqueMeteorite:
+    """AST-1774: CHECK_UNIQUE → READY (unique) | peer paths call hook (AST-1775 fills body)."""
+
+    @pytest.mark.asyncio
+    async def test_unique_promotes_to_ready(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-cu-unique"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "U"})
+        # Unrelated LANDED peer (different title) must not block unique path.
+        _insert_meteorite_row(
+            db,
+            cid,
+            source_id="landed-other",
+            state="LANDED",
+            job_title="Other Role",
+            employer_name="Other Co",
+            content="landed " + ("x" * 40),
+        )
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_id="cu-unique",
+            state="CHECK_UNIQUE",
+            job_title="Engineer",
+            employer_name="Acme",
+            content="unique JD " + ("y" * 40),
+        )
+        batch_id = "cu-batch-unique"
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id=batch_id,
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert out["total_errors"] == 0
+        assert db.get_meteorite(row_id)["state"] == "READY"
+        assert db.get_meteorite_batch(batch_id) == []
+
+    @pytest.mark.asyncio
+    async def test_title_employer_sql_peers_call_hook_leave_check_unique(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-cu-sql"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        peer_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_id="landed-match",
+            state="LANDED",
+            job_title="Engineer",
+            employer_name="Acme",
+            content="peer JD " + ("z" * 40),
+        )
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_id="cu-sql",
+            state="CHECK_UNIQUE",
+            job_title="Engineer",
+            employer_name="Acme",
+            content="subject JD " + ("a" * 40),
+        )
+        seen: list = []
+
+        async def _hook(row, peers, *, batch_id, debug=False):
+            seen.append((int(row["id"]), [int(p["id"]) for p in peers], batch_id))
+
+        monkeypatch.setattr(meteorite_mod, "_review_duplicate_meteorite_hook", _hook)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="cu-batch-sql",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "CHECK_UNIQUE"
+        assert seen == [(row_id, [peer_id], "cu-batch-sql")]
+
+    @pytest.mark.asyncio
+    async def test_null_field_multi_peers_call_hook(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-cu-null"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "N"})
+        p1 = _insert_meteorite_row(
+            db, cid, source_id="null-1", state="LANDED", content="p1 " + ("b" * 40),
+        )
+        p2 = _insert_meteorite_row(
+            db, cid, source_id="null-2", state="LANDED", content="p2 " + ("c" * 40),
+        )
+        # Subject missing employer — SQL path empty; ≥2 nullish LANDED → hook.
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_id="cu-null",
+            state="CHECK_UNIQUE",
+            job_title="Engineer",
+            content="subject " + ("d" * 40),
+        )
+        seen: list = []
+
+        async def _hook(row, peers, *, batch_id, debug=False):
+            seen.append((int(row["id"]), sorted(int(p["id"]) for p in peers)))
+
+        monkeypatch.setattr(meteorite_mod, "_review_duplicate_meteorite_hook", _hook)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="cu-batch-null",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "CHECK_UNIQUE"
+        assert seen == [(row_id, sorted([p1, p2]))]
+
+    @pytest.mark.asyncio
+    async def test_no_match_on_content_or_source_id(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AC5: equal JD text / source_id alone must not count as SQL peers."""
+        db = sqlite_in_memory
+        cid = "cand-cu-nomatch"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "M"})
+        same_body = "Same JD body " + ("e" * 40)
+        _insert_meteorite_row(
+            db,
+            cid,
+            source_id="shared-mid",
+            state="LANDED",
+            job_title="Different Title",
+            employer_name="Acme",
+            content=same_body,
+        )
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_id="shared-mid",  # same source_id — must not match
+            state="CHECK_UNIQUE",
+            job_title="Engineer",
+            employer_name="Acme",
+            content=same_body,
+        )
+        hooks = []
+
+        async def _hook(*_a, **_k):
+            hooks.append(True)
+
+        monkeypatch.setattr(meteorite_mod, "_review_duplicate_meteorite_hook", _hook)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="cu-batch-nomatch",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert hooks == []
+        assert db.get_meteorite(row_id)["state"] == "READY"
+
+    @pytest.mark.asyncio
+    async def test_land_does_not_claim_check_unique(self, sqlite_in_memory) -> None:
+        """AC6 / AC9: land remains READY-gated; CHECK_UNIQUE is not landable."""
+        db = sqlite_in_memory
+        cid = "cand-cu-landgate"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="CHECK_UNIQUE",
+            content="stuck " + ("f" * 40),
+            link="https://jobs.example.com/stuck",
+        )
+        out = await meteorite_mod.run_land_meteorite(
+            _ingress_task(
+                batch_id="cu-batch-landgate",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+            )
+        )
+        assert out["total_processed"] == 0
+        assert db.get_meteorite(row_id)["state"] == "CHECK_UNIQUE"
+        assert METEORITE_INGRESS_DISPATCH_CONFIG["land_trigger_state"] == "READY"
+
+    def test_apply_paste_still_writes_ready(self, sqlite_in_memory) -> None:
+        """Boundary: apply_paste stays READY — not retargeted to CHECK_UNIQUE."""
+        db = sqlite_in_memory
+        cid = "cand-cu-paste"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "P"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="BOT_BLOCKED",
+            link="https://jobs.example.com/blocked",
+        )
+        out = meteorite_mod.apply_paste(row_id, "Paste JD body " + ("p" * 40))
+        assert out == {"ok": True, "meteorite_id": row_id, "state": "READY"}
+        assert db.get_meteorite(row_id)["state"] == "READY"
+
+
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "_review_duplicate_live_content"),
+    reason="AST-1775 Ruth duplicate-review invoke not on this publish tip",
+)
+class TestAst1775RuthDuplicateReviewInvoke:
+    """AST-1775: peer hook → do_task → DUPLICATE|READY; failures stay CHECK_UNIQUE."""
+
+    @staticmethod
+    def _sql_peer_fixture(db, cid: str) -> tuple[int, int]:
+        peer_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_id="landed-ruth",
+            state="LANDED",
+            job_title="Engineer",
+            employer_name="Acme",
+            content="peer full body " + ("z" * 40),
+            link="https://jobs.example.com/peer",
+        )
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_id="cu-ruth",
+            state="CHECK_UNIQUE",
+            job_title="Engineer",
+            employer_name="Acme",
+            content="subject full body " + ("a" * 40),
+            link="https://jobs.example.com/subject",
+        )
+        return row_id, peer_id
+
+    @pytest.mark.asyncio
+    async def test_sql_peers_duplicate_maps_to_duplicate_with_peer_id(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import REVIEW_DUPLICATE_METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "cand-ruth-dup"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        row_id, peer_id = self._sql_peer_fixture(db, cid)
+        peer_key = REVIEW_DUPLICATE_METEORITE_CONFIG["peer_id_response_key"]
+        task_key = REVIEW_DUPLICATE_METEORITE_CONFIG["task_key"]
+        calls: list = []
+
+        async def _do_task(**kwargs):
+            calls.append(kwargs)
+            return {
+                "success": True,
+                "parsed_response": {
+                    "outcome": "duplicate",
+                    peer_key: str(peer_id),
+                },
+            }
+
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="ruth-batch-dup",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "DUPLICATE"
+        assert row["error"] == f"duplicate_of:{peer_id}"
+        assert len(calls) == 1
+        assert calls[0]["task_key"] == task_key
+        live = calls[0]["live_content"]
+        assert "CHECK_UNIQUE:" in live
+        assert f"LANDED peer id={peer_id}:" in live
+        assert "subject full body" in live
+        assert "peer full body" in live
+        assert calls[0]["index"] == f"{task_key}_{row_id}_ruth-batch-dup"
+
+    @pytest.mark.asyncio
+    async def test_sql_peers_not_duplicate_maps_to_ready(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-ruth-nd"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "N"})
+        row_id, _peer_id = self._sql_peer_fixture(db, cid)
+
+        async def _do_task(**_kwargs):
+            return {"success": True, "parsed_response": {"outcome": "not_duplicate"}}
+
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="ruth-batch-nd",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "READY"
+
+    @pytest.mark.asyncio
+    async def test_null_peers_invoke_ruth_with_full_content(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-ruth-null"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "Z"})
+        p1 = _insert_meteorite_row(
+            db, cid, source_id="null-r1", state="LANDED", content="null peer one " + ("b" * 40),
+        )
+        p2 = _insert_meteorite_row(
+            db, cid, source_id="null-r2", state="LANDED", content="null peer two " + ("c" * 40),
+        )
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            source_id="cu-ruth-null",
+            state="CHECK_UNIQUE",
+            job_title="Engineer",
+            content="null subject " + ("d" * 40),
+        )
+        calls: list = []
+
+        async def _do_task(**kwargs):
+            calls.append(kwargs)
+            return {"success": True, "parsed_response": {"outcome": "not_duplicate"}}
+
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="ruth-batch-null",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "READY"
+        assert len(calls) == 1
+        live = calls[0]["live_content"]
+        assert "null subject" in live
+        assert "null peer one" in live
+        assert "null peer two" in live
+        assert f"LANDED peer id={p1}:" in live
+        assert f"LANDED peer id={p2}:" in live
+
+    @pytest.mark.asyncio
+    async def test_do_task_failure_leaves_check_unique(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-ruth-fail"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "F"})
+        row_id, _peer_id = self._sql_peer_fixture(db, cid)
+
+        async def _do_task(**_kwargs):
+            return {"success": False, "error": "ruth down"}
+
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="ruth-batch-fail",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "CHECK_UNIQUE"
+
+    @pytest.mark.asyncio
+    async def test_invalid_outcome_leaves_check_unique(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-ruth-badout"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
+        row_id, _peer_id = self._sql_peer_fixture(db, cid)
+
+        async def _do_task(**_kwargs):
+            return {"success": True, "parsed_response": {"outcome": "maybe"}}
+
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="ruth-batch-badout",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "CHECK_UNIQUE"
+
+    @pytest.mark.asyncio
+    async def test_invalid_peer_id_leaves_check_unique(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import REVIEW_DUPLICATE_METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "cand-ruth-badpeer"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "P"})
+        row_id, _peer_id = self._sql_peer_fixture(db, cid)
+        peer_key = REVIEW_DUPLICATE_METEORITE_CONFIG["peer_id_response_key"]
+
+        async def _do_task(**_kwargs):
+            return {
+                "success": True,
+                "parsed_response": {"outcome": "duplicate", peer_key: "999999"},
+            }
+
+        monkeypatch.setattr("src.core.agent.do_task", _do_task)
+        out = await meteorite_mod.run_check_unique_meteorite(
+            _ingress_task(
+                batch_id="ruth-batch-badpeer",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
+            )
+        )
+        assert out["total_passed"] == 1
+        assert db.get_meteorite(row_id)["state"] == "CHECK_UNIQUE"
+
+    @pytest.mark.asyncio
+    async def test_land_does_not_claim_duplicate(self, sqlite_in_memory) -> None:
+        """AC9: DUPLICATE is not landable; land stays READY-gated."""
+        db = sqlite_in_memory
+        cid = "cand-ruth-landgate"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            state="DUPLICATE",
+            content="dup " + ("f" * 40),
+            link="https://jobs.example.com/dup",
+            error="duplicate_of:1",
+        )
+        out = await meteorite_mod.run_land_meteorite(
+            _ingress_task(
+                batch_id="ruth-batch-landgate",
+                candidate_id=cid,
+                task_key=METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+            )
+        )
+        assert out["total_processed"] == 0
+        assert db.get_meteorite(row_id)["state"] == "DUPLICATE"
+        assert METEORITE_INGRESS_DISPATCH_CONFIG["land_trigger_state"] == "READY"
