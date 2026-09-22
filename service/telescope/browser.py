@@ -79,7 +79,10 @@ class BrowserPool:
             slots = list(self._slots)
         for slot in slots:
             async with slot.lock:
-                await self._recover_slot_locked(slot, reason)
+                await self._recover_when_idle_locked(slot, reason)
+
+    def _slot_needs_recover(self, slot: _BrowserSlot) -> bool:
+        return slot.browser is not None and not self._browser_connected(slot.browser)
 
     def _slot_has_capacity(self, slot: _BrowserSlot) -> bool:
         if slot.recycle_pending:
@@ -87,6 +90,9 @@ class BrowserPool:
         if slot.request_count >= self._recycle_after_n:
             return False
         if slot.active_pages >= self._max_contexts_per_browser:
+            return False
+        # Disconnected with in-flight pages: drain only — never assign new contexts.
+        if self._slot_needs_recover(slot) and slot.active_pages > 0:
             return False
         return True
 
@@ -110,22 +116,30 @@ class BrowserPool:
                     return slot
                 await self._slot_available.wait()
 
+    async def _abort_slot_acquire(self, slot: _BrowserSlot) -> None:
+        async with self._pool_lock:
+            slot.active_pages -= 1
+            self._slot_available.notify_all()
+
     async def _release_slot(self, slot: _BrowserSlot) -> None:
-        recycle_now = False
+        recover_reason: Optional[str] = None
         async with self._pool_lock:
             slot.request_count += 1
             slot.active_pages -= 1
             if slot.request_count >= self._recycle_after_n and slot.active_pages > 0:
                 slot.recycle_pending = True
-            if slot.active_pages == 0 and (
-                slot.recycle_pending or slot.request_count >= self._recycle_after_n
-            ):
-                recycle_now = True
+            if slot.active_pages == 0:
+                if self._slot_needs_recover(slot):
+                    slot.recycle_pending = True
+                    recover_reason = "disconnected"
+                elif slot.recycle_pending or slot.request_count >= self._recycle_after_n:
+                    slot.recycle_pending = True
+                    recover_reason = "recycle"
             self._slot_available.notify_all()
 
-        if recycle_now:
+        if recover_reason is not None:
             async with slot.lock:
-                await self._recover_when_idle_locked(slot, "recycle")
+                await self._recover_when_idle_locked(slot, recover_reason)
 
     async def _recover_slot_locked(self, slot: _BrowserSlot, reason: str) -> None:
         _log.warning(
@@ -217,14 +231,16 @@ class BrowserPool:
         except Exception:
             return False
 
-    async def _ensure_slot_browser(self, slot: _BrowserSlot) -> None:
+    async def _ensure_slot_browser(self, slot: _BrowserSlot) -> bool:
+        """Return True when the slot has a live browser; False to retry another slot."""
         async with slot.lock:
             if self._browser_connected(slot.browser):
-                return
+                return True
             if slot.browser is not None:
-                await self._recover_slot_locked(slot, "disconnected")
-                return
+                await self._recover_when_idle_locked(slot, "disconnected")
+                return self._browser_connected(slot.browser)
             slot.browser = await self._launch_firefox()
+            return self._browser_connected(slot.browser)
 
     @asynccontextmanager
     async def _ephemeral_page(self) -> AsyncIterator[Page]:
@@ -240,26 +256,34 @@ class BrowserPool:
 
     @asynccontextmanager
     async def _pooled_page(self) -> AsyncIterator[Page]:
-        slot = await self._acquire_slot()
-        try:
-            await self._ensure_slot_browser(slot)
+        while True:
+            slot = await self._acquire_slot()
+            if not await self._ensure_slot_browser(slot):
+                await self._abort_slot_acquire(slot)
+                continue
+            retry = False
+            context: Optional[BrowserContext] = None
             async with slot.lock:
-                if slot.recycle_pending:
-                    raise RuntimeError(
-                        f"slot {slot.slot_id} is retiring — should not acquire"
+                if slot.recycle_pending or not self._browser_connected(slot.browser):
+                    retry = True
+                else:
+                    context = await slot.browser.new_context(
+                        viewport=settings.viewport
                     )
-                assert slot.browser is not None
-                context = await slot.browser.new_context(viewport=settings.viewport)
-                page = await context.new_page()
+                    page = await context.new_page()
+            if retry:
+                await self._abort_slot_acquire(slot)
+                continue
             try:
                 yield page
             finally:
                 try:
-                    await context.close()
+                    if context is not None:
+                        await context.close()
                 except Exception:
                     pass
-        finally:
-            await self._release_slot(slot)
+                await self._release_slot(slot)
+            return
 
     @asynccontextmanager
     async def page(self) -> AsyncIterator[Page]:

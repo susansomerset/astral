@@ -115,6 +115,8 @@ async def test_release_slot_recycles_when_idle_and_count_at_threshold() -> None:
     pool = BrowserPool()
     pool._recycle_after_n = 3
     slot = _BrowserSlot(slot_id=0, active_pages=1, request_count=2)
+    slot.browser = MagicMock()
+    slot.browser.is_connected.return_value = True
     pool._slots = [slot]
 
     recover_mock = AsyncMock()
@@ -124,6 +126,7 @@ async def test_release_slot_recycles_when_idle_and_count_at_threshold() -> None:
 
     assert slot.request_count == 3
     assert slot.active_pages == 0
+    assert slot.recycle_pending is True
     recover_mock.assert_awaited_once_with(slot, "recycle")
 
 
@@ -145,6 +148,45 @@ async def test_release_slot_marks_recycle_pending_while_still_busy() -> None:
     assert slot.active_pages == 1
     assert slot.recycle_pending is True
     recover_mock.assert_not_awaited()
+
+
+def test_disconnected_slot_has_no_capacity_while_draining() -> None:
+    from browser import BrowserPool, _BrowserSlot
+
+    pool = BrowserPool()
+    browser = MagicMock()
+    browser.is_connected.return_value = False
+    slot = _BrowserSlot(slot_id=0, browser=browser, active_pages=5)
+
+    assert pool._slot_has_capacity(slot) is False
+
+
+def test_disconnected_slot_idle_has_capacity_for_recover() -> None:
+    from browser import BrowserPool, _BrowserSlot
+
+    pool = BrowserPool()
+    browser = MagicMock()
+    browser.is_connected.return_value = False
+    slot = _BrowserSlot(slot_id=0, browser=browser, active_pages=0)
+
+    assert pool._slot_has_capacity(slot) is True
+
+
+@pytest.mark.asyncio
+async def test_ensure_slot_browser_defers_recover_while_active_pages() -> None:
+    from browser import BrowserPool, _BrowserSlot
+
+    pool = BrowserPool()
+    browser = MagicMock()
+    browser.is_connected.return_value = False
+    slot = _BrowserSlot(slot_id=0, browser=browser, active_pages=3)
+    recover_mock = AsyncMock()
+    pool._recover_when_idle_locked = recover_mock
+
+    ok = await pool._ensure_slot_browser(slot)
+
+    assert ok is False
+    recover_mock.assert_awaited_once_with(slot, "disconnected")
 
 
 @pytest.mark.asyncio
