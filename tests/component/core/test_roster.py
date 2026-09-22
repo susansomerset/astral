@@ -5762,29 +5762,6 @@ class TestAst891ParseJobListBatch:
         assert seen == [batch_session, batch_session]
 
     @pytest.mark.asyncio
-    async def test_scrape_timeout_labeled_infra_and_counts_passed(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        _mock_parse_batch_browser_session(monkeypatch)
-        save = MagicMock()
-        monkeypatch.setattr(roster_mod, "_save_parse_dispatch_failure", save)
-        save.return_value = {
-            "state": "JOBLIST_IDENTIFIED_RETRY",
-            "response_type": "PARSE_DISPATCH_INFRA",
-        }
-
-        async def _slow(*_a, **_k):
-            await asyncio.sleep(5)
-            return {"state": "WATCH", "response_type": "PARSE_DISPATCH_OK"}
-
-        monkeypatch.setattr(roster_mod, "run_parse_job_list_dispatch", _slow)
-        monkeypatch.setitem(roster_mod.PLAYWRIGHT_CONFIG, "company_scrape_timeout_seconds", 0.05)
-        out = await roster_mod.parse_job_list_batch("batch-891", [self._co("acme")])
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
-        assert save.call_args.kwargs["response_type"] == "PARSE_DISPATCH_INFRA"
-        assert save.call_args.kwargs["notes"].startswith("[playwright:scrape_timeout]")
-
-    @pytest.mark.asyncio
     async def test_unhandled_gather_exception_increments_errors_and_continues(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:

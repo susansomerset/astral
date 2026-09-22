@@ -24,7 +24,6 @@ def _env_float(name: str, default: float) -> float:
 @dataclass(frozen=True)
 class Settings:
     bearer_token: str
-    max_concurrent_pages: int
     request_timeout_seconds: float
     recycle_after_n: int
     port: int
@@ -58,8 +57,7 @@ class Settings:
 def load_settings() -> Settings:
     return Settings(
         bearer_token=os.environ.get("TELESCOPE_BEARER_TOKEN", ""),
-        max_concurrent_pages=_env_int("TELESCOPE_MAX_CONCURRENT_PAGES", 3),
-        request_timeout_seconds=_env_float("TELESCOPE_REQUEST_TIMEOUT_SECONDS", 60.0),
+        request_timeout_seconds=_env_float("TELESCOPE_REQUEST_TIMEOUT_SECONDS", 120.0),
         recycle_after_n=_env_int("TELESCOPE_RECYCLE_AFTER_N", 50),
         port=_env_int("TELESCOPE_PORT", 8080),
         page_goto_timeout_ms=_env_int("TELESCOPE_PAGE_GOTO_TIMEOUT_MS", 30_000),

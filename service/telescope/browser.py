@@ -22,9 +22,10 @@ class BrowserPool:
         self._playwright_cm = None
         self._browser: Optional[Browser] = None
         self._lock = asyncio.Lock()
-        self._semaphore = asyncio.Semaphore(settings.max_concurrent_pages)
         self._request_count = 0
         self._recycle_after_n = settings.recycle_after_n
+        self._active_pages = 0
+        self._recycle_pending = False
 
     async def start(self) -> None:
         self._playwright_cm = async_playwright()
@@ -44,10 +45,26 @@ class BrowserPool:
 
     async def recover(self, reason: str) -> None:
         async with self._lock:
-            _log.warning("telescope browser recover reason=%s", reason)
-            await self._close_browser_best_effort()
-            await self._launch_locked()
-            self._request_count = 0
+            await self._recover_locked(reason)
+
+    async def _recover_locked(self, reason: str) -> None:
+        _log.warning("telescope browser recover reason=%s", reason)
+        await self._close_browser_best_effort()
+        await self._launch_locked()
+        self._request_count = 0
+        self._recycle_pending = False
+
+    async def _recover_when_idle_locked(self, reason: str) -> None:
+        """Count-based recycle must not close Firefox while other pages are in use."""
+        if self._active_pages > 0:
+            self._recycle_pending = True
+            _log.info(
+                "telescope recycle deferred reason=%s active_pages=%d",
+                reason,
+                self._active_pages,
+            )
+            return
+        await self._recover_locked(reason)
 
     async def _launch_locked(self) -> None:
         assert self._playwright is not None
@@ -99,29 +116,30 @@ class BrowserPool:
 
     @asynccontextmanager
     async def page(self) -> AsyncIterator[Page]:
-        async with self._semaphore:
-            # Recycle / reconnect under lock before opening a fresh context
-            async with self._lock:
-                need_recycle = self._request_count >= self._recycle_after_n
-                disconnected = not self._browser_connected()
-                if need_recycle or disconnected:
-                    reason = "recycle" if need_recycle else "disconnected"
-                    _log.warning("telescope browser recover reason=%s", reason)
-                    await self._close_browser_best_effort()
-                    await self._launch_locked()
-                    self._request_count = 0
-                assert self._browser is not None
-                context = await self._browser.new_context(viewport=settings.viewport)
-                page = await context.new_page()
+        # Concurrency is governed by dispatch batch_size on the platform — no local cap.
+        async with self._lock:
+            disconnected = not self._browser_connected()
+            need_recycle = self._request_count >= self._recycle_after_n
+            if disconnected:
+                await self._recover_locked("disconnected")
+            elif need_recycle or self._recycle_pending:
+                await self._recover_when_idle_locked("recycle")
+            assert self._browser is not None
+            context = await self._browser.new_context(viewport=settings.viewport)
+            page = await context.new_page()
+            self._active_pages += 1
+        try:
+            yield page
+        finally:
             try:
-                yield page
-            finally:
-                try:
-                    await context.close()
-                except Exception:
-                    pass
-                async with self._lock:
-                    self._request_count += 1
+                await context.close()
+            except Exception:
+                pass
+            async with self._lock:
+                self._request_count += 1
+                self._active_pages -= 1
+                if self._active_pages == 0 and self._recycle_pending:
+                    await self._recover_when_idle_locked("recycle")
 
     async def health_poke(self) -> bool:
         async with self.page() as page:

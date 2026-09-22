@@ -36,7 +36,6 @@ from src.utils.config import (
     ROSTER_CONFIG,
     SOURCE_ENTITY_TYPE_METEORITE,
     TRACKER_CONFIG,
-    PLAYWRIGHT_CONFIG,
 )
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
 from src.core.meteorite import create_meteorite_job
@@ -304,14 +303,8 @@ async def fetch_jd_batch(
             )
         passed += 1
 
-    # Cap concurrent Firefox instances to avoid exhausting container resources (EAGAIN / SIGSEGV)
-    sem = asyncio.Semaphore(3)
-    async def _limited(job: Dict, job_index: int) -> None:
-        async with sem:
-            await _scrape_one(job, job_index)
-
     await asyncio.gather(
-        *[_limited(j, ji) for ji, j in enumerate(jobs, start=1)],
+        *[_scrape_one(j, ji) for ji, j in enumerate(jobs, start=1)],
         return_exceptions=False,
     )
     if debug:
@@ -607,46 +600,8 @@ async def fetch_website_batch(
                     f"homepage_chars={len(visible_text)} nav_links={nav_count}"
                 )
 
-        async def _fetch_one(company: Dict[str, Any], company_index: int) -> None:
-            nonlocal failed
-            short_name = company.get("short_name") or ""
-            company_state = (company.get("state") or "").strip()
-            scrape_timeout = PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"]
-            try:
-                await asyncio.wait_for(
-                    _fetch_one_inner(company, company_index),
-                    timeout=scrape_timeout,
-                )
-            except asyncio.TimeoutError:
-                _log.warning(
-                    "[%s] playwright infra failure failure_class=scrape_timeout batch_id=%s",
-                    short_name,
-                    batch_id,
-                )
-                err = (
-                    f"[playwright:scrape_timeout] company scrape exceeded {scrape_timeout}s"
-                )
-                dest = _fetch_website_fail_destination(company_state, err, cfg)
-                if debug:
-                    _log.debug_index(
-                        func="gazer.fetch_website_batch",
-                        index=company_index,
-                        total=company_total,
-                        identifier=_gazer_company_identifier(company),
-                        outcome=f"failed — {err} -> {dest}",
-                    )
-                transition_company_state(short_name, dest)
-                save_company_data(short_name, {notes_key: err})
-                failed += 1
-
-        sem = asyncio.Semaphore(3)
-
-        async def _limited(company: Dict[str, Any], company_index: int) -> None:
-            async with sem:
-                await _fetch_one(company, company_index)
-
         results = await asyncio.gather(
-            *[_limited(c, ci) for ci, c in enumerate(companies, start=1)],
+            *[_fetch_one_inner(c, ci) for ci, c in enumerate(companies, start=1)],
             return_exceptions=True,
         )
         for r in results:
@@ -807,14 +762,8 @@ async def fetch_job_pages_batch(
                         outcome=f"failed — no storable PJL content -> {fail_state}",
                     )
 
-        sem = asyncio.Semaphore(3)
-
-        async def _limited(company: Dict[str, Any], company_index: int) -> None:
-            async with sem:
-                await _fetch_one(company, company_index)
-
         await asyncio.gather(
-            *[_limited(c, ci) for ci, c in enumerate(companies, start=1)],
+            *[_fetch_one(c, ci) for ci, c in enumerate(companies, start=1)],
             return_exceptions=False,
         )
 
