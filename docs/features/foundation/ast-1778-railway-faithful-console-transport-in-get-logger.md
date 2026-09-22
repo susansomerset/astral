@@ -71,3 +71,45 @@ Ticket **## Scope** names only `src/utils/logging.py` (console setup → stdout;
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1778
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `e498799d4e121fe159ab258269e2e3b335f04156` (`origin/sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger`)
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.info | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC1–6 → Stage 1 (stdout console ensure, `_RAILWAY_LEVEL` / `_RailwayJsonFormatter`, `_on_railway` branch, `_apply_console_formatter` plain vs JSON, DB handler / `_db_handler_stderr` untouched, single-file scope + out-of-scope grep hold).
+
+## Findings
+
+### acceptable
+
+- **Location:** Stage 1 step 4 — `_ensure_stdout_console_handler` gated on `not base_logger.handlers`
+- **Finding:** Same gate as today's `basicConfig` path; idempotent re-entry on every `get_logger` call is consistent with current behavior.
+- **Recommendation:** No plan change; implementer keeps handler walk idempotent.
+
+### discuss
+
+- **Location:** Stage 1 — AC6 grep gate
+- **Finding:** AC6 (no new `logging.getLogger` / `print` emit paths under `src/`) is enforced by scope but not named as an explicit engineer verification step in Done-when.
+- **Recommendation:** Optional one-line in Done-when: run the child AC6 `rg` gate before UT; not blocking — Betty/UT will catch violations.
+
+context_tokens≈28000
+
+---
+
+[plan-rubric] PROCEED (Commit: e498799d) Transport plan faithful
+
