@@ -316,3 +316,57 @@ AC1 → Stage 1 step 5 (employer_name optional pin) + Stage 3 steps 1–3 (promp
 
 context_tokens≈55000
 ```
+
+## Radia review
+
+```text
+[code-rubric]
+**Ticket:** AST-1773
+**Publish ref:** `9dc2f36e1d243e52f7851ad61fe689e8f4c9abe8` (`origin/sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts`)
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | |
+| astral.entity.required-metadata | X | | |
+| stat.logging.debug | X | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `entity-state-bound` A, `required-metadata` X, `logging.debug` X; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Cross-ticket scope on publish ref** — commit `a3002ea8` (`test(AST-1776): bug-repro — builder print ownership via job.candidate_id`) sits on this sub branch between the Stage 3 code commit and Betty’s test commit. It touches `tests/component/core/test_builder.py` and `docs/test-bible/core/builder.md`, which are outside AST-1773’s scope gate and not declared on `Relations:`. Not a canon violation, but it couples AST-1776 repro work to this publish ref; consider moving that commit to AST-1776’s sub or dropping it here before `merge-child`.
+
+### advisory
+
+- **Three-dot diff vs `origin/dev` is epic-wide** — `origin/dev...origin/sub/...` reports 61 files (multiple merge bases; merge-base `9891a467`). That delta reflects the full ftr integration line, not AST-1773 alone. Canon and plan fidelity were scored against this ticket’s product commits (`bde3c0cc`, `6e69d0db`, `ca52dad9`) and their scoped files.
+- **Inherited catalog shape** — `dispatch_task.json` `check_unique_meteorite` row keeps `entity_type: null` / `candidate_id: null` like stage/scrape/land siblings; live per-candidate rows use `SEED_CONFIG` with `'meteorite'` / `'CHECK_UNIQUE'`. Matches plan decision and existing ingress pattern; helpers return `meteorite` for the task key.
+
+## What's solid
+
+- `METEORITE_STATES` closed set adds `CHECK_UNIQUE` / `DUPLICATE`; `READY` priors retargeted to `["CHECK_UNIQUE", "BOT_BLOCKED"]`; import asserts pass.
+- `METEORITE_INGRESS_DISPATCH_CONFIG` four-key assert, scrape `"ok"` → `CHECK_UNIQUE`, `land_trigger_state` stays `READY`; `_dispatch_trigger_state_for_task_key` / `_dispatch_entity_type_for_task_key` branches wired.
+- `REVIEW_DUPLICATE_METEORITE_CONFIG` + `TASK_CONFIG["review_duplicate_meteorite"]` lockstep (enum, agent_task, peer key).
+- `SEED_CONFIG` ingress INSERT + retire-null-pool include `check_unique_meteorite`.
+- `stage_meteorite` optional `employer_name` pin + no `company_name`; prompts append `## EMPLOYER NAME (optional)` with never-invent language; Ruth `review_duplicate_meteorite` row + `dispatch_task.json` row present.
+- `STAGE_METEORITE_CONFIG["outcomes"]` still length 6; row states stay out of Ruth enum.
+- Betty manifest: `TestAst1773CheckUniqueRegistryAndCatalogs`, revised ingress/state/seed tests, `TestAst1773StageEmployerNameAndReviewDuplicateCatalog`, catalog 57, AST-756 fixture byte lockstep.
+- Estimate 3 fits the scoped footprint.
+
+context_tokens≈38000
+```
