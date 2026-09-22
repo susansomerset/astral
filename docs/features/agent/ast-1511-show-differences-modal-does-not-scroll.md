@@ -257,3 +257,24 @@ Betty `[board-betty] TESTS: REVISE` on AST-1764: bible/suite hole — AST-1511 o
 
 `[bug-repro] AST-1767` retained. No product edits. §9a dry-runs clean before User Testing.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/31e3370da3a23ef3af6f2729c0fb400a/83e1f03b-c7e6-4ba3-9e4b-37f6209e9cc3/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/55743f04-40e0-4a34-94b0-2636bf497b85/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/31e3370da3a23ef3af6f2729c0fb400a/5563c7c1-1d3c-40a2-8303-39c50fbcaf24/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1754 (parent) | ftr/AST-1754-all-modals-must-be-vertically-scrollable |
+| AST-1764 | sub/AST-1754/AST-1764-fix-shared-modal-vertical-scroll |
+| AST-1767 | sub/AST-1754/AST-1767-gap-modal-shell-scroll-tests |
+
+**Epic worktree:** `astral-AST-1754/` — one active sub checked out at a time.
