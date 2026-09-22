@@ -1,8 +1,10 @@
 """
 Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470 / AST-1493 / AST-1495).
 
-Dispatch `stage_meteorite` / `scrape_meteorite` / `land_meteorite` rows (AST-1560) are table
-transition runners — not Ruth classify hops; dispatcher custom branch only.
+Dispatch `stage_meteorite` / `scrape_meteorite` / `check_unique_meteorite` / `land_meteorite`
+rows (AST-1560 / AST-1774) are table transition runners — not Ruth classify hops; dispatcher
+custom branch only. Stage/scrape landable success → CHECK_UNIQUE; unique hop → READY;
+land remains READY → LANDED.
 
 Lazy-insert stem-keyed companies into METEORITE from METEORITE_CONFIG (default
 stem → meteorite-<candidate_id>). Track = company state METEORITE or legacy
@@ -44,6 +46,7 @@ from src.data.database import (
     insert_meteorite_rows,
     list_meteorites_by_source,
     list_meteorites_by_state,
+    list_meteorites_for_candidate,
     save_company,
     save_job,
     update_candidate_last_email_check,
@@ -1631,7 +1634,7 @@ def _row_miss(row_id: Any, cid: str, why: str, next_step: str) -> None:
 
 @_with_log_debug
 async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: NEW → SCRAPE_LINK | READY (AST-1560)."""
+    """Dispatch runner: NEW → SCRAPE_LINK | CHECK_UNIQUE (AST-1560 / AST-1774)."""
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
     batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
@@ -1705,8 +1708,8 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                         )
                         summary["total_errors"] += 1
                         continue
-                    update_meteorite(row_id, state="READY")
-                    _meteorite_state_info(row_id, "READY", from_state="NEW")
+                    update_meteorite(row_id, state="CHECK_UNIQUE")
+                    _meteorite_state_info(row_id, "CHECK_UNIQUE", from_state="NEW")
                     summary["total_passed"] += 1
                     continue
                 err = f"unhandled classify_outcome: {outcome}"
@@ -1727,7 +1730,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
 
 @_with_log_debug
 async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: SCRAPE_LINK → READY | BOT_BLOCKED | LINK_EXPIRED | SCRAPE_ERROR (AST-1560)."""
+    """Dispatch runner: SCRAPE_LINK → CHECK_UNIQUE | BOT_BLOCKED | LINK_EXPIRED | SCRAPE_ERROR (AST-1560 / AST-1774)."""
     from src.core.gazer import _CONTACT_PAGE_STATUS, _classify_jd
 
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -1783,13 +1786,14 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                     continue
 
                 if page_status == "ok" and visible_text.strip():
+                    ok_state = status_map["ok"]  # AST-1773: CHECK_UNIQUE
                     update_meteorite(
                         row_id,
-                        state="READY",
+                        state=ok_state,
                         content=visible_text,
                         link=final_url or link,
                     )
-                    _meteorite_state_info(row_id, "READY", from_state="SCRAPE_LINK")
+                    _meteorite_state_info(row_id, ok_state, from_state="SCRAPE_LINK")
                     summary["total_passed"] += 1
                     continue
 
@@ -1844,6 +1848,136 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                 )
     finally:
         logger.debug("End scrape meteorite loop after %s items", summary["total_processed"])
+        clear_meteorite_batch(batch_id)
+    return summary
+
+
+def _nonempty_strip(value: Any) -> str:
+    return (str(value) if value is not None else "").strip()
+
+
+def _landed_peers_for_candidate(candidate_id: str, *, exclude_id: int) -> List[Dict[str, Any]]:
+    """Same-candidate LANDED rows only — exclude the CHECK_UNIQUE subject id."""
+    peers = []
+    for row in list_meteorites_for_candidate(candidate_id):
+        if int(row["id"]) == int(exclude_id):
+            continue
+        if (row.get("state") or "").strip() != "LANDED":
+            continue
+        peers.append(row)
+    return peers
+
+
+def _title_employer_sql_peers(
+    subject: Dict[str, Any], landed: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Equal non-empty job_title + employer_name only (not email/message ids, not JD text)."""
+    title = _nonempty_strip(subject.get("job_title"))
+    employer = _nonempty_strip(subject.get("employer_name"))
+    if not title or not employer:
+        return []
+    matched = []
+    for peer in landed:
+        if _nonempty_strip(peer.get("job_title")) != title:
+            continue
+        if _nonempty_strip(peer.get("employer_name")) != employer:
+            continue
+        matched.append(peer)
+    return matched
+
+
+def _null_field_multi_peers(
+    subject: Dict[str, Any], landed: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """When subject title and/or employer is empty, LANDED peers with null title and/or employer."""
+    sub_title = _nonempty_strip(subject.get("job_title"))
+    sub_employer = _nonempty_strip(subject.get("employer_name"))
+    if sub_title and sub_employer:
+        return []
+    nullish = [
+        p for p in landed
+        if not _nonempty_strip(p.get("job_title")) or not _nonempty_strip(p.get("employer_name"))
+    ]
+    # Parent AC7: multiple LANDED rows — need ≥2 to trigger Ruth; else unique path.
+    return nullish if len(nullish) >= 2 else []
+
+
+async def _review_duplicate_meteorite_hook(
+    row: Dict[str, Any],
+    peers: List[Dict[str, Any]],
+    *,
+    batch_id: str,
+    debug: bool = False,
+) -> None:
+    """Peer path entry for AST-1775 (Ruth invoke + DUPLICATE|READY map).
+
+    Stub: leave row in CHECK_UNIQUE — do not auto-READY or auto-DUPLICATE.
+    """
+    _ = batch_id, debug
+    logger.debug(
+        "review_duplicate_meteorite hook stub: meteorite_id=%s peer_ids=%s (AST-1775 owns invoke)",
+        row.get("id"),
+        [p.get("id") for p in peers],
+    )
+
+
+@_with_log_debug
+async def run_check_unique_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
+    """Dispatch runner: CHECK_UNIQUE → READY (unique) | Ruth hook (peers) (AST-1774)."""
+    cfg = METEORITE_INGRESS_DISPATCH_CONFIG
+    batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
+    batch_id = str((task or {}).get("entity_batch_id") or "").strip()
+    if not batch_id:
+        raise ValueError("entity_batch_id is required")
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
+    summary = dict(_ZERO_SUMMARY)
+    trigger = cfg["check_unique_trigger_state"]
+    logger.debug(
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, trigger, batch_size, entity_candidate_id,
+    )
+    claim_meteorite_batch(batch_id, trigger, limit=batch_size, candidate_id=entity_candidate_id)
+    rows = get_meteorite_batch(batch_id)
+    logger.debug("Response from get_meteorite_batch: %s", rows)
+    if not rows:
+        return summary
+
+    logger.debug("Beginning check_unique meteorite loop on %s items", len(rows))
+    try:
+        for row in rows:
+            summary["total_processed"] += 1
+            row_id = int(row["id"])
+            cid = str(row.get("candidate_id") or "")
+            try:
+                landed = _landed_peers_for_candidate(cid, exclude_id=row_id)
+                sql_peers = _title_employer_sql_peers(row, landed)
+                if sql_peers:
+                    await _review_duplicate_meteorite_hook(
+                        row, sql_peers, batch_id=batch_id, debug=debug,
+                    )
+                    summary["total_passed"] += 1
+                    continue
+                null_peers = _null_field_multi_peers(row, landed)
+                if null_peers:
+                    await _review_duplicate_meteorite_hook(
+                        row, null_peers, batch_id=batch_id, debug=debug,
+                    )
+                    summary["total_passed"] += 1
+                    continue
+                update_meteorite(row_id, state="READY")
+                _meteorite_state_info(row_id, "READY", from_state="CHECK_UNIQUE")
+                summary["total_passed"] += 1
+            except Exception as exc:
+                summary["total_errors"] += 1
+                logger.exception(
+                    "%s | meteorite %s run_check_unique_meteorite\n  %s: %s\n  Continuing to the next row",
+                    cid, row_id, type(exc).__name__, exc,
+                )
+    finally:
+        logger.debug("End check_unique meteorite loop after %s items", summary["total_processed"])
         clear_meteorite_batch(batch_id)
     return summary
 
