@@ -49,10 +49,11 @@ Config sections:
   SOURCE_ENTITY_TYPES — job ingest parent + track SoT company|meteorite (repurposed job.source; AST-1701); JOB_SOURCES aliases until sibling #2
   JOB_LINK_BREADCRUMB_FORMAT / CONTACT_TIMEZONE_CLOCK_LABELS — email breadcrumb + timezone clock helpers (AST-1701; authored by sibling #3)
   METEORITE_CONFIG — placeholder employer templates (not job parents after AST-1640) + job-create defaults + land/source_entity_type/dedupe (AST-1469 / AST-1701); meteorite-row electronic-contact column literal (AST-1688)
-  METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557)
+  METEORITE_STATES — staging-row state registry for the `meteorite` table (`prior_states` per state); distinct from `JOB_STATES` keys like `METEORITE_NEW` (AST-1557); `CHECK_UNIQUE` / `DUPLICATE` uniqueness gate (AST-1773)
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
-  METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
+  METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560); check_unique hop (AST-1773)
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
+  REVIEW_DUPLICATE_METEORITE_CONFIG — Ruth duplicate-review closed outcomes + peer id key (AST-1773)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
