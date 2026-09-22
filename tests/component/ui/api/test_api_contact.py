@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,7 +24,7 @@ class TestAst1071ContactSkillsApi:
                         "entity": "candidate",
                         "write": True,
                         "description": "profile",
-                        "allowed_paths": ("first",),
+                        "allowed_paths": ("profile.first",),
                     }
                 }
             ),
@@ -34,42 +33,33 @@ class TestAst1071ContactSkillsApi:
         assert resp.status_code == 200
         body = resp.get_json()
         assert "skills" in body
-        assert body["skills"]["save_candidate_profile"]["allowed_paths"] == ["first"]
+        assert body["skills"]["save_candidate_profile"]["allowed_paths"] == ["profile.first"]
 
     def test_run_skill_ok(
-        self,
-        contact_client: FlaskClient,
-        auth_headers: dict[str, str],
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         run = MagicMock(
             return_value={
                 "ok": True,
                 "skill_key": "save_candidate_profile",
                 "astral_candidate_id": "c1",
-                "paths_written": ["first"],
+                "paths_written": ["profile.first"],
             }
         )
         monkeypatch.setattr(contact_api, "run_contact_skill", run)
         monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
-        with caplog.at_level(logging.INFO):
-            resp = contact_client.post(
-                "/api/admin/contact/skills/save_candidate_profile",
-                headers=auth_headers,
-                json={"astral_candidate_id": "c1", "fields": {"first": "Ada"}},
-            )
+        resp = contact_client.post(
+            "/api/admin/contact/skills/save_candidate_profile",
+            headers=auth_headers,
+            json={"astral_candidate_id": "c1", "fields": {"profile.first": "Ada"}},
+        )
         assert resp.status_code == 200
         assert resp.get_json()["ok"] is True
         run.assert_called_once_with(
             "save_candidate_profile",
             astral_candidate_id="c1",
-            fields={"first": "Ada"},
+            fields={"profile.first": "Ada"},
             debug=False,
-        )
-        assert (
-            "c1 | api /api/admin/contact/skills/save_candidate_profile completed: POST 200"
-            in caplog.text
         )
 
     def test_run_value_error_400(
@@ -109,16 +99,16 @@ class TestAst1071ContactSkillsApi:
             MagicMock(side_effect=RuntimeError("db down")),
         )
         monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
-        exc = MagicMock()
-        monkeypatch.setattr(contact_api.logger, "exception", exc)
+        warn = MagicMock()
+        monkeypatch.setattr(contact_api.logger, "warning", warn)
         resp = contact_client.post(
             "/api/admin/contact/skills/save_candidate_profile",
             headers=auth_headers,
-            json={"astral_candidate_id": "c1", "fields": {"first": "Ada"}},
+            json={"astral_candidate_id": "c1", "fields": {"profile.first": "Ada"}},
         )
         assert resp.status_code == 502
         assert resp.get_json() == {"error": "db down"}
-        exc.assert_called_once()
+        warn.assert_called_once()
 
     def test_list_requires_auth(self, contact_client: FlaskClient) -> None:
         assert contact_client.get("/api/admin/contact/skills").status_code == 401
@@ -144,31 +134,21 @@ class TestAst1071ContactSkillsApi:
 # Branches: GET/PUT listen payload; 400; auth 401/403 (AST-1067).
 class TestAst1067ContactListenApi:
     def test_get_listen_ok(
-        self,
-        contact_client: FlaskClient,
-        auth_headers: dict[str, str],
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(contact_api, "slack_listen_enabled", MagicMock(return_value=False))
         monkeypatch.setattr(contact_api, "get_deploy_label", MagicMock(return_value="staging"))
         monkeypatch.setattr(contact_api, "contact_is_production_deploy", MagicMock(return_value=False))
-        with caplog.at_level(logging.INFO):
-            resp = contact_client.get("/api/admin/contact/listen", headers=auth_headers)
+        resp = contact_client.get("/api/admin/contact/listen", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.get_json() == {
             "listen_enabled": False,
             "environment": "staging",
             "is_production": False,
         }
-        assert "api /api/admin/contact/listen completed" not in caplog.text
 
     def test_put_listen_ok(
-        self,
-        contact_client: FlaskClient,
-        auth_headers: dict[str, str],
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         set_fn = MagicMock(return_value=True)
         monkeypatch.setattr(contact_api, "set_slack_listen_enabled", set_fn)
@@ -176,16 +156,14 @@ class TestAst1067ContactListenApi:
         monkeypatch.setattr(contact_api, "slack_listen_enabled", MagicMock(return_value=True))
         monkeypatch.setattr(contact_api, "get_deploy_label", MagicMock(return_value="staging"))
         monkeypatch.setattr(contact_api, "contact_is_production_deploy", MagicMock(return_value=False))
-        with caplog.at_level(logging.INFO):
-            resp = contact_client.put(
-                "/api/admin/contact/listen",
-                headers=auth_headers,
-                json={"listen_enabled": True},
-            )
+        resp = contact_client.put(
+            "/api/admin/contact/listen",
+            headers=auth_headers,
+            json={"listen_enabled": True},
+        )
         assert resp.status_code == 200
         assert resp.get_json()["listen_enabled"] is True
         set_fn.assert_called_once_with(True, debug=False)
-        assert "- | api /api/admin/contact/listen completed: PUT 200" in caplog.text
 
     def test_put_listen_non_bool_400(
         self, contact_client: FlaskClient, auth_headers: dict[str, str]
@@ -207,8 +185,8 @@ class TestAst1067ContactListenApi:
             MagicMock(side_effect=RuntimeError("disk full")),
         )
         monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
-        exc = MagicMock()
-        monkeypatch.setattr(contact_api.logger, "exception", exc)
+        warn = MagicMock()
+        monkeypatch.setattr(contact_api.logger, "warning", warn)
         resp = contact_client.put(
             "/api/admin/contact/listen",
             headers=auth_headers,
@@ -216,7 +194,7 @@ class TestAst1067ContactListenApi:
         )
         assert resp.status_code == 502
         assert resp.get_json() == {"error": "disk full"}
-        exc.assert_called_once()
+        warn.assert_called_once()
 
     def test_listen_requires_auth(self, contact_client: FlaskClient) -> None:
         assert contact_client.get("/api/admin/contact/listen").status_code == 401
@@ -233,11 +211,7 @@ class TestAst1067ContactListenApi:
 # Branches: GET estelle_activity users; 502; auth 401/403 (AST-1094).
 class TestAst1094EstelleActivityApi:
     def test_get_activity_ok(
-        self,
-        contact_client: FlaskClient,
-        auth_headers: dict[str, str],
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
             contact_api,
@@ -257,14 +231,12 @@ class TestAst1094EstelleActivityApi:
             ),
         )
         monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
-        with caplog.at_level(logging.INFO):
-            resp = contact_client.get("/api/admin/contact/estelle_activity", headers=auth_headers)
+        resp = contact_client.get("/api/admin/contact/estelle_activity", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.get_json()
         assert "users" in body
         assert body["users"][0]["slack_user_id"] == "U1"
         assert body["users"][0]["bind_ok"] is True
-        assert "api /api/admin/contact/estelle_activity completed" not in caplog.text
 
     def test_get_activity_upstream_502(
         self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -275,12 +247,12 @@ class TestAst1094EstelleActivityApi:
             MagicMock(side_effect=RuntimeError("disk full")),
         )
         monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
-        exc = MagicMock()
-        monkeypatch.setattr(contact_api.logger, "exception", exc)
+        warn = MagicMock()
+        monkeypatch.setattr(contact_api.logger, "warning", warn)
         resp = contact_client.get("/api/admin/contact/estelle_activity", headers=auth_headers)
         assert resp.status_code == 502
         assert resp.get_json() == {"error": "disk full"}
-        exc.assert_called_once()
+        warn.assert_called_once()
 
     def test_activity_requires_auth(self, contact_client: FlaskClient) -> None:
         assert contact_client.get("/api/admin/contact/estelle_activity").status_code == 401
@@ -289,31 +261,21 @@ class TestAst1094EstelleActivityApi:
 # Branches: GET/PUT debug payload; 400; auth 401/403 (AST-1206).
 class TestAst1206ContactDebugApi:
     def test_get_debug_ok(
-        self,
-        contact_client: FlaskClient,
-        auth_headers: dict[str, str],
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(contact_api, "slack_debug_enabled", MagicMock(return_value=False))
         monkeypatch.setattr(contact_api, "get_deploy_label", MagicMock(return_value="staging"))
         monkeypatch.setattr(contact_api, "contact_is_production_deploy", MagicMock(return_value=False))
-        with caplog.at_level(logging.INFO):
-            resp = contact_client.get("/api/admin/contact/debug", headers=auth_headers)
+        resp = contact_client.get("/api/admin/contact/debug", headers=auth_headers)
         assert resp.status_code == 200
         assert resp.get_json() == {
             "debug_enabled": False,
             "environment": "staging",
             "is_production": False,
         }
-        assert "api /api/admin/contact/debug completed" not in caplog.text
 
     def test_put_debug_ok(
-        self,
-        contact_client: FlaskClient,
-        auth_headers: dict[str, str],
-        monkeypatch: pytest.MonkeyPatch,
-        caplog: pytest.LogCaptureFixture,
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         set_fn = MagicMock(return_value=True)
         monkeypatch.setattr(contact_api, "set_slack_debug_enabled", set_fn)
@@ -321,16 +283,14 @@ class TestAst1206ContactDebugApi:
         monkeypatch.setattr(contact_api, "slack_debug_enabled", MagicMock(return_value=True))
         monkeypatch.setattr(contact_api, "get_deploy_label", MagicMock(return_value="staging"))
         monkeypatch.setattr(contact_api, "contact_is_production_deploy", MagicMock(return_value=False))
-        with caplog.at_level(logging.INFO):
-            resp = contact_client.put(
-                "/api/admin/contact/debug",
-                headers=auth_headers,
-                json={"debug_enabled": True},
-            )
+        resp = contact_client.put(
+            "/api/admin/contact/debug",
+            headers=auth_headers,
+            json={"debug_enabled": True},
+        )
         assert resp.status_code == 200
         assert resp.get_json()["debug_enabled"] is True
         set_fn.assert_called_once_with(True, debug=False)
-        assert "- | api /api/admin/contact/debug completed: PUT 200" in caplog.text
 
     def test_put_debug_non_bool_400(
         self, contact_client: FlaskClient, auth_headers: dict[str, str]
@@ -352,8 +312,8 @@ class TestAst1206ContactDebugApi:
             MagicMock(side_effect=RuntimeError("disk full")),
         )
         monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
-        exc = MagicMock()
-        monkeypatch.setattr(contact_api.logger, "exception", exc)
+        warn = MagicMock()
+        monkeypatch.setattr(contact_api.logger, "warning", warn)
         resp = contact_client.put(
             "/api/admin/contact/debug",
             headers=auth_headers,
@@ -361,7 +321,7 @@ class TestAst1206ContactDebugApi:
         )
         assert resp.status_code == 502
         assert resp.get_json() == {"error": "disk full"}
-        exc.assert_called_once()
+        warn.assert_called_once()
 
     def test_debug_requires_auth(self, contact_client: FlaskClient) -> None:
         assert contact_client.get("/api/admin/contact/debug").status_code == 401

@@ -668,3 +668,86 @@ Land wires non-empty staged `meteorite.job_title` into `tracker.save_meteorite_j
 
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/meteorite.md`
+
+### AST-1774 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions`.
+
+`run_stage_meteorite` / `run_scrape_meteorite` landable success → `CHECK_UNIQUE` (not `READY`); `run_check_unique_meteorite` claims `CHECK_UNIQUE`, promotes unique title+employer rows to `READY`, delegates SQL / null-field multi-peer paths to `_review_duplicate_meteorite_hook` (body: **AST-1775**); dispatcher routes + provisions `check_unique_meteorite`. Config/catalog: **`docs/test-bible/utils/config.md`** § AST-1773. Ruth outcomes: **AST-1775**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage/scrape → CHECK_UNIQUE | `src/core/meteorite.py` | revised **`TestAst1560RunStageMeteorite::test_text_outcome_to_ready`**, **`TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready`**, **`…::test_sibling_rows_do_not_abort_batch`** |
+| Unique / SQL peers / null peers / land gate / paste boundary | same | **`TestAst1774RunCheckUniqueMeteorite`** |
+| Dispatch route + provision | `src/core/dispatcher.py` | **`TestAst1560IngressTransitionDispatchOne::test_routes_check_unique_runner_with_entity_batch_id`**, **`…::test_ensure_ingress_includes_check_unique`** |
+
+**Broken / obsolete this pass:**
+- Stage text / scrape ok / sibling scrape asserting landable success `READY` — revised to `CHECK_UNIQUE`.
+
+**Integration:** none — no existing scenario asserts stage/scrape → READY or `run_check_unique_meteorite`.
+
+## QA test manifest
+
+1. Stage text → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_text_outcome_to_ready`
+2. Scrape ok → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready`
+3. Scrape sibling ok → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch`
+4. Check-unique hop: `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite`
+5. Paste still READY: `tests/component/core/test_meteorite.py::TestAst1561ApplyPaste::test_moves_bot_blocked_to_ready`
+6. Dispatch route: `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_routes_check_unique_runner_with_entity_batch_id`
+7. Provision twin: `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_ensure_ingress_includes_check_unique`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_text_outcome_to_ready \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste::test_moves_bot_blocked_to_ready \
+  tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_routes_check_unique_runner_with_entity_batch_id \
+  tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_ensure_ingress_includes_check_unique \
+  -q
+```
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/core/meteorite.md`
+- `docs/test-bible/core/dispatcher.md`
+
+### AST-1775 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map`.
+
+Fills `_review_duplicate_meteorite_hook`: full-content live payload, `do_task` `review_duplicate_meteorite`, `duplicate` → `DUPLICATE` + `error=duplicate_of:<peer_id>`, `not_duplicate` → `READY`; do_task / invalid outcome / bad peer id leave `CHECK_UNIQUE`. Peer detection + unique→READY: **`### AST-1774`**. Config/catalog: **`docs/test-bible/utils/config.md`** § AST-1773.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| SQL peers → duplicate / not_duplicate | `src/core/meteorite.py` | **`TestAst1775RuthDuplicateReviewInvoke`** |
+| Null multi-peers → Ruth full content | same | same class |
+| Failure / invalid outcome / bad peer id stay CHECK_UNIQUE | same | same class |
+| Land gate (DUPLICATE not landable) | same | **`…::test_land_does_not_claim_duplicate`** |
+
+**Broken / obsolete this pass:** none — AST-1774 monkeypatched hook tests still gate peer *detection*.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Ruth SQL duplicate: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_sql_peers_duplicate_maps_to_duplicate_with_peer_id`
+2. Ruth SQL not-duplicate: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_sql_peers_not_duplicate_maps_to_ready`
+3. Ruth null peers + content: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_null_peers_invoke_ruth_with_full_content`
+4. do_task fail stays CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_do_task_failure_leaves_check_unique`
+5. Invalid outcome stays: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_invalid_outcome_leaves_check_unique`
+6. Bad peer id stays: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_invalid_peer_id_leaves_check_unique`
+7. Land ignores DUPLICATE: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_land_does_not_claim_duplicate`
+8. Peer detection still (1774): `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_title_employer_sql_peers_call_hook_leave_check_unique`
+9. Unique path still (1774): `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_unique_promotes_to_ready`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_title_employer_sql_peers_call_hook_leave_check_unique \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_unique_promotes_to_ready \
+  -q
+```
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/core/meteorite.md`
