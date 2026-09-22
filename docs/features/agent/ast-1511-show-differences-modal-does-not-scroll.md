@@ -241,3 +241,19 @@ Betty `[board-betty] TESTS: REVISE` on AST-1764: bible/suite hole — AST-1511 o
 - AST-1511 `[bug-repro]` on `RepoJsonDivergenceBanner` remains the call-site wrapper lock — not deleted or rewritten as the shell test.
 - No product files in the gap diff.
 
+## Review — Radia (AST-1767)
+
+**Overall:** REVIEW @ `2033f32a` — `[bug-repro]` OK; fix-now: trim publish tip.
+
+**fix-now:** `merge-tests(AST-1767)` pulled unrelated `origin/tests` paths onto the publish ref. `origin/ftr/AST-1754-all-modals-must-be-vertically-scrollable...origin/sub/AST-1754/AST-1767-gap-modal-shell-scroll-tests` must contain only AST-1767-owned paths (plus plan doc).
+
+## Resolution — AST-1767 (2026-09-22)
+
+**Fix-now addressed:** Restored every non-owned path in the ftr…sub diff to `origin/ftr/AST-1754-all-modals-must-be-vertically-scrollable` (including removing `test_CandidateWritingPreferences.test.tsx`, which was not on ftr). Kept:
+
+- `docs/features/agent/ast-1511-show-differences-modal-does-not-scroll.md` (plan-fix AST-1767 block)
+- `docs/test-bible/frontend/components.md` (§ AST-1767)
+- `tests/component/frontend/components/test_Modal.test.tsx` (`[bug-repro] AST-1767`)
+
+No product edits. `[bug-repro]` re-verified green on tip after trim.
+
