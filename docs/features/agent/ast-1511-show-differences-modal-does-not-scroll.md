@@ -249,11 +249,13 @@ Betty `[board-betty] TESTS: REVISE` on AST-1764: bible/suite hole — AST-1511 o
 
 ## Resolution — AST-1767 (2026-09-22)
 
-**Fix-now addressed:** Restored every non-owned path in the ftr…sub diff to `origin/ftr/AST-1754-all-modals-must-be-vertically-scrollable` (including removing `test_CandidateWritingPreferences.test.tsx`, which was not on ftr). Kept:
+**Fix-now status:** Engineer cannot land the trim — pre-commit path ban blocks Katherine from committing under `tests/` / `docs/test-bible/**` (even restores-to-ftr). Working-tree restore of non-owned paths to `origin/ftr/AST-1754-all-modals-must-be-vertically-scrollable` was prepared and verified locally, then discarded uncommitted.
 
-- `docs/features/agent/ast-1511-show-differences-modal-does-not-scroll.md` (plan-fix AST-1767 block)
+**Betty must republish** `origin/sub/AST-1754/AST-1767-gap-modal-shell-scroll-tests` so `origin/ftr/AST-1754-all-modals-must-be-vertically-scrollable...origin/sub/…` contains **only**:
+
+- `docs/features/agent/ast-1511-show-differences-modal-does-not-scroll.md`
 - `docs/test-bible/frontend/components.md` (§ AST-1767)
 - `tests/component/frontend/components/test_Modal.test.tsx` (`[bug-repro] AST-1767`)
 
-No product edits. `[bug-repro]` re-verified green on tip after trim.
+Restore every other path in the current ftr…sub diff to the ftr tip (delete `tests/component/frontend/pages/test_CandidateWritingPreferences.test.tsx` if absent on ftr). Keep `[bug-repro]` green. Then reassign Katherine.
 
