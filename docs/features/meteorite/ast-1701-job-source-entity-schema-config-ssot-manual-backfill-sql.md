@@ -540,3 +540,4 @@ context_tokens≈28000
 - **Test-tree fix-now:** owned by sibling gap **AST-1776** (board `TESTS: REVISE` → gap child; engineer test-tree ban). Not resolved on this ticket.
 - **Discuss / advisory:** no action (Canon Scope process note for Archie; error-string collapse already plan-aligned).
 - **Tip:** `origin/sub/AST-1763/AST-1772-fix-print-resume-cover-without-company-short-name` after this resolve commit.
+- **Docs-Acceptance:** no `test()` / `merge-tests` on this product sub — builder ownership tests + bible land on gap **AST-1776**.
