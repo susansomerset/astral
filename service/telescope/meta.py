@@ -33,7 +33,7 @@ def build_scrape_meta(
     text_or_html: Union[str, List[str], None],
     cookies_dismissed: bool,
 ) -> dict[str, Any]:
-    """Additive scrape-health block for /telescope and /telescope/html."""
+    """Additive scrape-health block on every scrape response."""
     chars = _content_chars(text_or_html)
     if isinstance(text_or_html, list):
         hay = "\n".join(t or "" for t in text_or_html).lower()

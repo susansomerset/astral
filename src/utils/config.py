@@ -2057,7 +2057,6 @@ ROSTER_CONFIG = {
         "retry_state": "JOBLIST_IDENTIFIED_RETRY",
         "terminal_fail_state": "COULD_NOT_PARSE_JOBLIST",
         "selected_pjl_url_key": "selected_pjl_url",
-        "max_concurrent": 3,
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
@@ -4721,24 +4720,24 @@ RAILWAY_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
-# PLAYWRIGHT_CONFIG: scrape timeouts still read by roster/gazer (AST-853 / AST-1726).
-# Launch/Firefox keys removed — platform browser I/O is Telescope HTTP.
+# PLAYWRIGHT_CONFIG: batch session recover retries (client-side); scrape timeouts
+# live in TELESCOPE_CONFIG.request_timeout_seconds (AST-1726 HTTP client).
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_CONFIG = {
-    "company_scrape_timeout_seconds": 120,
-    "context_recovery_max_attempts": 2,  # batch session recover retries (client-side)
+    "context_recovery_max_attempts": 2,
 }
 
 # ---------------------------------------------------------------------------
 # TELESCOPE_CONFIG: platform HTTP client to Astral Telescope (AST-1726).
 # Bearer is env-only (never a code default secret).
+# request_timeout_seconds: platform HTTP client round-trip (queue + scrape + retries).
+# Server scrape timeout after slot acquire: service/telescope/telescope_config.py
+# REQUEST_TIMEOUT_SECONDS (120). Client must allow queue wait on top of that.
 # ---------------------------------------------------------------------------
 TELESCOPE_CONFIG = {
     "base_urls": [],  # filled below from TELESCOPE_BASE_URLS or TELESCOPE_BASE_URL
     "bearer_env": "TELESCOPE_BEARER_TOKEN",
-    "client_timeout_seconds": 60,
-    "max_in_flight": 15,
-    "per_node_max_in_flight": 3,
+    "request_timeout_seconds": 600,
     "retry_other_node": True,
     "max_node_attempts": 2,
     "healthz_path": "/healthz",

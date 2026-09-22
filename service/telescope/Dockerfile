@@ -4,11 +4,7 @@
 # syntax=docker/dockerfile:1
 FROM mcr.microsoft.com/playwright/python:v1.49.1-jammy
 
-ENV PYTHONUNBUFFERED=1 \
-    TELESCOPE_PORT=8080 \
-    TELESCOPE_MAX_CONCURRENT_PAGES=3 \
-    TELESCOPE_REQUEST_TIMEOUT_SECONDS=60 \
-    TELESCOPE_RECYCLE_AFTER_N=50
+ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
@@ -23,5 +19,5 @@ USER pwuser
 
 EXPOSE 8080
 
-# --init is expected via docker run / Railway (reap zombies). Single worker = one Firefox.
+# --init is expected via docker run / Railway (reap zombies). Single uvicorn worker = one pool.
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8080", "--workers", "1"]

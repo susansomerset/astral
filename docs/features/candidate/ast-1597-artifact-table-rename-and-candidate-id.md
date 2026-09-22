@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1597 archived 2026-09-22 -->
+
+## Linear archive (AST-1597)
+
+**Archived:** 2026-09-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1597/artifact-table-rename-and-candidate-id-add-candidate-id-to-artifact  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1594 — Add candidate_id to artifact, app_log, and job  
+**Blocked by / blocks / related:** parent: AST-1594; blocks: AST-1598
+
+### Description
+
+## What this implements
+
+Owns singular `artifact` schema (rename from `artifacts`), required `candidate_id`, data-layer CRUD/ensure/index/header inventory updates, and the ticket-local migration SQL Susan runs (copy only; no seed). Does not own job/app_log columns or logging contextvar (sibling #2).
+
+## Citations
+
+`astral.standards.database-header-inventory`, `astral.standards.in-scope-only`, `pattern.layers.import-discipline`
+
+## Scope
+
+`src/data/database.py` (artifact ensure/CRUD/inventory); parent Description migration SQL block.
+
+## Acceptance criteria
+
+- [X] Fresh and migrated DBs expose table `artifact` (singular) with required `candidate_id`; product code no longer depends on table name `artifacts`.
+- [X] Parent AST-1594 Description includes migration SQL that copies `artifacts` → `artifact` with `candidate_id` backfill (per Scope); running it does not invent new artifact content; after Susan drops `artifacts`, the app runs on `artifact` alone.
+- [X] Artifact writes always set `candidate_id`; when `entity_type=candidate`, `candidate_id == entity_id`.
+- [X] `database.py` header inventory names `artifact` (not `artifacts`) and documents `candidate_id` on `artifact` (this child's slice).
+
+## Boundaries
+
+- [X] Does not add `job` or `app_log` `candidate_id`, does not wire logging contextvar, does not ship selected-candidate surface auto-filter (separate ticket / sibling #2).
+
+## Notes for planning
+
+Citations as above. Fail loudly if artifact write omits `candidate_id`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1594`, child `sub/AST-1594/<this-id>-artifact-table-rename-and-candidate-id`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-06T03:15:35.157Z
+[code-rubric] REVIEW (Commit: e969369c) orphan-rebuild asymmetry; plan faithful
+
+#### betty — 2026-09-06T03:12:16.740Z
+`origin/sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id` @ `a956916b` · artifact rename tests ready
+
+#### joan — 2026-09-06T03:01:06.475Z
+[plan-rubric] PROCEED (Commit: 2e0709ed4cbb5508e022eca255be1739fb428ae4) artifact rename scoped
+
+#### ada — 2026-09-06T02:58:52.386Z
+`origin/sub/AST-1594/AST-1597-artifact-table-rename-and-candidate-id` @ `2e0709ed4cbb5508e022eca255be1739fb428ae4` · plan published
+
+---
+
 # AST-1597 — Artifact table rename and candidate_id
 
 **Linear:** [AST-1597](https://linear.app/astralcareermatch/issue/AST-1597)

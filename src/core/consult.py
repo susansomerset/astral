@@ -791,6 +791,10 @@ class IncompleteGradeSetError(ValueError):
     """Decoded grades are not an exact match to live rubric labels (AST-1155)."""
 
 
+class AllLiteralXGradeSetError(IncompleteGradeSetError):
+    """Complete scored grade set is all literal X — no usable signal (AST-1760)."""
+
+
 def _grade_set_vector_diff(
     rubric_criteria: list,
     grades: list,
@@ -816,6 +820,14 @@ def _require_complete_grade_set(rubric_criteria: list, grades: list) -> None:
         raise IncompleteGradeSetError(f"_render_score: missing vectors {sorted(missing)}")
     if extra:
         raise IncompleteGradeSetError(f"_render_score: unknown vectors {sorted(extra)}")
+
+
+def _require_not_all_literal_x(grades: list) -> None:
+    """Raise AllLiteralXGradeSetError when every grade letter is literal X (non-empty set)."""
+    if grades and all(isinstance(g, dict) and g.get("grade") == "X" for g in grades):
+        raise AllLiteralXGradeSetError(
+            f"_render_score: all literal X grades ({len(grades)} vectors)"
+        )
 
 
 def _debug_incomplete_grade_set(
@@ -1324,6 +1336,8 @@ def _apply_render_verdict_decoded_job(
         )
         # Exact set match before score math — incompleteness retries via caller (AST-1155).
         _require_complete_grade_set(rubric_criteria, grades)
+        # All-literal-X complete set → same fail-dest family (AST-1760); not inside _render_score.
+        _require_not_all_literal_x(grades)
         to_state, score = _render_score(cfg, rubric_criteria, grades, floor)
     else:
         raise ValueError(f"Unknown grading_mode: {mode}")
@@ -1462,16 +1476,22 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
             source_artifact_ids=harvested,
         )
     except IncompleteGradeSetError as e:
-        # Incomplete/extra → retry holding, never first-touch technical (AST-1155).
+        # Incomplete/extra or all-literal-X → retry holding (AST-1155 / AST-1760).
         dest = _consult_batch_fail_dest(job.get("state"), error_state)
         grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
-        _debug_incomplete_grade_set(
-            func="consult.render_verdict",
-            identifier=astral_job_id,
-            rubric_criteria=rubric_criteria,
-            grades=grades_dbg,
-            dest=dest,
-        )
+        if isinstance(e, AllLiteralXGradeSetError):
+            logger.debug(
+                "all literal X grade set %s %s -> %s n_grades=%s",
+                "consult.render_verdict", astral_job_id, dest or "?", len(grades_dbg),
+            )
+        else:
+            _debug_incomplete_grade_set(
+                func="consult.render_verdict",
+                identifier=astral_job_id,
+                rubric_criteria=rubric_criteria,
+                grades=grades_dbg,
+                dest=dest,
+            )
         _warn_job(astral_job_id, dest or "-", str(e))
         if dest:
             _transition_job_state_for_task(agent_task, [astral_job_id], dest)
@@ -1687,7 +1707,15 @@ async def _run_batch_consult(
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
             bad_grades.add(aid)
-            if isinstance(e, IncompleteGradeSetError):
+            if isinstance(e, AllLiteralXGradeSetError):
+                dest = _consult_batch_fail_dest(input_job.get("state"), error_state)
+                logger.debug(
+                    "all literal X grade set %s %s/%s %s -> %s",
+                    f"consult._run_batch_consult({task_key})",
+                    job_idx, len(response_jobs),
+                    _consult_job_identifier(input_job), dest or "?",
+                )
+            elif isinstance(e, IncompleteGradeSetError):
                 _debug_incomplete_grade_set(
                     func=f"consult._run_batch_consult({task_key})",
                     identifier=_consult_job_identifier(input_job),
@@ -2539,7 +2567,6 @@ async def run_consult_task(
                 "total_errors": errors,
             }
         if task_key == "resolve_website":
-            from src.utils.config import TASK_CONFIG
             terminal_ok = (
                 TASK_CONFIG["resolve_website"]["pass_state"],
                 TASK_CONFIG["resolve_website"]["fail_state"],

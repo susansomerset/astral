@@ -4,9 +4,11 @@ import {
   buildJobListRubricColumnsForGroup,
   buildJobListRubricColumnsFromArtifact,
   formatGradeDotTooltip,
+  formatGradeDotTooltipWithVectorLabel,
   jobCarriedRubricKey,
   normalizeRubricVectorKey,
   sortJobListRubricColumns,
+  sortRubricColumnsByImportanceAndGrade,
   type JobListRubricColumn,
 } from "./rubricDisplay"
 import type { StateUiManifest } from "../contexts/StateUiContext"
@@ -97,6 +99,7 @@ interface GradeCell {
   gradeTooltip: string
   /** Present on array grade rows; omitted for object-map grades (bullets dim). */
   confidence?: number
+  reason?: string
 }
 
 function gradeAndConfidenceForCol(
@@ -119,6 +122,7 @@ function gradeAndConfidenceForCol(
       grade,
       gradeTooltip: formatGradeDotTooltip(col, grade, row.reason),
       confidence: row.confidence,
+      reason: row.reason,
     }
   }
   if (typeof gradesRaw === "object") {
@@ -188,20 +192,23 @@ export function buildPhaseTabGradeDots(
   return <>{dots}</>
 }
 
-/** Horizontal grade + confidence row for Analysis section headers (AST-950 / AST-1327). */
+/** Horizontal grade + confidence row for Analysis section headers (AST-950 / AST-1327 / AST-1771). */
 export function buildPhaseSectionGradeConfidenceRow(
   gradesRaw: unknown,
   job: Record<string, unknown>,
   gradesField: string,
 ): ReactNode {
   // Job-carried *_rubric (or grades-only) — never live candidate artifacts (AST-1327).
-  const cols = sortJobListRubricColumns(
-    buildJobListRubricColumnsForGroup({ gradeKey: gradesField, columnSourceJob: job }),
+  const baseCols = buildJobListRubricColumnsForGroup({ gradeKey: gradesField, columnSourceJob: job })
+  const cols = sortRubricColumnsByImportanceAndGrade(
+    baseCols,
+    col => gradeAndConfidenceForCol(gradesRaw, col).grade,
   )
   const cells: ReactNode[] = []
   for (const col of cols) {
-    const { grade, gradeTooltip, confidence } = gradeAndConfidenceForCol(gradesRaw, col)
+    const { grade, confidence, reason } = gradeAndConfidenceForCol(gradesRaw, col)
     if (!grade) continue
+    const gradeTooltip = formatGradeDotTooltipWithVectorLabel(col, grade, reason, confidence)
     cells.push(
       <span key={col.code || col.label} className="recommended-report-phase-grade-cell">
         {gradeDot(grade, gradeTooltip)}

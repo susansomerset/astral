@@ -1280,8 +1280,6 @@ async def parse_job_list_batch(
 ) -> Dict[str, int]:
     """Shared-browser parse_job_list for a claimed company batch (AST-891)."""
     parse_cfg = ROSTER_CONFIG["parse_job_list"]
-    max_concurrent = int(parse_cfg["max_concurrent"])
-    scrape_timeout = PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"]
     ok_states = frozenset({
         parse_cfg["pass_state"],
         parse_cfg["retry_state"],
@@ -1304,41 +1302,17 @@ async def parse_job_list_batch(
                 "Calling run_parse_job_list_dispatch: [%s/%s] %s state=%s url=%s",
                 company_index, company_total, short_name, input_state, list_url,
             )
-            try:
-                result = await asyncio.wait_for(
-                    run_parse_job_list_dispatch(
-                        company, batch_id, ctx, debug, batch_session=batch_session,
-                    ),
-                    timeout=scrape_timeout,
-                )
-            except asyncio.TimeoutError:
-                logger.exception(
-                    "%s | company parse_job_list scrape\n  TimeoutError: scrape exceeded %ss\n  Continuing to the next company",
-                    short_name,
-                    scrape_timeout,
-                )
-                result = _save_parse_dispatch_failure(
-                    short_name,
-                    company_website,
-                    list_url,
-                    input_state,
-                    notes=f"[playwright:scrape_timeout] company scrape exceeded {scrape_timeout}s",
-                    response_type="PARSE_DISPATCH_INFRA",
-                )
+            result = await run_parse_job_list_dispatch(
+                company, batch_id, ctx, debug, batch_session=batch_session,
+            )
             logger.debug("Response from run_parse_job_list_dispatch: %s", result)
             if result.get("error") or result.get("state") not in ok_states:
                 errors += 1
             else:
                 passed += 1
 
-        sem = asyncio.Semaphore(max_concurrent)
-
-        async def _limited(company: Dict[str, Any], company_index: int) -> None:
-            async with sem:
-                await _one(company, company_index)
-
         results = await asyncio.gather(
-            *[_limited(c, ci) for ci, c in enumerate(companies, start=1)],
+            *[_one(c, ci) for ci, c in enumerate(companies, start=1)],
             return_exceptions=True,
         )
         for r in results:
