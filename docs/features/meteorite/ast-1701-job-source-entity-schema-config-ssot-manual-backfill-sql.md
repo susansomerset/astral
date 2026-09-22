@@ -531,6 +531,30 @@ fix-board TESTS: REVISE on AST-1772: ownership tests and bible were written to t
 - `build_*_from_job` contracts, pin/current-read resume/cover resolve, and AST-581 resume/cover split unchanged.
 - No product code on this ticket.
 
+## Radia review (AST-1776)
+
+[code-rubric]
+
+**Ticket:** AST-1776  
+**Publish ref (pre-trim REVIEW):** `552145cd` — tip smuggled `sync(dev)` / `sync(AST-1776): absorb AST-1772 product` (plus Avail/dispatcher and AST-1771 interface bleed) onto this gap sub.  
+**Publish ref (post-trim):** `c9e0bdd4` (`origin/sub/AST-1763/AST-1776-gap-builder-print-ownership-test-coverage`) — Betty republished clean.  
+**Overall:** PROCEED
+
+### Findings (addressed)
+
+- **fix-now (tip hygiene):** gap publish tip must be test-tree only. Betty trimmed: `ftr…sub` is only `docs(AST-1776)` plan section + `test`/`merge-tests(AST-1776)` (`docs/test-bible/core/builder.md` + `tests/component/core/test_builder.py`) + empty `code(AST-1776)`. Dropped sync(dev), AST-1772 product absorb, Avail/dispatcher smuggle, AST-1771 bleed.
+- **Product / tests:** OK on trimmed tip — `[bug-repro]` `TestAst1776BuilderPrintOwnership` + revised ownership ladders; product remains on sibling AST-1772 / ftr.
+
+### Chuckles branching
+
+| Gate | Next action |
+|------|-------------|
+| **PROCEED** (tip trimmed) | merge-child → ftr |
+
+```
+[code-rubric] REVIEW (Commit: 552145cd) trim tip → PROCEED after Betty republish @ c9e0bdd4
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
