@@ -154,3 +154,37 @@ async def _review_duplicate_meteorite_hook(
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1775
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map` @ `72e3501591d98df2783230f34c011b5691f7c7cf`
+
+## Canon scores
+
+patt.entity.batch-processing | A |
+stat.logging.info.entity | A |
+stat.logging.debug | A |
+
+## Traceability
+
+AC7 → Stage 1 steps 2–4 (`_review_duplicate_live_content` CHECK_UNIQUE + LANDED peer blocks with full `CONTENT`; hook invoked from AST-1774 null multi-peer path unchanged); AC8 → Stage 1 steps 4c–g (`do_task` `review_duplicate_meteorite`; validated `peer_meteorite_id` → `DUPLICATE` + `error=duplicate_of:<id>`; `not_duplicate` → `READY`; failure/invalid outcome/unvalidated peer leaves `CHECK_UNIQUE`); AC9 → Stage 1 step 6 inspect-only (`run_land_meteorite` still `READY`/`BOT_BLOCKED` only). Parent AC1–6, AC10 → N/A (AST-1773 registry/catalog; AST-1774 SQL/unique→READY/dispatcher per plan **AC partition**).
+
+## Findings
+
+### acceptable — No `## Self-assessment` block
+- **Severity:** acceptable
+- **Location:** Plan structure — Estimate confirm only
+- **Finding:** Estimate confirm present; no conf/risk paragraph like some sibling plans.
+- **Recommendation:** Optional polish; stages carry done-when gates and four explicit ⚠️ decisions.
+
+### acceptable — Peer id persisted on `error`
+- **Severity:** acceptable
+- **Location:** Stage 1 step 4g / ⚠️ Decision — peer id on `error`
+- **Finding:** AC8 asks to record LANDED peer id; plan stores `duplicate_of:{peer_id}` in `error` because Scope forbids new columns — `error` is in `_UPDATE_METEORITE_ALLOWED`.
+- **Recommendation:** Accept for this epic; rescue/cleanup epics can key off the prefix if needed.
+
+context_tokens≈52000
