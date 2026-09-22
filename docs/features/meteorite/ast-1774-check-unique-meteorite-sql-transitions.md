@@ -244,6 +244,17 @@ async def run_check_unique_meteorite(task: Dict[str, Any], *, debug: bool = Fals
 
 Confirm Chuckles estimate: 5 — agree
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions`
+**Plan path:** `docs/features/meteorite/ast-1774-check-unique-meteorite-sql-transitions.md`
+
+**Built tip:** `b0df9ebe8b8d32e01c7d19d6c30d7ed2b609ec63` (`b0df9ebe`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–3 | `b0df9ebe` | stage/scrape → CHECK_UNIQUE; `run_check_unique_meteorite` + Ruth hook stub; dispatcher route + ensure entry |
+
 ## Joan validate
 
 [plan-rubric]
