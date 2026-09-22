@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, List
 
+from telescope_config import REQUEST_TIMEOUT_SECONDS
+
 
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
@@ -57,7 +59,7 @@ class Settings:
 def load_settings() -> Settings:
     return Settings(
         bearer_token=os.environ.get("TELESCOPE_BEARER_TOKEN", ""),
-        request_timeout_seconds=_env_float("TELESCOPE_REQUEST_TIMEOUT_SECONDS", 120.0),
+        request_timeout_seconds=float(REQUEST_TIMEOUT_SECONDS),
         recycle_after_n=_env_int("TELESCOPE_RECYCLE_AFTER_N", 50),
         port=_env_int("TELESCOPE_PORT", 8080),
         page_goto_timeout_ms=_env_int("TELESCOPE_PAGE_GOTO_TIMEOUT_MS", 30_000),

@@ -4731,7 +4731,7 @@ PLAYWRIGHT_CONFIG = {
 # TELESCOPE_CONFIG: platform HTTP client to Astral Telescope (AST-1726).
 # Bearer is env-only (never a code default secret).
 # request_timeout_seconds: max wait for any Telescope HTTP round-trip (queue-era:
-# same knob will cap job wait). Mirror TELESCOPE_REQUEST_TIMEOUT_SECONDS on workers.
+# same knob will cap job wait). Keep in sync with service/telescope/telescope_config.py.
 # ---------------------------------------------------------------------------
 TELESCOPE_CONFIG = {
     "base_urls": [],  # filled below from TELESCOPE_BASE_URLS or TELESCOPE_BASE_URL
@@ -4754,10 +4754,6 @@ else:
     _single = (os.environ.get("TELESCOPE_BASE_URL") or "").strip()
     if _single:
         TELESCOPE_CONFIG["base_urls"] = [_single]
-
-_telescope_request_timeout = (os.environ.get("TELESCOPE_REQUEST_TIMEOUT_SECONDS") or "").strip()
-if _telescope_request_timeout:
-    TELESCOPE_CONFIG["request_timeout_seconds"] = float(_telescope_request_timeout)
 
 # ---------------------------------------------------------------------------
 # Timesheet rows (database ledgers): provider string validated on insert.

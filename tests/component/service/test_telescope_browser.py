@@ -7,6 +7,12 @@ from unittest.mock import AsyncMock
 import pytest
 
 
+def test_request_timeout_seconds_default() -> None:
+    from telescope_config import REQUEST_TIMEOUT_SECONDS
+
+    assert REQUEST_TIMEOUT_SECONDS == 120
+
+
 @pytest.mark.asyncio
 async def test_recycle_deferred_while_active_pages() -> None:
     from browser import BrowserPool
