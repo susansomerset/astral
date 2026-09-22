@@ -370,3 +370,17 @@ context_tokens≈55000
 
 context_tokens≈38000
 ```
+
+## Resolution
+
+**Date:** 2026-09-22
+**Radia:** Overall CLEAN — no fix-now (`[code-rubric] PROCEED` @ `9dc2f36e`).
+
+**§6:** No product or plan-doc code fixes required.
+
+**Discuss (cross-ticket `a3002ea8` AST-1776 on this publish tip):** Left in place. Dropping it would require rebase/history rewrite on `origin/sub/…`, which branch law forbids. Commit is test-tree / bible only (builder print ownership); outside this ticket's Scope gate but does not change AST-1773 product AC. Chuckles may trim or isolate at `merge-child` if needed.
+
+**Advisory:** Noted — three-dot vs `origin/dev` is epic-wide; catalog null-pool shape matches plan decision.
+
+**§9a:** Dry-run publish tip → `origin/dev` (and `origin/ftr/AST-1762*` when present) before User Testing.
+
