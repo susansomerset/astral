@@ -171,3 +171,73 @@ No other files. Do not resurrect AST-1511’s ftr. Leave `RepoJsonDivergenceBann
 
 **Advisory:** sibling AST-1767 owns Betty TESTS: REVISE (shared Modal shell scroll coverage). Stale RepoJsonDivergenceBanner comment about overflow:hidden is out of scope.
 
+## Bug: AST-1767 — gap: shared Modal shell scroll test coverage
+
+### As-is
+
+`docs/test-bible/frontend/components.md` § Modal / `test_Modal.test.tsx` cover footer catalog classes, icon-control ×, and `showFooter` — not shell scroll. The only modal-scroll `[bug-repro]` is **AST-1511** on `RepoJsonDivergenceBanner` (call-site inner wrapper). Nothing asserts that a **wide shared `Modal`** with tall content placed **directly** in `.modal-body` (no wrapper) is scroll-reachable after AST-1764’s shell contract.
+
+### To-be
+
+Bible + component coverage names and asserts shared wide Modal shell scroll: a below-the-fold direct child is reachable via `.modal-body` scroll. The `[bug-repro]` node is red against pre-AST-1764 product (`overflow: hidden` on `.modal-card--wide .modal-body`) and green after AST-1764 (`overflow-y: auto` + `min-height: 0`). No product code on this ticket.
+
+### Repro
+
+**Pre-fix (red):** product tip **before** `code(AST-1764)` (`8a8510f4`) — wide body still `overflow: hidden`.
+
+**Post-fix (green):** product tip at/after `8a8510f4` (or current `ftr` / this gap’s synced tree with AST-1764 merged).
+
+1. Import `App.css` in the Modal component suite (same pattern as `test_AdminPerformanceMonitor.test.tsx` for computed styles).
+2. Mount `<Modal open size="wide" showFooter={false} …>` with **only** tall direct children (no inner scroll wrapper) — e.g. ≥6 markers each with a large `minHeight` (≈120px+), last marker text `below-fold-marker`.
+3. Optionally pin `.modal-card--wide { height: 240px }` (or similar) in the test so jsdom has a definite card height.
+4. Select `document.querySelector(".modal-card--wide .modal-body")`.
+5. **Assert (gate):** `getComputedStyle(modalBody).overflowY` matches `/auto|scroll/` (not `hidden`).
+6. **Assert (reachability):** set `modalBody.scrollTop = modalBody.scrollHeight` (or `scrollIntoView` on the last marker); expect `below-fold-marker` visible / in the document after scroll.
+
+**Actual pre-fix:** step 5 fails (`overflowY === "hidden"`); tall direct children clipped. **Expected post-fix:** steps 5–6 pass.
+
+Narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  -t "AST-1767"
+```
+
+### Root cause
+
+Betty `[board-betty] TESTS: REVISE` on AST-1764: bible/suite hole — AST-1511 only locks the Show Differences **call-site** wrapper, so a future regression that reverts wide `.modal-body` to `overflow: hidden` would not fail any shared-`Modal` test. Product fix already landed on AST-1764; this gap owns the missing lock.
+
+### Proposed change
+
+**In scope only (tests + bible — no product):**
+
+1. **`tests/component/frontend/components/test_Modal.test.tsx`** (astral-tests / worktree test tree — Betty delivery path):
+   - Add `import "../../../../src/ui/frontend/src/App.css"` (or path consistent with sibling suites).
+   - Add describe **`Modal — AST-1767`** with one it titled exactly:
+     **`[bug-repro] AST-1767: wide Modal body scrolls tall direct children`**
+   - Body: mount shared `Modal` `size="wide"` with tall **direct** children only; assert `getComputedStyle(.modal-card--wide .modal-body).overflowY` is `auto`/`scroll`; assert last marker reachable after `scrollTop` / `scrollIntoView`.
+   - Do **not** assert RepoJsonDivergenceBanner or any feature-screen wrapper; do **not** edit product `Modal.tsx` / `App.css`.
+
+2. **`docs/test-bible/frontend/components.md`**:
+   - Add section **`### AST-1767 · AST-1754 (gap — shared Modal shell scroll)`** near other Modal / AST-1511 entries.
+   - Table row: Area = shared wide Modal shell scroll for tall direct children; Source = `Modal.tsx` + `App.css` (product owned by AST-1764); Component tests = **`test_Modal.test.tsx`** — the `[bug-repro]` node above.
+   - Note: does **not** obsolete AST-1511 (call-site wrapper still covered separately).
+   - QA manifest + narrowed vitest command matching the Repro block.
+
+**Out of scope:** any `src/ui/frontend/**` product edit (AST-1764). Nested-owner smoke (SideTabPanel / email-html) is optional advisory only — not required for this gap’s AC.
+
+### Blast radius
+
+- Extends `test_Modal.test.tsx` only (existing AST-1301 / AST-1302 / AST-1334 nodes must stay green).
+- Bible `components.md` gains one section; AST-1511 section unchanged.
+- Product tree / AST-1764 CSS contract unchanged by this ticket.
+- Future shell regressions that set wide `.modal-body` back to `overflow: hidden` fail this `[bug-repro]` instead of only failing (or missing) call-site coverage.
+
+### What must still hold
+
+- AST-1764 product AC remains true on the synced tree (wide shell scrolls; nested owners still work) — this ticket does not re-implement or weaken it.
+- Existing `test_Modal.test.tsx` cases (closed render, dirty-close, AST-1301/1302/1334) stay green.
+- AST-1511 `[bug-repro]` on `RepoJsonDivergenceBanner` remains the call-site wrapper lock — not deleted or rewritten as the shell test.
+- No product files in the gap diff.
+
