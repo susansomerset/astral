@@ -193,3 +193,62 @@ context_tokens≈52000
 
 - **Commit:** `edf50a4c8b7e3edf57bfd1264eeee9346896ecf3`
 - **Publish ref:** `sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map`
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1775
+**Publish ref:** `9fde6215737a19bc80c025a644c18172a0b648d2` (`origin/sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map`)
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.entity.batch-processing | A | | |
+| stat.logging.info.entity | A | | |
+| stat.logging.debug | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: all three directives A; code review matches.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Branch ancestry vs `origin/dev`** — three-dot diff includes AST-1773/1774 config + runner stack under this sub; expected epic stacking. AST-1775 product commit (`edf50a4c`) touches only `src/core/meteorite.py` (+103/−10); tests in `e7afdffa`.
+- **Peer id on `error`** — `duplicate` outcome persists validated LANDED peer as `error=duplicate_of:<id>` (no new column); Joan flagged acceptable at plan. Rescue/cleanup epics can key off prefix.
+- **`do_task` exception path untested** — raised exceptions propagate to `run_check_unique_meteorite` per-row handler (`total_errors`); failure-return path is covered. Optional Betty pin if Susan wants explicit exception coverage.
+
+## What's solid
+
+- **Hook fill (AC7–8)** — `_review_duplicate_live_content` builds CHECK_UNIQUE + LANDED peer blocks with full `CONTENT`; `do_task` for `review_duplicate_meteorite` with runner `batch_id` in index and `_hold_log_batch` (no second claim).
+- **Outcome map** — `not_duplicate` → `READY` + `_meteorite_state_info`; `duplicate` → `DUPLICATE` + `error=duplicate_of:{peer_id}` + entity info; peer id validated against allowed peer set from AST-1774 selection.
+- **Failure stays CHECK_UNIQUE** — do_task miss, invalid outcome, missing/bad peer id all `_warn_item` and return without auto-terminal (tests cover each).
+- **Land gate (AC9)** — `test_land_does_not_claim_duplicate`; `run_land_meteorite` unchanged in this commit.
+- **Debug contract** — ungated `logger.debug` Calling/Response around `do_task`; full `result` logged.
+- **Scope** — single-file product change per gate; AST-1774 peer detection / unique→READY call sites untouched.
+- **Tests** — `TestAst1775RuthDuplicateReviewInvoke` (SQL duplicate/ready, null peers + full content, failures, land gate); manifest retains AST-1774 peer-detection + unique-path regression nodes.
+- **Estimate 3** fits.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append this artifact to `docs/features/meteorite/ast-1775-ruth-duplicate-review-invoke-duplicate-map.md`; commit `docs(AST-1775): Radia review — clean`.
+2. Post slim upshot via `linear_proxy.py --as radia save-comment`.
+3. Move to **Review Posted** → **User Testing** (PROCEED; no `resolve-child` round needed).
+
+context_tokens≈38000
