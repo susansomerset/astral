@@ -138,6 +138,18 @@ Confirm Chuckles estimate: 5 — agree
 
 
 
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1766/AST-1781-revalidate-on-agent-task-artifact-version`
+**Tip:** `2f73c1ad`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `5d24f9af` | empty-render revalidate helpers + force AUTO off |
+| 2 | `beb48171` | revalidate dispatch AUTO after agent_task version |
+| 3 | `2f73c1ad` | revalidate dispatch AUTO after artifact rotate |
+
 ## Joan validate
 
 **Ticket:** AST-1781
