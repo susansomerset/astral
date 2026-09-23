@@ -141,8 +141,8 @@ context_tokens≈18500
 ## Review (build stub)
 
 **Publish ref:** `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper`
-**Tip:** _(filled after publish)_
+**Tip:** `09e353f5`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | _(after publish)_ | `warn_on_empty` on `resolve_tokens` + `empty_render_for_prompts` |
+| 1 | `09e353f5` | `warn_on_empty` on `resolve_tokens` + `empty_render_for_prompts` |
