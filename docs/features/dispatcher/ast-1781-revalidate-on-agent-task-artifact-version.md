@@ -194,3 +194,80 @@ AC5→Stage 1 `_force_auto_off_if_empty_render` (persist `auto_mode=0` when `emp
 - **Recommendation:** Archie may amend Canon Scope for Radia comparability; no plan defect.
 
 context_tokens≈32000
+
+
+## Radia review
+
+**Ticket:** AST-1781
+**Publish ref:** cbacd9210e3b96116fcca44a8774d0625608db8f
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | |
+| patt.artifact.write-operative | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | X | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded all four ids **A** / **X** at validate-plan; code review agrees on every row.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Copy Output / migration version paths skip revalidation
+
+- **Severity:** discuss
+- **Location:** `src/data/database.py` — `save_agent_task` post-commit hook only; `apply_agent_task_copy_upsert` / `_apply_ast723_*` / `_apply_ast561_*` call `_save_agent_task_on_connection` with `_ =` and no revalidation
+- **Finding:** Child AC6 wording covers any new current `agent_task` version for a `task_key`. Implementation hooks only public `save_agent_task` (Manage Tasks path), matching plan Stage 2 Decision. Copy Output and startup migrations can version prompts without triggering `revalidate_dispatch_tasks_for_task_key`.
+- **Recommendation:** Acceptable if Manage Tasks is the operative path and sibling #2 list enrichment covers residual AUTO-on rows (parent AC 5). If Copy Output must satisfy AC6 literally, extend the hook or narrow AC at Discussion — same Joan plan finding, still true on tip.
+
+### discuss — Token view builder parallel to core (layer-law tradeoff)
+
+- **Severity:** discuss
+- **Location:** `src/data/database.py::_token_view_for_empty_render`
+- **Finding:** Data-layer view + operative overlay via `get_current_artifact` duplicates `build_candidate_token_view` / hydrate behavior intentionally to keep `data → utils` import direction. Sibling #2 list enrichment may use plain `build_candidate_token_view` without operative overlay.
+- **Recommendation:** Epic awareness only — ensure list gates and revalidation hooks do not diverge on operative artifact tokens when #2 lands; no AST-1781 code change required if #2 later shares or hydrates this path.
+
+### discuss — Canon Scope gaps (do not score; Joan raised at plan)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs plan footprint
+- **Finding:** `astral.layers.import-direction` and `astral.standards.in-scope-only` plainly govern this slice but are absent from the frozen four-id list. Plan scope gate + implementation honor both (`database.py` / `candidate.py` only; no `src.core` from `src.data`).
+- **Recommendation:** Archie may amend Canon Scope for Radia comparability; no plan or code defect.
+
+### discuss — Epic rollup files on sub tip (not AST-1781 product scope)
+
+- **Severity:** discuss
+- **Location:** Full branch diff vs `origin/dev` also includes `src/utils/config.py` + `tests/component/utils/test_config.py` (AST-1779 dependency), `docs/features/dispatcher/ast-1780-*.md` (plan only), `tests/component/ui/api/test_api_jobs.py` + bible § AST-1769 (bug-repro spill from #1 branch)
+- **Finding:** AST-1781 product footprint is confined to `database.py`, `candidate.py`, and their tests/bible (~503 lines). Integration-line merge of sibling #1 helper is expected; AST-1769 test has no `api_jobs.py` make-fix on tip.
+- **Recommendation:** Chuckles/merge-child hygiene before ftr rollup — not a canon violation for AST-1781 implementation quality.
+
+### advisory — Whitespace-only `system_prompt` edge
+
+- **Severity:** advisory
+- **Location:** `src/data/database.py::_agent_task_prompt_texts`
+- **Finding:** Whitespace-only `system_prompt` is appended in the segment loop as-is, but effective-system last entry falls through to agent `content` (because `.strip()` is empty). Harmless for token scoring (`empty_render_for_prompts` ignores empty strings) but slightly off the “duplicate stripped system last” mental model.
+- **Recommendation:** No action unless UAT surfaces a prompt with whitespace-only system text.
+
+## What's solid
+
+- Stage 1 helpers match plan: `list_dispatch_tasks_for_task_key`, `_agent_task_prompt_texts` (caller order + effective system last), `_token_view_for_empty_render` (operative overlay, no core import), `_force_auto_off_if_empty_render` (no `entity_contexts`, per-row try/except + warning, `auto_mode=0` persist), `revalidate_dispatch_tasks_for_task_key` / `revalidate_dispatch_tasks_for_artifact`.
+- Stage 2: `_save_agent_task_on_connection` returns `bool`; public `save_agent_task` revalidates post-commit only when versioned; metadata-only save does not revalidate (tested).
+- Stage 3: `save_candidate_data` str-path calls `revalidate_dispatch_tasks_for_artifact` only after real `save_artifact` rotate; identical-to-current and dict paths skip (tested).
+- Nine manifest tests cover AC5–AC7 paths including job-token non-force, unbacked artifact key, other-candidate isolation, and hook wiring.
+- Estimate **5** fits footprint.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append this verdict to `docs/features/dispatcher/ast-1781-revalidate-on-agent-task-artifact-version.md` and push `docs(AST-1781): Radia review — clean` on `origin/sub/AST-1766/AST-1781-revalidate-on-agent-task-artifact-version`.
+2. Post slim upshot via `linear_proxy --as radia save-comment`.
+3. Move to **Review Posted**; datt routes PROCEED per §3h.
+4. Track Copy Output / migration revalidation gap and operative-view vs list-enrichment parity as epic discuss items for #2 / Archie — no resolve-child work required on this tip.
