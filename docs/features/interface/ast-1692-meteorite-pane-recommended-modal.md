@@ -347,3 +347,82 @@ context_tokens≈52000
 - Radia **CLEAN / PROCEED** — no fix-now / discuss product changes.
 - §9a: Betty cleared ftr test-tree conflict @ `40b9a5b5`; published `sync(dev)` tip so `origin/dev` is an ancestor.
 - Dry-run clean vs `origin/dev` and vs `origin/ftr/AST-1685-view-related-meteorite-record-data`.
+
+---
+
+## Bug: AST-1769 — Meteorite tab missing on Recommended job modal (prod)
+
+### As-is
+
+On main/production, opening a Recommended job modal does not show the Meteorite top tab — even for jobs that came from a meteorite staging row.
+
+### To-be
+
+When a related `meteorite` row exists for the open job, the Recommended Job Report modal shows the Meteorite top tab (alongside Summary / Analysis / Artifacts / Discussion) and the read-only pane renders that row’s provenance.
+
+### Repro
+
+1. On production (or a DB that mirrors it), pick a Recommended job whose `job.source` is `"meteorite"` and `job.source_entity_id` is a live `meteorite.id`, but `meteorite.astral_job_id` for that row is null/blank (common after `create_meteorite_job` when `tracker.save_meteorite_job` returns `duplicate_skip` / `superseded` — that helper only calls `update_meteorite(..., astral_job_id=…)` when outcome is `created`).
+2. Open the Recommended Job Report modal for that `astral_job_id`.
+3. Observe: top tabs are Summary | Analysis | Artifacts | Discussion only — no Meteorite.
+4. `GET /api/jobs/<astral_job_id>` returns `"related_meteorite": null` even though `get_meteorite(int(source_entity_id))` would return the staging row.
+
+Fixture shape (no SQL seed — file/JSON persistence):
+
+```json
+{
+  "job": {
+    "astral_job_id": "job-1769",
+    "source": "meteorite",
+    "source_entity_id": "42",
+    "company": "meteorite-acme"
+  },
+  "meteorite": {
+    "id": 42,
+    "astral_job_id": null,
+    "state": "LANDED",
+    "link": "https://example.com/jobs/1",
+    "classify_outcome": "job",
+    "content": "…"
+  }
+}
+```
+
+### Root cause
+
+Ship is on `origin/main` (AST-1691 `related_meteorite` + AST-1692 tab filter). The UI correctly omits Meteorite when `related_meteorite` is null (`JobAnalysisReportModal` `topTabs` filter). The payload is null because `GET /api/jobs/<id>` only resolves via `get_meteorite_by_astral_job_id(astral_job_id)` (reverse link on `meteorite.astral_job_id`). That column is often unset for jobs that still have a live parent link the other way: `job.source == "meteorite"` + `job.source_entity_id` → meteorite id (AST-1701/1702). `create_meteorite_job` only writes `meteorite.astral_job_id` on outcome `created`, so supersede / duplicate_skip leaves the reverse link empty while the job remains openable from Recommended — tab stays hidden. Symptom is “tab missing”; defect is incomplete related-row resolve on the job detail route, not a missing React tab registration.
+
+### Proposed change
+
+Stay inside parent AST-1685 Component/Technical scope for the report attach path (`src/ui/api/api_jobs.py`, and `src/data/database.py` only if a tiny helper is cleaner). Do **not** edit `src/core/meteorite.py` land/`create_meteorite_job` in this bug (parent Component scope limits that file to retention, which is gone; parent Functional scope forbids land-runner edits). Do **not** change React tab gating — omit-when-null remains correct once the payload is honest.
+
+1. In `src/ui/api/api_jobs.py`, import `get_meteorite` from `src.data.database` (alongside existing `get_meteorite_by_astral_job_id`).
+
+2. In `detail(astral_job_id)`, inside the existing AST-1691 `related_meteorite` try block, after `row = get_meteorite_by_astral_job_id(astral_job_id)`:
+
+   - If `row is None`:
+     - Let `src = (job.get("source") or "").strip()`.
+     - Let `sid = str(job.get("source_entity_id") or "").strip()`.
+     - If `src == "meteorite"` (use `SOURCE_ENTITY_TYPE_METEORITE` from config if already imported in this module; otherwise the literal `"meteorite"` matching config) **and** `sid` is non-empty **and** `sid.isdigit()`: call `get_meteorite(int(sid))` and assign to `row` when not None.
+     - Debug joints: log Calling/Response for the fallback `get_meteorite` the same way as the reverse-link call (`stat.logging.debug` — full response, no truncation).
+   - Then keep the existing projection: if `row is None` → `job["related_meteorite"] = None`; else the same flat field dict as today (`id`, timestamps, `estelle_notified_at`, `link`, `classify_outcome`, `content`, `state`, `source_kind`, `source_id`, `error`).
+
+3. Do **not** write `meteorite.astral_job_id` from this GET (read-only attach). Do **not** show the Meteorite tab when both reverse link and source_entity fallback miss. Do **not** hardcode a Meteorite tab in TSX.
+
+⚠️ **Decision:** Prefer job `source` / `source_entity_id` fallback on the detail route over expanding `get_meteorite_by_astral_job_id`’s SQL contract — keeps the reverse-link helper’s meaning intact (astral_job_id column only) and matches parent Technical scope’s “attach `related_meteorite` on job GET” change kind. Optional later data-hygiene (always set `astral_job_id` on ok land outcomes in `create_meteorite_job`) is out of this bug’s epic Component scope for `meteorite.py`.
+
+### Blast radius
+
+- `GET /api/jobs/<id>` `related_meteorite` for meteorite-parented jobs that previously returned null — AST-1692 tab + pane will appear; AST-1694 `listing_href` path unchanged (separate helper).
+- Gazed / company-parented Recommended jobs (`source != "meteorite"` or blank `source_entity_id`) stay null → four tabs only.
+- Soft-fail `except` around the block still sets `related_meteorite=null` on throw.
+- Tests that assert null when no reverse-link row may need a Betty revise if they used meteorite-sourced jobs without `astral_job_id` (fix-board / qa-fix).
+
+### What must still hold
+
+- Parent AC1: Meteorite tab only when a related meteorite row exists; omit when none (after both resolve attempts).
+- Parent AC2: `related_meteorite` always present as object or `null`; projected fields unchanged when object.
+- Parent AC3–5: pane timestamps / http(s) link / read-only AI behavior (AST-1692) unchanged.
+- Parent AC6: Meteorite remains on `JOBS_RECOMMENDED_REPORT_TOP_TABS` / manifest — no TSX-only tab invention.
+- Parent AC9: no stage/scrape/land/qualify runner edits in this fix.
+- Gazed-only jobs without a meteorite parent stay on the existing four tabs.
