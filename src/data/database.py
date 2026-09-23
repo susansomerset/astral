@@ -18,7 +18,7 @@ Tables used (inventory):
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, list_agent_data_batches, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
 - scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
-- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); meteorite_email live Avail is core (AST-1135 / AST-1466), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
+- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, list_dispatch_tasks_for_task_key, revalidate_dispatch_tasks_for_task_key, revalidate_dispatch_tasks_for_artifact, get_due_tasks). candidate_id required on save (AST-1134); meteorite_email live Avail is core (AST-1135 / AST-1466), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id); nullable candidate_id (stamped when logging context has a candidate; NULL otherwise; AST-1598).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
@@ -114,6 +114,10 @@ from src.utils.config import (
     RUBRIC_FEEDBACK_CONFIG,
     REPO_ADMIN_JSON_CONFIG,
     task_keys_for_rubric_owner,
+    TOKEN_SOURCES,
+    ARTIFACT_CONFIG,
+    empty_render_for_prompts,
+    list_artifact_keys_in_prompt_texts,
 )
 from src.utils.cost_calculator import calculate_cost_components_deepseek_from_counts
 from src.utils.logging import get_logger
@@ -621,7 +625,7 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             continue
 
         was_absent = cur_before is None
-        _save_agent_task_on_connection(
+        _ = _save_agent_task_on_connection(
             conn,
             tk_str,
             now=now,
@@ -6200,7 +6204,7 @@ def _apply_ast723_rubric_vectors_token_migration(conn: sqlite3.Connection) -> No
         new_up = patched[1]
         if _AST723_RUBRIC_VECTORS_MARKER not in new_up:
             new_up = f"{new_up.rstrip()}\n<!-- {_AST723_RUBRIC_VECTORS_MARKER} -->"
-        _save_agent_task_on_connection(
+        _ = _save_agent_task_on_connection(
             conn,
             task_key,
             now=now,
@@ -6260,7 +6264,7 @@ def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) ->
     else:
         new_up = _patch_ast561_take_jd_into_prompt(up_raw) if up_raw.strip() else up_raw
         new_nc = _patch_ast561_take_jd_into_prompt(nc_raw) if nc_raw.strip() else nc_raw
-    _save_agent_task_on_connection(
+    _ = _save_agent_task_on_connection(
         conn,
         "analysis_upshot",
         now=_utc_now(),
@@ -6471,9 +6475,10 @@ def _save_agent_task_on_connection(
     task_seq: Optional[float] = None,
     task_name: Optional[str] = None,
     import_explicit: bool = False,
-) -> None:
+) -> bool:
     """Upsert logic for Manage Tasks semantics on caller-owned ``conn`` (no commit / close).
 
+    Returns True when a new current=1 row was inserted (first insert or content version).
     Caller must have run ``_ensure_agent_task_schema`` if needed.
     ``import_explicit`` — kwargs are pasted rows (Copy Output): ``None`` means empty value,
     not “leave untouched” (used by ``apply_agent_task_copy_upsert`` only).
@@ -6554,6 +6559,7 @@ def _save_agent_task_on_connection(
                 now,
             ),
         )
+        return True
     else:
         eu, ea, eb, ec, ed, en = (
             existing[2],
@@ -6634,6 +6640,7 @@ def _save_agent_task_on_connection(
                     now,
                 ),
             )
+            return True
         else:
             sets, params = ["updated_at = ?"], [now]
             if import_explicit:
@@ -6668,6 +6675,7 @@ def _save_agent_task_on_connection(
                 params.append(task_name.strip())
             params.append(existing[0])
             conn.execute(f"UPDATE agent_task SET {', '.join(sets)} WHERE task_key_uuid = ?", params)
+            return False
 
 
 def save_agent_task(
@@ -6690,14 +6698,15 @@ def save_agent_task(
     """Upsert agent_task with versioning. Any change among the seven prompt segments versions the row.
 
     Metadata without segment edits: agent_id / run_next only — updates `updated_at`, no retire.
-    All kwargs use ``None`` = leave existing value untouched (same as PUT no-key semantics)."""
+    All kwargs use ``None`` = leave existing value untouched (same as PUT no-key semantics).
+    After a new current version commits, revalidate dispatch_task AUTO for this task_key (AST-1781)."""
     now = _utc_now()
 
-    def _with_conn() -> None:
+    def _with_conn() -> bool:
         conn = _get_connection()
         try:
             _ensure_agent_task_schema(conn)
-            _save_agent_task_on_connection(
+            versioned = _save_agent_task_on_connection(
                 conn,
                 task_key,
                 now=now,
@@ -6716,10 +6725,21 @@ def save_agent_task(
                 task_name=task_name,
             )
             conn.commit()
+            return versioned
         finally:
             conn.close()
 
-    _run_with_retry(_with_conn)
+    versioned = _run_with_retry(_with_conn)
+    if versioned:
+        try:
+            revalidate_dispatch_tasks_for_task_key(task_key)
+        except Exception as exc:
+            _log.warning(
+                "task_key=%r %s: %s — empty-render revalidation after save_agent_task failed",
+                task_key,
+                type(exc).__name__,
+                exc,
+            )
 
 
 def get_agent_task(task_key: str) -> Optional[Dict[str, Any]]:
@@ -8311,6 +8331,219 @@ def list_dispatch_tasks_for_candidate(candidate_id: str) -> List[Dict[str, Any]]
         finally:
             conn.close()
     return _run_with_retry(_with_conn)
+
+
+def list_dispatch_tasks_for_task_key(task_key: str) -> List[Dict[str, Any]]:
+    """All dispatch_task rows for one task_key (stable by id ASC)."""
+    tk = str(task_key or "").strip()
+    if not tk:
+        return []
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_dispatch_task_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM dispatch_task WHERE task_key = ? ORDER BY id ASC",
+                (tk,),
+            ).fetchall()
+            return [_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def _agent_task_prompt_texts(
+    agent_task: dict, agent_row: Optional[dict]
+) -> List[str]:
+    """Prompt segments for empty-render gating (AST-1781 / AST-1779 caller order)."""
+    out: List[str] = []
+    for key in (
+        "system_prompt",
+        "cache_prompt",
+        "cache_prompt_b",
+        "cache_prompt_c",
+        "cache_prompt_d",
+        "nocache_prompt",
+        "user_prompt",
+    ):
+        val = agent_task.get(key)
+        if isinstance(val, str):
+            out.append(val)
+    # Effective system last: task system_prompt if non-empty, else agent content.
+    sp = (agent_task.get("system_prompt") or "").strip()
+    if sp:
+        out.append(sp)
+    else:
+        out.append((agent_row or {}).get("content") or "")
+    return out
+
+
+def _set_dot_path(root: dict, path: str, value: Any) -> None:
+    """Write value at dotted path; create intermediate dicts as needed."""
+    parts = path.split(".")
+    cur: Any = root
+    for part in parts[:-1]:
+        nxt = cur.get(part) if isinstance(cur, dict) else None
+        if not isinstance(nxt, dict):
+            nxt = {}
+            cur[part] = nxt
+        cur = nxt
+    if isinstance(cur, dict):
+        cur[parts[-1]] = value
+
+
+def _token_view_for_empty_render(candidate_row: dict) -> dict:
+    """Walkable resolve_tokens view + operative artifact overlays (no core import)."""
+    cd = candidate_row.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    view: Dict[str, Any] = {
+        "first": candidate_row.get("first") or "",
+        "last": candidate_row.get("last") or "",
+        "full": candidate_row.get("full") or "",
+        "pronouns": candidate_row.get("pronouns") or "",
+        "contact": cd.get("contact") if isinstance(cd.get("contact"), dict) else {},
+        "context": dict(cd.get("context") or {}) if isinstance(cd.get("context"), dict) else {},
+        "artifacts": dict(cd.get("artifacts") or {}) if isinstance(cd.get("artifacts"), dict) else {},
+        "_astral_candidate_id": candidate_row.get("astral_candidate_id") or "",
+    }
+    cid = view["_astral_candidate_id"]
+    if not cid:
+        return view
+    for _name, spec in TOKEN_SOURCES.items():
+        if spec.get("source") != "candidate" or spec.get("source_type") != "artifact":
+            continue
+        artifact_key = spec.get("artifact_key")
+        path = spec.get("path")
+        if not isinstance(artifact_key, str) or not artifact_key or not isinstance(path, str):
+            continue
+        entry = ARTIFACT_CONFIG.get(artifact_key)
+        if not isinstance(entry, dict):
+            continue
+        artifact_type = artifact_key.rsplit(".", 1)[-1]
+        row = get_current_artifact(entry["entity_type"], cid, artifact_type)
+        if row is None:
+            continue  # miss → leave library path (hydrate migration window)
+        _set_dot_path(view, path, row.get("artifact_data"))
+    return view
+
+
+def _force_auto_off_if_empty_render(dtask: dict) -> None:
+    """Persist auto_mode=0 when candidate-scoped empty-render is true (AST-1781)."""
+    if not bool(dtask.get("auto_mode")):
+        return
+    task_key = dtask.get("task_key") or ""
+    candidate_id = (dtask.get("candidate_id") or "").strip()
+    try:
+        if not task_key or not candidate_id:
+            _log.warning(
+                "%s | dispatch_task id=%s task_key=%r missing candidate_id or task_key — "
+                "skipping empty-render revalidation",
+                candidate_id or "-",
+                dtask.get("id"),
+                task_key,
+            )
+            return
+        agent_task = get_agent_task(task_key)
+        if agent_task is None:
+            _log.warning(
+                "%s | dispatch_task id=%s task_key=%r no current agent_task — "
+                "skipping empty-render revalidation",
+                candidate_id,
+                dtask.get("id"),
+                task_key,
+            )
+            return
+        agent_id = (agent_task.get("agent_id") or "").strip()
+        agent_row = get_agent(agent_id) if agent_id else None
+        candidate_row = get_candidate(candidate_id)
+        if candidate_row is None:
+            _log.warning(
+                "%s | dispatch_task id=%s task_key=%r candidate not found — "
+                "skipping empty-render revalidation",
+                candidate_id,
+                dtask.get("id"),
+                task_key,
+            )
+            return
+        texts = _agent_task_prompt_texts(agent_task, agent_row)
+        view = _token_view_for_empty_render(candidate_row)
+        result = empty_render_for_prompts(texts, view, task_key)
+        if result.get("empty_render"):
+            update_dispatch_task(int(dtask["id"]), auto_mode=0)
+    except Exception as exc:
+        _log.warning(
+            "%s | dispatch_task id=%s task_key=%r %s: %s — "
+            "empty-render revalidation failed — leaving auto_mode unchanged",
+            candidate_id or "-",
+            dtask.get("id"),
+            task_key,
+            type(exc).__name__,
+            exc,
+        )
+
+
+def revalidate_dispatch_tasks_for_task_key(task_key: str) -> None:
+    """Force AUTO off on empty-render rows for every dispatch_task with this task_key."""
+    tk = str(task_key or "").strip()
+    if not tk:
+        return
+    for row in list_dispatch_tasks_for_task_key(tk):
+        _force_auto_off_if_empty_render(row)
+
+
+def _list_current_agent_tasks_full() -> List[Dict[str, Any]]:
+    """All current=1 agent_task rows with full prompt columns (AST-1781)."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_agent_task_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM agent_task WHERE current = 1 ORDER BY task_key"
+            ).fetchall()
+            return [_row_to_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def revalidate_dispatch_tasks_for_artifact(candidate_id: str, artifact_key: str) -> None:
+    """Force AUTO off on this candidate's rows whose prompts reference artifact_key tokens."""
+    cid = str(candidate_id or "").strip()
+    akey = str(artifact_key or "").strip()
+    if not cid or not akey:
+        return
+    backed = False
+    for spec in TOKEN_SOURCES.values():
+        if (
+            spec.get("source") == "candidate"
+            and spec.get("source_type") == "artifact"
+            and spec.get("artifact_key") == akey
+        ):
+            backed = True
+            break
+    if not backed:
+        return
+    related_keys: List[str] = []
+    seen: set[str] = set()
+    for agent_task in _list_current_agent_tasks_full():
+        ag_id = (agent_task.get("agent_id") or "").strip()
+        agent_row = get_agent(ag_id) if ag_id else None
+        texts = _agent_task_prompt_texts(agent_task, agent_row)
+        if akey not in list_artifact_keys_in_prompt_texts(*texts):
+            continue
+        tk = agent_task.get("task_key") or ""
+        if not tk or tk in seen:
+            continue
+        seen.add(tk)
+        related_keys.append(tk)
+    for tk in related_keys:
+        for row in list_dispatch_tasks_for_task_key(tk):
+            if (row.get("candidate_id") or "").strip() == cid:
+                _force_auto_off_if_empty_render(row)
 
 
 def list_candidate_ids_with_dispatch_tasks() -> List[str]:
