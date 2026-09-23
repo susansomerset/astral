@@ -84,24 +84,32 @@ class TestScrapeDebugHelpers:
         ]
         assert request_id == "T-001"
         assert ctx == "C-001"
-        assert messages[0].startswith("T-001: Accepted url https://www.scrapeme.com, text, links")
-        assert "(awaiting F/C)" in messages[0]
+        assert (
+            messages[0]
+            == "T-001: Accepted, text, links (awaiting F/C) url=https://www.scrapeme.com [live T=1 F=0 C=0]"
+        )
         assert 'creating "F-001"' in messages[1]
-        assert messages[2] == "F-001: Starting firefox app with playwright [live T=1 F=1 C=0]"
+        assert (
+            messages[2]
+            == "F-001: Starting firefox app with playwright url=https://www.scrapeme.com [live T=1 F=1 C=0]"
+        )
         assert (
             messages[3]
-            == "T-001 (F-001 C-001): Requesting url https://www.scrapeme.com, text, links [live T=1 F=1 C=0]"
+            == "T-001 (F-001 C-001): Requesting, text, links url=https://www.scrapeme.com [live T=1 F=1 C=0]"
         )
-        assert messages[4] == 'F-001: Creating context "C-001" [live T=1 F=1 C=1]'
-        assert messages[5] == "C-001: Starting context [live T=1 F=1 C=1]"
-        assert messages[6] == "C-001: Loading Page [live T=1 F=1 C=1]"
-        assert messages[7] == "C-001: Scraping Page for text [live T=1 F=1 C=1]"
-        assert messages[8] == "C-001: Scraping Page for links [live T=1 F=1 C=1]"
-        assert messages[9] == "C-001: Close Page [live T=1 F=1 C=0]"
-        assert messages[10] == "F-001: Close Instance [live T=1 F=0 C=0]"
+        assert (
+            messages[4]
+            == 'F-001: Creating context "C-001" url=https://www.scrapeme.com [live T=1 F=1 C=1]'
+        )
+        assert messages[5] == "C-001: Starting context url=https://www.scrapeme.com [live T=1 F=1 C=1]"
+        assert messages[6] == "C-001: Loading Page url=https://www.scrapeme.com [live T=1 F=1 C=1]"
+        assert messages[7] == "C-001: Scraping Page for text url=https://www.scrapeme.com [live T=1 F=1 C=1]"
+        assert messages[8] == "C-001: Scraping Page for links url=https://www.scrapeme.com [live T=1 F=1 C=1]"
+        assert messages[9] == "C-001: Close Page url=https://www.scrapeme.com [live T=1 F=1 C=0]"
+        assert messages[10] == "F-001: Close Instance url=https://www.scrapeme.com [live T=1 F=0 C=0]"
         assert (
             messages[11]
-            == "T-001 (F-001 C-001): Request Return Successful for url https://www.scrapeme.com [live T=1 F=0 C=0]"
+            == "T-001 (F-001 C-001): Request Return Successful url=https://www.scrapeme.com [live T=1 F=0 C=0]"
         )
 
     def test_live_counters_track_start_and_recycle(self) -> None:
@@ -159,6 +167,7 @@ class TestScrapeDebugHelpers:
     def test_debug_events_emit_when_enabled(self, capsys) -> None:
         import scrape_debug as dbg
 
+        _, tokens = dbg.begin_scrape_request("https://example.com")
         token = dbg.enable_scrape_debug()
         try:
             dbg.bind_scrape_firefox("F-001")
@@ -174,6 +183,7 @@ class TestScrapeDebugHelpers:
             )
         finally:
             dbg.disable_scrape_debug(token)
+            dbg.end_scrape_request(tokens)
 
         payloads = [
             json.loads(ln)
@@ -183,7 +193,7 @@ class TestScrapeDebugHelpers:
         assert any(p.get("event") == "context_created" for p in payloads)
         scrape_lines = [p for p in payloads if p.get("event") == "scrape_field"]
         assert len(scrape_lines) == 1
-        assert "C-001: Scraping Page for text" in scrape_lines[0]["message"]
+        assert scrape_lines[0]["message"] == "C-001: Scraping Page for text url=https://example.com [live T=1 F=0 C=1]"
         assert scrape_lines[0]["live_contexts"] == 1
         assert all(p.get("level") == "debug" for p in payloads)
 

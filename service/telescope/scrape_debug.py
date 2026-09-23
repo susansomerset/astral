@@ -263,6 +263,12 @@ def _context_cap_suffix(**fields: Any) -> str:
     return ""
 
 
+def _url_suffix(url: str) -> str:
+    """Requested url tail — appended on scrape narrative lines when known."""
+    u = (url or "").strip()
+    return f" url={u}" if u else ""
+
+
 def _request_with_fc(
     *,
     firefox: Optional[str] = None,
@@ -293,68 +299,70 @@ def _event_message(event: str, **fields: Any) -> str:
 
     live = _live_suffix()
 
+    url_tail = _url_suffix(url)
+
     if event == "request_start":
         fl = ", ".join(str(x) for x in req_fields)
-        base = f"{t}: Accepted url {url}, {fl}" if fl else f"{t}: Accepted url {url}"
-        return f"{base} (awaiting F/C){live}"
+        base = f"{t}: Accepted, {fl}" if fl else f"{t}: Accepted"
+        return f"{base} (awaiting F/C){url_tail}{live}"
 
     if event == "request_serving":
         tag = _request_with_fc(firefox=f if f != "F-?" else None, context=c if c != "C-?" else None)
         fl = ", ".join(str(x) for x in req_fields)
-        base = f"{tag}: Requesting url {url}, {fl}" if fl else f"{tag}: Requesting url {url}"
-        return f"{base}{_context_cap_suffix(**fields)}{live}"
+        base = f"{tag}: Requesting, {fl}" if fl else f"{tag}: Requesting"
+        return f"{base}{_context_cap_suffix(**fields)}{url_tail}{live}"
 
     if event == "request_done":
         tag = _request_with_fc()
-        return f"{tag}: Request Return Successful for url {url}{live}"
+        return f"{tag}: Request Return Successful{url_tail}{live}"
 
     if event == "firefox_needed":
         counts = live_instance_counts()
         new_f = fields.get("firefox_id") or f
         return (
             f'{t}: Live Firefox Instances: {counts["live_firefox"]}, '
-            f'creating "{new_f}"{live}'
+            f'creating "{new_f}"{url_tail}{live}'
         )
 
     if event == "request_context":
         tag = _request_with_fc(firefox=f if f != "F-?" else None, context=c if c != "C-?" else None)
-        return f"{tag}: Requesting context from {f}{_context_cap_suffix(**fields)}{live}"
+        return f"{tag}: Requesting context from {f}{_context_cap_suffix(**fields)}{url_tail}{live}"
 
     if event == "firefox_launched":
-        return f"{f}: Starting firefox app with playwright{live}"
+        return f"{f}: Starting firefox app with playwright{url_tail}{live}"
 
     if event == "context_created":
-        return f'{f}: Creating context "{c}"{live}'
+        return f'{f}: Creating context "{c}"{url_tail}{live}'
 
     if event == "page_created":
-        return f"{c}: Starting context{live}"
+        return f"{c}: Starting context{url_tail}{live}"
 
     if event == "navigate_start":
-        return f"{c}: Loading Page{live}"
+        return f"{c}: Loading Page{url_tail}{live}"
 
     if event == "navigate_done":
         final = fields.get("final_url") or url
-        return f"{c}: Page loaded final_url={final}{live}"
+        return f"{c}: Page loaded final_url={final}{url_tail}{live}"
 
     if event == "scrape_field":
-        return f"{c}: Scraping Page for {fields.get('field', '?')}{live}"
+        return f"{c}: Scraping Page for {fields.get('field', '?')}{url_tail}{live}"
 
     if event == "context_closed":
-        return f"{c}: Close Page{live}"
+        return f"{c}: Close Page{url_tail}{live}"
 
     if event == "context_recycled":
         ctx = fields.get("context") or c
-        return f'{f}: Recycle Context "{ctx}"{live}'
+        return f'{f}: Recycle Context "{ctx}"{url_tail}{live}'
 
     if event == "firefox_closed":
-        return f"{f}: Close Instance{live}"
+        return f"{f}: Close Instance{url_tail}{live}"
 
     if event == "firefox_recover":
         reason = fields.get("reason") or "recover"
-        return f"{f}: Recover Instance reason={reason}{live}"
+        return f"{f}: Recover Instance reason={reason}{url_tail}{live}"
 
     if event == "ready_state":
-        return f"{c}: wait_ready outcome={fields.get('outcome', '?')}{live}"
+        return f"{c}: wait_ready outcome={fields.get('outcome', '?')}{url_tail}{live}"
 
     return f"telescope scrape {event}"
 
