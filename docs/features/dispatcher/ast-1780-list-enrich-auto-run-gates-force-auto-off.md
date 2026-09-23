@@ -164,3 +164,49 @@ Confirm Chuckles estimate: 5 — agree
 | Parent create AUTO-on gate (same class as PUT) | Stage 2 |
 | Sibling #3 revalidation hooks | out of scope (AST-1781) |
 | Sibling #4 React disable | out of scope (AST-1782) |
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1780
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `8d65b7fbe0ef8074e538c809ed9f56e90e27a692`
+
+## Canon scores
+
+| slug | grade | effort | note |
+|------|-------|--------|------|
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Traceability
+
+AC1→Stage 1 (`empty_render` on each list row); AC2→Stage 2 (PUT `auto_mode: true` → 400); AC3→Stage 2 (`POST …/run` → 400 `started: false`); AC4→Stage 1 (force AUTO off during list enrichment; revalidation half → AST-1781); AC5→Stage 1 (`entity_contexts=None`). Parent AC 1, 3–5, 10 → Stages 1–2; parent AC 2, 6–8 → out of scope (siblings #3–#4). Parent POST create AUTO-on → Stage 2 (same gate class as PUT).
+
+## Findings
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs plan footprint
+- **Finding:** `astral.standards.in-scope-only` plainly governs a single-file API slice but is absent from the frozen four-id list.
+- **Recommendation:** Plan is compliant via `## Explicit scope gate` (`api_admin.py` only). Archie may amend Canon Scope at Discussion for Radia comparability; no plan change required.
+
+### acceptable — AC4 partition across siblings
+
+- **Severity:** acceptable
+- **Location:** Child AC 4 / `## Traceability`
+- **Finding:** AC wording covers list enrichment and revalidation; this plan implements only the list-enrichment force-off path (Stage 1). AST-1781 is expected to reuse the same eval helpers for version-hook revalidation.
+- **Recommendation:** None for this ticket; ensure AST-1781 plan imports/calls the shared helpers rather than re-scoring.
+
+### acceptable — Prompt-text assembly vs AST-1779 caller note
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 3 / Decision on agent `content`
+- **Finding:** Plan correctly omits unused agent `content` when task `system_prompt` is non-empty, matching `resolved_task_system` runtime behavior and avoiding false positives — tighter than the generic AST-1779 caller bullet list.
+- **Recommendation:** None.
+
+context_tokens≈24000
