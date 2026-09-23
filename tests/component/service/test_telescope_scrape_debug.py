@@ -61,9 +61,10 @@ class TestScrapeDebugHelpers:
             )
             dbg.bind_scrape_firefox("F-001")
             dbg.scrape_debug_event("firefox_launched", firefox="F-001")
-            dbg.scrape_debug_event("request_context", firefox="F-001")
             ctx = dbg.alloc_context_id()
-            dbg.bind_scrape_context(ctx)
+            dbg.scrape_debug_event(
+                "request_serving", firefox="F-001", context=ctx,
+            )
             dbg.scrape_debug_event("context_created", firefox="F-001", context=ctx)
             dbg.scrape_debug_event("page_created")
             dbg.scrape_debug_event("navigate_start")
@@ -83,12 +84,14 @@ class TestScrapeDebugHelpers:
         ]
         assert request_id == "T-001"
         assert ctx == "C-001"
-        assert messages[0].startswith("T-001: Requested url https://www.scrapeme.com, text, links")
-        assert "[live T=1 F=0 C=0]" in messages[0]
+        assert messages[0].startswith("T-001: Accepted url https://www.scrapeme.com, text, links")
+        assert "(awaiting F/C)" in messages[0]
         assert 'creating "F-001"' in messages[1]
-        assert "[live T=1 F=0 C=0]" in messages[1]
         assert messages[2] == "F-001: Starting firefox app with playwright [live T=1 F=1 C=0]"
-        assert messages[3] == "T-001: Requesting context from F-001 [live T=1 F=1 C=0]"
+        assert (
+            messages[3]
+            == "T-001 (F-001 C-001): Requesting url https://www.scrapeme.com, text, links [live T=1 F=1 C=0]"
+        )
         assert messages[4] == 'F-001: Creating context "C-001" [live T=1 F=1 C=1]'
         assert messages[5] == "C-001: Starting context [live T=1 F=1 C=1]"
         assert messages[6] == "C-001: Loading Page [live T=1 F=1 C=1]"
@@ -96,7 +99,10 @@ class TestScrapeDebugHelpers:
         assert messages[8] == "C-001: Scraping Page for links [live T=1 F=1 C=1]"
         assert messages[9] == "C-001: Close Page [live T=1 F=1 C=0]"
         assert messages[10] == "F-001: Close Instance [live T=1 F=0 C=0]"
-        assert messages[11] == "T-001: Request Return Successful [live T=1 F=0 C=0]"
+        assert (
+            messages[11]
+            == "T-001 (F-001 C-001): Request Return Successful for url https://www.scrapeme.com [live T=1 F=0 C=0]"
+        )
 
     def test_live_counters_track_start_and_recycle(self) -> None:
         import scrape_debug as dbg

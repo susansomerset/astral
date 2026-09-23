@@ -263,6 +263,22 @@ def _context_cap_suffix(**fields: Any) -> str:
     return ""
 
 
+def _request_with_fc(
+    *,
+    firefox: Optional[str] = None,
+    context: Optional[str] = None,
+) -> str:
+    """T label with bound F/C when assigned — confirms each T owns one C."""
+    t = _scrape_request.get() or "T-?"
+    ff = firefox or _scrape_firefox.get()
+    cc = context or _scrape_context.get()
+    if ff and cc:
+        return f"{t} ({ff} {cc})"
+    if ff:
+        return f"{t} ({ff})"
+    return t
+
+
 def _event_message(event: str, **fields: Any) -> str:
     t = _scrape_request.get() or "T-?"
     f = fields.get("firefox") or _scrape_firefox.get() or "F-?"
@@ -279,11 +295,18 @@ def _event_message(event: str, **fields: Any) -> str:
 
     if event == "request_start":
         fl = ", ".join(str(x) for x in req_fields)
-        base = f"{t}: Requested url {url}, {fl}" if fl else f"{t}: Requested url {url}"
-        return f"{base}{live}"
+        base = f"{t}: Accepted url {url}, {fl}" if fl else f"{t}: Accepted url {url}"
+        return f"{base} (awaiting F/C){live}"
+
+    if event == "request_serving":
+        tag = _request_with_fc(firefox=f if f != "F-?" else None, context=c if c != "C-?" else None)
+        fl = ", ".join(str(x) for x in req_fields)
+        base = f"{tag}: Requesting url {url}, {fl}" if fl else f"{tag}: Requesting url {url}"
+        return f"{base}{_context_cap_suffix(**fields)}{live}"
 
     if event == "request_done":
-        return f"{t}: Request Return Successful{live}"
+        tag = _request_with_fc()
+        return f"{tag}: Request Return Successful for url {url}{live}"
 
     if event == "firefox_needed":
         counts = live_instance_counts()
@@ -294,7 +317,8 @@ def _event_message(event: str, **fields: Any) -> str:
         )
 
     if event == "request_context":
-        return f"{t}: Requesting context from {f}{_context_cap_suffix(**fields)}{live}"
+        tag = _request_with_fc(firefox=f if f != "F-?" else None, context=c if c != "C-?" else None)
+        return f"{tag}: Requesting context from {f}{_context_cap_suffix(**fields)}{live}"
 
     if event == "firefox_launched":
         return f"{f}: Starting firefox app with playwright{live}"

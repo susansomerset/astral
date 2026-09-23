@@ -390,8 +390,12 @@ class BrowserPool:
                 firefox_id=ff_id,
             )
             browser = await self._launch_firefox(ephemeral=True, firefox_id=ff_id)
-            scrape_debug_event("request_context", firefox=ff_id)
             ctx_label = alloc_context_id()
+            scrape_debug_event(
+                "request_serving",
+                firefox=ff_id,
+                context=ctx_label,
+            )
             context = await browser.new_context(viewport=settings.viewport)
             scrape_debug_event(
                 "context_created",
@@ -437,12 +441,13 @@ class BrowserPool:
                     retry = True
                 else:
                     self._bind_pool_caps(slot, pool_size=len(self._slots))
+                    ctx_label = alloc_context_id()
                     scrape_debug_event(
-                        "request_context",
+                        "request_serving",
                         firefox=firefox_id,
+                        context=ctx_label,
                         **self._debug_caps(slot, pool_size=len(self._slots)),
                     )
-                    ctx_label = alloc_context_id()
                     context = await slot.browser.new_context(
                         viewport=settings.viewport
                     )
