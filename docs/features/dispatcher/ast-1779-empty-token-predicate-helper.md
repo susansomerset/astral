@@ -137,3 +137,12 @@ AC1→Stage 1 (`empty_render` / `empty_tokens` contract; field name frozen for s
 - **Recommendation:** None.
 
 context_tokens≈18500
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper`
+**Tip:** _(filled after publish)_
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | _(after publish)_ | `warn_on_empty` on `resolve_tokens` + `empty_render_for_prompts` |

@@ -6998,11 +6998,13 @@ def resolve_tokens(
     chain_entry: bool = False,
     parent_task_key: Optional[str] = None,
     parent_caller_summary: Optional[Dict[str, str]] = None,
+    warn_on_empty: bool = True,
 ) -> str:
     """Replace {$TOKEN_NAME} patterns in text using TOKEN_SOURCES registry.
     candidate_data: the parsed candidate_data dict (not the full DB row).
     chain_context: optional str values for tokens with source \"chain\" (e.g. SELECTED_AGENT, CALLER_RESPONSE).
     job_context: optional str values for tokens with source \"job\" (AST-513 artifact prompts).
+    warn_on_empty: when False, suppress empty/unresolved token WARNINGs (AST-1779 empty-render probe).
     Unrecognized token names (absent from TOKEN_SOURCES) are left as-is for forward-compatibility."""
     def _replace(match: re.Match) -> str:
         name = match.group(1)
@@ -7014,11 +7016,11 @@ def resolve_tokens(
                 from src.core.candidate import format_base_resume_for_token
                 out = format_base_resume_for_token(candidate_data)
                 # AST-1396: {} means no candidate in context — empty is expected, not a missing-name bug.
-                if not out and candidate_data:
+                if warn_on_empty and not out and candidate_data:
                     _log.warning("Token {$%s} resolved to empty (path=%s, task=%s)", name, spec["path"], task_key)
                 return out
             raw = _walk_dot_path(candidate_data, spec["path"])
-            if (raw is None or raw == "" or raw == []) and candidate_data:
+            if warn_on_empty and (raw is None or raw == "" or raw == []) and candidate_data:
                 _log.warning("Token {$%s} resolved to empty (path=%s, task=%s)", name, spec["path"], task_key)
             return _value_to_str(raw)
         if spec["source"] == "config":
@@ -7033,7 +7035,7 @@ def resolve_tokens(
             raw = (chain_context or {}).get(name)
             if raw is None or raw == "" or raw == []:
                 if name in CALLER_HOP_TOKEN_NAMES:
-                    if not chain_entry:
+                    if warn_on_empty and not chain_entry:
                         summary_src = parent_caller_summary if parent_caller_summary is not None else (chain_context or {})
                         summary = _caller_key_status_line(summary_src)
                         _log.warning(
@@ -7043,12 +7045,12 @@ def resolve_tokens(
                             parent_task_key or "",
                             summary,
                         )
-                else:
+                elif warn_on_empty:
                     _log.warning("Token {$%s} resolved to empty (chain_context, task=%s)", name, task_key)
             return _value_to_str(raw) if raw is not None else ""
         if spec["source"] == "job":
             raw = (job_context or {}).get(name)
-            if raw is None or raw == "" or raw == []:
+            if warn_on_empty and (raw is None or raw == "" or raw == []):
                 _log.warning("Token {$%s} resolved to empty (job_context, task=%s)", name, task_key)
             return _value_to_str(raw) if raw is not None else ""
         if spec["source"] == "pronoun":
@@ -7060,7 +7062,8 @@ def resolve_tokens(
             pinned = spec.get("owner_task_key")
             owner = pinned or rubric_owner_task_key(task_key)
             if not owner:
-                _log.warning("Token {$%s} unresolved — task %r has no rubric owner", name, task_key)
+                if warn_on_empty:
+                    _log.warning("Token {$%s} unresolved — task %r has no rubric owner", name, task_key)
                 return ""
             cid = (candidate_data or {}).get("_astral_candidate_id") or ""
             if not cid:
@@ -7069,11 +7072,68 @@ def resolve_tokens(
                 # RUBRIC_VECTORS keeps the existing missing-id warning.
                 if pinned and not candidate_data:
                     return ""
-                _log.warning("Token {$%s} unresolved — missing candidate id (task=%s)", name, task_key)
+                if warn_on_empty:
+                    _log.warning("Token {$%s} unresolved — missing candidate id (task=%s)", name, task_key)
                 return ""
             return _value_to_str(rubric_criteria_for_token(cid, owner))
         return match.group(0)
     return _TOKEN_RE.sub(_replace, text)
+
+
+def empty_render_for_prompts(
+    prompt_texts: Optional[Union[list, tuple]],
+    candidate_data: dict,
+    task_key: str,
+    *,
+    entity_contexts: Optional[Dict[str, Dict[str, str]]] = None,
+) -> dict:
+    """Whether prompt texts would empty-render for candidate-scoped (or entity-context) tokens.
+
+    Pass all prompt segments the caller intends to gate (typically every ``agent_task``
+    prompt column + agent system text). Returns
+    ``{"empty_render": bool, "empty_tokens": list[str]}`` — siblings map ``empty_render``
+    onto each ``dispatch_task`` list row / AUTO-Run gate (AST-1779 / AST-1766).
+
+    Scores ``source: candidate`` always; scores other ``TOKEN_SOURCES`` ``source`` values
+    only when that key is present in ``entity_contexts`` (extension seam). Never scores
+    ``source: chain``. Non-job entity sources in ``entity_contexts`` resolve without a
+    matching ``resolve_tokens`` kwarg today (only ``job_context`` exists) — blank until a
+    later epic extends the resolver.
+    """
+    empty_tokens: list[str] = []
+    seen: set[str] = set()
+    cd = candidate_data or {}
+    contexts = entity_contexts or {}
+    texts = prompt_texts or ()
+    for text in texts:
+        if not isinstance(text, str) or not text:
+            continue
+        for match in _TOKEN_RE.finditer(text):
+            name = match.group(1)
+            if name in seen:
+                continue
+            spec = TOKEN_SOURCES.get(name)
+            if spec is None:
+                continue
+            source = spec.get("source")
+            if source == "chain":
+                continue
+            # Score candidate always; other sources only via entity_contexts seam.
+            if source != "candidate" and source not in contexts:
+                continue
+            seen.add(name)
+            job_context = contexts.get("job") if source == "job" else None
+            resolved = resolve_tokens(
+                "{$" + name + "}",
+                cd,
+                task_key,
+                chain_context=None,
+                job_context=job_context,
+                warn_on_empty=False,
+            )
+            if resolved == "":
+                empty_tokens.append(name)
+    return {"empty_render": bool(empty_tokens), "empty_tokens": empty_tokens}
 
 
 def validate_value(allowed_list: list, value: object) -> None:
