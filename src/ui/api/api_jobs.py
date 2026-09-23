@@ -28,7 +28,11 @@ from src.core.tracker import (
     start_artifact_build,
     transition_job_state,
 )
-from src.data.database import get_meteorite_by_astral_job_id
+from src.data.database import (
+    get_meteorite,
+    get_meteorite_by_astral_job_id,
+    get_meteorite_link_by_astral_job_id,
+)
 from src.utils.config import (
     APPLIED_JOB_STATES,
     IN_REVIEW_STATES,
@@ -36,6 +40,7 @@ from src.utils.config import (
     PHASE_SCORE_BREAKDOWN_KEY_SUFFIX,
     RECOMMENDED_JOB_STATES,
     SKIPPED_STATES,
+    SOURCE_ENTITY_TYPE_METEORITE,
 )
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
@@ -224,6 +229,7 @@ def detail(astral_job_id):
     job["source"] = job.get("source")
     job["source_entity_id"] = job.get("source_entity_id")
     # AST-1691: reverse-link meteorite provenance for Recommended report pane.
+    # AST-1769: if reverse link misses, fall back via job.source / source_entity_id.
     try:
         logger.debug(
             "Calling get_meteorite_by_astral_job_id: [astral_job_id=%s]",
@@ -232,6 +238,13 @@ def detail(astral_job_id):
         row = get_meteorite_by_astral_job_id(astral_job_id)
         # Full row — stat.logging.debug: no truncation of callee response.
         logger.debug("Response from get_meteorite_by_astral_job_id: %s", row)
+        if row is None:
+            src = (job.get("source") or "").strip()
+            sid = str(job.get("source_entity_id") or "").strip()
+            if src == SOURCE_ENTITY_TYPE_METEORITE and sid and sid.isdigit():
+                logger.debug("Calling get_meteorite: [meteorite_id=%s]", sid)
+                row = get_meteorite(int(sid))
+                logger.debug("Response from get_meteorite: %s", row)
         if row is None:
             job["related_meteorite"] = None
         else:
