@@ -136,3 +136,49 @@ No other files. Do not edit `src/utils/config.py`, `src/ui/api/api_admin.py`, or
 
 Confirm Chuckles estimate: 5 — agree
 
+
+
+## Joan validate
+
+**Ticket:** AST-1781
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `0caf0c6b3b31ab7b720689372354f29346f136f9`
+
+## Canon scores
+
+| slug | grade | effort | note |
+|------|-------|--------|------|
+| astral.dispatch.entity-state-bound | A | | |
+| patt.artifact.write-operative | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | X | | Plan adds no new `logger.exception` sites; soft per-row misses use warning + leave state unchanged (stat.logging.warning Resolution #1). |
+
+## Traceability
+
+AC5→Stage 1 `_force_auto_off_if_empty_render` (persist `auto_mode=0` when `empty_render` true); AC6→Stage 2 `save_agent_task` post-commit `revalidate_dispatch_tasks_for_task_key`; AC7→Stage 3 `save_candidate_data` str-path post-`save_artifact` + Stage 1 `revalidate_dispatch_tasks_for_artifact`. Parent AC 5–7 → Stages 1–3; parent AC 1–4, 8–10 out of child Scope (siblings #1–#2, #4).
+
+## Findings
+
+### discuss — Copy Output / migration version paths skip revalidation
+
+- **Severity:** discuss
+- **Location:** Stage 2 step 3 Decision
+- **Finding:** Child AC 6 text covers any new current `agent_task` version for a `task_key`. Plan hooks only public `save_agent_task`; `apply_agent_task_copy_upsert` and startup migrations also call `_save_agent_task_on_connection` and can version prompts without triggering revalidation.
+- **Recommendation:** Acceptable if product treats Manage Tasks save as the operative path and sibling #2 list enrichment covers residual AUTO-on rows (parent AC 5). If Copy Output must satisfy AC 6 literally, extend the hook to that caller or narrow AC wording at Discussion.
+
+### discuss — Token view builder parallel to core
+
+- **Severity:** discuss
+- **Location:** Stage 1 step 4 `_token_view_for_empty_render`
+- **Finding:** Data-layer view + operative overlay duplicates `build_candidate_token_view` + `hydrate_operative_*` behavior (layer-law tradeoff). Sibling #2 list eval uses plain `build_candidate_token_view` without operative overlay.
+- **Recommendation:** Intentional for `data → utils` import direction and AC 7 artifact rotation. Flag for epic awareness so list enrichment and revalidation do not diverge on operative artifact tokens; no AST-1781 plan change required if #2 later hydrates or shares this helper.
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs plan footprint
+- **Finding:** `astral.layers.import-direction` and `astral.standards.in-scope-only` plainly govern this slice but are absent from the frozen four-id list. Plan explicitly honors both via scope gate and “no `src.core` from `src.data`”.
+- **Recommendation:** Archie may amend Canon Scope for Radia comparability; no plan defect.
+
+context_tokens≈32000
