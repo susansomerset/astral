@@ -211,3 +211,12 @@ context_tokens≈18500
 ```
 
 context_tokens≈28000
+
+## Resolution
+
+**2026-09-23** — `resolve(AST-1779): — clean` after Radia **CLEAN** / `[code-rubric] PROCEED` @ `b2e9b13b` (intake tip `5fd9d792`).
+
+- **Fix-now:** none.
+- **Discuss (AST-1769 spill on this sub):** no product change on AST-1779. Left on tip for Chuckles at merge-child / prep-uat — do not rewrite history here; Radia’s recommendation stands (drop spill or land AST-1769 make-fix before broad `test_api_jobs` gates).
+- **Discuss (Canon Scope gap):** no change — Joan/Radia both “no plan or code change required.”
+- **Advisory (artifact token path untested):** deferred — would be Betty test-tree; product already scores `source == "candidate"` via `resolve_tokens` (includes artifact rows). Not blocking siblings #2–#4.
