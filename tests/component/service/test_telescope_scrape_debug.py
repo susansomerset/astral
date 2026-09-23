@@ -92,6 +92,22 @@ class TestScrapeDebugHelpers:
         assert messages[8] == "C-001: Scraping Page for links"
         assert messages[9] == "T-001: Request Return Successful"
 
+    def test_job_ids_stable_within_request_reset_between_requests(self) -> None:
+        import scrape_debug as dbg
+
+        _, tokens1 = dbg.begin_scrape_request("https://a.example")
+        assert dbg.alloc_firefox_instance_id() == "F-001"
+        assert dbg.alloc_context_id() == "C-001"
+        # Pool/retry loops must not bump ids mid-job.
+        assert dbg.alloc_firefox_instance_id() == "F-001"
+        assert dbg.alloc_context_id() == "C-001"
+        dbg.end_scrape_request(tokens1)
+
+        _, tokens2 = dbg.begin_scrape_request("https://b.example")
+        assert dbg.alloc_firefox_instance_id() == "F-001"
+        assert dbg.alloc_context_id() == "C-001"
+        dbg.end_scrape_request(tokens2)
+
     def test_debug_events_suppressed_by_default(self, capsys) -> None:
         import scrape_debug as dbg
 

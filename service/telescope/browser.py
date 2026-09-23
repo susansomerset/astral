@@ -16,6 +16,8 @@ from scrape_debug import (
     bind_pool_caps,
     bind_scrape_context,
     bind_scrape_firefox,
+    current_context_id,
+    current_firefox_id,
     firefox_label,
     scrape_debug_event,
 )
@@ -365,7 +367,7 @@ class BrowserPool:
             if slot.browser is not None:
                 await self._recover_when_idle_locked(slot, "disconnected")
                 return self._browser_connected(slot.browser)
-            planned_f = alloc_firefox_instance_id()
+            planned_f = current_firefox_id() or alloc_firefox_instance_id()
             scrape_debug_event(
                 "firefox_needed",
                 live_count=self._live_firefox_count(),
@@ -425,9 +427,11 @@ class BrowserPool:
             retry = False
             context: Optional[BrowserContext] = None
             ctx_label: Optional[str] = None
-            # Narrative F-001 per request (not a service-wide serial).
-            firefox_id = alloc_firefox_instance_id()
-            bind_scrape_firefox(firefox_id)
+            # Bind F once per job — do not re-alloc on pool retry loops.
+            firefox_id = current_firefox_id()
+            if not firefox_id:
+                firefox_id = alloc_firefox_instance_id()
+                bind_scrape_firefox(firefox_id)
             async with slot.lock:
                 if slot.recycle_pending or not self._browser_connected(slot.browser):
                     retry = True
@@ -438,7 +442,7 @@ class BrowserPool:
                         firefox=firefox_id,
                         **self._debug_caps(slot, pool_size=len(self._slots)),
                     )
-                    ctx_label = alloc_context_id()
+                    ctx_label = current_context_id() or alloc_context_id()
                     context = await slot.browser.new_context(
                         viewport=settings.viewport
                     )
