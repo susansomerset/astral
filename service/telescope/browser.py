@@ -425,9 +425,9 @@ class BrowserPool:
             retry = False
             context: Optional[BrowserContext] = None
             ctx_label: Optional[str] = None
-            firefox_id = slot.firefox_id
-            if firefox_id:
-                bind_scrape_firefox(firefox_id)
+            # Narrative F-001 per request (not a service-wide serial).
+            firefox_id = alloc_firefox_instance_id()
+            bind_scrape_firefox(firefox_id)
             async with slot.lock:
                 if slot.recycle_pending or not self._browser_connected(slot.browser):
                     retry = True

@@ -8,8 +8,12 @@ F = one Firefox process (may serve many concurrent T/C pairs).
 from __future__ import annotations
 
 import contextvars
-import threading
 from typing import Any, List, Optional, Tuple
+
+# Per-request narrative ids — reset each POST /telescope (not global serials).
+_REQUEST_ID = "T-001"
+_CONTEXT_ID = "C-001"
+_FIREFOX_ID = "F-001"
 
 from logging_util import get_logger, railway_log
 
@@ -57,11 +61,6 @@ _scrape_contexts_cap: contextvars.ContextVar[Optional[int]] = contextvars.Contex
     default=None,
 )
 
-_id_lock = threading.Lock()
-_request_counter = 0
-_context_counter = 0
-_firefox_counter = 0
-
 # Internal pool bookkeeping — not part of the T/C/F call story.
 _POOL_EVENTS = frozenset({
     "slot_acquired",
@@ -85,17 +84,13 @@ def disable_scrape_debug(token: contextvars.Token[bool]) -> None:
 
 
 def alloc_firefox_instance_id() -> str:
-    global _firefox_counter
-    with _id_lock:
-        _firefox_counter += 1
-        return f"F-{_firefox_counter:03d}"
+    """Narrative Firefox id for this request (always F-001)."""
+    return _FIREFOX_ID
 
 
 def alloc_context_id() -> str:
-    global _context_counter
-    with _id_lock:
-        _context_counter += 1
-        return f"C-{_context_counter:03d}"
+    """Narrative context id for this request (always C-001, 1:1 with T)."""
+    return _CONTEXT_ID
 
 
 def current_request_id() -> Optional[str]:
@@ -117,13 +112,9 @@ def firefox_label(*, firefox_id: Optional[str] = None) -> str:
 
 
 def begin_scrape_request(url: str, *, fields: Optional[List[str]] = None) -> Tuple[str, Tuple[Any, ...]]:
-    """Bind T-xxx for one POST /telescope (the URL call to follow)."""
-    global _request_counter
-    with _id_lock:
-        _request_counter += 1
-        request_id = f"T-{_request_counter:03d}"
+    """Bind T-001 for one POST /telescope (the URL call to follow)."""
     tokens = (
-        _scrape_request.set(request_id),
+        _scrape_request.set(_REQUEST_ID),
         _scrape_url.set(url),
         _scrape_fields.set(list(fields) if fields else None),
         _scrape_firefox.set(None),
@@ -133,7 +124,7 @@ def begin_scrape_request(url: str, *, fields: Optional[List[str]] = None) -> Tup
         _scrape_active_pages.set(None),
         _scrape_contexts_cap.set(None),
     )
-    return request_id, tokens
+    return _REQUEST_ID, tokens
 
 
 def end_scrape_request(tokens: Tuple[Any, ...]) -> None:
