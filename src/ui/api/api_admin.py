@@ -893,6 +893,7 @@ _DISPATCH_TASK_COLUMNS = [
     {"key": "score_floor",    "label": "Score >= ",   "type": "float"},
     {"key": "min_count",      "label": "Min Count",   "type": "int"},
     {"key": "batch_size",     "label": "Batch Size",  "type": "int"},
+    {"key": "batch_call_mode","label": "Batch Mode",  "type": "int"},
     {"key": "freq_hrs",       "label": "Freq (hrs)",  "type": "float"},
     {"key": "auto_mode",      "label": "AUTO",        "type": "str"},
     {"key": "debug",          "label": "Debug",       "type": "str"},
@@ -1011,10 +1012,19 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
             trigger_state = _dispatch_trigger_state_for_task_key(catalog_key) or ""
         except KeyError:
             pass
+    batch_call_mode = 0
+    if catalog_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(catalog_key):
+        try:
+            batch_call_mode = int(
+                dispatch_task_admin_defaults(catalog_key)["batch_call_mode"]
+            )
+        except KeyError:
+            pass
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
         "is_scored": dispatch_task_key_is_scored(catalog_key),
+        "batch_call_mode": batch_call_mode,
         **_catalog_task_grouping_meta(grouping_key),
     }
 
@@ -1149,6 +1159,8 @@ def create_dtask():
         return jsonify({"error": str(e)}), 500
     if data.get("skip_daisy_chain"):
         update_dispatch_task(task_id, skip_daisy_chain=1)
+    if "batch_call_mode" in data and data.get("batch_call_mode") is not None:
+        update_dispatch_task(task_id, batch_call_mode=int(bool(data["batch_call_mode"])))
     return jsonify({"id": task_id}), 201
 
 
@@ -1225,8 +1237,9 @@ def update_dtask(task_id):
     if row.get("auto_mode") and (set(data.keys()) - {"auto_mode"}):
         return jsonify({"error": "Turn AUTO mode off before editing this row"}), 400
     allowed = {
-        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "skip_daisy_chain", "freq_hrs",
-        "max_runs", "score_floor", "trigger_state", "task_key", "entity_type",
+        "min_count", "batch_size", "batch_call_mode", "auto_mode", "debug", "skip_cache",
+        "skip_daisy_chain", "freq_hrs", "max_runs", "score_floor", "trigger_state", "task_key",
+        "entity_type",
     }
     updates: Dict[str, Any] = {}
     # JSON null on entity_type mirrors create — treat as omitted (Joan discuss).
@@ -1295,7 +1308,7 @@ def update_dtask(task_id):
         if k in data and k not in ("task_key", "entity_type"):
             if k in ("min_count", "batch_size", "max_runs"):
                 updates[k] = int(data[k]) if data[k] is not None else None
-            elif k in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain"):
+            elif k in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain", "batch_call_mode"):
                 updates[k] = int(bool(data[k]))
             elif k == "freq_hrs":
                 updates[k] = float(data[k])

@@ -24,6 +24,7 @@ type TaskKeyMeta = {
   task_seq: number | null
   task_name: string
   is_scored?: boolean
+  batch_call_mode?: number
 }
 
 type DispatchFormState = {
@@ -40,6 +41,7 @@ type DispatchFormState = {
   skip_daisy_chain: boolean
   entity_type: string
   is_scored: boolean
+  batch_call_mode: boolean
 }
 
 function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMeta | undefined): DispatchFormState {
@@ -48,7 +50,12 @@ function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMe
     task_key: key,
     entity_type: cfg?.entity_type || "",
     is_scored: !!cfg?.is_scored,
+    batch_call_mode: !!cfg?.batch_call_mode,
   }
+}
+
+function formatBatchCallMode(mode: number | null | undefined): string {
+  return mode ? "Full" : "Each"
 }
 
 function inputStatesForEntity(
@@ -70,6 +77,7 @@ interface DispatchTask {
   freq_hrs: number
   min_count: number
   batch_size: number | null
+  batch_call_mode?: number
   score_floor: number | null
   is_scored?: boolean
   auto_mode: number
@@ -98,7 +106,7 @@ const FROZEN_DATA_COLUMNS = 3
 const DATA_COL_KEYS = [
   "task_key", "entity_type", "trigger_state", "score_floor",
   "auto_mode", "run", "debug", "freq_hrs", "min_count",
-  "batch_size", "max_runs", "candidate_id", "available_count", "last_run_at",
+  "batch_size", "batch_call_mode", "max_runs", "candidate_id", "available_count", "last_run_at",
 ] as const
 
 const DATA_COL_KEYS_ARR = [...DATA_COL_KEYS]
@@ -172,6 +180,14 @@ function ScheduledPhaseTable({
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("freq_hrs")}>Freq{sortIcon("freq_hrs")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("min_count")}>Min{sortIcon("min_count")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("batch_size")}>Batch{sortIcon("batch_size")}</th>
+            <th
+              className="sortable"
+              style={{ textAlign: "center" }}
+              title="Full = one batch call for all claimed entities; Each = per-entity warm-then-gather"
+              onClick={() => toggleSort("batch_call_mode")}
+            >
+              Mode{sortIcon("batch_call_mode")}
+            </th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("max_runs")}>Runs{sortIcon("max_runs")}</th>
             <th className="sortable" onClick={() => toggleSort("candidate_id")}>Candidate{sortIcon("candidate_id")}</th>
             <th className="sortable" style={{ textAlign: "right" }} onClick={() => toggleSort("available_count")}>Avail{sortIcon("available_count")}</th>
@@ -255,6 +271,11 @@ function ScheduledPhaseTable({
                 <td style={{ textAlign: "right" }}>
                   <ListTableTruncatedCell text={row.batch_size != null ? String(row.batch_size) : "—"} maxChars={truncateChars} />
                 </td>
+                <td style={{ textAlign: "center" }}>
+                  <span title={row.batch_call_mode ? "Full batch — all claimed entities in one runner call" : "Per entity — warm first row, then gather singles"}>
+                    {formatBatchCallMode(row.batch_call_mode)}
+                  </span>
+                </td>
                 <td style={{ textAlign: "right" }}>
                   <span title={row.max_runs === 0 ? "Loop until drained" : undefined}>
                     {row.max_runs === 0 ? "∞" : (row.max_runs ?? 1)}
@@ -294,7 +315,7 @@ export default function ScheduledActions() {
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
   const [editRow, setEditRow] = useState<DispatchTask | null>(null)
-  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false })
+  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false, batch_call_mode: false })
   const [saving, setSaving] = useState(false)
 
   // Thread status (polled every 5s)
@@ -607,7 +628,7 @@ export default function ScheduledActions() {
 
   const openAdd = () => {
     setEditRow(null)
-    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false })
+    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false, batch_call_mode: false })
     setShowModal(true)
   }
   const openEdit = (row: DispatchTask) => {
@@ -631,6 +652,7 @@ export default function ScheduledActions() {
       skip_daisy_chain: !!row.skip_daisy_chain,
       entity_type: row.entity_type || cfg?.entity_type || "",
       is_scored: row.is_scored ?? !!cfg?.is_scored,
+      batch_call_mode: !!(row.batch_call_mode ?? cfg?.batch_call_mode),
     })
     setShowModal(true)
   }
@@ -649,6 +671,7 @@ export default function ScheduledActions() {
             task_key: form.task_key,
             entity_type: form.entity_type,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
+            batch_call_mode: form.batch_call_mode,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
             score_floor: form.is_scored
               ? (() => {
@@ -681,6 +704,7 @@ export default function ScheduledActions() {
             freq_hrs: parseFloat(form.freq_hrs) || 0,
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
+            batch_call_mode: form.batch_call_mode,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
             score_floor: form.is_scored
               ? (() => {
@@ -923,6 +947,7 @@ export default function ScheduledActions() {
                       entity_type: cfg?.entity_type || "",
                       trigger_state: cfg?.trigger_state || "",
                       is_scored: !!cfg?.is_scored,
+                      batch_call_mode: !!cfg?.batch_call_mode,
                       score_floor: "1.00",
                     })
                   }
@@ -971,6 +996,17 @@ export default function ScheduledActions() {
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Batch Size</span>
                 <input type="number" min="1" placeholder="default" value={form.batch_size} onChange={e => setForm({ ...form, batch_size: e.target.value })} />
+              </div>
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Batch mode</span>
+                <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <input
+                    type="checkbox"
+                    checked={form.batch_call_mode}
+                    onChange={e => setForm({ ...form, batch_call_mode: e.target.checked })}
+                  />
+                  <span>Full batch (all claimed entities in one runner call)</span>
+                </label>
               </div>
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Max Runs</span>

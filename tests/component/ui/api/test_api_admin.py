@@ -579,6 +579,8 @@ class TestAst825PrefilterDispatchTaskKeysGrouping:
         assert pf["task_name"] == "Prefilter Company"
         assert pf["entity_type"] == "company"
         assert pf["trigger_state"] == "HOMEPAGE_READY"
+        assert pf["batch_call_mode"] == 1
+        assert keys["fetch_website"]["batch_call_mode"] == 0
         assert "prefilter" not in keys
 
 
@@ -984,6 +986,29 @@ class TestAst773UpdateDispatchTaskTaskKey:
             "grade_do", trigger_state="NEW"
         )["sort_by"]
         assert kw["batch_call_mode"] == cfg.dispatch_task_admin_defaults("grade_do")["batch_call_mode"]
+
+    def test_update_dispatch_task_batch_call_mode_persists(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "fetch_website",
+                "trigger_state": "WEBSITE_FOUND",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"batch_call_mode": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        update.assert_called_once_with(1, batch_call_mode=1)
 
     def test_update_dispatch_task_invalid_task_key_trigger_combo_400(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
