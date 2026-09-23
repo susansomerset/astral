@@ -210,3 +210,12 @@ AC1→Stage 1 (`empty_render` on each list row); AC2→Stage 2 (PUT `auto_mode: 
 - **Recommendation:** None.
 
 context_tokens≈24000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off`
+**Tip:** `5259a7b7`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | `5259a7b7` | `empty_render` list enrich + force AUTO off; create/update/run gates |
