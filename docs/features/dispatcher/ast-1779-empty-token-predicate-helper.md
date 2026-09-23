@@ -146,3 +146,68 @@ context_tokens≈18500
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `09e353f5` | `warn_on_empty` on `resolve_tokens` + `empty_render_for_prompts` |
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1779
+**Publish ref:** b2e9b13bf861fbe122632f29ab8337c3fbc7c0f8
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded `astral.dispatch.entity-state-bound` **A** at validate-plan; code review agrees. Diff touches `config.py` only for product logic; no `dispatch_task` `entity_type` / `trigger_state` / claim-path changes; candidate-scoped helper aligns with parent dispatch-validation intent without violating entity-binding law.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Cross-ticket scope (AST-1769 on AST-1779 branch)
+
+- **Severity:** discuss
+- **Location:** `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_source_entity_fallback`, `docs/test-bible/ui/api/api_jobs.md` § AST-1769; commit `f17a5e30`
+- **Finding:** Branch carries AST-1769 bug-repro test + bible section merged via `merge-tests`, but no `src/ui/api/api_jobs.py` product change. Plan `## Explicit scope gate` limits product edits to `config.py`. Test asserts `related_meteorite` non-null via `get_meteorite(source_entity_id)` fallback that is not implemented on this tip — would fail if `test_api_jobs.py` suite (or CI breadth) runs it; absent from AST-1779 QA manifest so `test-child` stayed green.
+- **Recommendation:** Chuckles/engineer decide before UT rollup: drop `f17a5e30` from this sub tip, or accept as epic worktree spill and ensure AST-1769 make-fix lands before broad test runs. Not a canon violation; scope hygiene for merge-child / prep-uat.
+
+### discuss — Canon Scope gap (do not score; Joan raised at plan)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs plan footprint
+- **Finding:** `astral.standards.in-scope-only` plainly governs single-file helper scope but is absent from the frozen one-id list. Plan gate + actual `config.py`-only product diff are compliant.
+- **Recommendation:** Archie may amend Canon Scope at Discussion for Radia comparability; no plan or code change required for AST-1779.
+
+### advisory — Candidate-backed artifact token path untested
+
+- **Severity:** advisory
+- **Location:** `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts`
+- **Finding:** AC1 / parent wording covers candidate-backed **artifact** tokens; manifest tests use `FIRST_NAME` / `FULL_NAME` (`data_field` paths) only. Implementation scores `source == "candidate"` (includes artifact rows) via `resolve_tokens`, so behavior is likely correct but unproven for e.g. a `serialize: resume_sections_json` blank.
+- **Recommendation:** Optional follow-up test in resolve-child or sibling wiring; not blocking helper contract for siblings #2–#4.
+
+## What's solid
+
+- `warn_on_empty` gates every empty/unresolved `_log.warning` path in `resolve_tokens`; default `True` preserves existing call-site behavior.
+- `empty_render_for_prompts` matches plan contract: `{"empty_render", "empty_tokens"}`, `_TOKEN_RE` scan, first-seen order, chain never scored, job ignored without `entity_contexts`, job/rubric seams via `entity_contexts`, per-token quiet `resolve_tokens` probe (no second token map).
+- Seven manifest tests in `TestAst1779EmptyRenderForPrompts` map 1:1 to plan done-when / AC1–AC3; bible entry added.
+- Estimate **3** fits AST-1779 footprint (config helper + component tests + bible).
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append this verdict to `docs/features/dispatcher/ast-1779-empty-token-predicate-helper.md` and push `docs(AST-1779): Radia review — clean` on `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper`.
+2. Post slim upshot via `linear_proxy --as radia save-comment`.
+3. Move to **Review Posted**; datt routes PROCEED → User Testing path per §3h.
+4. Resolve AST-1769 spill (discuss finding) before broad CI or ftr rollup if full `test_api_jobs.py` is in gate.
+
+```
+[code-rubric] PROCEED (Commit: b2e9b13b) empty-render helper clean
+```
+
+context_tokens≈28000
