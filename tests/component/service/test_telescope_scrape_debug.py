@@ -50,9 +50,6 @@ class TestScrapeDebugHelpers:
         """T = URL request, C = context (1:1 with T), F = Firefox process."""
         import scrape_debug as dbg
 
-        dbg._request_counter = 0
-        dbg._context_counter = 0
-        dbg._firefox_counter = 0
         request_id, tokens = dbg.begin_scrape_request(
             "https://www.scrapeme.com", fields=["text", "links"]
         )
