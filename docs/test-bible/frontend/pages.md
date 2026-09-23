@@ -2991,3 +2991,32 @@ cd src/ui/frontend && npm run test:component -- \
 **Pass criterion:** Vitest + pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 **Bible shasum (publish tip):** fill after `merge-tests`.
+
+### AST-1782 · AST-1766 (Scheduled Actions mute AUTO + Run/Sweep on empty_render)
+
+**Parent:** [AST-1766 — Dispatch Validation](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1782-scheduled-actions-disable-auto-run-sweep`.
+
+Routed page **`AdminScheduledActions.tsx`** honors list boolean `empty_render` (AST-1780): mute + block AUTO badge and Run/Sweep; handler no-ops; Debug/Stop/Drain unchanged. No client `resolve_tokens` / `TOKEN_SOURCES`. Predicate/API: siblings **AST-1779** / **AST-1780**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| empty_render blocks AUTO + Run | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1782 empty_render mutes AUTO and Run/Sweep`** (`blocks…`, `allows…`, `Debug…`, `source file…`) |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — no existing scenario asserts Scheduled Actions `empty_render` mute; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed page (§6c) empty_render mute suite: `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — describe **`AST-1782 empty_render mutes AUTO and Run/Sweep`**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t 'AST-1782'
+```
+
+**Pass criterion:** Vitest green on manifest — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/frontend/pages.md`
