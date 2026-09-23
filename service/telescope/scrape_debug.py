@@ -1,20 +1,31 @@
 """Optional scrape debug events — narrative T/C/F tracing when request debug=True.
 
-T = one POST /telescope (the URL request you are following).
-C = one Playwright browser context (1:1 with T for that request).
-F = one Firefox process (may serve many concurrent T/C pairs).
+T = one POST /telescope (monotonic per deployment).
+C = one Playwright browser context (monotonic per deployment).
+F = one Firefox process (monotonic per deployment; concurrent T may share one F).
 
-Job counters reset only in begin_scrape_request — not in pool/retry loops.
+Counters reset only on process restart / redeploy — not per POST or pool retry.
 """
 
 from __future__ import annotations
 
 import contextvars
+import threading
 from typing import Any, List, Optional, Tuple
 
 from logging_util import get_logger, railway_log
 
 _log = get_logger("scrape_debug")
+
+_counter_lock = threading.Lock()
+_deploy_request_seq = 0
+_deploy_firefox_seq = 0
+_deploy_context_seq = 0
+
+# Globally live instances — inc on start, dec on close/recycle (debug visibility).
+_live_requests = 0
+_live_firefox_ids: set[str] = set()
+_live_context_ids: set[str] = set()
 
 _scrape_debug: contextvars.ContextVar[bool] = contextvars.ContextVar(
     "telescope_scrape_debug",
@@ -58,16 +69,6 @@ _scrape_contexts_cap: contextvars.ContextVar[Optional[int]] = contextvars.Contex
     default=None,
 )
 
-# Per-job counters — reset in begin_scrape_request only.
-_job_firefox_seq: contextvars.ContextVar[int] = contextvars.ContextVar(
-    "telescope_job_firefox_seq",
-    default=0,
-)
-_job_context_seq: contextvars.ContextVar[int] = contextvars.ContextVar(
-    "telescope_job_context_seq",
-    default=0,
-)
-
 # Internal pool bookkeeping — not part of the T/C/F call story.
 _POOL_EVENTS = frozenset({
     "slot_acquired",
@@ -76,6 +77,62 @@ _POOL_EVENTS = frozenset({
     "slot_wait",
     "slot_acquire_aborted",
 })
+
+
+def _next_request_id() -> str:
+    global _deploy_request_seq
+    with _counter_lock:
+        _deploy_request_seq += 1
+        seq = _deploy_request_seq
+    return f"T-{seq:03d}"
+
+
+def _next_firefox_id() -> str:
+    global _deploy_firefox_seq
+    with _counter_lock:
+        _deploy_firefox_seq += 1
+        seq = _deploy_firefox_seq
+    return f"F-{seq:03d}"
+
+
+def _next_context_id() -> str:
+    global _deploy_context_seq
+    with _counter_lock:
+        _deploy_context_seq += 1
+        seq = _deploy_context_seq
+    return f"C-{seq:03d}"
+
+
+def live_instance_counts() -> dict[str, int]:
+    """Snapshot of globally live T/F/C instances (for tests and structured logs)."""
+    with _counter_lock:
+        return {
+            "live_requests": _live_requests,
+            "live_firefox": len(_live_firefox_ids),
+            "live_contexts": len(_live_context_ids),
+        }
+
+
+def _live_suffix() -> str:
+    counts = live_instance_counts()
+    return (
+        f" [live T={counts['live_requests']}"
+        f" F={counts['live_firefox']}"
+        f" C={counts['live_contexts']}]"
+    )
+
+
+def _adjust_live_for_event(event: str, *, firefox: Optional[str], context: Optional[str]) -> None:
+    global _live_requests
+    with _counter_lock:
+        if event == "firefox_launched" and firefox:
+            _live_firefox_ids.add(firefox)
+        elif event == "firefox_closed" and firefox:
+            _live_firefox_ids.discard(firefox)
+        elif event == "context_created" and context:
+            _live_context_ids.add(context)
+        elif event == "context_closed" and context:
+            _live_context_ids.discard(context)
 
 
 def scrape_debug_enabled() -> bool:
@@ -91,29 +148,23 @@ def disable_scrape_debug(token: contextvars.Token[bool]) -> None:
 
 
 def alloc_firefox_instance_id() -> str:
-    """First Firefox id for this job, then reuse (survives pool/retry loops)."""
+    """Next Firefox id for a new process, or reuse id bound to this POST."""
     bound = _scrape_firefox.get()
     if bound:
         return bound
-    seq = _job_firefox_seq.get()
-    if seq > 0:
-        return f"F-{seq:03d}"
-    seq = 1
-    _job_firefox_seq.set(seq)
-    return f"F-{seq:03d}"
+    ff_id = _next_firefox_id()
+    bind_scrape_firefox(ff_id)
+    return ff_id
 
 
 def alloc_context_id() -> str:
-    """First context id for this job, then reuse (1:1 with T)."""
+    """Next context id for this POST (pool retries reuse the same id)."""
     bound = _scrape_context.get()
     if bound:
         return bound
-    seq = _job_context_seq.get()
-    if seq > 0:
-        return f"C-{seq:03d}"
-    seq = 1
-    _job_context_seq.set(seq)
-    return f"C-{seq:03d}"
+    ctx_id = _next_context_id()
+    bind_scrape_context(ctx_id)
+    return ctx_id
 
 
 def current_request_id() -> Optional[str]:
@@ -135,9 +186,13 @@ def firefox_label(*, firefox_id: Optional[str] = None) -> str:
 
 
 def begin_scrape_request(url: str, *, fields: Optional[List[str]] = None) -> Tuple[str, Tuple[Any, ...]]:
-    """Start one POST /telescope — resets job ids (T-001, then F/C from 001)."""
+    """Start one POST /telescope — assigns next deployment-wide T id."""
+    global _live_requests
+    request_id = _next_request_id()
+    with _counter_lock:
+        _live_requests += 1
     tokens = (
-        _scrape_request.set("T-001"),
+        _scrape_request.set(request_id),
         _scrape_url.set(url),
         _scrape_fields.set(list(fields) if fields else None),
         _scrape_firefox.set(None),
@@ -146,13 +201,14 @@ def begin_scrape_request(url: str, *, fields: Optional[List[str]] = None) -> Tup
         _scrape_pool_cap.set(None),
         _scrape_active_pages.set(None),
         _scrape_contexts_cap.set(None),
-        _job_firefox_seq.set(0),
-        _job_context_seq.set(0),
     )
-    return "T-001", tokens
+    return request_id, tokens
 
 
 def end_scrape_request(tokens: Tuple[Any, ...]) -> None:
+    global _live_requests
+    with _counter_lock:
+        _live_requests = max(0, _live_requests - 1)
     _scrape_request.reset(tokens[0])
     _scrape_url.reset(tokens[1])
     _scrape_fields.reset(tokens[2])
@@ -162,8 +218,6 @@ def end_scrape_request(tokens: Tuple[Any, ...]) -> None:
     _scrape_pool_cap.reset(tokens[6])
     _scrape_active_pages.reset(tokens[7])
     _scrape_contexts_cap.reset(tokens[8])
-    _job_firefox_seq.reset(tokens[9])
-    _job_context_seq.reset(tokens[10])
 
 
 def bind_scrape_firefox(firefox_id: str) -> None:
@@ -209,6 +263,22 @@ def _context_cap_suffix(**fields: Any) -> str:
     return ""
 
 
+def _request_with_fc(
+    *,
+    firefox: Optional[str] = None,
+    context: Optional[str] = None,
+) -> str:
+    """T label with bound F/C when assigned — confirms each T owns one C."""
+    t = _scrape_request.get() or "T-?"
+    ff = firefox or _scrape_firefox.get()
+    cc = context or _scrape_context.get()
+    if ff and cc:
+        return f"{t} ({ff} {cc})"
+    if ff:
+        return f"{t} ({ff})"
+    return t
+
+
 def _event_message(event: str, **fields: Any) -> str:
     t = _scrape_request.get() or "T-?"
     f = fields.get("firefox") or _scrape_firefox.get() or "F-?"
@@ -221,56 +291,70 @@ def _event_message(event: str, **fields: Any) -> str:
         label = f"S-{int(slot) + 1:03d}" if slot is not None else "S-?"
         return f"telescope pool {label}{_pool_cap_suffix(**fields)} {event}"
 
+    live = _live_suffix()
+
     if event == "request_start":
         fl = ", ".join(str(x) for x in req_fields)
-        return f"{t}: Requested url {url}, {fl}" if fl else f"{t}: Requested url {url}"
+        base = f"{t}: Accepted url {url}, {fl}" if fl else f"{t}: Accepted url {url}"
+        return f"{base} (awaiting F/C){live}"
+
+    if event == "request_serving":
+        tag = _request_with_fc(firefox=f if f != "F-?" else None, context=c if c != "C-?" else None)
+        fl = ", ".join(str(x) for x in req_fields)
+        base = f"{tag}: Requesting url {url}, {fl}" if fl else f"{tag}: Requesting url {url}"
+        return f"{base}{_context_cap_suffix(**fields)}{live}"
 
     if event == "request_done":
-        return f"{t}: Request Return Successful"
+        tag = _request_with_fc()
+        return f"{tag}: Request Return Successful for url {url}{live}"
 
     if event == "firefox_needed":
-        live = fields.get("live_count", 0)
+        counts = live_instance_counts()
         new_f = fields.get("firefox_id") or f
-        return f'{t}: Live Firefox Instances: {live}, creating "{new_f}"'
+        return (
+            f'{t}: Live Firefox Instances: {counts["live_firefox"]}, '
+            f'creating "{new_f}"{live}'
+        )
 
     if event == "request_context":
-        return f"{t}: Requesting context from {f}{_context_cap_suffix(**fields)}"
+        tag = _request_with_fc(firefox=f if f != "F-?" else None, context=c if c != "C-?" else None)
+        return f"{tag}: Requesting context from {f}{_context_cap_suffix(**fields)}{live}"
 
     if event == "firefox_launched":
-        return f"{f}: Starting firefox app with playwright"
+        return f"{f}: Starting firefox app with playwright{live}"
 
     if event == "context_created":
-        return f'{f}: Creating context "{c}"'
+        return f'{f}: Creating context "{c}"{live}'
 
     if event == "page_created":
-        return f"{c}: Starting context"
+        return f"{c}: Starting context{live}"
 
     if event == "navigate_start":
-        return f"{c}: Loading Page"
+        return f"{c}: Loading Page{live}"
 
     if event == "navigate_done":
         final = fields.get("final_url") or url
-        return f"{c}: Page loaded final_url={final}"
+        return f"{c}: Page loaded final_url={final}{live}"
 
     if event == "scrape_field":
-        return f"{c}: Scraping Page for {fields.get('field', '?')}"
+        return f"{c}: Scraping Page for {fields.get('field', '?')}{live}"
 
     if event == "context_closed":
-        return f"{c}: Close Page"
+        return f"{c}: Close Page{live}"
 
     if event == "context_recycled":
         ctx = fields.get("context") or c
-        return f'{f}: Recycle Context "{ctx}"'
+        return f'{f}: Recycle Context "{ctx}"{live}'
 
     if event == "firefox_closed":
-        return f"{f}: Close Instance"
+        return f"{f}: Close Instance{live}"
 
     if event == "firefox_recover":
         reason = fields.get("reason") or "recover"
-        return f"{f}: Recover Instance reason={reason}"
+        return f"{f}: Recover Instance reason={reason}{live}"
 
     if event == "ready_state":
-        return f"{c}: wait_ready outcome={fields.get('outcome', '?')}"
+        return f"{c}: wait_ready outcome={fields.get('outcome', '?')}{live}"
 
     return f"telescope scrape {event}"
 
@@ -279,18 +363,26 @@ def scrape_debug_event(event: str, **fields: Any) -> None:
     """Emit one structured debug line to console when scrape debug is on."""
     if not _scrape_debug.get():
         return
+    ff = fields.get("firefox") or _scrape_firefox.get()
+    ctx = fields.get("context") or _scrape_context.get()
+    _adjust_live_for_event(event, firefox=ff, context=ctx)
+    msg = _event_message(event, **fields)
+    counts = live_instance_counts()
     extra = dict(fields)
     for key in ("event", "request", "firefox", "context", "requested_url", "fields"):
         extra.pop(key, None)
     railway_log(
         "debug",
         _log,
-        _event_message(event, **fields),
+        msg,
         event=event,
         request=_scrape_request.get(),
-        firefox=_scrape_firefox.get() or fields.get("firefox"),
-        context=_scrape_context.get() or fields.get("context"),
+        firefox=ff,
+        context=ctx,
         requested_url=_scrape_url.get(),
+        live_requests=counts["live_requests"],
+        live_firefox=counts["live_firefox"],
+        live_contexts=counts["live_contexts"],
         **extra,
     )
 
