@@ -674,7 +674,7 @@ Consult routing manifest: **`docs/test-bible/core/consult.md`** (**AST-863**).
 | --- | --- | --- |
 | Config literals | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` |
 
-External + gazer manifests: **`docs/test-bible/external/playwright.md`** (**AST-853**).
+External + gazer manifests: **`docs/test-bible/external/telescope.md`** (**AST-853**).
 
 ---
 
@@ -3460,6 +3460,14 @@ Discussion top tab on `JOBS_RECOMMENDED_REPORT_TOP_TABS` (after Artifacts) + pub
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 
+### AST-1691 · AST-1685
+
+Meteorite top tab + sections. Primary: meteorites.md § AST-1691.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tabs/sections | `src/utils/config.py` | **`TestAst1691MeteoriteReportConfig`** |
+
 ### AST-1612 · AST-1607
 
 **Parent:** [AST-1607](https://linear.app/astralcareermatch/issue/AST-1607/artifacts-discussion-is-incomplete). **Publish:** `origin/sub/AST-1607/AST-1612-gap-revise-discussion-tests`. Product: **AST-1609** (`origin/sub/AST-1607/AST-1609-fix-artifacts-discussion-incomplete`).
@@ -4166,3 +4174,145 @@ See **`docs/test-bible/data/database/jobs.md`** § AST-1701 (shared numbered lis
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
+
+### AST-1712 · AST-1711
+
+**Parent:** [AST-1711](https://linear.app/astralcareermatch/issue/AST-1711). **Publish:** `origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map`.
+
+Mailbox task key `meteorite_email` → `stage_email_meteorite`; `debug_func` → `inbox.check_email`. `METEORITE_STATES` gains `NOT_A_JOB` and `NEW_EMAIL_ERROR`; scrape-failure `ERROR` becomes `SCRAPE_ERROR` in the registry, retention partitions, scrape page-status map, and `src/core/meteorite.py` failure writes. Log text `This row is ERROR` stays. Ruth save and `NEW_EMAIL_ERROR` / `NOT_A_JOB` row writes stay **AST-1713**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry + mailbox key | `src/utils/config.py` | **`TestAst1712MailboxKeyAndClassifyStates`** |
+| Catalog row rename | `data/admin/agent_task.json` | **`TestAst1712MailboxCatalogKey`** |
+| Failure writes `SCRAPE_ERROR` | `src/core/meteorite.py` | revised stage / scrape / land state asserts |
+| Stale list + `NOT_A_JOB` purge | retention | **`TestAst1562RunMeteoriteRetention::test_stale_rows_info_logged_not_deleted`**, **`TestAst1712NotAJobPurge`** |
+
+**Broken / obsolete:** mailbox key and `ERROR` registry asserts in **`TestAst1088GazeEmailConfig`**, **`TestAst1090GazeEmailRunnerConfig`**, **`TestAst1529StageMeteoriteConfig`**, **`TestAst1214DispatchAdminDefaultsWidened`**, **`TestAst1557MeteoriteStates`**, **`TestAst1560IngressDispatchConfig`**, **`TestAst1559MonitoringConfig`**, **`TestAst1562RetentionConfig`**, **`TestAst1467GazeEmailRetired`**, **`TestAst1529StageMeteoriteCatalogRow`**, **`TestAst786AgentTaskRepoJsonSeed`**, inbox bound-count fixture, **`TestAst1135ListDtasksMeteoriteMailboxAvail`**, **`TestAst1214AdminCatalogAlphabeticalWritable`**, dispatcher provision null-retire rows. AST-756 fixture mailbox row renamed. Whole-file catalog↔fixture byte lock prompt drift is pre-existing and not this ticket.
+
+**Integration:** none — no existing scenario names this key or `METEORITE_STATES`.
+
+### AST-1752 · AST-1721 (qa-fix bug-repro — LINK_EXPIRED page map)
+
+`METEORITE_STATES` gains `LINK_EXPIRED` (`prior_states` `SCRAPE_LINK` only). `scrape_page_status_states` maps `closed` and `missing` to `LINK_EXPIRED` (not `SCRAPE_ERROR`).
+
+| Area | Component tests |
+| --- | --- |
+| Registry + closed/missing map | `test_config.py::TestAst1557MeteoriteStates`, `TestAst1560IngressDispatchConfig`, `TestAst1712MailboxKeyAndClassifyStates` (**bug-repro** with meteorite.md) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_ingress_task_keys_and_triggers -q
+```
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1557MeteoriteStates \
+  tests/component/utils/test_config.py::TestAst1559MonitoringConfig \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
+  tests/component/utils/test_config.py::TestAst1562RetentionConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst1712MailboxCatalogKey \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow::test_stage_meteorite_ruth_shell_and_outcomes \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_54_current_catalog_keys \
+  tests/component/core/test_ast1467_gaze_email_retire.py::TestAst1467GazeEmailRetired \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_missing_content_errors \
+  tests/component/core/test_meteorite.py::TestAst1562RunMeteoriteRetention::test_stale_rows_info_logged_not_deleted \
+  tests/component/core/test_meteorite.py::TestAst1712NotAJobPurge \
+  tests/component/core/test_inbox.py::TestAst1558CandidateInboxVerbs::test_count_inbox_bound_by_candidate_mailbox_map \
+  tests/component/ui/api/test_api_admin.py::TestAst1135ListDtasksMeteoriteMailboxAvail \
+  tests/component/ui/api/test_api_admin.py::TestAst1214AdminCatalogAlphabeticalWritable::test_mailbox_trigger_null_only_and_unsupported_craft_wording \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_provision_retires_null_and_covers_candidates \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map:docs/test-bible/utils/config.md | shasum`
+
+---
+
+### AST-1726 · AST-1721 (TELESCOPE_CONFIG)
+
+**Scope:** `TELESCOPE_CONFIG` HTTP client knobs; trimmed `PLAYWRIGHT_CONFIG` (no Firefox launch keys); drop `RAILWAY_CONFIG["playwright_browsers_path"]`.
+
+| Area | Component tests |
+| --- | --- |
+| TELESCOPE_CONFIG defaults | `tests/component/utils/test_config.py::TestAst1726TelescopeConfig` |
+| Trimmed PLAYWRIGHT_CONFIG | `tests/component/utils/test_config.py::TestAst853PlaywrightConfig` (revised) |
+
+External map: [`docs/test-bible/external/telescope.md`](../external/telescope.md).
+
+### AST-1749 · AST-1741
+
+**Parent:** [AST-1741](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
+
+Jobs → Meteorites `NAV_CONFIG` item at `/jobs/meteorites` (enabled); Companies → Meteorite at `/companies/meteorite_list` unchanged. Page/modal: **`docs/test-bible/frontend/pages.md`** / **`components.md`** § AST-1749.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Jobs Meteorites nav + Companies untouched | `src/utils/config.py` | **`TestAst1749JobsMeteoritesNav`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+See **`docs/test-bible/frontend/pages.md`** § AST-1749.
+
+### AST-1773 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts`.
+
+`METEORITE_STATES` gains `CHECK_UNIQUE` / `DUPLICATE`; `READY` priors become `CHECK_UNIQUE` + `BOT_BLOCKED`; scrape `"ok"` → `CHECK_UNIQUE`; land trigger stays `READY`; `check_unique_meteorite` ingress key + SEED/retire; optional `employer_name` pin (no `company_name`); `REVIEW_DUPLICATE_METEORITE_CONFIG` + `TASK_CONFIG["review_duplicate_meteorite"]`. Catalog prompts / dispatch row: **`docs/test-bible/core/repo_admin_json.md`** § AST-1773. SQL runner / Ruth invoke stay siblings **AST-1774** / **AST-1775**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry + ingress + review_duplicate + employer pin | `src/utils/config.py` | **`TestAst1773CheckUniqueRegistryAndCatalogs`**; revised **`TestAst1557MeteoriteStates::test_seven_keys_and_new_entry`**, **`TestAst1560IngressDispatchConfig`**, **`TestAst1712…::test_classify_states_and_no_dispatch_triggers`**, **`TestAst1621…::test_ingress_and_bot_blocked_seeds_entity_type_meteorite`** |
+
+**Broken / obsolete this pass:**
+- Exact `METEORITE_STATES` sets and scrape `ok`→`READY` in **`TestAst1557`**, **`TestAst1560`**, **`TestAst1712`** — revised for `CHECK_UNIQUE` / `DUPLICATE`.
+- Ingress seed without `check_unique_meteorite` — revised.
+- Retention partition asserts inside **`TestAst1712…::test_classify_states…`** (product no longer exports `METEORITE_STATES_RETENTION` on `origin/dev`) — dropped from that method; full retention classes stay for a separate pass.
+
+**Integration:** none — no existing scenario asserts `CHECK_UNIQUE` / `check_unique_meteorite` / `review_duplicate_meteorite`.
+
+## QA test manifest
+
+1. Registry + ingress + review_duplicate + employer pin: `tests/component/utils/test_config.py::TestAst1773CheckUniqueRegistryAndCatalogs`
+2. Closed-set + priors (revised): `tests/component/utils/test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry`
+3. Ingress config + seed (revised): `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig`
+4. Classify closed set (revised): `tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers`
+5. Entity-type seed + retire (revised): `tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry::test_ingress_and_bot_blocked_seeds_entity_type_meteorite`
+6. Catalog prompts + review row + dispatch + fixture: `tests/component/core/test_repo_admin_json.py::TestAst1773StageEmployerNameAndReviewDuplicateCatalog`
+7. Catalog membership 57: `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_57_current_catalog_keys`
+8. Prior job_title prompts: `tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts`
+9. Prior stage Ruth shell: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+10. Fixture byte identity: `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1773CheckUniqueRegistryAndCatalogs \
+  tests/component/utils/test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers \
+  tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry::test_ingress_and_bot_blocked_seeds_entity_type_meteorite \
+  tests/component/core/test_repo_admin_json.py::TestAst1773StageEmployerNameAndReviewDuplicateCatalog \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_57_current_catalog_keys \
+  tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/utils/config.md`
+- `docs/test-bible/core/repo_admin_json.md`

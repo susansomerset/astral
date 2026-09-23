@@ -1370,3 +1370,38 @@ cd src/ui/frontend && npm run test:component -- \
 - `docs/test-bible/ui/api/api_jobs.md`
 - `docs/test-bible/frontend/components.md`
 - `docs/test-bible/frontend/pages.md`
+### AST-1760 · AST-1759
+
+**Parent:** [AST-1759 — When job analysis comes back as all X, retry](https://linear.app/astralcareermatch/issue/AST-1759/when-job-analysis-comes-back-as-all-x-retry). **Publish:** `origin/sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding`.
+
+Scored Analysis apply: complete grade set of all literal `X` raises `AllLiteralXGradeSetError` (subclass of `IncompleteGradeSetError`) after the complete-set gate and **before** `_render_score`, so `_consult_batch_fail_dest` sends primary → `*_RETRY` holding and holding → `error_state`. Gate is letter `== "X"` only (not confidence-1 no-signal). Raise site is `_apply_render_verdict_decoded_job` scored branch — not inside `_render_score` (binary / roster callers stay safe). Binary `_render_pass_fail` all-`X` → `fail_state` unchanged. No new holdings. Sibling incomplete-grade family: **AST-1155** above.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper + fail-dest + apply / `render_verdict` / mixed batch | `src/core/consult.py` | **`TestAst1760AllLiteralXRetry`** |
+| Binary all-X still fail (confirm) | same | **`TestAst1760AllLiteralXRetry::test_render_pass_fail_all_x_still_fail_state`**; existing **`TestRenderPassFail`** |
+
+**Broken / obsolete:** none — prior `_render_score` all-no-signal / partial-X paths stay valid (`_render_score` itself does not raise for all-X).
+
+**Integration:** none — no existing scenario asserts scored all-X → retry vs pass at floor `0.0`.
+
+## QA test manifest
+
+1. Helper + subclass + empty/partial: `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_require_not_all_literal_x_gate`
+2. Fail-dest meteorite_like matrix: `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_fail_dest_meteorite_like_matrix`
+3. Floor 0.0 all-X never pass (AC3): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_apply_scored_all_x_never_pass_at_floor_zero`
+4. Partial-X still scores (AC4): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_apply_scored_partial_x_still_scores`
+5. Binary all-X fail (AC5): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_pass_fail_all_x_still_fail_state`
+6. First strike holding (AC1): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_first_strike`
+7. Second strike technical (AC2): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_render_verdict_meteorite_like_all_x_second_strike`
+8. Mixed batch sibling pass (AC1): `tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry::test_batch_mixed_all_x_sibling_still_passes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1760AllLiteralXRetry \
+  -q
+```
+
+**Pass criterion:** pytest green on the class — not zero-arg harness / branch-lock gate.
+
+**Bible path shasum (record after publish):** `git show origin/sub/AST-1759/AST-1760-all-x-scored-grades-retry-holding:docs/test-bible/core/consult.md | shasum`

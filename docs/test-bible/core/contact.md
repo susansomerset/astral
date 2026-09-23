@@ -391,3 +391,36 @@ Contact `resolve_pinned_base_resume` (ownership + `get_operative_base_resume`); 
 - `docs/test-bible/core/contact.md` — *(filled after publish)*
 - `docs/test-bible/utils/config.md` — *(filled after publish)*
 - `docs/test-bible/ui/api/api_contact.md` — *(filled after publish)*
+
+---
+
+### AST-1738 · AST-1636 (bug)
+
+**Parent:** [AST-1636](https://linear.app/astralcareermatch/issue/AST-1636). **Publish:** `origin/sub/AST-1636/AST-1738-manage-candidates-slack-dropdown-empty`.
+
+UAT: Manage Candidates Slack dropdown empty because `list_unbound_slack_users` used poster pool. Fix: members via `list_workspace_members`, not `list_workspace_posters`. Board REVISE: revise AST-1668 unbound stub; land empty-poster≠empty-unbound repro.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| [bug-repro] unbound from members when posters empty | `src/core/contact.py` | **`TestAst1738UnboundMembersNotPosters`** |
+| Revised unbound pool stub (members + posters fallback) | same | **`TestAst1668UnboundAndRecognition::test_list_unbound_omits_bound_ids`** |
+
+**Broken / obsolete this pass:** AST-1668 unbound stub assumed `list_workspace_posters` — revised.
+
+## QA test manifest
+
+1. **[bug-repro]** `tests/component/core/test_contact.py::TestAst1738UnboundMembersNotPosters`
+2. Revised filter: `tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition::test_list_unbound_omits_bound_ids`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1738UnboundMembersNotPosters \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition::test_list_unbound_omits_bound_ids \
+  -q
+```
+
+**Pass criterion (test-fix):** repro flips red→green after make-fix; revised filter stays green.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/contact.md` — *(filled after publish)*
+

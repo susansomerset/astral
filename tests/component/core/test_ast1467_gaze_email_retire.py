@@ -22,7 +22,7 @@ class TestAst1467GazeEmailRetired:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         keys = {r["task_key"] for r in rows if r.get("current") == 1}
         assert "gaze_email" not in keys
-        assert "meteorite_email" in keys
+        assert "stage_email_meteorite" in keys
 
     def test_uat_fixture_lockstep_has_no_gaze_email(self) -> None:
         rows = json.loads(
@@ -32,7 +32,7 @@ class TestAst1467GazeEmailRetired:
         )
         keys = {r["task_key"] for r in rows if r.get("current") == 1}
         assert "gaze_email" not in keys
-        assert "meteorite_email" in keys
+        assert "stage_email_meteorite" in keys
 
     def test_gaze_email_config_and_task_shell_gone(self) -> None:
         assert not hasattr(cfg, "GAZE_EMAIL_CONFIG")
@@ -41,9 +41,9 @@ class TestAst1467GazeEmailRetired:
     def test_mailbox_config_is_meteorite_email_only(self) -> None:
         assert hasattr(cfg, "METEORITE_EMAIL_MAILBOX_CONFIG")
         m = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
-        assert m["task_key"] == "meteorite_email"
+        assert m["task_key"] == "stage_email_meteorite"
         assert m["account_address"] == "astral.career.match@gmail.com"
-        assert m["debug_func"] == "meteorite.check_inbox"
+        assert m["debug_func"] == "inbox.check_email"
         assert "unbound_retention_days" not in m
         assert "debug_func_selected" not in m
         assert not hasattr(cfg, "INBOX_BIND_CONFIG")

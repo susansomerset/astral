@@ -66,6 +66,7 @@ from src.utils.config import (
     get_task_keys,
     dispatch_chain_graduation_target,
     _TOKEN_RE,
+    list_artifact_keys_in_prompt_texts,
     RUBRIC_FEEDBACK_CONFIG,
     CRAFT_RUBRIC_MAX_TOKENS,
     CRAFT_RUBRIC_UI_TASK_KEYS,
@@ -95,7 +96,9 @@ def _with_log_debug(fn):
     async def wrapper(*args, **kwargs):
         bound = inspect.signature(fn).bind_partial(*args, **kwargs)
         bound.apply_defaults()
-        _dbg = log_debug.set(bool(bound.arguments.get("debug", False)))
+        _dbg = log_debug.set(
+            True if bound.arguments.get("debug", False) else log_debug.get()
+        )
         try:
             return await fn(*args, **kwargs)
         finally:
@@ -212,19 +215,22 @@ def _effective_entity_type(task_config: Dict[str, Any], index: Optional[str]) ->
 
 
 def _validate_grade_confidence_in_payload(parsed: Any, task_key: str) -> Optional[str]:
-    """Walk decoded payload for grades[] or jobs[].grades[] and validate confidence rules."""
+    """Walk decoded payload for grades[] or jobs/companies[].grades[] and validate confidence rules."""
     if not isinstance(parsed, dict):
         return None
-    jobs = parsed.get("jobs")
-    if isinstance(jobs, list):
-        for ji, job in enumerate(jobs):
-            if not isinstance(job, dict):
-                continue
-            glist = job.get("grades")
-            if isinstance(glist, list) and glist:
-                err = _validate_grade_confidence_list(glist, f"{task_key} jobs[{ji}].grades")
-                if err:
-                    return err
+    for arr_key in ("jobs", "companies"):
+        rows = parsed.get(arr_key)
+        if isinstance(rows, list):
+            for ji, row in enumerate(rows):
+                if not isinstance(row, dict):
+                    continue
+                glist = row.get("grades")
+                if isinstance(glist, list) and glist:
+                    err = _validate_grade_confidence_list(
+                        glist, f"{task_key} {arr_key}[{ji}].grades"
+                    )
+                    if err:
+                        return err
     glist = parsed.get("grades")
     if isinstance(glist, list) and glist:
         return _validate_grade_confidence_list(glist, f"{task_key} grades")
@@ -235,7 +241,7 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
     """Parse compact pipe-delimited agent_payload string into response_schema shape.
 
     Grade segments: _GRADE_SEG = 2-char code + grade letter + confidence digit (AST-357).
-    pos → astral_job_id via ctx["batch_entities"].
+    pos → astral_job_id (job) or company_id (company entity_type) via ctx["batch_entities"].
     Vector names: ctx["vector_labels"] maps 2-char codes to full rubric labels; falls back to
     raw 2-char code when the map is absent or incomplete. _render_pass_fail ignores vector names;
     _render_score requires rubric criteria with labels — callers guard with `if rubric_list` before scoring (AST-429).
@@ -294,8 +300,14 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
         logger.debug("End decode loop after %s items", len(result_rows))
         return {"results": result_rows}
 
+    # Company vs job id field / result array (AST-1723) — job path unchanged.
+    entity_type = (TASK_CONFIG.get(task_key) or {}).get("entity_type") or ""
+    company_decode = entity_type == "company"
+    id_key = "company_id" if company_decode else "astral_job_id"
+    array_key = "companies" if company_decode else "jobs"
+
     vector_labels: Dict[str, str] = (ctx or {}).get("vector_labels") or {}
-    result_jobs = []
+    result_rows: List[Dict[str, Any]] = []
     logger.debug("Beginning decode loop on %s items", len(lines))
     for line in lines:
         fields = [f.strip() for f in line.split("|")]
@@ -349,22 +361,22 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
                 {"vector": vector_labels.get(code, code), "grade": letter, "confidence": conf_d}
             )
 
-        job: Dict[str, Any] = {
-            "astral_job_id": batch_entities[pos]["astral_job_id"],
+        row: Dict[str, Any] = {
+            id_key: batch_entities[pos][id_key],
             "grades": grade_rows,
         }
         if with_meta:
             if output_type == "grades_encoded_prefilter_links":
                 from src.core.consult import _apply_prefilter_encoded_link_meta
 
-                _apply_prefilter_encoded_link_meta(job, meta)
+                _apply_prefilter_encoded_link_meta(row, meta)
             else:
                 for i, key in enumerate(("company_job_id", "job_title", "job_link")):
                     if i < len(meta):
-                        job[key] = meta[i] or None
+                        row[key] = meta[i] or None
                 # key:value extras → job_data dict (location, salary_range, company name, etc.)
                 if meta[3:]:
-                    job["job_data"] = {
+                    row["job_data"] = {
                         k.strip(): (v.strip() or None)
                         for field in meta[3:] if ":" in field
                         for k, v in [field.split(":", 1)]
@@ -372,12 +384,12 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
         elif with_notes and meta:
             joined = "|".join(meta).strip()
             if joined:
-                job["notes"] = joined
+                row["notes"] = joined
 
-        result_jobs.append(job)
+        result_rows.append(row)
 
-    logger.debug("End decode loop after %s items", len(result_jobs))
-    return {"jobs": result_jobs}
+    logger.debug("End decode loop after %s items", len(result_rows))
+    return {array_key: result_rows}
 
 
 # ---------------------------------------------------------------------------
@@ -514,8 +526,8 @@ def _resolve_task_prompts(task_key: str):
     """
     content_key = resolve_task_key_for_content(task_key)
     agent_task_row = get_agent_task(content_key)
-    # AST-1212/1282: TASK_CONFIG key is meteorite_email; live Ruth prompts still on
-    # parse_meteorite_email until seed rename. Empty stub rows have no agent_id.
+    # Mailbox fold: empty agent_id on stage_email_meteorite falls back to
+    # legacy_agent_task_key parse_meteorite_email. Key lives on METEORITE_EMAIL_PARSE_CONFIG.
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     if content_key == cfg["task_key"] and (
         not agent_task_row or not (agent_task_row.get("agent_id") or "").strip()
@@ -868,6 +880,39 @@ def _task_prompt_texts(
         "nocache": agent_task_row.get("nocache_prompt") or "",
         "live": live_content or "",
     }
+
+
+def harvest_source_artifact_ids(
+    *texts: str,
+    candidate_id: Optional[str] = None,
+) -> list[str]:
+    """Deduped current artifact_uuid pins for artifact-typed {$TOKEN}s in ``texts``.
+
+    Parse/classify via config ``list_artifact_keys_in_prompt_texts``; resolve each
+    key with ``get_candidate_current_artifact_uuid``. Missing candidate_id or
+    missing current rows omit that id (no coat-check, no invent). Order = first
+    successful resolve; UUID duplicates collapsed (set semantics).
+    """
+    if not (candidate_id or "").strip():
+        return []
+    keys = list_artifact_keys_in_prompt_texts(*texts)
+    # Late import: avoid agent↔candidate cycle if candidate later imports agent.
+    from src.core.candidate import get_candidate_current_artifact_uuid
+
+    out: list[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        try:
+            uuid = get_candidate_current_artifact_uuid(candidate_id, key)
+        except ValueError:
+            continue
+        if not isinstance(uuid, str) or not uuid.strip():
+            continue
+        if uuid in seen:
+            continue
+        seen.add(uuid)
+        out.append(uuid)
+    return out
 
 
 def _task_references_caller_tokens(
@@ -1846,6 +1891,27 @@ async def do_task(
         api_key_override = ctx.get("candidate_api_key")
 
     agent_row, agent_task_row = _resolve_task_prompts(task_key)
+    # AST-1698: harvest artifact pins from unresolved prompt templates (before resolve).
+    _system_unresolved = (
+        (agent_task_row.get("system_prompt") or "").strip()
+        or (agent_row.get("content") or "")
+    )
+    source_artifact_ids = harvest_source_artifact_ids(
+        _system_unresolved,
+        agent_task_row.get("user_prompt") or "",
+        agent_task_row.get("cache_prompt") or "",
+        agent_task_row.get("cache_prompt_b") or "",
+        agent_task_row.get("cache_prompt_c") or "",
+        agent_task_row.get("cache_prompt_d") or "",
+        agent_task_row.get("nocache_prompt") or "",
+        live_content or "",
+        candidate_id=candidate_id,
+    )
+
+    def _with_harvest(payload: Dict[str, Any]) -> Dict[str, Any]:
+        payload["source_artifact_ids"] = list(source_artifact_ids)
+        return payload
+
     effective_chain_context = chain_context
     entity_type_pre = _effective_entity_type(task_config, index)
     parent_for_hydration = (chain_context or {}).get("_hop_parent_task_key")
@@ -1871,13 +1937,13 @@ async def do_task(
                     debug=debug,
                 )
                 if hydr_err:
-                    return {
+                    return _with_harvest({
                         "success": False,
                         "error": hydr_err,
                         "api_response": None,
                         "parsed_response": None,
                         "timesheet": {},
-                    }
+                    })
                 effective_chain_context = _merge_hydrated_caller_context(
                     chain_context, hydrated
                 )
@@ -2012,13 +2078,13 @@ async def do_task(
                 task_key,
                 guard_err,
             )
-            return {
+            return _with_harvest({
                 "success": False,
                 "error": guard_err,
                 "api_response": None,
                 "parsed_response": None,
                 "timesheet": {},
-            }
+            })
 
     context = _build_context(task_key, task_config, index)
     response_format = task_config.get("response_format", "text")
@@ -2149,6 +2215,7 @@ async def do_task(
         )
     logger.debug("Response from %s: %s", send_fn_name, result)
     result["runtime_prompt"] = runtime_prompt
+    result["source_artifact_ids"] = list(source_artifact_ids)
 
     if not result.get("success"):
         err = normalize_provider_error(
@@ -2241,9 +2308,9 @@ async def do_task(
             except Exception as exc:
                 _log_swallowed_agent_data(index, task_key, exc)
         _close_hop_ledger(success=False, clear_log=True, failure_error=str(envelope_err))
-        return {"success": False, "api_response": result.get("api_response"),
+        return _with_harvest({"success": False, "api_response": result.get("api_response"),
                 "parsed_response": None, "error": envelope_err, "raw_response": parsed,
-                "timesheet": result.get("timesheet", {})}
+                "timesheet": result.get("timesheet", {})})
 
     if parsed is not None and response_format in ("json", "python") and not rubric_encoded:
         if isinstance(parsed, dict) and schema:
@@ -2273,8 +2340,8 @@ async def do_task(
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
-            return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                    "error": err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
+            return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
+                    "error": err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
@@ -2298,8 +2365,8 @@ async def do_task(
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
-                return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                        "error": cat_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
+                return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
+                        "error": cat_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
         inner_payload = _inner_task_payload(parsed)
         if isinstance(inner_payload, dict):
@@ -2318,8 +2385,8 @@ async def do_task(
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
-                return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                        "error": conf_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
+                return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
+                        "error": conf_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
         vectors = task_config.get("vectors")
         # AST-594: draft_job_resume is structure-keyed, not graded-consult.
@@ -2341,8 +2408,8 @@ async def do_task(
                         except Exception:
                             _log_swallowed_agent_data(index, task_key)
                     _close_hop_ledger(success=False, clear_log=True, failure_error=str(grade_err))
-                    return {"success": False, "api_response": result.get("api_response"), "parsed_response": None,
-                            "error": grade_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})}
+                    return _with_harvest({"success": False, "api_response": result.get("api_response"), "parsed_response": None,
+                            "error": grade_err, "raw_response": parsed, "timesheet": result.get("timesheet", {})})
 
     if isinstance(parsed, dict) and "agent_payload" in parsed:
         # AST-1072: preserve conversational outcome on result before unwrapping payload.
@@ -2391,8 +2458,8 @@ async def do_task(
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
-            return {"success": False, "api_response": result.get("api_response"),
-                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})}
+            return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})})
     elif "_encoded" in output_type and isinstance(parsed, str):
         try:
             logger.debug(
@@ -2423,8 +2490,8 @@ async def do_task(
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(exc))
-            return {"success": False, "api_response": result.get("api_response"),
-                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})}
+            return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                    "parsed_response": None, "error": str(exc), "timesheet": result.get("timesheet", {})})
     if post_rubric_decode:
         if isinstance(parsed, dict) and schema:
             if task_key in _CRAFT_RESUME_NORMALIZE_TASK_KEYS:
@@ -2453,8 +2520,8 @@ async def do_task(
                 except Exception:
                     _log_swallowed_agent_data(index, task_key)
             _close_hop_ledger(success=False, clear_log=True, failure_error=str(err))
-            return {"success": False, "api_response": result.get("api_response"),
-                    "parsed_response": None, "error": err, "timesheet": result.get("timesheet", {})}
+            return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                    "parsed_response": None, "error": err, "timesheet": result.get("timesheet", {})})
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
 
@@ -2477,8 +2544,8 @@ async def do_task(
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(cat_err))
-                return {"success": False, "api_response": result.get("api_response"),
-                        "parsed_response": None, "error": cat_err, "timesheet": result.get("timesheet", {})}
+                return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                        "parsed_response": None, "error": cat_err, "timesheet": result.get("timesheet", {})})
         if isinstance(parsed, dict):
             conf_err = _validate_grade_confidence_in_payload(parsed, task_key)
             if conf_err:
@@ -2495,8 +2562,8 @@ async def do_task(
                     except Exception:
                         _log_swallowed_agent_data(index, task_key)
                 _close_hop_ledger(success=False, clear_log=True, failure_error=str(conf_err))
-                return {"success": False, "api_response": result.get("api_response"),
-                        "parsed_response": None, "error": conf_err, "timesheet": result.get("timesheet", {})}
+                return _with_harvest({"success": False, "api_response": result.get("api_response"),
+                        "parsed_response": None, "error": conf_err, "timesheet": result.get("timesheet", {})})
 
     # AST-997: pin experience metadata after finalize schema OK; Style D job detail on tailor hops.
     if task_key in ("draft_job_resume", "finalize_job_resume") and isinstance(parsed, dict):
@@ -2571,7 +2638,13 @@ async def do_task(
                         catalog_key,
                     )
                 else:
-                    landed = save_job_artifact(index, catalog_key, body)
+                    # AST-1700: pass do_task harvest; job_resume auto-cite stays in tracker.
+                    landed = save_job_artifact(
+                        index,
+                        catalog_key,
+                        body,
+                        source_artifact_ids=list(source_artifact_ids),
+                    )
                     if landed is None:
                         logger.warning(
                             "%s skipped — catalog %s empty\n  The hop is still success; the replica was not saved",
@@ -2634,7 +2707,13 @@ async def do_task(
                     "candidate.artifacts.resume_structure",
                     structure,
                 )
-                save_candidate_data(str(index), artifact_key, content)
+                # AST-1700: harvest only on operative str-path insert of craft body.
+                save_candidate_data(
+                    str(index),
+                    artifact_key,
+                    content,
+                    source_artifact_ids=list(source_artifact_ids),
+                )
             else:
                 _persist_craft_dispatch_success(
                     str(index), task_key, parsed_for_persist
@@ -2651,13 +2730,13 @@ async def do_task(
             _close_hop_ledger(
                 success=False, clear_log=True, failure_error=str(persist_err),
             )
-            return {
+            return _with_harvest({
                 "success": False,
                 "api_response": result.get("api_response"),
                 "parsed_response": None,
                 "error": str(persist_err),
                 "timesheet": result.get("timesheet") or {},
-            }
+            })
 
     # Lightweight agent_ref for batch callers (roster/consult tag RESPONSE entity_ids)
     if _should_store:
@@ -3306,7 +3385,7 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
                 exc,
             )
 
-    entity_job_id = entity.get("astral_job_id")  # None for companies
+    entity_ref_id = entity.get("astral_job_id") or entity.get("short_name")
 
     enriched = []
     for e in entries:
@@ -3325,8 +3404,8 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
             label = btype if type_counts[btype] == 1 else f"{btype} ({type_counts[btype]})"
             content = data_map.get(bid, {}).get("block_data", "") or ""
 
-            if is_scored and btype == "RESPONSE" and entity_job_id:
-                content = _filter_response_block(content, entity_job_id)
+            if is_scored and btype == "RESPONSE" and entity_ref_id:
+                content = _filter_response_block(content, entity_ref_id)
 
             blocks.append({"type": label, "id": bid, "content": content})
 
@@ -3349,26 +3428,33 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     return enriched
 
 
-def _filter_response_block(content: str, astral_job_id: str) -> str:
-    """For batch task RESPONSE blocks: filter the jobs array to the matching job.
+def _filter_response_block(content: str, entity_id: str) -> str:
+    """For batch task RESPONSE blocks: filter jobs/companies array to the matching entity.
 
-    Returns the matching job entry as pretty JSON, empty string for old encoded
-    data (no astral_job_id present), or the original content for non-batch responses.
+    Returns the matching entry as pretty JSON, empty string for old encoded
+    data (no id present), or the original content for non-batch responses.
     """
     try:
         parsed = json.loads(content)
     except (json.JSONDecodeError, TypeError):
         return content  # not JSON — leave as-is
 
-    jobs = parsed.get("jobs") if isinstance(parsed, dict) else None
-    if jobs is None:
-        return content  # single-job response — show as-is
+    if not isinstance(parsed, dict):
+        return content
 
-    # Check if any entry has astral_job_id (i.e. decoded, not old encoded data)
-    if not any(isinstance(j, dict) and j.get("astral_job_id") for j in jobs):
+    # Prefer companies when present (AST-1723); else jobs.
+    rows = parsed.get("companies")
+    id_key = "company_id"
+    if not isinstance(rows, list):
+        rows = parsed.get("jobs")
+        id_key = "astral_job_id"
+    if rows is None:
+        return content  # single-entity response — show as-is
+
+    if not any(isinstance(j, dict) and j.get(id_key) for j in rows):
         return ""  # old encoded payload — skip
 
-    match = next((j for j in jobs if isinstance(j, dict) and j.get("astral_job_id") == astral_job_id), None)
+    match = next((j for j in rows if isinstance(j, dict) and j.get(id_key) == entity_id), None)
     return json.dumps(match, indent=2) if match else ""
 
 
@@ -3453,21 +3539,34 @@ def get_entity_response(batch_id: str, entity_id: str) -> Optional[Dict[str, Any
 
 def _extract_entity_segment(content: str, entity_id: str) -> Optional[str]:
     """Pull the entity-specific section out of a batch response string.
-    Tries JSON first (looks for entity_id key in a 'jobs' list or top-level dict).
+    Tries JSON first (jobs/companies/results lists keyed by astral_job_id or company_id).
     Falls back to None (caller keeps full content)."""
     if not content or not entity_id:
         return None
     try:
         data = json.loads(content)
-        # Batch responses are typically {"jobs": [{astral_job_id: ..., ...}, ...]}
+        # Batch responses: jobs[{astral_job_id}], companies[{company_id}], results[], entities[]
         if isinstance(data, dict):
-            jobs = data.get("jobs") or data.get("results") or data.get("entities")
-            if isinstance(jobs, list):
-                for item in jobs:
-                    if isinstance(item, dict) and item.get("astral_job_id") == entity_id:
+            for arr_key, id_key in (
+                ("companies", "company_id"),
+                ("jobs", "astral_job_id"),
+                ("results", "astral_job_id"),
+                ("entities", "astral_job_id"),
+            ):
+                rows = data.get(arr_key)
+                if not isinstance(rows, list):
+                    continue
+                for item in rows:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get(id_key) == entity_id or item.get("company_id") == entity_id:
                         return json.dumps(item)
             # Flat single-entity response
-            if data.get("astral_job_id") == entity_id or len(data) > 0:
+            if (
+                data.get("astral_job_id") == entity_id
+                or data.get("company_id") == entity_id
+                or len(data) > 0
+            ):
                 return content
     except (json.JSONDecodeError, TypeError):
         pass

@@ -41,7 +41,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from src.data import database
 from src.core.agent import (
@@ -785,12 +785,14 @@ def save_candidate_data(
     blob: Any = None,
     replace: bool = False,
     *,
+    source_artifact_ids: Optional[Sequence[str]] = None,
     debug: bool = False,
 ) -> Optional[str]:
     """Library merge (dict) or operative artifact write (artifact_key str) — AST-1576.
 
     Dict path: merge/replace library blobs + optional name columns (AST-1014); returns None.
     Str path: ARTIFACT_CONFIG → validate body_shape → save_artifact; returns new uuid.
+    Optional source_artifact_ids applies on the str path only (generative seed pins).
     """
     # Operative write-operative path (pilot: candidate.artifacts.base_resume).
     if isinstance(data_or_artifact_key, str):
@@ -826,7 +828,11 @@ def save_candidate_data(
         if current_row is not None and current_row.get("artifact_data") == blob:
             return current_row.get("artifact_uuid")
         new_uuid = database.save_artifact(
-            entry["entity_type"], candidate_id, artifact_type, blob
+            entry["entity_type"],
+            candidate_id,
+            artifact_type,
+            blob,
+            source_artifact_ids=source_artifact_ids,
         )
         if artifact_key == _STRENGTHS_ARTIFACT_KEY:
             logger.info(
@@ -1589,6 +1595,36 @@ def get_candidate_current(candidate_id: str, artifact_key: str) -> Optional[Any]
     return row.get("artifact_data")
 
 
+def get_candidate_current_artifact_uuid(
+    candidate_id: str, artifact_key: str
+) -> Optional[str]:
+    """Current-read ``artifact_uuid`` for a catalog key (patt.artifact.read-current).
+
+    Same ARTIFACT_CONFIG / candidate_scoped / entity resolve as
+    ``get_candidate_current``, but returns ``artifact_uuid`` (or None on miss)
+    instead of ``artifact_data``. Never reads candidate_data blobs. No coat-check.
+    """
+    key = (artifact_key or "").strip()
+    if not key:
+        raise ValueError("artifact_key required")
+    entry = ARTIFACT_CONFIG.get(key)
+    if entry is None:
+        raise ValueError(f"unknown catalog key: {key!r}")
+    if not entry.get("candidate_scoped"):
+        raise ValueError(f"catalog key not candidate-scoped: {key!r}")
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id required")
+    artifact_type = key.rsplit(".", 1)[-1]
+    row = database.get_current_artifact(entry["entity_type"], cid, artifact_type)
+    if row is None:
+        return None
+    uuid = row.get("artifact_uuid")
+    if not isinstance(uuid, str) or not uuid.strip():
+        return None
+    return uuid
+
+
 def hydrate_operative_base_resume_for_response(candidate_id: str, cd: dict) -> None:
     """Overlay operative current base_resume into candidate_data (display only)."""
     if not isinstance(cd, dict):
@@ -1909,12 +1945,14 @@ def get_new_candidate_batch(
     sort_by: Optional[str] = None,
     batch_id: Optional[str] = None,
     context: Optional[str] = None,
+    candidate_id: Optional[str] = None,
     *,
     states: Optional[List[str]] = None,
 ) -> Tuple[str, List[Dict[str, Any]]]:
     """Claim candidates for batch processing. Returns (batch_id, candidates).
 
-    Cross-candidate pool (AST-1258/1259) — no candidate_id / score_floor scope.
+    candidate_id: required; scopes the claim to that one candidate's own row
+    (stat.dispatch.entity-state-bound — no cross-candidate pool; was AST-1258/1259).
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
@@ -1932,7 +1970,9 @@ def get_new_candidate_batch(
     if not batch_id and not context:
         raise ValueError("batch_id or context is required for batch_id generation")
     bid = batch_id or f"{context}-{uuid.uuid4()}"
-    database.claim_candidate_batch(bid, state, limit_val, sort_by=sort_by, states=states)
+    database.claim_candidate_batch(
+        bid, state, limit_val, sort_by=sort_by, candidate_id=candidate_id, states=states
+    )
     return (bid, database.get_candidate_batch(bid))
 
 

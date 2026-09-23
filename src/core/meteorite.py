@@ -2,7 +2,7 @@
 Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470 / AST-1493 / AST-1495).
 
 Dispatch `stage_meteorite` / `scrape_meteorite` / `land_meteorite` rows (AST-1560) are table
-transition runners — not Ruth consult hops; dispatcher custom branch only.
+transition runners — not Ruth classify hops; dispatcher custom branch only.
 
 Lazy-insert stem-keyed companies into METEORITE from METEORITE_CONFIG (default
 stem → meteorite-<candidate_id>). Track = company state METEORITE or legacy
@@ -11,8 +11,7 @@ only — table ingress uses dispatch transition runners for map/land. Public lan
 scraps → optional Playwright visible text → qualify_meteorite packet enrich →
 per-row Ruth company_stem ensure → tracker.save_meteorite_job. check_inbox (AST-1559):
 aliases → fetch → inline classify → fan-out staging rows → archive; no Gmail I/O here —
-inbox owns fetch/archive. run_meteorite_retention (AST-1562): scheduled purge of old LANDED
-rows + warn stale ERROR/BOT_BLOCKED/ABANDONED; meteorite_email.py retired AST-1562.
+inbox owns fetch/archive.
 create_meteorite_job accepts optional stem= for legacy callers.
 create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
 """
@@ -23,7 +22,7 @@ import inspect
 import os
 import re
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -38,7 +37,6 @@ from src.core import tracker
 from src.data.database import (
     claim_meteorite_batch,
     clear_meteorite_batch,
-    delete_meteorites_by_ids,
     get_company,
     get_job,
     get_meteorite,
@@ -46,31 +44,47 @@ from src.data.database import (
     insert_meteorite_rows,
     list_meteorites_by_source,
     list_meteorites_by_state,
-    list_meteorites_for_retention,
     save_company,
     save_job,
     update_candidate_last_email_check,
     update_meteorite,
 )
-from src.external.playwright import get_visible_text
+from src.external.telescope import get_visible_text
 from src.utils.config import (
     METEORITE_BOT_BLOCKED_NOTIFY_CONFIG,
     METEORITE_CONFIG,
     METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_INGRESS_DISPATCH_CONFIG,
     METEORITE_MONITORING_CONFIG,
-    METEORITE_RETENTION_CONFIG,
-    METEORITE_STATES_RETENTION,
     STAGE_METEORITE_CONFIG,
     TASK_CONFIG,
     TRACKER_CONFIG,
     format_contact_timezone_clock,
     format_job_link_breadcrumb,
 )
-from src.utils.formatting import normalize_pasted_list_email_html
+from src.utils.formatting import normalize_pasted_list_email_html, uuid_path_segment_from_url
 from src.utils.logging import get_logger, log_batch_id, log_debug
 
 logger = get_logger(__name__)
+
+
+def _hold_log_batch(batch_id: str):
+    """Stamp log_batch_id only when a parent dispatch batch is not already set."""
+    if log_batch_id.get():
+        return None
+    return log_batch_id.set(batch_id)
+
+
+def _resolve_company_job_id(ai_company_job_id: str, job_link: str) -> str:
+    """Prefer non-empty AI company_job_id; else UUID path segment from job_link; else ''."""
+    ai = (ai_company_job_id or "").strip()
+    if ai:
+        return ai
+    link = (job_link or "").strip()
+    if not link:
+        return ""
+    fallback = uuid_path_segment_from_url(link, TRACKER_CONFIG["uuid_path_segment_pattern"])
+    return fallback or ""
 
 
 def _with_log_debug(fn):
@@ -169,6 +183,7 @@ def _insert_paste_meteorite_parent(
                 "candidate_id": candidate_id,
                 "source_kind": "paste",
                 "source_id": str(uuid.uuid4()),
+                "state": "NEW",
                 "content": content,
                 "link": link,
                 "classify_outcome": None,
@@ -555,6 +570,134 @@ def _land_scrap_body(scrap: Dict[str, Any]) -> str:
     return ""
 
 
+@_with_log_debug
+async def enrich_meteorite_land_packet(
+    candidate_id: str,
+    scraps: List[Dict[str, Any]],
+    *,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Pre-create land packet enrich via qualify_meteorite do_task (AST-1470).
+
+    No claim, no initialize_job, no state transition — dispatch qualify_meteorite
+    still owns METEORITE_NEW → METEORITE_QUALIFIED.
+    """
+    from src.core.agent import do_task
+
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return {"success": False, "error": "candidate_id is required", "jobs": []}
+    if not isinstance(scraps, list) or not scraps:
+        return {"success": False, "error": "scraps is required", "jobs": []}
+
+    jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+    rows: List[Dict[str, Any]] = []
+    for raw in scraps:
+        if not isinstance(raw, dict):
+            continue
+        link = (raw.get("job_link") or "").strip() if isinstance(raw.get("job_link"), str) else ""
+        body = _land_scrap_body(raw)
+        if not link and not body:
+            continue
+        emp = raw.get("employer_name")
+        emp_s = emp.strip() if isinstance(emp, str) else ""
+        rows.append({
+            "job_link": link,
+            "content": body,
+            "employer_name": emp_s,
+        })
+    if not rows:
+        return {"success": False, "error": "no usable scraps (need link or text)", "jobs": []}
+
+    task_key = "qualify_meteorite"
+    live_lines = [
+        f"{i:03d}: job_link: {r['job_link']}\nCONTENT:\n{r['content']}"
+        for i, r in enumerate(rows)
+    ]
+    live_content = "METEORITE JOBS:\n" + "\n".join(live_lines)
+
+    # Stub batch_entities (no astral_job_id) so decode helpers peeking ctx stay safe.
+    batch_entities = [
+        {"job_link": r["job_link"] or None, "job_data": {jd_key: r["content"]}}
+        for r in rows
+    ]
+    task_ctx: Dict[str, Any] = {
+        **(ctx or {}),
+        "astral_candidate_id": cid,
+        "batch_size": len(rows),
+        "batch_entities": batch_entities,
+    }
+    if ctx and ctx.get("candidate_data") is not None:
+        task_ctx["candidate_data"] = ctx["candidate_data"]
+
+    batch_id = f"{task_key}-land-{uuid.uuid4()}"
+    do_index = f"{task_key}_batch_{batch_id}"
+    token = _hold_log_batch(batch_id)
+    try:
+        logger.debug(
+            "Calling agent.do_task: [task_key=%s, index=%s, scraps=%s]",
+            task_key, do_index, len(rows),
+        )
+        result = await do_task(
+            task_key=task_key,
+            live_content=live_content,
+            index=do_index,
+            ctx=task_ctx,
+            debug=debug,
+        )
+        logger.debug("Response from agent.do_task: %s", result)
+
+        if not result.get("success"):
+            logger.debug("enrich_failed batch_id=%s error=%r", batch_id, result.get("error"))
+            logger.warning(
+                "%s — land packet enrich failed: %s\n  Jobs are not landing from this packet",
+                cid, result.get("error") or "do_task failed",
+            )
+            return {
+                "success": False,
+                "error": result.get("error") or "do_task failed",
+                "jobs": [],
+                "raw": result,
+                "batch_id": batch_id,
+            }
+
+        parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+        response_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
+        out_jobs: List[Dict[str, Any]] = []
+        for i, scrap in enumerate(rows):
+            rj = response_jobs[i] if i < len(response_jobs) and isinstance(response_jobs[i], dict) else {}
+            ruth_link = (rj.get("job_link") or "").strip() if isinstance(rj.get("job_link"), str) else ""
+            job_link = ruth_link or scrap["job_link"]
+            ai_cid = (rj.get("company_job_id") or "").strip() if isinstance(rj.get("company_job_id"), str) else ""
+            company_job_id = _resolve_company_job_id(ai_cid, job_link)
+            job_title = (rj.get("job_title") or "").strip() if isinstance(rj.get("job_title"), str) else ""
+            jd_text = (rj.get("jd_text") or "").strip() if isinstance(rj.get("jd_text"), str) else ""
+            ruth_emp = (rj.get("employer_name") or "").strip() if isinstance(rj.get("employer_name"), str) else ""
+            employer_name = ruth_emp or scrap["employer_name"]
+            stem_key = TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"]
+            ruth_stem = (rj.get(stem_key) or "").strip() if isinstance(rj.get(stem_key), str) else ""
+            out_jobs.append({
+                "company_job_id": company_job_id,
+                "job_title": job_title,
+                "job_link": job_link,
+                "jd_text": jd_text,
+                "employer_name": employer_name,
+                "company_stem": ruth_stem,
+                "scrap_index": i,
+            })
+            logger.debug(
+                "enriched %s/%s link=%r content_chars_in=%s jd_chars=%s employer_name=%s company_stem=%r",
+                i + 1, len(rows), job_link, len(scrap["content"]), len(jd_text),
+                "yes" if employer_name else "no", ruth_stem,
+            )
+
+        return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
+    finally:
+        if token is not None:
+            log_batch_id.reset(token)
+
+
 def _land_rollup_outcome(outcomes: List[Dict[str, Any]]) -> str:
     """Roll up per-row Tracker outcomes (AST-1470 Decision)."""
     created = METEORITE_CONFIG["land_outcome_created"]
@@ -575,6 +718,156 @@ def _land_rollup_outcome(outcomes: List[Dict[str, Any]]) -> str:
     return err
 
 
+async def _classify_stage_blob(
+    candidate_id: str,
+    blob: str,
+    *,
+    source_kind: str,
+    source_id: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Ruth classify via stage_meteorite do_task. No insert."""
+    from src.core.agent import do_task
+
+    empty = {"success": False, "outcome": None, "jobs": [], "batch_id": None}
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return {**empty, "error": "candidate_id is required"}
+    kind = (source_kind or "").strip()
+    if kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"]:
+        return {**empty, "error": "invalid source_kind"}
+    sid = (source_id or "").strip()
+    if not sid:
+        return {**empty, "error": "source_id is required"}
+    body = blob if isinstance(blob, str) else ""
+    if not body.strip():
+        return {**empty, "error": "blob is required"}
+
+    # Source handle for core source-refs; Ruth classifies CONTENT.
+    live_content = f"SOURCE_KIND: {kind}\nSOURCE_ID: {sid}\nCONTENT:\n{body}"
+    task_key = STAGE_METEORITE_CONFIG["task_key"]
+    batch_id = f"{task_key}-stage-{uuid.uuid4()}"
+    do_index = f"{task_key}_batch_{batch_id}"
+    task_ctx: Dict[str, Any] = {**(ctx or {}), "astral_candidate_id": cid}
+    if ctx and ctx.get("candidate_data") is not None:
+        task_ctx["candidate_data"] = ctx["candidate_data"]
+    if ctx and ctx.get("candidate_api_key") is not None:
+        task_ctx["candidate_api_key"] = ctx["candidate_api_key"]
+
+    token = _hold_log_batch(batch_id)
+    try:
+        logger.debug(
+            "Calling agent.do_task: [task_key=%s, index=%s, source_kind=%s]",
+            task_key, do_index, kind,
+        )
+        result = await do_task(
+            task_key=task_key,
+            live_content=live_content,
+            index=do_index,
+            ctx=task_ctx,
+            debug=debug,
+        )
+        logger.debug("Response from agent.do_task: %s", result)
+
+        if not result.get("success"):
+            logger.debug("stage_failed batch_id=%s error=%r", batch_id, result.get("error"))
+            logger.warning(
+                "%s — stage_meteorite failed: %s\n  This blob is not classifying",
+                cid, result.get("error") or "do_task failed",
+            )
+            return {
+                "success": False,
+                "error": result.get("error") or "do_task failed",
+                "outcome": None,
+                "jobs": [],
+                "batch_id": batch_id,
+                "raw": result,
+            }
+
+        parsed = result.get("parsed_response") if isinstance(result.get("parsed_response"), dict) else {}
+        raw_outcome = parsed.get("outcome")
+        outcome = raw_outcome.strip() if isinstance(raw_outcome, str) else ""
+        raw_jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
+        jobs = [j for j in raw_jobs if isinstance(j, dict)]
+
+        if outcome not in STAGE_METEORITE_CONFIG["outcomes"]:
+            logger.warning(
+                "%s — invalid stage outcome %r\n  This blob is not classifying",
+                cid, outcome,
+            )
+            return {
+                "success": False,
+                "error": "invalid stage outcome",
+                "outcome": outcome or None,
+                "jobs": [],
+                "batch_id": batch_id,
+                "raw": result,
+            }
+        if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
+            jobs = []
+
+        logger.debug(
+            "stage outcome=%s batch_id=%s job_count=%s source_kind=%s",
+            outcome, batch_id, len(jobs), kind,
+        )
+        return {
+            "success": True,
+            "outcome": outcome,
+            "jobs": jobs,
+            "error": None,
+            "batch_id": batch_id,
+            "raw": result,
+        }
+    finally:
+        if token is not None:
+            log_batch_id.reset(token)
+
+
+def _stage_field(job: Dict[str, Any], key: str) -> Optional[str]:
+    raw = job.get(key)
+    if not isinstance(raw, str):
+        return None
+    text = raw.strip()
+    return text or None
+
+
+def _new_email_error_row(
+    cid: str,
+    kind: str,
+    sid: str,
+    error: str,
+    classify_outcome: Optional[str] = None,
+) -> Dict[str, Any]:
+    col = METEORITE_CONFIG["electronic_contact_column"]
+    return {
+        "candidate_id": cid,
+        "source_kind": kind,
+        "source_id": sid,
+        "state": "NEW_EMAIL_ERROR",
+        "classify_outcome": classify_outcome,
+        "content": None,
+        "link": None,
+        "job_title": None,
+        "employer_name": None,
+        col: None,
+        "error": error,
+    }
+
+
+def _insert_stage_rows(row_dicts: List[Dict[str, Any]]) -> Tuple[List[int], Optional[str]]:
+    logger.debug("Calling insert_meteorite_rows: [n=%s]", len(row_dicts))
+    ids = insert_meteorite_rows(row_dicts)
+    logger.debug("Response from insert_meteorite_rows: %s", ids)
+    if len(ids) != len(row_dicts):
+        return ids, f"insert_count_mismatch ids={len(ids)} rows={len(row_dicts)}"
+    logger.debug("Beginning stage row info loop on %s items", len(ids))
+    for row_id, row in zip(ids, row_dicts):
+        _meteorite_state_info(row_id, row["state"])
+    logger.debug("End stage row info loop after %s items", len(ids))
+    return ids, None
+
+
 @_with_log_debug
 async def stage_meteorite(
     candidate_id: str,
@@ -584,12 +877,9 @@ async def stage_meteorite(
     source_id: str,
     debug: bool = False,
 ) -> Dict[str, Any]:
-    """Public ingress stage: classify blob only (AST-1530 / AST-1560).
-
-    Returns classify outcome + jobs[]; table path uses dispatch transition runners
-    for stage/scrape/land. Does not claim METEORITE_NEW or run qualify_meteorite dispatch.
-    """
+    """Classify a blob with Ruth and insert the meteorite row in this pass."""
     err_key = METEORITE_CONFIG["land_outcome_error"]
+    col = METEORITE_CONFIG["electronic_contact_column"]
 
     def _err(error: str, *, batch_id=None, stage_outcome=None) -> Dict[str, Any]:
         return {
@@ -602,6 +892,11 @@ async def stage_meteorite(
         }
 
     cid = (candidate_id or "").strip()
+    kind = (source_kind or "").strip()
+    sid = (source_id or "").strip()
+    prefixes = STAGE_METEORITE_CONFIG["source_ref_prefixes"]
+    can_insert = kind in prefixes and bool(sid)
+
     if not cid:
         _warn_item(
             "stage_meteorite",
@@ -609,70 +904,141 @@ async def stage_meteorite(
             "This blob is not being classified",
         )
         return _err("candidate_id is required")
+    if not can_insert:
+        why = "invalid source_kind" if kind not in prefixes else "source_id is required"
+        _warn_item(cid, why, "This blob is not being saved")
+        return _err(why)
+
+    def _save_error(
+        error: str,
+        classify_outcome=None,
+        *,
+        batch_id=None,
+        insert_fail_step: str = "This blob is not being saved as a classified row",
+    ):
+        try:
+            _ids, mismatch = _insert_stage_rows([
+                _new_email_error_row(cid, kind, sid, error, classify_outcome),
+            ])
+        except Exception as exc:
+            logger.exception(
+                "%s | stage_meteorite %s %s\n  %s: %s\n  %s",
+                cid, kind, sid, type(exc).__name__, exc, insert_fail_step,
+            )
+            return _err(error, batch_id=batch_id, stage_outcome=classify_outcome)
+        if mismatch:
+            _warn_item(cid, mismatch, "This blob is not being saved as a classified row")
+            return _err(mismatch, batch_id=batch_id, stage_outcome=classify_outcome)
+        return None
+
     cand = get_candidate(cid)
     if not cand:
-        _warn_item(
-            cid,
-            "candidate not found",
-            "This blob is not being classified",
-        )
-        return _err(f"candidate not found: {cid}")
-
-    # Late-import: consult loads is_meteorite_company at module top.
-    from src.core.consult import invoke_stage_meteorite
+        _warn_item(cid, "candidate not found", "This blob is not being classified")
+        missed = f"candidate not found: {cid}"
+        failed = _save_error(missed)
+        return failed or _err(missed)
 
     ctx = dict(cand) if isinstance(cand, dict) else {}
     ctx["astral_candidate_id"] = cid
-    logger.debug(
-        "Calling invoke_stage_meteorite: [candidate_id=%s, source_kind=%s, source_id=%s]",
-        cid, source_kind, source_id,
-    )
-    invoke = await invoke_stage_meteorite(
-        cid, blob, source_kind=source_kind, source_id=source_id, ctx=ctx, debug=debug,
-    )
-    logger.debug("Response from invoke_stage_meteorite: %s", invoke)
-    batch_id = invoke.get("batch_id")
-
-    if not invoke.get("success"):
-        _warn_item(
-            cid,
-            invoke.get("error") or "stage invoke failed",
-            "This blob is not being classified into meteorite rows",
+    try:
+        logger.debug(
+            "Calling _classify_stage_blob: [candidate_id=%s, source_kind=%s, source_id=%s]",
+            cid, kind, sid,
         )
-        return _err(invoke.get("error") or "stage invoke failed", batch_id=batch_id)
-
-    stage_outcome = invoke["outcome"]
-    kind = (source_kind or "").strip()
-    sid = (source_id or "").strip()
-
-    if stage_outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-        _warn_item(
-            cid,
-            f"classify skipped ({stage_outcome})",
-            "No meteorite rows are being inserted",
+        classify = await _classify_stage_blob(
+            cid, blob, source_kind=kind, source_id=sid, ctx=ctx, debug=debug,
         )
+        logger.debug("Response from _classify_stage_blob: %s", classify)
+    except Exception as exc:
+        logger.exception(
+            "%s | stage_meteorite %s %s\n  %s: %s\n  This blob is not being saved as a classified row",
+            cid, kind, sid, type(exc).__name__, exc,
+        )
+        failed = _save_error(str(exc), insert_fail_step="The error row was not inserted")
+        return failed or _err(str(exc))
+
+    batch_id = classify.get("batch_id")
+    outcome = classify.get("outcome")
+    skip = STAGE_METEORITE_CONFIG["skip_outcomes"]
+    text_outcomes = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
+    url_outcomes = STAGE_METEORITE_CONFIG["url_scrape_outcomes"]
+
+    if classify.get("success") and outcome in skip:
+        row = {
+            "candidate_id": cid,
+            "source_kind": kind,
+            "source_id": sid,
+            "state": "NOT_A_JOB",
+            "classify_outcome": outcome,
+            "content": None,
+            "link": None,
+            "job_title": None,
+            "employer_name": None,
+            col: None,
+            "error": None,
+        }
+        try:
+            _ids, mismatch = _insert_stage_rows([row])
+        except Exception as exc:
+            logger.exception(
+                "%s | stage_meteorite %s %s\n  %s: %s\n  This blob is not being saved as a classified row",
+                cid, kind, sid, type(exc).__name__, exc,
+            )
+            return _err(str(exc), batch_id=batch_id, stage_outcome=outcome)
+        if mismatch:
+            _warn_item(cid, mismatch, "This blob is not being saved as a classified row")
+            return _err(mismatch, batch_id=batch_id, stage_outcome=outcome)
         return {
-            "outcome": stage_outcome,
-            "stage_outcome": stage_outcome,
+            "outcome": outcome,
+            "stage_outcome": outcome,
             "skipped": True,
             "jobs": [],
             "error": None,
             "batch_id": batch_id,
         }
 
-    jobs = invoke.get("jobs") or []
-    logger.debug(
-        "stage_meteorite classify_only source_kind=%s source_id=%s job_count=%s",
-        kind, sid, len(jobs),
-    )
-    return {
-        "outcome": stage_outcome,
-        "stage_outcome": stage_outcome,
-        "skipped": False,
-        "jobs": jobs,
-        "error": None,
-        "batch_id": batch_id,
-    }
+    if classify.get("success") and outcome in (*text_outcomes, *url_outcomes):
+        row_dicts, map_err = _map_classify_jobs_to_meteorite_rows(
+            outcome,
+            classify.get("jobs") or [],
+            candidate_id=cid,
+            source_kind=kind,
+            source_id=sid,
+            timezone_key=_candidate_contact_timezone(cid),
+            ingress_blob=blob,
+        )
+        if map_err:
+            failed = _save_error(str(map_err), outcome, batch_id=batch_id)
+            return failed or _err(str(map_err), batch_id=batch_id, stage_outcome=outcome)
+        state = "READY" if outcome in text_outcomes else "SCRAPE_LINK"
+        job_dicts = [j for j in (classify.get("jobs") or []) if isinstance(j, dict)]
+        for row, job in zip(row_dicts, job_dicts):
+            row["state"] = state
+            row["job_title"] = _stage_field(job, "job_title")
+            row["employer_name"] = _stage_field(job, "employer_name")
+        try:
+            _ids, mismatch = _insert_stage_rows(row_dicts)
+        except Exception as exc:
+            logger.exception(
+                "%s | stage_meteorite %s %s\n  %s: %s\n  This blob is not being saved as a classified row",
+                cid, kind, sid, type(exc).__name__, exc,
+            )
+            return _err(str(exc), batch_id=batch_id, stage_outcome=outcome)
+        if mismatch:
+            _warn_item(cid, mismatch, "This blob is not being saved as a classified row")
+            return _err(mismatch, batch_id=batch_id, stage_outcome=outcome)
+        return {
+            "outcome": outcome,
+            "stage_outcome": outcome,
+            "skipped": False,
+            "jobs": classify.get("jobs") or [],
+            "error": None,
+            "batch_id": batch_id,
+        }
+
+    err = classify.get("error") or "stage failed"
+    failed = _save_error(err, outcome, batch_id=batch_id)
+    return failed or _err(err, batch_id=batch_id, stage_outcome=outcome)
 
 
 @_with_log_debug
@@ -760,9 +1126,6 @@ async def land_meteorite(
             scrap["job_link"] = link
         await _land_link_check_append(scrap, candidate_id=cid, debug=debug)
 
-    # Late-import: consult loads is_meteorite_company at module top.
-    from src.core.consult import enrich_meteorite_land_packet
-
     ctx = dict(cand) if isinstance(cand, dict) else {}
     ctx["astral_candidate_id"] = cid
     logger.debug(
@@ -811,6 +1174,10 @@ async def land_meteorite(
             if not mlink and row_link:
                 update_meteorite(mid, link=row_link)
                 mlink = row_link
+            # AST-1757: enrich title wins; else staged meteorite.job_title
+            enrich_title = (row.get("job_title") or "").strip()
+            staged_title = (mrow.get("job_title") or "").strip()
+            title_for_save = enrich_title or staged_title or None
             emp = _optional_real_company_id(company_stem=row_stem or None, candidate_id=cid)
             logger.debug(
                 "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
@@ -821,7 +1188,7 @@ async def land_meteorite(
                 meteorite_id=mid,
                 company_id=emp,
                 company_job_id=row.get("company_job_id") or None,
-                job_title=row.get("job_title") or None,
+                job_title=title_for_save,
                 job_link=mlink or None,
                 job_data={jd_key: found_jd},
                 employer_name=found_emp or None,
@@ -945,6 +1312,7 @@ def _map_classify_jobs_to_meteorite_rows(
     source_kind: str,
     source_id: str,
     timezone_key: str = "",
+    ingress_blob: str = "",
 ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
     """Map classify jobs → insert_meteorite_rows dicts (no source_ref synthesis)."""
     if source_kind not in STAGE_METEORITE_CONFIG["source_ref_prefixes"]:
@@ -965,8 +1333,12 @@ def _map_classify_jobs_to_meteorite_rows(
             return [], "text outcome produced no jobs"
         for job in rows:
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
+            # Prefer Ruth jd_text; blank → classify ingress blob (subject+body), not map fail
             if not text:
-                return [], "text scrap missing jd_text"
+                fallback = ingress_blob.strip() if isinstance(ingress_blob, str) else ""
+                if not fallback:
+                    return [], "text scrap missing jd_text"
+                text = fallback
             link: Optional[str] = None
             if source_kind == "email":
                 from_email = (
@@ -1048,7 +1420,7 @@ async def ingest_candidate_email_message(
     """One mid: dedup → classify → fan-out/skip → archive (shared by check_inbox + Land).
 
     Returns Land-shaped row: message_id, outcome, astral_candidate_id, optional error /
-    job_count / inserted_ids, plus counter passed|error for mailbox rollup.
+    job_count / inserted_ids, plus counter passed|failed|error for mailbox rollup.
     """
     err_key = METEORITE_CONFIG["land_outcome_error"]
     already = METEORITE_MONITORING_CONFIG["outcome_already_ingested"]
@@ -1139,134 +1511,52 @@ async def ingest_candidate_email_message(
             date=payload.get("date") or "",
         )
 
-        cand = get_candidate(cid)
-        ctx = dict(cand) if isinstance(cand, dict) else {}
-        ctx["astral_candidate_id"] = cid
-        # Late-import: consult loads is_meteorite_company at module top.
-        from src.core.consult import invoke_stage_meteorite
-
         logger.debug(
-            "Calling invoke_stage_meteorite: [candidate_id=%s, source_kind=email, source_id=%s]",
+            "Calling stage_meteorite: [candidate_id=%s, source_kind=email, source_id=%s]",
             cid, mid,
         )
-        invoke = await invoke_stage_meteorite(
-            cid,
-            blob,
-            source_kind="email",
-            source_id=mid,
-            ctx=ctx,
-            debug=debug,
+        stage = await stage_meteorite(
+            cid, blob, source_kind="email", source_id=mid, debug=debug,
         )
-        logger.debug("Response from invoke_stage_meteorite: %s", invoke)
+        logger.debug("Response from stage_meteorite: %s", stage)
 
-        if not invoke.get("success"):
-            _warn_item(
-                cid,
-                str(invoke.get("error") or "classify_failed"),
-                "This message is not being ingested",
-            )
+        if stage.get("error"):
             return _row(
                 err_key,
                 counter="error",
-                error=str(invoke.get("error") or "classify_failed"),
+                error=str(stage.get("error")),
             )
-
-        stage_outcome = invoke["outcome"]
-        if stage_outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-            _warn_item(
-                cid,
-                f"classify skipped ({stage_outcome})",
-                "No meteorite rows are being inserted",
-            )
-            try:
-                logger.debug("Calling archive_candidate_email: [message_id=%s]", mid)
-                archive_candidate_email(mid)
-                logger.debug("Response from archive_candidate_email: ok")
-                return _row(str(stage_outcome), counter="passed")
-            except Exception as exc:
-                logger.exception(
-                    "%s | inbox archive %s\n  %s: %s\n  Classify skipped; archive did not finish",
-                    cid, mid, type(exc).__name__, exc,
-                )
-                return _row(str(stage_outcome), counter="error", error=str(exc))
-
-        row_dicts, map_err = _map_classify_jobs_to_meteorite_rows(
-            stage_outcome,
-            invoke.get("jobs") or [],
-            candidate_id=cid,
-            source_kind="email",
-            source_id=mid,
-            timezone_key=_candidate_contact_timezone(cid),
-        )
-        if map_err:
-            _warn_item(
-                cid,
-                str(map_err),
-                "This message is not being ingested",
-            )
-            return _row(err_key, counter="error", error=str(map_err))
-
-        job_list = invoke.get("jobs") or []
-        logger.debug("Calling insert_meteorite_rows: [n=%s]", len(row_dicts))
-        ids = insert_meteorite_rows(row_dicts)
-        logger.debug("Response from insert_meteorite_rows: %s", ids)
-        if len(ids) != len(row_dicts) or len(row_dicts) != len(job_list):
-            _warn_item(
-                cid,
-                (
-                    f"insert_count_mismatch ids={len(ids)} "
-                    f"rows={len(row_dicts)} jobs={len(job_list)}"
-                ),
-                "This message is not being ingested",
-            )
-            return _row(
-                err_key,
-                counter="error",
-                error=(
-                    f"insert_count_mismatch ids={len(ids)} "
-                    f"rows={len(row_dicts)} jobs={len(job_list)}"
-                ),
-            )
-
-        for row_id, job in zip(ids, job_list):
-            _meteorite_state_info(row_id, "NEW")
-            # AST-1689: soft-fail contact persist after successful insert (AC6/AC7/AC8).
-            returned = _electronic_contact_from_job(job if isinstance(job, dict) else {})
-            recorded = _soft_persist_meteorite_electronic_contact(
-                row_id, returned, who=f"meteorite {row_id} for {cid}",
-            )
-            logger.debug(
-                "electronic_contact returned=%r recorded=%r meteorite_id=%s",
-                returned, recorded, row_id,
-            )
-        for row_dict, row_id in zip(row_dicts, ids):
-            authored = (row_dict.get("link") or "").strip()
-            if authored and not _is_http_url(authored):
-                logger.debug(
-                    "meteorite %s email breadcrumb link=%s",
-                    row_id, authored,
-                )
+        jobs = stage.get("jobs") or []
+        skipped = bool(stage.get("skipped"))
         try:
             logger.debug("Calling archive_candidate_email: [message_id=%s]", mid)
             archive_candidate_email(mid)
             logger.debug("Response from archive_candidate_email: ok")
+            # Skip / NOT_A_JOB → failed; landable → passed (AST-1742).
+            if skipped:
+                return _row(str(stage.get("outcome")), counter="failed")
             return _row(
-                str(stage_outcome),
+                str(stage.get("outcome")),
                 counter="passed",
-                job_count=len(ids),
-                inserted_ids=ids,
+                job_count=len(jobs),
             )
         except Exception as exc:
-            logger.exception(
-                "%s | inbox archive %s\n  %s: %s\n  Meteorite rows were inserted; archive did not finish",
-                cid, mid, type(exc).__name__, exc,
+            next_step = (
+                "Classify skipped; archive did not finish"
+                if stage.get("skipped")
+                else "Meteorite rows were inserted; archive did not finish"
             )
+            logger.exception(
+                "%s | inbox archive %s\n  %s: %s\n  %s",
+                cid, mid, type(exc).__name__, exc, next_step,
+            )
+            if skipped:
+                return _row(str(stage.get("outcome")), counter="error", error=str(exc))
             return _row(
-                str(stage_outcome),
+                str(stage.get("outcome")),
                 counter="error",
                 error=str(exc),
-                job_count=len(ids),
-                inserted_ids=ids,
+                job_count=len(jobs),
             )
 
     except Exception as exc:
@@ -1279,7 +1569,7 @@ async def ingest_candidate_email_message(
 
 @_with_log_debug
 async def check_inbox(task: dict, *, debug: bool = False) -> dict[str, int]:
-    """Candidate-bound mailbox: aliases → fetch → classify → fan-out → archive."""
+    """Fetch, then stage_meteorite via ingest, then archive. Not the Ruth classify runner."""
     cid = str((task or {}).get("candidate_id") or "").strip()
     if not cid:
         raise ValueError("candidate_id is required")
@@ -1347,13 +1637,16 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
     if not batch_id:
         raise ValueError("entity_batch_id is required")
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
 
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["stage_trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["stage_trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["stage_trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["stage_trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1368,27 +1661,25 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
             try:
                 outcome = (row.get("classify_outcome") or "").strip()
                 if not outcome:
-                    update_meteorite(row_id, state="ERROR", error="missing classify_outcome")
+                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing classify_outcome")
                     _row_miss(
-                        row_id, cid, "missing classify_outcome", "This row is ERROR",
+                        row_id, cid, "missing classify_outcome", "This row is SCRAPE_ERROR",
                     )
-                    summary["total_failed"] += 1
+                    # AST-1751: ERROR arms bump total_errors only — not total_failed.
                     summary["total_errors"] += 1
                     continue
                 if outcome in STAGE_METEORITE_CONFIG["skip_outcomes"]:
-                    update_meteorite(row_id, state="ERROR", error="skip outcome on row")
+                    update_meteorite(row_id, state="SCRAPE_ERROR", error="skip outcome on row")
                     _row_miss(
-                        row_id, cid, "skip outcome on row", "This row is ERROR",
+                        row_id, cid, "skip outcome on row", "This row is SCRAPE_ERROR",
                     )
-                    summary["total_failed"] += 1
                     summary["total_errors"] += 1
                     continue
                 if outcome in STAGE_METEORITE_CONFIG["url_scrape_outcomes"]:
                     link = (row.get("link") or "").strip()
                     if not _is_http_url(link):
-                        update_meteorite(row_id, state="ERROR", error="missing link")
-                        _row_miss(row_id, cid, "missing link", "This row is ERROR")
-                        summary["total_failed"] += 1
+                        update_meteorite(row_id, state="SCRAPE_ERROR", error="missing link")
+                        _row_miss(row_id, cid, "missing link", "This row is SCRAPE_ERROR")
                         summary["total_errors"] += 1
                         continue
                     update_meteorite(row_id, state="SCRAPE_LINK", link=link)
@@ -1398,9 +1689,8 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                 if outcome in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]:
                     content = (row.get("content") or "").strip()
                     if not content:
-                        update_meteorite(row_id, state="ERROR", error="missing content")
-                        _row_miss(row_id, cid, "missing content", "This row is ERROR")
-                        summary["total_failed"] += 1
+                        update_meteorite(row_id, state="SCRAPE_ERROR", error="missing content")
+                        _row_miss(row_id, cid, "missing content", "This row is SCRAPE_ERROR")
                         summary["total_errors"] += 1
                         continue
                     # AST-1703: email text rows must already carry breadcrumb on link.
@@ -1408,12 +1698,11 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     link = (row.get("link") or "").strip()
                     if kind == "email" and not link:
                         update_meteorite(
-                            row_id, state="ERROR", error="missing breadcrumb link",
+                            row_id, state="SCRAPE_ERROR", error="missing breadcrumb link",
                         )
                         _row_miss(
-                            row_id, cid, "missing breadcrumb link", "This row is ERROR",
+                            row_id, cid, "missing breadcrumb link", "This row is SCRAPE_ERROR",
                         )
-                        summary["total_failed"] += 1
                         summary["total_errors"] += 1
                         continue
                     update_meteorite(row_id, state="READY")
@@ -1421,12 +1710,10 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                     summary["total_passed"] += 1
                     continue
                 err = f"unhandled classify_outcome: {outcome}"
-                update_meteorite(row_id, state="ERROR", error=err)
-                _row_miss(row_id, cid, err, "This row is ERROR")
-                summary["total_failed"] += 1
+                update_meteorite(row_id, state="SCRAPE_ERROR", error=err)
+                _row_miss(row_id, cid, err, "This row is SCRAPE_ERROR")
                 summary["total_errors"] += 1
             except Exception as exc:
-                summary["total_failed"] += 1
                 summary["total_errors"] += 1
                 logger.exception(
                     "%s | meteorite %s run_stage_meteorite\n  %s: %s\n  Continuing to the next row",
@@ -1440,7 +1727,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
 
 @_with_log_debug
 async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: SCRAPE_LINK → READY | BOT_BLOCKED | ERROR (AST-1560)."""
+    """Dispatch runner: SCRAPE_LINK → READY | BOT_BLOCKED | LINK_EXPIRED | SCRAPE_ERROR (AST-1560)."""
     from src.core.gazer import _CONTACT_PAGE_STATUS, _classify_jd
 
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -1450,12 +1737,16 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
         raise ValueError("entity_batch_id is required")
     status_map = cfg["scrape_page_status_states"]
 
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["scrape_trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["scrape_trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["scrape_trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["scrape_trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1470,9 +1761,9 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
             link = (row.get("link") or "").strip()
             try:
                 if not _is_http_url(link):
-                    update_meteorite(row_id, state="ERROR", error="missing link")
-                    _row_miss(row_id, cid, "missing link", "This row is ERROR")
-                    summary["total_failed"] += 1
+                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing link")
+                    _row_miss(row_id, cid, "missing link", "This row is SCRAPE_ERROR")
+                    # AST-1751: ERROR arms bump total_errors only — not total_failed.
                     summary["total_errors"] += 1
                     continue
 
@@ -1487,7 +1778,8 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                         f"scrape blocked at {link}",
                         "This row is BOT_BLOCKED",
                     )
-                    summary["total_passed"] += 1
+                    # AST-1751: scrape BOT_BLOCKED is fail-only (not pass, not error).
+                    summary["total_failed"] += 1
                     continue
 
                 if page_status == "ok" and visible_text.strip():
@@ -1501,13 +1793,50 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
                     summary["total_passed"] += 1
                     continue
 
-                err = "empty visible text" if page_status == "ok" else f"scrape_{page_status}"
-                update_meteorite(row_id, state=status_map.get(page_status, "ERROR"), error=err)
-                _row_miss(row_id, cid, err, "This row is ERROR")
-                summary["total_failed"] += 1
+                # Soft-fail diagnostic: who/why on warning + row.error; body on debug.
+                text_len = len(visible_text or "")
+                resolved_url = final_url or link
+                if page_status == "ok":
+                    err = (
+                        f"empty visible text text_len={text_len} "
+                        f"final_url={resolved_url}"
+                    )
+                else:
+                    signal = None
+                    if page_status == "closed":
+                        text_lower = (visible_text or "").lower()
+                        for sig in (
+                            TRACKER_CONFIG.get("jd_classifier", {}).get(
+                                "closed_signals", []
+                            )
+                        ):
+                            if sig.lower() in text_lower:
+                                signal = sig
+                                break
+                    err = (
+                        f"scrape_{page_status} signal={signal!r} "
+                        f"text_len={text_len} final_url={resolved_url}"
+                    )
+                logger.debug(
+                    "scrape soft-fail page_status=%s final_url=%s visible_text=%s",
+                    page_status,
+                    resolved_url,
+                    visible_text,
+                )
+                if page_status in ("closed", "missing"):
+                    update_meteorite(
+                        row_id,
+                        state=status_map[page_status],
+                        error=err,
+                    )
+                    _row_miss(row_id, cid, err, "This row is LINK_EXPIRED")
+                    summary["total_failed"] += 1
+                    continue
+                state = status_map.get(page_status, "SCRAPE_ERROR")
+                update_meteorite(row_id, state=state, error=err)
+                _row_miss(row_id, cid, err, f"This row is {state}")
                 summary["total_errors"] += 1
             except Exception as exc:
-                summary["total_failed"] += 1
                 summary["total_errors"] += 1
                 logger.exception(
                     "%s | meteorite %s run_scrape_meteorite\n  %s: %s\n  Continuing to the next row",
@@ -1521,7 +1850,7 @@ async def run_scrape_meteorite(task: Dict[str, Any], *, debug: bool = False) -> 
 
 @_with_log_debug
 async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Dict[str, int]:
-    """Dispatch runner: READY → LANDED + job create (AST-1560)."""
+    """Dispatch runner: READY|BOT_BLOCKED(+content) → LANDED + job create (AST-1560 / AST-1693)."""
     cfg = METEORITE_INGRESS_DISPATCH_CONFIG
     batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
     batch_id = str((task or {}).get("entity_batch_id") or "").strip()
@@ -1533,13 +1862,24 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
         METEORITE_CONFIG["land_outcome_duplicate_skip"],
         METEORITE_CONFIG["land_outcome_superseded"],
     )
+    land_states = ["READY", "BOT_BLOCKED"]
+
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
 
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["land_trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, states=%s, limit=%s, candidate_id=%s]",
+        batch_id, land_states, batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["land_trigger_state"], limit=batch_size)
+    claim_meteorite_batch(
+        batch_id,
+        cfg["land_trigger_state"],
+        limit=batch_size,
+        candidate_id=entity_candidate_id,
+        states=land_states,
+    )
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1553,14 +1893,24 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
             cid = str(row.get("candidate_id") or "")
             try:
                 content = (row.get("content") or "").strip()
+                from_state = (row.get("state") or "").strip()
                 if not content:
-                    update_meteorite(row_id, state="ERROR", error="missing content")
-                    _row_miss(row_id, cid, "missing content", "This row is ERROR")
-                    summary["total_failed"] += 1
+                    # Empty BOT_BLOCKED stays for Estelle paste (AST-1561); READY → ERROR.
+                    if from_state == "BOT_BLOCKED":
+                        logger.debug(
+                            "land skip empty BOT_BLOCKED meteorite %s for AST-1561",
+                            row_id,
+                        )
+                        continue
+                    update_meteorite(row_id, state="SCRAPE_ERROR", error="missing content")
+                    _row_miss(row_id, cid, "missing content", "This row is SCRAPE_ERROR")
+                    # AST-1751: ERROR arms bump total_errors only — not total_failed.
                     summary["total_errors"] += 1
                     continue
 
                 link_text = (row.get("link") or "").strip()
+                # AST-1757: staged meteorite.job_title → job (dispatch has no enrich)
+                staged_title = (row.get("job_title") or "").strip() or None
                 logger.debug(
                     "Calling tracker.save_meteorite_job: [candidate_id=%s, meteorite_id=%s]",
                     cid, row_id,
@@ -1572,6 +1922,7 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     job_data={jd_key: content},
                     job_link=link_text or None,
                     company_job_id=None,
+                    job_title=staged_title,
                     employer_name=None,
                     debug=debug,
                 )
@@ -1581,18 +1932,16 @@ async def run_land_meteorite(task: Dict[str, Any], *, debug: bool = False) -> Di
                     if link_text and (save.get("job") or {}).get("job_link") != link_text:
                         save_job(job_id, job_link=link_text)
                     update_meteorite(row_id, state="LANDED", astral_job_id=job_id)
-                    _meteorite_state_info(row_id, "LANDED", from_state="READY")
+                    _meteorite_state_info(row_id, "LANDED", from_state=from_state or "READY")
                     _entity_info(job_id, "job", save.get("outcome"), row_id)
                     summary["total_passed"] += 1
                     continue
 
                 err = str(save.get("error") or "land failed")
-                update_meteorite(row_id, state="ERROR", error=err)
-                _row_miss(row_id, cid, err, "This row is ERROR")
-                summary["total_failed"] += 1
+                update_meteorite(row_id, state="SCRAPE_ERROR", error=err)
+                _row_miss(row_id, cid, err, "This row is SCRAPE_ERROR")
                 summary["total_errors"] += 1
             except Exception as exc:
-                summary["total_failed"] += 1
                 summary["total_errors"] += 1
                 logger.exception(
                     "%s | meteorite %s run_land_meteorite\n  %s: %s\n  Continuing to the next row",
@@ -1615,12 +1964,16 @@ async def run_notify_meteorite_bot_blocked(
     if not batch_id:
         raise ValueError("entity_batch_id is required")
 
+    entity_candidate_id = str((task or {}).get("candidate_id") or "").strip()
+    if not entity_candidate_id:
+        raise ValueError("candidate_id is required")
+
     summary = dict(_ZERO_SUMMARY)
     logger.debug(
-        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s]",
-        batch_id, cfg["trigger_state"], batch_size,
+        "Calling claim_meteorite_batch: [batch_id=%s, state=%s, limit=%s, candidate_id=%s]",
+        batch_id, cfg["trigger_state"], batch_size, entity_candidate_id,
     )
-    claim_meteorite_batch(batch_id, cfg["trigger_state"], limit=batch_size)
+    claim_meteorite_batch(batch_id, cfg["trigger_state"], limit=batch_size, candidate_id=entity_candidate_id)
     rows = get_meteorite_batch(batch_id)
     logger.debug("Response from get_meteorite_batch: %s", rows)
     if not rows:
@@ -1635,6 +1988,14 @@ async def run_notify_meteorite_bot_blocked(
             cid = str(row.get("candidate_id") or "")
             nag_count = int(row.get("nag_count") or 0)
             try:
+                # AST-1693: contentful BOT_BLOCKED belongs to land, not Estelle DM.
+                if (row.get("content") or "").strip():
+                    logger.debug(
+                        "notify skip contentful BOT_BLOCKED meteorite %s for land",
+                        row_id,
+                    )
+                    continue
+
                 if nag_count >= nag_limit:
                     update_meteorite(
                         row_id, state="ABANDONED", error="nag limit exceeded"
@@ -1705,7 +2066,7 @@ async def run_notify_meteorite_bot_blocked(
                 )
                 summary["total_passed"] += 1
             except Exception as exc:
-                summary["total_failed"] += 1
+                # AST-1751: exception ERROR arm bumps total_errors only — not total_failed.
                 summary["total_errors"] += 1
                 logger.exception(
                     "%s | meteorite %s run_notify_meteorite_bot_blocked\n  %s: %s\n  Continuing to the next row",
@@ -1714,90 +2075,6 @@ async def run_notify_meteorite_bot_blocked(
     finally:
         logger.debug("End notify meteorite loop after %s items", summary["total_processed"])
         clear_meteorite_batch(batch_id)
-    return summary
-
-
-@_with_log_debug
-async def run_meteorite_retention(
-    task: Dict[str, Any], *, debug: bool = False
-) -> Dict[str, int]:
-    """Dispatch runner: purge old LANDED + warn stale rows (AST-1562)."""
-    cfg = METEORITE_RETENTION_CONFIG
-    batch_size = int((task or {}).get("batch_size") or cfg["batch_size"])
-    now = datetime.now(timezone.utc)
-    landed_cutoff = (now - timedelta(days=int(cfg["landed_purge_days"]))).isoformat()
-    stale_cutoff = (now - timedelta(days=int(cfg["stale_list_days"]))).isoformat()
-    summary = dict(_ZERO_SUMMARY)
-
-    purge_states = list(METEORITE_STATES_RETENTION["purge_states"])
-    logger.debug(
-        "Calling list_meteorites_for_retention: [states=%s, older_than=%s]",
-        purge_states, landed_cutoff,
-    )
-    landed_rows = list_meteorites_for_retention(
-        states=purge_states, older_than=landed_cutoff, limit=batch_size
-    )
-    logger.debug("Response from list_meteorites_for_retention landed: %s", landed_rows)
-    if landed_rows:
-        # AST-1690: keep LANDED rows whose astral_job_id still hits a job row.
-        purge_ids: List[int] = []
-        skipped_count = 0
-        logger.debug(
-            "Beginning landed retention filter loop on %s items", len(landed_rows)
-        )
-        for row in landed_rows:
-            row_id = int(row["id"])
-            jid = str(row.get("astral_job_id") or "").strip()
-            if jid:
-                logger.debug("Calling get_job: [astral_job_id=%s]", jid)
-                job_row = get_job(jid)
-                logger.debug("Response from get_job: %s", job_row)
-                if job_row is not None:
-                    skipped_count += 1
-                    _meteorite_state_info(
-                        row_id, "retention_kept", from_state="LANDED"
-                    )
-                    continue
-            purge_ids.append(row_id)
-        logger.debug(
-            "End landed retention filter loop after %s purge ids (%s skipped)",
-            len(purge_ids),
-            skipped_count,
-        )
-        if purge_ids:
-            logger.debug("Beginning landed purge loop on %s items", len(purge_ids))
-            n = delete_meteorites_by_ids(purge_ids)
-            summary["total_processed"] += n
-            summary["total_passed"] += n
-            for row_id in purge_ids:
-                _meteorite_state_info(row_id, "purged", from_state="LANDED")
-            logger.debug("End landed purge loop after %s items", n)
-
-    stale_states = list(METEORITE_STATES_RETENTION["stale_list_states"])
-    logger.debug(
-        "Calling list_meteorites_for_retention: [states=%s, older_than=%s]",
-        stale_states, stale_cutoff,
-    )
-    stale_rows = list_meteorites_for_retention(
-        states=stale_states, older_than=stale_cutoff, limit=batch_size
-    )
-    logger.debug("Response from list_meteorites_for_retention stale: %s", stale_rows)
-    logger.debug("Beginning stale meteorite loop on %s items", len(stale_rows))
-    for row in stale_rows:
-        summary["total_processed"] += 1
-        row_id = int(row["id"])
-        cid = str(row.get("candidate_id") or "")
-        state = str(row.get("state") or "")
-        changed = row.get("state_changed_at") or row.get("updated_at") or ""
-        _row_miss(
-            row_id,
-            cid,
-            f"still {state} since {changed}",
-            "This row is not being purged",
-        )
-        summary["total_passed"] += 1
-    logger.debug("End stale meteorite loop after %s items", len(stale_rows))
-
     return summary
 
 

@@ -6787,3 +6787,113 @@ class TestAst1679ResumeStructureOperativeSaveHydrate:
         craft_src = inspect.getsource(candidate_mod.run_candidate_artifact_generation)
         assert "_RESUME_STRUCTURE_ARTIFACT_KEY" in craft_src
 
+
+
+# Branches: uuid hit/miss; same fail-fast as get_candidate_current; empty uuid column.
+class TestAst1698GetCandidateCurrentArtifactUuid:
+    """AST-1698: get_candidate_current_artifact_uuid — current-read id, not body."""
+
+    def test_hit_returns_current_uuid(self, seeded_db) -> None:
+        blob = _resume_content_blob(professional_summary="uuid-read")
+        uid = candidate_mod.save_candidate_data("cand-1", _PILOT_ARTIFACT_KEY, blob)
+        assert (
+            candidate_mod.get_candidate_current_artifact_uuid(
+                "cand-1", _PILOT_ARTIFACT_KEY
+            )
+            == uid
+        )
+
+    def test_miss_returns_none(self, seeded_db) -> None:
+        assert (
+            candidate_mod.get_candidate_current_artifact_uuid(
+                "cand-1", _PILOT_ARTIFACT_KEY
+            )
+            is None
+        )
+
+    def test_unknown_and_blank_keys_fail_fast(self) -> None:
+        with pytest.raises(ValueError, match="unknown catalog key"):
+            candidate_mod.get_candidate_current_artifact_uuid("c1", "not.in.catalog")
+        with pytest.raises(ValueError, match="artifact_key required"):
+            candidate_mod.get_candidate_current_artifact_uuid("c1", "   ")
+        with pytest.raises(ValueError, match="candidate_id required"):
+            candidate_mod.get_candidate_current_artifact_uuid("   ", _PILOT_ARTIFACT_KEY)
+
+    def test_non_candidate_scoped_key_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(
+            candidate_mod.ARTIFACT_CONFIG,
+            "job.artifacts.base_resume",
+            {
+                "entity_type": "job",
+                "candidate_scoped": False,
+                "body_shape": "resume_content",
+                "ingestion_owner": "tracker",
+            },
+        )
+        with pytest.raises(ValueError, match="not candidate-scoped"):
+            candidate_mod.get_candidate_current_artifact_uuid(
+                "c1", "job.artifacts.base_resume"
+            )
+
+# Branches: str-path forwards sources; omit→None; identical short-circuit; dict path ignores.
+class TestAst1700SaveCandidateDataSourceArtifactIds:
+    """AST-1700: optional source_artifact_ids on operative save_candidate_data str-path."""
+
+    def test_str_path_forwards_sources_to_save_artifact(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        spy = _spy_save_artifact(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod.database, "get_current_artifact", lambda *a, **k: None
+        )
+        uid = candidate_mod.save_candidate_data(
+            "c1",
+            _PILOT_ARTIFACT_KEY,
+            _resume_content_blob(professional_summary="with-sources"),
+            source_artifact_ids=["seed-a", "seed-b"],
+        )
+        assert uid == "uuid-1"
+        assert len(spy) == 1
+        assert spy[0][1].get("source_artifact_ids") == ["seed-a", "seed-b"]
+
+    def test_omit_kwarg_passes_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        spy = _spy_save_artifact(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod.database, "get_current_artifact", lambda *a, **k: None
+        )
+        candidate_mod.save_candidate_data(
+            "c1", _PILOT_ARTIFACT_KEY, _resume_content_blob(professional_summary="omit")
+        )
+        assert spy[0][1].get("source_artifact_ids") is None
+
+    def test_identical_short_circuit_skips_save(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        blob = _resume_content_blob(professional_summary="same")
+        spy = _spy_save_artifact(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_current_artifact",
+            lambda *a, **k: {"artifact_uuid": "existing", "artifact_data": blob},
+        )
+        out = candidate_mod.save_candidate_data(
+            "c1",
+            _PILOT_ARTIFACT_KEY,
+            blob,
+            source_artifact_ids=["should-not-matter"],
+        )
+        assert out == "existing"
+        assert spy == []
+
+    def test_dict_path_ignores_sources(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        spy = _spy_save_artifact(monkeypatch)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        out = candidate_mod.save_candidate_data(
+            "c1",
+            {"artifacts": {"base_resume": {"professional_summary": "blob"}}},
+            source_artifact_ids=["ignored"],
+        )
+        assert out is None
+        assert spy == []

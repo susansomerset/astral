@@ -43,7 +43,7 @@ Config sections:
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email strip/extract + header+body wrapper (AST-1049 / AST-1537)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
-  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is meteorite.check_inbox (AST-1559)
+  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound stage_email_meteorite mailbox task key, account expectation, dispatch row seed (AST-1134 / AST-1466); runner is inbox.check_email (AST-1559)
   STAGE_METEORITE_CONFIG — closed outcome literals + source-ref prefixes for ingress classify (`stage_meteorite`) (AST-1529); electronic-contact response-key literal (AST-1688)
   METEORITE_EMAIL_PARSE_CONFIG — retired fold stub (legacy admin / `_resolve_task_prompts` fallback only); not a live Ruth parse_modes catalog (AST-1529; was AST-1089 / AST-1212)
   SOURCE_ENTITY_TYPES — job ingest parent + track SoT company|meteorite (repurposed job.source; AST-1701); JOB_SOURCES aliases until sibling #2
@@ -53,7 +53,6 @@ Config sections:
   METEORITE_MONITORING_CONFIG — already-ingested inbox outcome literal (AST-1559)
   METEORITE_INGRESS_DISPATCH_CONFIG — table transition dispatch task keys + trigger states + scrape outcome map (AST-1560)
   METEORITE_BOT_BLOCKED_NOTIFY_CONFIG — BOT_BLOCKED Estelle DM notify + nag limits (AST-1561)
-  METEORITE_RETENTION_CONFIG — scheduled LANDED purge + stale-row day cutoffs (AST-1562)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -405,9 +404,10 @@ TASK_CONFIG = {
         "pass_state": "PREFILTER_PASSED",
         "fail_state": "PREFILTER_FAILED",
         "response_schema": {
-            "jobs": {
+            "companies": {
                 "type": "list", "required": True,
                 "items_schema": {
+                    "company_id": {"type": "str", "required": True},
                     "grades": {
                         "type": "list", "required": True,
                         "items_schema": {
@@ -1838,15 +1838,14 @@ CONTACT_CONFIG = {
             "entity": "candidate",
             "write": True,
             "description": (
-                "Merge allowlisted profile fields into candidate_data.profile "
+                "Merge allowlisted name columns (first/last/pronouns) "
                 "for Slack Contact intake."
             ),
-            # Dotted paths under candidate_data. Payload field keys must match exactly.
+            # AST-1014 name columns — not candidate_data.profile (refused on save).
             "allowed_paths": (
-                "profile.first",
-                "profile.last",
-                "profile.pronoun_preference",
-                "profile.contact_email",
+                "first",
+                "last",
+                "pronouns",
             ),
         },
         "save_candidate_contact": {
@@ -1916,8 +1915,15 @@ for _skill_key, _skill_meta in CONTACT_CONFIG["skills"].items():
     assert isinstance(_skill_meta.get("description"), str) and _skill_meta["description"].strip(), _skill_key
     _paths = _skill_meta.get("allowed_paths")
     assert isinstance(_paths, tuple) and len(_paths) > 0, _skill_key
+    _name_cols = set(CANDIDATE_LIBRARY_CONFIG["name_columns"])
     for _p in _paths:
-        assert isinstance(_p, str) and "." in _p, (_skill_key, _p)
+        assert isinstance(_p, str) and _p, (_skill_key, _p)
+        if _p in _name_cols:
+            continue
+        assert "." in _p, (_skill_key, _p)
+assert set(CONTACT_CONFIG["skills"]["save_candidate_profile"]["allowed_paths"]).issubset(
+    CANDIDATE_LIBRARY_CONFIG["name_columns"]
+)
 
 # AST-1049: Manage Email Create — strip/extract email HTML + subject inclusion before meteorite job create.
 INBOX_CREATE_JOB_CONFIG = {
@@ -2051,7 +2057,6 @@ ROSTER_CONFIG = {
         "retry_state": "JOBLIST_IDENTIFIED_RETRY",
         "terminal_fail_state": "COULD_NOT_PARSE_JOBLIST",
         "selected_pjl_url_key": "selected_pjl_url",
-        "max_concurrent": 3,
     },
     "scrape_readiness": {
         "max_wait_ms": 20000,
@@ -2342,20 +2347,25 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
         "importance": 8,
         "content": (
             "Reality Check — assess whether the company is real and operating as represented.\n"
-            "A = clearly real and verifiable\n"
-            "B = appears real with minor gaps\n"
-            "C = mixed signals; legitimacy uncertain\n"
-            "D = significant doubt about reality or representation\n"
-            "E = strong evidence of misrepresentation\n"
-            "F = not a real company or clearly fraudulent"
+            "A == clearly real and verifiable\n"
+            "B == appears real with minor gaps\n"
+            "C == mixed signals; legitimacy uncertain\n"
+            "D == significant doubt about reality or representation\n"
+            "E == strong evidence of misrepresentation\n"
+            "F == not a real company or clearly fraudulent\n"
+            "X == could not read the page (bot blocked or other network issue)"
         ),
         "grade_descriptions": [
-            {"grade": "A", "description": "Company is clearly real, active, and independently verifiable."},
-            {"grade": "B", "description": "Company appears real with minor verification gaps."},
-            {"grade": "C", "description": "Mixed signals; legitimacy uncertain."},
-            {"grade": "D", "description": "Significant doubt the company is real or operating as represented."},
-            {"grade": "E", "description": "Strong evidence of misrepresentation or shell entity."},
-            {"grade": "F", "description": "Not a real company or clearly fraudulent."},
+            {"grade": "A", "description": "clearly real and verifiable"},
+            {"grade": "B", "description": "appears real with minor gaps"},
+            {"grade": "C", "description": "mixed signals; legitimacy uncertain"},
+            {"grade": "D", "description": "significant doubt about reality or representation"},
+            {"grade": "E", "description": "strong evidence of misrepresentation"},
+            {"grade": "F", "description": "not a real company or clearly fraudulent"},
+            {
+                "grade": "X",
+                "description": "could not read the page (bot blocked or other network issue)",
+            },
         ],
     },
 )
@@ -2624,47 +2634,46 @@ assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 # METEORITE_* job lifecycle labels — core transitions decide targets; data accepts state as param.
 METEORITE_STATES = {
     "NEW": {
-        "prior_states": None,  # insert-only entry from classify fan-out
+        "prior_states": ["NEW_EMAIL_ERROR"],  # human reset from stage failure
     },
     "SCRAPE_LINK": {
-        "prior_states": ["NEW", "ERROR"],  # link outcomes; retry from ERROR
+        "prior_states": ["NEW", "SCRAPE_ERROR"],  # link outcomes; retry from SCRAPE_ERROR
     },
     "READY": {
-        # text fan-out from NEW; scrape success; Estelle paste recovery (sibling)
+        # text fan-out from NEW; scrape success; Estelle paste recovery
         "prior_states": ["NEW", "SCRAPE_LINK", "BOT_BLOCKED"],
     },
     "BOT_BLOCKED": {
         "prior_states": ["SCRAPE_LINK"],
     },
-    "ERROR": {
+    "LINK_EXPIRED": {
+        "prior_states": ["SCRAPE_LINK"],  # closed/missing content; not a scrape retry
+    },
+    "SCRAPE_ERROR": {
         "prior_states": ["SCRAPE_LINK"],  # retry-holding after Playwright / scrape miss
+    },
+    "NOT_A_JOB": {
+        "prior_states": None,  # insert-legal; scheduled cleanup; not a dispatch trigger; not stale
+    },
+    "NEW_EMAIL_ERROR": {
+        "prior_states": None,  # insert-legal; not a dispatch trigger; human resets via NEW
     },
     "LANDED": {
         "prior_states": ["READY"],
     },
     "ABANDONED": {
-        "prior_states": ["BOT_BLOCKED", "ERROR"],  # nag limit / terminal stale
+        "prior_states": ["BOT_BLOCKED", "SCRAPE_ERROR"],  # nag limit / terminal stale
     },
 }
 
-# Retention partitions (state literals only — day cutoffs are caller/config for AST-1562).
-METEORITE_STATES_RETENTION = {
-    "purge_states": ("LANDED",),
-    "stale_list_states": ("ERROR", "BOT_BLOCKED", "ABANDONED"),
-}
-
 assert set(METEORITE_STATES) == {
-    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+    "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+    "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "LANDED", "ABANDONED",
 }
 assert all("prior_states" in cfg for cfg in METEORITE_STATES.values())
-assert METEORITE_STATES["NEW"]["prior_states"] is None
-assert (
-    set(METEORITE_STATES_RETENTION["purge_states"])
-    | set(METEORITE_STATES_RETENTION["stale_list_states"])
-) <= set(METEORITE_STATES)
-assert set(METEORITE_STATES_RETENTION["purge_states"]).isdisjoint(
-    METEORITE_STATES_RETENTION["stale_list_states"]
-)
+assert METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+assert METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
+assert METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
 for _ms, _mcfg in METEORITE_STATES.items():
     _priors = _mcfg["prior_states"]
     if _priors is not None:
@@ -2682,8 +2691,8 @@ METEORITE_INGRESS_DISPATCH_CONFIG = {
     "scrape_page_status_states": {
         "blocked": "BOT_BLOCKED",
         "ok": "READY",
-        "closed": "ERROR",
-        "missing": "ERROR",
+        "closed": "LINK_EXPIRED",
+        "missing": "LINK_EXPIRED",
     },
 }
 _mid_ingress = METEORITE_INGRESS_DISPATCH_CONFIG
@@ -2697,7 +2706,7 @@ for _tk in ("stage_task_key", "scrape_task_key", "land_task_key"):
 for _tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
     assert _mid_ingress[_tr] in METEORITE_STATES
 assert set(_mid_ingress["scrape_page_status_states"].values()) <= {
-    "READY", "BOT_BLOCKED", "ERROR",
+    "READY", "BOT_BLOCKED", "SCRAPE_ERROR", "LINK_EXPIRED",
 }
 
 # AST-1561: scheduled BOT_BLOCKED → Estelle DM + nag → ABANDONED (no scrape/Slack in scrape path).
@@ -2726,23 +2735,6 @@ for _tpl_key in ("dm_first_template", "dm_nag_template"):
     assert isinstance(_tpl, str) and _tpl and "{link}" in _tpl
 assert "{nag_count}" in _mid_notify["dm_nag_template"]
 assert "{nag_limit}" in _mid_notify["dm_nag_template"]
-
-# AST-1562: scheduled retention — purge old LANDED; warn stale ERROR/BOT_BLOCKED/ABANDONED.
-METEORITE_RETENTION_CONFIG = {
-    "task_key": "meteorite_retention",
-    "landed_purge_days": 90,
-    "stale_list_days": 14,
-    "batch_size": 200,
-}
-_mid_retention = METEORITE_RETENTION_CONFIG
-assert isinstance(_mid_retention["task_key"], str) and _mid_retention["task_key"]
-assert isinstance(_mid_retention["landed_purge_days"], int) and _mid_retention["landed_purge_days"] >= 1
-assert isinstance(_mid_retention["stale_list_days"], int) and _mid_retention["stale_list_days"] >= 1
-assert isinstance(_mid_retention["batch_size"], int) and _mid_retention["batch_size"] >= 1
-assert set(METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
-assert set(METEORITE_STATES_RETENTION["stale_list_states"]) == {
-    "ERROR", "BOT_BLOCKED", "ABANDONED",
-}
 
 # ---------------------------------------------------------------------------
 # SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
@@ -2872,7 +2864,7 @@ assert isinstance(METEORITE_CONFIG["min_company_job_id_match_chars"], int)
 assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 
 
-# AST-1134/AST-1135 / AST-1466: candidate-bound meteorite_email mailbox dispatch rows
+# AST-1134/AST-1135 / AST-1466: candidate-bound stage_email_meteorite mailbox dispatch rows
 # (one per candidate; no null shell). Live mailbox identity remains GMAIL_USER environ;
 # account_address is the product expectation. entity_type/trigger_state stay None —
 # mailbox poller, not an ENTITY_TYPES claim queue. Runner is candidate-bound
@@ -2881,7 +2873,7 @@ assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
 # (STAGE_METEORITE_CONFIG / AST-1529); METEORITE_EMAIL_PARSE_CONFIG is a fold stub only.
 # Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 METEORITE_EMAIL_MAILBOX_CONFIG = {
-    "task_key": "meteorite_email",
+    "task_key": "stage_email_meteorite",
     "account_address": "astral.career.match@gmail.com",
     "auto_mode": False,
     "min_count": 1,
@@ -2893,12 +2885,12 @@ METEORITE_EMAIL_MAILBOX_CONFIG = {
     # Runner — subject-is-URL detection (urlparse.scheme).
     "subject_url_schemes": ("http", "https"),
     # Style D func= string for the runner.
-    "debug_func": "meteorite.check_inbox",
+    "debug_func": "inbox.check_email",
 }
 
-assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "stage_email_meteorite"
 assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "https"}
-assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite.check_inbox"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "inbox.check_email"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 
 # AST-1559: inbox already-ingested outcome (row/classify line templates retired).
@@ -2994,7 +2986,7 @@ assert TASK_CONFIG["stage_meteorite"]["scored"] is False
 assert list(TASK_CONFIG["stage_meteorite"]["response_schema"]["outcome"]["enum"]) == list(
     STAGE_METEORITE_CONFIG["outcomes"]
 )
-assert "meteorite_email" not in TASK_CONFIG
+assert "stage_email_meteorite" not in TASK_CONFIG
 assert STAGE_METEORITE_CONFIG["electronic_contact_response_key"] == "electronic_contact"
 assert METEORITE_CONFIG["electronic_contact_column"] == STAGE_METEORITE_CONFIG[
     "electronic_contact_response_key"
@@ -3017,18 +3009,18 @@ assert "multi_jd_inline" in STAGE_METEORITE_CONFIG["text_source_ref_outcomes"]
 # Stub retained for admin mailbox fold + agent._resolve_task_prompts legacy fallback.
 # Historical: AST-1089/1212 parse_modes + shared mailbox↔parse task_key assert — do not restore.
 METEORITE_EMAIL_PARSE_CONFIG = {
-    "task_key": "meteorite_email",
+    "task_key": "stage_email_meteorite",
     "legacy_agent_task_key": "parse_meteorite_email",
     "admin_entity_type": "candidate",
 }
-assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "meteorite_email"
+assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "stage_email_meteorite"
 assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"] == "parse_meteorite_email"
 assert METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"] == "candidate"
 assert "parse_modes" not in METEORITE_EMAIL_PARSE_CONFIG
 
 
 def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
-    """True for meteorite_email or its live legacy agent_task key (AST-1214 fold)."""
+    """True for stage_email_meteorite or its legacy agent_task key parse_meteorite_email."""
     tk = (task_key or "").strip()
     cfg = METEORITE_EMAIL_PARSE_CONFIG
     return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
@@ -3186,67 +3178,70 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
         ")",
     ),
-    # AST-1560: global meteorite ingress transition runners (NULL candidate_id pool).
+    # stat.dispatch.entity-state-bound: per-candidate meteorite ingress transition runners
+    # (was NULL candidate_id global pool pre-remediation; candidate_id now required to claim).
     "dispatch_task-meteorite-ingress": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at', "
+        ") SELECT c.candidate_id, 'stage_meteorite', 'meteorite', 'NEW', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'stage_meteorite' "
         "    AND d.trigger_state = 'NEW'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK', 'updated_at', "
+        ") SELECT c.candidate_id, 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'scrape_meteorite' "
         "    AND d.trigger_state = 'SCRAPE_LINK'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'land_meteorite', 'meteorite', 'READY', 'updated_at', "
+        ") SELECT c.candidate_id, 'land_meteorite', 'meteorite', 'READY', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'land_meteorite' "
         "    AND d.trigger_state = 'READY'"
         ")",
     ),
-    # AST-1561: global BOT_BLOCKED Estelle notify runner (NULL candidate_id pool).
+    # stat.dispatch.entity-state-bound: per-candidate BOT_BLOCKED Estelle notify runner
+    # (was NULL candidate_id global pool pre-remediation).
     "dispatch_task-meteorite-bot-blocked-notify": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
+        ") SELECT c.candidate_id, 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED', 'updated_at', "
         "0, 0.1, 1, 10, 0, NULL "
+        "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
+        "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_bot_blocked_notify' "
         "    AND d.trigger_state = 'BOT_BLOCKED'"
         ")",
     ),
-    # AST-1562: global meteorite retention runner (NULL candidate_id; daily hygiene).
-    "dispatch_task-meteorite-retention": (
-        "INSERT INTO dispatch_task ("
-        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
-        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'meteorite_retention', NULL, NULL, 'updated_at', "
-        "0, 24, 0, 200, 0, NULL "
-        "WHERE NOT EXISTS ("
-        "  SELECT 1 FROM dispatch_task d "
-        "  WHERE d.candidate_id IS NULL "
-        "    AND d.task_key = 'meteorite_retention'"
+    # stat.dispatch.entity-state-bound: one-time operator cleanup for legacy NULL-candidate_id
+    # rows from the pre-remediation global pool. Linear paste only, run once per environment
+    # AFTER the per-candidate rows above have been seeded — never auto-executed (AST-1496).
+    "dispatch_task-meteorite-ingress-retire-null-pool": (
+        "DELETE FROM dispatch_task "
+        "WHERE candidate_id IS NULL "
+        "  AND task_key IN ("
+        "'stage_meteorite', 'scrape_meteorite', 'land_meteorite', 'meteorite_bot_blocked_notify'"
         ")",
     ),
 }
@@ -3350,6 +3345,39 @@ JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS = [
         "section_id": "meteorite_provenance",
         "nav_label": "Provenance",
         "default_expanded": False,
+    },
+]
+
+# AST-1748: Jobs → Meteorites list columns + detail modal sections (config → API; React must not invent order).
+JOBS_METEORITES_LIST_COLUMNS = [
+    {"key": "state", "label": "State", "sortable": True},
+    {"key": "job_title", "label": "Title", "sortable": True},
+    {"key": "employer_name", "label": "Employer", "sortable": True},
+    {"key": "classify_outcome", "label": "Classify", "sortable": True},
+    {"key": "link", "label": "Link", "sortable": True},
+    {"key": "astral_job_id", "label": "Job", "sortable": True},
+    {
+        "key": "state_changed_at",
+        "label": "State Changed",
+        "sortable": True,
+        "defaultDesc": True,
+        "type": "datetime",
+    },
+]
+
+JOBS_METEORITES_MODAL_SECTIONS = [
+    {"section_id": "meteorite_timestamps", "nav_label": "Timestamps", "default_expanded": True},
+    {"section_id": "meteorite_link", "nav_label": "Link", "default_expanded": True},
+    {"section_id": "meteorite_content", "nav_label": "Content", "default_expanded": True},
+    {
+        "section_id": "meteorite_provenance",
+        "nav_label": "Provenance",
+        "default_expanded": False,
+    },
+    {
+        "section_id": "meteorite_job",
+        "nav_label": "Linked Job",
+        "default_expanded": True,
     },
 ]
 
@@ -3550,6 +3578,14 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "JD_READY"
     if task_key == "evaluate_meteorite":
         return "METEORITE_QUALIFIED"
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["stage_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["scrape_trigger_state"]
+    if task_key == METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]:
+        return METEORITE_INGRESS_DISPATCH_CONFIG["land_trigger_state"]
+    if task_key == METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"]:
+        return METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"]
     if task_key == "grade_do":
         return "PASSED_JD"
     if task_key == "grade_get":
@@ -3589,6 +3625,14 @@ def _dispatch_entity_type_for_task_key(task_key: str) -> str:
         return "company"
     if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"
+    # stat.dispatch.entity-state-bound: ingress/notify rows now per-candidate meteorite (was global NULL pool).
+    if task_key in (
+        METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
+        METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],
+    ):
+        return "meteorite"
     cfg = TASK_CONFIG.get(task_key) or TASK_CONFIG.get(resolve_dispatch_task_config_key(task_key)) or {}
     et = cfg.get("entity_type")
     if isinstance(et, str) and et.strip():
@@ -3693,7 +3737,7 @@ def dispatch_task_admin_defaults(
     if retired:
         raise KeyError(retired)
     # Meteorite mailbox fold (canonical + legacy agent_task key) — before TASK_CONFIG gate.
-    # Canonical meteorite_email: poller seed (MAILBOX_CONFIG entity_type None).
+    # Canonical stage_email_meteorite: poller seed (MAILBOX_CONFIG entity_type None).
     # Legacy parse_meteorite_email: AST-1214 admin form meta keeps admin_entity_type candidate.
     if is_meteorite_email_mailbox_task_key(tk):
         if tk == METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]:
@@ -4673,24 +4717,44 @@ def importance_multiplier(n: int) -> float:
 RAILWAY_CONFIG = {
     "workers": 1,
     "timeout": 300,
-    "playwright_browsers_path": str(_PROJECT_ROOT / ".browsers"),
 }
 
 # ---------------------------------------------------------------------------
-# PLAYWRIGHT_CONFIG: browser launch, session recovery, scrape timeouts (AST-853).
+# PLAYWRIGHT_CONFIG: batch session recover retries (client-side); scrape timeouts
+# live in TELESCOPE_CONFIG.request_timeout_seconds (AST-1726 HTTP client).
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_CONFIG = {
-    "launch_timeout_ms": 60_000,
-    "launch_max_attempts": 3,
-    "launch_retry_delay_seconds": 2.0,
-    "page_goto_timeout_ms": 30_000,
-    "connectivity_timeout_ms": 10_000,
     "context_recovery_max_attempts": 2,
-    "company_scrape_timeout_seconds": 120,
-    "firefox_user_prefs": {
-        "security.sandbox.content.level": 0,
-    },
 }
+
+# ---------------------------------------------------------------------------
+# TELESCOPE_CONFIG: platform HTTP client to Astral Telescope (AST-1726).
+# Bearer is env-only (never a code default secret).
+# request_timeout_seconds: platform HTTP client round-trip (queue + scrape + retries).
+# Server scrape timeout after slot acquire: service/telescope/telescope_config.py
+# REQUEST_TIMEOUT_SECONDS (120). Client must allow queue wait on top of that.
+# ---------------------------------------------------------------------------
+TELESCOPE_CONFIG = {
+    "base_urls": [],  # filled below from TELESCOPE_BASE_URLS or TELESCOPE_BASE_URL
+    "bearer_env": "TELESCOPE_BEARER_TOKEN",
+    "request_timeout_seconds": 600,
+    "retry_other_node": True,
+    "max_node_attempts": 2,
+    "healthz_path": "/healthz",
+    "telescope_path": "/telescope",
+    "telescope_html_path": "/telescope/html",
+    "cull_html_default": True,
+    "default_expand": True,
+    "default_wait_ready": False,
+}
+
+_urls_csv = (os.environ.get("TELESCOPE_BASE_URLS") or "").strip()
+if _urls_csv:
+    TELESCOPE_CONFIG["base_urls"] = [u.strip() for u in _urls_csv.split(",") if u.strip()]
+else:
+    _single = (os.environ.get("TELESCOPE_BASE_URL") or "").strip()
+    if _single:
+        TELESCOPE_CONFIG["base_urls"] = [_single]
 
 # ---------------------------------------------------------------------------
 # Timesheet rows (database ledgers): provider string validated on insert.
@@ -5189,6 +5253,7 @@ NAV_CONFIG = [
             {"label": "Skipped", "path": "/jobs/skipped"},
             {"label": "Recommended", "path": "/jobs/recommended"},
             {"label": "Applied", "path": "/jobs/applied"},
+            {"label": "Meteorites", "path": "/jobs/meteorites"},
             {"label": "Responded", "path": "/jobs/responded", "enabled": False},
         ],
     },
@@ -5261,6 +5326,7 @@ NAV_CONFIG = [
         "items": [
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Telescope", "path": "/admin/telescope"},
             {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
             {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
@@ -5440,7 +5506,7 @@ DATA_SHAPES = {
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "company_website", "label": "Website", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
-                {"key": "state_updated_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
                 {"key": "batch_id", "label": "Batch ID", "sortable": True},
                 {"key": "created_at", "label": "Created", "sortable": True, "type": "datetime"},
             ],
@@ -5449,14 +5515,14 @@ DATA_SHAPES = {
                 {"key": "short_name", "label": "Short Name", "sortable": True},
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "state", "label": "State", "sortable": True},
-                {"key": "state_updated_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "State Updated", "sortable": True, "defaultDesc": True, "type": "datetime"},
             ],
             "ignored": [
                 {"key": "company_name", "label": "Company", "sortable": True},
                 {"key": "short_name", "label": "Short Name", "sortable": True},
                 {"key": "originating_search_term", "label": "Originating Search Term", "sortable": True},
                 {"key": "prefilter_company_notes", "label": "Ignore Reason", "sortable": True, "expandable": True},
-                {"key": "state_updated_at", "label": "Ignored At", "sortable": True, "defaultDesc": True, "type": "datetime"},
+                {"key": "state_changed_at", "label": "Ignored At", "sortable": True, "defaultDesc": True, "type": "datetime"},
             ],
             "watch_history": [
                 {"key": "company_name", "label": "Company", "sortable": True},
@@ -6786,6 +6852,31 @@ def get_artifact_key_for_token(token_name: str) -> str:
     if not isinstance(key, str) or not key:
         raise ValueError(f"artifact token missing artifact_key: {token_name!r}")
     return key
+
+
+def list_artifact_keys_in_prompt_texts(*texts: str) -> list[str]:
+    """Return ordered-unique ARTIFACT_CONFIG keys for {$TOKEN} names in ``texts``.
+
+    Uses ``_TOKEN_RE`` and ``TOKEN_SOURCES`` / ``get_artifact_key_for_token`` —
+    no hard-coded pinnable-token allowlist. Non-artifact and unknown names are
+    skipped. Empty / None texts are ignored.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for text in texts:
+        if not isinstance(text, str) or not text:
+            continue
+        for match in _TOKEN_RE.finditer(text):
+            name = match.group(1)
+            spec = TOKEN_SOURCES.get(name)
+            if spec is None or spec.get("source_type") != "artifact":
+                continue
+            key = get_artifact_key_for_token(name)
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(key)
+    return out
 
 
 CALLER_HOP_TOKEN_NAMES: tuple[str, ...] = tuple(

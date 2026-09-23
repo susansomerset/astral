@@ -894,7 +894,7 @@ class TestAst1135ListDtasksMeteoriteMailboxAvail:
             lambda: [
                 {
                     "id": 1,
-                    "task_key": "meteorite_email",
+                    "task_key": "stage_email_meteorite",
                     "trigger_state": None,
                     "entity_type": None,
                     "candidate_id": "A",
@@ -902,7 +902,7 @@ class TestAst1135ListDtasksMeteoriteMailboxAvail:
                 },
                 {
                     "id": 2,
-                    "task_key": "meteorite_email",
+                    "task_key": "stage_email_meteorite",
                     "trigger_state": None,
                     "entity_type": None,
                     "candidate_id": "B",
@@ -2899,13 +2899,12 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         assert keys["fetch_jd"]["entity_type"] == "job"
         assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
 
-    def test_mailbox_trigger_null_or_candidate_state_and_unsupported_craft_wording(self) -> None:
-        for tk in ("parse_meteorite_email", "meteorite_email"):
+    def test_mailbox_trigger_null_only_and_unsupported_craft_wording(self) -> None:
+        for tk in ("parse_meteorite_email", "stage_email_meteorite"):
             assert admin_mod._dispatch_task_key_trigger_error(tk, None) is None
             assert admin_mod._dispatch_task_key_trigger_error(tk, "") is None
-            assert admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH") is None
-            bad = admin_mod._dispatch_task_key_trigger_error(tk, "METEORITE_NEW")
-            assert bad is not None and "not valid" in bad
+            bad = admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH")
+            assert bad is not None and "mailbox poller" in bad
         # Registered TASK_CONFIG without entity helper → unsupported, not Unknown.
         craft_err = admin_mod._dispatch_task_key_trigger_error("craft_do_rubric", "NEW")
         assert craft_err is not None and "unsupported entity_type" in craft_err

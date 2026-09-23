@@ -49,6 +49,16 @@ jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
 logger = get_logger(__name__)
 
 
+def _http_listing_url(raw) -> Optional[str]:
+    """Return stripped http(s) URL, else None. Non-http breadcrumbs → None."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if s.startswith("http://") or s.startswith("https://"):
+        return s
+    return None
+
+
 def _flatten_grades(job: dict) -> dict:
     """Lift grade dicts, scores, and job-carried rubrics from job_data for list/detail."""
     jd = job.get("job_data") or {}
@@ -271,6 +281,31 @@ def detail(astral_job_id):
             exc,
         )
         job["related_meteorite"] = None
+    # AST-1694: resolved http(s) listing href (job.job_link else meteorite.link).
+    listing = _http_listing_url(job.get("job_link"))
+    if listing is None:
+        try:
+            logger.debug(
+                "Calling get_meteorite_link_by_astral_job_id: [astral_job_id=%s]",
+                astral_job_id,
+            )
+            meta_link = get_meteorite_link_by_astral_job_id(astral_job_id)
+            logger.debug(
+                "Response from get_meteorite_link_by_astral_job_id: %s",
+                meta_link,
+            )
+            listing = _http_listing_url(meta_link)
+        except Exception as exc:
+            logger.exception(
+                "%s | api %s listing_href meteorite lookup failed\n  %s: %s\n"
+                "  Continuing with listing_href from job.job_link only",
+                job.get("candidate_id") or "-",
+                f"/api/jobs/{astral_job_id}",
+                type(exc).__name__,
+                exc,
+            )
+            listing = None
+    job["listing_href"] = listing
     return jsonify(job)
 
 

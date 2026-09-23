@@ -43,6 +43,14 @@ function catalogFromPayload(data: { catalog?: unknown }): Catalog | null {
   return c
 }
 
+/** Navigable listing URL only — mirrors AST-1694 http(s) rule; non-http → null. */
+function httpListingHref(raw: string | null | undefined): string | null {
+  if (raw == null) return null
+  const s = String(raw).trim()
+  if (s.startsWith("http://") || s.startsWith("https://")) return s
+  return null
+}
+
 interface JobDetail {
   astral_job_id: string
   job_title: string | null
@@ -50,6 +58,7 @@ interface JobDetail {
   state: string
   state_changed_at: string | null
   job_link?: string | null
+  listing_href?: string | null
   job_data?: Record<string, unknown>
   jd_grades?: unknown
   do_grades?: unknown
@@ -81,6 +90,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [snapshotCopied, setSnapshotCopied] = useState(false)
+  const [detailLinkCopied, setDetailLinkCopied] = useState(false)
   const [snapshotCopying, setSnapshotCopying] = useState(false)
   const [activeTopTab, setActiveTopTab] = useState("summary")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
@@ -274,6 +284,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setActiveTopTab("summary")
   }, [jobId])
   useEffect(() => { setSnapshotCopied(false) }, [jobId])
+  useEffect(() => { setDetailLinkCopied(false) }, [jobId])
 
   const topTabs = useMemo(() => {
     const rows = manifest?.jobs.recommended.report_top_tabs ?? []
@@ -609,12 +620,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setError(null)
     try {
       if (action.method === "CLIENT") {
-        if (job.job_link) {
-          const t = job.job_link.trim().toLowerCase()
-          if (t.startsWith("http://") || t.startsWith("https://")) {
-            window.open(job.job_link, "_blank", "noopener,noreferrer")
-          }
-        }
+        const href = httpListingHref(job.listing_href)
+        if (href) window.open(href, "_blank", "noopener,noreferrer")
         return
       }
       const path = `/api/jobs/${encodeURIComponent(jobId)}/${action.path_suffix}`
@@ -645,6 +652,16 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (!ok) return
     setSnapshotCopied(true)
     window.setTimeout(() => setSnapshotCopied(false), 2000)
+  }
+
+  function handleCopyDetailLink() {
+    if (!jobId) return
+    const url =
+      `${window.location.origin}/jobs/detail/${encodeURIComponent(jobId)}`
+    navigator.clipboard.writeText(url).then(() => {
+      setDetailLinkCopied(true)
+      window.setTimeout(() => setDetailLinkCopied(false), 2000)
+    })
   }
 
   function handleCopyApplicationEmail() {
@@ -681,7 +698,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           <div className="recommended-report-chrome">
             <RecommendedJobReportHeader
               jobTitle={jobTitleDisplay}
-              jobLink={job.job_link ?? null}
+              jobLink={httpListingHref(job.listing_href)}
               companyName={job.company}
               companyWebsite={companyWebsite}
               applicationEmail={applicationEmail}
@@ -689,6 +706,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               copyFeedback={copyFeedback}
               onCopyApplicationEmail={handleCopyApplicationEmail}
               onCopyLinkedIn={handleCopyLinkedIn}
+              onCopyDetailLink={handleCopyDetailLink}
+              detailLinkCopied={detailLinkCopied}
               onCopySnapshot={handleCopySnapshot}
               snapshotCopied={snapshotCopied}
               snapshotCopying={snapshotCopying}

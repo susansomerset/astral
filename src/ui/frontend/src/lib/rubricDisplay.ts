@@ -72,6 +72,92 @@ export function formatGradeDotTooltip(
   return base
 }
 
+/** A best → X worst; matches JobsInReview / JobsSkipped GRADE_ORDER (AST-1771). */
+export const GRADE_RANK: Record<string, number> = { A: 0, B: 1, C: 2, D: 3, F: 4, X: 5 }
+
+export function gradeRank(letter: string): number {
+  return GRADE_RANK[(letter ?? "").trim().toUpperCase()] ?? 99
+}
+
+/** Recommended-report display order: importance desc, then better letter first, then code. */
+export function sortRubricColumnsByImportanceAndGrade(
+  cols: JobListRubricColumn[],
+  gradeForCol: (col: JobListRubricColumn) => string,
+): JobListRubricColumn[] {
+  return [...cols].sort((a, b) => {
+    const impDiff = b.importance - a.importance
+    if (impDiff !== 0) return impDiff
+    const gradeDiff = gradeRank(gradeForCol(a)) - gradeRank(gradeForCol(b))
+    if (gradeDiff !== 0) return gradeDiff
+    return a.code.localeCompare(b.code)
+  })
+}
+
+/** Prefix vector label on Recommended Analysis header grade-dot tooltips. */
+export function formatGradeDotTooltipWithVectorLabel(
+  col: JobListRubricColumn,
+  grade: string,
+  reasonFromJob?: string,
+  confidence?: number,
+): string {
+  const label = (col.label ?? col.code ?? "").trim()
+  const body = formatGradeDotTooltip(col, grade, reasonFromJob, confidence)
+  if (label && body) return `${label}: ${body}`
+  return label || body
+}
+
+/** Align AgentAnalysisHeader rows with header grade-dot order (AST-1771). */
+export function sortGradesByRubricDisplayOrder<T extends { vector: string; grade: string }>(
+  grades: T[],
+  rubricItems?: Array<{ code?: string; label?: string; importance?: unknown }> | null,
+): T[] {
+  if (!grades.length) return grades
+  let cols: JobListRubricColumn[]
+  if (Array.isArray(rubricItems) && rubricItems.length) {
+    cols = buildJobListRubricColumnsFromArtifact(rubricItems)
+  } else {
+    cols = grades.map(g => {
+      const { code, label } = parseGradesVectorName(g.vector)
+      return {
+        code,
+        label,
+        importance: RUBRIC_DEFAULT_IMPORTANCE,
+        headerCode: resolveRubricHeaderCode({ code, label }),
+        headerTooltip: formatRubricColumnTooltip(label, RUBRIC_DEFAULT_IMPORTANCE),
+        gradeDescriptions: {},
+      }
+    })
+  }
+  const gradeByColKey = new Map<string, T>()
+  for (const g of grades) {
+    const { code, label } = parseGradesVectorName(g.vector)
+    gradeByColKey.set(normalizeRubricVectorKey(code), g)
+    gradeByColKey.set(normalizeRubricVectorKey(label), g)
+    gradeByColKey.set(normalizeRubricVectorKey(g.vector), g)
+  }
+  const sortedCols = sortRubricColumnsByImportanceAndGrade(cols, col => {
+    const hit =
+      gradeByColKey.get(normalizeRubricVectorKey(col.code)) ??
+      gradeByColKey.get(normalizeRubricVectorKey(col.label))
+    return hit?.grade ?? ""
+  })
+  const seen = new Set<T>()
+  const ordered: T[] = []
+  for (const col of sortedCols) {
+    const hit =
+      gradeByColKey.get(normalizeRubricVectorKey(col.code)) ??
+      gradeByColKey.get(normalizeRubricVectorKey(col.label))
+    if (hit && !seen.has(hit)) {
+      seen.add(hit)
+      ordered.push(hit)
+    }
+  }
+  for (const g of grades) {
+    if (!seen.has(g)) ordered.push(g)
+  }
+  return ordered
+}
+
 /** Tooltip for job-list rubric `<th title=…>` — `Label (7)` not full editor header. */
 export function formatRubricColumnTooltip(label: string | undefined, importance?: number): string {
   const lab = (label ?? "").trim() || "??"

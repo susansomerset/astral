@@ -268,6 +268,73 @@ Dispatcher-driven table transition runners: `run_stage_meteorite` (NEW → SCRAP
 
 ---
 
+### AST-1750 · AST-1721 (qa-fix bug-repro — scrape_closed diagnostic detail)
+
+**Board REVISE:** `run_scrape_meteorite` soft-fail ERROR (`scrape_closed`) must include `signal=` / `text_len=` / `final_url=` on row error + warning; AST-1560 only covers READY / BOT_BLOCKED / bare ERROR.
+
+| Area | Component tests |
+| --- | --- |
+| scrape_closed diagnostic string | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url -q
+```
+
+**Pass criterion:** pytest green on the node — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1751 · AST-1721 (qa-fix bug-repro — ERROR not also fail; BOT_BLOCKED is fail)
+
+**QA-handoff (Ada):** `candidate_id=` on error-only repro; blocked assert uses `_row_miss`/`logger.warning` (`scrape blocked at`).
+
+**Board REVISE:** rewrite `TestAst1560RunScrapeMeteorite` BOT_BLOCKED `total_passed`→`total_failed`; missing ERROR-only `fail:0 error:N` (sibling omitted `total_failed`); stage/land double-bump holds may break.
+
+| Area | Component tests |
+| --- | --- |
+| ERROR-only batch fail:0 error:N | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1751_error_only_batch_fail_zero_error_n` (**bug-repro**) |
+| scrape BOT_BLOCKED → total_failed | `TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring` (rewritten) |
+| sibling ERROR omits fail | `TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch` (rewritten) |
+| stage/land ERROR holds | `TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors`, `TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring`, `TestAst1560RunLandMeteorite::test_missing_content_errors` (`total_failed==0`) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1751_error_only_batch_fail_zero_error_n \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_missing_classify_outcome_errors_with_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_missing_content_errors -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1752 · AST-1721 (qa-fix bug-repro — closed/missing are LINK_EXPIRED fail)
+
+**Board REVISE:** `test_ast1750` scrape_closed `total_errors==1` becomes `LINK_EXPIRED` fail; `test_config` `METEORITE_STATES` set and `closed`/`missing`==`SCRAPE_ERROR`; no `LINK_EXPIRED` repro.
+
+| Area | Component tests |
+| --- | --- |
+| closed → LINK_EXPIRED fail + diagnostics | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url` (rewritten) |
+| missing → LINK_EXPIRED fail | `test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1752_missing_content_is_link_expired_fail` (**bug-repro**) |
+| state registry + page map | `test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry`, `TestAst1560IngressDispatchConfig::test_ingress_task_keys_and_triggers`, `TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers` |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1752_missing_content_is_link_expired_fail \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ast1750_scrape_closed_error_includes_signal_text_len_final_url \
+  tests/component/utils/test_config.py::TestAst1557MeteoriteStates::test_seven_keys_and_new_entry \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_ingress_task_keys_and_triggers \
+  tests/component/utils/test_config.py::TestAst1712MailboxKeyAndClassifyStates::test_classify_states_and_no_dispatch_triggers -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1562 · AST-1555
 
 **Parent:** [AST-1555](https://linear.app/astralcareermatch/issue/AST-1555/meteorite-ingress-staging-table-inboxmeteorite-consolidation). **Publish:** `origin/sub/AST-1555/AST-1562-retention-sweep-delete-meteorite-email`.
@@ -463,4 +530,224 @@ Email text outcomes author non-http `meteorite.link` breadcrumbs (From/To + time
 **Pass criterion:** pytest green on lines 1–2 — not zero-arg harness / branch-lock gate.
 
 **Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
+
+### AST-1713 · AST-1711
+
+**Parent:** [AST-1711](https://linear.app/astralcareermatch/issue/AST-1711). **Publish:** `origin/sub/AST-1711/AST-1713-stage-meteorite-saves-the-ruth-row`.
+
+`stage_meteorite` calls Ruth through `_classify_stage_blob` and inserts the row in the same pass: `NOT_A_JOB`, `SCRAPE_LINK` (http `link`), `READY` (email-and-date breadcrumb, not http), or `NEW_EMAIL_ERROR`. `job_title` and `employer_name` persist on insert. `insert_meteorite_rows` binds the caller's `state`. `invoke_stage_meteorite` is gone. `enrich_meteorite_land_packet` and `_resolve_company_job_id` live in `meteorite.py`. Scrape and land `SCRAPE_ERROR` writes stay **AST-1712**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Four classify saves + caller-state insert | `src/core/meteorite.py`, `src/data/database.py` | **`TestAst1713StageSavesRuthRow`** |
+| Stage / inbox patches retargeted | `src/core/meteorite.py` | **`TestAst1530StageMeteorite`**, **`TestAst1559CheckInbox`** (not `test_sanitize_monitor_subject` — helper already absent) |
+| Contact on insert, state `READY` | `src/core/meteorite.py` | **`TestAst1689ElectronicContactMapPersist`** |
+| Land enrich call site | `src/core/meteorite.py` | **`TestAst1495LandStemAttach`**, **`TestAst1470LandMeteorite`**, **`TestAst1702SourceEntityLand`**, **`TestAst1560RunLandMeteorite`** |
+| Enrich moved off consult | `src/core/meteorite.py` | **`TestAst1494EnrichMeteoriteCompanyStem`** except `test_dispatch_debug_logs_company_stem_when_present` (consult `debug_detail` already absent on `origin/dev`) |
+| Resolve helper moved | `src/core/meteorite.py` | **`TestAst1120CompanyJobIdFallback`** except `test_empty_ai_no_uuid_still_empty_id_fail` |
+| Inserts pass `state` | `src/data/database.py` | **`TestAst1531ContactLandStageCutover`** |
+
+**Broken / obsolete this pass:** consult `invoke_stage_meteorite` patches; inbox skip/fail expecting zero rows; text-outcome rows asserted `NEW`; soft-persist warning and `electronic_contact returned=` log; land info line `meteorite land id=`. `TestAst1530InvokeStageMeteorite` skips — the function was deleted.
+
+**Integration:** none — no existing scenario asserts the Ruth row insert.
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow \
+  tests/component/core/test_meteorite.py::TestAst1530StageMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox::test_candidate_id_required \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox::test_fan_out_n_rows_archives_and_monitors \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox::test_classify_failed_zero_rows_no_archive \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox::test_skip_outcome_zero_rows_monitor_archive \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox::test_already_ingested_skips_classify_archives \
+  tests/component/core/test_meteorite.py::TestAst1559CheckInbox::test_empty_aliases_still_stamps_last_check \
+  tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist \
+  tests/component/core/test_meteorite.py::TestAst1495LandStemAttach \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem::test_enrich_maps_company_stem_from_ruth \
+  tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem::test_enrich_empty_stem_when_ruth_omits \
+  tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem::test_enrich_strips_stem_whitespace \
+  tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem::test_enrich_debug_detail_includes_company_stem \
+  tests/component/core/test_consult.py::TestAst1120CompanyJobIdFallback::test_resolve_helper_ai_wins_and_fallbacks \
+  tests/component/core/test_consult.py::TestAst1120CompanyJobIdFallback::test_ai_id_unchanged_when_link_has_different_uuid \
+  tests/component/core/test_consult.py::TestAst1120CompanyJobIdFallback::test_empty_ai_records_uuid_from_job_link \
+  tests/component/core/test_contact.py::TestAst1531ContactLandStageCutover \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1711/AST-1713-stage-meteorite-saves-the-ruth-row:docs/test-bible/core/meteorite.md | shasum`
+
+### AST-1743 · AST-1740 (gap — ingest skip→failed counter)
+
+**Parent:** [AST-1740](https://linear.app/astralcareermatch/issue/AST-1740). **Sibling product:** AST-1742. **Publish:** `origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip + archive → `counter="failed"` | `src/core/meteorite.py` | **`[bug-repro]`** `TestAst1743IngestSkipFailed::test_skip_outcome_returns_counter_failed` |
+
+## QA test manifest
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1743IngestSkipFailed::test_skip_outcome_returns_counter_failed \
+  -q
+```
+
+**Bible shasum (publish tip):** `git show origin/sub/AST-1740/AST-1743-gap-skip-failed-rollup-tests:docs/test-bible/core/meteorite.md | shasum`
+
+### AST-1756 · AST-1753
+
+**Parent:** [AST-1753 — stage_email_meteorite enhancements](https://linear.app/astralcareermatch/issue/AST-1753/stage-email-meteorite-enhancements). **Publish:** `origin/sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob`.
+
+Text landable stage map: blank/missing `jd_text` → meteorite `content` from classify ingress blob (caller `stage_meteorite(..., blob=)`); non-empty `jd_text` still wins; empty blob + blank `jd_text` still returns `text scrap missing jd_text`; URL scrape empty-`jd_text` branch unchanged. Prompts / land `job_title=` are siblings **AST-1755** / **AST-1757**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Map fallback + prefer-Ruth + degenerate + URL unchanged | `src/core/meteorite.py` | **`TestAst1756IngressBlobJdTextFallback`** (map methods + stage persist) |
+| Prior text map with non-empty `jd_text` (still green) | same | **`TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none`** |
+| Prior READY text insert with Ruth `jd_text` (still green) | same | **`TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http`** |
+
+**Broken / obsolete this pass:** none — prior map tests always supplied non-empty `jd_text`; no assert required hard-fail when an ingress blob is present.
+
+**Integration:** no existing scenario asserts text-map `jd_text` / ingress-blob fallback — none revised; do not invent.
+
+## QA test manifest
+
+1. Ingress-blob fallback (AC5/AC6 + degenerate + URL + stage wire): `tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback`
+2. Prior text map (non-empty `jd_text`): `tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none`
+3. Prior READY text path: `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests` — `git show origin/sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob:docs/test-bible/core/meteorite.md | shasum`
+
+### AST-1757 · AST-1753
+
+**Parent:** [AST-1753 — stage_email_meteorite enhancements](https://linear.app/astralcareermatch/issue/AST-1753/stage-email-meteorite-enhancements). **Publish:** `origin/sub/AST-1753/AST-1757-land-staged-job-title-onto-job`.
+
+Land wires non-empty staged `meteorite.job_title` into `tracker.save_meteorite_job`: `run_land_meteorite` passes the claimed row title (no enrich hop); public `land_meteorite` prefers enrich/qualify title when present, else the meteorite column. Prompts / stage `jd_text` blob fallback are siblings **AST-1755** / **AST-1756**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dispatch + public enrich-preferred / staged-fallback | `src/core/meteorite.py` | **`TestAst1757LandStagedJobTitle`** |
+| Prior dispatch land (no enrich) still green | same | **`TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich`** |
+| Prior public land create still green | same | **`TestAst1470LandMeteorite::test_create_under_meteorite_parent_with_employer_name`** |
+
+**Broken / obsolete this pass:** none — prior land tests either omit staged title or supply enrich `job_title`; new preference cases are additive.
+
+**Integration:** no existing scenario asserts land `job_title=` preference — none revised; do not invent.
+
+## QA test manifest
+
+1. Land staged / enrich-preferred title: `tests/component/core/test_meteorite.py::TestAst1757LandStagedJobTitle`
+2. Prior dispatch land: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich`
+3. Prior public land create: `tests/component/core/test_meteorite.py::TestAst1470LandMeteorite::test_create_under_meteorite_parent_with_employer_name`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1757LandStagedJobTitle \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite::test_create_under_meteorite_parent_with_employer_name \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
+
+### AST-1774 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions`.
+
+`run_stage_meteorite` / `run_scrape_meteorite` landable success → `CHECK_UNIQUE` (not `READY`); `run_check_unique_meteorite` claims `CHECK_UNIQUE`, promotes unique title+employer rows to `READY`, delegates SQL / null-field multi-peer paths to `_review_duplicate_meteorite_hook` (body: **AST-1775**); dispatcher routes + provisions `check_unique_meteorite`. Config/catalog: **`docs/test-bible/utils/config.md`** § AST-1773. Ruth outcomes: **AST-1775**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stage/scrape → CHECK_UNIQUE | `src/core/meteorite.py` | revised **`TestAst1560RunStageMeteorite::test_text_outcome_to_ready`**, **`TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready`**, **`…::test_sibling_rows_do_not_abort_batch`** |
+| Unique / SQL peers / null peers / land gate / paste boundary | same | **`TestAst1774RunCheckUniqueMeteorite`** |
+| Dispatch route + provision | `src/core/dispatcher.py` | **`TestAst1560IngressTransitionDispatchOne::test_routes_check_unique_runner_with_entity_batch_id`**, **`…::test_ensure_ingress_includes_check_unique`** |
+
+**Broken / obsolete this pass:**
+- Stage text / scrape ok / sibling scrape asserting landable success `READY` — revised to `CHECK_UNIQUE`.
+
+**Integration:** none — no existing scenario asserts stage/scrape → READY or `run_check_unique_meteorite`.
+
+## QA test manifest
+
+1. Stage text → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_text_outcome_to_ready`
+2. Scrape ok → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready`
+3. Scrape sibling ok → CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch`
+4. Check-unique hop: `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite`
+5. Paste still READY: `tests/component/core/test_meteorite.py::TestAst1561ApplyPaste::test_moves_bot_blocked_to_ready`
+6. Dispatch route: `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_routes_check_unique_runner_with_entity_batch_id`
+7. Provision twin: `tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_ensure_ingress_includes_check_unique`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_text_outcome_to_ready \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_ok_visible_text_to_ready \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_sibling_rows_do_not_abort_batch \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1561ApplyPaste::test_moves_bot_blocked_to_ready \
+  tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_routes_check_unique_runner_with_entity_batch_id \
+  tests/component/core/test_dispatcher.py::TestAst1560IngressTransitionDispatchOne::test_ensure_ingress_includes_check_unique \
+  -q
+```
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/core/meteorite.md`
+- `docs/test-bible/core/dispatcher.md`
+
+### AST-1775 · AST-1762
+
+**Parent:** [AST-1762](https://linear.app/astralcareermatch/issue/AST-1762/meteorite-state-check-unique-before-landed). **Publish:** `origin/sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map`.
+
+Fills `_review_duplicate_meteorite_hook`: full-content live payload, `do_task` `review_duplicate_meteorite`, `duplicate` → `DUPLICATE` + `error=duplicate_of:<peer_id>`, `not_duplicate` → `READY`; do_task / invalid outcome / bad peer id leave `CHECK_UNIQUE`. Peer detection + unique→READY: **`### AST-1774`**. Config/catalog: **`docs/test-bible/utils/config.md`** § AST-1773.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| SQL peers → duplicate / not_duplicate | `src/core/meteorite.py` | **`TestAst1775RuthDuplicateReviewInvoke`** |
+| Null multi-peers → Ruth full content | same | same class |
+| Failure / invalid outcome / bad peer id stay CHECK_UNIQUE | same | same class |
+| Land gate (DUPLICATE not landable) | same | **`…::test_land_does_not_claim_duplicate`** |
+
+**Broken / obsolete this pass:** none — AST-1774 monkeypatched hook tests still gate peer *detection*.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Ruth SQL duplicate: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_sql_peers_duplicate_maps_to_duplicate_with_peer_id`
+2. Ruth SQL not-duplicate: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_sql_peers_not_duplicate_maps_to_ready`
+3. Ruth null peers + content: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_null_peers_invoke_ruth_with_full_content`
+4. do_task fail stays CHECK_UNIQUE: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_do_task_failure_leaves_check_unique`
+5. Invalid outcome stays: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_invalid_outcome_leaves_check_unique`
+6. Bad peer id stays: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_invalid_peer_id_leaves_check_unique`
+7. Land ignores DUPLICATE: `tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke::test_land_does_not_claim_duplicate`
+8. Peer detection still (1774): `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_title_employer_sql_peers_call_hook_leave_check_unique`
+9. Unique path still (1774): `tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_unique_promotes_to_ready`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1775RuthDuplicateReviewInvoke \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_title_employer_sql_peers_call_hook_leave_check_unique \
+  tests/component/core/test_meteorite.py::TestAst1774RunCheckUniqueMeteorite::test_unique_promotes_to_ready \
+  -q
+```
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/core/meteorite.md`

@@ -199,10 +199,10 @@ export default function PerformanceMonitor() {
     setFilter("date_to", dateToInput)
   }
 
-  const loadData = useCallback((showSpinner = false) => {
+  const loadData = useCallback((showSpinner = false, silent = false) => {
     beginRefresh(showSpinner)
     const qs = new URLSearchParams(filters).toString()
-    api(`/api/admin/dispatch_ledger${qs ? `?${qs}` : ""}`)
+    api(`/api/admin/dispatch_ledger${qs ? `?${qs}` : ""}`, silent ? { silent: true } : {})
       .then(r => r.json())
       .then(data => setRows(Array.isArray(data) ? data : []))
       .catch(() => setRows([]))
@@ -211,7 +211,7 @@ export default function PerformanceMonitor() {
 
   useEffect(() => {
     loadData(true)
-    const id = setInterval(() => loadData(), 15_000)
+    const id = setInterval(() => loadData(false, true), 15_000)
     return () => clearInterval(id)
   }, [loadData])
 

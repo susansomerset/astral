@@ -312,14 +312,14 @@ export default function ScheduledActions() {
   const frozenN = resolveFrozenDataColumns(uiConfig, FROZEN_DATA_COLUMNS)
   const truncateChars = resolveCellTruncateChars(uiConfig)
 
-  const loadThreadStatus = useCallback(async () => {
-    const res = await api("/api/admin/scheduler/thread_status")
+  const loadThreadStatus = useCallback(async (silent = false) => {
+    const res = await api("/api/admin/scheduler/thread_status", silent ? { silent: true } : {})
     if (res.ok) setThreadStatus(await res.json())
   }, [])
 
   useEffect(() => {
     loadThreadStatus()
-    pollRef.current = setInterval(loadThreadStatus, 5_000)
+    pollRef.current = setInterval(() => { void loadThreadStatus(true) }, 5_000)
     return () => { if (pollRef.current) clearInterval(pollRef.current) }
   }, [loadThreadStatus])
 
@@ -574,7 +574,7 @@ export default function ScheduledActions() {
       }))
     }
     const watch = async () => {
-      const res = await api("/api/admin/scheduler/thread_status")
+      const res = await api("/api/admin/scheduler/thread_status", { silent: true })
       if (!res.ok) return
       const next = await res.json() as Record<number, ThreadEntry>
       setThreadStatus(next)

@@ -234,8 +234,11 @@ class TestJobsRoutes:
     def test_detail_returns_agent_story(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id})
         monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [{"task_key": "x"}])
+        monkeypatch.setattr(jobs_mod, "get_meteorite_by_astral_job_id", lambda _jid: None)
         resp = jobs_client.get("/api/jobs/job-1", headers=auth_headers)
-        assert resp.get_json()["agent_story"][0]["task_key"] == "x"
+        body = resp.get_json()
+        assert body["agent_story"][0]["task_key"] == "x"
+        assert body["related_meteorite"] is None
 
     def test_detail_soft_fails_agent_story(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         # AST-1274: story hydrate failure must not 500 detail.
@@ -257,13 +260,85 @@ class TestJobsRoutes:
         monkeypatch.setattr(
             jobs_mod,
             "hydrate_job_artifacts_for_display",
-            lambda art, debug=False: art or {},
+            lambda art, debug=False, astral_job_id=None: art or {},
         )
+        monkeypatch.setattr(jobs_mod, "get_meteorite_by_astral_job_id", lambda _jid: None)
         resp = jobs_client.get("/api/jobs/job-1274", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["astral_job_id"] == "job-1274"
         assert body["agent_story"] == []
+        assert body["related_meteorite"] is None
+
+    def test_detail_related_meteorite_object(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1691 AC2: projected flat object when reverse link hits.
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_job",
+            lambda job_id: {"astral_job_id": job_id, "job_data": {}},
+        )
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False, astral_job_id=None: art or {},
+        )
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_meteorite_by_astral_job_id",
+            lambda jid: {
+                "id": 42,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-02T00:00:00Z",
+                "state_changed_at": "2026-01-03T00:00:00Z",
+                "estelle_notified_at": None,
+                "link": "https://jobs.example/m",
+                "classify_outcome": "posting",
+                "content": "jd text",
+                "state": "LANDED",
+                "source_kind": "email",
+                "source_id": "mid-1",
+                "error": None,
+                "batch_id": "should-not-leak",
+            },
+        )
+        resp = jobs_client.get("/api/jobs/job-1691", headers=auth_headers)
+        assert resp.status_code == 200
+        rm = resp.get_json()["related_meteorite"]
+        assert rm["id"] == 42
+        assert rm["link"] == "https://jobs.example/m"
+        assert rm["classify_outcome"] == "posting"
+        assert rm["content"] == "jd text"
+        assert rm["state"] == "LANDED"
+        assert rm["source_kind"] == "email"
+        assert rm["source_id"] == "mid-1"
+        assert "batch_id" not in rm
+
+    def test_detail_related_meteorite_soft_fail(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1691: lookup throw → related_meteorite null (not 500).
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_job",
+            lambda job_id: {"astral_job_id": job_id, "candidate_id": "c1", "job_data": {}},
+        )
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False, astral_job_id=None: art or {},
+        )
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_meteorite_by_astral_job_id",
+            MagicMock(side_effect=RuntimeError("db down")),
+        )
+        resp = jobs_client.get("/api/jobs/job-1691-fail", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json()["related_meteorite"] is None
 
     def test_detail_related_meteorite_source_entity_fallback(
         self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch

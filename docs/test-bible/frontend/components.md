@@ -501,6 +501,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** `[bug-repro]` red on pre-fix product, green after make-fix; Vitest green on regression nodes post-fix.
 
+### AST-1767 · AST-1754 (gap — shared Modal shell scroll)
+
+**Parent:** [AST-1754 — All modals must be vertically scrollable](https://linear.app/astralcareermatch/issue/AST-1754). **Publish:** `origin/sub/AST-1754/AST-1767-gap-modal-shell-scroll-tests`. **Gap from** `[board-betty] TESTS: REVISE` on **AST-1764** — product shell scroll is **AST-1764**; this ticket is bible + component test only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared wide Modal shell scroll for tall direct children | `Modal.tsx` + `App.css` (product: **AST-1764**) | **`test_Modal.test.tsx`** — **`[bug-repro] AST-1767: wide Modal body scrolls tall direct children`** |
+
+**Does not obsolete AST-1511** — call-site Show Differences wrapper remains covered separately in `test_RepoJsonDivergenceBanner.test.tsx`.
+
+**Broken / obsolete this pass:** none — existing `test_Modal` AST-1301 / AST-1302 / AST-1334 nodes unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. **[bug-repro]** wide shell scroll (tall direct children, no call-site wrapper): `tests/component/frontend/components/test_Modal.test.tsx` — **`Modal — AST-1767`**
+2. Modal regression: same file — **`AST-1301`** / **`AST-1302`** / **`AST-1334`** nodes
+
+**AST-1767** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  -t "AST-1767"
+```
+
+**Pass criterion:** `[bug-repro]` red against pre-AST-1764 product (`overflow: hidden` on `.modal-card--wide .modal-body`); green once AST-1764 shell scroll (`overflow-y: auto` + `min-height: 0`) is present. Vitest green on Modal regression nodes.
 
 ### AST-948 · AST-858
 
@@ -1363,6 +1392,72 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1692 · AST-1685
+
+**Parent:** [AST-1685](https://linear.app/astralcareermatch/issue/AST-1685/view-related-meteorite-record-data-on-recommended-job-modal). **Publish:** `origin/sub/AST-1685/AST-1692-meteorite-pane-recommended-modal`.
+
+`JobMeteoritePane` — read-only staging-row sections via `ReportSectionList` from `report_meteorite_sections` (timestamps / http(s)-gated link / AI `classify_outcome`+content / provenance). `JobAnalysisReportModal` filters Meteorite top tab when `related_meteorite` is null; does not hardcode tab label/order. Manifest/API shapes: sibling **AST-1691**. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pane timestamps / link / AI / provenance | `JobMeteoritePane.tsx` | **`test_JobMeteoritePane.test.tsx`** — **`JobMeteoritePane — AST-1692`** |
+| Modal Meteorite tab filter + render | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1692 Meteorite tab`**; revised AST-1551 null-filter assert |
+| Manifest fixture Meteorite | `stateUiManifestFixture.ts` | consumed by JAR / pane tests |
+
+**Broken / obsolete:** AST-1551 “Discussion is last top tab” wording — Meteorite is last in fixture/`report_top_tabs` but filtered out when `related_meteorite` null (gazed jobs keep four tabs).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/frontend/components/test_JobMeteoritePane.test.tsx`
+2. `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1692|AST-1551 Discussion"`
+3. Fixture: `tests/component/frontend/fixtures/stateUiManifestFixture.ts` (`report_meteorite_sections` + Meteorite top tab)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobMeteoritePane.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1692|AST-1551 Discussion|AST-948 horizontal shell"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1695 · AST-1686
+
+**Parent:** [AST-1686](https://linear.app/astralcareermatch/issue/AST-1686/hyperlink-to-job-with-meteorite-http-link). **Publish:** `origin/sub/AST-1686/AST-1695-job-ui-listing-href`.
+
+Recommended report title + CLIENT Apply path, and Job Detail listing control, navigate via AST-1694 `listing_href` (http(s) only). Raw `job_link` is not a fallback for `<a>` / `window.open`. Apply remains filtered from Artifacts strip (`artifactsTabPrimaryActions`); navigable surface is the title link. API writers: siblings **AST-1694** / **AST-1693**. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Title from `listing_href` | `JobAnalysisReportModal.tsx`, `RecommendedJobReportHeader.tsx` | **`JobAnalysisReportModal — AST-1695 listing_href title`**; **`RecommendedJobReportHeader — AST-1695 listing title`**; revised AST-948 sticky/deeplink fixtures (`listing_href` on job GET mock) |
+| Job Detail Link / Open listing | `JobDetailModal.tsx` | **`JobDetailModal — AST-1695 listing_href`** |
+
+**Broken / obsolete this pass:** AST-948 “job title deeplink replaces Apply” asserted `job_link` as title href — revised to `listing_href` (Apply still absent from Artifacts).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1695|job title deeplink|sticky header: deeplinked"`
+2. `tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx` — `--testNamePattern="AST-1695"`
+3. `tests/component/frontend/components/test_JobDetailModal.test.tsx` — `--testNamePattern="AST-1695"`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  --testNamePattern="AST-1695|job title deeplink|sticky header: deeplinked"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1577 · AST-1569
 
 **Publish:** `origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`.
@@ -1503,3 +1598,53 @@ Job Detail / JAR chrome: `job_link` is an href / `window.open` target only for `
 **Broken / obsolete this pass:** none — existing https deeplink cases remain.
 
 **Integration:** none.
+
+### AST-1749 · AST-1741
+
+**Parent:** [AST-1741](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
+
+`MeteoriteDetailModal.tsx` — read-only detail (sections from API): http(s) link gate, job deeplink gate, 404 honesty, no Save footer. Page wiring: **`docs/test-bible/frontend/pages.md`** § AST-1749.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Link / deeplink / 404 / closed | `MeteoriteDetailModal.tsx` | **`test_MeteoriteDetailModal.test.tsx`** |
+
+**Broken / obsolete:** none — new component. Does not revise `JobMeteoritePane` tests.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+See **`docs/test-bible/frontend/pages.md`** § AST-1749 (shared numbered manifest).
+
+---
+
+### AST-1771 · AST-1770
+
+**Parent:** [AST-1770 — Vector Icons are out of sequence](https://linear.app/astralcareermatch/issue/AST-1770/vector-icons-are-out-of-sequence). **Publish:** `origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips`.
+
+`AgentAnalysisHeader` + JAR Analysis tab: detail rows and header grade dots share importance-then-grade order; header tooltips prefix vector label. Helpers: **`docs/test-bible/frontend/lib.md`** § AST-1771.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Detail vector order | `AgentAnalysisHeader.tsx` | **`test_AgentAnalysisHeader.test.tsx`** — **`AST-1771: detail rows match importance+grade order`** (+ api mock importOriginal keeper) |
+| JAR header + expanded order | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — extends **`AST-1328: Analysis header uses job-carried jd_rubric…`** with QC-before-EFW + tooltip + `.analysis-vector` order |
+
+**Broken / obsolete:** none beyond api mock repair above. **Integration:** none revised. §6c N/A (modal/component, not routed page).
+
+## QA test manifest
+
+1. Detail: `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx` — `--testNamePattern="AST-1771"`
+2. JAR e2e: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1328"`
+3. Lib helpers + header unit: see **`docs/test-bible/frontend/lib.md`** § AST-1771
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1771|AST-1328|sortRubricColumnsByImportanceAndGrade|formatGradeDotTooltipWithVectorLabel|gradeRank|sortJobListRubricColumns"
+```
+
+**Bible shasum (after publish):** fill — `git show origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips:docs/test-bible/frontend/components.md | shasum`

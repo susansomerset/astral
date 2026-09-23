@@ -1287,6 +1287,26 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
 ```
 
+### AST-1709 · AST-1707
+
+**Parent:** [AST-1707](https://linear.app/astralcareermatch/issue/AST-1707). **Publish:** `origin/sub/AST-1707/AST-1709-null-company-recommended-partition-test`. **Sibling product guard:** AST-1708 (`(job.company ?? "").startsWith(prefix)` on `JobsRecommended.tsx`).
+
+Null `company` through Recommended meteorite partition (`isMeteoriteJob` / sections `useMemo`): page must not throw; row stays out of Meteorites and in the normal state section. Product null-guard is AST-1708 — this gap does not re-edit `JobsRecommended.tsx`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Null-company partition ([bug-repro]) | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** — **`AST-1708/AST-1709: null company does not throw; stays out of Meteorites`** |
+
+**Broken / obsolete:** none — additive repro next to AST-1057 cases.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1708/AST-1709"
+```
+
 ### AST-1061 · AST-1058
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
@@ -2873,3 +2893,101 @@ cd src/ui/frontend && npm run test:component -- \
 **Broken / obsolete this pass:** none.
 
 **Integration:** none.
+
+---
+
+### AST-1728 · AST-1721 (qa-fix bug-repro — AdminTelescope §6c)
+
+| Area | Component tests |
+| --- | --- |
+| Page module exists / loads | `tests/component/frontend/pages/test_AdminTelescope.test.tsx` — **`AST-1728: AdminTelescope page module exports a component`** (**bug-repro**) |
+| Path / file presence (py) | `test_api_admin_telescope.py::test_admin_telescope_page_module_exists` + `test_routes_register_admin_telescope` |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
+```
+
+---
+
+### AST-1730 · AST-1721 (qa-fix bug-repro — scrollable selectable response)
+
+**Board REVISE:** raw / full-JSON panes must be read-only scrollable wrapping `<textarea className="admin-telescope-pre">` (`maxHeight: 60vh`, `overflow: auto`, `white-space: pre-wrap`).
+
+| Area | Component tests |
+| --- | --- |
+| Raw pane textarea + scroll/wrap styles | `test_AdminTelescope.test.tsx` — **`AST-1730: raw response is read-only scrollable wrapping textarea`** (**bug-repro**) |
+| Full JSON pane same shape | `test_AdminTelescope.test.tsx` — **`AST-1730: full JSON dump uses the same read-only textarea shape`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
+```
+
+---
+
+### AST-1734 · AST-1721 (qa-fix bug-repro — page scroll unlock)
+
+**Board REVISE:** root `.list-page` must use `height: auto` / `overflow: visible` (or free-flow shell) so `.content` scrolls; AST-1730 only asserts textarea inner scroll.
+
+| Area | Component tests |
+| --- | --- |
+| Page scroll unlock on root | `test_AdminTelescope.test.tsx` — **`AST-1734: root unlocks page scroll (list-page height auto / overflow visible)`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx
+```
+
+---
+
+### AST-1744 · AST-1721 (qa-fix bug-repro — Admin single Tag primary)
+
+**Board REVISE:** remove separate Selector; Tag is sole primary; Class always enabled (secondary).
+
+| Area | Component tests |
+| --- | --- |
+| No Selector; Class enabled with Tag | `test_AdminTelescope.test.tsx` — **`AST-1744: single Tag primary + Class always enabled; no Selector slot`** (**bug-repro**) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminTelescope.test.tsx -t 'AST-1744'
+```
+
+---
+
+### AST-1749 · AST-1741
+
+**Parent:** [AST-1741 — Add "Meteorites" to the Jobs navigation](https://linear.app/astralcareermatch/issue/AST-1741/add-meteorites-to-the-jobs-navigation). **Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`.
+
+Jobs → Meteorites routed page (`JobsMeteorites.tsx`): candidate-scoped list from AST-1748 APIs, empty honesty, candidate switch refetch, row → detail modal. Nav/route/config: **`docs/test-bible/utils/config.md`** § AST-1749. Modal: **`docs/test-bible/frontend/components.md`** § AST-1749. §6c page render required.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Page list / empty / candidate switch / modal open | `JobsMeteorites.tsx` | **`test_JobsMeteorites.test.tsx`** |
+| Route registration | `routes.tsx` | **`test_routes.test.tsx`** (`jobs/meteorites`) |
+
+**Broken / obsolete:** none — additive page + route.
+
+**Integration:** `test_candidate_nav_api.py` asserts In Review by path lookup — not an exhaustive Jobs item list; no revision. Do not invent new integration scenarios.
+
+## QA test manifest
+
+1. Page: `tests/component/frontend/pages/test_JobsMeteorites.test.tsx`
+2. Modal: `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx`
+3. Nav config: `tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav`
+4. Route: `tests/component/frontend/test_routes.test.tsx` (jobs/meteorites assert)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav \
+  -q
+```
+
+**Pass criterion:** Vitest + pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests`.

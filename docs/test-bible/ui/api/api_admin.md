@@ -736,3 +736,18 @@ Admin `state_options` exposes `meteorite` via `dispatch_entity_state_registry`; 
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/ui/api/api_admin.md` — *(filled after publish)*
+
+---
+
+### AST-1728 · AST-1721 (qa-fix bug-repro — admin Telescope API)
+
+**Board REVISE:** `POST /api/admin/telescope` + `admin_telescope_scrape` + nav Tools entry.
+
+| Area | Component tests |
+| --- | --- |
+| Route / helper / nav / page file | `tests/component/ui/api/test_api_admin_telescope.py::TestAst1728AdminTelescopeRepro` (**bug-repro**) |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin_telescope.py -q
+```

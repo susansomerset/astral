@@ -1,3 +1,84 @@
+<!-- linear-archive: AST-1598 archived 2026-09-22 -->
+
+## Linear archive (AST-1598)
+
+**Archived:** 2026-09-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1598/job-and-app-log-candidate-id-log-stamp-add-candidate-id-to-artifact  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1594 — Add candidate_id to artifact, app_log, and job  
+**Blocked by / blocks / related:** parent: AST-1594
+
+### Description
+
+## What this implements
+
+Adds required `candidate_id` to `job` and nullable `candidate_id` to `app_log`, backfills jobs from `company.candidate_id`, switches list/claim scope to `job.candidate_id` (fail loud if omitted), and wires logging to stamp `candidate_id` when the contextvar is set (NULL when unset). Does not rename artifact (sibling #1). After #1.
+
+## Citations
+
+`astral.standards.database-header-inventory`, `astral.standards.logging-via-utils`, `astral.standards.utils-data-late-import-only`, `astral.standards.data-raises-caller-logs`
+
+## Scope
+
+`src/data/database.py` (job + app_log schema/helpers); `src/utils/logging.py` (candidate contextvar + nullable stamp on DB flush).
+
+## Acceptance criteria
+
+- [X] `job.candidate_id` exists, is backfilled from `company.candidate_id`, and is the sole list/claim scope key (no company subquery for candidate scope); omitting `candidate_id` on those helpers fails loudly.
+- [X] `app_log.candidate_id` exists and is **nullable**; new rows stamp a candidate when the logging context has one and store NULL otherwise; missing candidate does not fail the logging caller.
+- [X] `database.py` header inventory documents `candidate_id` on `job` and `app_log` (this child's slice).
+
+## Boundaries
+
+- [X] Does not rename `artifacts` → `artifact` (sibling #1). Does not ship non-admin selected-candidate auto-filtering (separate ticket).
+
+## Notes for planning
+
+After sibling #1. Logging stamp mirrors `log_batch_id` contextvar shape.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1594`, child `sub/AST-1594/<this-id>-job-and-app-log-candidate-id`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-06T03:49:52.065Z
+[code-rubric] REVIEW (Commit: 8caa180d) fail-loud list breaks UI; stamp infra only
+
+#### betty — 2026-09-06T03:46:59.107Z
+`origin/sub/AST-1594/AST-1598-job-and-app-log-candidate-id` @ `8caa180d` · job cid tests ready
+
+#### hedy — 2026-09-06T03:44:21.684Z
+`origin/sub/AST-1594/AST-1598-job-and-app-log-candidate-id` @ `aff5678fac4fea8616c2fb9aed58be69b9cbf297` · job ensure guard
+
+#### betty — 2026-09-06T03:42:59.439Z
+Product bug blocking qa-child — `_ensure_job_schema` backfill (Stage 1) always runs:
+
+```sql
+UPDATE job SET candidate_id = (SELECT company.candidate_id FROM company …)
+WHERE candidate_id IS NULL OR TRIM(candidate_id) = ''
+```
+
+SQLite requires table `company` to exist for that subquery. Fresh DB / any caller that hits `_ensure_job_schema` before company DDL fails with `OperationalError: no such table: company` instead of documented paths.
+
+Repro on publish tip:
+- `get_job("missing")` → OperationalError (expected None)
+- `save_job("job-1", state="NEW")` → OperationalError (expected ValueError company required)
+- bare `_ensure_job_schema(conn)` on empty DB → same
+
+Holding **Code Complete**. Fix ensure (ensure company first, or skip/guard backfill when `company` missing / job empty), then re-queue Betty for test revisions (save_job ownership, list/claim fail-loud, app_log stamp). Not papering over in fixtures.
+
+#### joan — 2026-09-06T03:34:25.397Z
+[plan-rubric] PROCEED (Commit: d12ef119c0c9e92aeaa8d137698c775223152b7f) job log candidate scope
+
+#### hedy — 2026-09-06T03:23:07.122Z
+`origin/sub/AST-1594/AST-1598-job-and-app-log-candidate-id` @ `d12ef119c0c9e92aeaa8d137698c775223152b7f` · plan ready
+
+---
+
 # AST-1598 — job and app_log candidate_id + log stamp
 
 **Linear:** [AST-1598](https://linear.app/astralcareermatch/issue/AST-1598)

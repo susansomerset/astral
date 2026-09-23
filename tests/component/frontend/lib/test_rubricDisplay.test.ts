@@ -8,8 +8,10 @@ import {
   buildJobListRubricColumnsFromArtifact,
   confidenceDescription,
   formatGradeDotTooltip,
+  formatGradeDotTooltipWithVectorLabel,
   formatRubricColumnTooltip,
   formatRubricVectorHeader,
+  gradeRank,
   groupJobsByAlignedRubric,
   jobCarriedRubricKey,
   jobCarriedScoreKey,
@@ -20,6 +22,7 @@ import {
   resolveRubricHeaderCode,
   rubricItemImportance,
   sortJobListRubricColumns,
+  sortRubricColumnsByImportanceAndGrade,
 } from "../../../../src/ui/frontend/src/lib/rubricDisplay"
 
 describe("rubricItemImportance", () => {
@@ -76,11 +79,70 @@ describe("parseGradesVectorName", () => {
 describe("sortJobListRubricColumns", () => {
   it("orders by importance desc then code asc", () => {
     const cols = sortJobListRubricColumns([
-      { code: "B", label: "B", importance: 1, headerCode: "B", headerTooltip: "B (1)" },
-      { code: "A", label: "A", importance: 10, headerCode: "A", headerTooltip: "A (10)" },
-      { code: "C", label: "C", importance: 10, headerCode: "C", headerTooltip: "C (10)" },
+      { code: "B", label: "B", importance: 1, headerCode: "B", headerTooltip: "B (1)", gradeDescriptions: {} },
+      { code: "A", label: "A", importance: 10, headerCode: "A", headerTooltip: "A (10)", gradeDescriptions: {} },
+      { code: "C", label: "C", importance: 10, headerCode: "C", headerTooltip: "C (10)", gradeDescriptions: {} },
     ])
     expect(cols.map(c => c.code)).toEqual(["A", "C", "B"])
+  })
+})
+
+// AST-1771: Recommended-report sort (importance then letter grade); list helper stays importance+code.
+describe("AST-1771 importance+grade sort and vector-prefixed tooltips", () => {
+  const emptyDesc = { gradeDescriptions: {} as Record<string, string> }
+
+  it("gradeRank orders A before B before X", () => {
+    expect(gradeRank("A")).toBeLessThan(gradeRank("B"))
+    expect(gradeRank("B")).toBeLessThan(gradeRank("X"))
+    expect(gradeRank("a")).toBe(gradeRank("A"))
+    expect(gradeRank("")).toBe(99)
+  })
+
+  it("sortRubricColumnsByImportanceAndGrade orders QC/5/B before EFW/1/A when consult lists EFW first", () => {
+    const cols = [
+      {
+        code: "EFW",
+        label: "Embedded/Firmware/Hardware Domain",
+        importance: 1,
+        headerCode: "EFW",
+        headerTooltip: "Embedded/Firmware/Hardware Domain (1)",
+        ...emptyDesc,
+      },
+      {
+        code: "QC",
+        label: "Quality Check",
+        importance: 5,
+        headerCode: "QC",
+        headerTooltip: "Quality Check (5)",
+        ...emptyDesc,
+      },
+    ]
+    const grades: Record<string, string> = { EFW: "A", QC: "B" }
+    const sorted = sortRubricColumnsByImportanceAndGrade(cols, col => grades[col.code] ?? "")
+    expect(sorted.map(c => c.code)).toEqual(["QC", "EFW"])
+  })
+
+  it("sortRubricColumnsByImportanceAndGrade breaks importance ties by better letter grade", () => {
+    const cols = [
+      { code: "B1", label: "B one", importance: 5, headerCode: "B1", headerTooltip: "B one (5)", ...emptyDesc },
+      { code: "A1", label: "A one", importance: 5, headerCode: "A1", headerTooltip: "A one (5)", ...emptyDesc },
+    ]
+    const sorted = sortRubricColumnsByImportanceAndGrade(cols, col => (col.code === "A1" ? "A" : "B"))
+    expect(sorted.map(c => c.code)).toEqual(["A1", "B1"])
+  })
+
+  it("formatGradeDotTooltipWithVectorLabel prefixes label before rubric body", () => {
+    const col = {
+      code: "QC",
+      label: "Quality Check",
+      importance: 5,
+      headerCode: "QC",
+      headerTooltip: "Quality Check (5)",
+      gradeDescriptions: { B: "ok rubric" },
+    }
+    const title = formatGradeDotTooltipWithVectorLabel(col, "B", "ok", 4)
+    expect(title.startsWith("Quality Check:")).toBe(true)
+    expect(title).toContain("ok")
   })
 })
 

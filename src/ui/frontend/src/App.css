@@ -2089,7 +2089,7 @@ input.side-tab-heading-editable:focus {
 .batch-cost-label { font-weight: 600; color: var(--text-primary); margin-right: 4px; }
 .batch-cost-total { font-weight: 600; color: var(--accent-gold); margin-left: auto; }
 
-/* Wrapper fills the modal-body (wide modal removes padding + sets overflow:hidden) */
+/* Wrapper fills the modal-body (wide modal removes padding; nested owners use height:100%) */
 .batch-agent-data-wrapper {
   display: flex;
   flex-direction: column;
@@ -2154,11 +2154,14 @@ input.side-tab-heading-editable:focus {
   max-height: 90vh;
 }
 
-/* Make modal-body fill remaining height for wide modals so SideTabPanel can stretch */
+/* Wide body fills remaining height; shell scrolls tall direct children.
+   Nested owners that set height:100% still fill the body and keep their
+   own overflow — they do not grow the body's scrollHeight. */
 .modal-card--wide .modal-body {
   flex: 1;
-  overflow: hidden;
-  padding: 0;
+  min-height: 0;       /* required so the flex child can shrink and scroll */
+  overflow-y: auto;    /* was: overflow: hidden — that clipped direct children */
+  padding: 0;          /* keep edge-to-edge for SideTabPanel / email-html */
 }
 
 /* AST-1040: Gmail HTML source fills wide modal; scroll inside the pre */

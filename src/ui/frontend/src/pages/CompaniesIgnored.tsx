@@ -12,7 +12,7 @@ interface Company {
   company_name: string
   state: string
   prefilter_company_notes: string
-  state_updated_at: string | null
+  state_changed_at: string | null
   state_history: Array<{ to_state?: string; timestamp?: string }>
   [key: string]: unknown
 }

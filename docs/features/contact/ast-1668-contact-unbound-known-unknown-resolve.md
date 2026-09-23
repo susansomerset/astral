@@ -271,3 +271,72 @@ context_tokens≈48000
 ```
 
 context_tokens≈58000
+
+## Bug: AST-1738 — Manage Candidates Slack username dropdown shows no users
+
+### As-is
+
+On Manage Candidates add/edit, the Slack username dropdown opens with no selectable users (only the empty/none option), so admins cannot bind a known Slack identity onto a candidate.
+
+### To-be
+
+The unbound list that feeds the dropdown includes workspace members/guests who are not already bound on a non-deleted candidate, so the Slack username `<select>` shows those people for binding.
+
+### Repro
+
+1. Admin opens Manage Candidates → Add Candidate (or Edit).
+2. Open the **Slack username** dropdown.
+3. Observe: no workspace users listed (cannot assign a known Slack user to the candidate).
+4. Optional API check: `GET /api/admin/contact/unbound_slack_users` returns `{"users": []}` (or omits the people visible in the Slack workspace directory) while human members/guests exist who are not on any candidate's `contact.slack_user_id`.
+
+### Root cause
+
+`list_unbound_slack_users` builds the bind pool exclusively from `list_workspace_posters()` (Slack message authors the bot can read across conversations). That set is empty or near-empty in UAT for the Astral workspace (bot visibility / no scannable history), so the admin GET returns `users: []`. Manage Candidates (`AdminManageCandidates.tsx`) correctly renders whatever the GET returns — the empty dropdown is not a missing `<option>` wiring bug. Parent AST-1636 originally required a poster-derived pool; UAT to-be revises the **bind** pool to workspace members/guests (not already on a candidate).
+
+### Proposed change
+
+⚠️ **Decision — UAT revises bind-pool source:** For Manage Candidates bind only, stop using message-author posters as the unbound source. Use paginated Slack `users.list` humans (members/guests), excluding bots and deleted users, then subtract ids already on non-deleted candidates via `get_candidate_id_for_query`. Leave `list_workspace_posters()` implemented and exported (AST-1667) but **do not** call it from `list_unbound_slack_users`. This supersedes parent AC 10 / Technical-scope “not users.list alone as has posted” **for the unbound bind list only**; resolve / recognition / poster helper body stay as shipped.
+
+1. In `src/external/slack.py`:
+   - Add public **`list_workspace_members() -> list[dict]`** returning `[{"slack_user_id": str, "username": str}, …]`.
+   - Gate once with `require_controlled_external_io("slack.list_workspace_members")`.
+   - Paginate bot-token `users.list` (`limit=200`, cursor until empty) via the existing private `_slack_bot_get` (or the same GET pattern poster helpers use).
+   - For each user dict: skip if `is_bot` or `deleted`; else append `slack_user_id` = `id` (non-empty str), `username` = `str(user.get("name") or "").strip()`.
+   - Sort by `(username.lower(), slack_user_id)` for stable dropdown order (same as posters).
+   - On `ok:false` / HTTP failure: **raise** (same hard-fail style as `_enrich_posters` / `list_workspace_posters`) — do not log-and-re-raise; callers/API log per `stat.logging.error`.
+   - `logger.debug` joints per `stat.logging.debug`: Calling / Response on the public entry; Beginning/End on the users.list pagination loop with counts; no truncate; no `if debug` gate at call sites.
+   - Add `"list_workspace_members"` to `__all__`; mention it in the module docstring next to the poster helper.
+   - Do **not** change `list_workspace_posters` behavior in this bug.
+
+2. In `src/core/contact.py` **`list_unbound_slack_users`**:
+   - Import and call `list_workspace_members` instead of `list_workspace_posters`.
+   - Keep the same bind filter: drop rows whose `slack_user_id` matches `get_candidate_id_for_query(..., debug=debug)`.
+   - Keep return shape `[{"slack_user_id", "username"}, …]` and preserve member-list order after filter.
+   - Update docstring + debug callee names/strings to members (not posters).
+   - Propagate exceptions to `api_contact` (no catch-and-re-raise).
+
+3. Do **not** change `src/ui/api/api_contact.py` route path, auth, or JSON envelope (`{"users": …}`) unless a compile touch is forced by import rename (none expected).
+4. Do **not** change `AdminManageCandidates.tsx` for this bug — it already loads the GET and labels by `username`. Optional comment-only cleanup (“posters” → “members”) is out of scope unless make-fix is already touching that file for another reason.
+
+### Blast radius
+
+- Sibling AST-1669 dropdown UI: unchanged contract shape; options will populate once GET returns members.
+- Sibling AST-1667 `list_workspace_posters`: remains; unbound path stops calling it.
+- Betty component tests that stub `list_workspace_posters` for unbound / assume empty-poster ⇒ empty unbound will need revise to stub `list_workspace_members` (fix-board / qa-fix).
+- Parent AST-1636 AC 9–10 (poster pool / not users.list alone): bind-pool product meaning changes under this UAT bug; poster helper AC for AST-1667 stays.
+- `resolve_slack_user` / recognition replies / hear-ack: untouched.
+
+### What must still hold
+
+- Unbound GET remains `@require_admin`; idempotent GET still emits no progress `info` (`stat.logging.info.api`).
+- Bots and deleted Slack users never appear in the unbound list.
+- Slack user ids already on a non-deleted candidate's `contact.slack_user_id` stay omitted (AST-1668 AC 4–5).
+- After bind, that user disappears from a subsequent unbound GET (AST-1669 still stamps both contact fields).
+- No Slack Web API URLs/tokens from React (parent AC 7).
+- Lookup-only resolve + known/unknown recognition (AST-1668 AC 1–3) unchanged.
+
+## Bug AST-1738 — Radia review (clean)
+
+**Publish tip:** `60c2c4f2` on `origin/sub/AST-1636/AST-1738-manage-candidates-slack-dropdown-empty`
+**Overall:** CLEAN — unbound pool uses `list_workspace_members` (users.list members/guests), not posters; `[bug-repro]` OK; What must still hold OK.
+

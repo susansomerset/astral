@@ -568,12 +568,14 @@ class TestBuildStateUiManifest:
             "analysis",
             "artifacts",
             "discussion",
+            "meteorite",
         ]
         assert [t["nav_label"] for t in rec["report_top_tabs"]] == [
             "Summary",
             "Analysis",
             "Artifacts",
             "Discussion",
+            "Meteorite",
         ]
         assert [s["section_id"] for s in rec["report_summary_sections"]] == [
             "job_summary",
@@ -1268,8 +1270,25 @@ class TestAst707EmbeddedPrefilterConfig:
         assert rc["code"] == "RC"
         assert rc["label"] == "Reality Check"
         assert rc["importance"] == 8
-        grades = {g["grade"] for g in rc["grade_descriptions"]}
-        assert grades == {"A", "B", "C", "D", "E", "F"}
+        assert rc["content"] == (
+            "Reality Check — assess whether the company is real and operating as represented.\n"
+            "A == clearly real and verifiable\n"
+            "B == appears real with minor gaps\n"
+            "C == mixed signals; legitimacy uncertain\n"
+            "D == significant doubt about reality or representation\n"
+            "E == strong evidence of misrepresentation\n"
+            "F == not a real company or clearly fraudulent\n"
+            "X == could not read the page (bot blocked or other network issue)"
+        )
+        by_grade = {g["grade"]: g["description"] for g in rc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "D", "E", "F", "X"]
+        assert by_grade["A"] == "clearly real and verifiable"
+        assert by_grade["B"] == "appears real with minor gaps"
+        assert by_grade["C"] == "mixed signals; legitimacy uncertain"
+        assert by_grade["D"] == "significant doubt about reality or representation"
+        assert by_grade["E"] == "strong evidence of misrepresentation"
+        assert by_grade["F"] == "not a real company or clearly fraudulent"
+        assert by_grade["X"] == "could not read the page (bot blocked or other network issue)"
 
 
 class TestAst721ParseJobListConfig:
@@ -1466,13 +1485,27 @@ class TestAst854FetchWebsiteRetryConfig:
 
 
 class TestAst853PlaywrightConfig:
-    """AST-853: PLAYWRIGHT_CONFIG launch/recovery/scrape limits."""
+    """AST-853 scrape timeout + AST-1726 trimmed PLAYWRIGHT_CONFIG (no Firefox launch keys)."""
 
     def test_playwright_config_keys(self) -> None:
-        assert cfg.PLAYWRIGHT_CONFIG["launch_max_attempts"] == 3
         assert cfg.PLAYWRIGHT_CONFIG["context_recovery_max_attempts"] == 2
         assert cfg.PLAYWRIGHT_CONFIG["company_scrape_timeout_seconds"] == 120
-        assert cfg.PLAYWRIGHT_CONFIG["firefox_user_prefs"]["security.sandbox.content.level"] == 0
+        assert "launch_max_attempts" not in cfg.PLAYWRIGHT_CONFIG
+        assert "firefox_user_prefs" not in cfg.PLAYWRIGHT_CONFIG
+
+
+class TestAst1726TelescopeConfig:
+    """AST-1726: TELESCOPE_CONFIG HTTP client knobs + cull default on."""
+
+    def test_telescope_config_keys(self) -> None:
+        assert cfg.TELESCOPE_CONFIG["bearer_env"] == "TELESCOPE_BEARER_TOKEN"
+        assert cfg.TELESCOPE_CONFIG["client_timeout_seconds"] == 60
+        assert cfg.TELESCOPE_CONFIG["max_in_flight"] == 15
+        assert cfg.TELESCOPE_CONFIG["cull_html_default"] is True
+        assert cfg.TELESCOPE_CONFIG["default_expand"] is True
+        assert cfg.TELESCOPE_CONFIG["default_wait_ready"] is False
+        assert cfg.TELESCOPE_CONFIG["telescope_path"] == "/telescope"
+        assert "playwright_browsers_path" not in cfg.RAILWAY_CONFIG
 
 
 class TestAst507EncodedPrefilterConfig:
@@ -4093,7 +4126,7 @@ class TestAst1088GazeEmailConfig:
         assert not hasattr(cfg, "GAZE_EMAIL_CONFIG")
         assert "gaze_email" not in cfg.TASK_CONFIG
         g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
-        assert g["task_key"] == "meteorite_email"
+        assert g["task_key"] == "stage_email_meteorite"
         assert g["account_address"] == "astral.career.match@gmail.com"
         assert "unbound_retention_days" not in g
         assert g["auto_mode"] is False
@@ -4106,7 +4139,7 @@ class TestAst1088GazeEmailConfig:
 
     def test_admin_defaults_null_claim_queue(self) -> None:
         # Mailbox admin defaults via meteorite fold / is_meteorite_email_mailbox_task_key.
-        d = cfg.dispatch_task_admin_defaults("meteorite_email")
+        d = cfg.dispatch_task_admin_defaults("stage_email_meteorite")
         assert d["entity_type"] is None
         assert d["trigger_state"] is None
         assert d["batch_call_mode"] == 0
@@ -4159,9 +4192,9 @@ class TestAst1090GazeEmailRunnerConfig:
     def test_runner_literals(self) -> None:
         g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
         assert set(g["subject_url_schemes"]) == {"http", "https"}
-        assert g["debug_func"] == "meteorite.check_inbox"
+        assert g["debug_func"] == "inbox.check_email"
         assert "dispatch_ledger_candidate_id" not in g
-        assert g["task_key"] == "meteorite_email"
+        assert g["task_key"] == "stage_email_meteorite"
         assert "unbound_retention_days" not in g
         assert "debug_func_selected" not in g
 
@@ -4180,7 +4213,7 @@ class TestAst1140GazeEmailSelectedConfig:
         assert g["selected_outcome_skipped_unbound"] == "skipped-unbound"
         assert g["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
         assert g["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
-        assert g["debug_func"] == "meteorite.check_inbox"
+        assert g["debug_func"] == "inbox.check_email"
 
 
 # Branches: STAGE_METEORITE_CONFIG + stage_meteorite TASK_CONFIG; PARSE fold stub (AST-1529).
@@ -4215,15 +4248,15 @@ class TestAst1529StageMeteoriteConfig:
 
         # Fold stub only — parse_modes Ruth classify retired.
         parse_cfg = cfg.METEORITE_EMAIL_PARSE_CONFIG
-        assert parse_cfg["task_key"] == "meteorite_email"
+        assert parse_cfg["task_key"] == "stage_email_meteorite"
         assert "parse_modes" not in parse_cfg
         assert parse_cfg["legacy_agent_task_key"] == "parse_meteorite_email"
         assert parse_cfg["admin_entity_type"] == "candidate"
         assert cfg.is_meteorite_email_mailbox_task_key("parse_meteorite_email")
-        assert cfg.is_meteorite_email_mailbox_task_key("meteorite_email")
+        assert cfg.is_meteorite_email_mailbox_task_key("stage_email_meteorite")
         assert "parse_meteorite_email" not in cfg.TASK_CONFIG
         assert "meteorite_email" not in cfg.TASK_CONFIG
-        assert cfg.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
+        assert cfg.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "stage_email_meteorite"
 
         tc = cfg.TASK_CONFIG["stage_meteorite"]
         assert tc["scored"] is False
@@ -5033,7 +5066,7 @@ class TestAst1214DispatchAdminDefaultsWidened:
         }
         assert cfg.dispatch_task_admin_defaults("parse_meteorite_email") == mailbox
         # AST-1529+: live meteorite_email is mailbox poller — admin defaults leave entity_type unset.
-        assert cfg.dispatch_task_admin_defaults("meteorite_email") == {
+        assert cfg.dispatch_task_admin_defaults("stage_email_meteorite") == {
             "entity_type": None,
             "trigger_state": None,
             "sort_by": None,
@@ -5182,7 +5215,7 @@ class TestAst1559MonitoringConfig:
 
     def test_mailbox_runner_debug_func_repointed(self) -> None:
         g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
-        assert g["debug_func"] == "meteorite.check_inbox"
+        assert g["debug_func"] == "inbox.check_email"
 
 
 class TestAst1365IdealDayLibraryToken:
@@ -5403,6 +5436,26 @@ class TestAst1495MeteoriteCompaniesNav:
         )
         assert meteorite.get("label") == "Meteorite"
 
+
+class TestAst1749JobsMeteoritesNav:
+    """AST-1749: Jobs → Meteorites nav; Companies → Meteorite untouched."""
+
+    def test_jobs_meteorites_nav_enabled(self) -> None:
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        item = next(it for it in jobs["items"] if it.get("path") == "/jobs/meteorites")
+        assert item.get("label") == "Meteorites"
+        assert item.get("enabled") is not False
+        labels = [it.get("label") for it in jobs["items"]]
+        assert labels.index("Meteorites") > labels.index("Applied")
+        assert labels.index("Meteorites") < labels.index("Responded")
+
+    def test_companies_meteorite_still_present(self) -> None:
+        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
+        meteorite = next(
+            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
+        )
+        assert meteorite.get("label") == "Meteorite"
+
 class TestAst1534AdhocImportConfigKeys:
     """AST-1534: UI_CONFIG import-list cap + picker visible-row literals."""
 
@@ -5421,8 +5474,10 @@ class TestAst1550DiscussionHopKeys:
             "analysis",
             "artifacts",
             "discussion",
+            "meteorite",
         ]
-        assert tabs[-1]["nav_label"] == "Discussion"
+        assert tabs[-2]["nav_label"] == "Discussion"
+        assert tabs[-1]["nav_label"] == "Meteorite"
 
     def test_hop_walk_follows_run_next(
         self, monkeypatch: pytest.MonkeyPatch,
@@ -5483,14 +5538,40 @@ class TestAst1550DiscussionHopKeys:
             cfg.build_artifacts_discussion_hop_task_keys()
 
 
+class TestAst1691MeteoriteReportConfig:
+    """AST-1691: Meteorite top tab + JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS."""
+
+    def test_meteorite_tab_after_discussion(self) -> None:
+        tabs = cfg.JOBS_RECOMMENDED_REPORT_TOP_TABS
+        assert tabs[-1] == {"tab_id": "meteorite", "nav_label": "Meteorite"}
+        assert tabs[-2]["tab_id"] == "discussion"
+
+    def test_meteorite_sections_order_and_expanded(self) -> None:
+        sections = cfg.JOBS_RECOMMENDED_REPORT_METEORITE_SECTIONS
+        assert [s["section_id"] for s in sections] == [
+            "meteorite_timestamps", "meteorite_link", "meteorite_ai", "meteorite_provenance",
+        ]
+        assert [s["nav_label"] for s in sections] == [
+            "Timestamps", "Link", "AI Content", "Provenance",
+        ]
+        assert [s["default_expanded"] for s in sections] == [True, True, True, False]
+
+
 class TestAst1557MeteoriteStates:
     """AST-1557: METEORITE_STATES staging registry + retention partitions (not JOB_STATES)."""
 
     def test_seven_keys_and_new_entry(self) -> None:
+        # AST-1773: CHECK_UNIQUE + DUPLICATE join the closed set; READY priors via uniqueness hop.
         assert set(cfg.METEORITE_STATES) == {
-            "NEW", "SCRAPE_LINK", "READY", "BOT_BLOCKED", "ERROR", "LANDED", "ABANDONED",
+            "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
         }
-        assert cfg.METEORITE_STATES["NEW"]["prior_states"] is None
+        assert "ERROR" not in cfg.METEORITE_STATES
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+        assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["CHECK_UNIQUE"]["prior_states"] == ["NEW", "SCRAPE_LINK"]
+        assert cfg.METEORITE_STATES["DUPLICATE"]["prior_states"] == ["CHECK_UNIQUE"]
+        assert cfg.METEORITE_STATES["READY"]["prior_states"] == ["CHECK_UNIQUE", "BOT_BLOCKED"]
         assert all("prior_states" in entry for entry in cfg.METEORITE_STATES.values())
 
     def test_distinct_from_job_states_meteorite_labels(self) -> None:
@@ -5502,8 +5583,8 @@ class TestAst1557MeteoriteStates:
     def test_retention_partitions(self) -> None:
         purge = set(cfg.METEORITE_STATES_RETENTION["purge_states"])
         stale = set(cfg.METEORITE_STATES_RETENTION["stale_list_states"])
-        assert purge == {"LANDED"}
-        assert stale == {"ERROR", "BOT_BLOCKED", "ABANDONED"}
+        assert purge == {"LANDED", "NOT_A_JOB"}
+        assert stale == {"SCRAPE_ERROR", "BOT_BLOCKED", "ABANDONED"}
         assert purge.isdisjoint(stale)
         assert purge | stale <= set(cfg.METEORITE_STATES)
 
@@ -5525,17 +5606,31 @@ class TestAst1560IngressDispatchConfig:
         assert ingress["stage_task_key"] == "stage_meteorite"
         assert ingress["scrape_task_key"] == "scrape_meteorite"
         assert ingress["land_task_key"] == "land_meteorite"
+        # AST-1773: uniqueness hop between scrape success and land.
+        assert ingress["check_unique_task_key"] == "check_unique_meteorite"
         assert ingress["stage_task_key"] == cfg.STAGE_METEORITE_CONFIG["task_key"]
         assert ingress["stage_trigger_state"] == "NEW"
         assert ingress["scrape_trigger_state"] == "SCRAPE_LINK"
+        assert ingress["check_unique_trigger_state"] == "CHECK_UNIQUE"
         assert ingress["land_trigger_state"] == "READY"
-        for tr in ("stage_trigger_state", "scrape_trigger_state", "land_trigger_state"):
+        for tr in (
+            "stage_trigger_state",
+            "scrape_trigger_state",
+            "check_unique_trigger_state",
+            "land_trigger_state",
+        ):
             assert ingress[tr] in cfg.METEORITE_STATES
         assert set(ingress["scrape_page_status_states"].values()) <= {
-            "READY",
+            "CHECK_UNIQUE",
             "BOT_BLOCKED",
-            "ERROR",
+            "SCRAPE_ERROR",
+            "LINK_EXPIRED",
         }
+        page = ingress["scrape_page_status_states"]
+        assert page["closed"] == "LINK_EXPIRED"
+        assert page["missing"] == "LINK_EXPIRED"
+        assert page["blocked"] == "BOT_BLOCKED"
+        assert page["ok"] == "CHECK_UNIQUE"
 
     def test_seed_catalog_has_ingress_dispatch_rows(self) -> None:
         assert "dispatch_task-meteorite-ingress" in cfg.SEED_CONFIG
@@ -5544,6 +5639,8 @@ class TestAst1560IngressDispatchConfig:
         assert "stage_meteorite" in blob
         assert "scrape_meteorite" in blob
         assert "land_meteorite" in blob
+        assert "check_unique_meteorite" in blob
+        assert "CHECK_UNIQUE" in blob
 
 
 class TestAst1561BotBlockedNotifyConfig:
@@ -5577,16 +5674,16 @@ class TestAst1562RetentionConfig:
         assert retention["batch_size"] >= 1
         assert "stale_list_line" not in retention
         assert "debug_func" not in retention
-        assert set(cfg.METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED"}
+        assert set(cfg.METEORITE_STATES_RETENTION["purge_states"]) == {"LANDED", "NOT_A_JOB"}
         assert set(cfg.METEORITE_STATES_RETENTION["stale_list_states"]) == {
-            "ERROR",
+            "SCRAPE_ERROR",
             "BOT_BLOCKED",
             "ABANDONED",
         }
 
     def test_mailbox_config_retired_selected_and_unbound_literals(self) -> None:
         m = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
-        assert m["debug_func"] == "meteorite.check_inbox"
+        assert m["debug_func"] == "inbox.check_email"
         for key in (
             "unbound_retention_days",
             "debug_func_selected",
@@ -6351,16 +6448,22 @@ class TestAst1621MeteoriteEntityTypeRegistry:
         ingress_blob = ingress if isinstance(ingress, str) else "\n".join(ingress)
         assert ", 'stage_meteorite', 'meteorite', 'NEW'" in ingress_blob
         assert ", 'scrape_meteorite', 'meteorite', 'SCRAPE_LINK'" in ingress_blob
+        assert ", 'check_unique_meteorite', 'meteorite', 'CHECK_UNIQUE'" in ingress_blob
         assert ", 'land_meteorite', 'meteorite', 'READY'" in ingress_blob
         # Fail shape from AC3 — NULL still in entity_type column for these keys.
         assert ", 'stage_meteorite', NULL," not in ingress_blob
         assert ", 'scrape_meteorite', NULL," not in ingress_blob
+        assert ", 'check_unique_meteorite', NULL," not in ingress_blob
         assert ", 'land_meteorite', NULL," not in ingress_blob
 
         notify = cfg.SEED_CONFIG["dispatch_task-meteorite-bot-blocked-notify"]
         notify_blob = notify if isinstance(notify, str) else "\n".join(notify)
         assert ", 'meteorite_bot_blocked_notify', 'meteorite', 'BOT_BLOCKED'" in notify_blob
         assert ", 'meteorite_bot_blocked_notify', NULL," not in notify_blob
+
+        retire = cfg.SEED_CONFIG["dispatch_task-meteorite-ingress-retire-null-pool"]
+        retire_blob = retire if isinstance(retire, str) else "\n".join(retire)
+        assert "check_unique_meteorite" in retire_blob
 
     def test_retention_seed_stays_null_entity_type(self) -> None:
         # Boundary: retention remains non-claim (NULL entity_type + NULL trigger).
@@ -6599,3 +6702,85 @@ class TestAst1701SourceEntityTypes:
         assert "{" not in cfg.JOB_LINK_BREADCRUMB_FORMAT.replace("{from_email}", "").replace(
             "{clock}", ""
         ).replace("{to_email}", "")
+
+class TestAst1712MailboxKeyAndClassifyStates:
+    """AST-1712: stage_email_meteorite mailbox key + classify-state registry."""
+
+    def test_mailbox_key_and_runner(self) -> None:
+        assert cfg.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "stage_email_meteorite"
+        assert cfg.METEORITE_EMAIL_PARSE_CONFIG["task_key"] == "stage_email_meteorite"
+        assert cfg.METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "inbox.check_email"
+        assert cfg.is_meteorite_email_mailbox_task_key("stage_email_meteorite")
+        assert cfg.is_meteorite_email_mailbox_task_key("parse_meteorite_email")
+        assert not cfg.is_meteorite_email_mailbox_task_key("meteorite_email")
+        assert "stage_email_meteorite" not in cfg.TASK_CONFIG
+        assert "meteorite_email" not in cfg.TASK_CONFIG
+        assert cfg.dispatch_task_admin_defaults("stage_email_meteorite") == {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+
+    def test_classify_states_and_no_dispatch_triggers(self) -> None:
+        # AST-1773: closed set includes CHECK_UNIQUE / DUPLICATE; scrape ok → CHECK_UNIQUE.
+        assert set(cfg.METEORITE_STATES) == {
+            "NEW", "SCRAPE_LINK", "CHECK_UNIQUE", "READY", "BOT_BLOCKED", "SCRAPE_ERROR",
+            "LINK_EXPIRED", "NOT_A_JOB", "NEW_EMAIL_ERROR", "DUPLICATE", "LANDED", "ABANDONED",
+        }
+        assert "ERROR" not in cfg.METEORITE_STATES
+        assert cfg.METEORITE_STATES["NEW"]["prior_states"] == ["NEW_EMAIL_ERROR"]
+        assert cfg.METEORITE_STATES["NOT_A_JOB"]["prior_states"] is None
+        assert cfg.METEORITE_STATES["NEW_EMAIL_ERROR"]["prior_states"] is None
+        assert cfg.METEORITE_STATES["SCRAPE_LINK"]["prior_states"] == ["NEW", "SCRAPE_ERROR"]
+        assert cfg.METEORITE_STATES["LINK_EXPIRED"]["prior_states"] == ["SCRAPE_LINK"]
+        page = cfg.METEORITE_INGRESS_DISPATCH_CONFIG["scrape_page_status_states"]
+        assert page["closed"] == "LINK_EXPIRED"
+        assert page["missing"] == "LINK_EXPIRED"
+        assert page["ok"] == "CHECK_UNIQUE"
+        forbidden = {"NEW_EMAIL_ERROR", "NOT_A_JOB"}
+        for entry in cfg.METEORITE_DISPATCH_TASKS:
+            assert entry.get("trigger_state") not in forbidden
+        ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
+        for key in (
+            "stage_trigger_state",
+            "scrape_trigger_state",
+            "check_unique_trigger_state",
+            "land_trigger_state",
+        ):
+            assert ingress[key] not in forbidden
+        assert cfg.METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["trigger_state"] not in forbidden
+
+
+class TestAst1773CheckUniqueRegistryAndCatalogs:
+    """AST-1773: CHECK_UNIQUE/DUPLICATE registry, ingress retarget, review_duplicate, employer_name."""
+
+    def test_dispatch_helpers_for_check_unique(self) -> None:
+        assert cfg._dispatch_trigger_state_for_task_key("check_unique_meteorite") == "CHECK_UNIQUE"
+        assert cfg._dispatch_entity_type_for_task_key("check_unique_meteorite") == "meteorite"
+        ingress = cfg.METEORITE_INGRESS_DISPATCH_CONFIG
+        assert ingress["land_trigger_state"] == "READY"
+        assert ingress["scrape_page_status_states"]["ok"] == "CHECK_UNIQUE"
+        # Landable gate: DUPLICATE / CHECK_UNIQUE are not land triggers.
+        assert ingress["land_trigger_state"] not in ("DUPLICATE", "CHECK_UNIQUE")
+
+    def test_stage_employer_name_optional_no_company_name(self) -> None:
+        items = cfg.TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert items["employer_name"]["required"] is False
+        assert "company_name" not in items
+        # Row-state names stay out of Ruth classify outcomes (exactly six).
+        assert len(cfg.STAGE_METEORITE_CONFIG["outcomes"]) == 6
+        assert "CHECK_UNIQUE" not in cfg.STAGE_METEORITE_CONFIG["outcomes"]
+        assert "DUPLICATE" not in cfg.STAGE_METEORITE_CONFIG["outcomes"]
+
+    def test_review_duplicate_meteorite_config_and_task(self) -> None:
+        rev = cfg.REVIEW_DUPLICATE_METEORITE_CONFIG
+        assert rev["task_key"] == "review_duplicate_meteorite"
+        assert rev["outcomes"] == ("duplicate", "not_duplicate")
+        assert rev["peer_id_response_key"] == "peer_meteorite_id"
+        tc = cfg.TASK_CONFIG["review_duplicate_meteorite"]
+        assert tc["agent_task"] == rev["task_key"]
+        assert tc["response_schema"]["outcome"]["enum"] == list(rev["outcomes"])
+        assert rev["peer_id_response_key"] in tc["response_schema"]
+        assert tc["response_schema"]["peer_meteorite_id"]["required"] is False
+        assert tc["context_format"] == "review_duplicate_meteorite_{index}"

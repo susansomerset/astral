@@ -30,7 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 from src.data.database import list_companies
 from src.core.roster import save_company_data
 from src.core.agent import do_task
-from src.external.playwright import create_browser_context, get_visible_text, extract_site_page_list
+from src.external.telescope import create_browser_context, get_visible_text, extract_site_page_list
 from src.utils.formatting import enumerate_array
 
 # States to skip — not worth scraping
