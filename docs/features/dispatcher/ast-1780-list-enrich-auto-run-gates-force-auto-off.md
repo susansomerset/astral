@@ -219,3 +219,87 @@ context_tokens≈24000
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1–2 | `40e999ba` | `empty_render` list enrich + force AUTO off; create/update/run gates |
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1780
+**Publish ref:** acb25c8295999a3ea13873d2c7828b80c7a341c8
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.dispatch.entity-state-bound | A | | |
+| stat.logging.info.api | A | | |
+| stat.logging.warning | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded all four ids **A** at validate-plan; code review agrees on every row.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Operative artifact token view vs sibling #3 revalidation
+
+- **Severity:** discuss
+- **Location:** `src/ui/api/api_admin.py::_evaluate_dispatch_empty_render` — `build_candidate_token_view(cand)` only
+- **Finding:** List enrichment / gates score tokens from the library candidate view without operative-current overlay. AST-1781 revalidation hooks use `database._token_view_for_empty_render` + `get_current_artifact` overlay. Same candidate row can yield different `empty_render` on list poll vs post–artifact-rotate revalidation until library pins catch up.
+- **Recommendation:** Epic awareness for UAT — not a plan violation (Stage 1 step 4 names `build_candidate_token_view` literally). If operators report list/gate vs hook mismatch on artifact-backed tokens, consider sharing the operative overlay or hydrating before eval in a follow-up; no resolve-child work required unless UAT surfaces it.
+
+### discuss — AC4 partition across siblings (Joan raised at plan)
+
+- **Severity:** discuss
+- **Location:** Child AC 4 / `## Traceability`
+- **Finding:** AC wording covers list enrichment and revalidation; this ticket implements only the list-enrichment force-off path. AST-1781 owns version-hook revalidation (implemented separately in `database.py`, not by importing these api_admin helpers).
+- **Recommendation:** Acceptable split — ensure epic UAT exercises both paths; no AST-1780 code change on this tip.
+
+### discuss — Canon Scope gap (do not score; Joan raised at plan)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs plan footprint
+- **Finding:** `astral.standards.in-scope-only` plainly governs a single-file API slice but is absent from the frozen four-id list. Plan scope gate + implementation honor it (`api_admin.py` only for product logic).
+- **Recommendation:** Archie may amend Canon Scope for Radia comparability; no plan defect.
+
+### discuss — Epic rollup files on sub tip (not AST-1780 product scope)
+
+- **Severity:** discuss
+- **Location:** Full branch diff vs `origin/dev` also includes `src/utils/config.py` + tests (AST-1779), `src/data/database.py` + `src/core/candidate.py` + tests (AST-1781), AST-1769 bug-repro spill
+- **Finding:** AST-1780 product footprint is confined to `api_admin.py`, `test_api_admin.py`, and bible (~323 lines). Integration-line merge of sibling #1 helper is expected dependency.
+- **Recommendation:** Chuckles/merge-child hygiene before ftr rollup — not a canon violation for AST-1780 implementation quality.
+
+### advisory — Component tests mock eval path
+
+- **Severity:** advisory
+- **Location:** `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff`
+- **Finding:** List and gate tests monkeypatch `_evaluate_dispatch_empty_render` / `_candidate_dispatch_empty_render_error` rather than exercising real `empty_render_for_prompts` + agent_task prompts + candidate data. Wiring and HTTP shapes are verified; token-resolution integration is delegated to AST-1779 tests.
+- **Recommendation:** Acceptable for component tier per manifest; optional follow-up integration scenario only if bible tier demands it.
+
+### advisory — No explicit AC5 job-token-alone list test
+
+- **Severity:** advisory
+- **Location:** QA manifest / `TestAst1780EmptyRenderListGatesForceOff`
+- **Finding:** AC5 (job tokens alone must not disable AUTO/Run) is enforced by `entity_contexts=None` in `_evaluate_dispatch_empty_render` but has no dedicated list/gate test analogous to AST-1779/1781 `VISIBLE_JD` cases.
+- **Recommendation:** Low risk given helper contract; optional advisory test in resolve-child if Susan wants belt-and-suspenders.
+
+## What's solid
+
+- Stage 1: `_dispatch_empty_render_prompt_texts` matches plan order and omits unused agent `content` when task `system_prompt` is non-empty; `_evaluate_dispatch_empty_render` fail-closed with per-miss `logger.warning` and `logger.exception` only on unexpected throws; `list_dtasks` sets `empty_render`, persists `auto_mode=0`, updates JSON row, warns per forced-off row; no GET `logger.info`.
+- Stage 2: create/update AUTO-on gates and `run_dtask` 400 with `started: false` mirror `_candidate_dispatch_api_key_error` shape; API-key check still runs first; clean empty-render reject has no extra warning spam.
+- Revised manifest tests (`test_scheduler_and_run_controls`, create/update AUTO success) updated to stub `_candidate_dispatch_empty_render_error` → `None`.
+- Estimate **5** fits single-file API slice + six new tests + bible.
+- Scope gate honored: no edits to `config.py`, `database.py`, `candidate.py`, or React.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append this verdict to `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md` and push `docs(AST-1780): Radia review — clean` on `origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off`.
+2. Post slim upshot via `linear_proxy --as radia save-comment`.
+3. Move to **Review Posted**; datt routes PROCEED per §3h.
+4. Track operative-view divergence (discuss) during epic UAT alongside AST-1781 — escalate only if operators see list/gate vs hook mismatch on artifact-backed tokens.
