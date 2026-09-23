@@ -74,3 +74,46 @@ No other files. Do not edit `api_admin.py`, `config.py`, `database.py`, `candida
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1782
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `ff280dda6d25e945c25e78291b29244a66df74ac`
+
+## Canon scores
+
+| slug | grade | effort | note |
+|------|-------|--------|------|
+| astral.dispatch.entity-state-bound | X | | Presentational client-only slice; `AdminScheduledActions.tsx` not in statute `applies_when` paths. Plan conforms to epic partition by trusting sibling #2 per-row `empty_render` and forbidding client token resolution — no `dispatch_task` / entity_type persistence edits. |
+
+## Traceability
+
+AC2→Stage 1 (mute + block list AUTO badge and Run/Sweep when `empty_render`; handler no-ops); AC3→Stage 1 step 7 (no `resolve_tokens` / `TOKEN_SOURCES`); AC4→Stage 1 (`emptyRender` gate only — falsy/missing preserves existing `sweepDisabled` / `min_count` behavior; job-token truth owned by sibling #2). Parent AC 2, 8 → Stage 1; parent AC 10 UI slice → Stage 1 (trust boolean); parent AC 1, 3–7, 9 → out of scope (siblings #1–#3 / API).
+
+## Findings
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs plan footprint
+- **Finding:** `astral.ui.frontend-file-placement` and `astral.standards.in-scope-only` plainly govern a single-page frontend change but are absent from the frozen one-id list.
+- **Recommendation:** Plan is compliant via `## Explicit scope gate` (one file only). Archie may amend Canon Scope for Radia comparability; no plan change required.
+
+### acceptable — AUTO badge blocks toggle-off while flagged
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 3 + Decision “Mute both directions”
+- **Finding:** Child AC 2 fail text names `PUT` `auto_mode: true`; plan also blocks turning AUTO off from the list badge while `empty_render` is true.
+- **Recommendation:** Reasonable fail-closed UX (no badge workaround); AST-1780 already force-offs persisted AUTO. No plan change required.
+
+### acceptable — Create/edit modal AUTO unchanged
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 6 + Decision on modal checkbox
+- **Finding:** Modal AUTO-on remains possible in UI; AST-1780 API 400 is the backstop.
+- **Recommendation:** Matches ticket Scope (“list flag / row controls only”). No plan change required.
+
+context_tokens≈42000
