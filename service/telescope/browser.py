@@ -393,7 +393,6 @@ class BrowserPool:
             scrape_debug_event("request_context", firefox=ff_id)
             ctx_label = alloc_context_id()
             context = await browser.new_context(viewport=settings.viewport)
-            bind_scrape_context(ctx_label)
             scrape_debug_event(
                 "context_created",
                 firefox=ff_id,
@@ -427,10 +426,11 @@ class BrowserPool:
             retry = False
             context: Optional[BrowserContext] = None
             ctx_label: Optional[str] = None
-            # Bind F once per job — do not re-alloc on pool retry loops.
-            firefox_id = current_firefox_id()
+            # Reuse this slot's Firefox id — concurrent POSTs may share one F.
+            firefox_id = current_firefox_id() or slot.firefox_id
             if not firefox_id:
                 firefox_id = alloc_firefox_instance_id()
+            elif not current_firefox_id():
                 bind_scrape_firefox(firefox_id)
             async with slot.lock:
                 if slot.recycle_pending or not self._browser_connected(slot.browser):
@@ -442,11 +442,10 @@ class BrowserPool:
                         firefox=firefox_id,
                         **self._debug_caps(slot, pool_size=len(self._slots)),
                     )
-                    ctx_label = current_context_id() or alloc_context_id()
+                    ctx_label = alloc_context_id()
                     context = await slot.browser.new_context(
                         viewport=settings.viewport
                     )
-                    bind_scrape_context(ctx_label)
                     scrape_debug_event(
                         "context_created",
                         firefox=firefox_id,

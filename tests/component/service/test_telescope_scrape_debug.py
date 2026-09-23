@@ -69,6 +69,8 @@ class TestScrapeDebugHelpers:
             dbg.scrape_debug_event("navigate_start")
             dbg.scrape_debug_event("scrape_field", field="text")
             dbg.scrape_debug_event("scrape_field", field="links")
+            dbg.scrape_debug_event("context_closed")
+            dbg.scrape_debug_event("firefox_closed", firefox="F-001")
             dbg.scrape_debug_event("request_done")
         finally:
             dbg.disable_scrape_debug(debug_token)
@@ -81,31 +83,65 @@ class TestScrapeDebugHelpers:
         ]
         assert request_id == "T-001"
         assert ctx == "C-001"
-        assert messages[0] == "T-001: Requested url https://www.scrapeme.com, text, links"
-        assert messages[1] == 'T-001: Live Firefox Instances: 0, creating "F-001"'
-        assert messages[2] == "F-001: Starting firefox app with playwright"
-        assert messages[3] == "T-001: Requesting context from F-001"
-        assert messages[4] == 'F-001: Creating context "C-001"'
-        assert messages[5] == "C-001: Starting context"
-        assert messages[6] == "C-001: Loading Page"
-        assert messages[7] == "C-001: Scraping Page for text"
-        assert messages[8] == "C-001: Scraping Page for links"
-        assert messages[9] == "T-001: Request Return Successful"
+        assert messages[0].startswith("T-001: Requested url https://www.scrapeme.com, text, links")
+        assert "[live T=1 F=0 C=0]" in messages[0]
+        assert 'creating "F-001"' in messages[1]
+        assert "[live T=1 F=0 C=0]" in messages[1]
+        assert messages[2] == "F-001: Starting firefox app with playwright [live T=1 F=1 C=0]"
+        assert messages[3] == "T-001: Requesting context from F-001 [live T=1 F=1 C=0]"
+        assert messages[4] == 'F-001: Creating context "C-001" [live T=1 F=1 C=1]'
+        assert messages[5] == "C-001: Starting context [live T=1 F=1 C=1]"
+        assert messages[6] == "C-001: Loading Page [live T=1 F=1 C=1]"
+        assert messages[7] == "C-001: Scraping Page for text [live T=1 F=1 C=1]"
+        assert messages[8] == "C-001: Scraping Page for links [live T=1 F=1 C=1]"
+        assert messages[9] == "C-001: Close Page [live T=1 F=1 C=0]"
+        assert messages[10] == "F-001: Close Instance [live T=1 F=0 C=0]"
+        assert messages[11] == "T-001: Request Return Successful [live T=1 F=0 C=0]"
 
-    def test_job_ids_stable_within_request_reset_between_requests(self) -> None:
+    def test_live_counters_track_start_and_recycle(self) -> None:
         import scrape_debug as dbg
 
-        _, tokens1 = dbg.begin_scrape_request("https://a.example")
-        assert dbg.alloc_firefox_instance_id() == "F-001"
-        assert dbg.alloc_context_id() == "C-001"
-        # Pool/retry loops must not bump ids mid-job.
-        assert dbg.alloc_firefox_instance_id() == "F-001"
-        assert dbg.alloc_context_id() == "C-001"
+        _, tokens = dbg.begin_scrape_request("https://a.example")
+        assert dbg.live_instance_counts() == {
+            "live_requests": 1, "live_firefox": 0, "live_contexts": 0,
+        }
+        debug_token = dbg.enable_scrape_debug()
+        try:
+            dbg.scrape_debug_event("firefox_launched", firefox="F-001")
+            dbg.scrape_debug_event("context_created", firefox="F-001", context="C-001")
+            assert dbg.live_instance_counts() == {
+                "live_requests": 1, "live_firefox": 1, "live_contexts": 1,
+            }
+            dbg.scrape_debug_event("context_closed", context="C-001")
+            assert dbg.live_instance_counts() == {
+                "live_requests": 1, "live_firefox": 1, "live_contexts": 0,
+            }
+            dbg.scrape_debug_event("firefox_closed", firefox="F-001")
+            assert dbg.live_instance_counts() == {
+                "live_requests": 1, "live_firefox": 0, "live_contexts": 0,
+            }
+        finally:
+            dbg.disable_scrape_debug(debug_token)
+            dbg.end_scrape_request(tokens)
+        assert dbg.live_instance_counts() == {
+            "live_requests": 0, "live_firefox": 0, "live_contexts": 0,
+        }
+
+    def test_deployment_ids_monotonic_across_requests(self) -> None:
+        import scrape_debug as dbg
+
+        t1, tokens1 = dbg.begin_scrape_request("https://a.example")
+        f1 = dbg.alloc_firefox_instance_id()
+        c1 = dbg.alloc_context_id()
+        # Pool/retry loops must not bump ids mid-request.
+        assert dbg.alloc_firefox_instance_id() == f1
+        assert dbg.alloc_context_id() == c1
         dbg.end_scrape_request(tokens1)
 
-        _, tokens2 = dbg.begin_scrape_request("https://b.example")
-        assert dbg.alloc_firefox_instance_id() == "F-001"
-        assert dbg.alloc_context_id() == "C-001"
+        t2, tokens2 = dbg.begin_scrape_request("https://b.example")
+        assert int(t2[2:]) == int(t1[2:]) + 1
+        assert dbg.alloc_firefox_instance_id() != f1
+        assert dbg.alloc_context_id() != c1
         dbg.end_scrape_request(tokens2)
 
     def test_debug_events_suppressed_by_default(self, capsys) -> None:
@@ -139,7 +175,10 @@ class TestScrapeDebugHelpers:
             if ln
         ]
         assert any(p.get("event") == "context_created" for p in payloads)
-        assert any(p.get("message") == "C-001: Scraping Page for text" for p in payloads)
+        scrape_lines = [p for p in payloads if p.get("event") == "scrape_field"]
+        assert len(scrape_lines) == 1
+        assert "C-001: Scraping Page for text" in scrape_lines[0]["message"]
+        assert scrape_lines[0]["live_contexts"] == 1
         assert all(p.get("level") == "debug" for p in payloads)
 
 
