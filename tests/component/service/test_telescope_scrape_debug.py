@@ -47,6 +47,39 @@ def telescope_debug_client(bearer_headers):
 
 
 class TestScrapeDebugHelpers:
+    def test_tx_and_container_labels_in_messages(self, capsys) -> None:
+        import scrape_debug as dbg
+
+        dbg._tx_counter = 0
+        dbg._firefox_counter = 0
+        tx_id, tokens = dbg.begin_scrape_request("https://example.com/job")
+        debug_token = dbg.enable_scrape_debug()
+        try:
+            dbg.scrape_debug_event("request_start", url="https://example.com/job")
+            dbg.bind_scrape_container(0)
+            dbg.scrape_debug_event("slot_acquired", slot_id=0)
+            dbg.bind_scrape_firefox("F-001")
+            dbg.scrape_debug_event("context_created")
+            dbg.scrape_debug_event("navigate_start", url="https://example.com/job")
+        finally:
+            dbg.disable_scrape_debug(debug_token)
+            dbg.end_scrape_request(tokens)
+
+        payloads = [
+            json.loads(ln)
+            for ln in capsys.readouterr().out.strip().splitlines()
+            if ln
+        ]
+        assert tx_id == "T-001"
+        start = next(p for p in payloads if p.get("event") == "request_start")
+        assert start["message"] == f"telescope scrape {tx_id} request_start url=https://example.com/job"
+        slot = next(p for p in payloads if p.get("event") == "slot_acquired")
+        assert slot["message"] == "telescope scrape C-001 slot_acquired"
+        ctx = next(p for p in payloads if p.get("event") == "context_created")
+        assert ctx["message"] == "telescope scrape F-001 context_created"
+        nav = next(p for p in payloads if p.get("event") == "navigate_start")
+        assert nav["message"] == "telescope scrape F-001 navigate_start url=https://example.com/job"
+
     def test_debug_events_suppressed_by_default(self, capsys) -> None:
         import scrape_debug as dbg
 
@@ -58,9 +91,10 @@ class TestScrapeDebugHelpers:
 
         token = dbg.enable_scrape_debug()
         try:
+            dbg.bind_scrape_firefox("F-001")
             dbg.scrape_debug_event(
                 "context_created",
-                firefox="slot_0",
+                firefox="F-001",
                 context_id=123,
             )
             dbg.log_scrape_capture(
