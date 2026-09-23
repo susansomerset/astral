@@ -495,3 +495,47 @@ Board REVISE on AST-1432: pool-2 on a bound row was wrong; two-candidate bound A
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/data/database/dispatch_tasks.md` — *(filled after publish)*
+
+### AST-1781 · AST-1766 (revalidate on agent_task + artifact version — data)
+
+**Parent:** [AST-1766 — Dispatch Validation](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1781-revalidate-on-agent-task-artifact-version`.
+
+`list_dispatch_tasks_for_task_key`, `_force_auto_off_if_empty_render` / `revalidate_dispatch_tasks_for_task_key` / `revalidate_dispatch_tasks_for_artifact` (candidate-scoped `empty_render_for_prompts`, no `entity_contexts`); `save_agent_task` post-commit revalidate when a new current version lands. Artifact rotate hook: **`docs/test-bible/core/candidate.md`** § AST-1781. Predicate helper: **`docs/test-bible/utils/config.md`** § AST-1779. List/API gates: sibling **AST-1780** (out of scope).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List by task_key | `src/data/database.py` | **`TestAst1781RevalidateDispatchEmptyRender::test_list_dispatch_tasks_for_task_key`** |
+| Force AUTO off on blank FIRST_NAME | same | **`…::test_revalidate_forces_auto_off_when_first_blank`** |
+| Keep AUTO when filled | same | **`…::test_revalidate_keeps_auto_when_first_filled`** |
+| Job token alone does not force off | same | **`…::test_job_token_alone_does_not_force_off`** |
+| `save_agent_task` version vs metadata | same | **`…::test_save_agent_task_version_triggers_revalidate`** |
+| Artifact revalidate + unbacked skip + other candidate | same | **`…::test_revalidate_for_artifact_*`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — no existing scenario asserts dispatch AUTO revalidation on agent_task/artifact version; do not invent new integration coverage.
+
+## QA test manifest
+
+1. List by task_key: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_list_dispatch_tasks_for_task_key`
+2. Force AUTO off blank first: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_forces_auto_off_when_first_blank`
+3. Keep AUTO filled: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_keeps_auto_when_first_filled`
+4. Job token alone: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_job_token_alone_does_not_force_off`
+5. save_agent_task hook: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_save_agent_task_version_triggers_revalidate`
+6. Artifact revalidate blank strengths: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_for_artifact_forces_off_when_strengths_blank`
+7. Unbacked artifact key: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_for_artifact_skips_unbacked_key`
+8. Other candidate untouched: `tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender::test_revalidate_for_artifact_other_candidate_untouched`
+9. Candidate str-path hook: `tests/component/core/test_candidate.py::TestAst1781ArtifactRotateRevalidateHook`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1781RevalidateDispatchEmptyRender \
+  tests/component/core/test_candidate.py::TestAst1781ArtifactRotateRevalidateHook \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/data/database/dispatch_tasks.md`
+- `docs/test-bible/core/candidate.md`
