@@ -375,7 +375,8 @@ async def _post_telescope(
     data = resp.json()
     _log.debug("Response from _post_telescope: %s", data)
     _log.info(
-        "telescope ok path=/telescope fields=%s final_url=%s",
+        "telescope ok path=/telescope url=%s fields=%s final_url=%s",
+        url,
         want,
         data.get("final_url"),
     )

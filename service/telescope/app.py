@@ -23,8 +23,10 @@ from interact import dismiss_cookies, expand_page, navigate, wait_ready_generic
 from logging_util import configure_logging, get_logger
 from meta import build_scrape_meta
 from scrape_debug import (
+    begin_scrape_request,
     disable_scrape_debug,
     enable_scrape_debug,
+    end_scrape_request,
     log_scrape_capture,
     scrape_debug_event,
 )
@@ -294,6 +296,7 @@ async def post_telescope(request: Request, body: TelescopeRequest):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
+    tx_id, scrape_tokens = begin_scrape_request(url)
     debug_token = enable_scrape_debug() if body.debug else None
     try:
         scrape_debug_event(
@@ -320,13 +323,16 @@ async def post_telescope(request: Request, body: TelescopeRequest):
             fields=body.fields,
         )
         _log.info(
-            "telescope ok method=/telescope final_url=%s fields=%s",
+            "telescope ok method=/telescope %s url=%s final_url=%s fields=%s",
+            tx_id,
+            url,
             result.get("final_url"),
             list(body.fields),
         )
         scrape_debug_event(
             "request_done",
             method="/telescope",
+            url=url,
             final_url=result.get("final_url"),
             fields=list(body.fields),
         )
@@ -334,6 +340,7 @@ async def post_telescope(request: Request, body: TelescopeRequest):
     finally:
         if debug_token is not None:
             disable_scrape_debug(debug_token)
+        end_scrape_request(scrape_tokens)
 
 
 @app.post("/telescope/html", dependencies=[Depends(require_bearer)])
@@ -341,6 +348,7 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
     url = (body.url or "").strip()
     if not url:
         raise HTTPException(status_code=400, detail="url required")
+    tx_id, scrape_tokens = begin_scrape_request(url)
     debug_token = enable_scrape_debug() if body.debug else None
     try:
         scrape_debug_event(
@@ -372,13 +380,16 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
         else:
             html_len = len(html or "")
         _log.info(
-            "telescope ok method=/telescope/html final_url=%s html_len=%d",
+            "telescope ok method=/telescope/html %s url=%s final_url=%s html_len=%d",
+            tx_id,
+            url,
             result.get("final_url"),
             html_len,
         )
         scrape_debug_event(
             "request_done",
             method="/telescope/html",
+            url=url,
             final_url=result.get("final_url"),
             html_chars=html_len,
         )
@@ -386,3 +397,4 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
     finally:
         if debug_token is not None:
             disable_scrape_debug(debug_token)
+        end_scrape_request(scrape_tokens)

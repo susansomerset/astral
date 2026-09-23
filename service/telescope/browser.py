@@ -10,7 +10,13 @@ from typing import AsyncIterator, List, Optional
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
 from logging_util import get_logger
-from scrape_debug import firefox_label, scrape_debug_event
+from scrape_debug import (
+    alloc_firefox_instance_id,
+    bind_scrape_container,
+    bind_scrape_firefox,
+    firefox_label,
+    scrape_debug_event,
+)
 from settings import settings
 
 _log = get_logger(__name__)
@@ -22,6 +28,7 @@ class _BrowserSlot:
 
     slot_id: int
     browser: Optional[Browser] = None
+    firefox_id: Optional[str] = None
     request_count: int = 0
     active_pages: int = 0
     recycle_pending: bool = False
@@ -109,6 +116,7 @@ class BrowserPool:
                 slot = self._pick_slot()
                 if slot is not None:
                     slot.active_pages += 1
+                    bind_scrape_container(slot.slot_id)
                     scrape_debug_event(
                         "slot_acquired",
                         firefox=firefox_label(slot.slot_id),
@@ -120,6 +128,7 @@ class BrowserPool:
                     slot = _BrowserSlot(slot_id=len(self._slots))
                     self._slots.append(slot)
                     slot.active_pages += 1
+                    bind_scrape_container(slot.slot_id)
                     scrape_debug_event(
                         "slot_created",
                         firefox=firefox_label(slot.slot_id),
@@ -179,14 +188,18 @@ class BrowserPool:
                 await self._recover_when_idle_locked(slot, recover_reason)
 
     async def _recover_slot_locked(self, slot: _BrowserSlot, reason: str) -> None:
+        old_firefox_id = slot.firefox_id
+        if old_firefox_id:
+            bind_scrape_firefox(old_firefox_id)
         _log.warning(
-            "telescope browser recover reason=%s slot_id=%d",
+            "telescope browser recover reason=%s slot_id=%d firefox=%s",
             reason,
             slot.slot_id,
+            old_firefox_id or "?",
         )
         scrape_debug_event(
             "firefox_recover",
-            firefox=firefox_label(slot.slot_id),
+            firefox=firefox_label(firefox_id=old_firefox_id),
             slot_id=slot.slot_id,
             reason=reason,
         )
@@ -223,16 +236,22 @@ class BrowserPool:
                     timeout=settings.launch_timeout_ms,
                     firefox_user_prefs=settings.firefox_user_prefs,
                 )
-                _log.info("telescope firefox launched attempt=%d", attempt)
+                firefox_id = alloc_firefox_instance_id()
+                if slot is not None:
+                    slot.firefox_id = firefox_id
+                bind_scrape_firefox(firefox_id)
+                _log.info(
+                    "telescope firefox %s launched attempt=%d",
+                    firefox_id,
+                    attempt,
+                )
                 scrape_debug_event(
                     "firefox_launched",
-                    firefox=firefox_label(
-                        slot.slot_id if slot is not None else None,
-                        ephemeral=ephemeral,
-                    ),
+                    firefox=firefox_id,
                     slot_id=slot.slot_id if slot is not None else None,
                     browser_id=id(browser),
                     attempt=attempt,
+                    ephemeral=ephemeral,
                 )
                 return browser
             except Exception as e:
@@ -258,17 +277,21 @@ class BrowserPool:
         if slot.browser is None:
             return
         browser_id = id(slot.browser)
+        firefox_id = slot.firefox_id
+        if firefox_id:
+            bind_scrape_firefox(firefox_id)
         try:
             await slot.browser.close()
         except Exception:
             pass
         scrape_debug_event(
             "firefox_closed",
-            firefox=firefox_label(slot.slot_id),
+            firefox=firefox_label(firefox_id=firefox_id),
             slot_id=slot.slot_id,
             browser_id=browser_id,
         )
         slot.browser = None
+        slot.firefox_id = None
 
     async def _close_ephemeral_best_effort(
         self,
@@ -282,16 +305,18 @@ class BrowserPool:
             except Exception:
                 pass
         if browser is not None:
+            firefox_id = firefox_label()
             try:
                 await browser.close()
             except Exception:
                 pass
             scrape_debug_event(
                 "firefox_closed",
-                firefox=firefox_label(None, ephemeral=True),
+                firefox=firefox_id,
                 browser_id=id(browser),
+                ephemeral=True,
             )
-            _log.info("telescope firefox closed ephemeral")
+            _log.info("telescope firefox %s closed ephemeral", firefox_id)
 
     def _browser_connected(self, browser: Optional[Browser]) -> bool:
         if browser is None:
@@ -319,30 +344,34 @@ class BrowserPool:
         context_id: Optional[int] = None
         try:
             browser = await self._launch_firefox(ephemeral=True)
+            bind_scrape_container(None, ephemeral=True)
             context = await browser.new_context(viewport=settings.viewport)
             context_id = id(context)
             scrape_debug_event(
                 "context_created",
-                firefox=firefox_label(None, ephemeral=True),
+                firefox=firefox_label(),
                 browser_id=id(browser),
                 context_id=context_id,
+                ephemeral=True,
             )
             page = await context.new_page()
             scrape_debug_event(
                 "page_created",
-                firefox=firefox_label(None, ephemeral=True),
+                firefox=firefox_label(),
                 browser_id=id(browser),
                 context_id=context_id,
                 page_id=id(page),
+                ephemeral=True,
             )
             yield page
         finally:
             if context_id is not None:
                 scrape_debug_event(
                     "context_closed",
-                    firefox=firefox_label(None, ephemeral=True),
+                    firefox=firefox_label(),
                     browser_id=id(browser) if browser is not None else None,
                     context_id=context_id,
+                    ephemeral=True,
                 )
             await self._close_ephemeral_best_effort(context=context, browser=browser)
 
@@ -357,6 +386,9 @@ class BrowserPool:
             context: Optional[BrowserContext] = None
             context_id: Optional[int] = None
             browser_id: Optional[int] = None
+            firefox_id = slot.firefox_id
+            if firefox_id:
+                bind_scrape_firefox(firefox_id)
             async with slot.lock:
                 if slot.recycle_pending or not self._browser_connected(slot.browser):
                     retry = True
@@ -368,7 +400,7 @@ class BrowserPool:
                     context_id = id(context)
                     scrape_debug_event(
                         "context_created",
-                        firefox=firefox_label(slot.slot_id),
+                        firefox=firefox_label(firefox_id=firefox_id),
                         slot_id=slot.slot_id,
                         browser_id=browser_id,
                         context_id=context_id,
@@ -377,7 +409,7 @@ class BrowserPool:
                     page = await context.new_page()
                     scrape_debug_event(
                         "page_created",
-                        firefox=firefox_label(slot.slot_id),
+                        firefox=firefox_label(firefox_id=firefox_id),
                         slot_id=slot.slot_id,
                         browser_id=browser_id,
                         context_id=context_id,
@@ -393,7 +425,7 @@ class BrowserPool:
                     if context is not None:
                         scrape_debug_event(
                             "context_closed",
-                            firefox=firefox_label(slot.slot_id),
+                            firefox=firefox_label(firefox_id=firefox_id),
                             slot_id=slot.slot_id,
                             browser_id=browser_id,
                             context_id=context_id,
