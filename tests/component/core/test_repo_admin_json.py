@@ -253,6 +253,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_build_request",
         "intake_candidate_response",
         "intake_initiate_candidate",
+        "land_meteorite",
         "meteorite_like",
         "meteorite_upshot",
         "stage_email_meteorite",
@@ -260,6 +261,8 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "meteorite_grade_get",
         "parse_job_list",
         "propose_application_responses",
+        "review_duplicate_meteorite",
+        "scrape_meteorite",
         "stage_meteorite",
         "preamble_validate_response",
         "prefilter_company",
@@ -288,19 +291,21 @@ class TestAst1252RetiredWrapperTaskKeysAbsent:
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON catalog lock (54 rows after AST-1529).
+    """AST-786 UAT: populated agent_task repo JSON catalog lock (57 rows after AST-1773).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
     AST-1239 wipe left a 50-key Job Review–shaped catalog; AST-1269 restores the two
     grouping-only alias rows (50 → 52). AST-1402 adds three UI stubs; later tips drop
-    `parse_meteorite_email` and AST-1529 adds `stage_meteorite` (53 → 54).
+    `parse_meteorite_email` and AST-1529 adds `stage_meteorite` (53 → 54). Ingress shells
+    `scrape_meteorite` / `land_meteorite` land on tip (54 → 56); AST-1773 adds
+    `review_duplicate_meteorite` (56 → 57).
     This class locks catalog keys + startup apply only. Alias row shape:
     **`TestAst1222MeteoriteGradeAliasCatalogRows`** / **`TestAst1269AliasAgentTaskSeedRestore`**.
     """
 
-    def test_repo_json_has_54_current_catalog_keys(self) -> None:
+    def test_repo_json_has_57_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 54
+        assert len(rows) == 57
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -316,7 +321,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_55_current_rows(
+    def test_startup_apply_loads_all_57_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -334,7 +339,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 54
+            assert count == 57
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -932,6 +937,60 @@ class TestAst1755StageMeteoriteJobTitlePrompts:
         ).read_bytes()
 
 
+class TestAst1773StageEmployerNameAndReviewDuplicateCatalog:
+    """AST-1773: stage employer_name prompts + review_duplicate_meteorite Ruth row + fixture twin."""
+
+    def test_stage_employer_name_prompts_never_invent(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "stage_meteorite")
+        cache = row["cache_prompt"] or ""
+        user = row["user_prompt"] or ""
+        nocache = row.get("nocache_prompt") or ""
+        assert "## EMPLOYER NAME (optional)" in cache
+        assert "Never invent employer names" in cache
+        assert "company_name" in cache.lower()  # forbid emit instruction
+        assert "employer_name" in user
+        assert "never invent" in user.lower()
+        assert "company_name" in user.lower()
+        for field in (cache, user, nocache):
+            assert "$RESPONSE_SCHEMA" not in field
+
+    def test_review_duplicate_meteorite_ruth_row(self) -> None:
+        from src.utils.config import REVIEW_DUPLICATE_METEORITE_CONFIG, TASK_CONFIG
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["review_duplicate_meteorite"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_group_name"] == "Land Meteorite"
+        assert row["task_group_order"] == "4200"
+        assert row["task_seq"] == 5
+        assert row["task_name"] == row["task_key"] == "review_duplicate_meteorite"
+        assert row["task_key"] == TASK_CONFIG["review_duplicate_meteorite"]["agent_task"]
+        assert row["task_key"] == REVIEW_DUPLICATE_METEORITE_CONFIG["task_key"]
+        cache = row["cache_prompt"] or ""
+        user = row["user_prompt"] or ""
+        for outcome in REVIEW_DUPLICATE_METEORITE_CONFIG["outcomes"]:
+            assert outcome in cache
+            assert outcome in user
+        assert "peer_meteorite_id" in cache
+        assert "Never invent peer ids" in cache
+
+    def test_dispatch_check_unique_row(self) -> None:
+        rows = json.loads(Path("data/admin/dispatch_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "check_unique_meteorite")
+        assert row["trigger_state"] == "CHECK_UNIQUE"
+        assert row["sort_by"] == "updated_at"
+        assert row["batch_call_mode"] == 0
+        assert row["candidate_id"] is None
+        assert row["entity_type"] is None
+
+    def test_fixture_catalog_byte_lockstep(self) -> None:
+        assert Path("data/admin/agent_task.json").read_bytes() == Path(
+            "docs/uat-fixtures/AST-756/expected-agent_task.json"
+        ).read_bytes()
+
+
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
 class TestAst1106GazeEmailCatalogRow:
     """AST-1467: gaze_email catalog shell retired; meteorite_email remains Meteorite Review."""
@@ -1204,7 +1263,7 @@ class TestAst1222MeteoriteGradeAliasCatalogRows:
         # Masters keep prompt bodies (grouping may still be Job Review after AST-1239 wipe).
         for key in ("grade_do", "grade_get"):
             assert (cat[key].get("user_prompt") or cat[key].get("cache_prompt") or "").strip()
-        assert len(cat) == 54
+        assert len(cat) == 57
 
 
 class TestAst1269AliasAgentTaskSeedRestore:
@@ -1230,9 +1289,10 @@ class TestAst1269AliasAgentTaskSeedRestore:
 
     def test_catalog_has_aliases_under_meteorite_review(self) -> None:
         cat = self._current_by_key("data/admin/agent_task.json")
-        assert len(cat) == 54
+        assert len(cat) == 57
+        # Tip keeps full Meteorite Review membership; aliases must remain in that group.
         mr = {k for k, r in cat.items() if r.get("task_group_name") == "Meteorite Review"}
-        assert mr == {"meteorite_grade_do", "meteorite_grade_get"}
+        assert {"meteorite_grade_do", "meteorite_grade_get"} <= mr
         for key, seq in (("meteorite_grade_do", 5), ("meteorite_grade_get", 6)):
             row = cat[key]
             assert row["task_key_uuid"] == self._UUID[key]

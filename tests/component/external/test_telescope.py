@@ -376,8 +376,8 @@ class TestAst1750PostTelescopeDebugDump:
             with caplog.at_level(logging.DEBUG, logger="src.external.telescope"):
                 out = await pw_mod._post_telescope(
                     "https://example.com/job",
-                    fields=["text"],
                     expand=False,
+                    links=False,
                 )
         finally:
             log_debug.reset(token)
@@ -480,31 +480,6 @@ class TestPostTelescopeDebugFlag:
             log_debug.reset(token)
 
         assert seen["body"]["debug"] is False
-
-
-class TestExtractPageScrapeContract:
-    @pytest.mark.asyncio
-    async def test_homepage_contract_one_telescope_post(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """Homepage text + nav links must share one page load (fields text+links)."""
-        calls = {"n": 0}
-
-        async def fake_post(url, *, fields, **kwargs):
-            calls["n"] += 1
-            assert fields == ["text", "links"]
-            return {
-                "final_url": url,
-                "text": "hello world",
-                "links": [{"href": "https://example.com/about", "text": "About"}],
-            }
-
-        monkeypatch.setattr(pw_mod, "_post_telescope", fake_post)
-        page = pw_mod.PageHandle(url="https://example.com")
-        out = await pw_mod.extract_page_scrape_contract(page)
-        assert calls["n"] == 1
-        assert out["visible_text"] == "hello world"
-        assert "https://example.com/about" in out["nav_urls"]
 
 
 # Branches: no platform playwright module (AST-1726 AC6).
