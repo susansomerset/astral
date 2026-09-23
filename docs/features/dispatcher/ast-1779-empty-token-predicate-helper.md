@@ -101,3 +101,39 @@ No other files. Do not edit `api_admin.py`, `database.py`, `candidate.py`, or `A
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1779
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `8a6488d039f0f6243602e75312b9b5a8a8113231`
+
+## Canon scores
+
+| slug | grade | effort | note |
+|------|-------|--------|------|
+| astral.dispatch.entity-state-bound | A | | |
+
+## Traceability
+
+AC1→Stage 1 (`empty_render` / `empty_tokens` contract; field name frozen for sibling #2 list enrichment); AC2→Stage 1 (scoring rules: `source==candidate` only by default, chain never scored, `entity_contexts` extension seam); AC3→Stage 1 (done-when: non-empty candidate tokens + `{$VISIBLE_JD}` without job context → `empty_render: False`). Parent AC 1, 9, 10 → Stage 1; parent AC 2–8 out of child Scope (siblings #2–#4).
+
+## Findings
+
+### discuss — Canon Scope gap (do not score)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs plan footprint
+- **Finding:** `astral.standards.in-scope-only` plainly governs a single-file config helper but is absent from the frozen one-id list.
+- **Recommendation:** Plan is compliant via `## Explicit scope gate` (config.py only). Archie may amend Canon Scope at Discussion for Radia comparability; no plan change required.
+
+### acceptable — UAT fitness block on non-UAT child
+
+- **Severity:** acceptable
+- **Location:** `## UAT fitness`
+- **Finding:** Section present though this is not UAT-thin mode; content correctly maps parent AC 1/9/10 and sibling boundaries.
+- **Recommendation:** None.
+
+context_tokens≈18500
