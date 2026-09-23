@@ -265,6 +265,57 @@ class TestJobsRoutes:
         assert body["astral_job_id"] == "job-1274"
         assert body["agent_story"] == []
 
+    def test_detail_related_meteorite_source_entity_fallback(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1769 [bug-repro]: reverse astral_job_id miss + source=meteorite + digit
+        # source_entity_id → related_meteorite via get_meteorite(sid) (pre-fix: stays null).
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_job",
+            lambda job_id: {
+                "astral_job_id": job_id,
+                "source": "meteorite",
+                "source_entity_id": "42",
+                "job_data": {},
+            },
+        )
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False, astral_job_id=None: art or {},
+        )
+        monkeypatch.setattr(jobs_mod, "get_meteorite_by_astral_job_id", lambda _jid: None)
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_meteorite",
+            lambda mid: {
+                "id": mid,
+                "created_at": "2026-01-01T00:00:00Z",
+                "updated_at": "2026-01-02T00:00:00Z",
+                "state_changed_at": "2026-01-03T00:00:00Z",
+                "estelle_notified_at": None,
+                "link": "https://example.com/jobs/1",
+                "classify_outcome": "job",
+                "content": "staging jd",
+                "state": "LANDED",
+                "source_kind": "email",
+                "source_id": "msg-42",
+                "error": None,
+            },
+            raising=False,  # pre-fix: name not imported yet; post-fix make-fix imports it
+        )
+        resp = jobs_client.get("/api/jobs/job-1769", headers=auth_headers)
+        assert resp.status_code == 200
+        rm = resp.get_json()["related_meteorite"]
+        assert rm is not None
+        assert rm["id"] == 42
+        assert rm["link"] == "https://example.com/jobs/1"
+        assert rm["classify_outcome"] == "job"
+        assert rm["state"] == "LANDED"
+
+
     def test_skip_job_updates_state(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "CANDIDATE_REVIEW", "state_history": []})
         transition = MagicMock()
