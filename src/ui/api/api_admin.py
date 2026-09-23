@@ -2089,6 +2089,7 @@ def admin_telescope():
     wait_ready = body.get("wait_ready", False)
     links = body.get("links", True)
     cull = body.get("cull", False)
+    debug = body.get("debug", False)
     selector = body.get("selector")
     if selector is not None:
         selector = str(selector).strip() or None
@@ -2114,6 +2115,7 @@ def admin_telescope():
                 class_name=class_name,
                 id=element_id,
                 cull=bool(cull),
+                debug=bool(debug),
             )
         )
     except ValueError as e:

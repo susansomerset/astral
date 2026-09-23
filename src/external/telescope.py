@@ -23,7 +23,7 @@ from bs4 import BeautifulSoup
 
 from src.utils.config import ASTRAL_CONFIG, PLAYWRIGHT_CONFIG, TELESCOPE_CONFIG
 from src.utils.integration_io import require_controlled_external_io
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, log_debug
 
 _log = get_logger(__name__)
 
@@ -332,11 +332,13 @@ async def _post_telescope(
     id: Optional[str] = None,
     expand: Optional[bool] = None,
     wait_ready: Optional[bool] = None,
+    debug: Optional[bool] = None,
 ) -> dict:
     """One POST /telescope — one page load, only requested capture keys in response."""
     want = [f for f in fields if f in CAPTURE_FIELDS]
     if not want:
         raise ValueError("fields must include at least one of: text, links, html")
+    scrape_debug = log_debug.get() if debug is None else bool(debug)
     body: Dict[str, Any] = {
         "url": url,
         "fields": want,
@@ -346,6 +348,7 @@ async def _post_telescope(
             if wait_ready is None
             else wait_ready
         ),
+        "debug": scrape_debug,
     }
     if selector is not None:
         body["selector"] = selector
@@ -404,6 +407,7 @@ async def admin_telescope_scrape(
     class_name: Optional[str] = None,
     id: Optional[str] = None,
     cull: bool = False,
+    debug: bool = False,
 ) -> dict:
     """Admin workbench scrape — returns full Telescope JSON (incl. scrape_meta)."""
     rt = (response_type or "").strip().lower()
@@ -422,6 +426,7 @@ async def admin_telescope_scrape(
             id=id,
             expand=expand,
             wait_ready=wait_ready,
+            debug=debug,
         )
     else:
         data = await _post_telescope(
@@ -433,6 +438,7 @@ async def admin_telescope_scrape(
             id=id,
             expand=expand,
             wait_ready=wait_ready,
+            debug=debug,
         )
         if cull and "html" in data:
             raw_html = data["html"]

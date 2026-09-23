@@ -404,6 +404,84 @@ class TestAst1750PostTelescopeDebugDump:
         ), "AST-1750: missing ungated logger.debug callee-out with full JSON"
 
 
+class TestPostTelescopeDebugFlag:
+    """Platform client passes debug in POST body (service scrape_debug events)."""
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_debug_false_by_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.logging import log_debug
+
+        seen: dict = {}
+
+        async def fake_request(method, path, json_body=None, **_kwargs):
+            seen["body"] = json_body
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json = MagicMock(return_value={"final_url": "https://example.com", "text": "x"})
+            return resp
+
+        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        token = log_debug.set(False)
+        try:
+            await pw_mod._post_telescope("https://example.com", fields=["text"])
+        finally:
+            log_debug.reset(token)
+
+        assert seen["body"]["debug"] is False
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_debug_follows_log_debug(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.logging import log_debug
+
+        seen: dict = {}
+
+        async def fake_request(method, path, json_body=None, **_kwargs):
+            seen["body"] = json_body
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json = MagicMock(return_value={"final_url": "https://example.com", "text": "x"})
+            return resp
+
+        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        token = log_debug.set(True)
+        try:
+            await pw_mod._post_telescope("https://example.com", fields=["text"])
+        finally:
+            log_debug.reset(token)
+
+        assert seen["body"]["debug"] is True
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_debug_explicit_overrides_log_debug(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.logging import log_debug
+
+        seen: dict = {}
+
+        async def fake_request(method, path, json_body=None, **_kwargs):
+            seen["body"] = json_body
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json = MagicMock(return_value={"final_url": "https://example.com", "text": "x"})
+            return resp
+
+        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        token = log_debug.set(True)
+        try:
+            await pw_mod._post_telescope(
+                "https://example.com", fields=["text"], debug=False
+            )
+        finally:
+            log_debug.reset(token)
+
+        assert seen["body"]["debug"] is False
+
+
 class TestExtractPageScrapeContract:
     @pytest.mark.asyncio
     async def test_homepage_contract_one_telescope_post(
