@@ -426,3 +426,12 @@ Stay inside parent AST-1685 Component/Technical scope for the report attach path
 - Parent AC6: Meteorite remains on `JOBS_RECOMMENDED_REPORT_TOP_TABS` / manifest — no TSX-only tab invention.
 - Parent AC9: no stage/scrape/land/qualify runner edits in this fix.
 - Gazed-only jobs without a meteorite parent stay on the existing four tabs.
+
+## Review (AST-1769)
+
+**Radia review-fix** — clean / PROCEED @ .
+
+- [bug-repro] asserts source_entity fallback path; plan fidelity OK.
+- Advisories only (wide ftr…sub envelope; digit sid guard) — no fix-now.
+- Clean-review shortcut → User Testing (resolve-child skipped).
+
