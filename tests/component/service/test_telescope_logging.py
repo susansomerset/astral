@@ -38,14 +38,16 @@ class TestRailwayJsonLogging:
         log_util.railway_log(
             "debug",
             log,
-            "telescope scrape context_created",
+            'F-001: Creating context "C-001"',
             event="context_created",
             firefox="F-001",
+            context="C-001",
         )
         payload = json.loads(capsys.readouterr().out.strip())
         assert payload["level"] == "debug"
         assert payload["event"] == "context_created"
         assert payload["firefox"] == "F-001"
+        assert payload["context"] == "C-001"
 
     def test_settings_log_level_from_env(self, monkeypatch) -> None:
         import importlib

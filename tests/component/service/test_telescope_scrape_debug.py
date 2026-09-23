@@ -1,10 +1,9 @@
-"""Scrape debug flag — structured console events when request debug=True."""
+"""Scrape debug flag — narrative T/C/F tracing when request debug=True."""
 
 from __future__ import annotations
 
 import importlib
 import json
-import logging
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -47,38 +46,54 @@ def telescope_debug_client(bearer_headers):
 
 
 class TestScrapeDebugHelpers:
-    def test_tx_and_container_labels_in_messages(self, capsys) -> None:
+    def test_tcf_narrative_messages(self, capsys) -> None:
+        """T = URL request, C = context (1:1 with T), F = Firefox process."""
         import scrape_debug as dbg
 
-        dbg._tx_counter = 0
+        dbg._request_counter = 0
+        dbg._context_counter = 0
         dbg._firefox_counter = 0
-        tx_id, tokens = dbg.begin_scrape_request("https://example.com/job")
+        request_id, tokens = dbg.begin_scrape_request(
+            "https://www.scrapeme.com", fields=["text", "links"]
+        )
         debug_token = dbg.enable_scrape_debug()
         try:
-            dbg.scrape_debug_event("request_start", url="https://example.com/job")
-            dbg.bind_scrape_container(0)
-            dbg.scrape_debug_event("slot_acquired", slot_id=0)
+            dbg.scrape_debug_event("request_start")
+            dbg.scrape_debug_event(
+                "firefox_needed", live_count=0, firefox_id="F-001"
+            )
             dbg.bind_scrape_firefox("F-001")
-            dbg.scrape_debug_event("context_created")
-            dbg.scrape_debug_event("navigate_start", url="https://example.com/job")
+            dbg.scrape_debug_event("firefox_launched", firefox="F-001")
+            dbg.scrape_debug_event("request_context", firefox="F-001")
+            ctx = dbg.alloc_context_id()
+            dbg.bind_scrape_context(ctx)
+            dbg.scrape_debug_event("context_created", firefox="F-001", context=ctx)
+            dbg.scrape_debug_event("page_created")
+            dbg.scrape_debug_event("navigate_start")
+            dbg.scrape_debug_event("scrape_field", field="text")
+            dbg.scrape_debug_event("scrape_field", field="links")
+            dbg.scrape_debug_event("request_done")
         finally:
             dbg.disable_scrape_debug(debug_token)
             dbg.end_scrape_request(tokens)
 
-        payloads = [
-            json.loads(ln)
+        messages = [
+            json.loads(ln)["message"]
             for ln in capsys.readouterr().out.strip().splitlines()
             if ln
         ]
-        assert tx_id == "T-001"
-        start = next(p for p in payloads if p.get("event") == "request_start")
-        assert start["message"] == f"telescope scrape {tx_id} request_start url=https://example.com/job"
-        slot = next(p for p in payloads if p.get("event") == "slot_acquired")
-        assert slot["message"] == "telescope scrape C-001 slot_acquired"
-        ctx = next(p for p in payloads if p.get("event") == "context_created")
-        assert ctx["message"] == "telescope scrape F-001 context_created"
-        nav = next(p for p in payloads if p.get("event") == "navigate_start")
-        assert nav["message"] == "telescope scrape F-001 navigate_start url=https://example.com/job"
+        assert request_id == "T-001"
+        assert ctx == "C-001"
+        assert messages[0] == "T-001: Requested url https://www.scrapeme.com, text, links"
+        assert messages[1] == 'T-001: Live Firefox Instances: 0, creating "F-001"'
+        assert messages[2] == "F-001: Starting firefox app with playwright"
+        assert messages[3] == "T-001: Requesting context from F-001"
+        assert messages[4] == 'F-001: Creating context "C-001"'
+        assert messages[5] == "C-001: Starting context"
+        assert messages[6] == "C-001: Loading Page"
+        assert messages[7] == "C-001: Scraping Page for text"
+        assert messages[8] == "C-001: Scraping Page for links"
+        assert messages[9] == "T-001: Request Return Successful"
 
     def test_debug_events_suppressed_by_default(self, capsys) -> None:
         import scrape_debug as dbg
@@ -92,17 +107,15 @@ class TestScrapeDebugHelpers:
         token = dbg.enable_scrape_debug()
         try:
             dbg.bind_scrape_firefox("F-001")
+            dbg.bind_scrape_context("C-001")
             dbg.scrape_debug_event(
                 "context_created",
                 firefox="F-001",
-                context_id=123,
+                context="C-001",
             )
             dbg.log_scrape_capture(
-                {
-                    "final_url": "https://example.com/",
-                    "text": "hello",
-                    "links": [{"href": "/a", "text": "A"}],
-                }
+                {"final_url": "https://example.com/", "text": "hello", "links": []},
+                capture_fields=["text"],
             )
         finally:
             dbg.disable_scrape_debug(token)
@@ -113,9 +126,7 @@ class TestScrapeDebugHelpers:
             if ln
         ]
         assert any(p.get("event") == "context_created" for p in payloads)
-        assert any(p.get("event") == "scrape_capture" for p in payloads)
-        assert any(p.get("text_chars") == 5 for p in payloads)
-        assert any(p.get("link_count") == 1 for p in payloads)
+        assert any(p.get("message") == "C-001: Scraping Page for text" for p in payloads)
         assert all(p.get("level") == "debug" for p in payloads)
 
 
