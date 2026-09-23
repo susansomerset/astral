@@ -625,7 +625,7 @@ def apply_agent_task_copy_upsert(conn: sqlite3.Connection, rows: list[dict[str, 
             continue
 
         was_absent = cur_before is None
-        _save_agent_task_on_connection(
+        _ = _save_agent_task_on_connection(
             conn,
             tk_str,
             now=now,
@@ -6204,7 +6204,7 @@ def _apply_ast723_rubric_vectors_token_migration(conn: sqlite3.Connection) -> No
         new_up = patched[1]
         if _AST723_RUBRIC_VECTORS_MARKER not in new_up:
             new_up = f"{new_up.rstrip()}\n<!-- {_AST723_RUBRIC_VECTORS_MARKER} -->"
-        _save_agent_task_on_connection(
+        _ = _save_agent_task_on_connection(
             conn,
             task_key,
             now=now,
@@ -6264,7 +6264,7 @@ def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) ->
     else:
         new_up = _patch_ast561_take_jd_into_prompt(up_raw) if up_raw.strip() else up_raw
         new_nc = _patch_ast561_take_jd_into_prompt(nc_raw) if nc_raw.strip() else nc_raw
-    _save_agent_task_on_connection(
+    _ = _save_agent_task_on_connection(
         conn,
         "analysis_upshot",
         now=_utc_now(),
@@ -6475,9 +6475,10 @@ def _save_agent_task_on_connection(
     task_seq: Optional[float] = None,
     task_name: Optional[str] = None,
     import_explicit: bool = False,
-) -> None:
+) -> bool:
     """Upsert logic for Manage Tasks semantics on caller-owned ``conn`` (no commit / close).
 
+    Returns True when a new current=1 row was inserted (first insert or content version).
     Caller must have run ``_ensure_agent_task_schema`` if needed.
     ``import_explicit`` — kwargs are pasted rows (Copy Output): ``None`` means empty value,
     not “leave untouched” (used by ``apply_agent_task_copy_upsert`` only).
@@ -6558,6 +6559,7 @@ def _save_agent_task_on_connection(
                 now,
             ),
         )
+        return True
     else:
         eu, ea, eb, ec, ed, en = (
             existing[2],
@@ -6638,6 +6640,7 @@ def _save_agent_task_on_connection(
                     now,
                 ),
             )
+            return True
         else:
             sets, params = ["updated_at = ?"], [now]
             if import_explicit:
@@ -6672,6 +6675,7 @@ def _save_agent_task_on_connection(
                 params.append(task_name.strip())
             params.append(existing[0])
             conn.execute(f"UPDATE agent_task SET {', '.join(sets)} WHERE task_key_uuid = ?", params)
+            return False
 
 
 def save_agent_task(
@@ -6694,14 +6698,15 @@ def save_agent_task(
     """Upsert agent_task with versioning. Any change among the seven prompt segments versions the row.
 
     Metadata without segment edits: agent_id / run_next only — updates `updated_at`, no retire.
-    All kwargs use ``None`` = leave existing value untouched (same as PUT no-key semantics)."""
+    All kwargs use ``None`` = leave existing value untouched (same as PUT no-key semantics).
+    After a new current version commits, revalidate dispatch_task AUTO for this task_key (AST-1781)."""
     now = _utc_now()
 
-    def _with_conn() -> None:
+    def _with_conn() -> bool:
         conn = _get_connection()
         try:
             _ensure_agent_task_schema(conn)
-            _save_agent_task_on_connection(
+            versioned = _save_agent_task_on_connection(
                 conn,
                 task_key,
                 now=now,
@@ -6720,10 +6725,21 @@ def save_agent_task(
                 task_name=task_name,
             )
             conn.commit()
+            return versioned
         finally:
             conn.close()
 
-    _run_with_retry(_with_conn)
+    versioned = _run_with_retry(_with_conn)
+    if versioned:
+        try:
+            revalidate_dispatch_tasks_for_task_key(task_key)
+        except Exception as exc:
+            _log.warning(
+                "task_key=%r %s: %s — empty-render revalidation after save_agent_task failed",
+                task_key,
+                type(exc).__name__,
+                exc,
+            )
 
 
 def get_agent_task(task_key: str) -> Optional[Dict[str, Any]]:
