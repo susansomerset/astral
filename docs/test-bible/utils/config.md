@@ -4316,3 +4316,44 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/utils/config.md`
 - `docs/test-bible/core/repo_admin_json.md`
+
+### AST-1779 · AST-1766 (empty-token predicate helper)
+
+**Parent:** [AST-1766 — Dispatch Validation](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1779-empty-token-predicate-helper`.
+
+`empty_render_for_prompts` — candidate-scoped empty-render predicate over prompt texts via `TOKEN_SOURCES` / `resolve_tokens`; ignores `source: chain`; does not fail on empty job tokens unless `entity_contexts` supplies that source; returns `{"empty_render": bool, "empty_tokens": list[str]}` (field name frozen for sibling #2 list enrichment). `resolve_tokens(..., warn_on_empty=False)` suppresses empty/unresolved WARNINGs for the helper’s quiet probe. Config-only — no API / version hooks / React (siblings #2–#4).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blank candidate token → `empty_render` + `empty_tokens` | `src/utils/config.py` | **`TestAst1779EmptyRenderForPrompts::test_blank_candidate_token_sets_empty_render`** |
+| Filled candidate + blank job without seam → false | same | **`…::test_filled_candidate_ignores_blank_job_without_entity_contexts`** |
+| Chain never scored | same | **`…::test_chain_only_never_scores`** |
+| Job seam via `entity_contexts` | same | **`…::test_job_seam_via_entity_contexts`** |
+| `warn_on_empty=False` quiet + default still warns | same | **`…::test_warn_on_empty_false_suppresses_empty_warning`** |
+| None/empty/non-str texts; first-seen order | same | **`…::test_none_empty_and_non_str_texts_and_order`** |
+| Rubric scored only via `entity_contexts` | same | **`…::test_rubric_scored_only_via_entity_contexts`** |
+
+**Broken / obsolete:** none — existing `TestResolveTokens` empty-WARNING asserts keep default `warn_on_empty=True`.
+
+**Integration:** none — no existing scenario asserts `empty_render_for_prompts` / `warn_on_empty`; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Blank candidate → empty_render: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_blank_candidate_token_sets_empty_render`
+2. Job ignored without seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_filled_candidate_ignores_blank_job_without_entity_contexts`
+3. Chain never scored: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_chain_only_never_scores`
+4. Job entity_contexts seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_job_seam_via_entity_contexts`
+5. warn_on_empty quiet: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_warn_on_empty_false_suppresses_empty_warning`
+6. Text tolerance + order: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_none_empty_and_non_str_texts_and_order`
+7. Rubric seam: `tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts::test_rubric_scored_only_via_entity_contexts`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1779EmptyRenderForPrompts \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/utils/config.md`
