@@ -1,8 +1,9 @@
-"""Optional scrape debug events — narrative T/C/F tracing when request debug=True.
+"""Optional scrape debug events — narrative T/S/F/C tracing when request debug=True.
 
 T = one POST /telescope (monotonic per deployment).
+S = one pool slot / Firefox process seat (stable for slot lifetime).
 C = one Playwright browser context (monotonic per deployment).
-F = one Firefox process (monotonic per deployment; concurrent T may share one F).
+F = one Firefox process launch (monotonic per deployment; concurrent T may share one S/F).
 
 Counters reset only on process restart / redeploy — not per POST or pool retry.
 """
@@ -50,6 +51,10 @@ _scrape_firefox: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
 )
 _scrape_context: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
     "telescope_scrape_context",
+    default=None,
+)
+_scrape_slot: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar(
+    "telescope_scrape_slot",
     default=None,
 )
 _scrape_pool_size: contextvars.ContextVar[Optional[int]] = contextvars.ContextVar(
@@ -179,6 +184,27 @@ def current_firefox_id() -> Optional[str]:
     return _scrape_firefox.get()
 
 
+def current_slot_id() -> Optional[str]:
+    return _scrape_slot.get()
+
+
+def scrape_correlation_tag(*, request_id: Optional[str] = None) -> str:
+    """T with bound S/F/C — for info-level ok lines."""
+    t = request_id or current_request_id() or "T-?"
+    parts = [
+        p
+        for p in (_scrape_slot.get(), _scrape_firefox.get(), _scrape_context.get())
+        if p
+    ]
+    return f"{t} ({' '.join(parts)})" if parts else t
+
+
+def slot_label(*, slot_id: Optional[int] = None) -> str:
+    if slot_id is not None:
+        return f"S-{int(slot_id) + 1:03d}"
+    return _scrape_slot.get() or "S-?"
+
+
 def firefox_label(*, firefox_id: Optional[str] = None) -> str:
     if firefox_id:
         return firefox_id
@@ -197,6 +223,7 @@ def begin_scrape_request(url: str, *, fields: Optional[List[str]] = None) -> Tup
         _scrape_fields.set(list(fields) if fields else None),
         _scrape_firefox.set(None),
         _scrape_context.set(None),
+        _scrape_slot.set(None),
         _scrape_pool_size.set(None),
         _scrape_pool_cap.set(None),
         _scrape_active_pages.set(None),
@@ -214,10 +241,11 @@ def end_scrape_request(tokens: Tuple[Any, ...]) -> None:
     _scrape_fields.reset(tokens[2])
     _scrape_firefox.reset(tokens[3])
     _scrape_context.reset(tokens[4])
-    _scrape_pool_size.reset(tokens[5])
-    _scrape_pool_cap.reset(tokens[6])
-    _scrape_active_pages.reset(tokens[7])
-    _scrape_contexts_cap.reset(tokens[8])
+    _scrape_slot.reset(tokens[5])
+    _scrape_pool_size.reset(tokens[6])
+    _scrape_pool_cap.reset(tokens[7])
+    _scrape_active_pages.reset(tokens[8])
+    _scrape_contexts_cap.reset(tokens[9])
 
 
 def bind_scrape_firefox(firefox_id: str) -> None:
@@ -226,6 +254,10 @@ def bind_scrape_firefox(firefox_id: str) -> None:
 
 def bind_scrape_context(context_id: str) -> None:
     _scrape_context.set(context_id)
+
+
+def bind_scrape_slot(slot_id: int) -> None:
+    _scrape_slot.set(slot_label(slot_id=slot_id))
 
 
 def bind_pool_caps(
@@ -269,32 +301,62 @@ def _url_suffix(url: str) -> str:
     return f" url={u}" if u else ""
 
 
-def _request_with_fc(
+def _resolve_slot(fields: dict[str, Any]) -> Optional[str]:
+    if fields.get("slot"):
+        return str(fields["slot"])
+    if fields.get("slot_id") is not None:
+        return slot_label(slot_id=int(fields["slot_id"]))
+    return _scrape_slot.get()
+
+
+def _request_with_sfc(
     *,
+    slot: Optional[str] = None,
     firefox: Optional[str] = None,
     context: Optional[str] = None,
 ) -> str:
-    """T label with bound F/C when assigned — confirms each T owns one C."""
+    """T label with bound S/F/C when assigned."""
     t = _scrape_request.get() or "T-?"
-    ff = firefox or _scrape_firefox.get()
-    cc = context or _scrape_context.get()
-    if ff and cc:
-        return f"{t} ({ff} {cc})"
-    if ff:
-        return f"{t} ({ff})"
+    parts = [
+        p
+        for p in (
+            slot or _scrape_slot.get(),
+            firefox or _scrape_firefox.get(),
+            context or _scrape_context.get(),
+        )
+        if p
+    ]
+    if parts:
+        return f"{t} ({' '.join(parts)})"
     return t
+
+
+def _actor_prefix(
+    kind: str,
+    *,
+    slot: Optional[str] = None,
+    firefox: Optional[str] = None,
+    context: Optional[str] = None,
+) -> str:
+    """Leading S/F/C label on per-actor narrative lines."""
+    ss = slot or _scrape_slot.get()
+    if kind == "f":
+        ff = firefox or _scrape_firefox.get() or "F-?"
+        return f"{ss} {ff}" if ss else ff
+    cc = context or _scrape_context.get() or "C-?"
+    return f"{ss} {cc}" if ss else cc
 
 
 def _event_message(event: str, **fields: Any) -> str:
     t = _scrape_request.get() or "T-?"
+    s = _resolve_slot(fields)
     f = fields.get("firefox") or _scrape_firefox.get() or "F-?"
     c = fields.get("context") or _scrape_context.get() or "C-?"
     url = fields.get("url") or _scrape_url.get() or ""
     req_fields = fields.get("fields") or _scrape_fields.get() or []
 
     if event in _POOL_EVENTS:
-        slot = fields.get("slot_id")
-        label = f"S-{int(slot) + 1:03d}" if slot is not None else "S-?"
+        label = slot_label(slot_id=fields["slot_id"]) if fields.get("slot_id") is not None else "S-?"
         return f"telescope pool {label}{_pool_cap_suffix(**fields)} {event}"
 
     live = _live_suffix()
@@ -304,16 +366,20 @@ def _event_message(event: str, **fields: Any) -> str:
     if event == "request_start":
         fl = ", ".join(str(x) for x in req_fields)
         base = f"{t}: Accepted, {fl}" if fl else f"{t}: Accepted"
-        return f"{base} (awaiting F/C){url_tail}{live}"
+        return f"{base} (awaiting S/F/C){url_tail}{live}"
 
     if event == "request_serving":
-        tag = _request_with_fc(firefox=f if f != "F-?" else None, context=c if c != "C-?" else None)
+        tag = _request_with_sfc(
+            slot=s,
+            firefox=f if f != "F-?" else None,
+            context=c if c != "C-?" else None,
+        )
         fl = ", ".join(str(x) for x in req_fields)
         base = f"{tag}: Requesting, {fl}" if fl else f"{tag}: Requesting"
         return f"{base}{_context_cap_suffix(**fields)}{url_tail}{live}"
 
     if event == "request_done":
-        tag = _request_with_fc()
+        tag = _request_with_sfc()
         return f"{tag}: Request Return Successful{url_tail}{live}"
 
     if event == "firefox_needed":
@@ -325,44 +391,59 @@ def _event_message(event: str, **fields: Any) -> str:
         )
 
     if event == "request_context":
-        tag = _request_with_fc(firefox=f if f != "F-?" else None, context=c if c != "C-?" else None)
+        tag = _request_with_sfc(
+            slot=s,
+            firefox=f if f != "F-?" else None,
+            context=c if c != "C-?" else None,
+        )
         return f"{tag}: Requesting context from {f}{_context_cap_suffix(**fields)}{url_tail}{live}"
 
     if event == "firefox_launched":
-        return f"{f}: Starting firefox app with playwright{url_tail}{live}"
+        actor = _actor_prefix("f", slot=s, firefox=f if f != "F-?" else None)
+        return f"{actor}: Starting firefox app with playwright{url_tail}{live}"
 
     if event == "context_created":
-        return f'{f}: Creating context "{c}"{url_tail}{live}'
+        actor = _actor_prefix("f", slot=s, firefox=f if f != "F-?" else None)
+        return f'{actor}: Creating context "{c}"{url_tail}{live}'
 
     if event == "page_created":
-        return f"{c}: Starting context{url_tail}{live}"
+        actor = _actor_prefix("c", slot=s, context=c if c != "C-?" else None)
+        return f"{actor}: Starting context{url_tail}{live}"
 
     if event == "navigate_start":
-        return f"{c}: Loading Page{url_tail}{live}"
+        actor = _actor_prefix("c", slot=s, context=c if c != "C-?" else None)
+        return f"{actor}: Loading Page{url_tail}{live}"
 
     if event == "navigate_done":
         final = fields.get("final_url") or url
-        return f"{c}: Page loaded final_url={final}{url_tail}{live}"
+        actor = _actor_prefix("c", slot=s, context=c if c != "C-?" else None)
+        return f"{actor}: Page loaded final_url={final}{url_tail}{live}"
 
     if event == "scrape_field":
-        return f"{c}: Scraping Page for {fields.get('field', '?')}{url_tail}{live}"
+        actor = _actor_prefix("c", slot=s, context=c if c != "C-?" else None)
+        return f"{actor}: Scraping Page for {fields.get('field', '?')}{url_tail}{live}"
 
     if event == "context_closed":
-        return f"{c}: Close Page{url_tail}{live}"
+        actor = _actor_prefix("c", slot=s, context=c if c != "C-?" else None)
+        return f"{actor}: Close Page{url_tail}{live}"
 
     if event == "context_recycled":
         ctx = fields.get("context") or c
-        return f'{f}: Recycle Context "{ctx}"{url_tail}{live}'
+        actor = _actor_prefix("f", slot=s, firefox=f if f != "F-?" else None)
+        return f'{actor}: Recycle Context "{ctx}"{url_tail}{live}'
 
     if event == "firefox_closed":
-        return f"{f}: Close Instance{url_tail}{live}"
+        actor = _actor_prefix("f", slot=s, firefox=f if f != "F-?" else None)
+        return f"{actor}: Close Instance{url_tail}{live}"
 
     if event == "firefox_recover":
         reason = fields.get("reason") or "recover"
-        return f"{f}: Recover Instance reason={reason}{url_tail}{live}"
+        actor = _actor_prefix("f", slot=s, firefox=f if f != "F-?" else None)
+        return f"{actor}: Recover Instance reason={reason}{url_tail}{live}"
 
     if event == "ready_state":
-        return f"{c}: wait_ready outcome={fields.get('outcome', '?')}{url_tail}{live}"
+        actor = _actor_prefix("c", slot=s, context=c if c != "C-?" else None)
+        return f"{actor}: wait_ready outcome={fields.get('outcome', '?')}{url_tail}{live}"
 
     return f"telescope scrape {event}"
 
@@ -373,11 +454,12 @@ def scrape_debug_event(event: str, **fields: Any) -> None:
         return
     ff = fields.get("firefox") or _scrape_firefox.get()
     ctx = fields.get("context") or _scrape_context.get()
+    ss = _resolve_slot(fields)
     _adjust_live_for_event(event, firefox=ff, context=ctx)
     msg = _event_message(event, **fields)
     counts = live_instance_counts()
     extra = dict(fields)
-    for key in ("event", "request", "firefox", "context", "requested_url", "fields"):
+    for key in ("event", "request", "slot", "firefox", "context", "requested_url", "fields"):
         extra.pop(key, None)
     railway_log(
         "debug",
@@ -385,6 +467,7 @@ def scrape_debug_event(event: str, **fields: Any) -> None:
         msg,
         event=event,
         request=_scrape_request.get(),
+        slot=ss,
         firefox=ff,
         context=ctx,
         requested_url=_scrape_url.get(),

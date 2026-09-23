@@ -24,11 +24,11 @@ from logging_util import configure_logging, get_logger
 from meta import build_scrape_meta
 from scrape_debug import (
     begin_scrape_request,
-    current_request_id,
     disable_scrape_debug,
     enable_scrape_debug,
     end_scrape_request,
     log_scrape_capture,
+    scrape_correlation_tag,
     scrape_debug_event,
 )
 from settings import settings
@@ -324,7 +324,7 @@ async def post_telescope(request: Request, body: TelescopeRequest):
         )
         _log.info(
             "telescope ok %s url=%s final_url=%s fields=%s",
-            current_request_id() or request_id,
+            scrape_correlation_tag(request_id=request_id),
             url,
             result.get("final_url"),
             list(body.fields),
@@ -372,7 +372,7 @@ async def post_telescope_html(request: Request, body: TelescopeHtmlRequest):
             html_len = len(html or "")
         _log.info(
             "telescope ok %s url=%s final_url=%s html_len=%d",
-            current_request_id() or request_id,
+            scrape_correlation_tag(request_id=request_id),
             url,
             result.get("final_url"),
             html_len,
