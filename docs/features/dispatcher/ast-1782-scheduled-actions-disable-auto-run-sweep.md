@@ -121,8 +121,8 @@ context_tokens≈42000
 ## Review (build stub)
 
 **Publish ref:** `origin/sub/AST-1766/AST-1782-scheduled-actions-disable-auto-run-sweep`
-**Tip:** _(after publish)_
+**Tip:** `dfa47d80`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | _(after publish)_ | Honor list `empty_render` on AUTO + Run/Sweep |
+| 1 | `dfa47d80` | Honor list `empty_render` on AUTO + Run/Sweep |
