@@ -1,4 +1,4 @@
-"""Scrape debug flag — narrative T/C/F tracing when request debug=True."""
+"""Scrape debug flag — narrative T/S/F/C tracing when request debug=True."""
 
 from __future__ import annotations
 
@@ -47,7 +47,7 @@ def telescope_debug_client(bearer_headers):
 
 class TestScrapeDebugHelpers:
     def test_tcf_narrative_messages(self, capsys) -> None:
-        """T = URL request, C = context (1:1 with T), F = Firefox process."""
+        """T = URL request, S = pool slot, C = context, F = Firefox process."""
         import scrape_debug as dbg
 
         request_id, tokens = dbg.begin_scrape_request(
@@ -59,6 +59,7 @@ class TestScrapeDebugHelpers:
             dbg.scrape_debug_event(
                 "firefox_needed", live_count=0, firefox_id="F-001"
             )
+            dbg.bind_scrape_slot(0)
             dbg.bind_scrape_firefox("F-001")
             dbg.scrape_debug_event("firefox_launched", firefox="F-001")
             ctx = dbg.alloc_context_id()
@@ -86,30 +87,30 @@ class TestScrapeDebugHelpers:
         assert ctx == "C-001"
         assert (
             messages[0]
-            == "T-001: Accepted, text, links (awaiting F/C) url=https://www.scrapeme.com [live T=1 F=0 C=0]"
+            == "T-001: Accepted, text, links (awaiting S/F/C) url=https://www.scrapeme.com [live T=1 F=0 C=0]"
         )
         assert 'creating "F-001"' in messages[1]
         assert (
             messages[2]
-            == "F-001: Starting firefox app with playwright url=https://www.scrapeme.com [live T=1 F=1 C=0]"
+            == "S-001 F-001: Starting firefox app with playwright url=https://www.scrapeme.com [live T=1 F=1 C=0]"
         )
         assert (
             messages[3]
-            == "T-001 (F-001 C-001): Requesting, text, links url=https://www.scrapeme.com [live T=1 F=1 C=0]"
+            == "T-001 (S-001 F-001 C-001): Requesting, text, links url=https://www.scrapeme.com [live T=1 F=1 C=0]"
         )
         assert (
             messages[4]
-            == 'F-001: Creating context "C-001" url=https://www.scrapeme.com [live T=1 F=1 C=1]'
+            == 'S-001 F-001: Creating context "C-001" url=https://www.scrapeme.com [live T=1 F=1 C=1]'
         )
-        assert messages[5] == "C-001: Starting context url=https://www.scrapeme.com [live T=1 F=1 C=1]"
-        assert messages[6] == "C-001: Loading Page url=https://www.scrapeme.com [live T=1 F=1 C=1]"
-        assert messages[7] == "C-001: Scraping Page for text url=https://www.scrapeme.com [live T=1 F=1 C=1]"
-        assert messages[8] == "C-001: Scraping Page for links url=https://www.scrapeme.com [live T=1 F=1 C=1]"
-        assert messages[9] == "C-001: Close Page url=https://www.scrapeme.com [live T=1 F=1 C=0]"
-        assert messages[10] == "F-001: Close Instance url=https://www.scrapeme.com [live T=1 F=0 C=0]"
+        assert messages[5] == "S-001 C-001: Starting context url=https://www.scrapeme.com [live T=1 F=1 C=1]"
+        assert messages[6] == "S-001 C-001: Loading Page url=https://www.scrapeme.com [live T=1 F=1 C=1]"
+        assert messages[7] == "S-001 C-001: Scraping Page for text url=https://www.scrapeme.com [live T=1 F=1 C=1]"
+        assert messages[8] == "S-001 C-001: Scraping Page for links url=https://www.scrapeme.com [live T=1 F=1 C=1]"
+        assert messages[9] == "S-001 C-001: Close Page url=https://www.scrapeme.com [live T=1 F=1 C=0]"
+        assert messages[10] == "S-001 F-001: Close Instance url=https://www.scrapeme.com [live T=1 F=0 C=0]"
         assert (
             messages[11]
-            == "T-001 (F-001 C-001): Request Return Successful url=https://www.scrapeme.com [live T=1 F=0 C=0]"
+            == "T-001 (S-001 F-001 C-001): Request Return Successful url=https://www.scrapeme.com [live T=1 F=0 C=0]"
         )
 
     def test_live_counters_track_start_and_recycle(self) -> None:
@@ -170,6 +171,7 @@ class TestScrapeDebugHelpers:
         _, tokens = dbg.begin_scrape_request("https://example.com")
         token = dbg.enable_scrape_debug()
         try:
+            dbg.bind_scrape_slot(0)
             dbg.bind_scrape_firefox("F-001")
             dbg.bind_scrape_context("C-001")
             dbg.scrape_debug_event(
@@ -193,7 +195,8 @@ class TestScrapeDebugHelpers:
         assert any(p.get("event") == "context_created" for p in payloads)
         scrape_lines = [p for p in payloads if p.get("event") == "scrape_field"]
         assert len(scrape_lines) == 1
-        assert scrape_lines[0]["message"] == "C-001: Scraping Page for text url=https://example.com [live T=1 F=0 C=1]"
+        assert scrape_lines[0]["message"] == "S-001 C-001: Scraping Page for text url=https://example.com [live T=1 F=0 C=1]"
+        assert scrape_lines[0]["slot"] == "S-001"
         assert scrape_lines[0]["live_contexts"] == 1
         assert all(p.get("level") == "debug" for p in payloads)
 

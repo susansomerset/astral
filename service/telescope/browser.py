@@ -16,6 +16,7 @@ from scrape_debug import (
     bind_pool_caps,
     bind_scrape_context,
     bind_scrape_firefox,
+    bind_scrape_slot,
     current_context_id,
     current_firefox_id,
     firefox_label,
@@ -424,6 +425,7 @@ class BrowserPool:
     async def _pooled_page(self) -> AsyncIterator[Page]:
         while True:
             slot = await self._acquire_slot()
+            bind_scrape_slot(slot.slot_id)
             if not await self._ensure_slot_browser(slot):
                 await self._abort_slot_acquire(slot)
                 continue
