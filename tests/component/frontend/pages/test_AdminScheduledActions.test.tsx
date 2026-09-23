@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -1564,6 +1564,85 @@ describe("AdminScheduledActions", () => {
       expect(postBody!.trigger_state).toBe("WATCH")
       expect(postBody!.candidate_id).toBe("c1")
     }, 20000)
+  })
+
+  describe("AST-1782 empty_render mutes AUTO and Run/Sweep", () => {
+    it("blocks AUTO toggle and Run when empty_render is true", async () => {
+      const row = { ...dispatchTask, empty_render: true, auto_mode: 0 }
+      mockApi(false, { tasks: [row], threads: {}, taskKeysPayload: taskKeysConfig })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      mockedApi.mockClear()
+      const autoBtn = within(tbody).getAllByRole("button", { name: "OFF" })[0]
+      expect(autoBtn).toHaveStyle({ opacity: "0.25", pointerEvents: "none" })
+      // Bypass CSS pointer-events to prove handler still no-ops (defense in depth).
+      fireEvent.click(autoBtn)
+      await vi.advanceTimersByTimeAsync(100)
+      expect(mockedApi.mock.calls.some(
+        ([url, init]) => String(url).includes("/dispatch_tasks/1") && (init as RequestInit | undefined)?.method === "PUT",
+      )).toBe(false)
+      const runBtn = within(tbody).getByRole("button", { name: "Run" })
+      expect(runBtn).toBeDisabled()
+      fireEvent.click(runBtn)
+      await vi.advanceTimersByTimeAsync(100)
+      expect(mockedApi.mock.calls.some(
+        ([url, init]) => String(url).endsWith("/run") && (init as RequestInit | undefined)?.method === "POST",
+      )).toBe(false)
+    }, 20000)
+
+    it("allows AUTO toggle and Run when empty_render is false", async () => {
+      const row = { ...dispatchTask, empty_render: false, auto_mode: 0 }
+      mockApi(false, { tasks: [row], threads: {}, taskKeysPayload: taskKeysConfig })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      mockedApi.mockClear()
+      await userEvent.click(within(tbody).getAllByRole("button", { name: "OFF" })[0])
+      await waitFor(() => expect(mockedApi.mock.calls.some(
+        ([url, init]) => String(url).includes("/dispatch_tasks/1") && (init as RequestInit | undefined)?.method === "PUT",
+      )).toBe(true))
+      mockedApi.mockClear()
+      await userEvent.click(within(tbody).getByRole("button", { name: "Run" }))
+      await waitFor(() => expect(mockedApi.mock.calls.some(
+        ([url]) => String(url).endsWith("/run"),
+      )).toBe(true))
+    }, 20000)
+
+    it("Debug toggle still fires PUT when empty_render is true", async () => {
+      const row = { ...dispatchTask, empty_render: true, auto_mode: 0, debug: 0 }
+      mockApi(false, { tasks: [row], threads: {}, taskKeysPayload: taskKeysConfig })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+      await selectAllCandidatesFilter()
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      // AUTO OFF is muted; Debug OFF is the other OFF badge in the row.
+      const offs = within(tbody).getAllByRole("button", { name: "OFF" })
+      mockedApi.mockClear()
+      await userEvent.click(offs[offs.length - 1])
+      await waitFor(() => expect(mockedApi.mock.calls.some(
+        ([url, init]) => String(url).includes("/dispatch_tasks/1") && (init as RequestInit | undefined)?.method === "PUT",
+      )).toBe(true))
+    }, 20000)
+
+    it("source file has no resolve_tokens or TOKEN_SOURCES", async () => {
+      const { readFileSync, existsSync } = await import("node:fs")
+      const { resolve } = await import("node:path")
+      const candidates = [
+        resolve(process.cwd(), "src/ui/frontend/src/pages/AdminScheduledActions.tsx"),
+        resolve(process.cwd(), "src/pages/AdminScheduledActions.tsx"),
+        resolve(process.cwd(), "../../../src/ui/frontend/src/pages/AdminScheduledActions.tsx"),
+      ]
+      const path = candidates.find((c) => existsSync(c))
+      expect(path).toBeTruthy()
+      const src = readFileSync(path!, "utf8")
+      expect(src).not.toMatch(/resolve_tokens|TOKEN_SOURCES/)
+    })
   })
 
 })
