@@ -126,3 +126,66 @@ context_tokens≈42000
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `dfa47d80` | Honor list `empty_render` on AUTO + Run/Sweep |
+
+## Radia review
+
+[code-rubric]
+**Ticket:** AST-1782
+**Publish ref:** 519d4763fd31fac1b8f9702286ffade1dfdadb03
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| astral.dispatch.entity-state-bound | X | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan graded `astral.dispatch.entity-state-bound` **X** at validate-plan; code review agrees. `AdminScheduledActions.tsx` is outside the statute's `applies_when` paths; UI-only change trusts sibling #2's `empty_render` boolean with no `dispatch_task` persistence or entity-binding edits.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### discuss — Canon Scope gaps (do not score; Joan raised at plan)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs plan footprint
+- **Finding:** `astral.ui.frontend-file-placement` and `astral.standards.in-scope-only` plainly govern a single-page frontend change but are absent from the frozen one-id list. Plan scope gate + implementation honor both (one file only).
+- **Recommendation:** Archie may amend Canon Scope for Radia comparability; no plan defect.
+
+### discuss — Epic rollup on sub tip (not AST-1782 product scope)
+
+- **Severity:** discuss
+- **Location:** Full branch diff vs `origin/dev` includes siblings #1–#3 product code, tests, and docs merged on the integration line
+- **Finding:** AST-1782 product footprint is confined to `AdminScheduledActions.tsx` (+ component tests + bible). Depends on AST-1780 list `empty_render` field already on the branch — expected epic integration, not scope smuggling for this ticket.
+- **Recommendation:** Chuckles/merge-child hygiene before ftr rollup; no resolve-child work on AST-1782 tip.
+
+### acceptable — AUTO badge blocks toggle-off while flagged (Joan raised at plan)
+
+- **Severity:** acceptable
+- **Location:** `AdminScheduledActions.tsx` — AUTO badge `pointerEvents: "none"` + `toggleAutoMode` early return when `empty_render`
+- **Finding:** Child AC fail text names `PUT auto_mode: true`; implementation also blocks turning AUTO off from the list badge while flagged.
+- **Recommendation:** Reasonable fail-closed UX; AST-1780 already force-offs persisted AUTO. No change required.
+
+### acceptable — Create/edit modal AUTO unchanged (Joan raised at plan)
+
+- **Severity:** acceptable
+- **Location:** Stage 1 step 6 — modal `auto_mode` checkbox untouched
+- **Finding:** Modal AUTO-on remains possible in UI; AST-1780 API 400 is the backstop.
+- **Recommendation:** Matches ticket Scope ("list flag / row controls only").
+
+## What's solid
+
+- `DispatchTask` gains optional `empty_render?: boolean`; row map derives `emptyRender` / `runBlocked`.
+- AUTO badge: muted styling (`opacity: 0.25`, `pointerEvents: "none"`), no `toggleAutoMode` when flagged; handler early-return defense in depth.
+- Run/Sweep: `disabled` and mute styling extended with `emptyRender`; Stop/Drain overlay path unchanged when `isRunning`.
+- No `resolve_tokens` / `TOKEN_SOURCES` in source (grep clean; test asserts).
+- Four manifest tests: block AUTO+Run, allow when false, Debug still works, no client resolver strings.
+- Estimate **2** fits (~20-line product diff + focused Vitest suite).
+
+context_tokens≈38000
