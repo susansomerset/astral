@@ -117,3 +117,12 @@ AC2→Stage 1 (mute + block list AUTO badge and Run/Sweep when `empty_render`; h
 - **Recommendation:** Matches ticket Scope (“list flag / row controls only”). No plan change required.
 
 context_tokens≈42000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1766/AST-1782-scheduled-actions-disable-auto-run-sweep`
+**Tip:** _(after publish)_
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | _(after publish)_ | Honor list `empty_render` on AUTO + Run/Sweep |
