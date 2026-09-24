@@ -4,8 +4,9 @@
 anthropic>=0.7.0,<1.0.0  # v1.0.0 (2026-08-20) is a breaking release; src/external/anthropic.py and deepseek.py use the pre-v1 client API
 stytch
 
-# Web scraping & automation (browser I/O via Telescope HTTP — AST-1726)
+# Web scraping & automation (browser I/O via the Telescope Postgres queue)
 httpx>=0.27.0,<1
+asyncpg>=0.30.0,<1
 beautifulsoup4>=4.12.0
 requests>=2.31.0
 

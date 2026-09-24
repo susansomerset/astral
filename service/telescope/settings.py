@@ -19,25 +19,43 @@ from telescope_config import (
     PORT,
     RECYCLE_AFTER_N,
     REQUEST_TIMEOUT_SECONDS,
+    DB_POOL_MAX_SIZE,
+    HEARTBEAT_SECONDS,
+    JOB_RETENTION_HOURS,
+    LEASE_SECONDS,
+    MAINTENANCE_SECONDS,
+    QUEUE_POLL_SECONDS,
     SCRAPE_RETRY_BASE_DELAY_SECONDS,
-    SCRAPE_RETRY_COUNT,
+    SHUTDOWN_GRACE_SECONDS,
+    TIMEOUT_MAX_ATTEMPTS,
     VIEWPORT,
     WAIT_READY_MAX_MS,
     WAIT_READY_MIN_CHARS,
     WAIT_READY_POLL_MS,
     WAIT_READY_STABILITY_POLLS,
+    WORKER_CONCURRENCY,
+    WORKER_STALE_SECONDS,
 )
 
 
 @dataclass(frozen=True)
 class Settings:
-    bearer_token: str
+    database_url: str
     browser_per_request: bool
     browser_pool_size: int
     max_contexts_per_browser: int
     request_timeout_seconds: float
-    scrape_retry_count: int
     scrape_retry_base_delay_seconds: float
+    timeout_max_attempts: int
+    worker_concurrency: int
+    queue_poll_seconds: float
+    lease_seconds: int
+    heartbeat_seconds: float
+    maintenance_seconds: float
+    job_retention_hours: int
+    worker_stale_seconds: int
+    shutdown_grace_seconds: float
+    db_pool_max_size: int
     recycle_after_n: int
     port: int
     log_level: str
@@ -70,13 +88,22 @@ class Settings:
 
 def load_settings() -> Settings:
     return Settings(
-        bearer_token=os.environ.get("TELESCOPE_BEARER_TOKEN", ""),
+        database_url=(os.environ.get("ASTRAL_DATABASE_URL") or "").strip(),
         browser_per_request=bool(BROWSER_PER_REQUEST),
         browser_pool_size=BROWSER_POOL_SIZE,
         max_contexts_per_browser=MAX_CONTEXTS_PER_BROWSER,
         request_timeout_seconds=float(REQUEST_TIMEOUT_SECONDS),
-        scrape_retry_count=SCRAPE_RETRY_COUNT,
         scrape_retry_base_delay_seconds=SCRAPE_RETRY_BASE_DELAY_SECONDS,
+        timeout_max_attempts=TIMEOUT_MAX_ATTEMPTS,
+        worker_concurrency=WORKER_CONCURRENCY,
+        queue_poll_seconds=QUEUE_POLL_SECONDS,
+        lease_seconds=LEASE_SECONDS,
+        heartbeat_seconds=HEARTBEAT_SECONDS,
+        maintenance_seconds=MAINTENANCE_SECONDS,
+        job_retention_hours=JOB_RETENTION_HOURS,
+        worker_stale_seconds=WORKER_STALE_SECONDS,
+        shutdown_grace_seconds=SHUTDOWN_GRACE_SECONDS,
+        db_pool_max_size=DB_POOL_MAX_SIZE,
         recycle_after_n=RECYCLE_AFTER_N,
         port=PORT,
         log_level=(os.environ.get("TELESCOPE_LOG_LEVEL") or LOG_LEVEL).strip()

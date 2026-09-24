@@ -4720,41 +4720,34 @@ RAILWAY_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
-# PLAYWRIGHT_CONFIG: batch session recover retries (client-side); scrape timeouts
-# live in TELESCOPE_CONFIG.request_timeout_seconds (AST-1726 HTTP client).
+# PLAYWRIGHT_CONFIG: batch session recover retries (client-side); scrape deadlines
+# live in TELESCOPE_CONFIG.job_deadline_seconds.
 # ---------------------------------------------------------------------------
 PLAYWRIGHT_CONFIG = {
     "context_recovery_max_attempts": 2,
 }
 
 # ---------------------------------------------------------------------------
-# TELESCOPE_CONFIG: platform HTTP client to Astral Telescope (AST-1726).
-# Bearer is env-only (never a code default secret).
-# request_timeout_seconds: platform HTTP client round-trip (queue + scrape + retries).
-# Server scrape timeout after slot acquire: service/telescope/telescope_config.py
-# REQUEST_TIMEOUT_SECONDS (120). Client must allow queue wait on top of that.
+# TELESCOPE_CONFIG: platform side of the Telescope Postgres job queue.
+# Scrapes are rows in telescope_job (schema owned by service/telescope/jobqueue.py);
+# the platform inserts a job and waits for the worker to write the result.
+# database_url is env-only (ASTRAL_DATABASE_URL — never a code default).
+# job_deadline_seconds: queue wait + every attempt; past it the job is cancelled.
+# max_attempts: claims per job (mirror: service telescope_config retry comments).
 # ---------------------------------------------------------------------------
 TELESCOPE_CONFIG = {
-    "base_urls": [],  # filled below from TELESCOPE_BASE_URLS or TELESCOPE_BASE_URL
-    "bearer_env": "TELESCOPE_BEARER_TOKEN",
-    "request_timeout_seconds": 600,
-    "retry_other_node": True,
-    "max_node_attempts": 2,
-    "healthz_path": "/healthz",
-    "telescope_path": "/telescope",
-    "telescope_html_path": "/telescope/html",
+    "database_url_env": "ASTRAL_DATABASE_URL",
+    "job_deadline_seconds": 600,
+    "max_attempts": 4,
+    "poll_interval_seconds": 1.0,
+    "db_pool_max_size": 10,
+    "default_priority": 0,
+    "admin_priority": 10,
+    "worker_stale_seconds": 60,
     "cull_html_default": True,
     "default_expand": True,
     "default_wait_ready": False,
 }
-
-_urls_csv = (os.environ.get("TELESCOPE_BASE_URLS") or "").strip()
-if _urls_csv:
-    TELESCOPE_CONFIG["base_urls"] = [u.strip() for u in _urls_csv.split(",") if u.strip()]
-else:
-    _single = (os.environ.get("TELESCOPE_BASE_URL") or "").strip()
-    if _single:
-        TELESCOPE_CONFIG["base_urls"] = [_single]
 
 # ---------------------------------------------------------------------------
 # Timesheet rows (database ledgers): provider string validated on insert.

@@ -36,7 +36,7 @@ Gazer batch + roster scrape manifests: **`docs/test-bible/core/gazer.md`** · **
 | --- | --- |
 | Module gone | `test_telescope.py::TestPlaywrightModuleGone` |
 | Cull default on/off | `test_telescope.py::TestCullHtmlDefault` |
-| HTTP pool 5xx failover + timeout + missing bearer | `test_telescope.py::TestTelescopePoolHttp` |
+| Queue client: enqueue + result decode, failure-class mapping, deadline cancel, missing DSN | `test_telescope.py::TestTelescopeQueueClient` |
 | TELESCOPE_CONFIG + trimmed PLAYWRIGHT_CONFIG | `test_config.py::TestAst1726TelescopeConfig`, `::TestAst853PlaywrightConfig` |
 | Roster import + readiness (empty≠listing timeout) | `test_roster.py` imports `telescope`; `TestAst689ScrapeReadiness` |
 | Infra prefix unchanged | `test_roster.py::…::test_playwright_infra_error_prefixes_failure_class` |

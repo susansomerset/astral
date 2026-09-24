@@ -1,16 +1,30 @@
 """Telescope service constants — keep in sync with platform TELESCOPE_CONFIG.
 
-Mirror: src/utils/config.py → TELESCOPE_CONFIG["request_timeout_seconds"]
+Mirror: src/utils/config.py → TELESCOPE_CONFIG (max_attempts, job_deadline_seconds)
 Import fence forbids reading src/ from service/telescope/.
-Secrets (bearer token) stay in env via settings.py.
+Secrets (database URL) stay in env via settings.py.
 """
 
 # Scrape budget only — starts after a pool slot/page is acquired (not queue wait).
 REQUEST_TIMEOUT_SECONDS = 120
 
-# Scrape retries after Playwright/page flake (initial attempt + 3 retries).
-SCRAPE_RETRY_COUNT = 3
+# Retries are queue re-deliveries: the platform sets max_attempts per job; a failed
+# attempt goes back to the queue after base * 2**(attempt-1) seconds.
 SCRAPE_RETRY_BASE_DELAY_SECONDS = 2.0
+# Timeouts are expensive — only this many attempts end in a timeout before the job fails.
+TIMEOUT_MAX_ATTEMPTS = 2
+
+# Queue worker (Postgres-backed). WORKER_CONCURRENCY = scrapes in flight per replica —
+# the tuning knob for how hard one replica is pushed (must fit the ~2 GiB limit).
+WORKER_CONCURRENCY = 20
+QUEUE_POLL_SECONDS = 2.0
+LEASE_SECONDS = 60
+HEARTBEAT_SECONDS = 15
+MAINTENANCE_SECONDS = 30
+JOB_RETENTION_HOURS = 24
+WORKER_STALE_SECONDS = 60
+SHUTDOWN_GRACE_SECONDS = 25
+DB_POOL_MAX_SIZE = 5
 
 # Pooled mode (AST-1725): W Firefox processes, fresh context per HTTP call.
 BROWSER_PER_REQUEST = False
