@@ -1010,10 +1010,19 @@ async def stage_meteorite(
         if map_err:
             failed = _save_error(str(map_err), outcome, batch_id=batch_id)
             return failed or _err(str(map_err), batch_id=batch_id, stage_outcome=outcome)
-        state = "READY" if outcome in text_outcomes else "SCRAPE_LINK"
+        # AST-1785: state from final link scheme — http → SCRAPE_LINK even on text outcomes
         job_dicts = [j for j in (classify.get("jobs") or []) if isinstance(j, dict)]
         for row, job in zip(row_dicts, job_dicts):
-            row["state"] = state
+            row_link = (
+                (row.get("link") or "").strip()
+                if isinstance(row.get("link"), str) else ""
+            )
+            if _is_http_url(row_link):
+                row["state"] = "SCRAPE_LINK"
+            elif outcome in text_outcomes:
+                row["state"] = "READY"
+            else:
+                row["state"] = "SCRAPE_LINK"
             row["job_title"] = _stage_field(job, "job_title")
             row["employer_name"] = _stage_field(job, "employer_name")
         try:
@@ -1304,6 +1313,10 @@ def _email_breadcrumb_link(
     return breadcrumb
 
 
+def _is_http_url(link: str) -> bool:
+    return link.startswith("http://") or link.startswith("https://")
+
+
 def _map_classify_jobs_to_meteorite_rows(
     outcome: str,
     jobs: List[Dict[str, Any]],
@@ -1340,7 +1353,15 @@ def _map_classify_jobs_to_meteorite_rows(
                     return [], "text scrap missing jd_text"
                 text = fallback
             link: Optional[str] = None
-            if source_kind == "email":
+            # AST-1785: http(s) job_link wins over email breadcrumb on text outcomes
+            job_link = (
+                (job.get("job_link") or "").strip()
+                if isinstance(job.get("job_link"), str) else ""
+            )
+            if _is_http_url(job_link):
+                link = job_link
+                logger.debug("Preferring http job_link over breadcrumb: %s", link)
+            elif source_kind == "email":
                 from_email = (
                     (job.get("from_email") or "").strip()
                     if isinstance(job.get("from_email"), str) else ""
@@ -1379,7 +1400,7 @@ def _map_classify_jobs_to_meteorite_rows(
             return [], "url outcome produced no jobs"
         for job in rows:
             link = (job.get("job_link") or "").strip() if isinstance(job.get("job_link"), str) else ""
-            if not (link.startswith("http://") or link.startswith("https://")):
+            if not _is_http_url(link):
                 return [], "url scrap missing http(s) job_link"
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
             col = METEORITE_CONFIG["electronic_contact_column"]
@@ -1621,10 +1642,6 @@ _ZERO_SUMMARY: Dict[str, int] = {
 }
 
 
-def _is_http_url(link: str) -> bool:
-    return link.startswith("http://") or link.startswith("https://")
-
-
 def _row_miss(row_id: Any, cid: str, why: str, next_step: str) -> None:
     _warn_item(f"meteorite {row_id} for {cid}", why, next_step)
 
@@ -1694,6 +1711,7 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                         summary["total_errors"] += 1
                         continue
                     # AST-1703: email text rows must already carry breadcrumb on link.
+                    # AST-1785: http link on a text outcome → SCRAPE_LINK (not READY).
                     kind = (row.get("source_kind") or "").strip()
                     link = (row.get("link") or "").strip()
                     if kind == "email" and not link:
@@ -1704,6 +1722,11 @@ async def run_stage_meteorite(task: Dict[str, Any], *, debug: bool = False) -> D
                             row_id, cid, "missing breadcrumb link", "This row is SCRAPE_ERROR",
                         )
                         summary["total_errors"] += 1
+                        continue
+                    if _is_http_url(link):
+                        update_meteorite(row_id, state="SCRAPE_LINK", link=link)
+                        _meteorite_state_info(row_id, "SCRAPE_LINK", from_state="NEW")
+                        summary["total_passed"] += 1
                         continue
                     update_meteorite(row_id, state="READY")
                     _meteorite_state_info(row_id, "READY", from_state="NEW")
