@@ -137,3 +137,10 @@ AC6 (partial — full pagination + ascending in external) → Stage 1 step 5 `fe
 
 context_tokens≈32000
 ```
+
+## Review (build stub)
+
+**Commit:** `5dd1096a97d8e080d1ca2d286d4a8e58c81d6c16`  
+**Branch:** `sub/AST-1786/AST-1787-slack-channel-list-membership-full-history`
+
+**Built:** `list_bot_channels`, `is_channel_member` (`conversations.members` only here), `fetch_full_conversation_history` (full pages, `ts` ascending). Limited `fetch_conversation_history` and poster-pool path unchanged.
