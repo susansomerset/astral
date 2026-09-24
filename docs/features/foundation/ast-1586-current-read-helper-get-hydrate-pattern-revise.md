@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-1586 archived 2026-09-24 -->
+
+## Linear archive (AST-1586)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1586/current-read-helper-get-hydrate-pattern-scope-revise-implement  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1570 — Implement patt.artifact.read-current  
+**Blocked by / blocks / related:** parent: AST-1570; blocks: AST-1587
+
+### Description
+
+## What this implements
+
+Data-layer current-read contract; candidate `get_candidate_current`-style helper by artifact key; GET hydrate ignores blobs for base_resume; `api_candidate` GET surfaces use it; revise draft pattern so tracker is example-only. Does **not** own builder / token consumer rewires (sibling #2).
+
+## Citations
+
+`patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.database-header-inventory`; `astral.standards.data-raises-caller-logs`; `astral.layers.import-direction`; `astral.config.config-source-of-truth`
+
+## Scope
+
+`src/data/database.py`; `src/core/candidate.py` (helper + GET hydrate only); `src/ui/api/api_candidate.py`; `canon/directives/draft/patt.artifact.read-current.md`
+
+## Acceptance criteria
+
+- [X] A caller can load the pilot current base_resume body via a candidate-owned helper that takes the catalog artifact key; miss returns empty — no `candidate_data` blob fallback.
+- [X] Candidate GET overlays base_resume from the artifacts table only; leftover blobs are ignored (not merged as recovery).
+- [X] API GET edit/live surfaces that serve base_resume use that hydrate / current-read; no new blob reads for the pilot key on those paths.
+- [X] Draft `patt.artifact.read-current` no longer lists tracker as a hard `scope` requirement; tracker appears only as an example.
+
+## Boundaries
+
+- [X] Does not own builder / token / live-display consumer rewires (sibling AST child #2). Contact and tracker out of scope.
+
+## Notes for planning
+
+Pilot key only: `candidate.artifacts.base_resume`. Working helper name: `get_candidate_current`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1570-read-current`, child `sub/AST-1570/AST-<num>-current-read-helper-get-hydrate-pattern-revise`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-03T14:40:08.590Z
+[code-rubric] PROCEED (Commit: 9b7e16f) Read-current helper clean
+
+#### betty — 2026-09-03T14:35:39.461Z
+origin/sub/AST-1570/AST-1586-current-read-helper-get-hydrate-pattern-revise @ `9b7e16f0` · read-current tests landed
+
+#### joan — 2026-09-03T14:26:37.881Z
+[plan-rubric] PROCEED (Commit: 13f7454226e0a117e6c72bbce99814a32c7bea12) helper hydrate pattern aligned
+
+#### ada — 2026-09-03T14:21:35.460Z
+13f7454226e0a117e6c72bbce99814a32c7bea12
+`origin/sub/AST-1570/AST-1586-current-read-helper-get-hydrate-pattern-revise` @ `13f7454226e0a117e6c72bbce99814a32c7bea12` · plan ready
+
+---
+
 # Current-read helper + GET hydrate + pattern scope revise
 
 **Linear:** [AST-1586](https://linear.app/astralcareermatch/issue/AST-1586/current-read-helper-get-hydrate-pattern-revise-implement-pattartifactread)

@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-1584 archived 2026-09-24 -->
+
+## Linear archive (AST-1584)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1584/get-by-uuid-candidate-read-operative-traceability-draft-implement  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1571 — Implement patt.artifact.read-operative  
+**Blocked by / blocks / related:** parent: AST-1571; blocks: AST-1585; related: AST-1570
+
+### Description
+
+## What this implements
+
+Data-layer fetch by `artifact_uuid`; candidate pin→body helper for pilot `base_resume`; author draft `patt.artifacts.traceability` (docs only). Does **not** own JAR UI or Contact Estelle call-site rewires.
+
+## Citations
+
+`patt.artifact.read-operative`; `patt.artifact.manage-catalog`; `patt.artifacts.traceability` (new draft); `astral.standards.database-header-inventory`; `astral.standards.data-raises-caller-logs`; `astral.layers.import-direction`; `astral.config.config-source-of-truth`
+
+## Scope
+
+- [X] `src/data/database.py`
+- [X] `src/core/candidate.py`
+- [X] `canon/directives/draft/patt.artifacts.traceability.md` (**new**)
+
+## Acceptance criteria
+
+- [X] 1. By-`artifact_uuid` data fetch returns the pilot body or empty; operative path never coat-checks or reads `*_data` blobs as fallback.
+- [X] 2. Candidate exposes a pin→body helper for `candidate.artifacts.base_resume`.
+- [X] 3. Draft `canon/directives/draft/patt.artifacts.traceability.md` exists and covers versioned agent_id, versioned agent_task_id, seed artifact id array, and manual-edit inheritance — with no product persist/wire from that pattern in this ticket.
+- [X] 4. No grade/analysis pin writers; no new catalog keys; no read-current editor work; no coat-check retirement; no ordinary-save HTTP `artifact_id` field.
+
+## Boundaries
+
+- [X] Does **not** own JAR UI or Contact Estelle call-site rewires (sibling #2). Does **not** persist seed artifact ids (traceability implement later).
+
+## Notes for planning
+
+Pilot key only: `candidate.artifacts.base_resume`. Pin-only fetch — scoped-without-pin is read-current ([AST-1570](https://linear.app/astralcareermatch/issue/AST-1570)).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1571-read-operative`, child `sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Delivery: **`origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability` @ `cd309487` (`merge-tests(AST-1584): origin/tests 63bbc4a9`)
+
+**Bible (publish-ref shasum):**
+
+* `docs/test-bible/data/database/artifacts.md` · `e64b889be3d92416a135bbed967275d29a2404d4`
+* `docs/test-bible/core/candidate.md` · `d27dbfdcaa226454586a923c8eeafe1fd630b18f`
+
+**Tests (publish-ref shasum):**
+
+* `tests/component/data/database/test_artifacts.py` · `e0c25ad7dffaba81eb95034ef36d5b801a5f603d`
+* `tests/component/core/test_candidate.py` · `e7255be716cb7f255ba59f5bf2c6172642d32409`
+
+1. Data PK fetch: `tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact`
+2. Candidate pin→body: `tests/component/core/test_candidate.py::TestAst1584GetOperativeBaseResume`
+3. **docs-acceptance** — `canon/directives/draft/patt.artifacts.traceability.md` on publish tip (id + versioned agent_id / agent_task_id / seed artifact id array / manual-edit inheritance)
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_artifacts.py::TestAst1584GetArtifact \
+  tests/component/core/test_candidate.py::TestAst1584GetOperativeBaseResume \
+  -q
+```
+
+```bash
+# docs-acceptance (publish tip)
+test -f canon/directives/draft/patt.artifacts.traceability.md
+rg -n 'id: patt.artifacts.traceability|versioned `agent_id`|versioned `agent_task_id`|seed `artifact_id\[\]`|manual' \
+  canon/directives/draft/patt.artifacts.traceability.md
+```
+
+### Comments
+
+#### radia — 2026-09-03T03:13:32.998Z
+[code-rubric] PROCEED (Commit: cd309487) pilot pin read landed
+
+#### betty — 2026-09-03T03:08:37.804Z
+`origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability` @ `cd309487` · tests delivered
+
+#### joan — 2026-09-03T02:59:34.370Z
+[plan-rubric] PROCEED (Commit: 361d332) clean read-operative core
+
+#### ada — 2026-09-03T02:57:11.501Z
+`origin/sub/AST-1571/AST-1584-get-by-uuid-candidate-read-operative-traceability` @ `361d33257f74fcc1202772c9a536844af9535893` · plan ready
+
+---
+
 # get-by-uuid + candidate read-operative + traceability draft
 
 **Linear:** [AST-1584](https://linear.app/astralcareermatch/issue/AST-1584/get-by-uuid-candidate-read-operative-traceability-draft-implement)

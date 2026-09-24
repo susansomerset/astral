@@ -834,6 +834,17 @@ def save_candidate_data(
             blob,
             source_artifact_ids=source_artifact_ids,
         )
+        # AST-1781: after write-operative rotate, force AUTO off on related empty-render rows.
+        try:
+            database.revalidate_dispatch_tasks_for_artifact(candidate_id, artifact_key)
+        except Exception as exc:
+            logger.warning(
+                "%s | artifact_key=%r %s: %s — AUTO revalidation skipped after artifact save",
+                candidate_id,
+                artifact_key,
+                type(exc).__name__,
+                exc,
+            )
         if artifact_key == _STRENGTHS_ARTIFACT_KEY:
             logger.info(
                 "%s | candidate %s: %s (batch: %s)",

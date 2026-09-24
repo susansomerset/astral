@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-1695 archived 2026-09-24 -->
+
+## Linear archive (AST-1695)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1695/all-job-ui-surfaces-use-listing-href-hyperlink-to-job-with-meteorite  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1686 — Hyperlink to job with meteorite http link  
+**Blocked by / blocks / related:** parent: AST-1686
+
+### Description
+
+## What this implements
+
+Recommended title + Apply and Job Detail listing control consume the resolved listing href. Does not own API/writers (#1, #2).
+
+## Citations
+
+none — presentational / client open only.
+
+## Scope
+
+- [X] `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`
+- [X] `src/ui/frontend/src/components/RecommendedJobReportHeader.tsx`
+- [X] `src/ui/frontend/src/components/JobDetailModal.tsx`
+- [X] Technical: shared href for title/Apply/detail listing; non-http → not navigable.
+
+## Acceptance criteria
+
+- [X] 5\. Recommended report: title is `<a href="{listing}">` when listing href is http(s); Apply in `CANDIDATE_REVIEW` opens the same URL. Fail: title plain while href exists, or Apply opens a different/missing URL.
+- [X] 6\. Opening Job Detail for a `BOT_BLOCKED` job (In Review / Skipped) shows a navigable listing control to that same http(s) URL when present. Fail: no clickable listing on bot-blocked jobs that have `job.job_link` or related meteorite http link.
+
+## Boundaries
+
+- [X] Does not own API listing field (#2) or meteorite/consult writers (#1). After #2 for the field; after #1 for UAT of bot-blocked rows that now carry job_link.
+
+## Notes for planning
+
+Citations: none (presentational).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1695|job title deeplink|sticky header: deeplinked"`
+2. `tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx` — `--testNamePattern="AST-1695"`
+3. `tests/component/frontend/components/test_JobDetailModal.test.tsx` — `--testNamePattern="AST-1695"`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  --testNamePattern="AST-1695|job title deeplink|sticky header: deeplinked"
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/frontend/components.md` — `eedf4bbd77061b800c8b188946d558466f9f0a61`
+
+**Broken / obsolete:** AST-948 title deeplink asserted `job_link` href — revised to `listing_href`.
+
+### Comments
+
+#### radia — 2026-09-16T23:39:04.661Z
+[code-rubric] PROCEED (Commit: eaafa9ed) listing_href UI clean
+
+#### betty — 2026-09-16T23:35:08.727Z
+`origin/sub/AST-1686/AST-1695-job-ui-listing-href` @ `eaafa9ed` · listing_href UI tests
+
+#### joan — 2026-09-16T23:26:59.057Z
+[plan-rubric] PROCEED (Commit: f269a1e5) listing_href UI surfaces
+
+#### katherine — 2026-09-16T23:25:11.445Z
+`origin/sub/AST-1686/AST-1695-job-ui-listing-href` @ `f269a1e5afdd3967657246b89a04d15717aaad6d` · plan ready
+
+---
+
 # AST-1695 — All job UI surfaces use listing href
 
 **Linear:** [AST-1695](https://linear.app/astralcareermatch/issue/AST-1695/all-job-ui-surfaces-use-listing-href-hyperlink-to-job-with-meteorite)  

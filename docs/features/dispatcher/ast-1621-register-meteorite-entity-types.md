@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1621 archived 2026-09-24 -->
+
+## Linear archive (AST-1621)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1621/register-meteorite-in-entity-types-and-dispatch-registries-treat  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1620 — Treat meteorite as a first-class dispatch entity_type  
+**Blocked by / blocks / related:** parent: AST-1620; blocks: AST-1623; blocks: AST-1622
+
+### Description
+
+## What this implements
+
+Add `meteorite` to `ENTITY_TYPES`; wire `dispatch_entity_state_registry`, `dispatch_claim_states`, and `_dispatch_sort_by_for` to `METEORITE_STATES`; update Code Rules ENTITY_TYPES / §2.4 claim-queue wording; flip ingress + BOT_BLOCKED notify `SEED_CONFIG` SQL to `entity_type='meteorite'`. Does not own count/due/Available runtime or ledger edits (after siblings).
+
+## Citations
+
+`pattern.config.config-block`; `pattern.state.entity-state-transitions`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.dispatch.seed-auto-false`
+
+## Scope
+
+`src/utils/config.py` — ENTITY_TYPES append; registry/claim_states/sort_by meteorite branches; SEED_CONFIG ingress + bot-blocked entity_type literals. `docs/ASTRAL_CODE_RULES.md` — ENTITY_TYPES bullet and §2.4 claim-queue member list include meteorite.
+
+## Acceptance criteria
+
+- [X] 1. `ENTITY_TYPES` contains `meteorite` — `python -c "from src.utils.config import ENTITY_TYPES; assert 'meteorite' in ENTITY_TYPES"` exits 0. Fail: `meteorite` absent from the list.
+- [X] 2. `dispatch_entity_state_registry("meteorite")` returns a mapping whose keys equal `set(METEORITE_STATES)`. Fail: `KeyError`, or keys match `JOB_STATES` / omit staging states like `SCRAPE_LINK`.
+- [X] 3. `SEED_CONFIG["dispatch_task-meteorite-ingress"]` SQL inserts `entity_type` as the literal `meteorite` (not NULL) for `stage_meteorite` / `scrape_meteorite` / `land_meteorite`; same for `dispatch_task-meteorite-bot-blocked-notify`. Fail: `grep` of those seed strings still shows `, NULL, 'NEW'` / `, NULL, 'BOT_BLOCKED'` entity_type positions.
+
+## Boundaries
+
+- [X] Does not own count_eligible / get_due_tasks (sibling 2). Does not own admin Available, state_options, ledger entity_type, or live-row backfill (sibling 3). Does not rewrite custom meteorite runners into consult / `_run_unified`.
+
+## Notes for planning
+
+Citations above. Estimate 2.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Meteorite entity-type registry + ingress/notify seeds: `tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry`
+2. Docs-acceptance (required): on publish tip, `docs/ASTRAL_CODE_RULES.md` §2.1 ENTITY_TYPES bullet lists `meteorite`; §2.4 claim-queue parenthetical includes `` `meteorite` ``
+3. Regression (seed presence still green): `tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_seed_catalog_has_ingress_dispatch_rows` + `TestAst1561BotBlockedNotifyConfig::test_seed_catalog_has_notify_dispatch_row` + `TestAst1562RetentionConfig::test_seed_catalog_has_retention_dispatch_row`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1621MeteoriteEntityTypeRegistry \
+  tests/component/utils/test_config.py::TestAst1560IngressDispatchConfig::test_seed_catalog_has_ingress_dispatch_rows \
+  tests/component/utils/test_config.py::TestAst1561BotBlockedNotifyConfig::test_seed_catalog_has_notify_dispatch_row \
+  tests/component/utils/test_config.py::TestAst1562RetentionConfig::test_seed_catalog_has_retention_dispatch_row \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1 + 3; docs-acceptance line 2 via grep/read on publish tip — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/utils/config.md` — `e141c305e4380b742d89d7a1a9832d7e4c8534b704338879c810040b8be1d321`
+
+### Comments
+
+#### chuckles — 2026-09-10T01:18:11.983Z
+[merge-child] blocked: sub not stacked on ftr — republish from ftr first. Merge origin/ftr/AST-1620-treat-meteorite-first-class-entity-type into the publish-ref (not git pull), resolve if needed, push origin HEAD:sub/AST-1620/AST-1621-register-meteorite-entity-types. Leave status User Testing.
+
+#### radia — 2026-09-10T01:16:22.078Z
+[code-rubric] PROCEED (Commit: d6e5951a) meteorite registry clean
+
+#### betty — 2026-09-10T01:11:17.110Z
+`origin/sub/AST-1620/AST-1621-register-meteorite-entity-types` @ `d6e5951a` · meteorite registry tests
+
+#### joan — 2026-09-10T01:02:30.848Z
+[plan-rubric] PROCEED (Commit: 1bcee4e) config registry + seeds
+
+#### ada — 2026-09-10T01:00:18.723Z
+`origin/sub/AST-1620/AST-1621-register-meteorite-entity-types` @ `1bcee4e9413712d46ad3231186b94303ff6d0da6` · plan ready
+
+---
+
 # AST-1621 — Register meteorite in ENTITY_TYPES and dispatch registries
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1621

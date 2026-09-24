@@ -1,3 +1,73 @@
+<!-- linear-archive: AST-1587 archived 2026-09-24 -->
+
+## Linear archive (AST-1587)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1587/base-resume-consumer-rewires-builder-token-live-helpers-implement  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1570 — Implement patt.artifact.read-current  
+**Blocked by / blocks / related:** parent: AST-1570
+
+### Description
+
+## What this implements
+
+After sibling #1: replace remaining in-scope blob fetches of base_resume with current-read + artifact key in builder, candidate live-display/token/structure helpers, config token-serialize path, and `api_resume_html` only if it bypasses builder; debug contract on touched `debug=` paths. Contact and tracker stay out.
+
+## Citations
+
+`patt.artifact.read-current`; `patt.artifact.write-operative`; `astral.standards.debug-contract-gated`; `astral.standards.in-scope-only`; `astral.layers.import-direction`
+
+## Scope
+
+`src/core/builder.py`; `src/core/candidate.py` (live-display / format / structure / whitelist helpers only — helper+hydrate owned by #1); `src/utils/config.py` (BASE_RESUME token path only); `src/ui/api/api_resume_html.py` (only if independent of builder)
+
+## Acceptance criteria
+
+- [X] 4. Existing in-scope base_resume fetch sites in builder / token / live-display helpers use the current-read helper + artifact key instead of raw blob walks.
+- [X] 5. Touched backend `debug=True` current-resolve paths emit Style D index + `|` found/recorded detail per AST-538.
+
+## Boundaries
+
+- [X] Does not own data-layer helper, GET hydrate, api_candidate, or pattern draft (sibling #1). Contact and tracker out of scope.
+
+## Notes for planning
+
+After #1. Use current-read helper + artifact key from sibling.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1570-read-current`, child `sub/AST-1570/AST-<num>-base-resume-consumer-rewires`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-03T15:12:59.241Z
+[code-rubric] PROCEED (Commit: f217d33) Consumer rewires clean
+
+#### betty — 2026-09-03T15:08:52.423Z
+origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires @ f217d33c · consumer rewires manifest
+
+#### joan — 2026-09-03T14:51:14.799Z
+[plan-rubric] PROCEED (Commit: eefcd796463eb8c7c38fc41e803b4d6945f1839e) consumer rewires plan clean
+
+#### hedy — 2026-09-03T14:50:12.492Z
+`origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires` @ `eefcd796463eb8c7c38fc41e803b4d6945f1839e` · step5 name fixed
+
+#### hedy — 2026-09-03T14:50:11.455Z
+[plan-discuss] round=1 reply — Stage 1 step 5: `_candidate_id_for_current_read` → `candidate_id_for_current_read` (matches step 1).
+
+#### joan — 2026-09-03T14:49:17.378Z
+[plan-rubric] REVIEW (Commit: 7a1606e504caa9e88395a158278fba3a4dd2c6cf) helper name typo step5
+
+#### hedy — 2026-09-03T14:45:26.028Z
+7a1606e504caa9e88395a158278fba3a4dd2c6cf
+`origin/sub/AST-1570/AST-1587-base-resume-consumer-rewires` @ `7a1606e504caa9e88395a158278fba3a4dd2c6cf` · consumer rewires planned
+
+---
+
 # Base_resume consumer rewires (builder / token / live helpers)
 
 **Linear:** [AST-1587](https://linear.app/astralcareermatch/issue/AST-1587/base-resume-consumer-rewires-builder-token-live-helpers-implement)

@@ -1,3 +1,91 @@
+<!-- linear-archive: AST-1699 archived 2026-09-24 -->
+
+## Linear archive (AST-1699)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1699/persist-harvested-pins-on-consult-gradeanalysis-writes-capture-deduped  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1579 — Capture deduped source-artifact-id array on derived-artifact write, resolved from artifact-type tokens at prompt-build time  
+**Blocked by / blocks / related:** parent: AST-1579
+
+### Description
+
+## What this implements
+
+After #1: when consult persists `*_grades` / `analysis_upshot` sets via `save_job_data`, write the sibling source-artifact-id array from that run’s harvest next to the set (whole-run array, not per grade line). Does **not** re-own harvest logic. Does **not** thread artifact-table `source_artifact_ids` (sibling #3).
+
+## Citations
+
+`patt.artifact.traceability`; `patt.artifact.read-operative` (boundary); `astral.standards.in-scope-only`; `astral.standards.dry-and-focused-functions`; `astral.standards.debug-contract-gated`
+
+## Scope
+
+`src/core/consult.py` — **modified** — when persisting `*_grades` / `analysis_upshot` (and existing sibling keys) via `tracker.save_job_data`, also write the sibling source-artifact-id array harvested for that run. `src/core/agent.py` — **modified** — only as needed so consult can read the run’s harvest list (no second parse). `src/core/consult.py` — Grade/analysis `save_job_data` payloads gain one sibling key for the harvested array beside `{prefix}_grades` / `analysis_upshot`; empty harvest → empty list.
+
+## Acceptance criteria
+
+3. After a consult grading run that saves `{prefix}_grades`, job_data also contains a sibling source-artifact-id array for that prefix/set whose contents equal the harvest for that run (empty list when harvest was empty). Fail: pins only on individual grade objects, or no sibling key when grades were written.
+4. After `analysis_upshot` (or meteorite upshot equivalent) persist, the same sibling-array rule holds next to that analysis set. Fail: grades wired but analysis left without a sibling array contract.
+
+## Boundaries
+
+Does not re-own harvest (#1). Does not thread artifact-table sources (#3).
+
+## Notes for planning
+
+After #1. Citations as above. Estimate: 2.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1579-capture-deduped-source-artifact-id-array`, child `sub/AST-1579/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Helpers + grade/analysis sibling writes: `tests/component/core/test_consult.py::TestAst1699PersistHarvestedPinsConsult`
+2. Revised analysis exact-save paths: `tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches` · `TestAnalysisUpshotPrepAndBatch480` · `TestAst1055MeteoriteConsultRoutes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1699PersistHarvestedPinsConsult \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480ExtraBranches \
+  tests/component/core/test_consult.py::TestAnalysisUpshotPrepAndBatch480 \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip** `17225b7e`**):**
+
+* `docs/test-bible/core/consult.md` — `d110041d562261498b92fe21d6ef977446142957`
+
+**origin/tests delivery:** `4b04e1e76fe7676d68742bcf377aaa6da6183c48`
+
+### Comments
+
+#### chuckles — 2026-09-17T00:32:43.788Z
+[merge-child] blocked: validate-sub-log — missing plan(AST-1699): (plan commit already on ftr via interleaved history; not in sub--not-ftr range). @Hedy Lamarr add `docs(AST-1699): plan — …` on the sub tip (empty ok; content already in tree), push publish-ref, then Chuckles will re-run merge-child.
+
+#### hedy — 2026-09-17T00:31:57.419Z
+`origin/sub/AST-1579/AST-1699-persist-harvested-pins-consult-grade-analysis` @ `16b62605` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-09-17T00:29:34.155Z
+[code-rubric] PROCEED (Commit: 17225b7e) consult pins land clean
+
+#### betty — 2026-09-17T00:26:28.603Z
+`origin/sub/AST-1579/AST-1699-persist-harvested-pins-consult-grade-analysis` @ `17225b7e` · consult pin tests ready
+
+#### joan — 2026-09-17T00:15:10.580Z
+[plan-rubric] PROCEED (Commit: c2a3224b) consult pin siblings wired
+
+#### hedy — 2026-09-17T00:13:18.357Z
+`origin/sub/AST-1579/AST-1699-persist-harvested-pins-consult-grade-analysis` @ `c2a3224b` · plan ready
+
+---
+
 # Persist harvested pins on consult grade/analysis writes
 
 **Linear:** [AST-1699](https://linear.app/astralcareermatch/issue/AST-1699)

@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1665 archived 2026-09-24 -->
+
+## Linear archive (AST-1665)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1665/operative-save-hydrate-blob-retirement-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1645; blocks: AST-1666
+
+### Description
+
+## What this implements
+
+Wire Writing Preferences through candidate operative `plain_text` validation plus `get_candidate_current` hydrate on GET; intercept API PUT for operative save; stop durable library SoT writes for `context.writing_preferences`. No backfill helper. Does not own React chrome. After #1.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.in-scope-only`; `stat.logging.info.entity`; `stat.logging.info.api`; `stat.logging.error`
+
+## Scope
+
+- [X] `src/core/candidate.py` — operative validation for `plain_text`; hydrate overlay; gate library merge for `context.writing_preferences`.
+- [X] `src/ui/api/api_candidate.py` — PUT intercept plus GET hydrate for Writing Preferences.
+
+## Acceptance criteria
+
+- [X] 4\. Operative round-trip — save creates current artifact row; second save retires prior.
+- [X] 5\. Blob not SoT on write — operative save_artifact, not library-merge alone.
+- [X] 6\. No backfill required — legacy blob until re-save; no bulk migrate.
+
+## Boundaries
+
+- [X] Does not own React chrome (sibling #3). Depends on catalog/token from #1.
+
+## Notes for planning
+
+Citations as above. Reuse AST-1629 Strengths operative/hydrate path.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T00:47:07.043Z
+[code-rubric] PROCEED (Commit: 7ae6c3d9) operative save hydrate clean
+
+#### betty — 2026-09-16T00:44:28.759Z
+`origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement` @ `7ae6c3d9` · WP operative hydrate tests
+
+#### joan — 2026-09-16T00:33:43.242Z
+[plan-rubric] PROCEED (Commit: d9f6408a8f5f4b035ab01f384e1612db2ed89095) Writing Preferences operative plan
+
+#### hedy — 2026-09-16T00:31:34.306Z
+`origin/sub/AST-1645/AST-1665-operative-save-hydrate-blob-retirement` @ `d9f6408a8f5f4b035ab01f384e1612db2ed89095` · plan ready
+
+---
+
 # Operative save, hydrate, blob retirement
 
 **Linear:** [AST-1665](https://linear.app/astralcareermatch/issue/AST-1665)

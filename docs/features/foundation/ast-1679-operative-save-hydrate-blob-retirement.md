@@ -1,3 +1,83 @@
+<!-- linear-archive: AST-1679 archived 2026-09-24 -->
+
+## Linear archive (AST-1679)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1679/operative-save-hydrate-blob-retirement-craftparse-land-move-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table  
+**Blocked by / blocks / related:** parent: AST-1677; blocks: AST-1680
+
+### Description
+
+## What this implements
+
+Wire structure through candidate operative validation + `get_candidate_current` hydrate on GET; intercept API PUT for operative save; stop durable library SoT writes for `artifacts.resume_structure`; retarget craft/parse and agent craft-persist structure land to the operative key. No backfill helper. Does not own job drafting token/filter consumers (#3) or React chrome. After #1. Mirror AST-1576’s split (structure half now operative) and AST-1633-style blob retirement.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.in-scope-only`; `stat.logging.info.entity`; `stat.logging.info.api`; `stat.logging.error`
+
+## Scope
+
+`src/core/candidate.py` — operative validate/save for the structure shape; hydrate overlay from `get_candidate_current`; gate durable library writes for `artifacts.resume_structure`; retarget craft/parse structure land; keep `resolve_resume_structure` honest against hydrated/current SoT. `src/core/agent.py` — craft-persist path that today library-saves structure lands structure via operative key (body path unchanged). `src/ui/api/api_candidate.py` — PUT intercept: pop library `artifacts.resume_structure`, operative save; GET hydrate overlays current structure for detail and `/resume_structure`.
+
+## Acceptance criteria
+
+3. **Operative round-trip** — After save via operative API/helper, `database.get_current_artifact('candidate', <id>, 'resume_structure')` returns a row whose `artifact_data` matches the saved structure dict; a second distinct save creates a new uuid and retires prior `current=1`. Fail: no row, blob-only write, or in-place UPDATE of the same uuid’s body.
+4. **Hydrate on GET** — GET candidate detail (and GET `/api/candidates/<id>/resume_structure`) shows current structure after operative save. Fail: response still serves only pre-save blob and ignores current row.
+5. **No durable blob SoT on save** — Successful structure save calls operative `save_artifact`; a post-save library read of raw candidate_data without hydrate is not relied on as SoT. Fail: structure persists only via library merge.
+6. **Craft/parse land structure operatively** — Successful `craft_resume_base` / `parse_candidate_resume` persist structure through `candidate.artifacts.resume_structure` operative key; body still through `candidate.artifacts.base_resume`. Fail: structure written only to library blob on those paths.
+7. **No backfill** — Candidates with only legacy blob structure and no artifact row still load that blob (or default) until re-save; no bulk migration script ships. Fail: deploy runs a backfill job or clears legacy blob on hydrate miss.
+
+## Boundaries
+
+After sibling #1. Does not own catalog registration (#1) or job drafting consult/tracker rewires (#3). No React chrome.
+
+## Notes for planning
+
+`candidate.artifacts.resume_structure` must already be in `ARTIFACT_CONFIG` before Stage 1 verify. Prefer sync from parent ftr.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1677-move-resume-structure-artifact-table`, child `sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T17:37:16.317Z
+[code-rubric] PROCEED (Commit: 6b0ff391) operative hydrate clean
+
+#### betty — 2026-09-16T17:32:55.256Z
+`origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement` @ `6b0ff391` · manifest green
+
+#### betty — 2026-09-16T17:28:32.420Z
+Product bug — holding Code Complete (not Tests Ready).
+
+Leaf-only PUT `{artifacts: {base_resume: …}}` ingest always writes `arts["resume_structure"]`, then AST-1679 pops both `base_resume` and `resume_structure`. `body` empties, so the pilot save nested under `if body:` never runs — only structure operative-saves. AC6 body land via `candidate.artifacts.base_resume` is broken for leaf-only base_resume PUTs (and label-ingest PUTs with no other library fields).
+
+Fix (api_candidate.py): move the pilot `save_candidate_data(..., artifact_key, pilot_body)` outside `if body:` — same placement as the new resume_structure / context-leaf operative saves.
+
+Red gates on tip (green once fixed):
+- `TestAst1679ResumeStructureOperativeApi::test_leaf_only_base_resume_put_still_saves_pilot_and_structure`
+- `TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`
+- `TestAst1305LegacyLabelIngestApi::test_put_label_list_keeps_highlights_and_drops_prose_experience`
+- `TestAst1305LegacyLabelIngestApi::test_put_title_keyed_dict_keeps_highlights_and_publications`
+
+Green already: `TestAst1679ResumeStructureOperativeSaveHydrate`, rest of `TestAst1679ResumeStructureOperativeApi`, `TestAst1576CraftPersistOperative`, `TestAst1679CraftPersistResumeStructureOperative`.
+
+`origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement` @ `3ef8104f` · test SHA `4bec7f0d` · stay Code Complete · Hedy
+
+#### joan — 2026-09-16T17:11:54.974Z
+[plan-rubric] PROCEED (Commit: 2126fc8) operative hydrate blob retire
+
+#### hedy — 2026-09-16T17:09:29.858Z
+`origin/sub/AST-1677/AST-1679-operative-save-hydrate-blob-retirement` @ `2126fc8ddaca32ab9ad2054d9bb92820014da98b` · plan ready
+
+---
+
 # Operative save, hydrate, blob retirement + craft/parse land
 
 **Linear:** [AST-1679](https://linear.app/astralcareermatch/issue/AST-1679)

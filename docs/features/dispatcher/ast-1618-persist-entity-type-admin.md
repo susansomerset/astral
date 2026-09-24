@@ -1,3 +1,70 @@
+<!-- linear-archive: AST-1618 archived 2026-09-24 -->
+
+## Linear archive (AST-1618)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1618/persist-chosen-entity-type-on-admin-createupdate-make-all-fields-on  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1616 — Make all fields on Add Dispatch Task modal editable  
+**Blocked by / blocks / related:** parent: AST-1616; blocks: AST-1619
+
+### Description
+
+## What this implements
+
+Own the API + data path so Add/Edit can save an explicit Entity Type: forward `entity_type` on create, allow it on update, validate trigger_state against the submitted entity, and recompute `sort_by` for the chosen entity + trigger (including when create supplies entity_type). Does not own the React control. After this lands, curl/API can set entity_type even before the UI ships.
+
+## Citations
+
+`pattern.ui.admin-endpoint`; `astral.config.config-source-of-truth`; `astral.layers.ui-config-driven-business-logic`; `astral.idioms.require-auth-on-protected-endpoints`; `astral.standards.no-hardcoded-sets`; `astral.standards.in-scope-only`; `astral.standards.no-cross-contamination`; `astral.standards.database-header-inventory`; `astral.standards.data-raises-caller-logs`; `astral.standards.dry-and-focused-functions`; `astral.standards.public-then-helpers`; `astral.standards.utils-data-late-import-only`
+
+## Scope
+
+`src/ui/api/api_admin.py` — modified — create/update accept entity_type; trigger validation uses submitted entity; recompute sort_by on entity/trigger/task_key changes. `src/data/database.py` — modified — `save_dispatch_task` uses caller entity_type and derives sort_by for that entity + trigger when provided.
+
+## Acceptance criteria
+
+- [X] 3. POST `/api/admin/dispatch_tasks` with an explicit `entity_type` stores that value on the new row (`SELECT entity_type FROM dispatch_task WHERE id=…` matches the body). Fail: row entity_type is only the catalog default or NULL despite a valid body value.
+- [X] 4. PUT `/api/admin/dispatch_tasks/<id>` with `entity_type` updates the row (and does not require a `task_key` change to stick). Fail: entity_type ignored or overwritten solely from task-key defaults when the client sent a value.
+- [X] 5. POST/PUT with `entity_type` + `trigger_state` where the trigger is not in that entity's registry returns 400 with a clear error. Fail: 200/201 with an inconsistent pair, or validation still keyed only to catalog entity while ignoring submitted entity_type.
+- [X] 6. When saved entity_type differs from the task-key catalog default, the stored `sort_by` matches the sort rule for the **chosen** entity + trigger (same helper path as other dispatch rows). Fail: sort_by remains the catalog entity's sort while entity_type was overridden.
+
+## Boundaries
+
+- [X] Does not own the React Entity Type control (sibling #2). Does not change Candidate binding on Add. Does not change scheduler/claim runtime beyond persisting entity_type / sort_by for admin saves.
+
+## Notes for planning
+
+Honor Citations above. Keep mailbox null-entity path working when entity_type omitted.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1616-editable-dispatch-task-modal-fields`, child `sub/AST-1616/<this-id>-persist-entity-type-admin`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-10T00:31:18.266Z
+[code-rubric] PROCEED (Commit: f64677e0) entity_type persist clean
+
+#### ada — 2026-09-10T00:29:18.063Z
+`origin/sub/AST-1616/AST-1618-persist-entity-type-admin` @ `f64677e0015b6eb1d952c4d912144d3508883710`
+
+Manifest green (15 passed). Product fix: `save_dispatch_task` omits request `trigger_state` from catalog defaults when caller supplies `entity_type` (WATCH+company on grade_do).
+
+#### betty — 2026-09-10T00:26:38.931Z
+`origin/sub/AST-1616/AST-1618-persist-entity-type-admin` @ `b9ec525d` · entity_type persist coverage
+
+#### joan — 2026-09-10T00:15:49.122Z
+[plan-rubric] PROCEED (Commit: c626a2a78a2c2e53fae0ab3f2ccfb1c0d216a80b) API entity_type path clear
+
+#### ada — 2026-09-10T00:13:12.295Z
+`origin/sub/AST-1616/AST-1618-persist-entity-type-admin` @ `c626a2a78a2c2e53fae0ab3f2ccfb1c0d216a80b` · plan ready
+
+---
+
 # AST-1618 — Persist chosen entity_type on admin create/update
 
 **Linear:** [AST-1618](https://linear.app/astralcareermatch/issue/AST-1618)

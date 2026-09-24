@@ -1,3 +1,77 @@
+<!-- linear-archive: AST-1650 archived 2026-09-24 -->
+
+## Linear archive (AST-1650)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1650/bio-summary-page-route-migrate-candidate-bio-summary-to-use-the  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page  
+**Blocked by / blocks / related:** parent: AST-1647
+
+### Description
+
+## What this implements
+
+Stand up dedicated Bio Summary ContextTextPage wrapper and route. No ArtifactEditor. No ContextTextPage edits. No sibling context page rewrites. After catalog sibling (and API hydrate from operative sibling as needed).
+
+## Citations
+
+`patt.artifact.ui-consistency`; `patt.artifact.read-current`; `patt.artifact.write-operative`
+
+## Scope
+
+`src/ui/frontend/src/pages/CandidateBioSummary.tsx` — **new** thin wrapper (`contextKey="bio_summary"`, `bodyShape="plain_text"`). `src/ui/frontend/src/routes.tsx` — register `candidate/bio_summary`.
+
+## Acceptance criteria
+
+- [X] 7\. **Dedicated editor path** — route `candidate/bio_summary` renders ContextTextPage with `contextKey="bio_summary"` and `bodyShape="plain_text"`; after save, reload shows the same text.
+- [X] 8\. **UI path purity** — `ArtifactEditor.tsx` and `ContextTextPage.tsx` diffs for this epic are empty (reuse only).
+
+## Boundaries
+
+- [X] Does not own config catalog/token/nav/profile (Ada). Does not own core/API hydrate/save (Hedy). Does not touch sibling context pages or ContextTextPage.
+
+## Notes for planning
+
+After #1; uses API contract from #2. plain_text → ContextTextPage, not resume_content ArtifactEditor.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1647-migrate-bio-summary-artifact`, child `sub/AST-1647/AST-1650-bio-summary-page-route`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Routed Bio Summary page (§6c): `tests/component/frontend/pages/test_CandidateBioSummary.test.tsx` — pattern `AST-1650`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateBioSummary.test.tsx \
+  --testNamePattern="AST-1650"
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/frontend/pages.md` — `56867d7767f3326262afabad586eaf06e5cb5cee`
+
+### Comments
+
+#### radia — 2026-09-15T23:29:01.321Z
+[code-rubric] PROCEED (Commit: cd5a2901) page route clean
+
+#### betty — 2026-09-15T23:27:00.658Z
+`origin/sub/AST-1647/AST-1650-bio-summary-page-route` @ `cd5a29018c09c175fef9e5a9620268208084340f` · Bio Summary page tests
+
+#### joan — 2026-09-15T23:22:59.671Z
+[plan-rubric] PROCEED (Commit: ab3db8c) thin page mirrors Strengths
+
+#### katherine — 2026-09-15T23:21:35.177Z
+`origin/sub/AST-1647/AST-1650-bio-summary-page-route` @ `ab3db8c031da42075b2f6fe18fdea432f83a76ca` · plan ready
+
+---
+
 # Bio Summary page + route
 
 **Linear:** [AST-1650](https://linear.app/astralcareermatch/issue/AST-1650)

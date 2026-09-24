@@ -1,3 +1,81 @@
+<!-- linear-archive: AST-1623 archived 2026-09-24 -->
+
+## Linear archive (AST-1623)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1623/admin-available-state-options-ledger-and-live-row-backfill-treat  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1620 — Treat meteorite as a first-class dispatch entity_type  
+**Blocked by / blocks / related:** parent: AST-1620
+
+### Description
+
+## What this implements
+
+Expose `meteorite` on admin state_options; Available counting skips the candidate_id short-circuit for meteorite; create/update validation accepts meteorite via shared registries; dispatcher ingress/notify ledger uses `entity_type='meteorite'`; UPDATE existing NULL entity_type rows for ingress/notify task keys. After #1 (and uses #2 count helper for Available).
+
+## Citations
+
+`pattern.batch.entity-claim-process-release`; `astral.layers.ui-config-driven-business-logic`; `astral.standards.no-hardcoded-sets`; `astral.standards.in-scope-only`; `astral.standards.no-cross-contamination`; `astral.standards.logging-via-utils`; `astral.standards.names-not-ticket-ids`
+
+## Scope
+
+`src/ui/api/api_admin.py` — state_options meteorite key; list Available path for meteorite without requiring candidate_id; validation via ENTITY_TYPES / dispatch_entity_state_registry. `src/core/dispatcher.py` — ingress/notify `save_dispatch_ledger` entity_type=`meteorite`. Live `dispatch_task` UPDATE NULL→meteorite for ingress/notify task keys (seed INSERT alone insufficient).
+
+## Acceptance criteria
+
+- [X] 3. `GET /api/admin/dispatch_tasks/state_options` JSON includes a `meteorite` array equal to `METEORITE_STATES` keys. Fail: missing key, or options still only `job`/`company`/`candidate`.
+- [X] 4. Admin Scheduled Actions Available for that `stage_meteorite` row matches the count helper (non-zero when eligible rows exist). Fail: Available stays 0 while count would be >0, or still short-circuits on missing `candidate_id`.
+- [X] 5. After the correction path runs (or equivalent UPDATE), live `dispatch_task` rows for those ingress/notify keys have `entity_type='meteorite'` — `SELECT entity_type FROM dispatch_task WHERE task_key IN ('stage_meteorite','scrape_meteorite','land_meteorite','meteorite_bot_blocked_notify')` has no NULL. Fail: NULL entity_type remains on those keys.
+- [X] 6. Meteorite ingress/notify `save_dispatch_ledger` calls pass `entity_type='meteorite'` (grep `entity_type=None` on those branches returns nothing). Fail: ledger still written with `entity_type=None` for those runners.
+- [X] 7. Retention seed and meteorite_email mailbox path remain non-claim (NULL trigger and/or mailbox fold) — not forced onto `ENTITY_TYPES` claim semantics. Fail: retention incorrectly required to have `entity_type='meteorite'` + a METEORITE_STATES trigger to boot.
+
+## Boundaries
+
+- [X] Does not own ENTITY_TYPES / registry / SEED_CONFIG (sibling 1). Does not own count_eligible / get_due_tasks implementation (sibling 2). After #1; uses #2 count helper for Available.
+
+## Notes for planning
+
+Citations above. Estimate 2. After #1 and #2.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Admin state_options + Available + create: `tests/component/ui/api/test_api_admin.py::TestAst1623AdminMeteoriteStateOptionsAvail`
+2. Ledger + correction + boot: `tests/component/core/test_dispatcher.py::TestAst1623MeteoriteLedgerAndBackfill`
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/ui/api/test_api_admin.py::TestAst1623AdminMeteoriteStateOptionsAvail   tests/component/core/test_dispatcher.py::TestAst1623MeteoriteLedgerAndBackfill   -q
+```
+
+**Pass criterion:** pytest green on items 1–2 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/ui/api/api_admin.md` — `aefe1139ce64340b0a4bf9f55e238cdb60661f642a42b475d06d7aede25987e9`
+
+### Comments
+
+#### radia — 2026-09-10T01:55:07.063Z
+[code-rubric] PROCEED (Commit: 567cd6a6) admin ledger backfill clean
+
+#### betty — 2026-09-10T01:51:27.646Z
+`origin/sub/AST-1620/AST-1623-admin-available-state-options-ledger` @ `567cd6a633dc23f64a3c3be9ad2b02590d63eb9c` · meteorite admin ledger tests
+
+#### joan — 2026-09-10T01:45:17.151Z
+[plan-rubric] PROCEED (Commit: 3ae3615) admin Avail + ledger backfill
+
+#### katherine — 2026-09-10T01:43:37.257Z
+`origin/sub/AST-1620/AST-1623-admin-available-state-options-ledger` @ `3ae3615bc0fa85b1f96226188b6ddeda31e5b658` · plan ready
+
+---
+
 # AST-1623 — Admin Available, state_options, ledger, and live-row backfill
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1623

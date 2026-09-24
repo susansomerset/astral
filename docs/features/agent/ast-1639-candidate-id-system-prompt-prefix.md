@@ -1,3 +1,93 @@
+<!-- linear-archive: AST-1639 archived 2026-09-24 -->
+
+## Linear archive (AST-1639)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1639/candidate-id-system-prompt-prefix-prefix-every-agent-system-prompt  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1638 — Prefix every agent system prompt with the candidate ID for model-agnostic cache isolation  
+**Blocked by / blocks / related:** parent: AST-1638
+
+### Description
+
+## What this implements
+
+Owns prepending `[astral-<id>]` as leading system-prompt content at the shared agent assembly chokepoint (do_task, run_adhoc, preview/store parity) and fail-closed when candidate id is missing. Does not own DeepSeek/Anthropic `user_id` metadata, Contact transport, or AST-1637 chatbot triage.
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.error`
+
+## Scope
+
+- [X] `src/core/agent.py` — **modified** — at the shared seven-segment assembly chokepoint (and matching preview/store), prepend `[astral-<id>]` as the leading system-prompt content using the call’s Astral candidate id; fail closed when the id is missing. Call sites that already pass `candidate_id` into the provider keep doing so for timesheets only — no DeepSeek/`user_id` wiring in this epic.
+- [X] `src/core/agent.py` / `_assemble_blocks_seven_segment`: accept the call’s candidate id; require it non-empty; make the first system text block’s content begin with `[astral-<id>]` (id substituted) before the resolved `system_content`, so the assembled `system` payload diverges per candidate from byte zero; cache A–D / nocache / live / user segments stay after that leading system content unchanged; raise when candidate id is missing/blank.
+- [X] `src/core/agent.py` / `do_task` and `run_adhoc`: pass the existing candidate id into assembly so both provider branches inherit the prefix; do not add provider-specific isolation parameters; do not allow a successful send without a candidate id.
+- [X] `src/core/agent.py` / `preview_prompt` (and stored prompt-block system text when agent_data is written for the hop): show the same `[astral-<id>]`-prefixed system text the wire call would send, so operators are not previewing an un-prefixed prompt.
+- [X] No changes under `src/external/deepseek.py` / `src/external/anthropic.py` for isolation metadata in this epic.
+
+## Acceptance criteria
+
+- [X] Candidate-scoped `do_task`: with Astral candidate id `somerset`, the first system text block sent to the provider begins with the exact characters `[astral-somerset]` before any prior system prompt body. Fail if that literal prefix is missing, mistyped, appears only after shared system/cache text, or only in user/nocache/live segments.
+- [X] Provider-agnostic: the same leading `[astral-<id>]` prefix is present whether the active provider is DeepSeek or Anthropic. Fail if only one provider path gets the prefix.
+- [X] Preview parity: `preview_prompt` system text for the same task/candidate begins with the same `[astral-<id>]` prefix as the assembled wire system block. Fail if preview omits the prefix while the live call includes it.
+- [X] Privacy: the `<id>` inside the prefix is the Astral candidate id only. Fail if `rg` on the new prefix path shows name, email, Slack handle/username, or similar contact fields as the id source.
+- [X] No vendor isolation field as the mechanism: this epic does not add DeepSeek `user_id` or Anthropic `metadata.user_id` for cache isolation. Fail if the shipped diff’s primary isolation change is those request fields rather than system-prompt leading content.
+- [X] Shared chokepoint: Contact/Slack (and other channels) do not implement a parallel prefix outside `src/core/agent.py` assembly. Fail if a second prefix implementation appears under `src/core/contact.py` / chatbot / external clients.
+- [X] Missing candidate id: `_assemble_blocks_seven_segment` / `do_task` / `run_adhoc` fail closed (raise / unsuccessful result) when candidate id is missing or blank — no omit and no sentinel. Fail if a send succeeds with an empty/missing candidate id and no `[astral-…]` prefix.
+
+## Boundaries
+
+- [X] Does **not** own DeepSeek/Anthropic `user_id` / `metadata.user_id` isolation wiring. Does **not** own Contact transport or AST-1637 chatbot triage.
+
+## Notes for planning
+
+Citations: `stat.logging.debug`, `stat.logging.error`. Prefix shape locked: `[astral-<id>]`. Every agent call has a candidate id — fail closed if missing.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1638-prefix-every-agent-system-prompt-with-the-candidate-id`, child `sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. New prefix suite: `tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix`
+2. Fail-closed revision: `tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing`
+3. Revised assemble / preview / adhoc smoke: `TestPromptHelpers::test_builds_context_and_assembles_blocks`, `TestAssembleBlocks::test_builds_cached_and_minimal_blocks`, `TestAgentDataHelpers::test_preview_prompt_resolves_blocks`, `TestRunAdhoc`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1639CandidateIdSystemPrefix \
+  tests/component/core/test_agent.py::TestAst820VectorFeedbackDebugTrace::test_do_task_fail_closed_when_candidate_id_missing \
+  tests/component/core/test_agent.py::TestPromptHelpers::test_builds_context_and_assembles_blocks \
+  tests/component/core/test_agent.py::TestAssembleBlocks::test_builds_cached_and_minimal_blocks \
+  tests/component/core/test_agent.py::TestAgentDataHelpers::test_preview_prompt_resolves_blocks \
+  tests/component/core/test_agent.py::TestRunAdhoc \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum:** `docs/test-bible/core/agent.md` — `0e28ccc252775df1c0562f07fb505566fbdcfd29`
+
+### Comments
+
+#### radia — 2026-09-15T03:25:24.672Z
+[code-rubric] PROCEED (Commit: 0546f9dd) prefix chokepoint clean
+
+#### betty — 2026-09-15T03:22:17.179Z
+`origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix` @ `0546f9dd` · prefix suite ready
+
+#### joan — 2026-09-15T03:10:37.593Z
+[plan-rubric] PROCEED (Commit: 66a47e73) clean prefix chokepoint plan
+
+#### ada — 2026-09-15T03:08:18.346Z
+`origin/sub/AST-1638/AST-1639-candidate-id-system-prompt-prefix` @ `66a47e73` · candidate-id prefix plan
+
+---
+
 # AST-1639 — Candidate-id system-prompt prefix
 
 - **Linear:** [AST-1639](https://linear.app/astralcareermatch/issue/AST-1639)
