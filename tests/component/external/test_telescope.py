@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
+import zlib
+from contextlib import asynccontextmanager
 from types import SimpleNamespace
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
-import httpx
 import pytest
 
 from src.external import telescope as pw_mod
@@ -172,7 +176,7 @@ class TestClassifyPlaywrightFailure:
         ) == "launch_failure"
 
     def test_telescope_timeout_is_infra(self) -> None:
-        fc = pw_mod.classify_playwright_failure(httpx.TimeoutException("telescope timeout"))
+        fc = pw_mod.classify_playwright_failure(asyncio.TimeoutError("telescope timeout"))
         assert fc == "telescope_timeout"
         assert pw_mod.is_playwright_infra_failure(fc)
 
@@ -206,76 +210,102 @@ class TestGetPageDropIn:
             await pw_mod.get_page(url="https://example.com")
 
 
-# Branches: HTTP pool failover / timeout → PlaywrightInfraError (AST-1726).
-class TestTelescopePoolHttp:
+# Branches: Postgres queue client — enqueue, await, failure mapping, deadline.
+class _FakeConn:
+    def __init__(self) -> None:
+        self.execute = AsyncMock()
+
+    @asynccontextmanager
+    async def transaction(self):
+        yield
+
+
+class _FakeDb:
+    def __init__(self) -> None:
+        self.conn = _FakeConn()
+        self.execute = AsyncMock()
+
+    @asynccontextmanager
+    async def acquire(self):
+        yield self.conn
+
+
+def _queue_with_fake_db(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
+    q = pw_mod._TelescopeQueue()
+    db = _FakeDb()
+
+    async def fake_get_db():
+        q._ensure_loop()
+        q._db = db
+        return db
+
+    monkeypatch.setattr(q, "_get_db", fake_get_db)
+    return q, db
+
+
+async def _submit_and_resolve(q, row: dict) -> Any:
+    task = asyncio.create_task(q.submit({"url": "https://example.com", "fields": ["text"]}))
+    while not q._waiters:
+        await asyncio.sleep(0)
+    next(iter(q._waiters.values())).set_result(row)
+    return await task
+
+
+class TestTelescopeQueueClient:
     @pytest.mark.asyncio
-    async def test_5xx_retries_other_node_then_ok(
+    async def test_done_returns_decoded_result_and_notifies_worker(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setitem(
-            pw_mod.TELESCOPE_CONFIG,
-            "base_urls",
-            ["http://node-a.test", "http://node-b.test"],
-        )
-        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "max_node_attempts", 2)
-        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "retry_other_node", True)
-        monkeypatch.setenv("TELESCOPE_BEARER_TOKEN", "tok")
-        monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
+        q, db = _queue_with_fake_db(monkeypatch)
+        payload = {"final_url": "https://example.com/", "text": "hi \x00"}
+        blob = zlib.compress(json.dumps(payload).encode())
+        out = await _submit_and_resolve(q, {"status": "done", "result": blob})
+        assert out == payload
+        sql = " ".join(str(c.args[0]) for c in db.conn.execute.await_args_list)
+        assert "INSERT INTO telescope_job" in sql and "pg_notify" in sql
+        assert q._waiters == {}
 
-        calls: list[str] = []
-
-        class _Resp:
-            def __init__(self, status: int, body: dict | None = None) -> None:
-                self.status_code = status
-                self._body = body or {}
-
-            def json(self) -> dict:
-                return self._body
-
-        async def fake_request(method, url, headers=None, json=None):
-            calls.append(url)
-            if "node-a" in url:
-                return _Resp(502)
-            return _Resp(200, {"ok": True})
-
-        client = MagicMock()
-        client.request = AsyncMock(side_effect=fake_request)
-        pool = pw_mod._TelescopePool()
-        pool._client = client
-        monkeypatch.setattr(pw_mod, "_pool", pool)
-
-        resp = await pool.request("GET", "/healthz")
-        assert resp.status_code == 200
-        assert any("node-a" in u for u in calls)
-        assert any("node-b" in u for u in calls)
-
+    @pytest.mark.parametrize(
+        "error_class, failure_class",
+        [
+            ("timeout", "telescope_timeout"),
+            ("expired", "telescope_timeout"),
+            ("bad_request", "telescope_bad_request"),
+            ("scrape_failed", "telescope_job_failed"),
+            ("lease_expired", "telescope_job_failed"),
+        ],
+    )
     @pytest.mark.asyncio
-    async def test_timeout_raises_telescope_timeout(
-        self, monkeypatch: pytest.MonkeyPatch,
+    async def test_failed_job_maps_to_failure_class(
+        self, monkeypatch: pytest.MonkeyPatch, error_class: str, failure_class: str,
     ) -> None:
-        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "base_urls", ["http://solo.test"])
-        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "max_node_attempts", 1)
-        monkeypatch.setenv("TELESCOPE_BEARER_TOKEN", "tok")
-        monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
-
-        client = MagicMock()
-        client.request = AsyncMock(side_effect=httpx.TimeoutException("timed out"))
-        pool = pw_mod._TelescopePool()
-        pool._client = client
-
+        q, _db = _queue_with_fake_db(monkeypatch)
+        row = {"status": "failed", "result": None, "error": "x", "error_class": error_class}
         with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
-            await pool.request("GET", "/healthz")
+            await _submit_and_resolve(q, row)
+        assert exc_info.value.failure_class == failure_class
+
+    @pytest.mark.asyncio
+    async def test_deadline_cancels_job_and_raises_timeout(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        q, db = _queue_with_fake_db(monkeypatch)
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "job_deadline_seconds", 0.05)
+        with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
+            await q.submit({"url": "https://example.com", "fields": ["text"]})
         assert exc_info.value.failure_class == "telescope_timeout"
+        assert "status = 'cancelled'" in db.execute.await_args.args[0]
+        assert q._waiters == {}
 
     @pytest.mark.asyncio
-    async def test_missing_bearer_raises_connectivity(
+    async def test_missing_database_url_raises_connectivity(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "base_urls", ["http://solo.test"])
-        monkeypatch.delenv("TELESCOPE_BEARER_TOKEN", raising=False)
-        pool = pw_mod._TelescopePool()
+        monkeypatch.setattr(pw_mod, "require_controlled_external_io", lambda *_a, **_k: None)
+        monkeypatch.delenv("ASTRAL_DATABASE_URL", raising=False)
         with pytest.raises(pw_mod.PlaywrightInfraError) as exc_info:
-            await pool.request("GET", "/healthz")
+            await pw_mod._TelescopeQueue().submit({"url": "https://example.com"})
         assert exc_info.value.failure_class == "connectivity_failure"
 
 
@@ -363,14 +393,10 @@ class TestAst1750PostTelescopeDebugDump:
             "scrape_meta": {"bot_blocked": False, "content_chars": 40},
         }
 
-        async def fake_request(method, path, json_body=None, **_kwargs):
-            resp = MagicMock()
-            resp.status_code = 200
-            resp.json = MagicMock(return_value=payload)
-            resp.text = '{"final_url":"https://example.com/final"}'
-            return resp
+        async def fake_submit(body, priority=None):
+            return payload
 
-        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
         token = log_debug.set(True)
         try:
             with caplog.at_level(logging.DEBUG, logger="src.external.telescope"):
@@ -397,7 +423,7 @@ class TestAst1750PostTelescopeDebugDump:
             "Calling" in r.getMessage() or "body" in r.getMessage().lower()
             or "request" in r.getMessage().lower()
             for r in caplog.records
-        ), "AST-1750: missing ungated logger.debug callee-in before _pool.request"
+        ), "AST-1750: missing ungated logger.debug callee-in before _pool.submit"
         assert any(
             "Response" in r.getMessage() or "final_url" in r.getMessage()
             for r in caplog.records
@@ -405,7 +431,7 @@ class TestAst1750PostTelescopeDebugDump:
 
 
 class TestPostTelescopeDebugFlag:
-    """Platform client passes debug in POST body (service scrape_debug events)."""
+    """Platform client passes debug in the job request (service scrape_debug events)."""
 
     @pytest.mark.asyncio
     async def test_post_telescope_debug_false_by_default(
@@ -415,14 +441,11 @@ class TestPostTelescopeDebugFlag:
 
         seen: dict = {}
 
-        async def fake_request(method, path, json_body=None, **_kwargs):
-            seen["body"] = json_body
-            resp = MagicMock()
-            resp.status_code = 200
-            resp.json = MagicMock(return_value={"final_url": "https://example.com", "text": "x"})
-            return resp
+        async def fake_submit(body, priority=None):
+            seen["body"] = body
+            return {"final_url": "https://example.com", "text": "x"}
 
-        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
         token = log_debug.set(False)
         try:
             await pw_mod._post_telescope("https://example.com", fields=["text"])
@@ -439,14 +462,11 @@ class TestPostTelescopeDebugFlag:
 
         seen: dict = {}
 
-        async def fake_request(method, path, json_body=None, **_kwargs):
-            seen["body"] = json_body
-            resp = MagicMock()
-            resp.status_code = 200
-            resp.json = MagicMock(return_value={"final_url": "https://example.com", "text": "x"})
-            return resp
+        async def fake_submit(body, priority=None):
+            seen["body"] = body
+            return {"final_url": "https://example.com", "text": "x"}
 
-        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
         token = log_debug.set(True)
         try:
             await pw_mod._post_telescope("https://example.com", fields=["text"])
@@ -463,14 +483,11 @@ class TestPostTelescopeDebugFlag:
 
         seen: dict = {}
 
-        async def fake_request(method, path, json_body=None, **_kwargs):
-            seen["body"] = json_body
-            resp = MagicMock()
-            resp.status_code = 200
-            resp.json = MagicMock(return_value={"final_url": "https://example.com", "text": "x"})
-            return resp
+        async def fake_submit(body, priority=None):
+            seen["body"] = body
+            return {"final_url": "https://example.com", "text": "x"}
 
-        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
         token = log_debug.set(True)
         try:
             await pw_mod._post_telescope(

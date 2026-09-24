@@ -45,10 +45,13 @@ class TestRailwayPhase1Toml:
         assert "restartPolicyType" in text and "ON_FAILURE" in text
         assert "memoryBytes = 2147483648" in text
 
-    def test_no_healthcheck_path_and_no_phase2_hooks(self, railway_toml: Path) -> None:
+    def test_unauthenticated_healthcheck_drain_and_no_phase2_hooks(
+        self, railway_toml: Path
+    ) -> None:
         text = railway_toml.read_text(encoding="utf-8")
-        # Comment may mention healthcheckPath — ban live deploy key assignment
-        assert "healthcheckPath =" not in text
+        # Queue worker: /healthz has no bearer, so Railway can probe it.
+        assert 'healthcheckPath = "/healthz"' in text
+        assert "drainingSeconds" in text
         assert "Judoscale" not in text
         assert "serviceInstanceUpdate" not in text
 

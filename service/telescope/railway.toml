@@ -5,22 +5,18 @@
 # COPY paths are monorepo-root relative (`COPY service/telescope/ …`).
 # Build context = repository root; dockerfilePath below selects the image.
 #
+# Telescope is a queue consumer: it pulls scrape jobs from the telescope_job table in
+# Postgres and writes results back. Nothing calls into it over HTTP.
+#
 # Dashboard-only (not expressible / not safe in this file):
-#   - Create a *separate* Railway service from the platform (AC 9 / AC 12).
-#   - Private networking: no public domain / generate domain OFF for Telescope.
-#     Platform reaches it at http://<telescope-service-name>.railway.internal:8080
-#     (set TELESCOPE_BASE_URL / TELESCOPE_BASE_URLS on the *platform* service).
-#   - Shared secret: set TELESCOPE_BEARER_TOKEN on Telescope *and* platform
-#     (same value; never commit the secret).
-#   - Optional fan-out: after 1-replica validation, raise replicas in the
-#     dashboard (Phase 1 fixed fleet). Do not add Phase 2 autoscaler
-#     or third-party horizontal-scale hooks (AC 13).
+#   - Set ASTRAL_DATABASE_URL on Telescope *and* the platform to the astral
+#     Postgres database's private URL (Railway reference to that service's DATABASE_URL).
+#     Telescope creates its telescope_* tables there on startup (idempotent).
+#   - No public domain needed. /healthz is unauthenticated and only reports status.
+#   - Scale out by raising replicas; each replica claims up to WORKER_CONCURRENCY
+#     jobs (telescope_config.py). Queue depth is the signal for adding replicas.
 #   - /dev/shm: if Firefox flakes on shared memory, raise container disk or
 #     follow Railway shm guidance; Dockerfile documents --shm-size for local Docker.
-#   - Do NOT enable Railway healthcheckPath=/healthz — /healthz requires
-#     Authorization: Bearer (AST-1725); Railway probes cannot send that header.
-#     Verify with: curl -H "Authorization: Bearer $TELESCOPE_BEARER_TOKEN" \
-#       http://<private-host>:8080/healthz
 
 [build]
 builder = "DOCKERFILE"
@@ -28,9 +24,13 @@ dockerfilePath = "service/telescope/Dockerfile"
 watchPatterns = ["service/telescope/**"]
 
 [deploy]
-# Phase 1: start at 1 replica; fan out manually in the dashboard later.
 numReplicas = 1
 restartPolicyType = "ON_FAILURE"
 restartPolicyMaxRetries = 10
-# ~2 GiB per replica — size batch_size on dispatch tasks to what one replica can sustain.
+healthcheckPath = "/healthz"
+healthcheckTimeout = 120
+# Old replica keeps running this long after SIGTERM so in-flight scrapes finish;
+# anything still running is handed back to the queue (SHUTDOWN_GRACE_SECONDS = 25).
+drainingSeconds = 30
+# ~2 GiB per replica — WORKER_CONCURRENCY must fit inside it.
 limitOverride = { containers = { memoryBytes = 2147483648 } }

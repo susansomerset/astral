@@ -1,4 +1,4 @@
-"""Telescope service component fixtures — path + bearer for flat service imports."""
+"""Telescope service component fixtures — path + env for flat service imports."""
 
 from __future__ import annotations
 
@@ -12,15 +12,10 @@ _REPO = Path(__file__).resolve().parents[3]
 _TELESCOPE = _REPO / "service" / "telescope"
 
 # settings.py reads env at import — set before any telescope module load
-os.environ.setdefault("TELESCOPE_BEARER_TOKEN", "test-telescope-bearer")
+os.environ.setdefault("ASTRAL_DATABASE_URL", "postgresql://test@localhost/astral")
 
 if _TELESCOPE.is_dir() and str(_TELESCOPE) not in sys.path:
     sys.path.insert(0, str(_TELESCOPE))
-
-
-@pytest.fixture
-def bearer_headers() -> dict[str, str]:
-    return {"Authorization": "Bearer test-telescope-bearer"}
 
 
 @pytest.fixture

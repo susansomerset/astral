@@ -2,14 +2,14 @@
 
 **Test modules:** `tests/component/service/test_telescope_*.py`
 
-Isolated FastAPI microservice — **not** under `src/`. Flat imports (`from auth import …`); component conftest puts `service/telescope/` on `sys.path`. No `LOCKED_AT_100` (coverage gate is `--cov=src` only).
+Isolated Postgres queue consumer (FastAPI only for `/healthz`) — **not** under `src/`. Flat imports (`from worker import …`); component conftest puts `service/telescope/` on `sys.path`. No `LOCKED_AT_100` (coverage gate is `--cov=src` only).
 
 ## Coverage map
 
 | Source | Test file | Branch lock |
 | --- | --- | --- |
 | `service/telescope/capture.py` | `tests/component/service/test_telescope_capture.py` | no |
-| `service/telescope/app.py` + auth | `tests/component/service/test_telescope_app.py` | no |
+| `service/telescope/worker.py`, `scrape.py`, `jobqueue.py` codec, `app.py` `/healthz` | `tests/component/service/test_telescope_worker.py` | no |
 | Import fence + Dockerfile / requirements | `tests/component/service/test_telescope_fence.py` | no |
 | Railway Phase 1 + bidirectional CI fence | `tests/component/service/test_telescope_deploy_ci.py` | no |
 
