@@ -302,6 +302,34 @@ PUT job_resume / cover_letter / legacy resume_content call `save_job_artifact` w
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1769 · AST-1685
+
+**Publish:** `origin/sub/AST-1685/AST-1769-meteorite-tab-missing-prod`.
+
+Job detail `related_meteorite`: when reverse `astral_job_id` miss, fall back to `get_meteorite(int(source_entity_id))` if `source == "meteorite"` and sid digit. Primary: **`docs/test-bible/data/database/meteorites.md`** § AST-1691 helpers. UI tab omit-when-null unchanged (AST-1692).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| source_entity fallback (**[bug-repro]**) | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_detail_related_meteorite_source_entity_fallback`** |
+
+**Broken / obsolete:** none — additive resolve path; existing reverse-link / soft-fail / null asserts stay.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. **[bug-repro]** `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_source_entity_fallback`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_related_meteorite_source_entity_fallback \
+  -q
+```
+
+**Pass criterion:** red on pre-fix (related_meteorite null); green after make-fix fallback lands.
+
+---
+
 ### AST-1704 · AST-1640
 
 **Parent:** [AST-1640 — Job source_entity parent](https://linear.app/astralcareermatch/issue/AST-1640). **Publish:** `origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`.
