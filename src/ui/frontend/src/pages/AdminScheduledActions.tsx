@@ -81,6 +81,7 @@ interface DispatchTask {
   updated_at: string | null
   available_count: number
   always_visible_under_avail_gt0?: boolean
+  empty_render?: boolean
 }
 
 interface ThreadEntry {
@@ -186,6 +187,8 @@ function ScheduledPhaseTable({
             const avail = row.available_count ?? 0
             const isSweep = !!row.auto_mode && avail > 0
             const sweepDisabled = !!row.auto_mode && avail >= (row.min_count || 1)
+            const emptyRender = !!row.empty_render
+            const runBlocked = isRunning || sweepDisabled || emptyRender
             return (
               <tr
                 key={row.id}
@@ -208,9 +211,14 @@ function ScheduledPhaseTable({
                 </td>
                 <td style={{ textAlign: "center" }}>
                   <button
-                    className={`dispatch-status-badge ${row.auto_mode ? "dispatch-status-ok" : "dispatch-status-muted"}`}
-                    onClick={e => { e.stopPropagation(); toggleAutoMode(row) }}
-                    style={{ cursor: "pointer", border: "none" }}
+                    className={`dispatch-status-badge ${emptyRender || !row.auto_mode ? "dispatch-status-muted" : "dispatch-status-ok"}`}
+                    onClick={e => {
+                      e.stopPropagation()
+                      if (!emptyRender) toggleAutoMode(row)
+                    }}
+                    style={emptyRender
+                      ? { cursor: "default", border: "none", opacity: 0.25, pointerEvents: "none" }
+                      : { cursor: "pointer", border: "none" }}
                   >
                     {row.auto_mode ? "ON" : "OFF"}
                   </button>
@@ -219,8 +227,8 @@ function ScheduledPhaseTable({
                   <div style={{ position: "relative", display: "inline-block" }}>
                     <button
                       className="btn primary in-row"
-                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (sweepDisabled ? 0.25 : 1), pointerEvents: (isRunning || sweepDisabled) ? "none" : "auto" }}
-                      disabled={isRunning || sweepDisabled}
+                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (runBlocked ? 0.25 : 1), pointerEvents: runBlocked ? "none" : "auto" }}
+                      disabled={runBlocked}
                       onClick={e => handleRun(e, row)}
                     >
                       {isSweep ? "Sweep" : "Run"}
@@ -524,6 +532,7 @@ export default function ScheduledActions() {
   const sortIcon = (col: string) => sortCol === col ? (sortDir === "asc" ? " ▲" : " ▼") : ""
 
   const toggleAutoMode = async (row: DispatchTask) => {
+    if (!!row.empty_render) return
     const res = await api(`/api/admin/dispatch_tasks/${row.id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -551,6 +560,7 @@ export default function ScheduledActions() {
 
   const handleRun = async (e: React.MouseEvent, row: DispatchTask) => {
     e.stopPropagation()
+    if (!!row.empty_render) return
     const res = await api(`/api/admin/dispatch_tasks/${row.id}/run`, { method: "POST" })
     if (!res.ok) {
       try {

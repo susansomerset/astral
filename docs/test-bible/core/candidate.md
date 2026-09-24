@@ -2240,3 +2240,26 @@ See **`docs/test-bible/core/agent.md`** § AST-1700 (shared numbered list).
 
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/candidate.md` — *(filled after publish)*
+
+### AST-1781 · AST-1766 (artifact rotate → dispatch AUTO revalidate)
+
+**Parent:** [AST-1766](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1781-revalidate-on-agent-task-artifact-version`.
+
+`save_candidate_data` str-path calls `database.revalidate_dispatch_tasks_for_artifact` after a real write-operative rotate; identical-to-current and dict/library paths do not. Primary data helpers: **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Str-path rotate calls revalidate | `src/core/candidate.py` | **`TestAst1781ArtifactRotateRevalidateHook::test_str_path_rotate_calls_revalidate`** |
+| Identical short-circuit skips | same | **`…::test_identical_short_circuit_skips_revalidate`** |
+| Dict path skips | same | **`…::test_dict_path_skips_revalidate`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+Shared with **`docs/test-bible/data/database/dispatch_tasks.md`** § AST-1781 (lines 1–9).
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/core/candidate.md`

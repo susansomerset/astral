@@ -751,3 +751,51 @@ Admin `state_options` exposes `meteorite` via `dispatch_entity_state_registry`; 
 ./scripts/testing/run_component_tests.sh \
   tests/component/ui/api/test_api_admin_telescope.py -q
 ```
+
+### AST-1780 · AST-1766 (list enrich, AUTO/Run gates, force AUTO off)
+
+**Parent:** [AST-1766 — Dispatch Validation](https://linear.app/astralcareermatch/issue/AST-1766). **Publish:** `origin/sub/AST-1766/AST-1780-list-enrich-auto-run-gates-force-auto-off`.
+
+`GET /api/admin/dispatch_tasks` stamps `empty_render` via `_evaluate_dispatch_empty_render` → AST-1779 `empty_render_for_prompts` (no `entity_contexts`); forces `auto_mode` off when true. Create/PUT AUTO-on and `POST …/run` return 400 via `_candidate_dispatch_empty_render_error` after the API-key gate. Predicate helper: **`docs/test-bible/utils/config.md`** § AST-1779. Version hooks: sibling **AST-1781**. React: sibling **AST-1782**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List flag + force AUTO off | `src/ui/api/api_admin.py` | **`TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`** |
+| List keeps AUTO when false | same | **`…::test_list_empty_render_false_keeps_auto`** |
+| Create AUTO-on 400 | same | **`…::test_create_auto_on_empty_render_400`** |
+| PUT AUTO-on 400 | same | **`…::test_put_auto_on_empty_render_400`** |
+| Run 400 `started: false` | same | **`…::test_run_empty_render_400_started_false`** |
+| Error helper None when clear | same | **`…::test_error_helper_none_when_evaluate_false`** |
+
+**Broken / obsolete this pass:** AUTO-on / run success paths that only stubbed `_candidate_dispatch_api_key_error` — revised to also stub `_candidate_dispatch_empty_render_error` → None:
+- **`TestDispatchTasks::test_scheduler_and_run_controls`**
+- **`TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`**
+- **`TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`**
+
+**Integration:** none — no existing scenario asserts `empty_render` on dispatch list / AUTO-Run gates; do not invent new integration coverage.
+
+## QA test manifest
+
+1. List force off: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`
+2. List keeps AUTO: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_empty_render_false_keeps_auto`
+3. Create 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_create_auto_on_empty_render_400`
+4. PUT 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_put_auto_on_empty_render_400`
+5. Run 400: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_run_empty_render_400_started_false`
+6. Helper None: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_error_helper_none_when_evaluate_false`
+7. Revised run success: `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls`
+8. Revised create AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`
+9. Revised update AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):** fill after `merge-tests` —
+- `docs/test-bible/ui/api/api_admin.md`
