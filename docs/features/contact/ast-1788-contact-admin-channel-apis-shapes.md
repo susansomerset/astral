@@ -263,3 +263,10 @@ AC1 (list Slack username column) → Stage 1 step 1 shape key `slack_username` (
 - **Self-assessment:** Estimate confirm 3 — agree; three ordered stages, established Contact admin patterns.
 
 context_tokens≈50000
+
+## Review (build stub)
+
+**Commit:** `ef875644e78609e223b12fd3578d56b4c29e5c86`  
+**Branch:** `sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes`
+
+**Built:** DATA_SHAPES list `slack_username` + profile `contact.slack_channel_id` / `contact.slack_channel_name`; Contact `list_admin_slack_channels` / `check_admin_slack_channel_membership` / `get_admin_slack_channel_snapshot`; admin GETs `/slack_channels`, `/slack_channel_membership`, `/slack_channel_snapshot` (`@require_admin`, no GET progress info). No new candidate writer; Ada helpers called from core only.
