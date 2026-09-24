@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-1771 archived 2026-09-24 -->
+
+## Linear archive (AST-1771)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1771/recommended-analysis-vector-order-and-tooltips-vector-icons-are-out-of  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1770 — Vector Icons are out of sequence  
+**Blocked by / blocks / related:** parent: AST-1770
+
+### Description
+
+## What this implements
+
+Sort Recommended Job Report Analysis phase header grade dots and expanded `AgentAnalysisHeader` rows by job-carried rubric importance descending then letter grade descending (A best); prefix vector name on header grade-dot hover tooltips. Does **not** change Skipped/In Review list tables, consult scoring, rubric persistence, or Summary/Artifacts tabs.
+
+## Citations
+
+none (active catalog); honor AST-1063 / AST-1321 job-carried rubric law.
+
+## Scope
+
+`src/ui/frontend/src/lib/rubricDisplay.ts` (grade-rank comparator, display-order sort, tooltip prefix); `src/ui/frontend/src/lib/recommendedJobReport.tsx` (`buildPhaseSectionGradeConfidenceRow` sort + tooltips); `src/ui/frontend/src/components/AgentAnalysisHeader.tsx` (matching detail order); listed component tests.
+
+## Acceptance criteria
+
+- [X] On a Recommended Job Report Analysis phase with job-carried rubric + grades where consult array order differs from importance+grade order, the section header `.recommended-report-phase-grade-row` grade dots appear left-to-right with higher importance first; when importance ties, better letter grade first (verify with AST-1328-style fixture: QC/5/B before EFW/1/A when consult array lists EFW first — failing result: EFW dot appears left of QC).
+- [X] Expanding that same phase shows `AgentAnalysisHeader` rows in the identical vector order as criterion 1 (failing result: first `.analysis-vector` text is the lower-importance vector while header dots were corrected).
+- [X] Hovering a header grade dot whose tooltip includes rubric text shows the vector label before the rubric/confidence body (e.g. title starts with `Quality Check` or formatted header label — failing result: tooltip is rubric text only with no vector name prefix).
+- [X] `sortJobListRubricColumns` left unchanged; Skipped/In Review list pages still build columns via `buildJobListRubricColumnsForGroup` (importance+code only) — Recommended report uses `sortRubricColumnsByImportanceAndGrade` only at its call sites.
+
+## Boundaries
+
+- [X] Does not change Skipped/In Review list tables, consult scoring, rubric persistence, or Summary/Artifacts tabs.
+
+## Notes for planning
+
+Estimate 2. Single child — header row and detail body share one sort contract.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1770-vector-icons-out-of-sequence`, child `sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Helpers: `tests/component/frontend/lib/test_rubricDisplay.test.ts` — `--testNamePattern="AST-1771|gradeRank|sortRubricColumnsByImportanceAndGrade|formatGradeDotTooltipWithVectorLabel|sortJobListRubricColumns"`
+2. Header row: `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — `--testNamePattern="AST-1771|AST-1328"`
+3. Detail: `tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx` — `--testNamePattern="AST-1771"`
+4. JAR e2e: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1328"` (extends with QC-before-EFW + tooltip + `.analysis-vector` order)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_AgentAnalysisHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1771|AST-1328|sortRubricColumnsByImportanceAndGrade|formatGradeDotTooltipWithVectorLabel|gradeRank|sortJobListRubricColumns"
+```
+
+**Broken / obsolete:** `test_AgentAnalysisHeader` api mock → `importOriginal` (AuthContext hooks).
+
+**Integration:** none revised.
+
+**Bible shasums** (`origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips` @ `9b5fa631`):
+
+* `docs/test-bible/frontend/lib.md` — `da0e1d36a7994e3cd6692012402a73dd1fe45e47`
+* `docs/test-bible/frontend/components.md` — `b61064991b85f109f91ebf98ee4700f8e5f576eb`
+
+### Comments
+
+#### radia — 2026-09-22T01:33:23.416Z
+[code-rubric] PROCEED (Commit: 9b5fa631) vector order+tooltips clean
+
+#### betty — 2026-09-22T01:30:48.488Z
+`origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips` @ `9b5fa631` · vector order tests
+
+#### joan — 2026-09-22T01:17:23.062Z
+[plan-rubric] PROCEED (Commit: 94fce7f2) importance+grade sort plan
+
+#### katherine — 2026-09-22T01:12:01.230Z
+`origin/sub/AST-1770/AST-1771-recommended-analysis-vector-order-and-tooltips` @ `94fce7f2` · importance+grade sort plan
+
+---
+
 # AST-1771 — Recommended Analysis vector order and tooltips
 
 **Parent:** [AST-1770 — Vector Icons are out of sequence](https://linear.app/astralcareermatch/issue/AST-1770/vector-icons-are-out-of-sequence)

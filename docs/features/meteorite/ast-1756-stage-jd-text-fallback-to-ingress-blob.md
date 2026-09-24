@@ -1,3 +1,83 @@
+<!-- linear-archive: AST-1756 archived 2026-09-24 -->
+
+## Linear archive (AST-1756)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1756/stage-jd-text-fallback-to-ingress-blob-stage-email-meteorite  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1753 — stage_email_meteorite enhancements  
+**Blocked by / blocks / related:** parent: AST-1753; blocks: AST-1757
+
+### Description
+
+## What this implements
+
+On text landable outcomes, when Ruth omits/blanks `jd_text`, set meteorite `content` from the classify ingress blob (subject and body) instead of failing the map. Prefer explicit `jd_text` when present. Does not edit prompts (sibling #1) or land → job title wiring (sibling #3).
+
+## Citations
+
+`patt.task.daisy-chain` (content stays on the meteorite row from the same stage pass); `stat.logging.debug`.
+
+## Scope
+
+`src/core/meteorite.py` — **modified** — text-outcome stage map falls back to the classify ingress blob when `jd_text` is blank. Technical: thread the classify ingress blob into the jobs→row mapper; on text landable outcomes, when a jobs item's `jd_text` is blank/missing, set row `content` from that blob instead of failing with missing-`jd_text`; when `jd_text` is present, keep today's prefer-Ruth behavior.
+
+## Acceptance criteria
+
+5. A text landable stage outcome whose jobs item omits `jd_text` (or returns blank) inserts a meteorite row whose `content` equals the classify ingress blob (subject+body text passed into that stage call), and does **not** return the map error `text scrap missing jd_text`. Fail if blank `jd_text` still errors that string, or if `content` is NULL while the blob was non-empty.
+6. A text landable stage outcome whose jobs item returns non-empty `jd_text` still stores that `jd_text` as `content` (not the full blob). Fail if present `jd_text` is ignored in favor of the blob.
+
+## Boundaries
+
+Does not edit `agent_task.json` prompts (sibling #1). Does not own land save `job_title=` wiring (sibling #3). Disjoint edit sites in `meteorite.py` from sibling #3.
+
+## Notes for planning
+
+Citations: `patt.task.daisy-chain`; `stat.logging.debug`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1753-stage-email-meteorite-enhancements`, child `sub/AST-1753/<this-id>-stage-jd-text-fallback-to-ingress-blob`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Ingress-blob fallback (AC5/AC6 + degenerate + URL + stage wire): `tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback`
+2. Prior text map (non-empty `jd_text`): `tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none`
+3. Prior READY text path: `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1756IngressBlobJdTextFallback \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/meteorite.md` — `3b6bc75cdbba8c79bdca74bc0f32cbfed644fc5f`
+
+### Comments
+
+#### radia — 2026-09-21T20:19:00.608Z
+[code-rubric] PROCEED (Commit: fa9e050e) ingress blob fallback clean
+
+#### betty — 2026-09-21T20:16:06.382Z
+`origin/sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob` @ `fa9e050e` · ingress-blob jd_text tests
+
+#### joan — 2026-09-21T20:08:53.776Z
+[plan-rubric] PROCEED (Commit: d77f24154442c5fe2313b6b68d84bb5a8ccc6074) Ingress blob jd_text fallback
+
+#### katherine — 2026-09-21T20:06:43.091Z
+`origin/sub/AST-1753/AST-1756-stage-jd-text-fallback-to-ingress-blob` @ `d77f24154442c5fe2313b6b68d84bb5a8ccc6074` · plan ready
+
+---
+
 # AST-1756 — Stage jd_text fallback to ingress blob
 
 **Linear:** [AST-1756](https://linear.app/astralcareermatch/issue/AST-1756/stage-jd-text-fallback-to-ingress-blob-stage-email-meteorite-enhancements)  
