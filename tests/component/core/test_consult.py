@@ -582,16 +582,20 @@ class TestAst369CoverLetterDispatch:
     @pytest.mark.asyncio
     async def test_cover_letter_for_job_skips_without_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda jid: {"astral_job_id": jid, "artifacts": {}})
-        monkeypatch.setattr(consult_mod.tracker, "get_job_artifacts", lambda row: {})
-        do_task = AsyncMock()
-        monkeypatch.setattr(consult_mod, "do_task", do_task)
+        monkeypatch.setattr(
+            consult_mod.tracker, "job_has_persisted_resume_body", lambda jid, row: False,
+        )
+        chain = AsyncMock()
+        monkeypatch.setattr("src.core.agent.run_cover_letter_artifact_chain_for_job", chain)
         await consult_mod._run_cover_letter_for_job("job-1", {"astral_job_id": "job-1"}, {}, False)
-        do_task.assert_not_awaited()
+        chain.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_cover_letter_for_job_calls_chain_when_resume_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda jid: None)
-        monkeypatch.setattr(consult_mod.tracker, "get_job_artifacts", lambda row: {"resume_content": {"k": 1}})
+        monkeypatch.setattr(
+            consult_mod.tracker, "job_has_persisted_resume_body", lambda jid, row: True,
+        )
         chain = AsyncMock()
         monkeypatch.setattr("src.core.agent.run_cover_letter_artifact_chain_for_job", chain)
         row = {"astral_job_id": "job-1"}
@@ -658,6 +662,45 @@ class TestAst371ResumeArtifactDispatch:
         task_ctx = do_task.await_args.kwargs["ctx"]
         assert task_ctx["dispatch_trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
         assert task_ctx["dispatch_chain_graduate_on_terminal"] is True
+
+    @pytest.mark.asyncio
+    async def test_dispatch_chain_batch_success_emits_entity_info(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        post_hop = cfg.dispatch_hop_label(cfg.BUILD_ARTIFACTS_BASE_STATE, "anticipate_scan")
+        monkeypatch.setattr(
+            "src.core.consult.do_task",
+            AsyncMock(return_value={"success": True}),
+        )
+        monkeypatch.setattr(
+            "src.core.agent._current_agent_task_run_next",
+            lambda tk: "contemplate_job" if tk == "anticipate_scan" else "",
+        )
+        get_calls = {"n": 0}
+
+        def _get_job(aid: str) -> dict:
+            st = (
+                cfg.BUILD_ARTIFACTS_BASE_STATE
+                if get_calls["n"] == 0
+                else post_hop
+            )
+            get_calls["n"] += 1
+            return {"astral_job_id": aid, "state": st}
+
+        monkeypatch.setattr(consult_mod.tracker, "get_job", _get_job)
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        info = MagicMock()
+        monkeypatch.setattr(consult_mod, "_job_consult_info", info)
+        out = await consult_mod._run_dispatch_chain_job_batch(
+            "batch-1",
+            [{"astral_job_id": "job-1"}],
+            {},
+            False,
+            "anticipate_scan",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+        )
+        assert out["total_passed"] == 1
+        info.assert_called_once_with("job-1", post_hop)
 
     @pytest.mark.asyncio
     async def test_dispatch_chain_batch_hop_label_input_sets_registry_trigger(
@@ -2320,7 +2363,9 @@ class TestRunBatchConsultBranches:
     @pytest.mark.asyncio
     async def test_routes_hydration_failure_to_error_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
+        warn = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod, "_warn_job", warn)
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -2348,6 +2393,7 @@ class TestRunBatchConsultBranches:
         )
         assert out["success"] is False
         transition.assert_called_once()
+        warn.assert_called_once_with("job-1", "NEW_RETRY", "missing rubric")
 
     @pytest.mark.asyncio
     async def test_handles_missing_fabricated_and_bad_grades(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5460,8 +5506,11 @@ class TestAst1197QualifyMeteoriteApply:
         bot_state = TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"]
         transition = MagicMock()
         initialize = MagicMock()
+        persist = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        # AST-1693: bot branch writes http job_link before transition (no initialize_job).
+        monkeypatch.setattr(consult_mod.tracker, "persist_http_job_link", persist)
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -5490,6 +5539,7 @@ class TestAst1197QualifyMeteoriteApply:
         assert out["passed"] == 0
         assert out["failed"] == 1
         initialize.assert_not_called()
+        persist.assert_called_once_with("j-bot", "https://jobs.example.com/blocked")
         assert transition.call_args.args[2] == bot_state
 
     @pytest.mark.asyncio

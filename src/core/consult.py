@@ -106,6 +106,14 @@ def _warn_job(aid: Any, dest: Any, reason: str) -> None:
     logger.warning("%s -> %s [%s]", aid, dest, reason)
 
 
+async def _debug_await(fn_name: str, call_args: str, coro):
+    """stat.logging.debug callee joint: params in, full response out."""
+    logger.debug("Calling %s: [%s]", fn_name, call_args)
+    result = await coro
+    logger.debug("Response from %s: %s", fn_name, result)
+    return result
+
+
 def _consult_job_identifier(job: Dict[str, Any]) -> str:
     """Primary debug identifier for a consult job row."""
     return str(job.get("astral_job_id") or job.get("job_title") or "?")
@@ -1604,10 +1612,12 @@ async def _run_batch_consult(
                 "provider_balance_refusal task=%s error=%r",
                 task_key, result.get("error"),
             )
-            logger.warning(
-                "%s — provider balance refusal\n  The batch is holding state",
-                task_key,
-            )
+            for job in jobs:
+                _warn_job(
+                    job.get("astral_job_id"),
+                    job.get("state") or "-",
+                    "provider balance refusal — state held",
+                )
             return {
                 "success": False,
                 "error": result.get("error"),
@@ -1623,10 +1633,10 @@ async def _run_batch_consult(
         )
         if error_state:
             _transition_batch_consult_failures(task_key, jobs, error_state)
-        logger.warning(
-            "%s — do_task failed: %s\n  The batch is transitioning to error",
-            task_key, result.get("error"),
-        )
+        reason = result.get("error") or "do_task failed"
+        for job in jobs:
+            dest = _consult_batch_fail_dest(job.get("state"), error_state)
+            _warn_job(job.get("astral_job_id"), dest or "-", reason)
         return {"success": False, "error": result.get("error"), "passed": 0, "failed": 0, "total": len(jobs)}
 
     parsed = result["parsed_response"]
@@ -1639,6 +1649,10 @@ async def _run_batch_consult(
             "%s | grade reason hydration\n  %s: %s\n  The batch is transitioning to error",
             task_key, type(e).__name__, e,
         )
+        reason = str(e)
+        for job in jobs:
+            dest = _consult_batch_fail_dest(job.get("state"), error_state)
+            _warn_job(job.get("astral_job_id"), dest or "-", reason)
         if error_state:
             _transition_batch_consult_failures(task_key, jobs, error_state)
         return {
@@ -1685,6 +1699,8 @@ async def _run_batch_consult(
         logger.debug("MISSING %s IDs: %s", len(missing), sorted(missing))
     if fabricated:
         logger.debug("FABRICATED %s IDs: %s", len(fabricated), sorted(fabricated))
+        for fid in sorted(fabricated):
+            _warn_job(fid, "-", "fabricated id")
 
     # AST-1699: one do_task → one harvest list shared by every grade save in this batch
     batch_harvest = _normalize_harvested_source_artifact_ids(result.get("source_artifact_ids"))
@@ -1746,10 +1762,10 @@ async def _run_batch_consult(
         entity_type = TASK_CONFIG.get(task_key, {}).get("entity_type", "job")
         try:
             ensure_batch_response_entity_ids(entity_type, list(processed_ids), agent_ref)
-        except Exception:
+        except Exception as exc:
             logger.exception(
-                "%s | ensure_batch_response_entity_ids\n  Continuing without RESPONSE entity tags",
-                task_key,
+                "%s | ensure_batch_response_entity_ids\n  %s: %s\n  Continuing without RESPONSE entity tags",
+                task_key, type(exc).__name__, exc,
             )
 
     # bad_grades → per-entity retry holding or terminal error
@@ -2275,6 +2291,7 @@ async def _consult_scored_dispatch_batch_encoded(
     eligible: List[Dict[str, Any]] = []
     live_rows: List[str] = []
 
+    logger.debug("Beginning %s prep loop on %s items", dispatch_task_key, len(jobs))
     for job in jobs:
         aid = job["astral_job_id"]
         row = tracker.get_job(aid) or job
@@ -2303,6 +2320,11 @@ async def _consult_scored_dispatch_batch_encoded(
 
         eligible.append(row)
         live_rows.append(lc)
+
+    logger.debug(
+        "End %s prep loop after %s items eligible=%s skipped=%s",
+        dispatch_task_key, len(jobs), len(eligible), skipped,
+    )
 
     if not eligible:
         logger.debug("no eligible rows after prep skipped=%s", skipped)
@@ -2398,9 +2420,17 @@ async def _run_cover_letter_for_job(
     row = tracker.get_job(astral_job_id) or job
     # Prefer job_has_persisted_resume_body (artifacts-table SoT + legacy blob fallback).
     if not tracker.job_has_persisted_resume_body(astral_job_id, row):
+        logger.debug(
+            "Skipping run_cover_letter_artifact_chain_for_job: [astral_job_id=%s, reason=no resume body]",
+            astral_job_id,
+        )
         return
     chain_ctx: Dict[str, Any] = {**(ctx or {}), "batch_entities": [row], "job": row, "batch_size": 1}
-    await run_cover_letter_artifact_chain_for_job(astral_job_id, chain_ctx, debug=debug)
+    await _debug_await(
+        "run_cover_letter_artifact_chain_for_job",
+        f"astral_job_id={astral_job_id}",
+        run_cover_letter_artifact_chain_for_job(astral_job_id, chain_ctx, debug=debug),
+    )
 
 
 @_with_log_debug
@@ -2474,6 +2504,8 @@ async def _run_dispatch_chain_job_batch(
             _warn_job(aid, row.get("state") or "-", result.get("error") or "do_task failed")
             errors += 1
             continue
+        fresh = tracker.get_job(aid) or row
+        _job_consult_info(aid, fresh.get("state") or row.get("state") or "-")
         passed += 1
     logger.debug(
         "End _run_dispatch_chain_job_batch after %s items passed=%s errors=%s",
@@ -2516,7 +2548,11 @@ async def run_consult_task(
         task_key = (dispatch_task_key or "").strip()
         if task_key == "fetch_website":
             from src.core.gazer import fetch_website_batch
-            r = await fetch_website_batch(batch_id, entities, debug=debug)
+            r = await _debug_await(
+                "gazer.fetch_website_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                fetch_website_batch(batch_id, entities, debug=debug),
+            )
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
@@ -2529,7 +2565,11 @@ async def run_consult_task(
             }
         if task_key == "fetch_job_pages":
             from src.core.gazer import fetch_job_pages_batch
-            r = await fetch_job_pages_batch(batch_id, entities, debug=debug)
+            r = await _debug_await(
+                "gazer.fetch_job_pages_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                fetch_job_pages_batch(batch_id, entities, debug=debug),
+            )
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
@@ -2549,9 +2589,13 @@ async def run_consult_task(
                 "WEBSITE_FOUND",
             )
             passed = failed = errors = 0
+            logger.debug("Beginning resolve_company_website loop on %s items", len(entities))
             for entity in entities:
-                r = await roster.resolve_company_website(
-                    entity.get("short_name", ""), entity, ctx=ctx, debug=debug,
+                short_name = entity.get("short_name", "")
+                r = await _debug_await(
+                    "roster.resolve_company_website",
+                    f"short_name={short_name}",
+                    roster.resolve_company_website(short_name, entity, ctx=ctx, debug=debug),
                 )
                 if r.get("error"):
                     errors += 1
@@ -2559,6 +2603,7 @@ async def run_consult_task(
                     passed += 1
                 else:
                     failed += 1
+            logger.debug("End resolve_company_website loop after %s items", len(entities))
             total = len(entities)
             return {
                 "total_processed": total,
@@ -2572,9 +2617,13 @@ async def run_consult_task(
                 TASK_CONFIG["resolve_website"]["fail_state"],
             )
             passed = failed = errors = 0
+            logger.debug("Beginning resolve_website loop on %s items", len(entities))
             for entity in entities:
-                r = await roster.resolve_website_company(
-                    entity.get("short_name", ""), entity, ctx=ctx, debug=debug,
+                short_name = entity.get("short_name", "")
+                r = await _debug_await(
+                    "roster.resolve_website_company",
+                    f"short_name={short_name}",
+                    roster.resolve_website_company(short_name, entity, ctx=ctx, debug=debug),
                 )
                 if r.get("error"):
                     errors += 1
@@ -2582,6 +2631,7 @@ async def run_consult_task(
                     passed += 1
                 else:
                     failed += 1
+            logger.debug("End resolve_website loop after %s items", len(entities))
             total = len(entities)
             return {
                 "total_processed": total,
@@ -2590,7 +2640,11 @@ async def run_consult_task(
                 "total_errors": errors,
             }
         if task_key == "prefilter_company":
-            r = await roster.prefilter_company_batch(batch_id, entities, ctx=ctx, debug=debug)
+            r = await _debug_await(
+                "roster.prefilter_company_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                roster.prefilter_company_batch(batch_id, entities, ctx=ctx, debug=debug),
+            )
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
@@ -2603,8 +2657,10 @@ async def run_consult_task(
                 "total_errors": errors,
             }
         if task_key == "vet_inflow_discovery":
-            r = await roster.vet_inflow_discovery_company_batch(
-                batch_id, entities, ctx=ctx, debug=debug,
+            r = await _debug_await(
+                "roster.vet_inflow_discovery_company_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                roster.vet_inflow_discovery_company_batch(batch_id, entities, ctx=ctx, debug=debug),
             )
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
@@ -2618,7 +2674,11 @@ async def run_consult_task(
                 "total_errors": errors,
             }
         if task_key == "parse_job_list":
-            r = await roster.parse_job_list_batch(batch_id, entities, ctx=ctx, debug=debug)
+            r = await _debug_await(
+                "roster.parse_job_list_batch",
+                f"batch_id={batch_id}, n={len(entities)}",
+                roster.parse_job_list_batch(batch_id, entities, ctx=ctx, debug=debug),
+            )
             total = r.get("total", len(entities))
             passed = r.get("passed", 0)
             failed = r.get("failed", 0)
@@ -2629,9 +2689,13 @@ async def run_consult_task(
                 "total_failed": failed,
                 "total_errors": errors,
             }
-        return await roster.run_company_task(
-            input_state, entities[0], batch_id, ctx, debug,
-            dispatch_task_key=dispatch_task_key,
+        return await _debug_await(
+            "roster.run_company_task",
+            f"input_state={input_state}, task_key={task_key}, batch_id={batch_id}, n={len(entities)}",
+            roster.run_company_task(
+                input_state, entities[0], batch_id, ctx, debug,
+                dispatch_task_key=dispatch_task_key,
+            ),
         )
 
     if entity_type == "candidate":
@@ -2642,8 +2706,10 @@ async def run_consult_task(
         tk = (dispatch_task_key or "").strip()
         cid = (entities[0].get("astral_candidate_id") or entities[0].get("candidate_id") or "")
         if tk == INFLOW_CONFIG["discovery"]["task_key"]:
-            return await roster.run_inflow_discovery_batch(
-                entities[0], batch_id, ctx, debug,
+            return await _debug_await(
+                "roster.run_inflow_discovery_batch",
+                f"batch_id={batch_id}, candidate_id={cid or '-'}",
+                roster.run_inflow_discovery_batch(entities[0], batch_id, ctx, debug),
             )
         from src.core.agent import _current_agent_task_run_next
         skip_daisy = bool(
@@ -2655,12 +2721,16 @@ async def run_consult_task(
             or tk in ("craft_company_search_terms", "craft_resume_base")
         )
         if has_run_next or (skip_daisy and persistable):
-            return await run_requested_artifacts_dispatch(
-                cid,
-                debug=debug,
-                task_key=tk,
-                trigger_state=input_state,
-                skip_daisy_chain=skip_daisy,
+            return await _debug_await(
+                "candidate.run_requested_artifacts_dispatch",
+                f"candidate_id={cid or '-'}, task_key={tk}, trigger_state={input_state}",
+                run_requested_artifacts_dispatch(
+                    cid,
+                    debug=debug,
+                    task_key=tk,
+                    trigger_state=input_state,
+                    skip_daisy_chain=skip_daisy,
+                ),
             )
         logger.warning(
             "%s — unhandled candidate task_key %s\n  This task is not starting",
@@ -2680,25 +2750,49 @@ async def run_consult_task(
 
     if task_key == "fetch_jd":
         from src.core.gazer import fetch_jd_batch
-        r = await fetch_jd_batch(batch_id, entities, debug=debug)
+        r = await _debug_await(
+            "gazer.fetch_jd_batch",
+            f"batch_id={batch_id}, n={len(entities)}",
+            fetch_jd_batch(batch_id, entities, debug=debug),
+        )
     elif task_key == "fetch_culture_pages":
         from src.core.gazer import fetch_culture_pages_batch
-        r = await fetch_culture_pages_batch(batch_id, entities, debug=debug)
+        r = await _debug_await(
+            "gazer.fetch_culture_pages_batch",
+            f"batch_id={batch_id}, n={len(entities)}",
+            fetch_culture_pages_batch(batch_id, entities, debug=debug),
+        )
     elif task_key == "qualify_job_listings":
-        r = await qualify_job_listings(
-            batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        r = await _debug_await(
+            "qualify_job_listings",
+            f"batch_id={batch_id}, n={len(entities)}",
+            qualify_job_listings(
+                batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+            ),
         )
     elif task_key == "qualify_meteorite":
-        r = await qualify_meteorite(
-            batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        r = await _debug_await(
+            "qualify_meteorite",
+            f"batch_id={batch_id}, n={len(entities)}",
+            qualify_meteorite(
+                batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+            ),
         )
     elif task_key == "evaluate_jd":
-        r = await evaluate_jd_batch(
-            batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        r = await _debug_await(
+            "evaluate_jd_batch",
+            f"batch_id={batch_id}, n={len(entities)}",
+            evaluate_jd_batch(
+                batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+            ),
         )
     elif task_key == "evaluate_meteorite":
-        r = await evaluate_meteorite_batch(
-            batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        r = await _debug_await(
+            "evaluate_meteorite_batch",
+            f"batch_id={batch_id}, n={len(entities)}",
+            evaluate_meteorite_batch(
+                batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+            ),
         )
     elif (
         task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like")
@@ -2710,7 +2804,11 @@ async def run_consult_task(
         if len(entities) == 1:
             aid = entities[0]["astral_job_id"]
             orch = _consult_orchestration_for_entity(task_key, entities[0].get("state"))
-            rv = await render_verdict(task_key, aid, ctx=ctx, debug=debug)
+            rv = await _debug_await(
+                "render_verdict",
+                f"task_key={task_key}, astral_job_id={aid}",
+                render_verdict(task_key, aid, ctx=ctx, debug=debug),
+            )
             if rv.get("success"):
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
@@ -2722,17 +2820,33 @@ async def run_consult_task(
                 "grade_like": grade_like_batch,
                 "meteorite_like": meteorite_like_batch,
             }[task_key]
-            r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
+            r = await _debug_await(
+                task_key,
+                f"batch_id={batch_id}, n={len(entities)}",
+                _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index),
+            )
         else:
             # Alias Do/Get — same encoded path; dispatch_task_key is the alias identity.
-            r = await _consult_scored_dispatch_batch_encoded(
-                task_key, batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+            r = await _debug_await(
+                "_consult_scored_dispatch_batch_encoded",
+                f"task_key={task_key}, batch_id={batch_id}, n={len(entities)}",
+                _consult_scored_dispatch_batch_encoded(
+                    task_key, batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+                ),
             )
     elif task_key in ("analysis_upshot", "meteorite_upshot"):
-        return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug, task_key=task_key)
+        return await _debug_await(
+            "_run_analysis_upshot_batch",
+            f"task_key={task_key}, batch_id={batch_id}, n={len(entities)}",
+            _run_analysis_upshot_batch(batch_id, entities, ctx, debug, task_key=task_key),
+        )
     elif is_dispatch_chain_trigger((input_state or "").strip()) and task_key in TASK_CONFIG:
-        return await _run_dispatch_chain_job_batch(
-            batch_id, entities, ctx, debug, task_key, input_state,
+        return await _debug_await(
+            "_run_dispatch_chain_job_batch",
+            f"task_key={task_key}, input_state={input_state}, batch_id={batch_id}, n={len(entities)}",
+            _run_dispatch_chain_job_batch(
+                batch_id, entities, ctx, debug, task_key, input_state,
+            ),
         )
     else:
         logger.warning(

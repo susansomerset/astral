@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+import zlib
+from datetime import datetime, timezone
 
 import pytest
 
@@ -39,6 +42,16 @@ class TestAst1352Artifacts:
             }
             assert "source_artifact_ids" in (db.__doc__ or "")
             assert "candidate_id" in (db.__doc__ or "")
+            # AST-1697: inventory documents zlib-transparent BLOB (like agent_data.block_data).
+            doc = db.__doc__ or ""
+            assert "zlib-compressed" in doc
+            assert "agent_data.block_data" in doc
+            assert "legacy plain TEXT still readable" in doc
+            typ = {
+                r[1]: r[2]
+                for r in conn.execute("PRAGMA table_info(artifact)").fetchall()
+            }
+            assert typ["artifact_data"].upper() == "BLOB"
             idx = conn.execute(
                 "SELECT name FROM sqlite_master WHERE type='index' "
                 "AND name='idx_artifact_entity_type_current'"
@@ -519,4 +532,100 @@ class TestAst1600JobArtifactCandidateIdResolve:
         assert current is not None
         assert current["artifact_uuid"] == uid
         assert current["candidate_id"] == "cand-denorm"
+
+
+# Branches: on-disk zlib after save; public readers transparent; legacy TEXT still loads;
+# inventory + shared helpers (no parallel compress path).
+class TestAst1697ArtifactZlibWriteRead:
+    """AST-1697: artifact_data zlib like agent_data.block_data; callers stay plain."""
+
+    def test_save_stores_zlib_bytes_raw_sql_decompresses(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        payload = {"text": "zlib v1", "n": 1}
+        uid = db.save_artifact("candidate", "cand-1697", "base_resume", payload)
+        conn = db._get_connection()
+        try:
+            raw = conn.execute(
+                "SELECT artifact_data FROM artifact WHERE artifact_uuid = ?",
+                (uid,),
+            ).fetchone()[0]
+        finally:
+            conn.close()
+        assert isinstance(raw, (bytes, memoryview))
+        blob = bytes(raw)
+        plain = zlib.decompress(blob).decode("utf-8")
+        assert json.loads(plain) == payload
+
+    def test_public_readers_return_deserialized_not_zlib(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        payload = {"sections": ["summary"], "v": 2}
+        uid = db.save_artifact("candidate", "cand-1697b", "base_resume", payload)
+        current = db.get_current_artifact("candidate", "cand-1697b", "base_resume")
+        assert current is not None
+        assert current["artifact_data"] == payload
+        by_uuid = db.get_artifact(uid)
+        assert by_uuid is not None
+        assert by_uuid["artifact_data"] == payload
+        listed = db.list_artifacts(
+            "candidate", "cand-1697b", "base_resume", current_only=True
+        )
+        assert listed[0]["artifact_data"] == payload
+        # string body also transparent (not raw zlib bytes)
+        uid2 = db.save_artifact(
+            "candidate", "cand-1697b", "strengths", "plain strengths"
+        )
+        assert db.get_artifact(uid2)["artifact_data"] == "plain strengths"
+
+    def test_legacy_plain_text_row_still_readable(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        conn = db._get_connection()
+        try:
+            db._ensure_artifact_table(conn)
+            now = datetime.now(timezone.utc).isoformat()
+            uid = "legacy-plain-1697"
+            # Pre-zlib TEXT row: public readers must still deserialize.
+            conn.execute(
+                """INSERT INTO artifact (
+                    artifact_uuid, candidate_id, entity_type, entity_id,
+                    artifact_type, artifact_data, source_artifact_ids, current,
+                    created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, '[]', 1, ?, ?)""",
+                (
+                    uid,
+                    "cand-legacy",
+                    "candidate",
+                    "cand-legacy",
+                    "base_resume",
+                    json.dumps({"legacy": True, "text": "uncompressed"}),
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        row = db.get_artifact(uid)
+        assert row is not None
+        assert row["artifact_data"] == {"legacy": True, "text": "uncompressed"}
+        current = db.get_current_artifact(
+            "candidate", "cand-legacy", "base_resume"
+        )
+        assert current is not None
+        assert current["artifact_uuid"] == uid
+        assert current["artifact_data"]["legacy"] is True
+
+    def test_save_and_row_dict_use_shared_compress_helpers(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        doc = db.__doc__ or ""
+        assert "zlib-compressed" in doc
+        assert "agent_data.block_data" in doc
+        save_src = inspect.getsource(db.save_artifact)
+        row_src = inspect.getsource(db._artifact_row_dict)
+        assert "_compress_payload" in save_src
+        assert "zlib.compress" not in save_src
+        assert "_decompress_payload" in row_src
 

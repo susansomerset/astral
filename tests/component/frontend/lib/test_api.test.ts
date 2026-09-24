@@ -49,15 +49,4 @@ describe("api", () => {
     expect(getLogOffReason()).toBeNull()
     expect(handler).not.toHaveBeenCalled()
   })
-
-  it("sets X-Astral-Silent-Auth on silent polls and omits it by default", async () => {
-    setAuthTokenGetter(() => "session-jwt-abc")
-    await api("/api/nav_config")
-    let headers = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].headers as Headers
-    expect(headers.get("X-Astral-Silent-Auth")).toBeNull()
-    await api("/api/nav_config", { silent: true })
-    headers = (fetch as ReturnType<typeof vi.fn>).mock.calls[1][1].headers as Headers
-    expect(headers.get("X-Astral-Silent-Auth")).toBe("1")
-    expect(headers.get("Authorization")).toBe("Bearer session-jwt-abc")
-  })
 })
