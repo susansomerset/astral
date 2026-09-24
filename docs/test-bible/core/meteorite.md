@@ -751,3 +751,45 @@ Fills `_review_duplicate_meteorite_hook`: full-content live payload, `do_task` `
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/core/meteorite.md`
+
+### AST-1785 · AST-1783
+
+**Parent:** [AST-1783 — Parsing emails with linked job titles](https://linear.app/astralcareermatch/issue/AST-1783/parsing-emails-with-linked-job-titles). **Publish:** `origin/sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb`.
+
+Text-outcome map prefers http(s) `job_link` over `_email_breadcrumb_link`; `stage_meteorite` / `run_stage_meteorite` set `SCRAPE_LINK` when row `link` is http even if the classify outcome string was text. Classic email text without http `job_link` keeps breadcrumb + READY insert path. URL outcomes unchanged. Prompts/fixture: **AST-1784** (`docs/test-bible/core/repo_admin_json.md`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Map prefer http + breadcrumb preserve + URL map | `src/core/meteorite.py` | **`TestAst1785PreferHttpJobLinkOverBreadcrumb`** |
+| Stage insert SCRAPE_LINK + title | same | **`…::test_stage_text_outcome_http_job_link_scrape_link_and_title`** |
+| Runner text+http → SCRAPE_LINK | same | **`…::test_run_stage_text_outcome_http_link_to_scrape_link`** |
+| Prior breadcrumb map (AC6) | same | **`TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none`** |
+| Prior URL stage insert (AC7) | same | **`TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields`** |
+| Prior text READY insert (no http) | same | **`TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http`** |
+
+**Broken / obsolete this pass:** none — prior breadcrumb / URL asserts remain valid when `job_link` is absent or outcome is URL.
+
+**Integration:** none — no existing scenario asserts stage map http-over-breadcrumb preference.
+
+## QA test manifest
+
+1. Prefer http map + stage + runner: `tests/component/core/test_meteorite.py::TestAst1785PreferHttpJobLinkOverBreadcrumb`
+2. Prior breadcrumb map: `tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none`
+3. Prior URL stage: `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields`
+4. Prior text READY (no http): `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http`
+5. Prior URL runner: `tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_url_outcome_to_scrape_link`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1785PreferHttpJobLinkOverBreadcrumb \
+  tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_map_email_text_sets_breadcrumb_paste_stays_none \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_ready_breadcrumb_is_not_http \
+  tests/component/core/test_meteorite.py::TestAst1560RunStageMeteorite::test_url_outcome_to_scrape_link \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
