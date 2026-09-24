@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-1688 archived 2026-09-24 -->
+
+## Linear archive (AST-1688)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1688/stage-meteorite-electronic-contact-schema-prompts-reply-to-emails-in  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1684 — Reply-to emails in meteorite when single_jd_no_link  
+**Blocked by / blocks / related:** parent: AST-1684; blocks: AST-1689
+
+### Description
+
+## What this implements
+
+Owns config response-key / column literals and `agent_task` prompts: metadata-first best electronic contact for resume send on text outcomes (`single_jd_no_link`, `multi_jd_inline`) and for link rows that may bot-block. Does **not** own DB column wiring or row map persist (sibling #2).
+
+## Citations
+
+`patt.task.daisy-chain`; `stat.logging.debug`, `stat.logging.info`.
+
+## Scope
+
+`src/utils/config.py` — **modified** — `stage_meteorite` response schema gains electronic-contact field(s); METEORITE_CONFIG / STAGE_METEORITE_CONFIG gains the meteorite-column / response-key literal(s); text outcomes stay the closed `text_source_ref_outcomes` set (include `multi_jd_inline`). `data/admin/agent_task.json` — **modified** — `stage_meteorite` prompts: best electronic contact to send the resume; **must use metadata**; empty when undeterminable; lockstep with TASK_CONFIG. `config.py` — Add optional electronic-contact field(s) on `TASK_CONFIG["stage_meteorite"].response_schema.jobs.items_schema`; add config key literal(s) for the meteorite column / response key; keep outcome enum unchanged; ensure prompts/docs name `single_jd_no_link` and `multi_jd_inline`. `agent_task.json` — Teach metadata-first electronic contact for resume send; forbid invention.
+
+## Acceptance criteria
+
+- [X] 1\. `TASK_CONFIG["stage_meteorite"].response_schema.jobs.items_schema` includes the config-named electronic-contact field(s) — fail if schema still only has job_title/job_link/company_job_id/jd_text/employer_name.
+- [X] 2\. `agent_task` / prompts for `stage_meteorite` instruct metadata-first best electronic contact for resume send — fail if prompts omit metadata or tell Ruth to invent addresses.
+
+## Boundaries
+
+- [X] Does not own DB column / allowlist / insert path (sibling #2). Does not map contact onto meteorite rows. Does not touch job `job_data` or Recommended UI (AST-1685).
+
+## Notes for planning
+
+Bang `!` — blocks sibling #2. Estimate 3.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1684-reply-to-emails-in-meteorite-when-single-jd-no-link`, child `sub/AST-1684/AST-1688-stage-meteorite-electronic-contact-schema-prompts`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Electronic-contact schema + literals: `tests/component/utils/test_config.py::TestAst1688StageMeteoriteElectronicContactConfig`
+2. Prior stage shell: `tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig`
+3. Catalog prompts + fixture twin: `tests/component/core/test_repo_admin_json.py::TestAst1688StageMeteoriteElectronicContactPrompts`
+4. Prior catalog + fixture lockstep: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+5. Whole-file fixture identity: `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1688StageMeteoriteElectronicContactConfig \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst1688StageMeteoriteElectronicContactPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  -q
+```
+
+**Bible shasum (publish tip** `30f3c1ce`**):**
+
+* `docs/test-bible/utils/config.md` — `5593842b845479d66009f8eb7f13d3c7fc6e2cc4`
+* `docs/test-bible/core/repo_admin_json.md` — `c763b154f7654dc92d170fae24adbf339f537e38`
+
+### Comments
+
+#### radia — 2026-09-16T22:38:10.354Z
+[code-rubric] PROCEED (Commit: 30f3c1ce) schema prompts lockstep clean
+
+#### betty — 2026-09-16T22:32:58.427Z
+`origin/sub/AST-1684/AST-1688-stage-meteorite-electronic-contact-schema-prompts` @ `30f3c1ce` · electronic_contact coverage ready
+
+#### joan — 2026-09-16T22:25:39.390Z
+[plan-rubric] PROCEED (Commit: 0b5620015d08c02ec1f13fac440c31051a7be8cd) schema prompts lockstep
+
+#### ada — 2026-09-16T22:23:31.338Z
+`origin/sub/AST-1684/AST-1688-stage-meteorite-electronic-contact-schema-prompts` @ `0b5620015d08c02ec1f13fac440c31051a7be8cd` · plan ready
+
+---
+
 # AST-1688 — stage_meteorite electronic-contact schema + prompts
 
 **Linear:** [AST-1688](https://linear.app/astralcareermatch/issue/AST-1688/stage-meteorite-electronic-contact-schema-prompts-reply-to-emails-in)  
