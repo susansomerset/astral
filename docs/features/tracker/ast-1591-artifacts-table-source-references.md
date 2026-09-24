@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-1591 archived 2026-09-24 -->
+
+## Linear archive (AST-1591)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1591/artifacts-table-source-references-support-jobartifactsjob-resume-and  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1588 — Support “job.artifacts.job_resume” and “job.artifacts.cover_letter”as artifacts  
+**Blocked by / blocks / related:** parent: AST-1588; blocks: AST-1592
+
+### Description
+
+## What this implements
+
+Owns data-layer support for source artifact ids on artifacts versions: DDL/ensure migration, save_artifact persists optional source id list, get-current / get-by-uuid return it, header inventory updated. Does not register catalog keys (#1) or wire tracker job_resume citation (#3). Blocks #3.
+
+## Citations
+
+patt.artifacts.traceability; patt.artifact.write-operative; astral.standards.database-header-inventory; astral.standards.data-raises-caller-logs
+
+## Scope
+
+src/data/database.py — **modified** — extend `artifacts` DDL/ensure for source-reference storage; `save_artifact` / get-current (and related) accept and return source artifact ids; header inventory updated; no unrelated schema churn. `canon/directives/draft/patt.artifacts.traceability.md` — **modified** — only a one-line alignment note that this epic lands source-artifact-id storage on `artifacts` for job_resume→base_resume; do not promote the draft to approved canon unless Archie asks. `src/data/database.py` — Add source-reference column (or equivalent JSON array of artifact_uuid strings) on `artifacts`; migrate/ensure existing DBs. Extend `save_artifact` to persist optional source ids with the new current row; extend get-current / get-by-uuid readers to return them. Update module header inventory. Exact column name is plan-child’s call under statute naming discipline. `canon/directives/draft/patt.artifacts.traceability.md` — Optional one-line note that source-artifact-id persistence on `artifacts` starts with this epic’s job_resume→base_resume case.
+
+## Acceptance criteria
+
+- [X] 3. The artifacts table stores source artifact id references on each version; new writes can persist them and current/by-id reads can return them.
+
+## Boundaries
+
+- [X] Does not register ARTIFACT_CONFIG keys (#1) or wire tracker citation of base_resume (#3).
+
+## Notes for planning
+
+Confirm Chuckles estimate: 3 — agree or revise.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1588-job-artifacts-job-resume-cover-letter`, child `sub/AST-1588/<child-id>-artifacts-table-source-references`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-09-04T22:10:23.750Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/<parent-segment>
+@Katherine Johnson — tip has `Merge remote-tracking branch 'origin/ftr/…'` (4ac864da). Rewrite sub tip: drop that subject (merge ftr with an explicit non-pull message or rebase onto ftr), keep resolve + stack, republish origin/sub/AST-1588/AST-1591-artifacts-table-source-references. Stay User Testing.
+
+#### radia — 2026-09-04T22:07:26.662Z
+[code-rubric] REVIEW (Commit: 8701bb54) Sibling tests need merge order
+
+#### betty — 2026-09-04T22:03:57.545Z
+`origin/sub/AST-1588/AST-1591-artifacts-table-source-references` @ `8701bb5406da155e38a49a24b1e3181426b3812e` · source refs manifest
+
+#### joan — 2026-09-04T21:55:47.198Z
+[plan-rubric] PROCEED (Commit: 364201c7) data layer source refs
+
+#### katherine — 2026-09-04T21:53:24.952Z
+`origin/sub/AST-1588/AST-1591-artifacts-table-source-references` @ `364201c79981d6cc7d28a4918480168e5cb762f4` · plan ready
+
+---
+
 # Artifacts table source references
 
 **Linear:** [AST-1591](https://linear.app/astralcareermatch/issue/AST-1591/artifacts-table-source-references-support-jobartifactsjob-resume-and)
