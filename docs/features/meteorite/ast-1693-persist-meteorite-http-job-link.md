@@ -1,3 +1,129 @@
+<!-- linear-archive: AST-1693 archived 2026-09-24 -->
+
+## Linear archive (AST-1693)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1693/persist-meteorite-http-onto-jobjob-link-land-when-text-without-scrape  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1686 — Hyperlink to job with meteorite http link  
+**Blocked by / blocks / related:** parent: AST-1686; blocks: AST-1695
+
+### Description
+
+## What this implements
+
+Land/create and qualify bot-blocked paths always write http(s) `meteorite.link` → `job.job_link`; `BOT_BLOCKED` + non-scrape content creates/lands a job; link-only empty content stays on AST-1561. Does not own API listing field or React (#2, #3).
+
+## Citations
+
+`patt.entity.batch-processing`, `stat.logging.info.entity`, `stat.logging.debug`, `stat.logging.error`, `stat.logging.warning`.
+
+## Scope
+
+`src/core/meteorite.py` (land/create + BOT_BLOCKED-with-content create); `src/core/consult.py` (qualify bot-blocked preserves/writes job_link); `src/core/tracker.py` (only save/initialize touch points required). Technical: http(s) copy onto `job.job_link`; create/land when content present on bot-blocked row; no force-land of empty-content BOT_BLOCKED.
+
+## Acceptance criteria
+
+- [X] 1\. Land/create of a meteorite row whose `link` is `https://example.test/job/1` writes `job.job_link` to that URL even when the row’s scrape/qualify outcome is bot-blocked. Fail: `job.job_link` empty/null while meteorite http link exists.
+- [X] 2\. A pre-land `BOT_BLOCKED` meteorite with non-empty non-scrape `content` and http(s) `link` ends with a job row (`astral_job_id` set) and that http `job.job_link`. Fail: content+link bot-blocked row never creates a job, or creates a job without the http link.
+- [X] 3\. A link-only `BOT_BLOCKED` meteorite with empty `content` does **not** create a job in this epic (still Estelle paste / AST-1561). Fail: empty-content bot-blocked rows are force-landed.
+
+## Boundaries
+
+- [X] Does not own API listing-href field (#2) or React surfaces (#3). Does not own AST-1561 notify/paste runners beyond creating/landing when non-scrape content already exists. Does not own AST-1685 Meteorite pane or AST-1640 source_entity reshape.
+
+## Notes for planning
+
+Citations as above. Prefer existing land claim→process→release path for BOT_BLOCKED-with-content create.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Land BOT_BLOCKED contentful + empty: `tests/component/core/test_meteorite.py::TestAst1693RunLandBotBlocked`
+2. Notify skip contentful: `tests/component/core/test_meteorite.py::TestAst1693NotifySkipsContentful`
+3. Prior READY land: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
+4. Prior empty notify: `tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked`
+5. Tracker persist + dup backfill: `tests/component/core/test_tracker.py::TestAst1693PersistHttpJobLink` + `TestAst1693SaveMeteoriteDuplicateLinkBackfill`
+6. Qualify bot persist: `tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply::test_challenge_input_jd_transitions_bot_blocked`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1693RunLandBotBlocked \
+  tests/component/core/test_meteorite.py::TestAst1693NotifySkipsContentful \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked \
+  tests/component/core/test_tracker.py::TestAst1693PersistHttpJobLink \
+  tests/component/core/test_tracker.py::TestAst1693SaveMeteoriteDuplicateLinkBackfill \
+  tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply::test_challenge_input_jd_transitions_bot_blocked \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/meteorite.md` — `ee8a980ee11d836ca86a938f1f181c7ad0d13172`
+* `docs/test-bible/core/tracker.md` — `8b91ca5a95996a101cd6a1c9b6a3912e6db124f1`
+* `docs/test-bible/core/consult.md` — `bbd0fb3b6896b9918f17cebf7d873a6ba9c290af`
+
+**Broken / obsolete:** `TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich` — dropped AST-1689 `"meteorite land id="` log assert.
+
+### Comments
+
+#### chuckles — 2026-09-16T23:15:34.243Z
+[merge-child] blocked: validate-sub-log — duplicate merge-tests(AST-1693) count=2 (4d07777e + 38b4f967); also sub not stacked on origin/ftr/AST-1686-hyperlink-meteorite-http-link (ftr tip 4341e388 has AST-1694). @Betty White: amend on tests so one merge-tests only. @Hedy Lamarr: after Betty, sync-child.sh sub onto current ftr and republish.
+
+#### radia — 2026-09-16T23:14:39.843Z
+[code-rubric] PROCEED (Commit: 38b4f967) http job_link persist clean
+
+#### betty — 2026-09-16T23:12:16.628Z
+[check-linear]
+Cleared [qa-handoff]: removed stray `>>>>>>> bced9446…` merge markers from `tests/component/core/test_meteorite.py` (SyntaxError on collect). Manifest unchanged.
+
+`origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link` @ `38b4f967` · markers gone, reassigned Hedy
+
+#### hedy — 2026-09-16T23:07:16.978Z
+[qa-handoff]
+@Betty White
+
+Manifest run failed before any AST-1693 meteorite nodes could collect.
+
+**Command** (Betty bible § AST-1693):
+```
+ASTRAL_PYTHON=python3.14 ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1693RunLandBotBlocked \
+  tests/component/core/test_meteorite.py::TestAst1693NotifySkipsContentful \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1561RunNotifyBotBlocked \
+  tests/component/core/test_tracker.py::TestAst1693PersistHttpJobLink \
+  tests/component/core/test_tracker.py::TestAst1693SaveMeteoriteDuplicateLinkBackfill \
+  tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply::test_challenge_input_jd_transitions_bot_blocked \
+  -q
+```
+
+**Why test/manifest (not product):** `tests/component/core/test_meteorite.py` has leftover merge markers from `merge-tests(AST-1693)` / `bced9446`:
+- line 397: `>>>>>>> bced944623853922d74355c2b3c10e751356f2af`
+- line 1736: same (end of `TestAst1693NotifySkipsContentful`)
+
+Collection → `SyntaxError: invalid syntax`. Tracker + consult manifest nodes alone: **5 passed**.
+
+Please remove the stray `>>>>>>>` lines (or finish the conflict resolve) on `origin/tests`, re-`merge-tests` onto `origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link`, reassign Hedy.
+
+#### betty — 2026-09-16T23:05:08.477Z
+`origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link` @ `4d07777e368b016f9819b6af4cfb2a822eed79f2` · land/notify job_link coverage
+
+#### joan — 2026-09-16T22:44:34.240Z
+[plan-rubric] PROCEED (Commit: 041ec978) bot-blocked job_link plan solid
+
+#### hedy — 2026-09-16T22:42:13.213Z
+`origin/sub/AST-1686/AST-1693-persist-meteorite-http-job-link` @ `041ec97845380d67226737fd0d7d8f6352765756` · plan ready
+
+---
+
 # AST-1693 — Persist meteorite http onto job.job_link (+ land when text without scrape)
 
 **Linear:** [AST-1693](https://linear.app/astralcareermatch/issue/AST-1693)  

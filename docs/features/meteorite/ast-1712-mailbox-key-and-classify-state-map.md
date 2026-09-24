@@ -1,3 +1,132 @@
+<!-- linear-archive: AST-1712 archived 2026-09-24 -->
+
+## Linear archive (AST-1712)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1712/mailbox-key-and-classify-state-map-rework-meteorite-email  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1711 — Rework meteorite_email  
+**Blocked by / blocks / related:** parent: AST-1711; blocks: AST-1713
+
+### Description
+
+## What this implements
+
+The mailbox task key and the meteorite state registry: `SCRAPE_LINK`, `READY`, `NOT_A_JOB`, `NEW_EMAIL_ERROR`, and scrape-failure `SCRAPE_ERROR` in place of `ERROR`. Existing `src/core/meteorite.py` failure writes of `ERROR` become `SCRAPE_ERROR` so that rename is legal. Does not create `NEW_EMAIL_ERROR` or `NOT_A_JOB` rows, send blobs to Ruth, or walk the inbox.
+
+## Citations
+
+`patt.task.dispatch-retry` — scrape failure keeps the ordinary claim retry under `SCRAPE_ERROR`; `NOT_A_JOB` and `NEW_EMAIL_ERROR` are not that retry.
+
+## Scope
+
+* `src/utils/config.py` — modified — mailbox task key becomes `stage_email_meteorite`, and the meteorite state registry maps outcomes to `SCRAPE_LINK`, `READY`, `NOT_A_JOB`, and `NEW_EMAIL_ERROR`, and renames scrape-failure `ERROR` to `SCRAPE_ERROR`.
+* `data/admin/agent_task.json` — modified — mailbox shell row's task key follows that rename.
+* `src/core/agent.py` — modified — legacy mailbox prompt fold follows the renamed task key.
+* `src/core/meteorite.py` — modified — existing failure writes `state="ERROR"` become `SCRAPE_ERROR`, including the scrape fallback default. Does not add `NEW_EMAIL_ERROR` or `NOT_A_JOB` writes.
+* `src/utils/config.py`: modified mailbox config — the task key string `meteorite_email` becomes `stage_email_meteorite`, and the debug runner points at `inbox.check_email`; modified meteorite state registry — link outcomes save as `SCRAPE_LINK`, no-scrape outcomes save as `READY`, not-a-job saves as `NOT_A_JOB` (insert-legal, listed for scheduled cleanup, not a dispatch trigger, not on the stale list), and other stage failures save as `NEW_EMAIL_ERROR` (insert-legal, not a dispatch trigger, and `NEW` lists it as a prior so a human can reset), and the scrape-failure state `ERROR` is renamed to `SCRAPE_ERROR` in that registry, its prior states, the scrape page-status map, and the stale list.
+* `data/admin/agent_task.json`: modified mailbox shell row — `task_key` and `task_name` become `stage_email_meteorite`; Ruth's `stage_meteorite` row stays.
+* `src/core/agent.py`: modified prompt lookup — the legacy mailbox fold keys off `stage_email_meteorite` instead of `meteorite_email`.
+* `src/core/meteorite.py`: modified stage, scrape, and land failure writes — the meteorite state literal `ERROR` becomes `SCRAPE_ERROR`; the scrape fallback `status_map.get(page_status, "ERROR")` default becomes `"SCRAPE_ERROR"`. Log lines that say `This row is ERROR` stay. Do not add `NEW_EMAIL_ERROR` or `NOT_A_JOB` writes.
+
+## Acceptance criteria
+
+1. `rg -n "['\"]meteorite_email['\"]" src/utils/config.py data/admin/agent_task.json src/core/agent.py src/core/dispatcher.py src/ui/api/api_admin.py src/core/inbox.py` prints nothing. Fail: any of those files still contains the quoted task key `meteorite_email`. `rg -n "stage_email_meteorite" src/utils/config.py` shows that string as the mailbox task key. Fail: the mailbox task key is not `stage_email_meteorite`.
+2. `rg -n '"SCRAPE_ERROR"' src/utils/config.py src/core/meteorite.py`, `rg -n '"NEW_EMAIL_ERROR"' src/utils/config.py src/core/meteorite.py`, and `rg -n '"NOT_A_JOB"' src/utils/config.py src/core/meteorite.py` all print matches. `rg -n "trigger_state = 'NEW_EMAIL_ERROR'" src/utils/config.py` and `rg -n "trigger_state = 'NOT_A_JOB'" src/utils/config.py` print nothing. In `METEORITE_STATES`, `NEW`'s `prior_states` includes `NEW_EMAIL_ERROR`, `stale_list_states` includes `SCRAPE_ERROR` and does not include `NEW_EMAIL_ERROR` or `NOT_A_JOB`, and the scheduled-cleanup selection includes `NOT_A_JOB`. Fail: any of those states is missing, a dispatch task claims `NEW_EMAIL_ERROR` or `NOT_A_JOB`, `NEW` cannot follow `NEW_EMAIL_ERROR`, or `NOT_A_JOB` is on the stale list or missing from cleanup.
+3. `rg -n 'state="ERROR"' src/core/meteorite.py` prints nothing, and `rg -n 'status_map.get(page_status, "ERROR")' src/core/meteorite.py` prints nothing. Fail: meteorite still writes state `ERROR`, or the scrape fallback default is still `"ERROR"`.
+
+## Boundaries
+
+Does not send blobs to Ruth or walk the inbox (siblings #2 and #3). Does not create `NEW_EMAIL_ERROR` or `NOT_A_JOB` rows.
+
+## Notes for planning
+
+Citations above are the canon scope for this slice. Exact function names are yours; the Scope lines are the files and the kind of change.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1711-rework-meteorite-email`. Child ref is recorded in the epic registry at dispatch.
+
+### Comments
+
+#### radia — 2026-09-19T22:55:47.980Z
+[code-rubric] PROCEED (Commit: b4d8f65a) registry key SCRAPE_ERROR clean
+
+#### betty — 2026-09-19T22:51:59.679Z
+`origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map` @ `b4d8f65a79d7716adc0b6daf494baa10cd77d892` · mailbox key tests
+
+#### chuckles — 2026-09-19T22:32:42.728Z
+[check-linear] answered — see the thread. Not clearing Active from check.
+
+#### chuckles — 2026-09-19T22:32:42.234Z
+[check-linear] answered — yes. A Done gate is the release. The parent still wears Active/chuckles from the early exit, and the watcher will not spawn while that label is on. That hold is the hole. Nothing more is needed from you. Not clearing it from check.
+
+#### susan — 2026-09-19T22:31:42.206Z
+@chuckles That sounds like a bug in the mechanism to resolve and unblock tickets for Archie calls.  The ticket in this instance is in the Done state, so I don't know what more should be needed to re-engage Ada.
+
+#### chuckles — 2026-09-19T22:27:09.526Z
+[check-linear] answered — see the thread. Not clearing Active from check.
+
+#### chuckles — 2026-09-19T22:27:09.024Z
+[check-linear] answered — the parent wave exited on the gate before any child reached User Testing. That exit is not a completion, so Active/chuckles stayed on the parent. The watcher treats that label as a live session and will not start another wave, so Ada's spawn never starts. Not clearing it from check.
+
+#### susan — 2026-09-19T22:24:57.065Z
+@chuckles Yes, I know what it is.  I do not understand why it is not currently in-flight.  What is happening with this ticket, if Ada is not working on it?
+
+#### chuckles — 2026-09-19T22:23:36.028Z
+[check-linear] answered — Active/ada is the in-flight spawn marker, not the Plan Approved marker. It is set when Ada's spawn starts and cleared when that spawn returns. No Ada spawn is running, so the label is off. Assignee stays Ada. Not setting it from check.
+
+#### susan — 2026-09-19T22:23:10.232Z
+@chuckles Can you find out why this ticket doesn't have the ada Active label on it, if the plan has been approved?
+
+#### chuckles — 2026-09-19T22:10:59.699Z
+[check-linear] Plan Approved — that Done gate is off this ticket. Assignee stays Ada.
+
+#### susan — 2026-09-19T22:09:40.604Z
+@chuckles The call was made, the ticket is done.
+
+#### chuckles — 2026-09-19T21:49:15.357Z
+[check-linear] answered — held for the widen-this-slice call, which is in. Plan Approved stays with Ada; the parent wave has not resumed this child. Not driving it from check.
+
+#### susan — 2026-09-19T21:47:40.019Z
+@chuckles Why is this ticket not progressing?
+
+#### betty — 2026-09-19T19:09:09.178Z
+@susan — suspected scope issue: this slice renames scrape-failure `ERROR` to `SCRAPE_ERROR` in `METEORITE_STATES`, but `update_meteorite` only accepts states in that registry (`src/data/database.py`). `src/core/meteorite.py` still calls `update_meteorite(..., state="ERROR")` — the plan’s scope gate defers those writes to AST-1713. Those calls now raise `ValueError: unknown meteorite state: 'ERROR'` and the row stays `NEW`.
+
+Repro: `tests/component/core/test_meteorite.py::TestAst1703EmailBreadcrumb::test_stage_email_text_blank_link_errors` asserts state `ERROR`, got `NEW`. Same break on the other `state="ERROR"` paths in stage / scrape / land.
+
+Recommendation: revise the plan so this slice retargets those `meteorite.py` writes to `SCRAPE_ERROR` before Tests Ready. The registry rename is not shippable alone. Do not weaken the writer tests. Holding Code Complete; assignee stays Ada.
+
+#### joan — 2026-09-19T19:00:41.062Z
+[plan-rubric] PROCEED (Commit: fccf0171663f737c49825abe1651267c0c33b394) registry and key rename
+
+#### ada — 2026-09-19T18:58:09.844Z
+`origin/sub/AST-1711/AST-1712-mailbox-key-and-classify-state-map` @ `fccf0171663f737c49825abe1651267c0c33b394` · mailbox key plan
+
+#### chuckles — 2026-09-19T18:55:40.762Z
+AC2 narrowed: the `meteorite.py` `state="ERROR"` clause is not this child's contract. It is on AST-1713. Scope unchanged. Status back to Todo so the plan can be written.
+
+#### ada — 2026-09-19T18:54:16.570Z
+[scope-gate] AC2 requires `src/core/meteorite.py` writes this ticket's Scope does not name.
+
+Needed: stop `update_meteorite(..., state="ERROR", ...)` (today at meteorite.py ~1371, 1379, 1389, 1401, 1411, 1424, 1473, 1571, 1604). AC2: `rg -n 'state="ERROR"' src/core/meteorite.py` prints nothing. Fail line: "meteorite still writes state ERROR".
+
+Scope that does not cover it:
+- `src/utils/config.py` — mailbox task key + meteorite state registry (ERROR renamed to SCRAPE_ERROR in that registry, its prior states, the scrape page-status map, and the stale list).
+- `data/admin/agent_task.json` — mailbox shell row task key.
+- `src/core/agent.py` — legacy mailbox prompt fold.
+- Boundaries: does not send blobs to Ruth or walk the inbox (siblings #2 and #3).
+
+AST-1713 already owns "modified stage, scrape, and land failure writes — the meteorite state literal ERROR becomes SCRAPE_ERROR". Doing those writes here duplicates that child. The other AC2 greps (`"SCRAPE_ERROR"` / `"NEW_EMAIL_ERROR"` / `"NOT_A_JOB"`) can pass from `config.py` alone; the `state="ERROR"` grep cannot.
+
+Please narrow this ticket's AC2 so the meteorite.py `state="ERROR"` clause is not this child's contract (leave it on AST-1713). Do not add `meteorite.py` to this Scope. AC1's dispatcher / api_admin / inbox quoted-key greps are already empty; no gap there.
+
+---
+
 # AST-1712 — Mailbox key and classify-state map
 
 **Linear:** [AST-1712](https://linear.app/astralcareermatch/issue/AST-1712/mailbox-key-and-classify-state-map-rework-meteorite-email)

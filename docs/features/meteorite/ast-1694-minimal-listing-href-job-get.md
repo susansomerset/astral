@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-1694 archived 2026-09-24 -->
+
+## Linear archive (AST-1694)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1694/minimal-listing-href-on-job-get-hyperlink-to-job-with-meteorite-http  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1686 — Hyperlink to job with meteorite http link  
+**Blocked by / blocks / related:** parent: AST-1686; blocks: AST-1695
+
+### Description
+
+## What this implements
+
+DB reverse link lookup + `GET /api/jobs/<id>` resolved http(s) listing href (`job.job_link` else meteorite http link). Does not own writers (#1) or React (#3).
+
+## Citations
+
+`stat.logging.info.api`, `stat.logging.debug`, `stat.logging.error`.
+
+## Scope
+
+`src/data/database.py` (minimal astral_job_id → meteorite link/row read + header inventory); `src/ui/api/api_jobs.py` (resolved listing href on detail). Technical: http(s)-only string or null; prefer job column then meteorite link.
+
+## Acceptance criteria
+
+- [X] 4\. `GET /api/jobs/<id>` includes a resolved listing href that is the http(s) `job.job_link` when set, else http(s) related `meteorite.link`, else `null`. Fail: field absent; non-http breadcrumb returned; or http meteorite link ignored when `job.job_link` empty.
+- [X] 5\. `grep` of this epic’s diff does not add a second full `related_meteorite` provenance payload for AST-1685’s pane — only the minimal link/href lookup. Fail: this epic re-implements the full Meteorite tab contract.
+
+## Boundaries
+
+- [X] Does not own land/qualify writers (#1) or Recommended/Job Detail React (#3). Does not wait on AST-1685; minimal lookup only.
+
+## Notes for planning
+
+Citations as above. Field name locked at plan-child: `listing_href`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. **Existing + new — data link helper:** `tests/component/data/database/test_meteorites.py::TestAst1694GetMeteoriteLinkByAstralJobId`
+2. **New — listing_href resolution:** `tests/component/ui/api/test_api_jobs_ast1694_listing_href.py::TestAst1694ListingHref`
+3. **Broken/obsolete detail revisions:** `tests/component/ui/api/test_api_jobs_ast1694_listing_href.py::TestAst1694DetailListingHrefKey` (listing_href key + hydrate `astral_job_id` kwargs; shared `TestJobsRoutes` detail left for sibling AST-1691)
+
+**Broken / obsolete:** detail tests that omit `listing_href` / hydrate without `astral_job_id` — covered by item 3 without blocking AST-1691 edits on `test_api_jobs.py`.
+
+**Integration:** none revised; do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py::TestAst1694GetMeteoriteLinkByAstralJobId \
+  tests/component/ui/api/test_api_jobs_ast1694_listing_href.py \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/data/database/meteorites.md` — `643230eb37d95107878906688e545a0c11cdc11a`
+* `docs/test-bible/ui/api/api_jobs.md` — `4cee60be02eeb2a571d631e7b33737f7ef42a3ef`
+
+**Publish:** `origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get` @ `a45cff7321086246b1a1ac4c0e7efe3f29749da7` (`merge-tests(AST-1694): origin/tests 08377fcb6213e9614cf01f51e72da0a4d9eeacf6`)
+
+### Comments
+
+#### radia — 2026-09-16T23:13:21.424Z
+[code-rubric] PROCEED (Commit: a45cff73) listing_href clean
+
+#### betty — 2026-09-16T23:08:11.960Z
+`origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get` @ `a45cff73` · listing_href tests ready
+
+#### joan — 2026-09-16T22:43:40.089Z
+[plan-rubric] PROCEED (Commit: d4a1a8bd) minimal listing-href plan
+
+#### ada — 2026-09-16T22:41:06.597Z
+`origin/sub/AST-1686/AST-1694-minimal-listing-href-job-get` @ `d4a1a8bd` · plan ready
+
+#### ada — 2026-09-16T22:40:57.068Z
+@ `d4a1a8bdce9640a28818f340ce2161a767fe7cf4` · plan ready
+
+---
+
 # AST-1694 — Minimal listing-href on job GET
 
 **Linear:** [AST-1694](https://linear.app/astralcareermatch/issue/AST-1694/minimal-listing-href-on-job-get-hyperlink-to-job-with-meteorite-http)  
