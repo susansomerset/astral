@@ -232,3 +232,34 @@ Confirm Chuckles estimate: 3 — agree
 | `stat.logging.error` | statute — read in full; handler logs once with facts + traceback + next step; core raises, does not log-and-re-raise |
 
 No placement statutes named. No harvested pattern ids (`no established pattern applies` on parent).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1788
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `2dd09cfe6511f69c2cf364e02049376052c4181f`
+
+## Canon scores
+
+stat.logging.info.api | A | | Stage 3 — no `_api_completed` / progress info on idempotent GETs; mirrors `/unbound_slack_users`; core callees stay silent on info
+stat.logging.debug | A | | Stage 2 — Calling/Response at core→external joints; `set_debug_flag` entry pattern matches `list_unbound_slack_users`; no truncate; no call-site gate
+stat.logging.error | A | | Stage 3 — `logger.exception` with facts + next step on 502; core propagates; configured misses (404/400) not log-and-re-raise
+
+## Traceability
+
+AC1 (list Slack username column) → Stage 1 step 1 shape key `slack_username` (Katherine flatten/display in AST-1789); AC2 (persist id+name via existing write) → Stage 1 steps 2–3 + no-new-writer decision (Katherine stamps on create/PUT); AC7 (admin auth) → Stage 3 `@require_admin` on all three routes; AC8 (external via core, not React) → Stage 2 Ada helper calls + Stage 3 thin wrappers only; AC10 (profile channel fields) → Stage 1 step 2; AC3–6, AC9 → N/A — UI (#3) / external (#1) siblings
+
+## Findings
+
+### acceptable
+
+- **Scope fidelity:** Files Changed matches ticket `## Scope` exactly; fences `slack.py`, frontend, and new candidate writer.
+- **Dependency:** Publish-ref tip carries AST-1787 helpers (`list_bot_channels`, `is_channel_member`, `fetch_full_conversation_history`) — prerequisite satisfied.
+- **Definition fidelity:** Orchestration + admin GETs + shapes only; membership payload (`warn` / `warn_reason` unbound vs not_member vs member-silent) supports parent AC3–5 via sibling #3; snapshot returns ascending `messages` from Ada.
+- **Pattern reuse:** Stage 2/3 mirror existing `list_unbound_slack_users` / `contact_get_unbound_slack_users` split (core debug + API exception handling, no GET progress info).
+- **AC1 honesty:** Shape key lands here; `flattenCandidate` extension correctly deferred to AST-1789 — consistent with child partition.
+- **Self-assessment:** Estimate confirm 3 — agree; three ordered stages, established Contact admin patterns.
+
+context_tokens≈50000
