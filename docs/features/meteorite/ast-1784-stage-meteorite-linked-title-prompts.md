@@ -161,3 +161,81 @@ context_tokens≈22000
 | 1 | `2deef118` | `stage_meteorite` cache/user prompts: title-as-href → URL landables; AST-756 surgical lockstep; no `$RESPONSE_SCHEMA` |
 
 **Betty note:** Prompt + fixture only. Map http `job_link` over breadcrumb is **AST-1785**. Pre-existing fixture employer/review_duplicate drift intentionally overwritten on `stage_meteorite` prompt fields per plan Decision — `[qa-handoff]` if broader twin asserts fire.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1784  
+**Publish ref:** `bb0e9e739908cb00303917a6bdbfbf1f4063cce0` (`origin/sub/AST-1783/AST-1784-stage-meteorite-linked-title-prompts`)  
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | X | | catalog + fixture only; no `src/**` edits on tip |
+| stat.logging.info.entity | X | | no `src/core/meteorite.py` or other entity-logging paths |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `patt.task.daisy-chain` A, `stat.logging.debug` X, `stat.logging.info.entity` X; same on diff review.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** `origin/dev...origin/sub/AST-1783/AST-1784-stage-meteorite-linked-title-prompts` (full three-dot diff)  
+  **Finding:** Product commit `2deef118` is correctly scoped to `data/admin/agent_task.json` + `docs/uat-fixtures/AST-756/expected-agent_task.json`. `merge-tests` (`bb0e9e73`) also lands ~900 lines of sibling test/bible work (AST-1782, AST-1780, AST-1781, AST-1779, AST-1769) on this publish ref — same epic parallel-test pattern as AST-1755.  
+  **Recommendation:** Accept as workflow side effect; run only Betty’s AST-1784 manifest on this tip, not zero-arg harness.
+
+- **Location:** `tests/component/core/test_repo_admin_json.py::TestAst1773StageEmployerNameAndReviewDuplicateCatalog`  
+  **Finding:** `test_stage_employer_name_prompts_never_invent` and `test_fixture_catalog_byte_lockstep` still require `## EMPLOYER NAME (optional)` / `employer_name` in admin and whole-file fixture twin. This tip intentionally omits employer prompts in admin (plan Decision) and uses surgical `stage_meteorite` field lockstep only. Those tests would fail if run.  
+  **Recommendation:** No action on AST-1784 — bible § AST-1784 already excludes `TestAst1773…`; ensure test-child manifest stays narrow. Employer product belongs on AST-1773’s own publish ref.
+
+- **Location:** `docs/uat-fixtures/AST-756/expected-agent_task.json` (`stage_meteorite` row)  
+  **Finding:** Fixture `cache_prompt` / `user_prompt` no longer carry tip-ahead `## EMPLOYER NAME` / `employer_name` text (replaced with title-as-href lockstep to admin). Whole-file twin still drifts on `review_duplicate_meteorite` and other rows — plan-acknowledged, not a regression.  
+  **Recommendation:** Accept per plan Decision; do not re-introduce employer copy in this child.
+
+### advisory
+
+- **Location:** `docs/test-bible/core/repo_admin_json.md` § AST-1784  
+  **Finding:** Duplicate `## QA test manifest` header blocks (lines ~658 and ~681); shasum lines still say “record after publish.”  
+  **Recommendation:** Chuckles stamps shasums on doc writeback; optional bible tidy is Betty’s lane, not blocking.
+
+- **Location:** `tests/component/core/test_repo_admin_json.py::TestAst1529…` / `TestAst1755…`  
+  **Finding:** Whole-file byte-equality asserts removed in favor of surgical `stage_meteorite` prompt-field lockstep — necessary hygiene aligned with plan and bible.  
+  **Recommendation:** None.
+
+## What's solid
+
+- `## TITLE-AS-HREF (linked job titles)` appended verbatim after `## JOB TITLE (optional)`; `user_prompt` matches plan literal (title-as-href → `link_list` / `single_jd_with_more`; `job_link` from href; role-naming `job_title`; generic CTA omit; never invent).
+- Prior sections preserved: OUTCOMES (six literals), HEADER / BREADCRUMB, ELECTRONIC CONTACT, JOB TITLE subject-prefer.
+- No `$RESPONSE_SCHEMA` in `cache_prompt`, `user_prompt`, or `nocache_prompt`.
+- `STAGE_METEORITE_CONFIG["outcomes"]` length 6 unchanged; no `src/**` edits on tip.
+- Admin ↔ fixture `stage_meteorite` `cache_prompt` / `user_prompt` byte-equal (verified locally).
+- `TestAst1784StageMeteoriteLinkedTitlePrompts` locks acceptance gates from plan Stage 1 verification script.
+- `patt.task.daisy-chain`: teaches URL + optional title at classify stage in the same Ruth response — no parallel HTML harvester or re-derive path; map preference correctly deferred to AST-1785.
+- Betty manifest (`repo_admin_json.md` § AST-1784) scopes pytest to `TestAst1784…`, `TestAst1755…`, `TestAst1529…` — consistent with Tests Passed.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append this artifact to `docs/features/meteorite/ast-1784-stage-meteorite-linked-title-prompts.md`; commit `docs(AST-1784): Radia review — clean`; push.
+2. Post slim upshot via `linear_proxy --as radia save-comment`; move to **Review Posted**.
+3. datt §3h: **PROCEED** → **User Testing** (no `resolve-child` fix-now items).
+
+---
+
+`[code-rubric] PROCEED (Commit: bb0e9e73) title-as-href prompts clean`
+
+context_tokens≈28000
