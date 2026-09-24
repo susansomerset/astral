@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1748 archived 2026-09-24 -->
+
+## Linear archive (AST-1748)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1748/candidate-meteorite-listdetail-api-add-meteorites-to-the-jobs  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1741 — Add "Meteorites" to the Jobs navigation  
+**Blocked by / blocks / related:** parent: AST-1741; blocks: AST-1749
+
+### Description
+
+## What this implements
+
+Owns the data helper and authenticated GET list + GET detail so the UI can render without inventing SQL. Does **not** own nav, routes, or React pages (sibling). Does **not** change retention or land/create routes.
+
+## Citations
+
+`stat.logging.info.api`; `stat.logging.debug`; `stat.logging.error`
+
+## Scope
+
+`src/data/database.py` (modified — candidate-scoped list helper + header inventory; reuse `get_meteorite` for detail); `src/utils/config.py` (modified — only list-column / modal-section constants consumed by the API or manifest, if any; does **not** add the Jobs nav item); `src/ui/api/api_meteorite.py` (modified — GET list by candidate + GET detail by id, projected fields, logging per citations)
+
+## Acceptance criteria
+
+- [X] 2\. **List scoped to selected candidate.** API list for candidate A returns only rows whose `candidate_id` equals A. Fail: rows for another candidate appear.
+- [X] 3\. **Empty honesty.** Candidate with zero meteorite rows returns an empty list (no placeholder fake rows). Fail: fabricated rows or a hard error instead of empty.
+- [X] 4\. **Modal content + metadata.** Detail GET (or list projection) exposes `content` and at least `state`, timestamps (`created_at` / `updated_at` / `state_changed_at`), `link`, `classify_outcome`, and provenance (`id`, `source_kind`, `source_id`) when present on the row. Fail: fields absent when the DB row has non-null values.
+- [X] 5\. **Link honesty (data).** `link` is returned as stored so the UI can http(s)-gate. Fail: API strips or invents link values.
+- [X] 6\. **Job deeplink gate (data).** `astral_job_id` is returned when set (null/blank when not). Fail: field omitted so UI cannot gate.
+
+## Boundaries
+
+- [X] Does not own nav, routes, or React pages (sibling). Does not change retention or land/create routes.
+
+## Notes for planning
+
+Estimate 3. Bang ! — blocks unmarked sibling.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1741-add-meteorites-jobs-nav`, child `sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Data helper: `tests/component/data/database/test_meteorites.py::TestAst1748ListMeteoritesForCandidate`
+2. API list/detail: `tests/component/ui/api/test_api_meteorite.py::TestAst1748MeteoriteListDetailApi`
+3. Regression (same modules): AST-1557 / AST-1689 / AST-1691 / AST-1694 / land classes
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py \
+  tests/component/ui/api/test_api_meteorite.py \
+  -q
+```
+
+**Broken / obsolete revised this pass:** AST-1557 insert seeds (caller-state after AST-1713) + claim union `ERROR` → `SCRAPE_ERROR`.
+
+**Bible shasum** (`origin/sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api`):
+
+* `docs/test-bible/data/database/meteorites.md` — `ce63e37c7c1836ee778c2906a538734749cc6a85`
+* `docs/test-bible/ui/api/api_meteorite.md` — `ae244ae1dd7091201e932bf5d76c65e5dd662e92`
+
+**Publish:** `origin/sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api` @ `dc4c9c69` (`merge-tests(AST-1748): origin/tests 5283e2a0`)
+
+### Comments
+
+#### radia — 2026-09-21T01:31:36.774Z
+[code-rubric] PROCEED (Commit: dc4c9c6966e1abdf44ebb124126d75397f2216eb) logging statutes clean
+
+#### betty — 2026-09-21T01:26:39.878Z
+`origin/sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api` @ `dc4c9c69` · list/detail tests ready
+
+#### joan — 2026-09-21T01:19:10.447Z
+[plan-rubric] PROCEED (Commit: 126cdc1460f055586ea1b3a00248392bd308e8b9) logging plan sound
+
+#### ada — 2026-09-21T01:17:39.878Z
+`origin/sub/AST-1741/AST-1748-candidate-meteorite-list-detail-api` @ `126cdc1460f055586ea1b3a00248392bd308e8b9` · plan published
+
+---
+
 # AST-1748 — Candidate meteorite list/detail API
 
 **Linear:** [AST-1748](https://linear.app/astralcareermatch/issue/AST-1748/candidate-meteorite-list-detail-api-add-meteorites-to-the-jobs)  

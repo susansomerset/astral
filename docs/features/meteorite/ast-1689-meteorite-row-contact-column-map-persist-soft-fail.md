@@ -1,3 +1,142 @@
+<!-- linear-archive: AST-1689 archived 2026-09-24 -->
+
+## Linear archive (AST-1689)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1689/meteorite-row-contact-column-mappersist-soft-fail-reply-to-emails-in  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1684 — Reply-to emails in meteorite when single_jd_no_link  
+**Blocked by / blocks / related:** parent: AST-1684
+
+### Description
+
+## What this implements
+
+After #1: database column + allowlist; map Ruth contact into `insert_meteorite_rows` / updates through text fan-out and BOT_BLOCKED; warn-and-continue on persist failure; Style D when debug. Does **not** own job_data or Recommended UI.
+
+## Citations
+
+`patt.entity.batch-processing`, `patt.task.daisy-chain`; `stat.logging.debug`, `stat.logging.info`, `stat.logging.info.entity`, `stat.logging.warning`.
+
+## Scope
+
+`src/data/database.py` — **modified** — meteorite schema + insert/update allowlist for the new contact field (header inventory / ensure path as plan chooses). `src/core/meteorite.py` — **modified** — classify→row map and BOT_BLOCKED / land paths carry contact onto the meteorite row; soft-fail warn on persist miss; Style D when debug. `src/core/consult.py` — **modified** only if stage invoke mapping must forward the new response key(s); otherwise untouched. `src/core/agent.py` — **modified** only if schema validation needs a one-line wire; otherwise untouched. `database.py` — New meteorite column + `_UPDATE_METEORITE_ALLOWED` / insert path so contact can be written at NEW fan-out and updated later. `meteorite.py` — Map Ruth contact into row dicts for text and link fan-out; preserve contact into BOT_BLOCKED; on persist failure log warning and continue; Style D when debug. `consult.py` / `agent.py` — Only if stage invoke or validator must name the new keys.
+
+## Acceptance criteria
+
+3. Given classify `single_jd_no_link` or `multi_jd_inline` with Reply-To/From (or equivalent) in source metadata, Ruth returns that contact and the meteorite row stores it — fail if outcome is text source-ref and metadata had an address but the meteorite row contact field is empty after fan-out.
+4. Given a link outcome that transitions to **BOT_BLOCKED**, the meteorite row still has stage-captured contact when metadata had one — fail if BOT_BLOCKED row contact is empty while stage returned non-empty contact.
+5. Contact is **not** written into job `job_data` by this epic — fail if `save_meteorite_job` / landed job gains a new contact key from this work.
+6. When contact persist raises/fails after an otherwise successful classify insert or state transition, the path **warns and continues** (row not failed solely for contact write) — fail if the only error is contact persist and the row is marked failed/ERROR solely for that.
+7. When nothing determinable, empty/omit contact and ingress still succeeds — fail if land/classify aborts solely because contact is empty.
+8. With `debug=True`, Style D mentions contact returned vs recorded on the meteorite row; with `debug=False`, no new Style D contact lines — fail if debug=False emits them.
+9. Recommended / JobDetail UI unchanged — fail if this epic’s diff touches those solely to display contact (AST-1685).
+
+## Boundaries
+
+Does not own stage schema/prompts (sibling #1). Does not write contact onto jobs. Does not own Recommended modal (AST-1685). After #1.
+
+## Notes for planning
+
+Blocked by #1. Estimate 5.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1684-reply-to-emails-in-meteorite-when-single-jd-no-link`, child `sub/AST-1684/AST-1689-meteorite-row-contact-column-map-persist-soft-fail`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Column schema/allowlist/insert: `tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn`
+2. Map/persist/BOT_BLOCKED/land/debug: `tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn \
+  tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist \
+  -q
+```
+
+**Bible shasum (publish tip** `39fa655a`**):**
+
+* `docs/test-bible/data/database/meteorites.md` — `330a9cf91048ec8f2590e2f24f8458258bfc687b`
+* `docs/test-bible/core/meteorite.md` — `14c785f17c6d585a2fa09a6785bdf30572cc02d2`
+
+**Return pass:** dropped prior AST-1560 scrape/land nodes (retired info-string asserts; not AC locks).
+
+### Comments
+
+#### betty — 2026-09-16T23:10:34.365Z
+[check-linear] Sub log rewritten: exactly one `merge-tests(AST-1689)` (`cf51932c` → `68d2a592`). Manifest nodes 1–2 only. Tip `9ab02ecf`.
+
+#### chuckles — 2026-09-16T23:08:18.736Z
+[merge-child] blocked: validate-sub-log — duplicate merge-tests(AST-1689) count=3 (amend on tests, one merge-tests only). @Betty White
+
+#### radia — 2026-09-16T23:06:59.532Z
+[code-rubric] PROCEED (Commit: 39fa655a) row map persist clean
+
+#### betty — 2026-09-16T23:03:50.795Z
+[check-linear] Cleared Hedy `[qa-handoff]`: dropped AST-1560 prior scrape/land nodes from AST-1689 manifest (retired `log.info` string asserts). Manifest is nodes 1–2 only. `origin/sub/AST-1684/AST-1689-meteorite-row-contact-column-map-persist-soft-fail` @ `39fa655a`. Reassigned Hedy for test-child.
+
+#### hedy — 2026-09-16T23:00:58.812Z
+[qa-handoff]
+@Betty White
+
+Manifest nodes 1–2 (AST-1689) green. Nodes 3–4 (prior AST-1560) red — test/manifest defect, not product.
+
+Command:
+```
+python3 -m pytest \
+  tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn \
+  tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich \
+  -q --tb=short
+```
+Result: 10 passed, 2 failed.
+
+Why test/manifest (not product):
+- `test_blocked_emits_monitoring` asserts `log.info` contains `"meteorite scrape blocked"`. Product path uses `_row_miss` → `logger.warning` ("This row is BOT_BLOCKED"); AST-1689 only added a state-only comment on that update (AC4 preserve). Captured log shows the warning; mock `get_logger` also cannot rebind the module-level `logger`.
+- `test_ready_to_landed_without_enrich` asserts `log.info` contains `"meteorite land id="`. Product land success uses `_meteorite_state_info` / `_entity_info` (`"{id} | meteorite state: …"` / job entity pipe) — no `"meteorite land id="` string. Land job_data untouched (AC5).
+
+Please drop or revise nodes 3–4 to match current logging statutes / entity pipe, or drop them from the AST-1689 manifest if they are not locking this ticket’s AC.
+
+#### hedy — 2026-09-16T23:00:53.749Z
+[qa-handoff]
+@Betty White
+
+Manifest nodes 1–2 (AST-1689) green. Nodes 3–4 (prior AST-1560) red — test/manifest defect, not product.
+
+Command:
+```
+python3 -m pytest \
+  tests/component/data/database/test_meteorites.py::TestAst1689ElectronicContactColumn \
+  tests/component/core/test_meteorite.py::TestAst1689ElectronicContactMapPersist \
+  tests/component/core/test_meteorite.py::TestAst1560RunScrapeMeteorite::test_blocked_emits_monitoring \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich \
+  -q --tb=short
+```
+Result: 10 passed, 2 failed.
+
+Why test/manifest (not product):
+- `test_blocked_emits_monitoring` asserts `log.info` contains `"meteorite scrape blocked"`. Product path uses `_row_miss` → `logger.warning` ("This row is BOT_BLOCKED"); AST-1689 only added a state-only comment on that update (AC4 preserve). Captured log shows the warning; mock `get_logger` also cannot rebind the module-level `logger`.
+- `test_ready_to_landed_without_enrich` asserts `log.info` contains `"meteorite land id="`. Product land success uses `_meteorite_state_info` / `_entity_info` (`"{id} | meteorite state: …"` / job entity pipe) — no `"meteorite land id="` string. Land job_data untouched (AC5).
+
+Please drop or revise nodes 3–4 to match current logging statutes / entity pipe, or drop them from the AST-1689 manifest if they are not locking this ticket’s AC.
+
+#### betty — 2026-09-16T22:57:49.675Z
+`origin/sub/AST-1684/AST-1689-meteorite-row-contact-column-map-persist-soft-fail` @ `11ad3933` · contact map persist covered
+
+#### joan — 2026-09-16T22:45:39.118Z
+[plan-rubric] PROCEED (Commit: 2b916c344d565a6be7e38f289c6d5884f6ec307f) row map soft-fail
+
+#### hedy — 2026-09-16T22:43:15.287Z
+`origin/sub/AST-1684/AST-1689-meteorite-row-contact-column-map-persist-soft-fail` @ `2b916c344d565a6be7e38f289c6d5884f6ec307f` · plan ready
+
+---
+
 # AST-1689 — Meteorite-row contact column + map/persist soft-fail
 
 **Linear:** [AST-1689](https://linear.app/astralcareermatch/issue/AST-1689/meteorite-row-contact-column-map-persist-soft-fail-reply-to-emails-in)  

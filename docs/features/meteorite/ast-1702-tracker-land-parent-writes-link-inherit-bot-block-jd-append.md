@@ -1,3 +1,94 @@
+<!-- linear-archive: AST-1702 archived 2026-09-24 -->
+
+## Linear archive (AST-1702)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1702/tracker-land-parent-writes-link-inherit-bot-block-jd-append-job-source  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1640 — Job source_entity parent (meteorite|company) + candidate-facing link  
+**Blocked by / blocks / related:** parent: AST-1640; blocks: AST-1703
+
+### Description
+
+## What this implements
+
+After #1: create/supersede under meteorite parent; optional real `company_id`; gazed→meteorite same-row flip; `job.job_link` inherits `meteorite.link`; link check does not fail land on bot-block; append non-blocked JD to existing text. Does not own breadcrumb string authorship or consumer rewires.
+
+## Citations
+
+`patt.entity.batch-processing`, `stat.logging.info.entity`, `stat.logging.error`, `stat.logging.warning`, `stat.logging.debug`.
+
+## Scope
+
+- [X] `src/core/tracker.py` — `save_meteorite_job` / create / gazed→meteorite supersede write parent fields + optional `company_id`; stop requiring meteorite company short_name as parent; stop using old `gazed`/`meteorite` source flag as track authority once repurposed/dropped.
+- [X] `src/core/meteorite.py` — land parents to meteorite row; `job.job_link` inherits `meteorite.link`; link check does not fail land on bot-block; append non-blocked JD content to existing text; stop `ensure_meteorite_company` as job parent; optional real `company_id` (breadcrumb *format* for no-URL outcomes is #3).
+- [X] Technical: `tracker.save_meteorite_job` — create under meteorite parent; gazed match flips parent to meteorite, keeps `company_id`, state `METEORITE_NEW`, appends history; no second row; no clobber of existing meteorite-parented row. `meteorite` land — inherit `meteorite.link` → `job.job_link`; on link check, bot-block does not fail the land; if not bot-blocked, append JD text onto existing job description content; stop `ensure_meteorite_company` solely for `job.company`.
+
+## Acceptance criteria
+
+- [X] 3\. `grep -rn "ensure_meteorite_company" src/core/meteorite.py` shows no call whose only purpose is to satisfy a required job company parent on land→create. Fail: land still parents via `meteorite-*` / stem placeholder short_name.
+- [X] 4\. Gazed→meteorite match keeps the same `astral_job_id`, ends meteorite-parented at `METEORITE_NEW`, prior gazed states remain in `state_history`. Fail: second row or wiped history.
+- [X] 5\. After land, `job.job_link` equals `meteorite.link` for that row’s linked job. Fail: inherited link missing when `meteorite.link` is set.
+- [X] 6\. Link check that returns bot-block does **not** fail the land outcome solely for that reason; when the check is not bot-blocked, job description text gains the scraped/append JD content. Fail: land errors only because of bot-block, or non-blocked JD never appended when content was returned.
+
+## Boundaries
+
+- [X] Does not own breadcrumb string authorship (#3) or qualify-track / Job Detail consumers (#4). After #1.
+
+## Notes for planning
+
+Estimate 5. Bang !! — after #1.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1640-job-source-entity-parent`, child `sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Tracker parent writes: `tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand`
+2. Create (revised): `tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob`
+3. Stem/employer (revised): `tests/component/core/test_meteorite.py::TestAst1495LandStemAttach`
+4. Land (revised): `tests/component/core/test_meteorite.py::TestAst1470LandMeteorite`
+5. Ensure (no Style D): `tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany`
+6. Dispatch land: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1702SourceEntityLand \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/core/test_meteorite.py::TestAst1495LandStemAttach \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–6 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums** (`origin/sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append`):
+
+* `docs/test-bible/core/meteorite.md` — `1de8e6afdc270b57891aae6225c91c5811a1adfb`
+* `docs/test-bible/core/tracker.md` — `2f3ff74533176c6dfde90510c51a88ff5dbe7c74`
+
+### Comments
+
+#### radia — 2026-09-17T01:08:46.001Z
+[code-rubric] PROCEED (Commit: bf40a1e0) land parent writes clean
+
+#### betty — 2026-09-17T01:05:13.225Z
+`origin/sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append` @ `bf40a1e0` · land parent tests ready
+
+#### joan — 2026-09-17T00:51:23.572Z
+[plan-rubric] PROCEED (Commit: 5d7ad98) tracker land parent writes clear
+
+#### hedy — 2026-09-17T00:49:10.331Z
+`origin/sub/AST-1640/AST-1702-tracker-land-parent-writes-link-inherit-bot-block-jd-append` @ `5d7ad9886b894882b0be7170d66c671435e6bde3` · plan ready for Joan
+
+---
+
 # AST-1702 — Tracker + land parent writes, link inherit, bot-block JD append
 
 **Linear:** [AST-1702](https://linear.app/astralcareermatch/issue/AST-1702/tracker-land-parent-writes-link-inherit-bot-block-jd-append)  
