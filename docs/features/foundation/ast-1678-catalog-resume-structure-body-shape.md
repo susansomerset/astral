@@ -1,3 +1,132 @@
+<!-- linear-archive: AST-1678 archived 2026-09-24 -->
+
+## Linear archive (AST-1678)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1678/catalog-resume-structure-body-shape-move-candidate-dataartifactsresume  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table  
+**Blocked by / blocks / related:** parent: AST-1677; blocks: AST-1679
+
+### Description
+
+## What this implements
+
+Register `candidate.artifacts.resume_structure` in `ARTIFACT_CONFIG` and add the structure dict `body_shape` under `BUILD_CONFIG["artifact_shapes"]` with closed-set asserts. Does not wire operative save/hydrate or job drafting consumers (after this, #2/#3). No React.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.standards.in-scope-only`
+
+## Scope
+
+`src/utils/config.py` — `ARTIFACT_CONFIG["candidate.artifacts.resume_structure"]` plus closed-set asserts; new `BUILD_CONFIG["artifact_shapes"]["resume_structure"]` (or equivalent named shape) for the structure dict contract; Persistence comment / any freeze-absent assert that still treats structure as non-catalog updated.
+
+## Acceptance criteria
+
+- [X] **Catalog key present** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert 'candidate.artifacts.resume_structure' in ARTIFACT_CONFIG"` exits 0. Fail: KeyError/AssertionError or key absent.
+- [X] **Body shape is structure, not resume_content/plain_text** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG, BUILD_CONFIG; e=ARTIFACT_CONFIG['candidate.artifacts.resume_structure']; assert e['body_shape'] not in ('resume_content','plain_text','cover_letter'); assert e['body_shape'] in BUILD_CONFIG['artifact_shapes']"` exits 0. Fail: shape reused from body/letter/plain_text or missing from `artifact_shapes`.
+- [X] **Scope fence** — `rg -n "candidate\.artifacts\.resume_structure" src/utils/config.py` shows the registration; no new `job.artifacts.resume_structure` (or other new catalog keys) appear in `ARTIFACT_CONFIG`. Fail: extra keys registered this epic.
+
+## Boundaries
+
+- [X] Does not own operative save/hydrate (#2) or job drafting consumer rewires (#3). Does not touch React.
+
+## Notes for planning
+
+Catalog-only; mirror AST-1661 / AST-1632 shape registration for a new `candidate.artifacts.*` key with a new body_shape (not plain_text).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1677-move-resume-structure-artifact-table`, child `sub/AST-1677/AST-1678-catalog-resume-structure-body-shape`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Primary resume_structure catalog + shape + job fence: `tests/component/utils/test_config.py::TestAst1678CatalogResumeStructureBodyShape`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Tip-drift freeze/token revisions: `TestAst1632CatalogPlainTextStrengthsToken` · `TestAst1648CatalogBioSummaryTokenProfileNav` · `TestAst1651CatalogPlainTextPrioritiesToken` · `TestAst1654CatalogPlainTextDealBreakersToken` · `TestAst1658CatalogPlainTextIdealDayToken` · `TestAst1661CatalogPlainTextBackstoryToken` · `TestAst1664CatalogPlainTextWritingPreferencesToken`
+5. Job sibling fence: `tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority::test_sibling_blobs_stay_out_of_artifact_config`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1678CatalogResumeStructureBodyShape \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1632CatalogPlainTextStrengthsToken \
+  tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav \
+  tests/component/utils/test_config.py::TestAst1651CatalogPlainTextPrioritiesToken \
+  tests/component/utils/test_config.py::TestAst1654CatalogPlainTextDealBreakersToken \
+  tests/component/utils/test_config.py::TestAst1658CatalogPlainTextIdealDayToken \
+  tests/component/utils/test_config.py::TestAst1661CatalogPlainTextBackstoryToken \
+  tests/component/utils/test_config.py::TestAst1664CatalogPlainTextWritingPreferencesToken \
+  tests/component/utils/test_config.py::TestAst1602RetireJobBodyReplicaConfigAuthority::test_sibling_blobs_stay_out_of_artifact_config \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/utils/config.md` — `2ecf177f6998925b837826924c668a8f4b28d598  -`
+
+### Comments
+
+#### betty — 2026-09-16T17:03:33.676Z
+[check-linear]
+Squashed publish tip onto ftr — exactly one `merge-tests(AST-1678):`; kept `test`/`code`/`docs`/`resolve`; AST-1673/1674 still absent.
+`origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` @ `07a7a21a1c57e1596d18d571c75e92261879dd29` · Ada reassigned.
+
+#### chuckles — 2026-09-16T17:01:21.248Z
+[merge-child] blocked: duplicate merge-tests(AST-1678) on sub — count=2 (amend on tests, one merge-tests only).
+
+@Betty White — squash/amend on astral-tests so origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape has exactly one merge-tests(AST-1678):; keep test(AST-1678): and product commits; reassign Ada when tip validates.
+
+#### betty — 2026-09-16T16:59:37.932Z
+[check-linear]
+Republished tip with first-parent `test(AST-1678):` + single `merge-tests(AST-1678):` (reuses origin/tests `5ba62d8b` content; AST-1673/1674 still stripped).
+`origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` @ `31823ce50d940bd1fd0ae0b00f8de1dbe4475041` · Ada reassigned — sync-child onto refreshed ftr then merge-child.
+
+#### chuckles — 2026-09-16T16:57:49.993Z
+[merge-child] blocked: validate-sub-log missing test(AST-1678): on publish tip (Betty's strip left merge-tests subject without the test() commit); also sub not stacked on refreshed origin/ftr/AST-1677-move-resume-structure-artifact-table after refresh-ftr.
+
+@Betty White — republish tip with a real `test(AST-1678):` commit (content already in tree) + single `merge-tests(AST-1678):`.
+@Ada Lovelace — after Betty, sync-child merge origin/ftr/AST-1677-move-resume-structure-artifact-table and republish so sub stacks on ftr.
+
+#### betty — 2026-09-16T16:53:41.819Z
+[check-linear]
+Stripped AST-1673/AST-1674 test commits from publish tip; tree is AST-1678 product + config test/bible only.
+`origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` @ `228b3fe9732c240855387f3ab4d60d92245ff8d9` · Ada reassigned for resolve-child §9a
+
+#### ada — 2026-09-16T16:50:30.927Z
+[qa-handoff]
+@Betty White
+
+Radia fix-now (Review Posted): AST-1670 sibling test commits are on this publish ref and must come off.
+
+- Commits: `ac4ca9b7` `test(AST-1673)`, `5c9d57bd` `test(AST-1674)` (reachable via `merge-tests(AST-1678)` / origin/tests tip)
+- Paths (~340 lines vs origin/dev): `tests/component/core/test_roster.py`, `tests/component/core/test_dispatcher.py`, `tests/component/data/database/test_dispatch_tasks.py`, `docs/test-bible/core/roster.md`
+- Not on AST-1678 QA manifest or plan scope (config-only). Product `src/utils/config.py` slice is clean — Ada cannot strip test-tree paths.
+
+Need: republish a clean tip on `origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` with only AST-1678 product + config test/bible rows (keep `fb8f265b` / `5ba62d8b` / config bible); land AST-1673/1674 on their own `origin/sub/AST-1670/...` refs. After cleanup, reassign Ada so resolve-child can re-run §9a and move to User Testing.
+
+#### radia — 2026-09-16T16:49:22.709Z
+[code-rubric] REVIEW (Commit: fb99d850) AST-1670 tests on branch
+
+#### betty — 2026-09-16T16:44:40.638Z
+`origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` @ `3ec9142a1a3dd266eea11710a8ae87146c60768b` · catalog tests ready
+
+#### joan — 2026-09-16T16:31:49.884Z
+[plan-rubric] PROCEED (Commit: 9155ada) config-only catalog slice
+
+#### ada — 2026-09-16T16:28:43.687Z
+`origin/sub/AST-1677/AST-1678-catalog-resume-structure-body-shape` @ `9155ada1e3bdf61e2c605f05b62da006dbbc5613` · catalog shape planned
+
+---
+
 # Catalog + resume_structure body shape
 
 **Linear:** [AST-1678](https://linear.app/astralcareermatch/issue/AST-1678)
