@@ -1,3 +1,83 @@
+<!-- linear-archive: AST-1757 archived 2026-09-24 -->
+
+## Linear archive (AST-1757)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1757/land-staged-job-title-onto-job-stage-email-meteorite-enhancements  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1753 — stage_email_meteorite enhancements  
+**Blocked by / blocks / related:** parent: AST-1753
+
+### Description
+
+## What this implements
+
+When a meteorite lands, flow non-empty staged `job_title` onto the job record; enrich/qualify title wins when present. Does not edit agent_task prompts or stage content fallback (siblings #1–#2). after #1 for full UAT of title end-to-end.
+
+## Citations
+
+`patt.task.daisy-chain` (consume the staged column through land); `stat.logging.debug`; `stat.logging.info.entity`.
+
+## Scope
+
+`src/core/meteorite.py` — **modified** — dispatch land and public land paths pass staged `job_title` through to `tracker.save_meteorite_job` (enrich title preferred when present). Technical: in the READY/BOT_BLOCKED dispatch land runner, pass the meteorite row's `job_title` into the Tracker save call when non-empty; in the public land path after enrich, fall back to the meteorite row's `job_title` when enrich omitted one (same preference pattern already used for employer name from scrap metadata).
+
+## Acceptance criteria
+
+- [X] 7\. `rg -n 'job_title' src/core/meteorite.py` shows the dispatch land runner (`run_land_meteorite`) passing `job_title` into `tracker.save_meteorite_job`. Fail if that call site still omits `job_title=`.
+- [X] 8\. Landing a READY meteorite whose row `job_title` is non-empty and whose enrich/qualify title is empty yields a `job` row whose `job_title` equals the meteorite column. Fail if `job.job_title` is NULL/blank while `meteorite.job_title` was set.
+- [X] 9\. Landing when enrich/qualify returns a non-empty `job_title` keeps that enrich title on `job` even if the meteorite column differs. Fail if staged title overwrites a non-empty enrich title.
+
+## Boundaries
+
+- [X] Does not edit agent_task prompts (sibling #1). Does not own stage `jd_text`→blob fallback (sibling #2). Disjoint edit sites in `meteorite.py` from sibling #2.
+
+## Notes for planning
+
+Citations: `patt.task.daisy-chain`; `stat.logging.debug`; `stat.logging.info.entity`. after #1 for full UAT.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1753-stage-email-meteorite-enhancements`, child `sub/AST-1753/<this-id>-land-staged-job-title-onto-job`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Land staged / enrich-preferred title: `tests/component/core/test_meteorite.py::TestAst1757LandStagedJobTitle`
+2. Prior dispatch land: `tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich`
+3. Prior public land create: `tests/component/core/test_meteorite.py::TestAst1470LandMeteorite::test_create_under_meteorite_parent_with_employer_name`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1757LandStagedJobTitle \
+  tests/component/core/test_meteorite.py::TestAst1560RunLandMeteorite::test_ready_to_landed_without_enrich \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite::test_create_under_meteorite_parent_with_employer_name \
+  -q
+```
+
+**Bible shasum:** `docs/test-bible/core/meteorite.md` → `48b85e86929de99f79d7aa01152a7113e30bb547`
+
+### Comments
+
+#### hedy — 2026-09-21T20:40:52.380Z
+`origin/sub/AST-1753/AST-1757-land-staged-job-title-onto-job` @ `2d217d35c8e5b654cb27e0de5bb0eceeb802f216` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-09-21T20:39:15.154Z
+[code-rubric] PROCEED (Commit: 17085cf8) land job_title wiring clean
+
+#### betty — 2026-09-21T20:37:02.456Z
+`origin/sub/AST-1753/AST-1757-land-staged-job-title-onto-job` @ `17085cf80f99aa2ab1f99a0b5433d4623378dc17` · land job_title ready
+
+#### joan — 2026-09-21T20:32:22.446Z
+[plan-rubric] PROCEED (Commit: b51b33a346838be6f0e90ac481a3f315b5b10260) Land staged job_title wiring
+
+#### hedy — 2026-09-21T20:30:40.540Z
+`origin/sub/AST-1753/AST-1757-land-staged-job-title-onto-job` @ `b51b33a346838be6f0e90ac481a3f315b5b10260` · plan ready
+
+---
+
 # AST-1757 — Land staged job_title onto job
 
 **Linear:** [AST-1757](https://linear.app/astralcareermatch/issue/AST-1757/land-staged-job-title-onto-job-stage-email-meteorite-enhancements)  
