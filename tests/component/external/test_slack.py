@@ -373,3 +373,208 @@ class TestAst1667WorkspacePosterPool:
         with pytest.raises(RuntimeError, match="users.list"):
             slack_mod.list_workspace_posters()
 
+
+# Branches: list_bot_channels pagination/sort/types; is_channel_member early-exit /
+# empty inputs / hard fail; fetch_full_conversation_history multi-page ascending
+# + no soft-skip (AST-1787).
+class TestAst1787ChannelListMembershipFullHistory:
+    def test_list_bot_channels_requires_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", raising=False)
+        with pytest.raises(Exception):
+            slack_mod.list_bot_channels()
+
+    def test_list_bot_channels_paginates_sorts_public_private_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        pages = [
+            {
+                "ok": True,
+                "channels": [
+                    {"id": "C_ZED", "name": "zed"},
+                    {"id": "  ", "name": "bad"},
+                    "skip",
+                    {"id": "C_ALPHA", "name": "Alpha"},
+                ],
+                "response_metadata": {"next_cursor": "page2"},
+            },
+            {
+                "ok": True,
+                "channels": [
+                    {"id": "C_EMPTY", "name": None},
+                    {"id": "C_BETA", "name": "beta"},
+                ],
+                "response_metadata": {"next_cursor": ""},
+            },
+        ]
+        seen_types: list[str] = []
+
+        def fake_get(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            method = _method_from_url(url)
+            assert method == "conversations.list"
+            params = kwargs.get("params") or {}
+            seen_types.append(str(params.get("types") or ""))
+            assert params.get("exclude_archived") is True
+            if not pages:
+                raise AssertionError("extra conversations.list call")
+            return _slack_get_resp(pages.pop(0))
+
+        monkeypatch.setattr(slack_mod.requests, "get", fake_get)
+        out = slack_mod.list_bot_channels()
+        # Empty name sorts before letter names (name.lower(), id).
+        assert out == [
+            {"id": "C_EMPTY", "name": ""},
+            {"id": "C_ALPHA", "name": "Alpha"},
+            {"id": "C_BETA", "name": "beta"},
+            {"id": "C_ZED", "name": "zed"},
+        ]
+        assert all(t == "public_channel,private_channel" for t in seen_types)
+        assert len(seen_types) == 2
+
+    def test_list_bot_channels_ok_false_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        monkeypatch.setattr(
+            slack_mod.requests,
+            "get",
+            MagicMock(return_value=_slack_get_resp({"ok": False, "error": "invalid_auth"})),
+        )
+        with pytest.raises(RuntimeError, match="conversations.list"):
+            slack_mod.list_bot_channels()
+
+    def test_is_channel_member_requires_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", raising=False)
+        with pytest.raises(Exception):
+            slack_mod.is_channel_member(channel="C1", slack_user_id="U1")
+
+    def test_is_channel_member_empty_inputs_raise(self) -> None:
+        with pytest.raises(ValueError, match="channel is required"):
+            slack_mod.is_channel_member(channel="  ", slack_user_id="U1")
+        with pytest.raises(ValueError, match="slack_user_id is required"):
+            slack_mod.is_channel_member(channel="C1", slack_user_id="  ")
+
+    def test_is_channel_member_true_early_exit_across_pages(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        pages = [
+            {
+                "ok": True,
+                "members": ["U_A", "U_B"],
+                "response_metadata": {"next_cursor": "more"},
+            },
+            {
+                "ok": True,
+                "members": ["U_TARGET", "U_C"],
+                "response_metadata": {"next_cursor": "never"},
+            },
+        ]
+        calls = 0
+
+        def fake_get(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            nonlocal calls
+            method = _method_from_url(url)
+            assert method == "conversations.members"
+            calls += 1
+            params = kwargs.get("params") or {}
+            assert params.get("channel") == "C9"
+            return _slack_get_resp(pages.pop(0))
+
+        monkeypatch.setattr(slack_mod.requests, "get", fake_get)
+        assert slack_mod.is_channel_member(channel=" C9 ", slack_user_id=" U_TARGET ") is True
+        assert calls == 2  # early exit — third page cursor never fetched
+
+    def test_is_channel_member_false_after_exhaust(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+
+        def fake_get(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            assert _method_from_url(url) == "conversations.members"
+            return _slack_get_resp(
+                {
+                    "ok": True,
+                    "members": ["U_OTHER"],
+                    "response_metadata": {"next_cursor": ""},
+                }
+            )
+
+        monkeypatch.setattr(slack_mod.requests, "get", fake_get)
+        assert slack_mod.is_channel_member(channel="C1", slack_user_id="U_MISS") is False
+
+    def test_is_channel_member_ok_false_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        monkeypatch.setattr(
+            slack_mod.requests,
+            "get",
+            MagicMock(return_value=_slack_get_resp({"ok": False, "error": "channel_not_found"})),
+        )
+        with pytest.raises(RuntimeError, match="conversations.members"):
+            slack_mod.is_channel_member(channel="C1", slack_user_id="U1")
+
+    def test_fetch_full_requires_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", raising=False)
+        with pytest.raises(Exception):
+            slack_mod.fetch_full_conversation_history(channel="C1")
+
+    def test_fetch_full_empty_channel_raises(self) -> None:
+        with pytest.raises(ValueError, match="channel is required"):
+            slack_mod.fetch_full_conversation_history(channel="  ")
+
+    def test_fetch_full_paginates_and_sorts_ascending(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        # Slack pages newest-first; helper must return oldest→newest across pages.
+        pages = [
+            {
+                "ok": True,
+                "messages": [
+                    {"ts": "3.0", "text": "newest-page1"},
+                    {"ts": "2.0", "text": "mid"},
+                    {"text": "no-ts-first"},
+                ],
+                "response_metadata": {"next_cursor": "p2"},
+            },
+            {
+                "ok": True,
+                "messages": [
+                    {"ts": "1.0", "text": "oldest"},
+                    {"text": "no-ts-second"},
+                ],
+                "response_metadata": {"next_cursor": ""},
+            },
+        ]
+
+        def fake_get(url: str, **kwargs):  # type: ignore[no-untyped-def]
+            assert _method_from_url(url) == "conversations.history"
+            params = kwargs.get("params") or {}
+            assert params.get("channel") == "C_SNAP"
+            return _slack_get_resp(pages.pop(0))
+
+        monkeypatch.setattr(slack_mod.requests, "get", fake_get)
+        out = slack_mod.fetch_full_conversation_history(channel=" C_SNAP ")
+        assert [m.get("ts") for m in out] == ["1.0", "2.0", "3.0", None, None]
+        assert out[0]["text"] == "oldest"
+        assert out[3]["text"] == "no-ts-first"
+        assert out[4]["text"] == "no-ts-second"
+    def test_fetch_full_ok_false_raises_no_soft_skip(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        monkeypatch.setattr(
+            slack_mod.requests,
+            "get",
+            MagicMock(
+                return_value=_slack_get_resp({"ok": False, "error": "not_in_channel"})
+            ),
+        )
+        with pytest.raises(RuntimeError, match="conversations.history"):
+            slack_mod.fetch_full_conversation_history(channel="C1")
+
