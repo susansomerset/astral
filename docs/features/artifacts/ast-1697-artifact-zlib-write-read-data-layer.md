@@ -1,3 +1,66 @@
+<!-- linear-archive: AST-1697 archived 2026-09-24 -->
+
+## Linear archive (AST-1697)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1697/artifact-zlib-writeread-in-data-layer-confirm-that-artifacts-are  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1605 — Confirm that artifacts are compressed  
+**Blocked by / blocks / related:** parent: AST-1605
+
+### Description
+
+## What this implements
+
+Re-implement the `artifact` table storage contract on a normal `sub/*` publish ref after Chuckles reverts premature `08a2b32b` from `origin/dev`: compress on `save_artifact`, decompress in row mapping for all public readers, BLOB DDL + header inventory / comments. Does **not** add a new canon statute. Does **not** change core/UI call sites (transparency). Does **not** perform the `origin/dev` revert itself (Chuckles pre-dispatch).
+
+## Citations
+
+`astral.standards.data-raises-caller-logs`; `astral.standards.database-header-inventory`; `astral.layers.import-direction`.
+
+## Scope
+
+`src/data/database.py` — modified — compress on write via `_compress_payload`; decompress in `_artifact_row_dict` via `_decompress_payload`; CREATE `artifact_data` BLOB; header inventory zlib note.
+
+## Acceptance criteria
+
+- [X] Fresh `save_artifact` then raw SQL `SELECT artifact_data` yields `bytes` that `zlib.decompress` back to the plain JSON/text written — fail if the column is still plain uncompressed TEXT for a new write.
+- [X] `get_current_artifact` / `get_artifact` / `list_artifacts` return the same deserialized body the caller passed (dict/string contract unchanged) — fail if callers receive zlib bytes or undecoded blobs.
+- [X] Insert a legacy plain TEXT `artifact_data` row by SQL; `get_artifact` still returns the deserialized body — fail if legacy rows error or return None solely because they are uncompressed.
+- [X] `database.py` header inventory (and/or adjacent comments on the save/read path) states zlib transparency for `artifact.artifact_data` like `agent_data.block_data` — fail if the only mention is deleted `docs/ASTRAL_CODE_RULES.md` history with no in-tree note.
+- [X] Grep `save_artifact` body for `_compress_payload` and `_artifact_row_dict` for `_decompress_payload` both hit — fail if either path bypasses the shared helpers with a parallel compress implementation.
+
+## Boundaries
+
+- [X] Does not add a new canon statute. Does not change core/UI call sites. Does not revert `origin/dev` (Chuckles pre-dispatch already did).
+
+## Notes for planning
+
+Citations above. Estimate 2. Parent AC about ancestry of `08a2b32b` is satisfied by the revert commit on `origin/dev` (history still contains the original SHA; behavioral undo is what matters).
+
+## Git branch (authoritative)
+
+Per orientation Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-17T00:00:20.744Z
+[code-rubric] PROCEED (Commit: 33eb085eb931273dd0819904036a897e55cfb137) zlib contract re-landed
+
+#### betty — 2026-09-16T23:57:17.608Z
+`origin/sub/AST-1605/AST-1697-artifact-zlib-write-read-data-layer` @ `33eb085e` · zlib artifact coverage
+
+#### joan — 2026-09-16T23:45:23.588Z
+[plan-rubric] PROCEED (Commit: 69e16a48) single-file zlib contract
+
+#### ada — 2026-09-16T23:42:58.432Z
+`origin/sub/AST-1605/AST-1697-artifact-zlib-write-read-data-layer` @ `69e16a48` · plan ready zlib
+
+---
+
 # AST-1697 — Artifact zlib write/read in data layer
 
 **Linear:** [AST-1697](https://linear.app/astral/issue/AST-1697)  
