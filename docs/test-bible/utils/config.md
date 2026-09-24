@@ -4357,3 +4357,25 @@ See **`docs/test-bible/frontend/pages.md`** § AST-1749.
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/utils/config.md`
+
+---
+
+### AST-1788 · AST-1786
+
+**Parent:** [AST-1786 — Manage Candidates Snapshot Slack Channel + candidate mapping](https://linear.app/astralcareermatch/issue/AST-1786/manage-candidates-snapshot-slack-channel-candidate-mapping). **Publish:** `origin/sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes`.
+
+`DATA_SHAPES` Manage Candidates list column `slack_username`; profile Contact Information fields `contact.slack_channel_id` + `contact.slack_channel_name` immediately after `contact.slack_username`. Core/API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Manage list + profile channel shapes | `src/utils/config.py` | **`TestAst1788ManageListAndProfileSlackChannelShapes`** |
+
+**Broken / obsolete:** none — additive shape keys; AST-1105 profile slack id/username asserts still hold.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1788ManageListAndProfileSlackChannelShapes \
+  -q
+```

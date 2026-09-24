@@ -392,3 +392,160 @@ class TestAst1668UnboundSlackUsersApi:
             ).status_code
             == 403
         )
+
+
+# Branches: three admin GETs 200/400/404/502; auth 401/403; no progress info (AST-1788).
+class TestAst1788AdminSlackChannelApis:
+    def test_slack_channels_ok(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_api,
+            "list_admin_slack_channels",
+            MagicMock(return_value=[{"id": "C1", "name": "a"}]),
+        )
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        info = MagicMock()
+        monkeypatch.setattr(contact_api.logger, "info", info)
+        resp = contact_client.get("/api/admin/contact/slack_channels", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == {"channels": [{"id": "C1", "name": "a"}]}
+        info.assert_not_called()
+
+    def test_slack_channels_upstream_502(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_api,
+            "list_admin_slack_channels",
+            MagicMock(side_effect=RuntimeError("down")),
+        )
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        resp = contact_client.get("/api/admin/contact/slack_channels", headers=auth_headers)
+        assert resp.status_code == 502
+        assert resp.get_json() == {"error": "down"}
+
+    def test_membership_ok_and_errors(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        payload = {
+            "channel": "C1",
+            "slack_user_id": "U1",
+            "is_member": True,
+            "warn": False,
+            "warn_reason": None,
+        }
+        monkeypatch.setattr(
+            contact_api,
+            "check_admin_slack_channel_membership",
+            MagicMock(return_value=payload),
+        )
+        resp = contact_client.get(
+            "/api/admin/contact/slack_channel_membership"
+            "?astral_candidate_id=c1&channel=C1",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == payload
+
+        assert (
+            contact_client.get(
+                "/api/admin/contact/slack_channel_membership?channel=C1",
+                headers=auth_headers,
+            ).status_code
+            == 400
+        )
+        assert (
+            contact_client.get(
+                "/api/admin/contact/slack_channel_membership?astral_candidate_id=c1",
+                headers=auth_headers,
+            ).status_code
+            == 400
+        )
+        monkeypatch.setattr(
+            contact_api,
+            "check_admin_slack_channel_membership",
+            MagicMock(side_effect=ValueError("candidate not found")),
+        )
+        assert (
+            contact_client.get(
+                "/api/admin/contact/slack_channel_membership"
+                "?astral_candidate_id=x&channel=C1",
+                headers=auth_headers,
+            ).status_code
+            == 404
+        )
+
+    def test_snapshot_ok_and_errors(
+        self, contact_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_api, "ui_llm_debug", MagicMock(return_value=False))
+        payload = {
+            "astral_candidate_id": "c1",
+            "channel_id": "C1",
+            "channel_name": "n",
+            "messages": [{"ts": "1.0"}],
+        }
+        monkeypatch.setattr(
+            contact_api,
+            "get_admin_slack_channel_snapshot",
+            MagicMock(return_value=payload),
+        )
+        resp = contact_client.get(
+            "/api/admin/contact/slack_channel_snapshot?astral_candidate_id=c1",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == payload
+
+        assert (
+            contact_client.get(
+                "/api/admin/contact/slack_channel_snapshot", headers=auth_headers
+            ).status_code
+            == 400
+        )
+        monkeypatch.setattr(
+            contact_api,
+            "get_admin_slack_channel_snapshot",
+            MagicMock(side_effect=ValueError("slack_channel_id is required")),
+        )
+        assert (
+            contact_client.get(
+                "/api/admin/contact/slack_channel_snapshot?astral_candidate_id=c1",
+                headers=auth_headers,
+            ).status_code
+            == 400
+        )
+        monkeypatch.setattr(
+            contact_api,
+            "get_admin_slack_channel_snapshot",
+            MagicMock(side_effect=ValueError("candidate not found")),
+        )
+        assert (
+            contact_client.get(
+                "/api/admin/contact/slack_channel_snapshot?astral_candidate_id=x",
+                headers=auth_headers,
+            ).status_code
+            == 404
+        )
+
+    def test_routes_require_admin(self, contact_client: FlaskClient) -> None:
+        for path in (
+            "/api/admin/contact/slack_channels",
+            "/api/admin/contact/slack_channel_membership?astral_candidate_id=c1&channel=C1",
+            "/api/admin/contact/slack_channel_snapshot?astral_candidate_id=c1",
+        ):
+            assert contact_client.get(path).status_code == 401
+
+    def test_routes_non_admin_forbidden(
+        self, contact_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        for path in (
+            "/api/admin/contact/slack_channels",
+            "/api/admin/contact/slack_channel_membership?astral_candidate_id=c1&channel=C1",
+            "/api/admin/contact/slack_channel_snapshot?astral_candidate_id=c1",
+        ):
+            assert (
+                contact_client.get(path, headers=non_admin_headers).status_code == 403
+            )
