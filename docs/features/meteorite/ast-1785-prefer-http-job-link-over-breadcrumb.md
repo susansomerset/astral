@@ -110,3 +110,39 @@ PY
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1785
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb` @ `515b58421b077bbb9d62261bdb43692bf23a4db1`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.info.entity | A | | |
+
+## Traceability
+
+AC4–AC7 → Stage 1; parent AC1–AC3, AC8 → N/A (AST-1784 prompts/fixture).
+
+### Findings
+
+**discuss** — **Assignee gate (§1):** Ticket assignee is Hedy, not Joan. Plan substance reviewed; Chuckles must assign Joan before status flip / `save-comment`.
+
+**acceptable** — `## UAT fitness` present though this is full-path (not UAT-thin); correctly quotes parent AC4–AC7, names sibling AST-1784 boundary, and rejects prompt-only / parallel-harvester wrong fixes. No conflict with full rubric.
+
+**acceptable** — `_is_http_url` relocation (currently ~L1624, mapper ~L1307): plan names the ordering fix; shared predicate is correct vs duplicating `startswith` checks.
+
+**acceptable** — Verification step is `py_compile` + static symbol check + manual AC4–AC7 payloads; no test-tree edits in plan (Betty owns Tests Ready). Matches child scope.
+
+**Gates:** Status `Plan Ready` — pass. No `[plan-discuss]` rounds (0/2). Files Changed = `src/core/meteorite.py` only; matches ticket `## Scope`; AST-1784 / agent_task / fixture explicitly out.
+
+**R6 (summary):** Plan targets the live text-branch gap (`_map_classify_jobs_to_meteorite_rows` always breadcrumbs email text before reading `job_link`; `stage_meteorite` L1013 forces READY for all text outcomes; `run_stage_meteorite` L1708 forces READY for text arm). Three touchpoints (mapper prefer → post-map state from `link` scheme → runner text arm http branch) satisfy AC5’s “not stranded under READY” requirement without touching URL-outcome branch. AC6 preserved (breadcrumb only when no http `job_link`). AC7 preserved (URL branch byte-stable). `job_title` / `employer_name` post-map unchanged. No parallel HTML harvester. Estimate confirm present.
+
+context_tokens≈30000
