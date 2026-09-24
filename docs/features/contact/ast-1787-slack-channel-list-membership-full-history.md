@@ -144,3 +144,71 @@ context_tokens≈32000
 **Branch:** `sub/AST-1786/AST-1787-slack-channel-list-membership-full-history`
 
 **Built:** `list_bot_channels`, `is_channel_member` (`conversations.members` only here), `fetch_full_conversation_history` (full pages, `ts` ascending). Limited `fetch_conversation_history` and poster-pool path unchanged.
+
+## Radia review
+
+```
+[code-rubric]
+
+**Ticket:** AST-1787  
+**Publish ref:** `d92ff15f242ad4bd7c247c93f0cc66d8edf288a7` (`origin/sub/AST-1786/AST-1787-slack-channel-list-membership-full-history`)  
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored both directives **A**; code review agrees on `src/external/slack.py`.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Cross-ticket scope on publish ref vs `origin/dev`.** Product slice is correct (`src/external/slack.py` only), but `merge-tests(AST-1787): origin/tests a98a80ec` (`d92ff15f`) carries unrelated `origin/tests` deltas into the three-dot diff: `tests/component/core/test_meteorite.py` + `docs/test-bible/core/meteorite.md` (**AST-1785**), `tests/component/core/test_repo_admin_json.py` + `docs/test-bible/core/repo_admin_json.md` (**AST-1784**), `tests/component/core/test_consult.py` (cover-letter gate + removed dispatch entity-info test + dropped hydration `_warn_job` assert), and `tests/component/utils/test_debug_logging.py` (removed `stat.logging.debug` NOTSET contract test). AST-1787’s own test commit (`a98a80ec`) only touched `test_slack.py` + `slack.md`; the rest rode in via merge-tests. Confirm this carry-along is intentional before `merge-child` rolls the sub into `ftr/AST-1786` — otherwise sibling test/bible churn lands under the wrong ticket id.
+
+- **Plan fidelity vs branch footprint.** Stage 1 / Files Changed table promised one product file; implementation delivers that. Branch diff vs dev is wider than the ticket partition because of the merge-tests bundle above — not a product miss, but the published ref is not a clean AST-1787-only delta.
+
+### advisory
+
+- **Three-dot diff warning:** `origin/dev...origin/sub/...` reported multiple merge bases (used `ba493654`). Worth noting in merge hygiene; did not block scoring `slack.py`.
+- **Defensive empty-list fallback** in `fetch_full_conversation_history` (`msgs = messages if isinstance(messages, list) else []`) is unreachable with `soft_skip=False` ( `_paginate_messages` raises or returns a list). Harmless; could be dropped for clarity in a later pass.
+- **`test_slack.py` formatting:** missing blank line before `test_fetch_full_ok_false_raises_no_soft_skip` (style only).
+
+## What's solid
+
+- Three exported helpers — `list_bot_channels`, `is_channel_member`, `fetch_full_conversation_history` — match Stage 1: gated I/O, pagination, name sort, membership early-exit, full history with `ts` ascending (missing-`ts` last), hard-fail on `ok:false`.
+- **AC9 / AST-1667 boundary held:** `conversations.members` appears only in `is_channel_member` (method call + debug strings); poster-pool / `_iter_conversations` / `list_workspace_posters` path untouched.
+- Limited `fetch_conversation_history` unchanged.
+- **Canon logging on new code:** Calling/Response pairs, loop begin/end, full payloads (no truncate), no call-site `log_debug` gate, no new `logger.info` / `logger.error` / log-and-re-raise in external layer.
+- **`TestAst1787ChannelListMembershipFullHistory`** exercises gate, pagination, sort, types filter, empty-input `ValueError`, hard-fail paths, multi-page ascending history, and no soft-skip on `not_in_channel`; manifest in `docs/test-bible/external/slack.md` matches.
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append this artifact to the issue doc, commit `docs(AST-1787): Radia review — clean`, post slim upshot via `linear_proxy --as radia`, move to **Review Posted**.
+- Before `merge-child`: decide whether AST-1784/1785/consult/debug_logging test deltas on this sub tip should ride into `ftr/AST-1786` or be split/rebased so AST-1787’s publish ref stays partition-clean.
+- No `resolve-child` product work required for canon on `slack.py`.
+
+---
+
+**Slim Linear upshot (Chuckles posts):**
+
+```
+[code-rubric] PROCEED (Commit: d92ff15f242ad4bd7c247c93f0cc66d8edf288a7) Slack helpers canon-clean
+```
+
+context_tokens≈58000
+```
