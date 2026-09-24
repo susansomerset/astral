@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1698 archived 2026-09-24 -->
+
+## Linear archive (AST-1698)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1698/prompt-token-source-pin-harvest-helper-capture-deduped-source-artifact  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1579 — Capture deduped source-artifact-id array on derived-artifact write, resolved from artifact-type tokens at prompt-build time  
+**Blocked by / blocks / related:** parent: AST-1579; blocks: AST-1700; blocks: AST-1699
+
+### Description
+
+## What this implements
+
+Owns parse + classify + current-uuid resolve + dedupe for one agent run’s prompt texts. Ships a reusable harvest entry point and any candidate current-uuid-by-key helper harvest needs. Does **not** write job_data siblings or change save signatures’ call sites beyond what’s required to unit the helper. Does **not** own consult persist or craft-land wiring (siblings #2 / #3).
+
+## Citations
+
+`patt.artifact.traceability`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `patt.config.config-block`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.standards.dry-and-focused-functions`; `astral.layers.import-direction`
+
+## Scope
+
+`src/utils/config.py` — **modified** — reuse existing `_TOKEN_RE` / `TOKEN_SOURCES` / `get_artifact_key_for_token` / by-`source_type` getters; add only what harvest needs that is purely catalog/parse (e.g. list artifact token names referenced by one or more prompt texts). `src/core/agent.py` — **modified** — at prompt-build time in the agent run path, invoke harvest over the run’s prompt texts + candidate scope; expose the deduped list on the run. `src/core/candidate.py` — **modified** — expose or reuse a current-`artifact_uuid`-by-catalog-key resolve for harvest (body-only `get_candidate_current` is not enough). `src/utils/config.py` — Parse helper(s) over prompt text(s) using the existing `{$TOKEN}` regex; filter to `source_type == "artifact"`; map name → `artifact_key`. `src/core/agent.py` — After task prompts are known for the run, harvest artifact pins; attach the deduped list to run context. `src/core/candidate.py` — Current-uuid-by-key helper (catalog key → current row `artifact_uuid` or empty).
+
+## Acceptance criteria
+
+- [X] Given an agent run whose prompt texts contain two `{$BASE_RESUME}` (or any same artifact-typed token twice) and no other artifact tokens, the harvested list is exactly one UUID — the candidate’s then-current `candidate.artifacts.base_resume` `artifact_uuid` — or `[]` if no current row. Fail: two identical UUIDs in the list, or a UUID that is not the current row’s id at harvest time.
+- [X] `grep -rn 'source_type.*artifact\|get_artifact_key_for_token\|_TOKEN_RE' src/utils/config.py src/core/agent.py` shows harvest classification/parse reuses the typed catalog / existing token regex — not a new hard-coded pinnable-token set. Fail: a parallel allowlist of token names for pin capture.
+
+## Boundaries
+
+- [X] Does not write job_data siblings (#2) or thread artifact-table `source_artifact_ids` (#3).
+
+## Notes for planning
+
+Citations as above. Estimate: 3. Blocks #2 and #3.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1579-capture-deduped-source-artifact-id-array`, child `sub/AST-1579/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Harvest AC1 + miss/empty + non-artifact skip: `tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds`
+2. Config parse/dedupe: `tests/component/utils/test_config.py::TestAst1698ListArtifactKeysInPromptTexts`
+3. Candidate uuid helper: `tests/component/core/test_candidate.py::TestAst1698GetCandidateCurrentArtifactUuid`
+4. AC2 (catalog reuse, no parallel allowlist): `rg -n 'list_artifact_keys_in_prompt_texts|harvest_source_artifact_ids|get_artifact_key_for_token|_TOKEN_RE' src/utils/config.py src/core/agent.py`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1698HarvestSourceArtifactIds \
+  tests/component/utils/test_config.py::TestAst1698ListArtifactKeysInPromptTexts \
+  tests/component/core/test_candidate.py::TestAst1698GetCandidateCurrentArtifactUuid \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–3 + AC2 grep — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip** `24e07d28`**):**
+
+* `docs/test-bible/core/agent.md` — `9c2754c9fccfbbf5bd7ae4461ebdb55544b5d420`
+* `docs/test-bible/utils/config.md` — `0d5616e389092e470d272f333daabc973196ed8f`
+* `docs/test-bible/core/candidate.md` — `a03068a423eed40188b5f85d55e84c11a3336472`
+
+**origin/tests delivery:** `350de28c54f9e19dab7463872cb4eda5e119b690`
+
+### Comments
+
+#### radia — 2026-09-17T00:06:57.301Z
+[code-rubric] PROCEED (Commit: 24e07d28) harvest helper clean
+
+#### betty — 2026-09-17T00:04:02.328Z
+`origin/sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper` @ `24e07d28` · harvest tests ready
+
+#### joan — 2026-09-16T23:51:32.804Z
+[plan-rubric] PROCEED (Commit: ecc25c13) harvest helper plan clean
+
+#### ada — 2026-09-16T23:49:04.113Z
+`origin/sub/AST-1579/AST-1698-prompt-token-source-pin-harvest-helper` @ `ecc25c13a79d6a795701f5c821023b6609c506ff` · plan ready
+
+---
+
 # Prompt-token source-pin harvest helper
 
 **Linear:** [AST-1698](https://linear.app/astralcareermatch/issue/AST-1698)
