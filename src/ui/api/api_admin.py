@@ -57,6 +57,7 @@ from src.utils.config import (
     get_repo_admin_json_table_keys,
     get_tokens,
     resolve_tokens,
+    empty_render_for_prompts,
     get_model,
     admin_brain_setting_catalog,
     brain_setting_for_anthropic_agent_key,
@@ -104,6 +105,7 @@ from src.core.agent import (
     resolved_task_system,
     _chain_context,
     _caller_response_blob,
+    _resolve_task_prompts,
 )
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
@@ -960,6 +962,25 @@ def list_dtasks():
         row["always_visible_under_avail_gt0"] = (
             row.get("task_key") in admin_always_visible_under_avail_gt0_dispatch_task_keys()
         )
+        # AST-1780: empty-render flag + force AUTO off when non-executable.
+        er = _evaluate_dispatch_empty_render(row.get("candidate_id"), row.get("task_key") or "")
+        row["empty_render"] = bool(er.get("empty_render"))
+        if row["empty_render"] and row.get("auto_mode"):
+            update_dispatch_task(row["id"], auto_mode=0)
+            row["auto_mode"] = 0
+            tokens = er.get("empty_tokens") or []
+            why = (
+                f"empty_render tokens={tokens}"
+                if tokens
+                else "empty_render (could not validate prompts)"
+            )
+            logger.warning(
+                "%s | dispatch_task id=%s task_key=%r %s — AUTO forced off",
+                row.get("candidate_id") or "-",
+                row.get("id"),
+                row.get("task_key"),
+                why,
+            )
     hidden = admin_hidden_dispatch_task_keys()
     rows = [r for r in rows if r.get("task_key") not in hidden]
     if request.args.get("req_dict"):
@@ -1127,6 +1148,9 @@ def create_dtask():
     score_floor = float(raw_score_floor) if (is_scored and raw_score_floor is not None) else (1.0 if is_scored else None)
     if bool(data.get("auto_mode", False)):
         err = _candidate_dispatch_api_key_error(data.get("candidate_id"))
+        if err:
+            return jsonify({"error": err}), 400
+        err = _candidate_dispatch_empty_render_error(data.get("candidate_id"), task_key)
         if err:
             return jsonify({"error": err}), 400
     tk_err = _dispatch_task_key_trigger_error(
@@ -1321,6 +1345,9 @@ def update_dtask(task_id):
     if updates.get("auto_mode") == 1:
         cid = row.get("candidate_id")
         err = _candidate_dispatch_api_key_error(cid)
+        if err:
+            return jsonify({"error": err}), 400
+        err = _candidate_dispatch_empty_render_error(cid, effective_task_key)
         if err:
             return jsonify({"error": err}), 400
     try:
@@ -1933,6 +1960,87 @@ def upsert_config_table():
 # Scheduler / per-task thread control
 # ---------------------------------------------------------------------------
 
+def _dispatch_empty_render_prompt_texts(task_key: str) -> list:
+    """Raw prompt segments for empty-render gating (AST-1780 / AST-1779 order)."""
+    agent_row, agent_task_row = _resolve_task_prompts(task_key)
+    texts = [
+        agent_task_row.get("system_prompt") or "",
+        agent_task_row.get("cache_prompt") or "",
+        agent_task_row.get("cache_prompt_b") or "",
+        agent_task_row.get("cache_prompt_c") or "",
+        agent_task_row.get("cache_prompt_d") or "",
+        agent_task_row.get("nocache_prompt") or "",
+        agent_task_row.get("user_prompt") or "",
+    ]
+    # Match resolved_task_system: agent content only when task system_prompt is blank.
+    if not (agent_task_row.get("system_prompt") or "").strip():
+        texts.append(agent_row.get("content") or "")
+    return texts
+
+
+def _evaluate_dispatch_empty_render(
+    candidate_id: Optional[str], task_key: str
+) -> dict:
+    """Return empty_render_for_prompts result; never raises for soft misses."""
+    cid = (candidate_id or "").strip()
+    tk = (task_key or "").strip()
+    if not cid:
+        logger.warning(
+            "%s | dispatch empty_render task_key=%r — no candidate_id; treating as empty_render",
+            "-",
+            tk,
+        )
+        return {"empty_render": True, "empty_tokens": []}
+    cand = database.get_candidate(cid)
+    if not cand:
+        logger.warning(
+            "%s | dispatch empty_render task_key=%r — candidate not found; treating as empty_render",
+            cid,
+            tk,
+        )
+        return {"empty_render": True, "empty_tokens": []}
+    cd = build_candidate_token_view(cand)
+    try:
+        texts = _dispatch_empty_render_prompt_texts(tk)
+    except ValueError as exc:
+        logger.warning(
+            "%s | dispatch empty_render task_key=%r — %s; treating as empty_render",
+            cid,
+            tk,
+            exc,
+        )
+        return {"empty_render": True, "empty_tokens": []}
+    except Exception as exc:
+        logger.exception(
+            "%s | dispatch empty_render task_key=%r\n  %s: %s\n  Leaving empty_render true for this row",
+            cid,
+            tk,
+            type(exc).__name__,
+            exc,
+        )
+        return {"empty_render": True, "empty_tokens": []}
+    return empty_render_for_prompts(texts, cd, tk, entity_contexts=None)
+
+
+def _candidate_dispatch_empty_render_error(
+    candidate_id: Optional[str], task_key: str
+) -> Optional[str]:
+    """If set, return a user-facing message; AUTO/Run need non-empty candidate-scoped fills."""
+    result = _evaluate_dispatch_empty_render(candidate_id, task_key)
+    if not result.get("empty_render"):
+        return None
+    tokens = result.get("empty_tokens") or []
+    if tokens:
+        return (
+            "Prompt tokens resolve empty for this candidate (cannot Auto/Run): "
+            + ", ".join(tokens)
+        )
+    return (
+        "Cannot Auto/Run: prompts could not be validated for empty-render "
+        "on this candidate/task."
+    )
+
+
 def _candidate_dispatch_api_key_error(candidate_id: Optional[str]) -> Optional[str]:
     """If set, return a user-facing message; dispatch Run/Auto need a real Anthropic key on the candidate."""
     if not candidate_id:
@@ -1953,6 +2061,11 @@ def run_dtask(task_id):
     if not row:
         return jsonify({"error": "Dispatch task not found", "started": False}), 404
     err = _candidate_dispatch_api_key_error(row.get("candidate_id"))
+    if err:
+        return jsonify({"error": err, "started": False}), 400
+    err = _candidate_dispatch_empty_render_error(
+        row.get("candidate_id"), row.get("task_key") or ""
+    )
     if err:
         return jsonify({"error": err, "started": False}), 400
     started = run_task(task_id, ui_initiated=True)

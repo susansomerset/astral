@@ -1775,3 +1775,127 @@ class TestAst1622MeteoriteCountEligibleDue:
         row = next(t for t in due if t["task_key"] == "stage_meteorite")
         assert row["candidate_id"] is None
         assert row["available_count"] >= 1
+
+
+# Branches: list by task_key; force AUTO off on empty FIRST_NAME; keep AUTO when filled;
+# job tokens alone do not force off; save_agent_task versions triggers revalidate;
+# metadata-only save does not; artifact revalidate scopes to candidate + referenced keys.
+class TestAst1781RevalidateDispatchEmptyRender:
+    """AST-1781: empty-render revalidation helpers + agent_task / artifact hooks (data)."""
+
+    _TK = "qualify_job_listings"
+    _CID = "c1781"
+
+    def _seed_agent_task_with_first_name(self, db, user_prompt: str = "Hi {$FIRST_NAME}") -> None:
+        # agent_id optional for gating — missing agent → effective system "".
+        db.save_agent_task(self._TK, agent_id="a1781", user_prompt=user_prompt)
+
+    def _seed_candidate_and_auto_row(self, db, *, first: str = "") -> int:
+        db.save_candidate(self._CID, state="NEW_CANDIDATE", first=first, full=first or "")
+        return db.save_dispatch_task(
+            self._CID, self._TK, min_count=1, auto_mode=True
+        )
+
+    def test_list_dispatch_tasks_for_task_key(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.list_dispatch_tasks_for_task_key("") == []
+        assert db.list_dispatch_tasks_for_task_key("   ") == []
+        db.save_candidate(self._CID, state="NEW_CANDIDATE", first="Ada")
+        tid = db.save_dispatch_task(self._CID, self._TK, min_count=1)
+        rows = db.list_dispatch_tasks_for_task_key(self._TK)
+        assert [r["id"] for r in rows] == [tid]
+        assert db.list_dispatch_tasks_for_task_key("no_such_task") == []
+
+    def test_revalidate_forces_auto_off_when_first_blank(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_agent_task_with_first_name(db)
+        tid = self._seed_candidate_and_auto_row(db, first="")
+        assert db.get_dispatch_task(tid)["auto_mode"] in (1, True)
+        db.revalidate_dispatch_tasks_for_task_key(self._TK)
+        assert db.get_dispatch_task(tid)["auto_mode"] in (0, False)
+        # Idempotent second pass
+        db.revalidate_dispatch_tasks_for_task_key(self._TK)
+        assert db.get_dispatch_task(tid)["auto_mode"] in (0, False)
+
+    def test_revalidate_keeps_auto_when_first_filled(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_agent_task_with_first_name(db)
+        tid = self._seed_candidate_and_auto_row(db, first="Ada")
+        db.revalidate_dispatch_tasks_for_task_key(self._TK)
+        assert db.get_dispatch_task(tid)["auto_mode"] in (1, True)
+
+    def test_job_token_alone_does_not_force_off(self, sqlite_in_memory) -> None:
+        # AC: no entity_contexts — empty job tokens must not flip empty_render.
+        db = sqlite_in_memory
+        self._seed_agent_task_with_first_name(db, user_prompt="JD={$VISIBLE_JD}")
+        tid = self._seed_candidate_and_auto_row(db, first="Ada")
+        db.revalidate_dispatch_tasks_for_task_key(self._TK)
+        assert db.get_dispatch_task(tid)["auto_mode"] in (1, True)
+
+    def test_save_agent_task_version_triggers_revalidate(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        db = sqlite_in_memory
+        calls: list[str] = []
+        monkeypatch.setattr(
+            db,
+            "revalidate_dispatch_tasks_for_task_key",
+            lambda tk: calls.append(tk),
+        )
+        db.save_agent_task(self._TK, agent_id="a1", user_prompt="v1")
+        assert calls == [self._TK]
+        calls.clear()
+        # Metadata-only (agent_id change, same segments) — no revalidate.
+        db.save_agent_task(self._TK, agent_id="a2")
+        assert calls == []
+        # Segment edit versions → revalidate.
+        db.save_agent_task(self._TK, user_prompt="v2 {$FIRST_NAME}")
+        assert calls == [self._TK]
+
+    def test_revalidate_for_artifact_forces_off_when_strengths_blank(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(
+            self._TK, agent_id="a1781", user_prompt="Strengths: {$STRENGTHS}"
+        )
+        db.save_candidate(self._CID, state="NEW_CANDIDATE", first="Ada")
+        tid = db.save_dispatch_task(
+            self._CID, self._TK, min_count=1, auto_mode=True
+        )
+        # No current strengths artifact → STRENGTHS resolves empty → force off.
+        db.revalidate_dispatch_tasks_for_artifact(
+            self._CID, "candidate.context.strengths"
+        )
+        assert db.get_dispatch_task(tid)["auto_mode"] in (0, False)
+
+    def test_revalidate_for_artifact_skips_unbacked_key(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        self._seed_agent_task_with_first_name(db)
+        tid = self._seed_candidate_and_auto_row(db, first="")
+        # resume_structure (or any non-TOKEN_SOURCES artifact_key) → no-op.
+        db.revalidate_dispatch_tasks_for_artifact(
+            self._CID, "candidate.artifacts.resume_structure"
+        )
+        assert db.get_dispatch_task(tid)["auto_mode"] in (1, True)
+
+    def test_revalidate_for_artifact_other_candidate_untouched(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_agent_task(
+            self._TK, agent_id="a1781", user_prompt="Strengths: {$STRENGTHS}"
+        )
+        db.save_candidate(self._CID, state="NEW_CANDIDATE", first="Ada")
+        db.save_candidate("other1781", state="NEW_CANDIDATE", first="Bob")
+        tid_self = db.save_dispatch_task(
+            self._CID, self._TK, min_count=1, auto_mode=True
+        )
+        tid_other = db.save_dispatch_task(
+            "other1781", self._TK, min_count=1, auto_mode=True
+        )
+        db.revalidate_dispatch_tasks_for_artifact(
+            self._CID, "candidate.context.strengths"
+        )
+        assert db.get_dispatch_task(tid_self)["auto_mode"] in (0, False)
+        assert db.get_dispatch_task(tid_other)["auto_mode"] in (1, True)

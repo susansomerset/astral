@@ -1,3 +1,64 @@
+<!-- linear-archive: AST-1632 archived 2026-09-24 -->
+
+## Linear archive (AST-1632)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1632/catalog-plain-text-shape-strengths-token-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1629 — Migrate candidate_data.context.strengths to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1629; blocks: AST-1633
+
+### Description
+
+## What this implements
+
+Register `candidate.context.strengths` in `ARTIFACT_CONFIG` with `body_shape: "plain_text"`, add `BUILD_CONFIG["artifact_shapes"]["plain_text"]` (raw string), flip `TOKEN_SOURCES["STRENGTHS"]` to artifact + `artifact_key`, lock startup asserts. Does not own UI or hydrate.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `stat.logging.info` / `stat.logging.debug` as touched
+
+## Scope
+
+`src/utils/config.py` — new catalog entry + asserts; `plain_text` artifact_shapes entry; `TOKEN_SOURCES["STRENGTHS"]` flip.
+
+## Acceptance criteria
+
+1. **Catalog key present** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert 'candidate.context.strengths' in ARTIFACT_CONFIG"` exits 0.
+2. **plain_text shape** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG, BUILD_CONFIG; assert ARTIFACT_CONFIG['candidate.context.strengths']['body_shape']=='plain_text'; assert 'plain_text' in BUILD_CONFIG['artifact_shapes']"` exits 0.
+3. **Token is artifact-typed** — `python3 -c "from src.utils.config import TOKEN_SOURCES; s=TOKEN_SOURCES['STRENGTHS']; assert s['source_type']=='artifact' and s['artifact_key']=='candidate.context.strengths'"` exits 0.
+
+## Boundaries
+
+Does not own UI, hydrate, API PUT intercept, or blob retirement (siblings). Does not migrate other context keys.
+
+## Notes for planning
+
+Citations as above. First catalog key on `plain_text` shape — template for later context migrations.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1629-migrate-strengths-artifact-table`, child `sub/AST-1629/<this-id>-catalog-plain-text-strengths-token`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-14T23:34:16.647Z
+[code-rubric] PROCEED (Commit: f0c27497390d) config catalog clean
+
+#### betty — 2026-09-14T23:31:18.702Z
+origin/sub/AST-1629/AST-1632-catalog-plain-text-strengths-token @ f0c27497390d605c53c0f4cabae0e168c6dd5158 · strengths catalog tests
+
+#### joan — 2026-09-14T23:24:25.069Z
+[plan-rubric] PROCEED (Commit: 12d49988) config catalog slice clean
+
+#### ada — 2026-09-14T23:22:27.042Z
+`origin/sub/AST-1629/AST-1632-catalog-plain-text-strengths-token` @ `12d49988f6295cc4e5e6909842d6b38934d08452` · plan ready config
+
+---
+
 # Catalog + plain_text shape + STRENGTHS token
 
 **Linear:** [AST-1632](https://linear.app/astralcareermatch/issue/AST-1632)

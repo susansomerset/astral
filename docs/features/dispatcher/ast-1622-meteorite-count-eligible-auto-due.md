@@ -1,3 +1,76 @@
+<!-- linear-archive: AST-1622 archived 2026-09-24 -->
+
+## Linear archive (AST-1622)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1622/meteorite-count-eligible-and-auto-due-without-candidate-id-treat  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1620 — Treat meteorite as a first-class dispatch entity_type  
+**Blocked by / blocks / related:** parent: AST-1620; blocks: AST-1623
+
+### Description
+
+## What this implements
+
+Extend `count_eligible_for_dispatch_task` and `get_due_tasks` so `entity_type=meteorite` with a trigger_state counts/dues the global unclaimed meteorite pool (NULL `candidate_id` allowed). After #1. Does not own admin Available short-circuit or ledger entity_type (after #3).
+
+## Citations
+
+`pattern.batch.entity-claim-process-release`; `astral.batch.batch-id-first`; `astral.batch.claim-process-release`; `astral.standards.dry-and-focused-functions`; `astral.standards.public-then-helpers`; `astral.standards.database-header-inventory`; `astral.standards.data-raises-caller-logs`
+
+## Scope
+
+`src/data/database.py` — meteorite branch in `count_eligible_for_dispatch_task` (no candidate_id required); `get_due_tasks` include AUTO meteorite rows with NULL candidate_id when eligible; any shared unclaimed-meteorite-in-states count helper used by that path.
+
+## Acceptance criteria
+
+- [X] 4. With unclaimed meteorite rows in `NEW` and a global `stage_meteorite` row with `entity_type='meteorite'`, `trigger_state='NEW'`, NULL `candidate_id`, `count_eligible_for_dispatch_task(row)` returns that unclaimed count (≥1). Fail: returns 0 solely because `candidate_id` is NULL while eligible rows exist.
+
+## Boundaries
+
+- [X] Does not own ENTITY_TYPES / registry / SEED_CONFIG (sibling 1). Does not own admin Available, state_options, ledger, or live-row backfill (sibling 3). After #1.
+
+## Notes for planning
+
+Citations above. Estimate 3. After #1.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Meteorite count helper + count_eligible + get_due: `tests/component/data/database/test_dispatch_tasks.py::TestAst1622MeteoriteCountEligibleDue`
+
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/data/database/test_dispatch_tasks.py::TestAst1622MeteoriteCountEligibleDue   -q
+```
+
+**Pass criterion:** pytest green on manifest line — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/data/database/dispatch_tasks.md` — `d1e92261cf473a091ba3015107a453389dcdc8ee46abbc947a1997ae47842c6a`
+
+### Comments
+
+#### radia — 2026-09-10T01:38:29.261Z
+[code-rubric] PROCEED (Commit: 3f86f411) meteorite count/due clean
+
+#### betty — 2026-09-10T01:34:35.418Z
+`origin/sub/AST-1620/AST-1622-meteorite-count-eligible-auto-due` @ `3f86f411bd45327dc9f02f5a113149ecfa648d50` · meteorite count due tests
+
+#### joan — 2026-09-10T01:28:59.392Z
+[plan-rubric] PROCEED (Commit: 06d21b2) meteorite count + AUTO-due
+
+#### hedy — 2026-09-10T01:22:44.640Z
+`origin/sub/AST-1620/AST-1622-meteorite-count-eligible-auto-due` @ `06d21b2b362ff53e96ee89b6f8b46f8dd8e1efd2` · plan ready
+
+---
+
 # AST-1622 — Meteorite count_eligible and AUTO-due without candidate_id
 
 - **Linear:** https://linear.app/astralcareermatch/issue/AST-1622

@@ -1354,8 +1354,9 @@ class TestDispatchTasks:
         assert admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers).status_code == 404
         monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda task_id: {"candidate_id": None})
         assert admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers).status_code == 400
-        monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda task_id: {"candidate_id": "c1"})
+        monkeypatch.setattr(admin_mod.database, "get_dispatch_task", lambda task_id: {"candidate_id": "c1", "task_key": "qualify_job_listings"})
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "run_task", lambda task_id, ui_initiated=False: True)
         assert admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers).get_json()["started"] is True
         monkeypatch.setattr(admin_mod, "drain_task", lambda task_id: {"drained": True})
@@ -1819,6 +1820,7 @@ class TestApiAdminBranchGaps:
 
     def test_create_dispatch_task_auto_mode_success(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
         monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(return_value=9))
         resp = admin_client.post(
             "/api/admin/dispatch_tasks",
@@ -2045,6 +2047,7 @@ class TestApiAdminBranchGaps:
         update = MagicMock()
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
         monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_empty_render_error", lambda candidate_id, task_key: None)
         scored = admin_client.put("/api/admin/dispatch_tasks/1", json={"score_floor": 2.5, "auto_mode": True}, headers=auth_headers)
         assert scored.status_code == 200
         assert update.call_args.kwargs["score_floor"] == 2.5
@@ -3669,4 +3672,162 @@ class TestAst1623AdminMeteoriteStateOptionsAvail:
         assert resp.status_code == 201
         assert save.call_args.kwargs["entity_type"] == "meteorite"
         assert save.call_args.kwargs["trigger_state"] == "NEW"
+
+
+# Branches: list empty_render + force AUTO off; create/PUT/run 400 gates; pass when helper clear.
+class TestAst1780EmptyRenderListGatesForceOff:
+    """AST-1780: list enrich empty_render, AUTO/Run 400 gates, force AUTO off."""
+
+    def test_list_sets_empty_render_and_forces_auto_off(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rows = [
+            {
+                "id": 7,
+                "task_key": "qualify_job_listings",
+                "trigger_state": "NEW",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "score_floor": None,
+                "auto_mode": 1,
+            }
+        ]
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(
+            admin_mod,
+            "_evaluate_dispatch_empty_render",
+            lambda cid, tk: {"empty_render": True, "empty_tokens": ["FIRST_NAME"]},
+        )
+        updates: list[tuple] = []
+        monkeypatch.setattr(
+            admin_mod,
+            "update_dispatch_task",
+            lambda tid, **kw: updates.append((tid, kw)),
+        )
+        resp = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers)
+        assert resp.status_code == 200
+        out = resp.get_json()
+        assert out[0]["empty_render"] is True
+        assert out[0]["auto_mode"] == 0
+        assert updates == [(7, {"auto_mode": 0})]
+
+    def test_list_empty_render_false_keeps_auto(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rows = [
+            {
+                "id": 8,
+                "task_key": "qualify_job_listings",
+                "trigger_state": "NEW",
+                "entity_type": "job",
+                "candidate_id": "c1",
+                "score_floor": None,
+                "auto_mode": 1,
+            }
+        ]
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(
+            admin_mod,
+            "_evaluate_dispatch_empty_render",
+            lambda cid, tk: {"empty_render": False, "empty_tokens": []},
+        )
+        updates: list = []
+        monkeypatch.setattr(
+            admin_mod, "update_dispatch_task", lambda *a, **k: updates.append(k)
+        )
+        out = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        assert out[0]["empty_render"] is False
+        assert out[0]["auto_mode"] == 1
+        assert updates == []
+
+    def test_create_auto_on_empty_render_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(
+            admin_mod,
+            "_candidate_dispatch_empty_render_error",
+            lambda cid, tk: "Prompt tokens resolve empty for this candidate (cannot Auto/Run): FIRST_NAME",
+        )
+        save = MagicMock()
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "qualify_job_listings",
+                "trigger_state": "PASSED_JOBLIST",
+                "min_count": 1,
+                "auto_mode": True,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "FIRST_NAME" in resp.get_json()["error"]
+        save.assert_not_called()
+
+    def test_put_auto_on_empty_render_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "id": 1,
+                "task_key": "qualify_job_listings",
+                "trigger_state": "PASSED_JOBLIST",
+                "candidate_id": "c1",
+                "auto_mode": 0,
+                "entity_type": "job",
+            },
+        )
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(
+            admin_mod,
+            "_candidate_dispatch_empty_render_error",
+            lambda cid, tk: "Cannot Auto/Run: prompts could not be validated for empty-render on this candidate/task.",
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"auto_mode": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "Cannot Auto/Run" in resp.get_json()["error"]
+        update.assert_not_called()
+
+    def test_run_empty_render_400_started_false(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"candidate_id": "c1", "task_key": "qualify_job_listings"},
+        )
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        monkeypatch.setattr(
+            admin_mod,
+            "_candidate_dispatch_empty_render_error",
+            lambda cid, tk: "Prompt tokens resolve empty for this candidate (cannot Auto/Run): FIRST_NAME",
+        )
+        run = MagicMock(return_value=True)
+        monkeypatch.setattr(admin_mod, "run_task", run)
+        resp = admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers)
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["started"] is False
+        assert "FIRST_NAME" in body["error"]
+        run.assert_not_called()
+
+    def test_error_helper_none_when_evaluate_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "_evaluate_dispatch_empty_render",
+            lambda cid, tk: {"empty_render": False, "empty_tokens": []},
+        )
+        assert admin_mod._candidate_dispatch_empty_render_error("c1", "qualify_job_listings") is None
 

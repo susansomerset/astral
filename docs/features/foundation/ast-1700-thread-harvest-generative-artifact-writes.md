@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-1700 archived 2026-09-24 -->
+
+## Linear archive (AST-1700)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1700/thread-harvest-into-generative-artifact-table-writes-capture-deduped  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1579 — Capture deduped source-artifact-id array on derived-artifact write, resolved from artifact-type tokens at prompt-build time  
+**Blocked by / blocks / related:** parent: AST-1579
+
+### Description
+
+## What this implements
+
+After #1: agent generative lands pass harvest into `save_job_artifact` / operative `save_candidate_data` → `save_artifact` as `source_artifact_ids`. Extend candidate operative save to accept optional sources. Leave `job.artifacts.job_resume` auto-cite untouched (still ignores caller/harvest lists). Align draft traceability Implementation one-liner. Does **not** own consult job_data siblings (#2).
+
+## Citations
+
+`patt.artifact.traceability`; `patt.artifact.write-operative`; `patt.artifact.read-current`; `astral.standards.in-scope-only`; `astral.standards.data-raises-caller-logs`; `astral.layers.import-direction`
+
+## Scope
+
+`src/core/agent.py` — **modified** — on generative `save_job_artifact` / `save_candidate_data` lands from this run, pass the harvest list (except job_resume auto-cite remains authoritative). `src/core/candidate.py` — **modified** — operative `save_candidate_data` str-path accepts and passes optional `source_artifact_ids` through to `database.save_artifact`. `src/core/tracker.py` — **modified** — only if a thin pass-through is required for non-`job_resume` generative writes; do **not** weaken job_resume auto-cite. `canon/directives/draft/patt.artifact.traceability.md` — **modified** — Implementation alignment note for this epic’s surfaces. `src/core/candidate.py` — Operative save accepts optional source ids and forwards them on insert. `src/core/tracker.py` — Touch only if needed; job_resume continues to ignore caller sources. `patt.artifact.traceability.md` — Note this epic implements seed-id capture surfaces; lineage + manual inheritance remain later.
+
+## Acceptance criteria
+
+- [X] 5\. A generative agent land through `save_candidate_data` (str path) or non-`job_resume` `save_job_artifact` that has a non-empty harvest persists those ids on the new artifacts row’s `source_artifact_ids`. Fail: harvest computed but `source_artifact_ids` stays `[]` on that row when harvest was non-empty.
+- [X] 6\. A `job.artifacts.job_resume` generative write still stores only the auto-cited current `base_resume` id (or `[]`), ignoring harvested/caller lists. Fail: harvested extras appear on job_resume sources, or auto-cite removed.
+- [X] 7\. No product code lands versioned agent/agent_task lineage columns; no `tokens_ready` claim changes; no new `ARTIFACT_CONFIG` keys; draft traceability gains only the Implementation alignment note (not promoted to active).
+
+## Boundaries
+
+- [X] Does not own consult job_data siblings (#2). Does not re-own harvest helper (#1).
+
+## Notes for planning
+
+After #1. Citations as above. Estimate: 3.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1579-capture-deduped-source-artifact-id-array`, child `sub/AST-1579/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Agent generative lands: `tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands`
+2. Candidate optional sources: `tests/component/core/test_candidate.py::TestAst1700SaveCandidateDataSourceArtifactIds`
+3. AC6 existing tracker auto-cite: `tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_cites_current_base_resume_uuid` · `test_job_resume_empty_sources_when_no_base_resume` · `test_cover_letter_passes_caller_sources`
+4. AC7 docs-acceptance: `rg -n 'AST-1698|AST-1700|status:' canon/directives/draft/patt.artifact.traceability.md`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1700ThreadHarvestGenerativeLands \
+  tests/component/core/test_candidate.py::TestAst1700SaveCandidateDataSourceArtifactIds \
+  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_cites_current_base_resume_uuid \
+  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation::test_job_resume_empty_sources_when_no_base_resume \
+  tests/component/core/test_tracker.py::TestAst1592TrackerCatalogWriteReadCitation::test_cover_letter_passes_caller_sources \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–3 + AC7 grep — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip** `57664991`**):**
+
+* `docs/test-bible/core/agent.md` — `230e98a919cef035042fcf8c9bc2183af9b1197f`
+* `docs/test-bible/core/candidate.md` — `7fde18a2c291f5d498ef199924f21e8c62f93e74`
+
+**origin/tests delivery:** `15cd8eea96a088f1807798cf7c76c46d51874f99`
+
+### Comments
+
+#### radia — 2026-09-17T00:27:10.362Z
+[code-rubric] REVIEW (Commit: 57664991) consult smuggle breaks render
+
+#### betty — 2026-09-17T00:24:01.081Z
+`origin/sub/AST-1579/AST-1700-thread-harvest-generative-artifact-writes` @ `57664991` · generative land tests ready
+
+#### joan — 2026-09-17T00:15:58.465Z
+[plan-rubric] PROCEED (Commit: fbffdfb6) generative source threading
+
+#### katherine — 2026-09-17T00:13:49.948Z
+`origin/sub/AST-1579/AST-1700-thread-harvest-generative-artifact-writes` @ `fbffdfb6994a67bf7b7033d2b2e5233714882a9e` · plan ready
+
+---
+
 # Thread harvest into generative artifact-table writes
 
 **Linear:** [AST-1700](https://linear.app/astralcareermatch/issue/AST-1700)

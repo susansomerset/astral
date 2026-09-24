@@ -1,3 +1,80 @@
+<!-- linear-archive: AST-1667 archived 2026-09-24 -->
+
+## Linear archive (AST-1667)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1667/workspace-poster-pool-external-bind-new-slack-contacts-to-existing  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect  
+**Blocked by / blocks / related:** parent: AST-1636; blocks: AST-1668
+
+### Description
+
+## What this implements
+
+Owns the Slack external helper that derives workspace users who have posted a message (id + username), excluding bots/deleted. Does not own Contact unbound filtering, resolve, admin GET, or Manage Candidates UI.
+
+## Citations
+
+`stat.logging.debug`, `stat.logging.error`.
+
+## Scope
+
+`src/external/slack.py` — new workspace-poster helper only.
+
+## Acceptance criteria
+
+- [X] 7\. External poster pool lives in `src/external/slack.py`, invoked from core/API — not from React. Fail if `AdminManageCandidates.tsx` hardcodes Slack Web API URLs/tokens.
+- [X] 8\. Bots and deleted Slack users are absent from the dropdown. Fail if `is_bot` or deleted users appear.
+- [X] 9\. Pool source is workspace posters — not `conversations.members` on a configured channel, and not raw `users.list` alone. Fail if channel-membership is the pool or "all accounts" equals "has posted" without a poster-derived set.
+
+## Boundaries
+
+Does not own Contact unbound filtering, resolve recognition replies, admin GET, or Manage Candidates UI (siblings).
+
+## Notes for planning
+
+Exact Slack method mix (`search.messages`, conversation enumeration + history, or equivalent) is plan-child's call.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1636-bind-slack-contacts`; child `sub/AST-1636/AST-1667-workspace-poster-pool-external`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Workspace poster pool (new): `tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/external/slack.md` — `5fba8ad2a5ce8c591b5bc0001ee9354008e0fc7a`
+
+### Comments
+
+#### radia — 2026-09-16T01:57:23.742Z
+[code-rubric] PROCEED (Commit: 2a813ef9) poster pool clean
+
+#### betty — 2026-09-16T01:54:29.239Z
+`origin/sub/AST-1636/AST-1667-workspace-poster-pool-external` @ `2a813ef9` · poster pool tests ready
+
+#### joan — 2026-09-16T01:47:15.757Z
+[plan-rubric] PROCEED (Commit: 45e6f058efec34bf61e3a377fa73c5f44628a1ac) Poster pool plan sound
+
+#### ada — 2026-09-16T01:44:57.140Z
+`origin/sub/AST-1636/AST-1667-workspace-poster-pool-external` @ `45e6f058efec34bf61e3a377fa73c5f44628a1ac` · plan ready
+
+---
+
 # AST-1667 — Workspace poster pool (external)
 
 **Linear:** [AST-1667](https://linear.app/astralcareermatch/issue/AST-1667/workspace-poster-pool-external-bind-new-slack-contacts-to-existing)  

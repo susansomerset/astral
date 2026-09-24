@@ -1,3 +1,105 @@
+<!-- linear-archive: AST-1585 archived 2026-09-24 -->
+
+## Linear archive (AST-1585)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1585/ui-contact-pilot-base-resume-operative-resolve-implement  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1571 — Implement patt.artifact.read-operative  
+**Blocked by / blocks / related:** parent: AST-1571
+
+### Description
+
+## What this implements
+
+After #1: wire job artifact-building UI (JAR + needed jobs/candidate API) and Contact Estelle to the shared read-operative helper for pinned pilot `base_resume`; remove blob dotted-path reads for that pinned content on those paths. Does **not** persist seed artifact ids (traceability).
+
+## Citations
+
+`patt.artifact.read-operative`; `astral.standards.in-scope-only`; `astral.standards.debug-contract-gated`; `astral.layers.import-direction`
+
+## Scope
+
+`src/core/contact.py`; `src/ui/api/api_jobs.py` and/or `src/ui/api/api_candidate.py`; `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` (and any thin report helper already used for job artifact tabs)
+
+## Acceptance criteria
+
+- [X] 2. Contact Estelle uses the candidate pin→body helper for pinned historical answers.
+- [X] 3. Job artifact-building UI can render a pinned pilot `base_resume` through the server operative path; blob dotted-path reads for that pinned content on those surfaces are gone.
+- [X] 4. No grade/analysis pin writers; no new catalog keys; no read-current editor work; no coat-check retirement; no ordinary-save HTTP `artifact_id` field.
+
+## Boundaries
+
+- [X] After sibling #1. Does **not** own database by-uuid fetch, candidate helper, or `patt.artifacts.traceability` draft. Does **not** persist seed artifact ids.
+
+## Notes for planning
+
+Same read-operative path for UI and Contact. Pin provenance for derived job artifacts is traceability (OOS).
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1571-read-operative`, child `sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Delivery: **`origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve` @ `dc723224` (`merge-tests(AST-1585): origin/tests a35223c5`)
+
+**Bible (publish-ref shasum):**
+
+* `docs/test-bible/core/contact.md` · `4a6ed3358bda2b884d4235218cb3875453f22790`
+* `docs/test-bible/ui/api/api_candidate.md` · `4016dd150f80119f66a0ceffb5349be62a50ee7f`
+* `docs/test-bible/frontend/lib.md` · `0752287987d1ed09be6a74a942ce985a798e25a4`
+* `docs/test-bible/frontend/components.md` · `a49246680cbd375c787558b581ecbf4a25c322a6`
+
+**Tests (publish-ref shasum):**
+
+* `tests/component/core/test_contact.py` · `7add6b2842c30c7320e067970b3a9eda200b80c3`
+* `tests/component/ui/api/test_api_candidate.py` · `da5fc34c23c31a334ea6eb47286ad238c49aca39`
+* `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` · `f42fa903dc77ca50f612f8539d0b56493cf6d66a`
+* `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` · `3a95a4308cdfeac02c2ac6184e83a7a87c9c8383`
+
+1. Contact resolve/dispatch/raft: `tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume`
+2. Operative GET API: `tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi`
+3. Lib helpers: `tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — `--testNamePattern="AST-1585"`
+4. JAR Source panel: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1585"`
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1585ContactPinnedBaseResume \
+  tests/component/ui/api/test_api_candidate.py::TestAst1585OperativeBaseResumeApi \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1585"
+```
+
+### Comments
+
+#### radia — 2026-09-03T03:39:19.566Z
+[code-rubric] PROCEED (Commit: dc723224) Contact UI JAR wired
+
+#### betty — 2026-09-03T03:35:32.126Z
+`origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve` @ `dc723224` · tests delivered
+
+#### joan — 2026-09-03T03:26:13.539Z
+[plan-rubric] PROCEED (Commit: 0fcf6d4) UI+Contact operative wire
+
+#### katherine — 2026-09-03T03:24:05.408Z
+`origin/sub/AST-1571/AST-1585-ui-contact-pilot-base-resume-operative-resolve` @ `0fcf6d4dc3483f065ad89cd257f9fbedd8a2f0d3` · plan ready for Joan
+
+---
+
 # UI + Contact pilot base_resume operative resolve
 
 **Linear:** [AST-1585](https://linear.app/astralcareermatch/issue/AST-1585/ui-contact-pilot-base-resume-operative-resolve-implement)

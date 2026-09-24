@@ -6785,3 +6785,111 @@ class TestAst1773CheckUniqueRegistryAndCatalogs:
         assert rev["peer_id_response_key"] in tc["response_schema"]
         assert tc["response_schema"]["peer_meteorite_id"]["required"] is False
         assert tc["context_format"] == "review_duplicate_meteorite_{index}"
+
+
+# Branches: blank candidate token → empty_render; job ignored without entity_contexts;
+# chain never scored; job seam via entity_contexts; warn_on_empty=False quiet probe;
+# None/empty/non-str texts; first-seen order + dedupe; unknown + unscored sources skipped.
+class TestAst1779EmptyRenderForPrompts:
+    """AST-1779: empty_render_for_prompts + warn_on_empty on resolve_tokens."""
+
+    _TASK = "grade_get"
+
+    def test_blank_candidate_token_sets_empty_render(self) -> None:
+        # AC1 / plan Done-when: {$FIRST_NAME} with blank first → flag + token list.
+        out = cfg.empty_render_for_prompts(
+            ["Hello {$FIRST_NAME}"],
+            {"first": "", "full": ""},
+            self._TASK,
+        )
+        assert out == {"empty_render": True, "empty_tokens": ["FIRST_NAME"]}
+
+    def test_filled_candidate_ignores_blank_job_without_entity_contexts(self) -> None:
+        # AC3: non-empty candidate + {$VISIBLE_JD} with no job context → False.
+        out = cfg.empty_render_for_prompts(
+            ["Hi {$FIRST_NAME}", "JD={$VISIBLE_JD}"],
+            {"first": "Ada", "full": "Ada Lovelace"},
+            self._TASK,
+        )
+        assert out == {"empty_render": False, "empty_tokens": []}
+
+    def test_chain_only_never_scores(self) -> None:
+        # AC2: source:chain ignored even when chain would be blank.
+        out = cfg.empty_render_for_prompts(
+            ["{$CALLER_RESPONSE} {$CALLER_CACHE_A}"],
+            {"first": "Ada"},
+            self._TASK,
+        )
+        assert out == {"empty_render": False, "empty_tokens": []}
+
+    def test_job_seam_via_entity_contexts(self) -> None:
+        # AC2 extension seam: entity_contexts={"job": {}} scores VISIBLE_JD.
+        out = cfg.empty_render_for_prompts(
+            ["{$VISIBLE_JD}"],
+            {"first": "Ada"},
+            self._TASK,
+            entity_contexts={"job": {}},
+        )
+        assert out["empty_render"] is True
+        assert out["empty_tokens"] == ["VISIBLE_JD"]
+
+    def test_warn_on_empty_false_suppresses_empty_warning(self, caplog) -> None:
+        # Helper probe path + explicit quiet resolve — default still warns.
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            quiet = cfg.resolve_tokens(
+                "{$FIRST_NAME}",
+                {"first": "", "full": ""},
+                self._TASK,
+                warn_on_empty=False,
+            )
+            loud = cfg.resolve_tokens(
+                "{$FIRST_NAME}",
+                {"first": "", "full": ""},
+                self._TASK,
+            )
+            cfg.empty_render_for_prompts(
+                ["{$FIRST_NAME}"],
+                {"first": "", "full": ""},
+                self._TASK,
+            )
+        assert quiet == ""
+        assert loud == ""
+        warn_msgs = [r.message for r in caplog.records if "resolved to empty" in r.message]
+        # One WARNING from default resolve_tokens only — not the quiet call or helper.
+        assert len(warn_msgs) == 1
+        assert "FIRST_NAME" in warn_msgs[0]
+
+    def test_none_empty_and_non_str_texts_and_order(self) -> None:
+        # None texts / skips; first-seen order across segments; unknown left alone.
+        empty = cfg.empty_render_for_prompts(None, {"first": ""}, self._TASK)
+        assert empty == {"empty_render": False, "empty_tokens": []}
+        ordered = cfg.empty_render_for_prompts(
+            [
+                "",
+                None,  # type: ignore[list-item]
+                123,  # type: ignore[list-item]
+                "{$UNKNOWN_TOKEN} {$FIRST_NAME}",
+                "{$FULL_NAME} {$FIRST_NAME}",
+            ],
+            {"first": "", "full": ""},
+            self._TASK,
+        )
+        assert ordered == {
+            "empty_render": True,
+            "empty_tokens": ["FIRST_NAME", "FULL_NAME"],
+        }
+
+    def test_rubric_scored_only_via_entity_contexts(self) -> None:
+        # Non-job seam: rubric ignored by default; scored blank when key is in entity_contexts.
+        texts = ["{$GET_RUBRIC}"]
+        cd = {"first": "Ada"}  # no _astral_candidate_id → resolve ""
+        assert cfg.empty_render_for_prompts(texts, cd, self._TASK) == {
+            "empty_render": False,
+            "empty_tokens": [],
+        }
+        out = cfg.empty_render_for_prompts(
+            texts, cd, self._TASK, entity_contexts={"rubric": {}}
+        )
+        assert out == {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}

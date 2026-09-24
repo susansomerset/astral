@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1651 archived 2026-09-24 -->
+
+## Linear archive (AST-1651)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1651/catalog-plain-text-shape-reuse-priorities-token-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1641 — Migrate candidate_data.context.priorities to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1641; blocks: AST-1652
+
+### Description
+
+## What this implements
+
+Register `candidate.context.priorities` in `ARTIFACT_CONFIG` reusing the existing `plain_text` shape, flip `TOKEN_SOURCES["PRIORITIES"]` to artifact plus `artifact_key`, lock startup asserts (add key to closed set; remove from sibling-freeze-out list). Does not own UI or hydrate.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `stat.logging.info` / `stat.logging.debug` as touched
+
+## Scope
+
+`src/utils/config.py` — new catalog entry plus asserts; `TOKEN_SOURCES["PRIORITIES"]` flip.
+
+## Acceptance criteria
+
+- [X] **Catalog key present** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert 'candidate.context.priorities' in ARTIFACT_CONFIG"` exits 0.
+- [X] **plain_text shape reused** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert ARTIFACT_CONFIG['candidate.context.priorities']['body_shape']=='plain_text'"` exits 0.
+- [X] **Token is artifact-typed** — `python3 -c "from src.utils.config import TOKEN_SOURCES; s=TOKEN_SOURCES['PRIORITIES']; assert s['source_type']=='artifact' and s['artifact_key']=='candidate.context.priorities'"` exits 0.
+- [X] **Sibling freeze** — `ARTIFACT_CONFIG` has no deal_breakers/backstory/ideal_day/writing_preferences keys.
+
+## Boundaries
+
+- [X] Does not own UI, hydrate, API PUT intercept, or blob retirement (siblings). Does not migrate other context keys.
+
+## Notes for planning
+
+Citations as above. Reuses AST-1629 `plain_text` shape — no new shape entry.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1641-migrate-priorities-artifact-table`, child `sub/AST-1641/<this-id>-catalog-plain-text-priorities-token`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-15T23:11:04.143Z
+[code-rubric] PROCEED (Commit: 09ea76f5) config catalog token clean
+
+#### betty — 2026-09-15T23:07:23.588Z
+`origin/sub/AST-1641/AST-1651-catalog-plain-text-priorities-token` @ `09ea76f5` · priorities catalog tests
+
+#### joan — 2026-09-15T22:57:25.626Z
+[plan-rubric] PROCEED (Commit: 1e1b67943d96acb3c972238a396536d979cf837b) config-only faithful
+
+#### ada — 2026-09-15T22:55:00.618Z
+`origin/sub/AST-1641/AST-1651-catalog-plain-text-priorities-token` @ `1e1b67943d96acb3c972238a396536d979cf837b` · plan catalog ready
+
+---
+
 # Catalog + plain_text shape reuse + PRIORITIES token
 
 **Linear:** [AST-1651](https://linear.app/astralcareermatch/issue/AST-1651)

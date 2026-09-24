@@ -1,3 +1,85 @@
+<!-- linear-archive: AST-1656 archived 2026-09-24 -->
+
+## Linear archive (AST-1656)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1656/deal-breakers-contexttextpage-wire-up-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1642 — Migrate candidate_data.context.deal_breakers to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1642
+
+### Description
+
+## What this implements
+
+Retarget Deal Breakers-only UI load/save to the operative API contract via existing `ContextTextPage`. No ArtifactEditor. No sibling context pages. After #1 (and API hydrate from #2 as needed). Mirror AST-1634 guidelines.
+
+## Citations
+
+`patt.artifact.ui-consistency`; `patt.artifact.read-current`; `patt.artifact.write-operative`
+
+## Scope
+
+- [X] `src/ui/frontend/src/pages/CandidateDealBreakers.tsx` — Deal Breakers-only wire-up against existing ContextTextPage.
+
+## Acceptance criteria
+
+- [X] 6\. Editor reload — Deal Breakers page after save shows the same text.
+- [X] 7\. UI path — ContextTextPage (or thin wrapper); ArtifactEditor diff empty for this ticket.
+
+## Boundaries
+
+- [X] No ArtifactEditor. No sibling context pages. Does not modify ContextTextPage (already parameterized by AST-1629). After #1 / #2 as needed.
+
+## Notes for planning
+
+Mirror AST-1634. After #1 (and API hydrate from #2 as needed).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Routed Deal Breakers page (§6c): `tests/component/frontend/pages/test_CandidateDealBreakers.test.tsx` — pattern `AST-1656`
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern `AST-1634`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateDealBreakers.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1656|AST-1634"
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/frontend/pages.md` — `61520bf945c80b6bbb5892b8e16c8588162a57cb`
+
+### Comments
+
+#### katherine — 2026-09-15T23:55:29.908Z
+`origin/sub/AST-1642/AST-1656-deal-breakers-contexttextpage-wire-up` @ `3ee1f971` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-09-15T23:53:55.219Z
+[code-rubric] PROCEED (Commit: 94628618) ContextTextPage wire clean
+
+#### betty — 2026-09-15T23:51:51.335Z
+`origin/sub/AST-1642/AST-1656-deal-breakers-contexttextpage-wire-up` @ `9462861853341ea4135479c0017f03e3451c4332` · Deal Breakers page tests
+
+#### betty — 2026-09-15T23:51:40.288Z
+@ `9462861853341ea4135479c0017f03e3451c4332` · Deal Breakers page tests
+
+#### joan — 2026-09-15T23:46:51.207Z
+[plan-rubric] PROCEED (Commit: 667eceb71272ec99d7a8b5fe0dd00c53aa9d5c32) plain_text bodyShape wire-up
+
+#### katherine — 2026-09-15T23:45:26.524Z
+`origin/sub/AST-1642/AST-1656-deal-breakers-contexttextpage-wire-up` @ `667eceb71272ec99d7a8b5fe0dd00c53aa9d5c32` · plan ready
+
+---
+
 # Deal Breakers ContextTextPage wire-up
 
 **Linear:** [AST-1656](https://linear.app/astralcareermatch/issue/AST-1656)

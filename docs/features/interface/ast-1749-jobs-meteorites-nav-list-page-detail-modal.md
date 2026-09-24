@@ -1,3 +1,94 @@
+<!-- linear-archive: AST-1749 archived 2026-09-24 -->
+
+## Linear archive (AST-1749)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1749/jobs-meteorites-nav-list-page-and-detail-modal-add-meteorites-to-the  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1741 — Add "Meteorites" to the Jobs navigation  
+**Blocked by / blocks / related:** parent: AST-1741
+
+### Description
+
+## What this implements
+
+Owns Jobs → Meteorites in `NAV_CONFIG`, matching route, list page for the selected candidate, and read-only detail modal (content + metadata + link/deeplink honesty). Consumes sibling APIs only. Does **not** own database helpers or land/create. Does **not** change Companies → Meteorite.
+
+## Citations
+
+`stat.logging.info.api`; `stat.logging.debug`; `stat.logging.error` (honor API contracts; no new API routes)
+
+## Scope
+
+`src/utils/config.py` (modified — Jobs → Meteorites `NAV_CONFIG` item; path SYNC with routes); `src/ui/frontend/src/routes.tsx` (modified — Jobs Meteorites route); `src/ui/frontend/src/pages/JobsMeteorites.tsx` (new — candidate-scoped list); `src/ui/frontend/src/components/MeteoriteDetailModal.tsx` (new — read-only modal); `src/ui/frontend/src/App.css` (modified only if needed)
+
+## Acceptance criteria
+
+- [X] **Nav item present.** `GET /api/nav_config` (authenticated) includes Jobs item label `Meteorites` with an enabled path under `/jobs/` that matches a `routes.tsx` entry. Fail: missing item, `enabled: false`, or path with no matching route.
+- [X] **List scoped to selected candidate.** On `/jobs/meteorites` with candidate A selected, every listed row’s `candidate_id` equals A; switching to candidate B refetches and does not keep A’s rows. Fail: rows for another candidate appear, or stale A rows remain after B is selected.
+- [X] **Empty honesty.** Candidate with zero meteorite rows shows an empty list (no placeholder fake rows). Fail: fabricated rows or a hard error instead of empty.
+- [X] **Modal content + metadata.** Clicking a list row opens a modal that shows that row’s `content` and at least `state`, timestamps (`created_at` / `updated_at` / `state_changed_at`), `link`, `classify_outcome`, and provenance (`id`, `source_kind`, `source_id`) when present on the row. Fail: modal missing for a listed row, or content/metadata blank when the API row has non-null values.
+- [X] **Link honesty.** When `link` starts with `http://` or `https://` (after trim), the modal exposes a navigable href; otherwise plain text. Fail: bare/non-http link rendered as href, or http(s) link not clickable.
+- [X] **Job deeplink gate.** When `astral_job_id` is non-empty, modal offers navigation to `/jobs/detail/<astral_job_id>`; when null/blank, that control is absent. Fail: deeplink shown with blank id, or missing when id is set.
+- [X] **Read-only.** Grep/UI: the Meteorites page and modal do not call land / qualify / meteorite state-update / paste endpoints. Fail: any such mutating call wired from this page.
+- [X] **Companies Meteorite untouched.** `NAV_CONFIG` still has Companies → Meteorite at `/companies/meteorite_list`; that page still lists companies (not staging rows). Fail: Companies item removed/renamed as part of this epic, or that route converted to staging-row list.
+
+## Boundaries
+
+- [X] Does not own database helpers or land/create. Does not change Companies → Meteorite. After sibling API child.
+
+## Notes for planning
+
+Estimate 3. After #1.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1741-add-meteorites-jobs-nav`, child `sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Page (§6c): `tests/component/frontend/pages/test_JobsMeteorites.test.tsx`
+2. Modal: `tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx`
+3. Nav config: `tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav`
+4. Route: `tests/component/frontend/test_routes.test.tsx` (`jobs/meteorites`)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsMeteorites.test.tsx \
+  ../../../tests/component/frontend/components/test_MeteoriteDetailModal.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1749JobsMeteoritesNav \
+  -q
+```
+
+**Bible shasum** (`origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal`):
+
+* `docs/test-bible/frontend/pages.md` — `4e45ad1f7a2d9787290b162eadd8cee518bf274c`
+* `docs/test-bible/frontend/components.md` — `44902727a3a455f18a99508c8fc0c3cca6dda74d`
+* `docs/test-bible/utils/config.md` — `512a5d647264dd10b07c1c28355c0b48196f6a84`
+
+**Publish:** `origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal` @ `1306049d` (`merge-tests(AST-1749): origin/tests d25ed3b1`)
+
+### Comments
+
+#### radia — 2026-09-21T01:51:11.981Z
+[code-rubric] PROCEED (Commit: 1306049d829c0d90f6eebe9bfdc5d8c7d12d472c) Jobs Meteorites UI clean
+
+#### betty — 2026-09-21T01:48:28.246Z
+`origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal` @ `1306049d` · page/modal tests ready
+
+#### joan — 2026-09-21T01:41:42.131Z
+[plan-rubric] PROCEED (Commit: a506737b49189cec7996366f07f3dd803bf41a12) UI plan faithful
+
+#### katherine — 2026-09-21T01:39:49.528Z
+`origin/sub/AST-1741/AST-1749-jobs-meteorites-nav-list-page-detail-modal` @ `a506737b` · plan ready
+
+---
+
 # AST-1749 — Jobs Meteorites nav, list page, and detail modal
 
 **Linear:** [AST-1749](https://linear.app/astralcareermatch/issue/AST-1749/jobs-meteorites-nav-list-page-and-detail-modal-add-meteorites-to-the)  

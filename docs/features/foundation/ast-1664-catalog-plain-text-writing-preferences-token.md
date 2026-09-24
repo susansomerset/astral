@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1664 archived 2026-09-24 -->
+
+## Linear archive (AST-1664)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1664/catalog-plain-text-shape-reuse-writing-preferences-token-migrate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1645; blocks: AST-1665
+
+### Description
+
+## What this implements
+
+Register `candidate.context.writing_preferences` in `ARTIFACT_CONFIG` reusing the existing `plain_text` shape, flip `TOKEN_SOURCES["WRITING_PREFERENCES"]` to artifact plus `artifact_key`, lock startup asserts (add key to closed set; remove from sibling-freeze-out list). Does not own UI or hydrate.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `stat.logging.info` / `stat.logging.debug` as touched
+
+## Scope
+
+`src/utils/config.py` — new catalog entry plus asserts; `TOKEN_SOURCES["WRITING_PREFERENCES"]` flip.
+
+## Acceptance criteria
+
+- [X] 1\. Catalog key present — assert `candidate.context.writing_preferences` in ARTIFACT_CONFIG.
+- [X] 2\. plain_text shape reused — body_shape == plain_text.
+- [X] 3\. Token is artifact-typed — WRITING_PREFERENCES source_type artifact + artifact_key.
+- [X] 4\. Sibling freeze — `backstory` / `ideal_day` remain absent; `writing_preferences` removed from freeze-out (priorities/deal_breakers/bio_summary already cataloged by their own epics — not asserted absent).
+
+## Boundaries
+
+- [X] Does not own UI or hydrate (siblings #2/#3). No other context leaves.
+
+## Notes for planning
+
+Citations as above. Copy AST-1629 Strengths catalog path; remove writing_preferences from sibling-freeze-out list.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T00:26:04.911Z
+[code-rubric] PROCEED (Commit: 99067f07) config catalog clean
+
+#### betty — 2026-09-16T00:21:26.844Z
+`origin/sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token` @ `99067f07` · catalog WP token tests
+
+#### joan — 2026-09-16T00:13:01.138Z
+[plan-rubric] PROCEED (Commit: 1beaa024e0fbe2db1a5922510df96930f99fca6e) Writing Preferences catalog plan
+
+#### ada — 2026-09-16T00:11:00.254Z
+`origin/sub/AST-1645/AST-1664-catalog-plain-text-writing-preferences-token` @ `1beaa024e0fbe2db1a5922510df96930f99fca6e` · plan ready
+
+---
+
 # Catalog + plain_text shape reuse + WRITING_PREFERENCES token
 
 **Linear:** [AST-1664](https://linear.app/astralcareermatch/issue/AST-1664)

@@ -1,3 +1,88 @@
+<!-- linear-archive: AST-1704 archived 2026-09-24 -->
+
+## Linear archive (AST-1704)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1704/track-routing-job-detail-jobs-api-consumers-job-source-entity-parent  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1640 — Job source_entity parent (meteorite|company) + candidate-facing link  
+**Blocked by / blocks / related:** parent: AST-1640
+
+### Description
+
+## What this implements
+
+Rewires qualify/consult/gazer so track follows `source_entity_type`; gazed ingest writes company parent fields; jobs API + Job Detail show inherited `job_link` with http(s)-only href.
+
+## Citations
+
+`patt.entity.batch-criteria`, `stat.logging.debug`.
+
+## Scope
+
+- [X] `src/core/consult.py` — qualify / land-packet / track selection uses `source_entity_type` so meteorite+`company_id` stays on meteorite GDL.
+- [X] `src/core/gazer.py` and/or `src/core/tracker.py` gazed ingest — gazed creates set `source_entity_type=company`, `source_entity_id=short_name`, `company_id` to that employer when known.
+- [X] `src/ui/api/api_jobs.py` — expose parent fields, nullable `company_id`, and `job_link` (inherited) for detail.
+- [X] `src/ui/frontend/src/pages/JobsJobDetail.tsx` — deeplink host for Job Detail (prefetch/mount only).
+- [X] `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`, `src/ui/frontend/src/components/RecommendedJobReportHeader.tsx`, and `src/ui/frontend/src/components/JobDetailModal.tsx` — show inherited `job_link` text; “open listing” / title / Link-row href only when `http(s)` (non-http text still shown; no new meteorite pages).
+- [X] Technical: `consult` / consumers — track from `source_entity_type` (or single config helper), not company state `METEORITE` and not legacy `source == "meteorite"` meaning. `gazer` create — company parent + `company_id` for gazed employer. `api_jobs` + Job Detail FE — serialize fields; href only for http(s) `job_link`.
+
+## Acceptance criteria
+
+- [X] 4\. A meteorite-parented job with real `company_id` is claimed/run by `qualify_meteorite`, not gazed title-pattern fail-early. Fail: track flips to gazed solely because `company_id` is set.
+- [X] 5\. Job Detail “open listing” is a navigable href only when `job.job_link` starts with `http://` or `https://`; non-http inherited text is still shown as text. Fail: breadcrumb/`email-` token used as href, or non-http `job_link` hidden with no text surface.
+- [X] 6\. Track/parent selection paths use `source_entity_type` (or its config helper), not legacy `source == "meteorite"` / company state `METEORITE` as SoT. Fail: qualify/gazer still keys off the old flag meaning.
+
+## Boundaries
+
+- [X] Does not own schema migration (#1) or land create (#2). After #2.
+
+## Notes for planning
+
+Estimate 3. After #2.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1640-job-source-entity-parent`, child `sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-17T01:54:02.619Z
+[code-rubric] PROCEED (Commit: 211e9e01) track routing consumers clean
+
+#### betty — 2026-09-17T01:51:24.770Z
+`origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers` @ `211e9e013c3a65b6ede67652d41f87a19968491b` · track + href coverage
+
+#### joan — 2026-09-17T01:39:15.790Z
+[plan-rubric] PROCEED (Commit: 9c8158e) track routing Job Detail clear
+
+#### ada — 2026-09-17T01:37:06.227Z
+`origin/sub/AST-1640/AST-1704-track-routing-job-detail-jobs-api-consumers` @ `9c8158e7ffddd1452815fc6da373e8c5b5b8ef78` · plan ready
+
+#### chuckles — 2026-09-17T01:35:18.771Z
+[scope-gate] cleared — Scope amended on AST-1704 + parent Component/Technical/#4 partition.
+
+Named Job Detail link surfaces: `JobAnalysisReportModal.tsx`, `RecommendedJobReportHeader.tsx`, `JobDetailModal.tsx` (JobsJobDetail remains deeplink host). AC5 unchanged — http(s)-only href; non-http text still shown. Re-spawning plan-child.
+
+#### ada — 2026-09-17T01:34:00.298Z
+[scope-gate] AST-1704 cannot satisfy AC5 within declared ## Scope alone.
+
+Need: frontend surfaces that render Job Detail “open listing” / job_link as an href — at minimum `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` and `src/ui/frontend/src/components/RecommendedJobReportHeader.tsx` (title link / window.open on job_link), and likely `src/ui/frontend/src/components/JobDetailModal.tsx` (always `<a href={job.job_link}>` for the Link row).
+
+Quoted Scope (frontend only):
+`src/ui/frontend/src/pages/JobsJobDetail.tsx` — show inherited `job_link` text; “open listing” href only when `http(s)` (no new meteorite pages).
+
+Why blocked: `JobsJobDetail.tsx` is a deeplink host — it prefetches company for candidate align and mounts `JobAnalysisReportModal`; it does not render job_link chrome. AC5 Fail (“breadcrumb/email- token used as href”) is produced by the modal/header components above, which are not named in this child’s Scope. Adding them here would be scope invention.
+
+Also needed for AC4/AC6 consumers already in Scope (`consult.py` track partition, `gazer.py`/`tracker.py` gazed create, `api_jobs.py` serialize) — those are covered. Only the FE href surface is missing.
+
+@Chuckles — please amend AST-1704 ## Scope (and parent Component partition if needed) to name the Job Detail link surfaces, then re-spawn plan-child.
+
+---
+
 # AST-1704 — Track routing + Job Detail / jobs API consumers
 
 **Linear:** [AST-1704](https://linear.app/astralcareermatch/issue/AST-1704/track-routing-job-detail-jobs-api-consumers)  

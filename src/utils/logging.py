@@ -71,6 +71,9 @@ DEBUG_DETAIL_PREFIX = " | "  # two spaces, pipe, two spaces — working-log deta
 DEBUG_LINE_THRESHOLD = 50
 DEBUG_HEAD_LINES = 15
 DEBUG_TAIL_LINES = 15
+DEBUG_STRING_HEAD_CHARS = 1000
+DEBUG_STRING_TAIL_CHARS = 1000
+DEBUG_STRING_THRESHOLD = DEBUG_STRING_HEAD_CHARS + DEBUG_STRING_TAIL_CHARS
 
 
 def _on_railway() -> bool:
@@ -97,11 +100,24 @@ class _RailwayJsonFormatter(logging.Formatter):
 _RAILWAY_JSON_FORMATTER = _RailwayJsonFormatter()
 
 
+def truncate_debug_string(text: str) -> str:
+    """Cap debug string blobs — first 1k + last 1k chars when over 2k total."""
+    if not text or len(text) <= DEBUG_STRING_THRESHOLD:
+        return text
+    omitted = len(text) - DEBUG_STRING_THRESHOLD
+    return (
+        f"{text[:DEBUG_STRING_HEAD_CHARS]}"
+        f"<{omitted} chars omitted>"
+        f"{text[-DEBUG_STRING_TAIL_CHARS:]}"
+    )
+
+
 def truncate_debug_content(text: str) -> list[str]:
     """Split text into lines; omit middle when over DEBUG_LINE_THRESHOLD lines.
 
     Callers should pass normalized text; splitlines() drops a terminal empty line.
     """
+    text = truncate_debug_string(text)
     lines = text.splitlines()
     if not lines:
         return []
@@ -298,6 +314,24 @@ class _PrefixedLogger:
         """Match stdlib logging.Logger API — used for cheap guards before expensive debug work."""
         return self._logger.isEnabledFor(level)
 
+    def _truncate_debug_args(self, args: tuple[Any, ...]) -> tuple[Any, ...]:
+        out: list[Any] = []
+        for value in args:
+            if isinstance(value, str):
+                out.append(truncate_debug_string(value))
+            elif isinstance(value, (dict, list, tuple)):
+                try:
+                    out.append(
+                        truncate_debug_string(
+                            json.dumps(value, ensure_ascii=False, default=repr)
+                        )
+                    )
+                except Exception:
+                    out.append(truncate_debug_string(repr(value)))
+            else:
+                out.append(value)
+        return tuple(out)
+
     def debug(self, message: str, *args, **kwargs):
         """Always-call debug. Emits `{lineno}: {message}` only when `log_debug` is true."""
         if not log_debug.get():
@@ -307,7 +341,8 @@ class _PrefixedLogger:
         # left logger.debug() a no-op even when log_debug was true.
         if self._logger.getEffectiveLevel() > logging.DEBUG:
             self._logger.setLevel(logging.DEBUG)
-        self._logger.debug("%s: " + str(message), lineno, *args, **kwargs)
+        safe_args = self._truncate_debug_args(args)
+        self._logger.debug("%s: " + str(message), lineno, *safe_args, **kwargs)
 
     def test(self, message: str):
         """Test logging - uses DEBUG level but only when debug flag is set.
@@ -345,7 +380,7 @@ class _PrefixedLogger:
         """Emit working detail line with DEBUG_DETAIL_PREFIX when debug_flag is True."""
         if not self._debug_flag:
             return
-        self._logger.debug(f"{DEBUG_DETAIL_PREFIX}{message}")
+        self._logger.debug(f"{DEBUG_DETAIL_PREFIX}{truncate_debug_string(message)}")
 
     def debug_detail_block(self, text: str) -> None:
         """Emit truncated multiline detail via debug_detail."""

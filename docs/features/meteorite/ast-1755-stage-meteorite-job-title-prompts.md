@@ -1,3 +1,90 @@
+<!-- linear-archive: AST-1755 archived 2026-09-24 -->
+
+## Linear archive (AST-1755)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1755/stage-meteorite-job-title-prompts-stage-email-meteorite-enhancements  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1753 — stage_email_meteorite enhancements  
+**Blocked by / blocks / related:** parent: AST-1753; blocks: AST-1757
+
+### Description
+
+## What this implements
+
+Teach `stage_meteorite` agent_task prompts to return optional `job_title` (prefer email subject when it names the role; omit when unknown; never invent). Do not embed `$RESPONSE_SCHEMA`. Does not own stage content fallback or land → job wiring (siblings #2–#3). Confirm optional `job_title` remains on TASK_CONFIG schema (already present — no schema invention).
+
+## Citations
+
+`patt.task.daisy-chain` (title must be askable at stage so the row can carry it); `stat.logging.debug` / `stat.logging.info.entity` id-only (no logging edits in this child).
+
+## Scope
+
+`data/admin/agent_task.json` — **modified** — `stage_meteorite` cache/user prompts instruct optional `job_title` (subject-prefer); do not add `$RESPONSE_SCHEMA`. Technical: update `stage_meteorite` prompt text so each landable jobs item may include optional `job_title`, preferring subject-line titles when present; keep the six closed outcomes and existing electronic-contact / breadcrumb instructions; leave `$RESPONSE_SCHEMA` absent from those prompts.
+
+## Acceptance criteria
+
+- [X] `rg -n 'job_title' data/admin/agent_task.json` shows `stage_meteorite` prompt text instructing optional job title / subject preference. Fail if only unrelated tasks mention `job_title`, or if `stage_meteorite` prompts still never name the field.
+- [X] `rg -n '\$RESPONSE_SCHEMA' data/admin/agent_task.json` shows no match inside the `stage_meteorite` prompt fields (cache_prompt / user_prompt / nocache_prompt). Fail if `$RESPONSE_SCHEMA` was added to that task's prompts.
+- [X] `python3 -c 'from src.utils.config import TASK_CONFIG; s=TASK_CONFIG["stage_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_title"]; assert s.get("required") is False'` exits 0. Fail if `job_title` is missing or required.
+- [X] After a landable stage that returns `job_title` "Senior Widget Engineer" on a jobs item, the meteorite row's `job_title` column is that string (existing stage map). Fail if the column stays NULL while Ruth returned the field.
+
+## Boundaries
+
+- [X] Does not own stage content fallback when `jd_text` is blank (sibling #2).
+- [X] Does not own land → job `job_title` wiring (sibling #3).
+- [X] Does not change the six closed outcomes.
+
+## Notes for planning
+
+Citations: `patt.task.daisy-chain`; logging statutes id-only. Schema field already optional — confirm, do not invent.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1753-stage-email-meteorite-enhancements`, child `sub/AST-1753/<this-id>-stage-meteorite-job-title-prompts`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Job-title prompts + fixture twin: `tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts`
+2. Prior catalog + fixture lockstep: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow`
+3. Whole-file fixture identity: `tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog`
+4. Schema confirm optional `job_title`: `tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig`
+5. Stage→row title persist (AC4): `tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog::test_fixture_byte_identical_to_catalog \
+  tests/component/utils/test_config.py::TestAst1529StageMeteoriteConfig \
+  tests/component/core/test_meteorite.py::TestAst1713StageSavesRuthRow::test_scrape_link_http_and_ruth_fields \
+  -q
+```
+
+**Bible shasum:** `docs/test-bible/core/repo_admin_json.md` → `35d381937603c4b9e7f7e69a584a3c48abe90d47`
+
+### Comments
+
+#### ada — 2026-09-21T20:26:08.943Z
+`origin/sub/AST-1753/AST-1755-stage-meteorite-job-title-prompts` @ `e2cf11e3b693a17e1f7d1924f1d80b05b4fad15f` · §9a clean · ftr dry-run clean
+
+#### radia — 2026-09-21T20:23:32.988Z
+[code-rubric] PROCEED (Commit: 8a338003) job_title prompts clean
+
+#### betty — 2026-09-21T20:20:18.824Z
+`origin/sub/AST-1753/AST-1755-stage-meteorite-job-title-prompts` @ `8a33800380d51d618efaba96c549f9b4ce4b5511` · job_title prompts ready
+
+#### joan — 2026-09-21T20:08:01.698Z
+[plan-rubric] PROCEED (Commit: 6e0c12f24581ec372a9ba159d6009a0e3566df1b) Prompt-only job_title ask
+
+#### ada — 2026-09-21T20:05:42.655Z
+`origin/sub/AST-1753/AST-1755-stage-meteorite-job-title-prompts` @ `6e0c12f24581ec372a9ba159d6009a0e3566df1b` · plan ready
+
+---
+
 # AST-1755 — stage_meteorite job_title prompts
 
 **Linear:** [AST-1755](https://linear.app/astralcareermatch/issue/AST-1755/stage-meteorite-job-title-prompts-stage-email-meteorite-enhancements)  

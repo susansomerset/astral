@@ -78,18 +78,20 @@ def meteorite_mailbox_trigger_allows(task: Dict[str, Any]) -> bool:
 
 
 def _is_meteorite_ingress_transition_task_key(task_key: str) -> bool:
-    """True for table transition runners (AST-1560) — not Ruth classify / consult hop."""
+    """True for table transition runners (AST-1560 / AST-1774) — not Ruth classify / consult hop."""
     tk = (task_key or "").strip()
     return tk in (
         METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"],
         METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"],
+        METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"],
         METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"],
     )
 
 
 def _meteorite_ingress_runner(task_key: str):
-    """Table transition runner for stage/scrape/land (late import keeps meteorite off module-top)."""
+    """Table transition runner for stage/scrape/check_unique/land (late import keeps meteorite off module-top)."""
     from src.core.meteorite import (
+        run_check_unique_meteorite,
         run_land_meteorite,
         run_scrape_meteorite,
         run_stage_meteorite,
@@ -97,6 +99,7 @@ def _meteorite_ingress_runner(task_key: str):
     return {
         METEORITE_INGRESS_DISPATCH_CONFIG["stage_task_key"]: run_stage_meteorite,
         METEORITE_INGRESS_DISPATCH_CONFIG["scrape_task_key"]: run_scrape_meteorite,
+        METEORITE_INGRESS_DISPATCH_CONFIG["check_unique_task_key"]: run_check_unique_meteorite,
         METEORITE_INGRESS_DISPATCH_CONFIG["land_task_key"]: run_land_meteorite,
     }[task_key]
 
@@ -311,10 +314,10 @@ def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
 
 
 def ensure_meteorite_ingress_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
-    """Idempotent per-candidate insert of stage/scrape/land/notify meteorite rows.
+    """Idempotent per-candidate insert of stage/scrape/check_unique/land/notify meteorite rows.
 
-    stat.dispatch.entity-state-bound: these 4 task_keys were a single shared
-    NULL-candidate_id pool row each (AST-1560/1561); now bound per-candidate like
+    stat.dispatch.entity-state-bound: these task_keys were a single shared
+    NULL-candidate_id pool row each (AST-1560/1561/1774); now bound per-candidate like
     job/company so an inactive candidate's rows stop firing.
     """
     cid = str(candidate_id or "").strip()
@@ -328,6 +331,7 @@ def ensure_meteorite_ingress_dispatch_tasks(candidate_id: str) -> Dict[str, Any]
     entries = (
         (ingress["stage_task_key"], ingress["stage_trigger_state"], ingress["batch_size"]),
         (ingress["scrape_task_key"], ingress["scrape_trigger_state"], ingress["batch_size"]),
+        (ingress["check_unique_task_key"], ingress["check_unique_trigger_state"], ingress["batch_size"]),
         (ingress["land_task_key"], ingress["land_trigger_state"], ingress["batch_size"]),
         (
             METEORITE_BOT_BLOCKED_NOTIFY_CONFIG["task_key"],

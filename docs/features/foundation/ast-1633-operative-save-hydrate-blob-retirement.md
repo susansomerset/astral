@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1633 archived 2026-09-24 -->
+
+## Linear archive (AST-1633)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1633/operative-save-hydrate-blob-retirement-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1629 — Migrate candidate_data.context.strengths to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1629; blocks: AST-1634
+
+### Description
+
+## What this implements
+
+Wire Strengths through candidate operative `plain_text` validation + `get_candidate_current` hydrate on GET; intercept API PUT for operative save; stop durable library SoT writes for `context.strengths`. No backfill helper. Does not own React chrome. After catalog sibling.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.in-scope-only`; `stat.logging.info.entity`; `stat.logging.info.api`; `stat.logging.error`
+
+## Scope
+
+`src/core/candidate.py` — operative validation for `plain_text`; hydrate overlay; gate library merge for `context.strengths`. `src/ui/api/api_candidate.py` — PUT intercept + GET hydrate for Strengths.
+
+## Acceptance criteria
+
+- [X] 4\. **Operative round-trip** — Save Strengths via Strengths UI/API; `database.get_current_artifact('candidate', <id>, 'strengths')` returns matching string; second save new uuid + retire prior current.
+- [X] 5\. **Blob not SoT on write** — Successful Strengths save calls operative `save_artifact`; does not rely on library-merge alone.
+- [X] 6\. **No backfill required** — No bulk migrate-all; legacy blob until re-save.
+- [X] 7\. **Sibling freeze** — no other context keys in `ARTIFACT_CONFIG`.
+
+## Boundaries
+
+- [X] Does not own catalog/token registration (sibling Ada). Does not own React ContextTextPage (sibling Katherine). No legacy blob backfill.
+
+## Notes for planning
+
+After catalog sibling. Logging statutes on touched entity/api paths.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1629-migrate-strengths-artifact-table`, child `sub/AST-1629/<this-id>-operative-save-hydrate-blob-retirement`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-14T23:51:45.702Z
+[code-rubric] PROCEED (Commit: 4f4475e9ac55) operative save clean
+
+#### betty — 2026-09-14T23:48:56.444Z
+origin/sub/AST-1629/AST-1633-operative-save-hydrate-blob-retirement @ 4f4475e9 · strengths operative tests
+
+#### joan — 2026-09-14T23:41:44.298Z
+[plan-rubric] PROCEED (Commit: 797e0cd5) operative hydrate path clean
+
+#### hedy — 2026-09-14T23:39:29.711Z
+`origin/sub/AST-1629/AST-1633-operative-save-hydrate-blob-retirement` @ `797e0cd5195ab2c9eb7a20ce694b44db599b3189` · plan ready
+
+---
+
 # Operative save, hydrate, blob retirement
 
 **Linear:** [AST-1633](https://linear.app/astralcareermatch/issue/AST-1633)
