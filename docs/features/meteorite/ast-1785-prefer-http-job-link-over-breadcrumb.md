@@ -159,3 +159,77 @@ context_tokens≈30000
 | 1 | `6d8458b3` | Text-outcome mapper prefers http(s) `job_link` over breadcrumb; `stage_meteorite` / `run_stage_meteorite` route http link → `SCRAPE_LINK` |
 
 **Betty note:** Map + state path only in `src/core/meteorite.py`. Prompts/fixture are **AST-1784**. AC4–AC7 shapes verified via mapper unit calls in build; no test-tree edits.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1785  
+**Publish ref:** `00951bdd28309c989d50b55a68d7b51cc504357d` (`origin/sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb`)  
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.info.entity | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan: `patt.task.daisy-chain` A, `stat.logging.debug` A, `stat.logging.info.entity` A; same on diff review.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** `origin/dev...origin/sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb` (full three-dot diff)  
+  **Finding:** Product commit `6d8458b3` is correctly scoped to `src/core/meteorite.py` only. The publish tip also carries sibling **AST-1784** catalog/fixture deltas (`data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json`) and epic doc history via `sync(ftr)` / merged sub history — out of AST-1785 scope gate but expected on a shared epic publish ref.  
+  **Recommendation:** Accept as epic-branch side effect; score AST-1785 product on `meteorite.py` delta vs `origin/dev` (39 lines). Do not attribute prompt edits to this ticket.
+
+- **Location:** Issue doc `## UAT fitness` / plan Stage 1 vs `src/core/meteorite.py` `run_stage_meteorite` text arm  
+  **Finding:** Plan and UAT fitness still say breadcrumb text rows end in `READY`. On `origin/dev` (and this tip after `sync(dev)`), the non-http text arm already transitions to `CHECK_UNIQUE` — AST-1785 only inserts the http branch before that existing path (`# AST-1785: http link on a text outcome → SCRAPE_LINK (not CHECK_UNIQUE)`). Breadcrumb `link` preservation (AC6) is correct; state-name wording in the plan doc is stale relative to live dispatch, not introduced by this diff.  
+  **Recommendation:** Optional parent-doc tidy for Archie; no `resolve-child` code change required.
+
+- **Location:** `src/core/meteorite.py` `stage_meteorite` post-map loop  
+  **Finding:** Text rows without http `link` still insert with `state="READY"` at map time; `run_stage_meteorite` later promotes breadcrumb email rows to `CHECK_UNIQUE`. Http-linked text rows correctly insert and run as `SCRAPE_LINK` at both stages. Pre-existing two-hop state shape; AST-1785 does not regress it.  
+  **Recommendation:** None for this ticket.
+
+### advisory
+
+- **Location:** `tests/component/core/test_meteorite.py::TestAst1785PreferHttpJobLinkOverBreadcrumb`  
+  **Finding:** Betty landed five tests covering mapper prefer/breadcrumb/URL-outcome, `stage_meteorite` integration (AC4 shape: http `link` + `SCRAPE_LINK` + `job_title`), and `run_stage_meteorite` http routing — matches plan AC4–AC7 intent. Breadcrumb test asserts `link` shape only, not terminal `state` (consistent with CHECK_UNIQUE evolution above).  
+  **Recommendation:** None.
+
+- **Location:** `merge-tests` (`ce8d411b`) on publish ref  
+  **Finding:** Also carries prior epic test/bible artifacts (`test_repo_admin_json.py`, `test_consult.py`, `test_debug_logging.py` deletions, etc.) beyond AST-1785’s `test_meteorite.py` + bible node. Same parallel-test pattern as AST-1784.  
+  **Recommendation:** Run Betty’s AST-1785 manifest only on this tip.
+
+## What's solid
+
+- **`_map_classify_jobs_to_meteorite_rows` text branch:** reads `job_link` before `_email_breadcrumb_link`; http(s) wins with `logger.debug("Preferring http job_link over breadcrumb: %s", link)`; email breadcrumb path unchanged when no http `job_link` (AC6).
+- **`_is_http_url` relocated** above mapper; URL-outcome branch reuses shared predicate — no second HTML parser, no `source_ref` synthesis.
+- **`stage_meteorite` post-map:** per-row `state` from final `link` scheme — http → `SCRAPE_LINK`, text-without-http → `READY`, URL outcomes → `SCRAPE_LINK`; `job_title` / `employer_name` post-map untouched.
+- **`run_stage_meteorite` text arm:** http `link` → `SCRAPE_LINK` + existing `_meteorite_state_info`; breadcrumb email rows still error on missing link; non-http falls through to existing `CHECK_UNIQUE` path on dev.
+- **`patt.task.daisy-chain`:** consumes Ruth-returned `job_link` / optional title at map time on the same row — no parallel harvester.
+- **`stat.logging.debug`:** one ungated `logger.debug` at the preference joint; no `print`, no `logger.info("[DEBUG] …")`.
+- **`stat.logging.info.entity`:** reuses existing `_meteorite_state_info` for state transitions only — no new linked-title-specific entity info spam (Canon Scope id-only honored).
+- **Boundaries:** no `agent_task` / fixture / config edits in `6d8458b3`; URL-outcome branch behavior preserved (AC7).
+- **Tests Passed gate:** `TestAst1785PreferHttpJobLinkOverBreadcrumb` exercises the three plan touchpoints.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append this artifact to `docs/features/meteorite/ast-1785-prefer-http-job-link-over-breadcrumb.md`; commit `docs(AST-1785): Radia review — clean`; push.
+2. Post slim upshot via `linear_proxy --as radia save-comment`; move to **Review Posted**.
+3. datt §3h: **PROCEED** → **User Testing** (no `resolve-child` fix-now items).
+4. Optional downstream: parent UAT fitness READY → CHECK_UNIQUE wording tidy (Archie/doc lane, not blocking).
