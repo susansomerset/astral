@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1660 archived 2026-09-24 -->
+
+## Linear archive (AST-1660)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1660/ideal-day-contexttextpage-wire-up-migrate-candidate-datacontextideal  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1643
+
+### Description
+
+## What this implements
+
+Retarget Ideal Day-only UI load/save to the operative API contract via existing `ContextTextPage`. No ArtifactEditor. No sibling context pages. After #1 (and API hydrate from #2 as needed).
+
+## Citations
+
+`patt.artifact.ui-consistency`; `patt.artifact.read-current`; `patt.artifact.write-operative`
+
+## Scope
+
+`src/ui/frontend/src/pages/CandidateIdealDay.tsx` — Ideal Day-only wire-up against existing ContextTextPage.
+
+## Acceptance criteria
+
+- [X] **Editor reload** — Ideal Day page after save shows the same text.
+- [X] **UI path** — Ideal Day still uses ContextTextPage; `ArtifactEditor` diff for this ticket is empty.
+
+## Boundaries
+
+- [X] Does not own catalog (#1) or core/API hydrate (#2). Does not touch ContextTextPage.tsx wiring (already from AST-1629).
+
+## Notes for planning
+
+Citations as above. After #1; API hydrate from #2 as needed.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1643-migrate-ideal-day-artifact-table`, child `sub/AST-1643/<this-id>-ideal-day-contexttextpage-wire-up`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T00:28:14.279Z
+[code-rubric] PROCEED (Commit: a801c3f04cb9c6e9e91473598456819ad96789ad) Ideal Day UI wire-up clean
+
+#### betty — 2026-09-16T00:26:11.994Z
+`origin/sub/AST-1643/AST-1660-ideal-day-contexttextpage-wire-up` @ `a801c3f0` · Ideal Day page tests
+
+#### joan — 2026-09-16T00:21:12.776Z
+[plan-rubric] PROCEED (Commit: 57067c0c) plain_text bodyShape wired
+
+#### katherine — 2026-09-16T00:19:29.467Z
+`origin/sub/AST-1643/AST-1660-ideal-day-contexttextpage-wire-up` @ `57067c0cdfeec052faa38f8ef2e24ab5e2184030` · Ideal Day UI plan
+
+---
+
 # Ideal Day ContextTextPage wire-up
 
 **Linear:** [AST-1660](https://linear.app/astralcareermatch/issue/AST-1660)
