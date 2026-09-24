@@ -384,3 +384,27 @@ context_tokens≈38000
 
 **§9a:** Dry-run publish tip → `origin/dev` (and `origin/ftr/AST-1762*` when present) before User Testing.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/bc44b48ab0c29dc946549d9ee2952571/28311f28-c8c5-48e2-8350-066adaca98db/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/bc44b48ab0c29dc946549d9ee2952571/b3eca673-1e2e-4a87-86ae-1de70f98e0e6/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/bc44b48ab0c29dc946549d9ee2952571/0922e1e0-af2c-429b-9268-6e77160e16d8/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/999fb298-3c72-4ff6-9936-46d96d5bbbd4/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/bc44b48ab0c29dc946549d9ee2952571/cb46519f-3997-4698-af00-6c68509481d3/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1762 (parent) | ftr/AST-1762-meteorite-state-check-unique-before-landed |
+| AST-1773 | sub/AST-1762/AST-1773-states-config-stage-employer-name-prompts |
+| AST-1774 | sub/AST-1762/AST-1774-check-unique-meteorite-sql-transitions |
+| AST-1775 | sub/AST-1762/AST-1775-ruth-duplicate-review-invoke-duplicate-map |
+
+**Epic worktree:** `astral-AST-1762/` — one active sub checked out at a time.
