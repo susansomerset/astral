@@ -1,3 +1,86 @@
+<!-- linear-archive: AST-1701 archived 2026-09-24 -->
+
+## Linear archive (AST-1701)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1701/job-source-entity-schema-config-ssot-manual-backfill-sql-job-source  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1640 — Job source_entity parent (meteorite|company) + candidate-facing link  
+**Blocked by / blocks / related:** parent: AST-1640; blocks: AST-1702
+
+### Description
+
+## What this implements
+
+Owns schema reshape (repurpose `job.source` → `company`|`meteorite` **or** drop + add `source_entity_type`), nullable `company_id`, candidate_id resolution for meteorite parents, config validators, and the **Susan-runnable** backfill SQL (no auto seed). Does not own land/tracker write semantics or UI.
+
+## Citations
+
+`patt.entity.batch-criteria`; `stat.logging.debug`.
+
+## Scope
+
+- [X] `src/utils/config.py` — source-entity type literals / validators; repurpose or retire `JOB_SOURCES` per Functional scope; breadcrumb format + timezone clock helpers; METEORITE_CONFIG keys that still force placeholder company parents.
+- [X] `src/data/database.py` — job schema for `source_entity_type`/`source_entity_id` (via repurposed `source` or new columns), nullable `company_id` replacing required `company`; candidate_id resolution when parent is meteorite; save/get/list/dedupe helpers + header inventory; **operator SQL backfill script** (docs or `data/` SQL file — not auto-run seed).
+- [X] Technical: `config` — closed set `company` | `meteorite` for parent/track; migrate `gazed`→`company` when repurposing `job.source`; breadcrumb format string + clock shape. `database` job table — required parent fields after backfill; nullable `company_id` instead of NOT NULL `company`; `_resolve_job_candidate_id` (or successor) from meteorite row when parent is meteorite. `database` writers/dedupe — accept meteorite parent + optional `company_id`; gazed→meteorite supersede finds same row; `meteorite.astral_job_id` stays 1:1 on land. **Backfill artifact** — one Susan-runnable SQL script mapping existing `meteorite-*`/stem-parented jobs via `meteorite.astral_job_id` (and gazed defaults) to the new parent fields; **not** invoked from `SEED_CONFIG` / boot.
+
+## Acceptance criteria
+
+- [X] 1\. After Susan runs the shipped backfill SQL (and for all new lands), every job has `source_entity_type` in (`company`,`meteorite`) and non-empty `source_entity_id`. Fail: null/blank parent fields, or type outside that pair. Boot/seed alone must **not** rewrite existing job parents (`grep`/code review: no auto UPDATE of job parents in `SEED_CONFIG` / startup).
+- [X] 2\. Prefer-repurpose path: either `job.source` values are only `company`|`meteorite` (no `gazed`) **or** `job.source`/`JOB_SOURCES` are gone and `source_entity_type` is the only parent SoT. Fail: both a live `gazed` meaning and a separate `source_entity_type` both acting as track authority.
+
+## Boundaries
+
+- [X] Does not own land/tracker write semantics or UI (siblings #2–#4).
+
+## Notes for planning
+
+Estimate 5. Bang !!! — blocks later blockers.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1640-job-source-entity-parent`, child `sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Config SSOT: `tests/component/utils/test_config.py::TestAst1701SourceEntityTypes`
+2. Job schema/writers: `tests/component/data/database/test_jobs.py::TestAst1701SourceEntitySchema`
+3. Job regression: `tests/component/data/database/test_jobs.py`
+4. Insert gate + cid inventory (revised): `TestSaveJob` + `TestAst1598JobCandidateId` (same file as #3)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1701SourceEntityTypes \
+  tests/component/data/database/test_jobs.py \
+  -q
+```
+
+**Pass criterion:** pytest green on lines 1–4 — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums** (`origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql`):
+
+* `docs/test-bible/data/database/jobs.md` — `dac34d71f5822de141957fd63720a7b66d31c0e4`
+* `docs/test-bible/utils/config.md` — `e5bd89a68a88300faa392869c3e602f9f6da476c`
+
+### Comments
+
+#### radia — 2026-09-17T00:42:12.323Z
+[code-rubric] PROCEED (Commit: 6d2a084b) schema SSOT backfill clean
+
+#### betty — 2026-09-17T00:39:13.191Z
+`origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `6d2a084b` · source_entity tests ready
+
+#### joan — 2026-09-17T00:25:00.261Z
+[plan-rubric] PROCEED (Commit: 68114dd) schema SSOT backfill clear
+
+#### ada — 2026-09-17T00:22:32.584Z
+`origin/sub/AST-1640/AST-1701-job-source-entity-schema-config-ssot-manual-backfill-sql` @ `68114dd221cdc0a0b6525959a53a126558ba781b` · plan ready
+
+---
+
 # AST-1701 — Job source_entity schema + config SSOT + manual backfill SQL
 
 **Linear:** [AST-1701](https://linear.app/astralcareermatch/issue/AST-1701/job-source-entity-schema-config-ssot-manual-backfill-sql)  
