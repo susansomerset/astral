@@ -270,3 +270,55 @@ context_tokens≈50000
 **Branch:** `sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes`
 
 **Built:** DATA_SHAPES list `slack_username` + profile `contact.slack_channel_id` / `contact.slack_channel_name`; Contact `list_admin_slack_channels` / `check_admin_slack_channel_membership` / `get_admin_slack_channel_snapshot`; admin GETs `/slack_channels`, `/slack_channel_membership`, `/slack_channel_snapshot` (`@require_admin`, no GET progress info). No new candidate writer; Ada helpers called from core only.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1788  
+**Publish ref:** `c6592ebebe031f4d568249d58538f2aa650a067e` (`origin/sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes`)  
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.error | A | | |
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored all three directives **A**; code review agrees on `src/core/contact.py`, `src/ui/api/api_contact.py`, and `src/utils/config.py`.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Branch diff vs `origin/dev` includes sibling AST-1787 artifacts** (`src/external/slack.py`, `tests/component/external/test_slack.py`, `docs/test-bible/external/slack.md`, AST-1787 issue doc + Radia review) from `sync(ftr): origin/ftr/AST-1786-manage-candidates-snapshot-slack-channel` — expected prerequisite per plan **Depends on AST-1787**; AST-1788 `code()` commits touched only `config.py`, `contact.py`, and `api_contact.py`. No action unless merge-child partitioning wants ticket-pure diffs.
+- **Test gap (non-blocking):** API tests cover 502 for `/slack_channels` upstream failure but not explicit 502 paths for `/slack_channel_membership` or `/slack_channel_snapshot` when core raises after external I/O failure — orchestration tests stub externals; acceptable for this slice.
+
+## What's solid
+
+- **Product scope:** Three staged commits map cleanly to plan — DATA_SHAPES (`slack_username` list column after `contact_email`; profile `contact.slack_channel_id` / `contact.slack_channel_name` after `contact.slack_username`), Contact orchestration (`_candidate_contact`, three public helpers), admin GET thin wrappers. No new candidate writer; no direct Slack imports in `api_contact.py`.
+- **Orchestration contracts:** Unbound short-circuit skips `is_channel_member`; membership payload `{channel, slack_user_id, is_member, warn, warn_reason}` with `unbound` / `not_member` / member-silent; snapshot reads stored `slack_channel_id`, returns ascending `messages` via `fetch_full_conversation_history`.
+- **`stat.logging.info.api`:** All three routes commented as idempotent GET; no `_api_completed` / progress `logger.info`; `TestAst1788AdminSlackChannelApis::test_slack_channels_ok` asserts `info.assert_not_called()`.
+- **`stat.logging.debug`:** Core mirrors `list_unbound_slack_users` — `set_debug_flag` entry, Calling/Response at external joints, full payloads, no call-site gate.
+- **`stat.logging.error`:** Core propagates; API maps configured misses (`404`/`400`) without logging; upstream failures get single `logger.exception` with route facts + next-step line (`Channel list was not returned`, etc.).
+- **Auth:** `@require_admin` on all three routes; tests cover 401/403.
+- **Tests + bible:** Manifest covers orchestration, API status/auth/no-info, and shape placement; merge-tests (`c6592ebe`) only duplicated AST-1788 test/bible content (no unrelated ticket carry-along like AST-1787’s branch had).
+
+context_tokens≈62000
