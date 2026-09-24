@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-1659 archived 2026-09-24 -->
+
+## Linear archive (AST-1659)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1659/operative-save-hydrate-blob-retirement-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1643; blocks: AST-1660
+
+### Description
+
+## What this implements
+
+Wire Ideal Day through candidate operative `plain_text` validation plus `get_candidate_current` hydrate on GET; intercept API PUT for operative save; stop durable library SoT writes for `context.ideal_day`. No backfill helper. Does not own React chrome. After #1.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.in-scope-only`; `stat.logging.info.entity`; `stat.logging.info.api`; `stat.logging.error`
+
+## Scope
+
+`src/core/candidate.py` — operative validation for `plain_text`; hydrate overlay; gate library merge for `context.ideal_day`. `src/ui/api/api_candidate.py` — PUT intercept plus GET hydrate for Ideal Day.
+
+## Acceptance criteria
+
+- [X] 4\. **Operative round-trip** — Save Ideal Day via Ideal Day UI/API; `database.get_current_artifact('candidate', <id>, 'ideal_day')` returns matching string; second save new uuid + retire prior current.
+- [X] 5\. **Blob not SoT on write** — Successful Ideal Day save calls operative `save_artifact`; does not rely on library-merge alone.
+- [X] 6\. **No backfill required** — No bulk migrate-all; legacy blob until re-save.
+
+## Boundaries
+
+- [X] Does not own catalog/token flip (#1) or React chrome (#3).
+
+## Notes for planning
+
+Citations as above. After catalog sibling.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1643-migrate-ideal-day-artifact-table`, child `sub/AST-1643/<this-id>-operative-save-hydrate-blob-retirement`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T00:15:30.495Z
+[code-rubric] PROCEED (Commit: c5a6c1bf9a98a026ddedfb23aaa83960aeb7fb64) Ideal Day operative clean
+
+#### betty — 2026-09-16T00:12:46.160Z
+[check-linear]
+Cleared [qa-handoff]: retargeted Ideal Day (and sibling Strengths/Bio Summary/Deal Breakers) library-sibling asserts from `priorities` → `backstory` after merge(dev) made priorities operative.
+`origin/sub/AST-1643/AST-1659-operative-save-hydrate-blob-retirement` @ `c5a6c1bf` · reassigned Hedy for test-child
+
+#### hedy — 2026-09-16T00:09:47.457Z
+[qa-handoff]
+@Betty White
+
+Manifest (bible § AST-1659) red after sync merged `origin/dev` (priorities epic now on tip).
+
+Command:
+```bash
+python3 -m pytest \
+  tests/component/core/test_candidate.py::TestAst1659IdealDayOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1659IdealDayOperativeApi \
+  -q --tb=short
+```
+
+Result: 2 failed / 12 passed.
+
+Failures (test/manifest vs tip contract — not Ideal Day product bugs):
+
+1. `TestAst1659IdealDayOperativeSaveHydrate::test_dict_path_strips_ideal_day_and_strengths_keeps_siblings`
+   - Asserts `priorities` survives dict-path library merge as the non-operative sibling.
+   - On tip after `merge(dev)`, `priorities` is in `_CONTEXT_OPERATIVE_LEAVES` / `ARTIFACT_CONFIG`, so the leaf is stripped and `save_candidate` is never called (`save.call_args` is None).
+
+2. `TestAst1659IdealDayOperativeApi::test_put_strips_ideal_day_keeps_sibling_context`
+   - Comment in test: "priorities stays library-merge on this tip (not catalogued)."
+   - PUT `{ideal_day, priorities}` now pops both for operative save; library `context.priorities` is not written.
+
+Product Ideal Day paths (round-trip, retire, hydrate miss/hit, empty 400) are green. Please retarget sibling leaf to a still-non-operative context key (e.g. `backstory`) or assert priorities operative too.
+
+Publish tip after merge: `origin/sub/AST-1643/AST-1659-operative-save-hydrate-blob-retirement` @ `5237c122`
+
+#### betty — 2026-09-16T00:06:48.876Z
+`origin/sub/AST-1643/AST-1659-operative-save-hydrate-blob-retirement` @ `f68f37c6` · Ideal Day operative tests
+
+#### joan — 2026-09-15T23:58:02.031Z
+[plan-rubric] PROCEED (Commit: d5f9e7ae) operative hydrate wired
+
+#### hedy — 2026-09-15T23:56:03.950Z
+`origin/sub/AST-1643/AST-1659-operative-save-hydrate-blob-retirement` @ `d5f9e7ae` · Ideal Day operative plan
+
+---
+
 # Operative save, hydrate, blob retirement
 
 **Linear:** [AST-1659](https://linear.app/astralcareermatch/issue/AST-1659)
