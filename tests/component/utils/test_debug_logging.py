@@ -12,9 +12,13 @@ import pytest
 from src.utils import logging as logging_mod
 from src.utils.logging import (
     DEBUG_DETAIL_PREFIX,
+    DEBUG_STRING_HEAD_CHARS,
+    DEBUG_STRING_TAIL_CHARS,
+    DEBUG_STRING_THRESHOLD,
     format_debug_index_header,
     get_logger,
     truncate_debug_content,
+    truncate_debug_string,
 )
 
 
@@ -27,6 +31,23 @@ def _clear_db_buffer() -> list:
         drained = list(handler._buffer)
         handler._buffer.clear()
         return drained
+
+
+class TestTruncateDebugString:
+    def test_short_string_unchanged(self) -> None:
+        text = "x" * DEBUG_STRING_THRESHOLD
+        assert truncate_debug_string(text) == text
+
+    def test_long_string_keeps_head_and_tail(self) -> None:
+        text = ("H" * DEBUG_STRING_HEAD_CHARS) + ("M" * 500) + ("T" * DEBUG_STRING_TAIL_CHARS)
+        out = truncate_debug_string(text)
+        assert out.startswith("H" * DEBUG_STRING_HEAD_CHARS)
+        assert out.endswith("T" * DEBUG_STRING_TAIL_CHARS)
+        assert "<500 chars omitted>" in out
+        assert "M" not in out
+
+    def test_empty_string_unchanged(self) -> None:
+        assert truncate_debug_string("") == ""
 
 
 class TestTruncateDebugContent:
@@ -123,6 +144,22 @@ class TestPrefixedLoggerDebugGating:
         matches = [r for r in caplog.records if r.message.startswith(DEBUG_DETAIL_PREFIX)]
         assert matches
         assert all(r.levelname == "DEBUG" for r in matches)
+
+    def test_debug_detail_truncates_long_strings(
+        self, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level(logging.DEBUG)
+        logger = get_logger("test.ast554.detail_long", debug_flag=True)
+        head = "A" * DEBUG_STRING_HEAD_CHARS
+        tail = "Z" * DEBUG_STRING_TAIL_CHARS
+        logger.debug_detail(head + ("M" * 500) + tail)
+        matches = [r for r in caplog.records if r.message.startswith(DEBUG_DETAIL_PREFIX)]
+        assert len(matches) == 1
+        body = matches[0].message.removeprefix(DEBUG_DETAIL_PREFIX)
+        assert body.startswith(head)
+        assert body.endswith(tail)
+        assert "<500 chars omitted>" in body
+        assert "M" not in body
 
     def test_debug_detail_block_respects_truncation(
         self, caplog: pytest.LogCaptureFixture

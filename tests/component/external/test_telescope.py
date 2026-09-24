@@ -347,7 +347,7 @@ class TestAst1745CullPreservesRootSvgLogo:
 
 
 class TestAst1750PostTelescopeDebugDump:
-    """AST-1750 bug-repro — _post_telescope debug dumps full request body + response."""
+    """AST-1750 bug-repro — _post_telescope debug dumps request body + response (truncated)."""
 
     @pytest.mark.asyncio
     async def test_post_telescope_debug_emits_request_body_and_full_response(
@@ -376,8 +376,8 @@ class TestAst1750PostTelescopeDebugDump:
             with caplog.at_level(logging.DEBUG, logger="src.external.telescope"):
                 out = await pw_mod._post_telescope(
                     "https://example.com/job",
+                    fields=["text"],
                     expand=False,
-                    links=False,
                 )
         finally:
             log_debug.reset(token)
@@ -391,8 +391,50 @@ class TestAst1750PostTelescopeDebugDump:
             "AST-1750: debug callee-in must include request body fields"
         )
         assert "no longer available" in msgs or "final_url" in msgs, (
-            "AST-1750: debug callee-out must dump full response (no truncation)"
+            "AST-1750: debug callee-out must include response fields"
         )
+
+    @pytest.mark.asyncio
+    async def test_post_telescope_debug_truncates_long_response_text(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        import logging
+
+        from src.utils.logging import DEBUG_STRING_HEAD_CHARS, DEBUG_STRING_TAIL_CHARS, log_debug
+
+        head = "H" * DEBUG_STRING_HEAD_CHARS
+        tail = "T" * DEBUG_STRING_TAIL_CHARS
+        payload = {
+            "final_url": "https://example.com/final",
+            "text": head + ("M" * 500) + tail,
+            "scrape_meta": {"bot_blocked": False},
+        }
+
+        async def fake_request(method, path, json_body=None, **_kwargs):
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.json = MagicMock(return_value=payload)
+            resp.text = '{"final_url":"https://example.com/final"}'
+            return resp
+
+        monkeypatch.setattr(pw_mod._pool, "request", fake_request)
+        token = log_debug.set(True)
+        try:
+            with caplog.at_level(logging.DEBUG, logger="src.external.telescope"):
+                await pw_mod._post_telescope(
+                    "https://example.com/job",
+                    fields=["text"],
+                    expand=False,
+                )
+        finally:
+            log_debug.reset(token)
+
+        msgs = "\n".join(r.getMessage() for r in caplog.records)
+        assert "chars omitted>" in msgs
+        assert "M" not in msgs
+        assert "final_url" in msgs
+        assert head[:100] in msgs
+        assert tail[-100:] in msgs
         assert any(
             "Calling" in r.getMessage() or "body" in r.getMessage().lower()
             or "request" in r.getMessage().lower()
