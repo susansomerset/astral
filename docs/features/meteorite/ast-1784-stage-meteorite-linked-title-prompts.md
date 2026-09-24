@@ -118,3 +118,33 @@ python3 -c 'import json; json.load(open("data/admin/agent_task.json")); json.loa
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1784
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `sub/AST-1783/AST-1784-stage-meteorite-linked-title-prompts` @ `32a02ade7210947e22a91ee24aacae98d2355472`
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | X | | id-only; plan touches catalog + fixture only, no `src/**` |
+| stat.logging.info.entity | X | | id-only; no `src/core/meteorite.py` or other entity logging paths |
+
+## Traceability
+
+AC1–AC4 → Stage 1; parent AC4–AC7 → N/A (AST-1785 map/scrape path).
+
+### Findings
+
+**acceptable** — `## Stage 1` Decision (fixture drift): Plan acknowledges AST-756 fixture row drifts from admin on employer/review_duplicate fields outside this child's scope; surgical `cache_prompt`/`user_prompt` copy is the correct AC8 interpretation. `[qa-handoff]` escape hatch if Betty's broader twin asserts fire is honest, not scope creep.
+
+**Gates:** Status `Plan Ready`, assignee Joan — pass. No `[plan-discuss]` rounds in thread (0/2).
+
+**R6 (summary):** Plan matches child `## Scope` (two files only); parent AC partition AC1–3 + AC8 explicit; six-outcome / no-`$RESPONSE_SCHEMA` / no-`meteorite.py` boundaries clear; append-not-rewrite pattern matches prior meteorite prompt tickets; Estimate confirm present.
+
+context_tokens≈22000
