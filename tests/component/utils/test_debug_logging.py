@@ -14,6 +14,7 @@ from src.utils.logging import (
     DEBUG_DETAIL_PREFIX,
     format_debug_index_header,
     get_logger,
+    log_debug,
     truncate_debug_content,
 )
 
@@ -201,6 +202,38 @@ class TestAst979DebugLevelPersistence:
         assert logger._logger.level == logging.DEBUG
         logger.set_debug_flag(False)
         assert logger._logger.level == logging.INFO
+
+    def test_debug_emits_when_named_logger_is_notset_under_info_root(self) -> None:
+        """stat.logging.debug: log_debug true must emit even if the named logger is NOTSET."""
+        root = logging.getLogger()
+        prior_root = root.level
+        root.setLevel(logging.INFO)
+        name = "test.ast979.notset_debug"
+        named = logging.getLogger(name)
+        prior_named = named.level
+        named.setLevel(logging.NOTSET)
+        token = log_debug.set(True)
+        try:
+            get_logger("test.ast979.notset_attach")
+            _clear_db_buffer()
+            logger = get_logger(name)
+            logger.debug("Beginning consult loop on %s items", 2)
+            entries = _clear_db_buffer()
+            hit = [e for e in entries if "Beginning consult loop on 2 items" in e["message"]]
+            assert len(hit) == 1
+            assert hit[0]["level"] == "DEBUG"
+            assert hit[0]["logger_name"] == name
+            off = log_debug.set(False)
+            try:
+                _clear_db_buffer()
+                logger.debug("Beginning consult loop on %s items", 2)
+                assert _clear_db_buffer() == []
+            finally:
+                log_debug.reset(off)
+        finally:
+            log_debug.reset(token)
+            named.setLevel(prior_named)
+            root.setLevel(prior_root)
 
 
 class TestConsoleFormat:

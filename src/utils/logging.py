@@ -303,7 +303,9 @@ class _PrefixedLogger:
         if not log_debug.get():
             return
         lineno = sys._getframe(1).f_lineno
-        if self._logger.level > logging.DEBUG:
+        # NOTSET inherits root INFO, and 0 is not "> DEBUG", so the old check
+        # left logger.debug() a no-op even when log_debug was true.
+        if self._logger.getEffectiveLevel() > logging.DEBUG:
             self._logger.setLevel(logging.DEBUG)
         self._logger.debug("%s: " + str(message), lineno, *args, **kwargs)
 
