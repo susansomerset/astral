@@ -1,3 +1,64 @@
+<!-- linear-archive: AST-1593 archived 2026-09-24 -->
+
+## Linear archive (AST-1593)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1593/inventory-and-rewire-remaining-job-artifact-consumers-support  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1588 — Support “job.artifacts.job_resume” and “job.artifacts.cover_letter”as artifacts  
+**Blocked by / blocks / related:** parent: AST-1588
+
+### Description
+
+## What this implements
+
+After #3: inventory every remaining surface that still reads job_resume / cover_letter via job-record or type-specific paths; rewire builder and ArtifactEditor / JAR / recommended-report onto the generic tracker current-read / API contract; finish decommission of leftover type-specific client assumptions. Does not re-own tracker/API public functions or schema (#2/#3). No coat-check or validation. No requirement to surface source ids in UI.
+
+## Citations
+
+patt.artifact.read-current; patt.artifacts.ui-consistency; astral.standards.debug-contract-gated; astral.layers.import-direction; astral.standards.in-scope-only
+
+## Scope
+
+src/core/builder.py — **modified** — live resume/cover resolve uses generic tracker current-read by catalog key. `src/ui/frontend/src/components/ArtifactEditor.tsx` — **modified** — load/save follow rewired generic API/key contract. `src/ui/frontend/src/lib/recommendedJobReport.tsx` — **modified** — content checks follow rewired payload / key contract. `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` — **modified** — only if tab/artifact_key wiring must cite catalog keys after config change.
+
+## Acceptance criteria
+
+- [X] 6. UI load, jobs GET, and builder live build for both keys obtain bodies via that generic current-read; they do not treat job_data.artifacts.job_resume / cover_letter (or type-specific overlay helpers) as SoT.
+- [X] 7. A written inventory lists every pre-change production surface that read or wrote these keys; each row is marked rewired or retired.
+- [X] 8. Type-specific public tracker/API entry points for only job_resume or only cover_letter are gone (or thin shims that only forward to the generic functions, removed in the same epic).
+
+## Boundaries
+
+- [X] Does not own catalog (#1), schema (#2), or tracker/API generic functions (#3). after #3
+
+## Notes for planning
+
+Confirm Chuckles estimate: 3 — agree or revise.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1588-job-artifacts-job-resume-cover-letter`, child `sub/AST-1588/<child-id>-inventory-rewire-job-artifact-consumers`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-04T22:49:40.251Z
+[code-rubric] PROCEED (Commit: 635a58e4) Consumer rewire clean
+
+#### betty — 2026-09-04T22:47:21.872Z
+`origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers` @ `635a58e43f4929980ac4d7a07ba7440fbba36869` · consumer rewire manifest
+
+#### joan — 2026-09-04T22:37:21.378Z
+[plan-rubric] PROCEED (Commit: cbe5479b) consumer inventory rewire
+
+#### ada — 2026-09-04T22:35:00.959Z
+`origin/sub/AST-1588/AST-1593-inventory-rewire-job-artifact-consumers` @ `cbe5479b5098a9cf9933e0a99e4b06f5946e2bdd` · consumer rewire plan
+
+---
+
 # Inventory and rewire remaining job artifact consumers
 
 **Linear:** [AST-1593](https://linear.app/astralcareermatch/issue/AST-1593/inventory-and-rewire-remaining-job-artifact-consumers-support)
