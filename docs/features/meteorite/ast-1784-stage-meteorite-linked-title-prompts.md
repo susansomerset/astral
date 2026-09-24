@@ -148,3 +148,16 @@ AC1–AC4 → Stage 1; parent AC4–AC7 → N/A (AST-1785 map/scrape path).
 **R6 (summary):** Plan matches child `## Scope` (two files only); parent AC partition AC1–3 + AC8 explicit; six-outcome / no-`$RESPONSE_SCHEMA` / no-`meteorite.py` boundaries clear; append-not-rewrite pattern matches prior meteorite prompt tickets; Estimate confirm present.
 
 context_tokens≈22000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1783/AST-1784-stage-meteorite-linked-title-prompts`
+**Plan path:** `docs/features/meteorite/ast-1784-stage-meteorite-linked-title-prompts.md`
+
+**Built tip:** `2deef11805fc10f6491dc7cb3d6a0054e321d506` (`2deef118`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `2deef118` | `stage_meteorite` cache/user prompts: title-as-href → URL landables; AST-756 surgical lockstep; no `$RESPONSE_SCHEMA` |
+
+**Betty note:** Prompt + fixture only. Map http `job_link` over breadcrumb is **AST-1785**. Pre-existing fixture employer/review_duplicate drift intentionally overwritten on `stage_meteorite` prompt fields per plan Decision — `[qa-handoff]` if broader twin asserts fire.
