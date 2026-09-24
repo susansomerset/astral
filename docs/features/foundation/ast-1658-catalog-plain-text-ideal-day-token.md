@@ -1,3 +1,65 @@
+<!-- linear-archive: AST-1658 archived 2026-09-24 -->
+
+## Linear archive (AST-1658)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1658/catalog-plain-text-shape-reuse-ideal-day-token-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1643 — Migrate candidate_data.context.ideal_day to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1643; blocks: AST-1659
+
+### Description
+
+## What this implements
+
+Register `candidate.context.ideal_day` in `ARTIFACT_CONFIG` reusing the existing `plain_text` shape, flip `TOKEN_SOURCES["IDEAL_DAY"]` to artifact plus `artifact_key`, lock startup asserts (add key to closed set; remove from sibling-freeze-out list). Does not own UI or hydrate.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `stat.logging.info` / `stat.logging.debug` as touched
+
+## Scope
+
+`src/utils/config.py` — new catalog entry plus asserts; `TOKEN_SOURCES["IDEAL_DAY"]` flip.
+
+## Acceptance criteria
+
+- [X] **Catalog key present** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert 'candidate.context.ideal_day' in ARTIFACT_CONFIG"` exits 0.
+- [X] **plain_text shape reused** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert ARTIFACT_CONFIG['candidate.context.ideal_day']['body_shape']=='plain_text'"` exits 0.
+- [X] **Token is artifact-typed** — `python3 -c "from src.utils.config import TOKEN_SOURCES; s=TOKEN_SOURCES['IDEAL_DAY']; assert s['source_type']=='artifact' and s['artifact_key']=='candidate.context.ideal_day'"` exits 0.
+- [X] **Sibling freeze** — `ARTIFACT_CONFIG` has no priorities/deal_breakers/backstory/writing_preferences keys.
+
+## Boundaries
+
+- [X] Does not own UI, hydrate, API PUT intercept, or blob retirement (siblings). Does not migrate other context keys.
+
+## Notes for planning
+
+Citations as above. Reuses AST-1629 `plain_text` shape — no new shape entry.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1643-migrate-ideal-day-artifact-table`, child `sub/AST-1643/<this-id>-catalog-plain-text-ideal-day-token`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-15T23:52:19.795Z
+[code-rubric] PROCEED (Commit: c5af9cdc1f30718067f897182d655c6aebe78117) Ideal Day catalog clean
+
+#### betty — 2026-09-15T23:48:50.845Z
+`origin/sub/AST-1643/AST-1658-catalog-plain-text-ideal-day-token` @ `c5af9cdc` · Ideal Day catalog tests
+
+#### joan — 2026-09-15T23:39:57.908Z
+[plan-rubric] PROCEED (Commit: 4083cd81) Ideal Day catalog flip
+
+#### ada — 2026-09-15T23:37:20.705Z
+`origin/sub/AST-1643/AST-1658-catalog-plain-text-ideal-day-token` @ `4083cd8134bef9aa12911e9a368ab7ea0fd65af3` · plan published
+
+---
+
 # Catalog + plain_text shape reuse + IDEAL_DAY token
 
 **Linear:** [AST-1658](https://linear.app/astralcareermatch/issue/AST-1658)
