@@ -152,3 +152,39 @@ Confirm Chuckles estimate: 2 — agree
 | `stat.logging.error` | statute — read in full; this ticket adds no Python handlers; UI surfaces failures via toast, not `logger.exception` |
 
 No placement statutes named. No harvested pattern ids (`no established pattern applies` on parent).
+
+## Joan validate
+
+[plan-rubric]
+**Ticket:** AST-1789
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `d48d96ff49746b28fd4277caaeb0e53904ad6cb0`
+
+## Canon scores
+
+stat.logging.info.api | X | | React-only plan — no `src/ui/api/**` changes; statute Notes: frontend does not write `app_log`
+stat.logging.error | X | | React-only plan — no Python handlers; failures via toast, not `logger.exception`
+
+## Traceability
+
+AC1 (username column) → Stage 1 step 2 flatten + column render; AC2 (channel select + stamp id+name) → Stage 1 steps 3–4, 6, 8 + existing POST/PUT; AC3–5 (membership warnings) → Stage 1 steps 5–7 (inline `role="alert"` block + API/local unbound paths); AC6 (**S** icon-control + ascending JSON clipboard) → Stage 1 step 9 (`icon-control`, full API JSON, no re-sort); AC8 (no Slack Web API in TSX) → entire stage admin `api()` only; AC7, AC9, AC10 → N/A — sibling #2 auth/external/shapes
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 1 step 3 (`loadSlackChannels` parse filter)
+- **Finding:** Plan requires both non-empty `id` and `name`; AST-1787/1788 allow rows with empty `name` when `id` is present.
+- **Recommendation:** Filter on non-empty `id` only; label empty names in the `<select>` (e.g. show id or “(unnamed)”).
+
+### acceptable
+
+- **Scope fidelity:** Single file `AdminManageCandidates.tsx`; explicit no-touch on `CandidateProfile.tsx` (shapes-driven `FormFields` already renders channel fields from AST-1788).
+- **Dependency:** Publish-ref tip includes sibling shapes (`slack_username`, channel profile fields) and admin routes (`slack_channels`, `slack_channel_membership`, `slack_channel_snapshot`).
+- **Pattern reuse:** Mirrors unbound Slack bind (`slackBindFromSelection`, `loadUnboundSlackUsers`, toast-on-error) and **T** `icon-control` row action; clipboard pattern aligns with `copyJobSnapshotToClipboard` family.
+- **AC honesty:** Documented pre-save bind limitation on membership GET matches sibling #2 contract; add-flow unbound warning without candidate id matches AC3.
+- **Canon Scope (all X):** Statutes cited for lane consistency; plan correctly commits to no `app_log` and no handler logging — scope observation only, not a plan defect.
+- **Self-assessment:** Estimate confirm 2 — agree; one stage, one file, established Contact UI patterns.
+
+context_tokens≈58000
