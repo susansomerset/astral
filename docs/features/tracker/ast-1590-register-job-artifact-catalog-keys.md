@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1590 archived 2026-09-24 -->
+
+## Linear archive (AST-1590)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1590/register-jobartifactsjob-resume-and-jobartifactscover-letter-support  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1588 — Support “job.artifacts.job_resume” and “job.artifacts.cover_letter”as artifacts  
+**Blocked by / blocks / related:** parent: AST-1588; blocks: AST-1592
+
+### Description
+
+## What this implements
+
+Owns catalog registration only: add both keys to ARTIFACT_CONFIG, align JAR / body-replica citations to those keys, and eliminate independent job-only editable-type authority (delete or derive). Does not add tracker public functions, schema, or rewire product call sites beyond config asserts. Blocks #3.
+
+## Citations
+
+patt.artifact.manage-catalog; pattern.config.config-block; astral.config.config-source-of-truth; astral.standards.no-hardcoded-sets
+
+## Scope
+
+src/utils/config.py — **modified** — register `job.artifacts.job_resume` and `job.artifacts.cover_letter` in `ARTIFACT_CONFIG`; retire or derive any parallel job-only editable-type authority so it cannot diverge; align JAR / body-replica config to cite catalog keys. `src/utils/config.py` — New `ARTIFACT_CONFIG` entries for both job keys (entity `job`, candidate-scoped true, body shapes into existing `BUILD_CONFIG["artifact_shapes"]`, ingestion owner tracker). Startup asserts include both keys beside the candidate pilot. Parallel job-only type tuples deleted or derived from catalog. JAR / body-replica maps cite catalog keys (or a 1:1 map to them), not bare type strings as authority.
+
+## Acceptance criteria
+
+- [X] 1. ARTIFACT_CONFIG contains job.artifacts.job_resume and job.artifacts.cover_letter with complete metadata alongside the candidate pilot key.
+- [X] 2. Sibling job blob keys (notes, resume_content, proposed_answers, application_responses) remain out of ARTIFACT_CONFIG.
+
+## Boundaries
+
+- [X] Does not own artifacts table source refs (#2), tracker generic API (#3), or consumer inventory (#4).
+
+## Notes for planning
+
+Confirm Chuckles estimate: 2 — agree or revise.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1588-job-artifacts-job-resume-cover-letter`, child `sub/AST-1588/<child-id>-register-job-artifact-catalog-keys`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-04T22:06:42.001Z
+[code-rubric] PROCEED (Commit: 0f8b7a7a) catalog keys clean
+
+#### betty — 2026-09-04T22:02:41.090Z
+`origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys` @ `0f8b7a7a` · catalog keys covered
+
+#### joan — 2026-09-04T21:55:25.170Z
+[plan-rubric] PROCEED (Commit: 05bcd65) catalog keys registered
+
+#### ada — 2026-09-04T21:53:20.206Z
+`origin/sub/AST-1588/AST-1590-register-job-artifact-catalog-keys` @ `05bcd654020c7bf1a234e429b04592c63c81e1db` · catalog registration plan
+
+---
+
 # Register job.artifacts.job_resume and job.artifacts.cover_letter
 
 **Linear:** [AST-1590](https://linear.app/astralcareermatch/issue/AST-1590/register-job-artifactsjob-resume-and-job-artifactscover-letter-support)

@@ -1,3 +1,64 @@
+<!-- linear-archive: AST-1619 archived 2026-09-24 -->
+
+## Linear archive (AST-1619)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1619/editable-entity-type-control-on-scheduled-actions-modal-make-all  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1616 — Make all fields on Add Dispatch Task modal editable  
+**Blocked by / blocks / related:** parent: AST-1616
+
+### Description
+
+## What this implements
+
+Own the Add/Edit modal UX: replace read-only Entity Type with an editable select bound to product entity types, keep task-key prefill, clear invalid Input State on entity change, and send `entity_type` on Save for both create and update. Does not own API validation (after #1). Candidate stays context-bound.
+
+## Citations
+
+`pattern.ui.shared-button-roles`; `pattern.ui.icon-control`; `astral.ui.frontend-file-placement`; `astral.ui.naming-conventions`; `astral.standards.no-hardcoded-sets`; `astral.standards.in-scope-only`; `astral.standards.no-cross-contamination`
+
+## Scope
+
+`src/ui/frontend/src/pages/AdminScheduledActions.tsx` — modified — editable Entity Type control; include entity_type in create/update payloads; clear invalid trigger_state when entity_type changes.
+
+## Acceptance criteria
+
+1. In Scheduled Actions → Add Task, after choosing a Task, the Entity Type control is not `readOnly` / not opacity-locked text — `grep -n 'Entity Type' -A6 src/ui/frontend/src/pages/AdminScheduledActions.tsx` shows an editable control (e.g. `<select>`) rather than `readOnly`. Fail: Entity Type remains `readOnly`.
+2. Changing Entity Type in the modal changes the Input State option list to that entity's states (company vs candidate vs job). Fail: Input State options stay tied to the previous entity after Entity Type changes.
+3. Candidate on Add remains read-only / context-bound to the selected candidate. Fail: Candidate becomes a free-text rebinding control as part of this epic.
+
+## Boundaries
+
+Does not own API/data persistence or trigger validation (sibling #1). Does not make Candidate editable on Add.
+
+## Notes for planning
+
+Bind options to ENTITY_TYPES / state-options entity keys — no parallel hardcoded set. After #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1616-editable-dispatch-task-modal-fields`, child `sub/AST-1616/<this-id>-editable-entity-type-modal`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-10T00:55:50.027Z
+[code-rubric] PROCEED (Commit: bfc19678) entity type modal clean
+
+#### betty — 2026-09-10T00:52:36.852Z
+`origin/sub/AST-1616/AST-1619-editable-entity-type-modal` @ `bfc19678` · Entity Type select coverage
+
+#### joan — 2026-09-10T00:45:50.238Z
+[plan-rubric] PROCEED (Commit: 95601ca6f6a1d1248ebb6e7b000927da89aa112c) Modal entity select clear
+
+#### katherine — 2026-09-10T00:44:24.213Z
+`origin/sub/AST-1616/AST-1619-editable-entity-type-modal` @ `95601ca6` · editable entity type plan
+
+---
+
 # AST-1619 — Editable Entity Type control on Scheduled Actions modal
 
 **Linear:** [AST-1619](https://linear.app/astralcareermatch/issue/AST-1619)

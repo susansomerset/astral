@@ -1,3 +1,67 @@
+<!-- linear-archive: AST-1652 archived 2026-09-24 -->
+
+## Linear archive (AST-1652)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1652/operative-save-hydrate-blob-retirement-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1641 — Migrate candidate_data.context.priorities to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1641; blocks: AST-1653
+
+### Description
+
+## What this implements
+
+Wire Priorities through candidate operative `plain_text` validation plus `get_candidate_current` hydrate on GET; intercept API PUT for operative save; stop durable library SoT writes for `context.priorities`. No backfill helper. Does not own React chrome. After #1.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.in-scope-only`; `stat.logging.info.entity`; `stat.logging.info.api`; `stat.logging.error`
+
+## Scope
+
+`src/core/candidate.py` — operative validation for `plain_text`; hydrate overlay; gate library merge for `context.priorities`. `src/ui/api/api_candidate.py` — PUT intercept plus GET hydrate for Priorities.
+
+## Acceptance criteria
+
+4. **Operative round-trip** — Save Priorities via Priorities UI/API; `database.get_current_artifact('candidate', <id>, 'priorities')` returns matching string; second save new uuid + retire prior current.
+5. **Blob not SoT on write** — Successful Priorities save calls operative `save_artifact`; does not rely on library-merge alone.
+6. **No backfill required** — No bulk migrate-all; legacy blob until re-save.
+
+## Boundaries
+
+Does not own catalog/token flip (#1) or React chrome (#3).
+
+## Notes for planning
+
+Citations as above. After catalog sibling.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1641-migrate-priorities-artifact-table`, child `sub/AST-1641/<this-id>-operative-save-hydrate-blob-retirement`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-15T23:41:36.326Z
+[code-rubric] PROCEED (Commit: 1af7df47) operative save hydrate clean
+
+#### hedy — 2026-09-15T23:34:50.920Z
+[check-linear] blocked: sync origin/dev merge commit — engineer hook rejects non-conflicting tests/bible from origin/dev (bio_summary epic). Product conflicts resolved in working tree: src/core/candidate.py, src/ui/api/api_candidate.py, src/utils/config.py (kept priorities + bio_summary). MERGE_HEAD still open; need Chuckles (or hook exception) to land `sync(dev): origin/dev` including those test-tree paths. @Chuckles Cursor
+
+#### betty — 2026-09-15T23:30:17.617Z
+`origin/sub/AST-1641/AST-1652-operative-save-hydrate-blob-retirement` @ `cca1e998` · priorities operative tests
+
+#### joan — 2026-09-15T23:17:14.675Z
+[plan-rubric] PROCEED (Commit: cdac163f29327ac30ddcf84f5ef7d717f617c09c) Strengths-pattern faithful
+
+#### hedy — 2026-09-15T23:15:21.618Z
+`origin/sub/AST-1641/AST-1652-operative-save-hydrate-blob-retirement` @ `cdac163f29327ac30ddcf84f5ef7d717f617c09c` · plan ready
+
+---
+
 # Operative save, hydrate, blob retirement
 
 **Linear:** [AST-1652](https://linear.app/astralcareermatch/issue/AST-1652)

@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-1661 archived 2026-09-24 -->
+
+## Linear archive (AST-1661)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1661/catalog-plus-backstory-token-migrate-candidate-datacontextbackstory-to  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1644 — Migrate candidate_data.context.backstory to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1644; blocks: AST-1663; blocks: AST-1662
+
+### Description
+
+## What this implements
+
+Register `candidate.context.backstory` in `ARTIFACT_CONFIG` reusing the existing `plain_text` shape, flip `TOKEN_SOURCES["BACKSTORY"]` to artifact plus `artifact_key`, lock startup asserts (including removing Backstory from the sibling-freeze absent list). Does not own UI or hydrate. Does not add a new body shape. Mirror AST-1632 guidelines for the catalog/token slice.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `stat.logging.info` / `stat.logging.debug` as touched
+
+## Scope
+
+`src/utils/config.py` — new catalog entry plus asserts; `TOKEN_SOURCES["BACKSTORY"]` flip; sibling-freeze list update for Backstory.
+
+## Acceptance criteria
+
+1. Catalog key present — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert 'candidate.context.backstory' in ARTIFACT_CONFIG"` exits 0. Fail: key absent or differently named without Description amendment.
+2. plain_text shape reused — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert ARTIFACT_CONFIG['candidate.context.backstory']['body_shape']=='plain_text'"` exits 0. Fail: Backstory bound to `resume_content` / `cover_letter`, or a new shape added.
+3. Token is artifact-typed — `python3 -c "from src.utils.config import TOKEN_SOURCES; s=TOKEN_SOURCES['BACKSTORY']; assert s['source_type']=='artifact' and s['artifact_key']=='candidate.context.backstory'"` exits 0. Fail: still `data_field` or wrong `artifact_key`.
+4. Sibling freeze — `ARTIFACT_CONFIG` has no priorities/deal_breakers/ideal_day/writing_preferences keys. Fail: any of those registered. (Backstory itself is in the catalog after this epic.)
+
+## Boundaries
+
+Does not own UI or hydrate (siblings). No other context leaves. No coat-check. No new craft task. No new body shape.
+
+## Notes for planning
+
+Mirror AST-1632. Citations as above.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Primary Backstory catalog + plain_text + token: `tests/component/utils/test_config.py::TestAst1661CatalogPlainTextBackstoryToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+4. Revised IDEAL_DAY token_source (data_field on this tip): `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1661CatalogPlainTextBackstoryToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken::test_ideal_day_token_source \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/utils/config.md` — `72a164f8152e9971f1da01a468a418a9feac8d6e`
+
+### Comments
+
+#### betty — 2026-09-16T00:33:19.214Z
+[check-linear]
+merge-child hygiene: rewritten publish tip to exactly one `merge-tests(AST-1661)` (`417ff395` → `origin/tests` `93cc1fd1`); dropped AST-1659 commits `027e23fe` / `41694123` from sub-not-ftr ancestry; AST-1661 four-line manifest intact.
+`origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token` @ `948cac5f` · assignee Ada · User Testing
+
+#### chuckles — 2026-09-16T00:29:29.491Z
+[merge-child] blocked: duplicate merge-tests(AST-1661) on sub — count=2 (amend on tests, one merge-tests only). @Betty White
+
+#### betty — 2026-09-16T00:27:32.162Z
+[check-linear]
+Cleared [qa-handoff]: stripped AST-1659 Ideal Day operative suites + bible blocks from this publish tip; restored `TestAst1365IdealDayLibrary::test_save_candidate_data_merges_ideal_day_context` (ideal_day library SoT); kept backstory library-sibling retargets + AST-1661 four-line config manifest.
+`origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token` @ `9d8067d3` · reassigned Ada for resolve/test-child
+
+#### ada — 2026-09-16T00:22:40.650Z
+[qa-handoff]
+@Betty White
+
+Radia FIX-NOW on AST-1661: AST-1659 Ideal Day test/bible commits landed on this publish ref and assert operative Ideal Day behavior that product does not have here.
+
+Need on origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token:
+1. Drop or revert test(AST-1659) commits 027e23fe and 41694123 (and AST-1659 bible blocks in docs/test-bible/core/candidate.md + docs/test-bible/ui/api/api_candidate.md) from this ref — land those on origin/sub/AST-1643/AST-1659-* instead.
+2. Restore Ideal Day library-merge assert to pre-operative expectation (ideal_day still library SoT on this tip; candidate.context.ideal_day ∉ ARTIFACT_CONFIG; _CONTEXT_OPERATIVE_LEAVES excludes ideal_day).
+3. Keep only AST-1661-scoped sibling retargets that match current product (backstory as library peer where that matches _CONTEXT_OPERATIVE_LEAVES — backstory not operative until AST-1662).
+4. Re-publish merge-tests to this ref; leave the AST-1661 four-line manifest in docs/test-bible/utils/config.md intact.
+
+Product config slice for AST-1661 is clean — no engineer product fix. Tip before handoff: origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token @ 35bc9037a40ad3589f131ed23718c71811c078b9
+
+#### radia — 2026-09-16T00:21:14.273Z
+[code-rubric] REVIEW (Commit: a5a9db99) AST-1659 tests on wrong branch
+
+#### betty — 2026-09-16T00:17:01.879Z
+`origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token` @ `a5a9db99` · backstory catalog tests
+
+#### joan — 2026-09-16T00:05:36.243Z
+[plan-rubric] PROCEED (Commit: 8397ea1c) config catalog token flip
+
+#### ada — 2026-09-16T00:03:00.893Z
+`origin/sub/AST-1644/AST-1661-catalog-plus-backstory-token` @ `8397ea1cb326687928c93e7cb4c1b30d79d3a40c` · plan published
+
+---
+
 # Catalog plus BACKSTORY token
 
 **Linear:** [AST-1661](https://linear.app/astralcareermatch/issue/AST-1661)
