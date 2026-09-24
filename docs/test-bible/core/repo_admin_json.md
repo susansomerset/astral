@@ -658,3 +658,42 @@ Live `stage_meteorite` Ruth row (six outcome literals in `cache_prompt`; seq `2.
 ## QA test manifest
 
 Primary numbered list: **`docs/test-bible/utils/config.md`** § AST-1773 (includes this module’s node ids).
+
+### AST-1784 · AST-1783
+
+**Parent:** [AST-1783 — Parsing emails with linked job titles](https://linear.app/astralcareermatch/issue/AST-1783/parsing-emails-with-linked-job-titles). **Publish:** `origin/sub/AST-1783/AST-1784-stage-meteorite-linked-title-prompts`.
+
+`stage_meteorite` `cache_prompt` appends `## TITLE-AS-HREF (linked job titles)` (title hyperlinks → URL landables `link_list` / `single_jd_with_more`; `job_link` from href; optional `job_title` from role-naming anchor text; omit generic CTAs; never invent). `user_prompt` teaches the same shape. No `$RESPONSE_SCHEMA` in prompt fields; six outcomes unchanged. AST-756 fixture: surgical `cache_prompt` / `user_prompt` lockstep only (whole-file twin still drifts — fixture tip-ahead `review_duplicate_meteorite` row until that catalog product lands). Map http-over-breadcrumb: **AST-1785**. Prior subject-prefer title ask: **`TestAst1755StageMeteoriteJobTitlePrompts`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Title-as-href prompts + no `$RESPONSE_SCHEMA` + field lockstep + six outcomes | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1784StageMeteoriteLinkedTitlePrompts`** |
+| Prior job_title subject-prefer prompts | same | **`TestAst1755StageMeteoriteJobTitlePrompts`** |
+| Prior stage Ruth shell + six outcome names | same | **`TestAst1529StageMeteoriteCatalogRow::test_stage_meteorite_ruth_shell_and_outcomes`** |
+| Config outcomes length 6 (confirm) | `src/utils/config.py` | also covered in **`TestAst1784…::test_six_outcomes_unchanged`** / **`TestAst1529StageMeteoriteConfig`** |
+
+**Broken / obsolete this pass:**
+- **`TestAst1529…::test_fixture_stage_meteorite_lockstep`** / **`TestAst1755…::test_fixture_stage_meteorite_job_title_lockstep`** whole-file byte equality — revised to surgical `stage_meteorite` prompt-field lockstep (fixture still has tip-ahead `review_duplicate_meteorite` not in admin on `origin/dev`).
+- Do **not** require **`TestAst1773…`** / **`TestAst786…` 57-key** / whole-file **`TestAst1494…::test_fixture_byte_identical_to_catalog`** on this tip — employer / review_duplicate product is not on this publish ref.
+
+**Integration:** none — no existing scenario asserts `stage_meteorite` title-as-href prompt wording.
+
+## QA test manifest
+
+1. Title-as-href prompts + field lockstep + outcomes==6: `tests/component/core/test_repo_admin_json.py::TestAst1784StageMeteoriteLinkedTitlePrompts`
+2. Prior job_title prompts: `tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts`
+3. Prior stage Ruth shell: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow::test_stage_meteorite_ruth_shell_and_outcomes`
+4. Prior stage prompt field lockstep: `tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow::test_fixture_stage_meteorite_lockstep`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1784StageMeteoriteLinkedTitlePrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1755StageMeteoriteJobTitlePrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1529StageMeteoriteCatalogRow \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/repo_admin_json.md`

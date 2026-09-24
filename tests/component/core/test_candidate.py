@@ -6897,3 +6897,62 @@ class TestAst1700SaveCandidateDataSourceArtifactIds:
         )
         assert out is None
         assert spy == []
+
+
+# Branches: str-path rotate calls revalidate; identical short-circuit skips; dict path skips.
+class TestAst1781ArtifactRotateRevalidateHook:
+    """AST-1781: save_candidate_data str-path hooks revalidate_dispatch_tasks_for_artifact."""
+
+    def test_str_path_rotate_calls_revalidate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "revalidate_dispatch_tasks_for_artifact",
+            lambda cid, akey: calls.append((cid, akey)),
+        )
+        monkeypatch.setattr(
+            candidate_mod.database, "get_current_artifact", lambda *a, **k: None
+        )
+        _spy_save_artifact(monkeypatch)
+        uid = candidate_mod.save_candidate_data(
+            "c1781", _STRENGTHS_ARTIFACT_KEY, "fresh strengths"
+        )
+        assert uid == "uuid-1"
+        assert calls == [("c1781", _STRENGTHS_ARTIFACT_KEY)]
+
+    def test_identical_short_circuit_skips_revalidate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "revalidate_dispatch_tasks_for_artifact",
+            lambda *a, **k: calls.append(a),
+        )
+        spy = _spy_save_artifact(monkeypatch)
+        blob = "same strengths"
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_current_artifact",
+            lambda *a, **k: {"artifact_uuid": "existing", "artifact_data": blob},
+        )
+        out = candidate_mod.save_candidate_data("c1781", _STRENGTHS_ARTIFACT_KEY, blob)
+        assert out == "existing"
+        assert spy == []
+        assert calls == []
+
+    def test_dict_path_skips_revalidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        calls: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "revalidate_dispatch_tasks_for_artifact",
+            lambda *a, **k: calls.append(a),
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        out = candidate_mod.save_candidate_data(
+            "c1781", {"context": {"strengths": "lib only"}}
+        )
+        assert out is None
+        assert calls == []
