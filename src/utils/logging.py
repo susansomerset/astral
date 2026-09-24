@@ -4,10 +4,12 @@ Centralized logging utility for ASTRAL.
 Provides a standardized logger interface that can be used across all layers.
 Uses Python's standard logging module with consistent formatting.
 
-Log output goes to both stdout and the app_log database table. Console lines are
-`LEVEL logger.name: message`. The database handler stores message only — level
-and logger_name are columns. Switching to Better Stack or another provider means
-updating this module only.
+Log output goes to both stdout and the app_log database table. Console is always
+stdout: on Railway (`RAILWAY_ENVIRONMENT` set) each line is JSON with `level` +
+`message`; off-Railway the plain `LEVEL name: message` format remains. The
+database handler stores message only — level and logger_name are columns.
+Switching to Better Stack or another provider means updating this module only.
+Telescope and gunicorn console setup are out of scope.
 
 B2 / D2 (AST-388): `add_log_entry` is imported inside `_flush_buffer` only (late import — utils must not load `data` at module import time). Handler errors print one line to stderr so failures are visible without crashing the logging caller.
 
@@ -36,7 +38,9 @@ Usage:
 
 import atexit
 import contextvars
+import json
 import logging
+import os
 import sys
 import threading
 from typing import Any, Optional
@@ -54,11 +58,43 @@ _FLUSH_THRESHOLD = 50
 # Console only — app_log keeps message-only (level / logger_name are columns).
 _CONSOLE_FORMAT = "%(levelname)s %(name)s: %(message)s"
 _CONSOLE_FORMATTER = logging.Formatter(_CONSOLE_FORMAT)
+# Railway Log Explorer vocabulary (WARNING → warn; CRITICAL → error).
+_RAILWAY_LEVEL = {
+    logging.DEBUG: "debug",
+    logging.INFO: "info",
+    logging.WARNING: "warn",
+    logging.ERROR: "error",
+    logging.CRITICAL: "error",
+}
 
 DEBUG_DETAIL_PREFIX = " | "  # two spaces, pipe, two spaces — working-log detail only
 DEBUG_LINE_THRESHOLD = 50
 DEBUG_HEAD_LINES = 15
 DEBUG_TAIL_LINES = 15
+
+
+def _on_railway() -> bool:
+    """True when running on a Railway deploy (ticket signal: RAILWAY_ENVIRONMENT only)."""
+    return bool(os.environ.get("RAILWAY_ENVIRONMENT"))
+
+
+class _RailwayJsonFormatter(logging.Formatter):
+    """One JSON object per line for Railway severity filters."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        msg = f"{record.name}: {record.getMessage()}"
+        if record.exc_info:
+            msg = msg + "\n" + self.formatException(record.exc_info)
+        return json.dumps(
+            {
+                "level": _RAILWAY_LEVEL.get(record.levelno, "error"),
+                "message": msg,
+            },
+            ensure_ascii=False,
+        )
+
+
+_RAILWAY_JSON_FORMATTER = _RailwayJsonFormatter()
 
 
 def truncate_debug_content(text: str) -> list[str]:
@@ -94,13 +130,35 @@ def format_debug_index_header(
     return f"{func} index {index}/{total} {identifier} -> {outcome}"
 
 
+def _ensure_stdout_console_handler() -> None:
+    """Product console on stdout — never leave get_logger lines on stderr."""
+    root = logging.getLogger()
+    console = None
+    for h in root.handlers:
+        if isinstance(h, _DatabaseLogHandler):
+            continue
+        if isinstance(h, logging.StreamHandler) and getattr(h, "stream", None) in (
+            sys.stdout,
+            sys.stderr,
+        ):
+            if h.stream is sys.stderr:
+                h.stream = sys.stdout
+            console = h
+            break
+    if console is None:
+        root.addHandler(logging.StreamHandler(sys.stdout))
+        if root.level == logging.NOTSET:
+            root.setLevel(logging.INFO)
+
+
 def _apply_console_formatter() -> None:
-    """Put logger + level on stdout/stderr handlers. Skip the DB handler."""
+    """Plain or Railway JSON on stdout/stderr handlers. Skip the DB handler."""
+    fmt = _RAILWAY_JSON_FORMATTER if _on_railway() else _CONSOLE_FORMATTER
     for h in logging.getLogger().handlers:
         if isinstance(h, _DatabaseLogHandler):
             continue
         if getattr(h, "stream", None) in (sys.stdout, sys.stderr):
-            h.setFormatter(_CONSOLE_FORMATTER)
+            h.setFormatter(fmt)
 
 
 def _db_handler_stderr(line: str) -> None:
@@ -245,7 +303,9 @@ class _PrefixedLogger:
         if not log_debug.get():
             return
         lineno = sys._getframe(1).f_lineno
-        if self._logger.level > logging.DEBUG:
+        # NOTSET inherits root INFO, and 0 is not "> DEBUG", so the old check
+        # left logger.debug() a no-op even when log_debug was true.
+        if self._logger.getEffectiveLevel() > logging.DEBUG:
             self._logger.setLevel(logging.DEBUG)
         self._logger.debug("%s: " + str(message), lineno, *args, **kwargs)
 
@@ -325,12 +385,8 @@ def get_logger(name: Optional[str] = None, debug_flag: bool = False) -> _Prefixe
     """
     base_logger = logging.getLogger(name)
 
-    # Configure logging if not already configured
-    if not base_logger.handlers:
-        logging.basicConfig(
-            level=logging.INFO,
-            format=_CONSOLE_FORMAT,
-        )
+    # Console on stdout (plain or Railway JSON); never basicConfig's stderr default.
+    _ensure_stdout_console_handler()
     _apply_console_formatter()
 
     # Attach database handler once to the root logger
