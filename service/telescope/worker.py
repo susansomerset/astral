@@ -1,4 +1,4 @@
-"""Queue consumer — claims jobs up to WORKER_CONCURRENCY and runs them on the pool.
+"""Queue consumer — claims jobs up to WORKER_CONCURRENCY and runs each in its own Firefox context.
 
 Wake-ups come from LISTEN telescope_job_new; polling every QUEUE_POLL_SECONDS is the
 backstop (missed notifies, retry back-offs coming due, a dropped listener connection).
@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional
 import asyncpg
 
 import jobqueue
-from browser import BrowserPool
+from browser import Firefox
 from logging_util import get_logger
 from scrape import ScrapeError, parse_request, run_scrape
 from scrape_debug import (
@@ -44,13 +44,13 @@ class QueueWorker:
     def __init__(
         self,
         db: asyncpg.Pool,
-        browser_pool: BrowserPool,
+        firefox: Firefox,
         *,
         worker_id: Optional[str] = None,
         concurrency: Optional[int] = None,
     ) -> None:
         self._db = db
-        self._browser_pool = browser_pool
+        self._firefox = firefox
         self.worker_id = worker_id or make_worker_id()
         self._concurrency = concurrency or settings.worker_concurrency
         self._in_flight: Dict[str, asyncio.Task] = {}
@@ -261,7 +261,7 @@ class QueueWorker:
             scrape_debug_event("request_start", url=url, fields=fields, job_id=job.id)
             try:
                 req, sel = parse_request(raw)
-                result = await run_scrape(self._browser_pool, req, sel)
+                result = await run_scrape(self._firefox, req, sel)
             except ScrapeError as exc:
                 await self._record_failure(job, exc, url)
                 return

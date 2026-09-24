@@ -145,11 +145,11 @@ class TestHealthz:
     def _client(self, *, db_ok: bool, browser_ok: bool) -> TestClient:
         import app as app_mod
 
-        pool = MagicMock()
-        pool.health_poke = AsyncMock(return_value=browser_ok)
+        firefox = MagicMock()
+        firefox.health_poke = AsyncMock(return_value=browser_ok)
         w = _worker()
         w.db_ok = db_ok
-        app_mod.app.state.pool = pool
+        app_mod.app.state.firefox = firefox
         app_mod.app.state.worker = w
         return TestClient(app_mod.app)  # no `with` — lifespan (DB, Firefox) not started
 

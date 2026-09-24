@@ -7,14 +7,11 @@ from dataclasses import dataclass, field
 from typing import Dict, List
 
 from telescope_config import (
-    BROWSER_PER_REQUEST,
-    BROWSER_POOL_SIZE,
     FIREFOX_USER_PREFS,
     LAUNCH_MAX_ATTEMPTS,
     LAUNCH_RETRY_DELAY_SECONDS,
     LAUNCH_TIMEOUT_MS,
     LOG_LEVEL,
-    MAX_CONTEXTS_PER_BROWSER,
     PAGE_GOTO_TIMEOUT_MS,
     PORT,
     RECYCLE_AFTER_N,
@@ -41,9 +38,6 @@ from telescope_config import (
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    browser_per_request: bool
-    browser_pool_size: int
-    max_contexts_per_browser: int
     request_timeout_seconds: float
     scrape_retry_base_delay_seconds: float
     timeout_max_attempts: int
@@ -89,9 +83,6 @@ class Settings:
 def load_settings() -> Settings:
     return Settings(
         database_url=(os.environ.get("ASTRAL_DATABASE_URL") or "").strip(),
-        browser_per_request=bool(BROWSER_PER_REQUEST),
-        browser_pool_size=BROWSER_POOL_SIZE,
-        max_contexts_per_browser=MAX_CONTEXTS_PER_BROWSER,
         request_timeout_seconds=float(REQUEST_TIMEOUT_SECONDS),
         scrape_retry_base_delay_seconds=SCRAPE_RETRY_BASE_DELAY_SECONDS,
         timeout_max_attempts=TIMEOUT_MAX_ATTEMPTS,
