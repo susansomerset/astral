@@ -1,3 +1,67 @@
+<!-- linear-archive: AST-1592 archived 2026-09-24 -->
+
+## Linear archive (AST-1592)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1592/tracker-generic-catalog-writeread-job-keys-base-resume-citation  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1588 — Support “job.artifacts.job_resume” and “job.artifacts.cover_letter”as artifacts  
+**Blocked by / blocks / related:** parent: AST-1588; blocks: AST-1593
+
+### Description
+
+## What this implements
+
+After #1 and #2: give tracker the same public catalog write and current-read shape candidate already has (entity id + artifact key; no specificity to which artifact). Route job_resume / cover_letter operative writes and backend reads through those generics into the artifacts table. On every job_resume write, cite the then-current base_resume artifact_id as a source (empty list if none). Remove type-specific public save helpers for these keys. Does not own builder/UI consumer inventory (sibling #4). Blocks #4.
+
+## Citations
+
+patt.artifact.write-operative; patt.artifact.read-current; patt.artifacts.traceability; patt.artifact.manage-catalog; astral.standards.dry-and-focused-functions; astral.standards.debug-contract-gated; astral.layers.import-direction
+
+## Scope
+
+src/core/tracker.py — **modified** — add candidate-shaped generic public write and current-read for catalog keys on jobs; route these two keys through them; on job_resume write, resolve current base_resume artifact_id and pass it as a source; remove type-specific public save/hydrate helpers for job_resume / cover_letter; stop job-record SoT writes/reads for those keys. `src/ui/api/api_jobs.py` — **modified** — GET/PUT for these bodies call the generic tracker functions by catalog key; no new artifact-specific endpoint family. `src/core/agent.py` — **modified** — finalize / craft-land persist for these two keys calls the generic tracker write only. `src/core/candidate.py` — **modified** — only if shared catalog resolve/write/read or base_resume current-id lookup must stay DRY with tracker; otherwise untouched.
+
+## Acceptance criteria
+
+- [X] 2. Tracker exposes generic public write and current-read functions with the same calling shape as candidate’s catalog artifact save and get_candidate_current (entity id + artifact key; no per-artifact public function).
+- [X] 3. After an operative job.artifacts.job_resume write, the new row’s source references include the candidate’s then-current base_resume artifact_id when one exists (empty list when none).
+- [X] 4. UI save and agent finalize land for both keys persist via that generic write into the artifacts table; no supported path writes those bodies as SoT onto the job record.
+- [X] 5. Jobs GET / tracker hydrate obtain bodies via that generic current-read; they do not treat job_data.artifacts.job_resume / cover_letter (or type-specific overlay helpers) as SoT. (Builder live build + full UI consumer inventory → AST-1593 per Boundaries.)
+- [X] 6. Type-specific public tracker/API entry points for only job_resume or only cover_letter are gone (or thin shims that only forward to the generic functions, removed in the same epic).
+- [X] 7. Coat-check registration and new body-validation gates are not introduced for these keys.
+
+## Boundaries
+
+- [X] Does not own catalog registration (#1), artifacts DDL (#2), or builder/UI consumer inventory (#4). after #1 #2
+
+## Notes for planning
+
+Confirm Chuckles estimate: 5 — agree or revise.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1588-job-artifacts-job-resume-cover-letter`, child `sub/AST-1588/<child-id>-tracker-generic-catalog-write-read-citation`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-04T22:31:42.970Z
+[code-rubric] PROCEED (Commit: e5c94866) Catalog write/read citation clean
+
+#### betty — 2026-09-04T22:28:51.851Z
+`origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation` @ `e5c94866e67576d3df4fdefc0587e5dcb6659f00` · catalog citation manifest
+
+#### joan — 2026-09-04T22:19:54.844Z
+[plan-rubric] PROCEED (Commit: 2bb7b0a1) tracker catalog write/read
+
+#### hedy — 2026-09-04T22:17:24.748Z
+`origin/sub/AST-1588/AST-1592-tracker-generic-catalog-write-read-citation` @ `2bb7b0a1077b71dc7835bf98f4c533702586b680` · plan ready
+
+---
+
 # Tracker generic catalog write/read + job keys + base_resume citation
 
 **Linear:** [AST-1592](https://linear.app/astralcareermatch/issue/AST-1592/tracker-generic-catalog-writeread-job-keys-base-resume-citation-support)

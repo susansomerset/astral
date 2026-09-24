@@ -1,3 +1,120 @@
+<!-- linear-archive: AST-1576 archived 2026-09-24 -->
+
+## Linear archive (AST-1576)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1576/generic-save-candidate-data-agent-craft-persist-rewire-implement  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1569 — Implement patt.artifact.write-operative  
+**Blocked by / blocks / related:** parent: AST-1569; blocks: AST-1577
+
+### Description
+
+## What this implements
+
+Blind `save_artifact` retire+insert; `save_candidate_data(candidate_id, artifact_key, blob)` against `ARTIFACT_CONFIG`; `craft_resume_base` `artifact_key`; rewire agent to call that generic save and remove craft-persist gunk for operative bodies; retarget parse + API save; delete `artifact_catalog`. Does **not** own React editor or ui-consistency draft.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `astral.standards.database-header-inventory`; `astral.standards.data-raises-caller-logs`; `astral.layers.import-direction`
+
+## Scope
+
+`src/data/database.py`; `src/utils/artifact_catalog.py` (**deleted**); `src/utils/config.py`; `src/core/candidate.py`; `src/core/agent.py` (craft-persist rewire); `src/ui/api/api_candidate.py`; Betty delete/retarget catalog wrapper tests.
+
+## Acceptance criteria
+
+- [X] 1. Pilot writes use blind retire-by-key + insert new current uuid via `database.save_artifact`; no in-place body UPDATE; no prior-id lookup.
+- [X] 2. `save_candidate_data(candidate_id, artifact_key, blob)` is the only candidate write entry for the pilot body; UI save and `craft_resume_base` land both use it.
+- [X] 3. `TASK_CONFIG["craft_resume_base"]["artifact_key"] == "candidate.artifacts.base_resume"`.
+- [X] 4. Agent craft land no longer routes pilot body through `_persist_craft_dispatch_success` / craft-specific persist helpers — generic `save_candidate_data` only, and all replaced functions are removed from the component.
+- [X] 5. `src/utils/artifact_catalog.py` is gone.
+- [X] 6. No new `ARTIFACT_CONFIG` keys; no coat-check; no job finalize / grade pin writers this ticket.
+
+## Boundaries
+
+- [X] Does not own React editor or `patt.artifacts.ui-consistency` draft (sibling). Does not register job keys. Does not implement grade pin writers or coat-check retirement.
+
+## Notes for planning
+
+Confirm Chuckles estimate: 5 — agree or revise. Pilot key only: `candidate.artifacts.base_resume`.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1569-write-operative`, child `sub/AST-1569/AST-1576-generic-save-candidate-data`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Delivery: **`origin/sub/AST-1569/AST-1576-generic-save-candidate-data` @ `47ed93bd` (`merge-tests(AST-1576): origin/tests 81cab02f`)
+
+**Bible (publish-ref shasum):**
+
+* `docs/test-bible/core/candidate.md` · `754fd7e26249e79f99952a0a52a79dca2bc05dd9`
+* `docs/test-bible/core/agent.md` · `ca4f9e43c727f42b033a642c75522ab21b19a697`
+* `docs/test-bible/ui/api/api_candidate.md` · `a837a0dbc99a162dae09d42aba4c5c85f81521a0`
+* `docs/test-bible/utils/config.md` · `03254014886077baa3591be3a2b0c740c23c38e1`
+* `docs/test-bible/utils/artifact_catalog.md` · `8bdc09dfc4b6d3f0e934cae852e77bd5ab176718`
+
+**Tests (publish-ref shasum):**
+
+* `tests/component/core/test_candidate.py` · `913b75ba54f0cb4ef177f3038495b8631c94d1dd`
+* `tests/component/core/test_agent.py` · `cdd35a2313ec46bfe036b1bb198f88b0727b95f5`
+* `tests/component/ui/api/test_api_candidate.py` · `d3deae0869262b9df78fbf2d25444d03f3bd8516`
+* `tests/component/utils/test_config.py` · `fccb20d78b27d14df7d271953a99a1c5cf1ee72a`
+
+ 1. Dual-dispatch / fail-fast / retire / hydrate / generate write: `tests/component/core/test_candidate.py::TestAst1576SaveCandidateDataOperative`
+ 2. Parse land: `tests/component/core/test_candidate.py::TestParseCandidateResume::test_persists_parsed_resume`
+ 3. Parse no auto-transition: `tests/component/core/test_candidate.py::TestParseCandidateResumeExtended::test_never_auto_transitions_state`
+ 4. Generate: `tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration`
+ 5. Job-array persist: `tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array`
+ 6. Config artifact_key + module gone: `tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey`
+ 7. Agent operative persist: `tests/component/core/test_agent.py::TestAst1576CraftPersistOperative`
+ 8. Agent source hook: `tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops`
+ 9. PUT operative: `tests/component/ui/api/test_api_candidate.py::TestAst1576PutBaseResumeOperativeApi`
+10. Mocked PUT orphan strip: `tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`
+11. Label ingest: `tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi`
+12. Data retire+insert: `tests/component/data/database/test_artifacts.py::TestAst1352Artifacts`
+
+**Broken / obsolete this pass: **`tests/component/utils/test_artifact_catalog.py` (module deleted); `TestAst1353SnapshotSavedBaseResume`; `TestAst1353SaveBaseResumeSnapshotApi`; generate “does not call save_artifact”; parse/generate asserts of `artifacts.base_resume` on the library blob.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1576SaveCandidateDataOperative \
+  tests/component/core/test_candidate.py::TestParseCandidateResume::test_persists_parsed_resume \
+  tests/component/core/test_candidate.py::TestParseCandidateResumeExtended::test_never_auto_transitions_state \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array \
+  tests/component/utils/test_config.py::TestAst1576CraftResumeBaseArtifactKey \
+  tests/component/core/test_agent.py::TestAst1576CraftPersistOperative \
+  tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops \
+  tests/component/ui/api/test_api_candidate.py::TestAst1576PutBaseResumeOperativeApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
+  tests/component/data/database/test_artifacts.py::TestAst1352Artifacts \
+  -q
+```
+
+### Comments
+
+#### radia — 2026-09-02T23:48:45.534Z
+[code-rubric] PROCEED (Commit: 47ed93bd) write-operative pilot clean
+
+#### betty — 2026-09-02T23:44:40.156Z
+`origin/sub/AST-1569/AST-1576-generic-save-candidate-data` @ `47ed93bd` · tests delivered
+
+#### joan — 2026-09-02T23:24:48.210Z
+[plan-rubric] PROCEED (Commit: aa259b45) write-operative rewire clean
+
+#### ada — 2026-09-02T23:22:39.111Z
+`origin/sub/AST-1569/AST-1576-generic-save-candidate-data` @ `aa259b45` · plan ready
+
+---
+
 # Generic save_candidate_data + agent craft-persist rewire
 
 **Linear:** [AST-1576](https://linear.app/astralcareermatch/issue/AST-1576/generic-save-candidate-data-agent-craft-persist-rewire-implement)

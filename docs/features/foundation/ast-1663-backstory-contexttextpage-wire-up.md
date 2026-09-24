@@ -1,3 +1,99 @@
+<!-- linear-archive: AST-1663 archived 2026-09-24 -->
+
+## Linear archive (AST-1663)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1663/backstory-contexttextpage-wire-up-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1644 — Migrate candidate_data.context.backstory to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1644
+
+### Description
+
+## What this implements
+
+Retarget Backstory-only UI to the operative API contract via existing `ContextTextPage`, matching `CandidateStrengths.tsx` (`bodyShape="plain_text"`). No ArtifactEditor. No sibling context pages. No ContextTextPage changes. After #1 (and API hydrate from #2 as needed). Mirror AST-1634 page-level wire-up only.
+
+## Citations
+
+`patt.artifact.ui-consistency`; `patt.artifact.read-current`; `patt.artifact.write-operative`
+
+## Scope
+
+`src/ui/frontend/src/pages/CandidateBackstory.tsx` — Backstory-only wire-up against existing ContextTextPage.
+
+## Acceptance criteria
+
+- [X] 6\. Editor reload — Backstory page after save shows the same text. Fail: empty editor while a current artifact row exists.
+- [X] 7\. UI path — `CandidateBackstory.tsx` passes `bodyShape="plain_text"` into `ContextTextPage` (same shape as Strengths); `ArtifactEditor` diff for this ticket is empty. Fail: Backstory routed through ArtifactEditor / resume_content, or still missing `bodyShape`.
+
+## Boundaries
+
+- [X] No ArtifactEditor. No sibling context pages. Does not modify ContextTextPage (already parameterized by AST-1629). After #1 / #2 as needed.
+
+## Frame diff (Radia)
+
+- [X] Publish ref carries only AST-1663-scoped commits — no AST-1667 test/bible land (`d191eaf1`) without `list_workspace_posters` product on tip
+
+## Notes for planning
+
+Mirror AST-1634. After #1 (and API hydrate from #2 as needed).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Routed Backstory page (§6c): `tests/component/frontend/pages/test_CandidateBackstory.test.tsx` — pattern `AST-1663`
+2. Shared ContextTextPage plain_text gate (existing): `tests/component/frontend/components/test_ContextTextPage.test.tsx` — pattern `AST-1634`
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_CandidateBackstory.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx \
+  --testNamePattern="AST-1663|AST-1634"
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/frontend/pages.md` — `1d82442a4fb9679ef48dedfcfbea7adef02ab17c`
+
+### Comments
+
+#### betty — 2026-09-16T02:11:45.668Z
+[check-linear]
+Cleared [qa-handoff]: stripped orphan AST-1667 (`d191eaf1` / TestAst1667 + slack bible) from this publish-ref. Tip rebuilt with exactly one merge-tests(AST-1663) → `1fb91c32` (AST-1663 Backstory page tests + bible only); Radia review docs restored. `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up` @ `da15ec86`. Stay Review Posted — reassigned Katherine for resolve-child.
+
+#### katherine — 2026-09-16T02:08:45.891Z
+[qa-handoff]
+@Betty White
+
+Radia fix-now (Review Posted): publish ref carries orphan AST-1667 test/bible without product.
+
+- Commit: `d191eaf1` `test(AST-1667): workspace poster pool coverage in slack external`
+- Files: `tests/component/external/test_slack.py` (`TestAst1667WorkspacePosterPool`); `docs/test-bible/external/slack.md` § AST-1667
+- Product gap: `list_workspace_posters` absent from `src/external/slack.py` on this tip — full-suite landmine
+- Wanted: drop AST-1667 delta from `origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up` (land on AST-1667 publish ref); keep AST-1663 manifest-only (`test_CandidateBackstory` + ContextTextPage AST-1634)
+- Engineer cannot edit `tests/` / `docs/test-bible/**` — please strip and re-`merge-tests` / push this publish-ref, then reassign Katherine
+
+#### radia — 2026-09-16T02:04:33.808Z
+[code-rubric] REVIEW (Commit: 7ff7a9df) AST-1667 tests orphan on ref
+
+#### betty — 2026-09-16T02:01:50.913Z
+`origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up` @ `7ff7a9df` · Backstory page tests
+
+#### joan — 2026-09-16T01:56:22.172Z
+[plan-rubric] PROCEED (Commit: 69d7bd5d) plain_text bodyShape wire-up
+
+#### katherine — 2026-09-16T01:54:45.512Z
+`origin/sub/AST-1644/AST-1663-backstory-contexttextpage-wire-up` @ `69d7bd5ddd493bd41e28a5a42168ac7767ff228a` · plan ready
+
+---
+
 # Backstory ContextTextPage wire-up
 
 **Linear:** [AST-1663](https://linear.app/astralcareermatch/issue/AST-1663)

@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1634 archived 2026-09-24 -->
+
+## Linear archive (AST-1634)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1634/strengths-contexttextpage-plain-text-path-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1629 — Migrate candidate_data.context.strengths to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1629
+
+### Description
+
+## What this implements
+
+Retarget Strengths-only UI load/save to the operative API contract via `ContextTextPage` (shared plain-text editor for future context migrations). No ArtifactEditor. No sibling context pages. After catalog sibling (and API hydrate from operative sibling as needed).
+
+## Citations
+
+`patt.artifact.ui-consistency`; `patt.artifact.read-current`; `patt.artifact.write-operative`
+
+## Scope
+
+`src/ui/frontend/src/pages/CandidateStrengths.tsx` — Strengths-only wire-up. `src/ui/frontend/src/components/ContextTextPage.tsx` — plain-text artifact editor parameterization.
+
+## Acceptance criteria
+
+- [X] 6\. **Editor reload** — Strengths page after save shows the same text.
+- [X] 7\. **UI path** — Strengths still uses ContextTextPage; `ArtifactEditor` diff for this epic is empty.
+
+## Boundaries
+
+- [X] Does not own config catalog/token (Ada). Does not own core/API hydrate/save (Hedy). Does not touch sibling context pages.
+
+## Notes for planning
+
+After #1; uses API contract from #2. plain_text → ContextTextPage, not resume_content ArtifactEditor.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1629-migrate-strengths-artifact-table`, child `sub/AST-1629/<this-id>-strengths-contexttextpage-plain-text-path`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-15T00:06:43.066Z
+[code-rubric] PROCEED (Commit: 40aa80a23d34) ContextTextPage plain_text clean
+
+#### betty — 2026-09-15T00:04:21.975Z
+origin/sub/AST-1629/AST-1634-strengths-contexttextpage-plain-text-path @ 40aa80a2 · Strengths plain_text UI tests
+
+#### joan — 2026-09-14T23:58:28.366Z
+[plan-rubric] PROCEED (Commit: 4ee246c1) ContextTextPage plain_text wired
+
+#### katherine — 2026-09-14T23:56:31.832Z
+`origin/sub/AST-1629/AST-1634-strengths-contexttextpage-plain-text-path` @ `4ee246c1` · plan ready
+
+---
+
 # Strengths ContextTextPage plain-text path
 
 **Linear:** [AST-1634](https://linear.app/astralcareermatch/issue/AST-1634)

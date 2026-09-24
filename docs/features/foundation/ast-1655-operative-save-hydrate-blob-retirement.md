@@ -1,3 +1,81 @@
+<!-- linear-archive: AST-1655 archived 2026-09-24 -->
+
+## Linear archive (AST-1655)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1655/operative-save-hydrate-blob-retirement-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1642 — Migrate candidate_data.context.deal_breakers to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1642; blocks: AST-1656
+
+### Description
+
+## What this implements
+
+Wire Deal Breakers through candidate operative `plain_text` validation plus `get_candidate_current` hydrate on GET; intercept API PUT for operative save; stop durable library SoT writes for `context.deal_breakers`. No backfill helper. Does not own React chrome. After #1. Mirror AST-1633 guidelines.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.in-scope-only`; `stat.logging.info.entity`; `stat.logging.info.api`; `stat.logging.error`
+
+## Scope
+
+`src/core/candidate.py` — operative validation for `plain_text`; hydrate overlay; gate library merge for `context.deal_breakers`. `src/ui/api/api_candidate.py` — PUT intercept plus GET hydrate for Deal Breakers.
+
+## Acceptance criteria
+
+- [X] 4\. Operative round-trip — save creates current artifact row; second save retires prior current.
+- [X] 5\. Blob not SoT on write — operative save_artifact path, not library-merge alone.
+- [X] 6\. No backfill required — legacy blob-only candidates load until re-save; no bulk migration.
+
+## Boundaries
+
+- [X] No React chrome (sibling #3). No backfill helper. After catalog sibling #1.
+
+## Notes for planning
+
+Mirror AST-1633. After #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Core Deal Breakers operative: `tests/component/core/test_candidate.py::TestAst1655DealBreakersOperativeSaveHydrate`
+2. API PUT/GET Deal Breakers: `tests/component/ui/api/test_api_candidate.py::TestAst1655DealBreakersOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1655DealBreakersOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1655DealBreakersOperativeApi \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/candidate.md` — `d9e781aba02a3c728807db42e10f4e1421d279df`
+* `docs/test-bible/ui/api/api_candidate.md` — `508b17aa14a81ae59639e3dc5b40961c9488064f`
+
+### Comments
+
+#### radia — 2026-09-15T23:41:12.479Z
+[code-rubric] PROCEED (Commit: f2db229c) operative save hydrate clean
+
+#### betty — 2026-09-15T23:29:54.208Z
+`origin/sub/AST-1642/AST-1655-operative-save-hydrate-blob-retirement` @ `2b500abc` · deal_breakers operative tests
+
+#### joan — 2026-09-15T23:19:58.970Z
+[plan-rubric] PROCEED (Commit: a8f5f31260a209d5518636ca21f869b4094fca8f) operative hydrate intercept
+
+#### hedy — 2026-09-15T23:18:07.125Z
+`origin/sub/AST-1642/AST-1655-operative-save-hydrate-blob-retirement` @ `a8f5f31260a209d5518636ca21f869b4094fca8f` · plan ready
+
+---
+
 # Operative save, hydrate, blob retirement
 
 **Linear:** [AST-1655](https://linear.app/astralcareermatch/issue/AST-1655)

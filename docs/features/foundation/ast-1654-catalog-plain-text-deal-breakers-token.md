@@ -1,3 +1,83 @@
+<!-- linear-archive: AST-1654 archived 2026-09-24 -->
+
+## Linear archive (AST-1654)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1654/catalog-plain-text-shape-reuse-deal-breakers-token-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 1  
+**Parent:** AST-1642 — Migrate candidate_data.context.deal_breakers to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1642; blocks: AST-1655
+
+### Description
+
+## What this implements
+
+Register `candidate.context.deal_breakers` in `ARTIFACT_CONFIG` reusing the existing `plain_text` shape, flip `TOKEN_SOURCES["DEAL_BREAKERS"]` to artifact plus `artifact_key`, lock startup asserts (drop Deal Breakers from sibling freeze). Does not own UI or hydrate. Mirror AST-1632 guidelines.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `stat.logging.info` / `stat.logging.debug` as touched
+
+## Scope
+
+`src/utils/config.py` — new catalog entry plus asserts; `TOKEN_SOURCES["DEAL_BREAKERS"]` flip; remove Deal Breakers from context-sibling freeze assert.
+
+## Acceptance criteria
+
+- [X] Catalog key present — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert 'candidate.context.deal_breakers' in ARTIFACT_CONFIG"` exits 0.
+- [X] plain_text shape reused — body_shape is `plain_text` (not resume_content / cover_letter / new shape).
+- [X] Token is artifact-typed — DEAL_BREAKERS source_type artifact + artifact_key candidate.context.deal_breakers.
+- [X] Sibling freeze — priorities/backstory/ideal_day/writing_preferences still absent; Deal Breakers no longer in freeze-absent assert.
+
+## Boundaries
+
+\[x\] Does not own UI or hydrate (siblings). No other context leaves. No coat-check. No new craft task.
+
+## Notes for planning
+
+Mirror AST-1632. Citations as above. Estimate confirmed in parent Proposed child tickets.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Primary Deal Breakers catalog + plain_text reuse + token: `tests/component/utils/test_config.py::TestAst1654CatalogPlainTextDealBreakersToken`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1654CatalogPlainTextDealBreakersToken \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/utils/config.md` — `1b87426e41699a24069d8b54de588f95b481525e`
+
+### Comments
+
+#### radia — 2026-09-15T23:13:50.944Z
+[code-rubric] PROCEED (Commit: 7814d07d) config catalog token clean
+
+#### betty — 2026-09-15T23:10:17.268Z
+`origin/sub/AST-1642/AST-1654-catalog-plain-text-deal-breakers-token` @ `7814d07d8704e4733cad36f6b2a9c6d85915af0c` · deal_breakers catalog tests
+
+#### joan — 2026-09-15T22:59:22.439Z
+[plan-rubric] PROCEED (Commit: ca2d61cc77f32fccdb256257180a419e811a6607) config catalog token
+
+#### ada — 2026-09-15T22:57:22.625Z
+`origin/sub/AST-1642/AST-1654-catalog-plain-text-deal-breakers-token` @ `ca2d61cc77f32fccdb256257180a419e811a6607` · plan ready
+
+---
+
 # Catalog + plain_text shape reuse + DEAL_BREAKERS token
 
 **Linear:** [AST-1654](https://linear.app/astralcareermatch/issue/AST-1654)

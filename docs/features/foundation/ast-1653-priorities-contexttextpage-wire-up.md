@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1653 archived 2026-09-24 -->
+
+## Linear archive (AST-1653)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1653/priorities-contexttextpage-wire-up-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1641 — Migrate candidate_data.context.priorities to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1641
+
+### Description
+
+## What this implements
+
+Retarget Priorities-only UI load/save to the operative API contract via existing `ContextTextPage`. No ArtifactEditor. No sibling context pages. After #1 (and API hydrate from #2 as needed).
+
+## Citations
+
+`patt.artifact.ui-consistency`; `patt.artifact.read-current`; `patt.artifact.write-operative`
+
+## Scope
+
+- [X] `src/ui/frontend/src/pages/CandidatePriorities.tsx` — Priorities-only wire-up against existing ContextTextPage.
+
+## Acceptance criteria
+
+- [X] 6\. **Editor reload** — Priorities page after save shows the same text.
+- [X] 7\. **UI path** — Priorities still uses ContextTextPage; `ArtifactEditor` diff for this ticket is empty.
+
+## Boundaries
+
+- [X] Does not own catalog (#1) or core/API hydrate (#2). Does not touch ContextTextPage.tsx wiring (already from AST-1629).
+
+## Notes for planning
+
+Citations as above. After #1; API hydrate from #2 as needed.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1641-migrate-priorities-artifact-table`, child `sub/AST-1641/<this-id>-priorities-contexttextpage-wire-up`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T00:02:35.395Z
+[code-rubric] PROCEED (Commit: 6eebba8b) Priorities plain_text wire clean
+
+#### betty — 2026-09-15T23:56:58.074Z
+`origin/sub/AST-1641/AST-1653-priorities-contexttextpage-wire-up` @ `dca4409d` · Priorities page tests
+
+#### joan — 2026-09-15T23:49:31.162Z
+[plan-rubric] PROCEED (Commit: 1dbd480859bc2eae8ba9095c25b470ee62ae170c) one-prop Strengths twin
+
+#### katherine — 2026-09-15T23:47:43.068Z
+`origin/sub/AST-1641/AST-1653-priorities-contexttextpage-wire-up` @ `1dbd480859bc2eae8ba9095c25b470ee62ae170c` · Priorities UI plan ready
+
+---
+
 # Priorities ContextTextPage wire-up
 
 **Linear:** [AST-1653](https://linear.app/astralcareermatch/issue/AST-1653)

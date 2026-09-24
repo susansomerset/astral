@@ -1,3 +1,63 @@
+<!-- linear-archive: AST-1666 archived 2026-09-24 -->
+
+## Linear archive (AST-1666)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1666/writing-preferences-contexttextpage-wire-up-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1645 — Migrate candidate_data.context.writing_preferences to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1645
+
+### Description
+
+## What this implements
+
+Retarget Writing Preferences-only UI load/save to the operative API contract via existing `ContextTextPage`. No ArtifactEditor. No sibling context pages. After #1 (and API hydrate from #2 as needed).
+
+## Citations
+
+`patt.artifact.ui-consistency`; `patt.artifact.read-current`; `patt.artifact.write-operative`
+
+## Scope
+
+- [X] `src/ui/frontend/src/pages/CandidateWritingPreferences.tsx` — Writing Preferences-only wire-up against existing ContextTextPage.
+
+## Acceptance criteria
+
+- [X] 6\. Editor reload — page after save shows the same text.
+- [X] 7\. UI path — ContextTextPage (or thin wrapper); ArtifactEditor diff empty.
+
+## Boundaries
+
+- [X] No ArtifactEditor. No sibling context pages. Does not own catalog (#1) or core/API (#2).
+
+## Notes for planning
+
+Citations as above. ContextTextPage already parameterized by AST-1629 — consumer only.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T01:07:59.269Z
+[code-rubric] PROCEED (Commit: 87400633) ContextTextPage wire-up clean
+
+#### betty — 2026-09-16T01:05:30.754Z
+`origin/sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up` @ `87400633` · WP ContextTextPage wire-up
+
+#### joan — 2026-09-16T00:52:02.842Z
+[plan-rubric] PROCEED (Commit: 0e7876182bfe0081e9d8851f55b924fd03101b8b) Writing Preferences UI wire-up
+
+#### katherine — 2026-09-16T00:50:23.738Z
+`origin/sub/AST-1645/AST-1666-writing-preferences-contexttextpage-wire-up` @ `0e7876182bfe0081e9d8851f55b924fd03101b8b` · plan ready
+
+---
+
 # Writing Preferences ContextTextPage wire-up
 
 **Linear:** [AST-1666](https://linear.app/astralcareermatch/issue/AST-1666)

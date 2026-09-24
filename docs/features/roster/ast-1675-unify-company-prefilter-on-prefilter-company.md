@@ -1,3 +1,105 @@
+<!-- linear-archive: AST-1675 archived 2026-09-24 -->
+
+## Linear archive (AST-1675)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1675/unify-company-prefilter-on-prefilter-company-unify-company-prefilter  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1671 — Unify company prefilter on prefilter_company and delete the dual-key shims  
+**Blocked by / blocks / related:** parent: AST-1671
+
+### Description
+
+## What this implements
+
+Owns the full cutover: retarget helper frozensets and admin defaults to `prefilter_company`, delete dual-key shims, consult single-route, schema-ensure company row retarget, one-release alias then drop. Does not rename callables or `prefilter_company_notes`. Does not apply Somerset’s live UPDATE (ops after deploy). Does not touch AST-1670 inflow keys.
+
+## Citations
+
+`patt.entity.batch-criteria`
+
+## Scope
+
+`src/utils/config.py` — **modified** — retarget company-prefilter membership in dispatch helper frozensets and admin/default resolvers to `prefilter_company`; delete dual-key shim functions/special cases; add then remove the one-release `prefilter` → `prefilter_company` alias. · `src/core/consult.py` — **modified** — company prefilter batch branch routes on `prefilter_company` only; scored-floor / row lookup no longer depends on dual-key shims for this hop. · `src/ui/api/api_admin.py` — **modified** — adhoc live-content and any hard-coded company-prefilter task_key checks use `prefilter_company`; form/meta path follows the retargeted helpers. · `src/data/database.py` — **modified** — idempotent schema-ensure (or equivalent one-time) retarget of company `dispatch_task.task_key` `prefilter` → `prefilter_company`; do not touch `craft_prefilter_rubric`. · `config` dispatch helper frozensets / `_dispatch_*_for_task_key` / `dispatch_task_admin_defaults` — replace bare `prefilter` membership with `prefilter_company` for company entity, trigger state, and batch_call_mode resolution. · `config` shim surface — delete `dispatch_row_task_key` / `dispatch_task_grouping_catalog_key` prefilter special cases (and the helpers themselves if they exist only for this hop); callers use identity / `prefilter_company`. · `config` one-release alias — temporary accept/map of leftover `prefilter` catalog input onto `prefilter_company`; remove after the retarget window. · `consult` company branch — single `prefilter_company` route into `prefilter_company_batch`; drop `("prefilter", "prefilter_company")` dual match. · `consult` score-floor / dispatch-row lookup — resolve the company prefilter row by `prefilter_company` without shim rename. · `api_admin` live-content / catalog meta — company homepage+nav preview and picker defaults keyed on `prefilter_company`. · `database` schema ensure — idempotent UPDATE company rows `task_key='prefilter'` → `'prefilter_company'`; guard unique-collision the same way AST-823’s reverse direction did; never rewrite `craft_prefilter_rubric`.
+
+## Acceptance criteria
+
+- [X] **Single lasting catalog string** — `rg -n '"prefilter"' src/utils/config.py src/core/consult.py src/ui/api/api_admin.py` shows no lasting company-prefilter **catalog** identity (frozenset membership, trigger/entity helpers, consult branch, admin live-content) still keyed as bare `prefilter`; failing = any of those sites still treat `prefilter` as the hop’s permanent task_key. (`ROSTER_CONFIG["prefilter"]` block key and comments may remain.)
+- [X] **Shims deleted** — `rg -n 'def dispatch_row_task_key|def dispatch_task_grouping_catalog_key' src/utils/config.py` returns nothing **or** those helpers are pure identity with no prefilter branch; failing = a special-case still maps `prefilter` ↔ `prefilter_company`.
+- [X] **Consult single-routes** — `rg -n 'prefilter", "prefilter_company"|prefilter_company", "prefilter' src/core/consult.py` returns nothing; company batch entry matches `prefilter_company` only. Failing = dual tuple/branch still present.
+- [X] **Admin agrees** — Admin picker / `_dispatch_task_key_form_meta("prefilter_company")` yields entity_type `company` and trigger_state `HOMEPAGE_READY`; adhoc live-content for `prefilter_company` still builds homepage+nav. Failing = KeyError, empty defaults, or live-content only wired under bare `prefilter`.
+- [X] **Rows retargeted (company only)** — After schema ensure on a DB that had company `task_key='prefilter'`, those rows read `prefilter_company`; `craft_prefilter_rubric` rows unchanged. Failing = company `prefilter` rows remain, or rubric rows were rewritten.
+- [X] **Alias then gone** — While the one-release alias is live, submitting/resolving leftover `prefilter` does not 400; after the drop commit, `prefilter` is rejected or ignored as a catalog identity and no alias helper remains. Failing = permanent alias left in tree, or cutover 400s on leftover rows before drop.
+- [X] **Non-catalog names preserved** — `rg -n 'def prefilter_company_batch|prefilter_company_notes' src/` still finds the callable and the company_data key. Failing = those were renamed as part of this epic.
+- [X] **Ops gate** — Description / handoff still states Somerset (and peers) must not UPDATE `dispatch_task` to `prefilter_company` until this code is deployed; no child “does the Somerset UPDATE.” Failing = ops UPDATE treated as a product deliverable inside a child.
+
+## Boundaries
+
+- [X] Confirmed held: no callable/`prefilter_company_notes`/`ROSTER_CONFIG["prefilter"]` rename; no Somerset live UPDATE; no AST-1670 inflow keys.
+
+Does not rename Python callables (`prefilter_company_batch`, etc.) or `company_data` key `prefilter_company_notes`. Does not rename `ROSTER_CONFIG["prefilter"]` config-block key. Does not apply Somerset live `dispatch_task` UPDATE. Does not own AST-1670 inflow website-resolve keys.
+
+## Notes for planning
+
+Citations: `patt.entity.batch-criteria`. One inseparable cutover — helpers, consult, admin, schema retarget, and alias introduce/drop must UAT together.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1671-unify-company-prefilter`, child `sub/AST-1671/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Config shims + lasting catalog helpers + admin defaults — `tests/component/utils/test_config.py` (`TestAst471…shims_removed`, `TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity`, `TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults`, `TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults`)
+2. Consult single-route + bare reject + score-floor identity — `tests/component/core/test_consult.py` (`TestRunConsultTaskRoutes::test_routes_prefilter_company_batch`, `::test_bare_prefilter_dispatch_key_does_not_route_to_batch`, `TestAst1277DispatchScoreFloorVerdict::test_dispatch_score_floor_lookup_null_zero_and_prefilter_key`)
+3. Admin picker + adhoc live-content — `tests/component/ui/api/test_api_admin.py` (`TestAst825PrefilterDispatchTaskKeysGrouping`, `TestAdhocHelpers::test_build_adhoc_live_content_company_paths`, `TestApiAdminBranchGaps::test_build_adhoc_live_content_remaining_company_and_job_edges`)
+4. Dispatcher claim union — `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states`
+5. Schema retarget — `tests/component/data/database/test_dispatch_tasks.py::TestAst1675PrefilterCatalogRetarget`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers::test_dispatch_dual_key_shims_removed \
+  tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers::test_prefilter_company_is_lasting_catalog_identity \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened::test_helper_resolvable_and_mailbox_defaults \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_bare_prefilter_dispatch_key_does_not_route_to_batch \
+  tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict::test_dispatch_score_floor_lookup_null_zero_and_prefilter_key \
+  tests/component/ui/api/test_api_admin.py::TestAst825PrefilterDispatchTaskKeysGrouping \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_company_paths \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_build_adhoc_live_content_remaining_company_and_job_edges \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1675PrefilterCatalogRetarget \
+  -q
+```
+
+**Broken / obsolete revised:** dual-key shim tests; Ast702/823 schema reverse migrations; Ast825 `keys["prefilter"]`; consult dual-route; score-floor shim rows.
+
+**Bible shasums (publish tip** `e68aaa8e`**):**
+
+* `docs/test-bible/utils/config.md` — `3069332fddd021396429a38ff7b82b657c6c1dfe`
+* `docs/test-bible/core/consult.md` — `69a3f634743967ac32ca5cca00f2d7e1851f13a3`
+* `docs/test-bible/ui/api/api_admin.md` — `70090de0aabfdce90953a9d3e1be14a05bfe8b2d`
+* `docs/test-bible/data/database/dispatch_tasks.md` — `f740d6f51241183519fdeb850a86b3359998d2ed`
+
+### Comments
+
+#### radia — 2026-09-16T05:03:08.266Z
+[code-rubric] PROCEED (Commit: e68aaa8e) catalog cutover clean
+
+#### betty — 2026-09-16T04:59:09.691Z
+`origin/sub/AST-1671/AST-1675-unify-company-prefilter-on-prefilter-company` @ `e68aaa8e` · prefilter_company cutover tests
+
+#### joan — 2026-09-16T04:44:12.722Z
+[plan-rubric] PROCEED (Commit: 0416f886) faithful prefilter cutover plan
+
+#### ada — 2026-09-16T04:42:13.873Z
+`origin/sub/AST-1671/AST-1675-unify-company-prefilter-on-prefilter-company` @ `0416f886` · plan published
+
+---
+
 # AST-1675: Unify company prefilter on prefilter_company
 
 **Linear:** [AST-1675](https://linear.app/astralcareermatch/issue/AST-1675/unify-company-prefilter-on-prefilter-company-unify-company-prefilter-on)

@@ -1,3 +1,62 @@
+<!-- linear-archive: AST-1680 archived 2026-09-24 -->
+
+## Linear archive (AST-1680)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1680/job-drafting-interface-rewires-move-candidate-dataartifactsresume  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1677 — Move candidate_data.artifacts.resume_structure to artifact table  
+**Blocked by / blocks / related:** parent: AST-1677
+
+### Description
+
+## What this implements
+
+Point job artifact drafting interfaces at table-backed structure: `RESUME_SECTION_CATALOG` assembly in consult, and tracker job-resume prepare/filter paths that read structure — all via resolve/hydrate, no blob-only bypass. Does not own catalog (#1) or operative save/API (#2). After #2.
+
+## Citations
+
+`patt.artifact.read-current`; `astral.standards.in-scope-only`; `astral.config.config-source-of-truth`
+
+## Scope
+
+`src/core/consult.py` — `build_job_token_context` / `RESUME_SECTION_CATALOG` assembly reads structure only through resolve/hydrate (no blob-only bypass). `src/core/tracker.py` — job resume prepare/filter paths that consult structure use the same resolve/hydrate SoT (no blob-only bypass).
+
+## Acceptance criteria
+
+7. **Job drafting interfaces** — With only an artifacts-table current structure (legacy blob empty/missing), `build_job_token_context` still populates non-empty `RESUME_SECTION_CATALOG` from enabled sections, and draft-job-resume section validation / job resume structure filter accept that catalog. Fail: catalog empty or validation/filter still require a library blob and ignore current row.
+
+## Boundaries
+
+After sibling #2. Does not own catalog (#1) or operative save/API (#2).
+
+## Notes for planning
+
+Keep `TOKEN_SOURCES["RESUME_SECTION_CATALOG"]` as `special_case` unless a later ticket retypes it.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1677-move-resume-structure-artifact-table`, child `sub/AST-1677/AST-1680-job-drafting-interface-rewires`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-16T18:04:17.167Z
+[code-rubric] PROCEED (Commit: 44af3439) hydrate drafting clean
+
+#### betty — 2026-09-16T18:01:32.803Z
+`origin/sub/AST-1677/AST-1680-job-drafting-interface-rewires` @ `44af3439cbf491c3c4d7881af4068880bcaa27be` · manifest green
+
+#### joan — 2026-09-16T17:54:32.511Z
+[plan-rubric] PROCEED (Commit: 3a5df9b) hydrate-then-resolve drafting
+
+#### katherine — 2026-09-16T17:52:09.516Z
+`origin/sub/AST-1677/AST-1680-job-drafting-interface-rewires` @ `3a5df9b00a7192d4dcfaa125840e50edc1501596` · plan ready hydrate-then-resolve
+
+---
+
 # Job drafting interface rewires
 
 **Linear:** [AST-1680](https://linear.app/astralcareermatch/issue/AST-1680)

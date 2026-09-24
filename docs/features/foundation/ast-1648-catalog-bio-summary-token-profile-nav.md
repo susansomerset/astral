@@ -1,3 +1,85 @@
+<!-- linear-archive: AST-1648 archived 2026-09-24 -->
+
+## Linear archive (AST-1648)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1648/catalog-bio-summary-token-profilenav-config-migrate-candidate-bio  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page  
+**Blocked by / blocks / related:** parent: AST-1647; blocks: AST-1649
+
+### Description
+
+## What this implements
+
+Register `candidate.context.bio_summary` in `ARTIFACT_CONFIG` with existing `plain_text`, flip `TOKEN_SOURCES["BIO_SUMMARY"]` to artifact + `artifact_key`, lock startup asserts, remove profile Bio Summary section, add Candidate nav leaf. Does not own hydrate, API intercept, or React pages.
+
+## Citations
+
+`patt.artifact.manage-catalog`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`; `stat.logging.info` / `stat.logging.debug` as touched
+
+## Scope
+
+`src/utils/config.py` — new catalog entry + asserts; `TOKEN_SOURCES["BIO_SUMMARY"]` flip; delete `DATA_SHAPES["candidates"]["detail"]["profile"]` Bio Summary section (`context.bio_summary`); add `NAV_CONFIG` Candidate item `{label: "Bio Summary", path: "/candidate/bio_summary"}`.
+
+## Acceptance criteria
+
+- [X] 1\. **Catalog key present** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG; assert 'candidate.context.bio_summary' in ARTIFACT_CONFIG"` exits 0.
+- [X] 2\. **plain_text reuse** — `python3 -c "from src.utils.config import ARTIFACT_CONFIG, BUILD_CONFIG; assert ARTIFACT_CONFIG['candidate.context.bio_summary']['body_shape']=='plain_text'; assert BUILD_CONFIG['artifact_shapes']['plain_text']=='raw_string'"` exits 0.
+- [X] 3\. **Token is artifact-typed** — `python3 -c "from src.utils.config import TOKEN_SOURCES; s=TOKEN_SOURCES['BIO_SUMMARY']; assert s['source_type']=='artifact' and s['artifact_key']=='candidate.context.bio_summary'"` exits 0.
+- [X] 4\. **Gone from profile** — `python3 -c "from src.utils.config import DATA_SHAPES; p=DATA_SHAPES['candidates']['detail']['profile']; assert not any(s.get('label')=='Bio Summary' or any(f.get('key')=='context.bio_summary' for f in s.get('fields',[])) for s in p)"` exits 0.
+- [X] 7 (nav portion). **NAV_CONFIG** Candidate items include Bio Summary → `/candidate/bio_summary`.
+- [X] 5\. **Sibling freeze** — no priorities/deal_breakers/backstory/ideal_day/writing_preferences keys added.
+
+## Boundaries
+
+- [X] Does not own hydrate, API PUT intercept, or React pages/routes (siblings). Does not migrate other context keys. No `INTAKE_CONFIG` changes.
+
+## Notes for planning
+
+Citations as above. Reuses AST-1629 `plain_text` — do not invent a second shape.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1647-migrate-bio-summary-artifact`, child `sub/AST-1647/AST-1648-catalog-bio-summary-token-profile-nav`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Primary Bio Summary catalog + token + profile/nav: `tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav`
+2. Revised ARTIFACT_CONFIG closed set: `tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys`
+3. Revised TOKEN_SOURCES typing + counts: `tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1648CatalogBioSummaryTokenProfileNav \
+  tests/component/utils/test_config.py::TestAst1590JobArtifactCatalogKeys::test_artifact_config_has_pilot_and_job_keys \
+  tests/component/utils/test_config.py::TestAst1596TokenCatalogSourceTypeTyping \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/utils/config.md` — `8b40977c5a095e6434db7becd1f2562dfcdb42cb`
+
+### Comments
+
+#### radia — 2026-09-15T23:00:07.899Z
+[code-rubric] PROCEED (Commit: bdb3318d) config slice clean
+
+#### betty — 2026-09-15T22:56:41.139Z
+`origin/sub/AST-1647/AST-1648-catalog-bio-summary-token-profile-nav` @ `bdb3318da7ce2b3bc32714b947309c1589df9a62` · bio_summary catalog tests
+
+#### joan — 2026-09-15T22:49:01.320Z
+[plan-rubric] PROCEED (Commit: 8815aef) config slice clean
+
+#### ada — 2026-09-15T22:47:06.983Z
+`origin/sub/AST-1647/AST-1648-catalog-bio-summary-token-profile-nav` @ `8815aefbc13d17e3f64c93f12e97a4cacf5f19d6` · plan published
+
+---
+
 # Catalog + BIO_SUMMARY token + profile/nav config
 
 **Linear:** [AST-1648](https://linear.app/astralcareermatch/issue/AST-1648)

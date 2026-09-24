@@ -1,3 +1,87 @@
+<!-- linear-archive: AST-1649 archived 2026-09-24 -->
+
+## Linear archive (AST-1649)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1649/operative-save-hydrate-blob-retirement-migrate-candidate-bio-summary  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1647 — Migrate candidate bio summary to use the artifact table and remove from candidate profile page  
+**Blocked by / blocks / related:** parent: AST-1647; blocks: AST-1650
+
+### Description
+
+## What this implements
+
+Wire bio summary through the same candidate operative `plain_text` validation + hydrate-on-GET and API PUT intercept Strengths already uses; stop durable library SoT writes for `context.bio_summary`. No backfill helper. Does not own React chrome or catalog/nav. After catalog sibling.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.in-scope-only`; `stat.logging.info.entity`; `stat.logging.info.api`; `stat.logging.error`
+
+## Scope
+
+- [X] `src/core/candidate.py` — extend operative validation/hydrate/library-gate for `context.bio_summary` / `candidate.context.bio_summary`.
+- [X] `src/ui/api/api_candidate.py` — PUT intercept + GET hydrate for bio summary.
+
+## Acceptance criteria
+
+- [X] 4\. **Operative round-trip** — Save bio summary via Bio Summary UI/API; `database.get_current_artifact('candidate', <id>, 'bio_summary')` returns matching string; second distinct save new uuid + retire prior current.
+- [X] 5\. **Blob not SoT on write** — Successful bio summary save calls operative `save_artifact`; does not rely on library-merge alone.
+- [X] 6\. **No backfill required** — No bulk migrate-all; legacy blob until re-save.
+
+## Boundaries
+
+- [X] Does not own catalog/token/nav/profile config (sibling Ada).
+- [X] Does not own React page/route (sibling Katherine).
+- [X] No legacy blob backfill.
+
+## Notes for planning
+
+After #1. Logging statutes on touched entity/api paths. Reuse Strengths operative paths — no new validation shape.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1647-migrate-bio-summary-artifact`, child `sub/AST-1647/AST-1649-operative-save-hydrate-blob-retirement`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Core Bio Summary operative: `tests/component/core/test_candidate.py::TestAst1649BioSummaryOperativeSaveHydrate`
+2. API PUT/GET Bio Summary: `tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1649BioSummaryOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/candidate.md` — `c95731d5ee9704508f63260b217cee4e02da4a10`
+* `docs/test-bible/ui/api/api_candidate.md` — `ea05925e5bdfa4f9e6727aab518702c15d72d1a6`
+
+### Comments
+
+#### radia — 2026-09-15T23:17:44.726Z
+[code-rubric] PROCEED (Commit: 5a6f8d59) operative paths clean
+
+#### betty — 2026-09-15T23:13:14.397Z
+`origin/sub/AST-1647/AST-1649-operative-save-hydrate-blob-retirement` @ `5a6f8d59d2396aa94ac4cd4f22e99c47c2b022d7` · bio_summary operative tests
+
+#### joan — 2026-09-15T23:05:51.189Z
+[plan-rubric] PROCEED (Commit: f985406) operative paths mirror Strengths
+
+#### hedy — 2026-09-15T23:04:05.255Z
+`origin/sub/AST-1647/AST-1649-operative-save-hydrate-blob-retirement` @ `f98540691b55e1538054b325ac76ebd171b1168e` · plan ready
+
+#### hedy — 2026-09-15T23:03:55.909Z
+@ `f98540691b55e1538054b325ac76ebd171b1168e` · plan ready
+
+---
+
 # Operative save, hydrate, blob retirement
 
 **Linear:** [AST-1649](https://linear.app/astralcareermatch/issue/AST-1649)

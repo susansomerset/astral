@@ -183,3 +183,23 @@ context_tokens≈28000
 ```
 [code-rubric] PROCEED (Commit: 859f46e9) Transport faithful; canon clean
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/521a84d24fb70496d01b0b14de5696e0/e6730919-a9cc-4f7d-9729-4e7bce27cfc5/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/01c6655e-5120-4b44-a026-daa18e8648f4/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/521a84d24fb70496d01b0b14de5696e0/a09fb861-9dca-4858-a605-41aab0b8ae57/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1777 (parent) | ftr/AST-1777-logging-levels |
+| AST-1778 | sub/AST-1777/AST-1778-railway-faithful-console-transport-in-get-logger |
+
+**Epic worktree:** `astral-AST-1777/` — one active sub checked out at a time.

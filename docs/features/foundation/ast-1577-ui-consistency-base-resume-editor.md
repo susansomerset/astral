@@ -1,3 +1,94 @@
+<!-- linear-archive: AST-1577 archived 2026-09-24 -->
+
+## Linear archive (AST-1577)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1577/pattartifactsui-consistency-shape-standardized-base-resume-editor  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1569 — Implement patt.artifact.write-operative  
+**Blocked by / blocks / related:** parent: AST-1569
+
+### Description
+
+## What this implements
+
+After sibling #1: author draft `patt.artifacts.ui-consistency.md` (no cross-links) and refactor ArtifactEditor / ArtifactsBaseResumeContent for body_shape `resume_content`, save via candidate API, hydrate operative current body.
+
+## Citations
+
+`patt.artifacts.ui-consistency` (new); `patt.artifact.write-operative`; `astral.layers.import-direction`; `astral.standards.in-scope-only`
+
+## Scope
+
+`canon/directives/draft/patt.artifacts.ui-consistency.md` (**new**); `src/ui/frontend/src/components/ArtifactEditor.tsx`; `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx`
+
+## Acceptance criteria
+
+- [X] 6. Base resume edit UI follows `patt.artifacts.ui-consistency` (`resume_content`); save→reload shows operative current body via existing `get_current_artifact`.
+- [X] 7. Draft `canon/directives/draft/patt.artifacts.ui-consistency.md` exists; no cross-link from write-operative.
+- [X] 8. No new `ARTIFACT_CONFIG` keys; no coat-check; no job finalize / grade pin writers this ticket.
+
+## Boundaries
+
+- [X] Does not own data-layer / agent craft-persist rewire or `artifact_catalog` deletion (sibling #1). Does not expand to job artifact editors beyond reuse readiness.
+
+## Notes for planning
+
+Confirm Chuckles estimate: 3 — agree or revise. After #1 (blockedBy).
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1569-write-operative`, child `sub/AST-1569/AST-1577-ui-consistency-base-resume-editor`. Created at dispatch-parent.
+
+## QA test manifest
+
+**Delivery: **`origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor` @ `07f5a248` (`merge-tests(AST-1577): origin/tests 4c1689b8`)
+
+**Bible (publish-ref shasum):**
+
+* `docs/test-bible/frontend/pages.md` · `681e67b0456bef77bd86b86171078f5fdf17e228`
+* `docs/test-bible/frontend/components.md` · `2245c963dab36a0821207d1035338143d89ae249`
+
+**Tests (publish-ref shasum):**
+
+* `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` · `0d8c4872ca04353c058e081c8ac52aa638d1c82b`
+* `tests/component/frontend/components/test_ArtifactEditor.test.tsx` · `cfba0519919de6f1f7d2c2399c20001bf4c22a84`
+
+1. Routed page bodyShape + leaf Save + draft (§6c): `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1577"`
+2. Editor bodyShape without legacy prop: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1577"`
+3. Existing structure load (JAR/legacy prop still holds): `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="loads fixed tabs from structureSections"`
+4. Existing page first-paint structure tabs: `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="renders structure-driven tabs"`
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** none revised.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1577|loads fixed tabs from structureSections|renders structure-driven tabs"
+```
+
+### Comments
+
+#### radia — 2026-09-03T00:02:54.216Z
+[code-rubric] PROCEED (Commit: 07f5a248) bodyShape editor clean
+
+#### betty — 2026-09-03T00:00:22.863Z
+`origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor` @ `07f5a248` · tests delivered
+
+#### joan — 2026-09-02T23:54:36.015Z
+[plan-rubric] PROCEED (Commit: 5cdee55b) ui-consistency editor clean
+
+#### katherine — 2026-09-02T23:52:44.737Z
+`origin/sub/AST-1569/AST-1577-ui-consistency-base-resume-editor` @ `5cdee55b020c817921373cc4751c1ff494699bbd` · plan ready
+
+---
+
 # patt.artifact.ui-consistency + shape-standardized base_resume editor
 
 **Linear:** [AST-1577](https://linear.app/astralcareermatch/issue/AST-1577)

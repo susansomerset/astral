@@ -1,3 +1,83 @@
+<!-- linear-archive: AST-1669 archived 2026-09-24 -->
+
+## Linear archive (AST-1669)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1669/manage-candidates-slack-bind-dropdown-bind-new-slack-contacts-to  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect  
+**Blocked by / blocks / related:** parent: AST-1636
+
+### Description
+
+## What this implements
+
+Owns the Manage Candidates add/edit Slack username dropdown and persisting selected Slack id + username via the existing candidate write path. Consumes sibling #2's GET. Does not own resolve recognition or the poster helper.
+
+## Citations
+
+`stat.logging.info.api`, `stat.logging.error`.
+
+## Scope
+
+`src/ui/frontend/src/pages/AdminManageCandidates.tsx` — dropdown on add/edit; `src/ui/api/api_candidate.py` / existing candidate create+data PUT — only if bind payload must be accepted there. Candidate Profile Slack text fields unchanged.
+
+## Acceptance criteria
+
+- [X] 5\. Manage Candidates add/edit: unbound usernames in a dropdown; save with a selection persists `contact.slack_user_id` and `contact.slack_username`. Fail if already-bound usernames appear or selection does not stamp both fields.
+- [X] 6\. After bind, unbound list omits that Slack user. Fail if they remain selectable for another candidate.
+- [X] 7\. External poster pool lives in `src/external/slack.py`, invoked from core/API — not from React. Fail if `AdminManageCandidates.tsx` hardcodes Slack Web API URLs/tokens.
+
+## Boundaries
+
+- [X] Does not own poster helper (#1) or Contact resolve/unbound API (#2).
+
+## Notes for planning
+
+Consumes sibling #2's GET. Build used existing create/PUT only — no `api_candidate.py` change.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1636-bind-slack-contacts`; child `sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Routed Manage Candidates Slack bind (§6c): `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — pattern `AST-1669`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  --testNamePattern='AST-1669'
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/frontend/pages.md` — `d05e1b8a183582e509e13f39f2213bdbcab58660`
+
+### Comments
+
+#### radia — 2026-09-16T02:39:28.472Z
+[code-rubric] PROCEED (Commit: d51bda97) Slack bind dropdown clean
+
+#### betty — 2026-09-16T02:37:14.670Z
+`origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown` @ `d51bda97` · Slack bind dropdown tests ready
+
+#### joan — 2026-09-16T02:29:27.048Z
+[plan-rubric] PROCEED (Commit: 82fb3b202528a53fea3faf519054d65cde1f34d0) Slack bind dropdown plan sound
+
+#### joan — 2026-09-16T02:29:21.108Z
+[plan-rubric] PROCEED (Commit: 82fb3b202528a53fea3faf519054d65cde1f34d0) Slack bind UI plan sound
+
+#### katherine — 2026-09-16T02:27:32.062Z
+`origin/sub/AST-1636/AST-1669-manage-candidates-slack-bind-dropdown` @ `82fb3b20` · plan ready
+
+---
+
 # AST-1669 — Manage Candidates Slack bind dropdown
 
 **Linear:** [AST-1669](https://linear.app/astralcareermatch/issue/AST-1669/manage-candidates-slack-bind-dropdown-bind-new-slack-contacts-to)  

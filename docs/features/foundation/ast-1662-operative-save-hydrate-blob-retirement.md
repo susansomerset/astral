@@ -1,3 +1,144 @@
+<!-- linear-archive: AST-1662 archived 2026-09-24 -->
+
+## Linear archive (AST-1662)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1662/operative-save-hydrate-blob-retirement-migrate-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1644 — Migrate candidate_data.context.backstory to use the artifact table  
+**Blocked by / blocks / related:** parent: AST-1644; blocks: AST-1663
+
+### Description
+
+## What this implements
+
+Wire Backstory through candidate operative `plain_text` validation plus `get_candidate_current` hydrate on GET; intercept API PUT for operative save; stop durable library SoT writes for `context.backstory`. No backfill helper. Does not own React chrome. After #1. Mirror AST-1633 guidelines for the Strengths→Backstory leaf swap.
+
+## Citations
+
+`patt.artifact.write-operative`; `patt.artifact.read-current`; `patt.artifact.manage-catalog`; `astral.standards.in-scope-only`; `stat.logging.info.entity`; `stat.logging.info.api`; `stat.logging.error`
+
+## Scope
+
+- [X] `src/core/candidate.py` — operative validation for `plain_text`; hydrate overlay; gate library merge for `context.backstory`.
+- [X] `src/ui/api/api_candidate.py` — PUT intercept plus GET hydrate for Backstory.
+
+## Acceptance criteria
+
+- [X] 4\. Operative round-trip — Save Backstory via Backstory UI/API; `database.get_current_artifact('candidate', <id>, 'backstory')` returns a row whose `artifact_data` matches the saved string; a second save creates a new uuid and retires prior `current=1`. Fail: body only in library blob with no artifact row, or in-place UPDATE of same uuid.
+- [X] 5\. Blob not SoT on write — Successful Backstory save calls operative `save_artifact`; does not rely on library-merge of `context.backstory` alone. Fail: PUT only deep-merges the blob.
+- [X] 6\. No backfill required — Candidates with only legacy blob Backstory and no artifact row still load that blob (or empty) until re-save; no bulk migration job ships. Fail: epic adds a required one-shot migrate-all script as SoT.
+
+## Boundaries
+
+- [X] No React chrome (sibling #3).
+- [X] No backfill helper.
+- [X] After catalog sibling #1.
+
+## Frame (Radia)
+
+- [X] Tip unions all three context catalog keys with `origin/dev`: `candidate.context.ideal_day`, `candidate.context.backstory`, `candidate.context.writing_preferences` (WP catalog + operative restored; §9a clean vs `origin/dev` and parent ftr).
+
+## Notes for planning
+
+Mirror AST-1633. After #1.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Core Backstory operative: `tests/component/core/test_candidate.py::TestAst1662BackstoryOperativeSaveHydrate`
+2. API PUT/GET Backstory: `tests/component/ui/api/test_api_candidate.py::TestAst1662BackstoryOperativeApi`
+3. Revised Ideal Day dict-path sibling: `tests/component/core/test_candidate.py::TestAst1659IdealDayOperativeSaveHydrate::test_dict_path_strips_ideal_day_and_strengths_keeps_siblings`
+4. Revised Strengths API sibling: `tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context`
+5. Revised Bio Summary API sibling: `tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi::test_put_strips_bio_summary_keeps_sibling_context`
+6. Revised Ideal Day API sibling: `tests/component/ui/api/test_api_candidate.py::TestAst1659IdealDayOperativeApi::test_put_strips_ideal_day_keeps_sibling_context`
+7. Revised Priorities API sibling: `tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi::test_put_strips_priorities_keeps_sibling_context`
+
+Library-merge sibling leaf on tip: `hopes` (not writing_preferences / backstory — both catalog-operative).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1662BackstoryOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1662BackstoryOperativeApi \
+  tests/component/core/test_candidate.py::TestAst1659IdealDayOperativeSaveHydrate::test_dict_path_strips_ideal_day_and_strengths_keeps_siblings \
+  tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context \
+  tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi::test_put_strips_bio_summary_keeps_sibling_context \
+  tests/component/ui/api/test_api_candidate.py::TestAst1659IdealDayOperativeApi::test_put_strips_ideal_day_keeps_sibling_context \
+  tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi::test_put_strips_priorities_keeps_sibling_context \
+  -q
+```
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/candidate.md` — `ecd61e74150631ab950cfc8893accd169f152d2d`
+* `docs/test-bible/ui/api/api_candidate.md` — `0f21283c2098eef3413a6ee9fd38edcd267c20aa`
+
+### Comments
+
+#### betty — 2026-09-16T01:43:12.538Z
+[check-linear]
+Git hygiene: dropped sync merge that reintroduced a second merge-tests(AST-1662). Publish tip reset to `aa9accc2` (same tree as prior tip — product intact; exactly one merge-tests → `a33ff3c9`). validate-sub-log ok. Status stays User Testing · Hedy.
+
+#### chuckles — 2026-09-16T01:42:25.890Z
+[merge-child] blocked: duplicate merge-tests(AST-1662) on sub — count=2 (amend on tests, one merge-tests only). @Betty White
+
+#### betty — 2026-09-16T01:37:59.706Z
+[check-linear]
+Cleared [qa-handoff]: retargeted library-merge sibling asserts off `writing_preferences` → `hopes` (WP operative on tip after Radia FIX-NOW union). Also retargeted TestAst1665 keep-me off operative `backstory` → `hopes`. Bible notes updated.
+
+`origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement` @ `aa9accc2` · single merge-tests(AST-1662) → `a33ff3c9`
+
+Bible shasum: candidate.md `ecd61e74150631ab950cfc8893accd169f152d2d` · api_candidate.md `0f21283c2098eef3413a6ee9fd38edcd267c20aa`
+
+Reassigned Hedy — stay Review Posted for resolve finish / re-run.
+
+#### hedy — 2026-09-16T01:35:02.769Z
+[qa-handoff]
+@Betty White — Radia FIX-NOW restored Writing Preferences catalog + operative on this publish-ref (union ideal_day + backstory + writing_preferences). Product tip @ `05c73b49`.
+
+Manifest red (not a product bug): sibling cases still treat `writing_preferences` as a library-merge leaf.
+
+Command:
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1662BackstoryOperativeSaveHydrate \
+  tests/component/ui/api/test_api_candidate.py::TestAst1662BackstoryOperativeApi \
+  tests/component/core/test_candidate.py::TestAst1659IdealDayOperativeSaveHydrate::test_dict_path_strips_ideal_day_and_strengths_keeps_siblings \
+  tests/component/ui/api/test_api_candidate.py::TestAst1633StrengthsOperativeApi::test_put_strips_strengths_keeps_sibling_context \
+  tests/component/ui/api/test_api_candidate.py::TestAst1649BioSummaryOperativeApi::test_put_strips_bio_summary_keeps_sibling_context \
+  tests/component/ui/api/test_api_candidate.py::TestAst1659IdealDayOperativeApi::test_put_strips_ideal_day_keeps_sibling_context \
+  tests/component/ui/api/test_api_candidate.py::TestAst1652PrioritiesOperativeApi::test_put_strips_priorities_keeps_sibling_context \
+  -q
+```
+
+Fail shape: `assert raw.get("context", {}).get("writing_preferences") == "ship"` → `None` because WP is now in `_CONTEXT_OPERATIVE_LEAVES` / PUT pop → operative (correct for AST-1665 on tip). Please retarget sibling library leaf (e.g. `hopes` / another non-catalog context key) or assert WP artifact SoT instead. Staying Review Posted until revised manifest.
+
+#### radia — 2026-09-16T01:31:26.161Z
+[code-rubric] REVIEW (Commit: b59121e4) WP catalog dev regression
+
+#### betty — 2026-09-16T01:27:40.732Z
+`origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement` @ `b59121e4` · Backstory operative tests
+
+#### hedy — 2026-09-16T01:21:38.609Z
+[check-linear] Code Complete — WP operative stripped from this publish-ref (Backstory-only); `writing_preferences` library-merges again. Tip `origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement` @ `5b2facb4d44ffd2240431b088c0497179eaa035c`. No plan revise.
+
+#### betty — 2026-09-16T01:19:00.614Z
+@susan — suspected scope issue: AST-1662 plan/definition scope only `backstory` (candidate.py + api_candidate.py; frozenset add `backstory`; Stage 1 says `writing_preferences` still library-merges). Child tip `origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement` also lands full AST-1665 Writing Preferences operative path in the same product commits: docstring AST-1665, `_WRITING_PREFERENCES_ARTIFACT_KEY`, frozenset includes `writing_preferences`, `hydrate_operative_writing_preferences_for_response`, PUT pop/save + GET hydrate + api info. That is outside this ticket’s Explicit scope gate and sibling boundary (Writing Preferences is a parallel leaf). Recommendation: engineer strip AST-1665 bits from the AST-1662 publish-ref (keep Backstory-only per plan) and re-Code-Complete — or revise plan/scope if shipping both leaves in one child was intentional. Holding Tests Ready until you reply.
+
+#### joan — 2026-09-16T00:53:25.095Z
+[plan-rubric] PROCEED (Commit: ff233840) operative hydrate intercept
+
+#### hedy — 2026-09-16T00:42:30.475Z
+`origin/sub/AST-1644/AST-1662-operative-save-hydrate-blob-retirement` @ `ff23384079fb204a3501a8dfa57d6710755c1565` · plan ready
+
+---
+
 # Operative save, hydrate, blob retirement
 
 **Linear:** [AST-1662](https://linear.app/astralcareermatch/issue/AST-1662)
