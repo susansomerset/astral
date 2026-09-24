@@ -188,3 +188,10 @@ AC1 (username column) → Stage 1 step 2 flatten + column render; AC2 (channel s
 - **Self-assessment:** Estimate confirm 2 — agree; one stage, one file, established Contact UI patterns.
 
 context_tokens≈58000
+
+## Review (build stub)
+
+**Commit:** `4f7e29d47a5a777281b14f7e356a2893ee1df208`  
+**Branch:** `sub/AST-1786/AST-1789-manage-candidates-channel-column-s-snapshot`
+
+**Built:** Manage Candidates flatten + `slack_username` column placeholder; channel `<select>` from admin list (id-only filter, `(unnamed)` labels per Joan discuss); membership `role="alert"` warning; stamp both channel fields on save; row **S** `icon-control` clipboard snapshot via admin API. No `CandidateProfile.tsx` touch.
