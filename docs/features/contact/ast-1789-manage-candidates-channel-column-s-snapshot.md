@@ -195,3 +195,63 @@ context_tokens≈58000
 **Branch:** `sub/AST-1786/AST-1789-manage-candidates-channel-column-s-snapshot`
 
 **Built:** Manage Candidates flatten + `slack_username` column placeholder; channel `<select>` from admin list (id-only filter, `(unnamed)` labels per Joan discuss); membership `role="alert"` warning; stamp both channel fields on save; row **S** `icon-control` clipboard snapshot via admin API. No `CandidateProfile.tsx` touch.
+
+## Radia review
+
+[code-rubric]
+
+**Ticket:** AST-1789  
+**Publish ref:** `a5cbf620538ba1a52e469b49b10591b156e3af01` (`origin/sub/AST-1786/AST-1789-manage-candidates-channel-column-s-snapshot`)  
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| stat.logging.info.api | X | | React-only diff — no `src/ui/api/**` changes; frontend does not write `app_log` |
+| stat.logging.error | X | | React-only diff — no Python handlers; failures surface via toast |
+
+**Canon Scope note:** Both frozen ids score **X** on this ticket by design (Joan plan + issue doc). Statutes are lane markers here, not scored product law — roll-up excludes **X**.
+
+## Column diff vs plan stage
+
+(aligned) — Joan scored both directives **X**; code review agrees (no applicable Python/API logging surface in AST-1789 product diff).
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Branch diff vs `origin/dev` bundles sibling prerequisites** (AST-1787 `slack.py` + tests/bible, AST-1788 `contact.py` / `api_contact.py` / `config.py` + tests/bible, sibling issue docs) from `sync(ftr): origin/ftr/AST-1786-manage-candidates-snapshot-slack-channel`. Expected per plan **Depends on** AST-1788; AST-1789 `code()` commit touched only `AdminManageCandidates.tsx`. No action unless merge-child wants ticket-pure diffs.
+- **Joan plan discuss resolved in build:** `loadSlackChannels` filters on non-empty `id` only; `channelOptionLabel` shows `(unnamed)` for empty names — matches Joan’s recommendation, not the plan’s original id+name filter.
+- **Membership warn staleness (documented limitation):** `runChannelMembershipCheck` runs on channel `<select>` change only, using `editForm.slack_user_id` at that moment. Changing Slack username bind without re-selecting channel can leave a stale warn until channel changes — sibling API still uses pre-save stored bind per plan; acceptable but worth knowing for UAT.
+- **No clear-channel path on edit:** Selecting `— none —` omits channel keys on PUT (existing stored channel preserved per plan decision). Not a defect; admin cannot clear channel in this ticket.
+
+## What's solid
+
+- **Product scope:** Single-file delivery (`AdminManageCandidates.tsx`); no `CandidateProfile.tsx` touch (shapes-driven profile already has channel fields from AST-1788).
+- **AC1:** `flattenCandidate` adds `slack_username`; column render shows trimmed value or `—`.
+- **AC2:** Channel `<select>` from `GET /api/admin/contact/slack_channels`; save stamps both `contact.slack_channel_id` and `contact.slack_channel_name` via existing POST/PUT; no new writer.
+- **AC3–5:** Inline `role="alert"` warnings; add/unbound skips membership GET; edit calls membership API; `not_member` / member-clear paths tested.
+- **AC6 / AC8:** Row **S** uses shared `icon-control`; copies full snapshot API JSON (no re-sort, no truncate); no Slack Web API hosts/tokens in TSX (tests assert no `slack.com` URLs).
+- **Tests:** Four `AST-1789` cases cover column placeholder, add stamp + unbound warn, edit membership warn cycle, S clipboard; `AST-1302` revised for **S** icon-control; existing Add/Edit suites stub `/slack_channels`.
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append this artifact to `docs/features/contact/ast-1789-manage-candidates-channel-column-s-snapshot.md`, commit `docs(AST-1789): Radia review — clean`, post slim upshot via `linear_proxy --as radia`, move to **Review Posted**.
+- datt **§3h:** PROCEED → **User Testing** (no `resolve-child` work).
+- Parent UAT (AST-1786): exercise end-to-end channel assign + **S** snapshot with real admin session when all three children are on ftr.
+
+---
