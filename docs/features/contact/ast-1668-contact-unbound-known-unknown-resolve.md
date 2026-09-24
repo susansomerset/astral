@@ -1,3 +1,93 @@
+<!-- linear-archive: AST-1668 archived 2026-09-24 -->
+
+## Linear archive (AST-1668)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1668/contact-unbound-list-knownunknown-resolve-bind-new-slack-contacts-to  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1636 — Bind new Slack contacts to existing candidates by metadata before creating a prospect  
+**Blocked by / blocks / related:** parent: AST-1636; blocks: AST-1669
+
+### Description
+
+## What this implements
+
+Owns Contact orchestration: unbound pool (external posters minus bound ids), admin GET, retiring create-on-miss in `resolve_slack_user`, and known/unknown recognition replies (config templates). Does not own the external poster fetch implementation or Manage Candidates UI. After #1.
+
+## Citations
+
+`stat.logging.info.contact`, `stat.logging.info.api`, `stat.logging.debug`, `stat.logging.error`.
+
+## Scope
+
+`src/core/contact.py` — unbound orchestration + `resolve_slack_user` lookup-only + recognition reply wiring; `src/utils/config.py` — known/unknown reply text keys; `src/ui/api/api_contact.py` — admin GET unbound users. `src/core/candidate.py` unchanged unless existing save entry must accept bind fields.
+
+## Acceptance criteria
+
+- [X] 1\. `rg -n "initiate_prospect_candidate" src/core/contact.py` shows no call from `resolve_slack_user` (create-on-miss retired). Fail if resolve still creates a PROSPECT on Slack user id miss.
+- [X] 2\. With a Slack user id already on a candidate: Estelle inbound resolve returns that candidate, `created=False`, and Contact posts the known-recognition reply (config default: "I know who that is"). Fail if unknown-reply is posted or a new candidate appears.
+- [X] 3\. With a Slack user id not on any candidate: resolve returns no candidate, `created=False`, Contact posts the unknown-recognition reply (config default: "I don't recognize you"), and no PROSPECT row is created. Fail if a prospect is minted or Estelle continues as if bound.
+- [X] 4\. Admin GET unbound Slack users returns only workspace posters whose id is not on any non-deleted candidate's `contact.slack_user_id`. Fail if an already-bound id appears.
+- [X] 5\. After bind, unbound list omits that Slack user. Fail if they remain selectable for another candidate.
+- [X] 6\. New admin routes use `@require_admin`. Fail if unbound-list is reachable without admin auth.
+
+## Boundaries
+
+Does not own the external poster helper (#1) or Manage Candidates dropdown (#3).
+
+## Notes for planning
+
+After #1. Recognition reply defaults: "I know who that is" / "I don't recognize you".
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1636-bind-slack-contacts`; child `sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. Core unbound + recognition: `tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition`
+2. Revised resolve: `tests/component/core/test_contact.py::TestAst1068ResolveSlackUser`
+3. Revised hear-ack: `tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence`
+4. Config recognition keys: `tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig`
+5. Admin GET unbound: `tests/component/ui/api/test_api_contact.py::TestAst1668UnboundSlackUsersApi`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1668UnboundAndRecognition \
+  tests/component/core/test_contact.py::TestAst1068ResolveSlackUser \
+  tests/component/core/test_contact.py::TestAst1101ChannelHearEvidence \
+  tests/component/utils/test_config.py::TestAst1668RecognitionReplyConfig \
+  tests/component/ui/api/test_api_contact.py::TestAst1668UnboundSlackUsersApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+
+* `docs/test-bible/core/contact.md` — `897044786671f25b95fd4067600be379200ea78c`
+* `docs/test-bible/utils/config.md` — `73c51eaeadb32499336ce4cc4d5a23b177546830`
+* `docs/test-bible/ui/api/api_contact.md` — `d3713f98daa6e529f2f3986e14d399ce44b620b5`
+
+### Comments
+
+#### radia — 2026-09-16T02:21:27.298Z
+[code-rubric] PROCEED (Commit: c465a815) unbound resolve clean
+
+#### betty — 2026-09-16T02:16:55.416Z
+`origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve` @ `c465a815` · unbound + recognition tests ready
+
+#### joan — 2026-09-16T02:05:01.092Z
+[plan-rubric] PROCEED (Commit: 8d4d98de29c06d61005e9572f9c30c0674f549c1) Contact orchestration plan sound
+
+#### hedy — 2026-09-16T02:02:36.087Z
+`origin/sub/AST-1636/AST-1668-contact-unbound-known-unknown-resolve` @ `8d4d98de29c06d61005e9572f9c30c0674f549c1` · plan ready
+
+---
+
 # AST-1668 — Contact unbound list + known/unknown resolve
 
 **Linear:** [AST-1668](https://linear.app/astralcareermatch/issue/AST-1668/contact-unbound-list-knownunknown-resolve-bind-new-slack-contacts-to)  
