@@ -1,3 +1,78 @@
+<!-- linear-archive: AST-1714 archived 2026-09-24 -->
+
+## Linear archive (AST-1714)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1714/inboxcheck-email-runner-rework-meteorite-email  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1711 — Rework meteorite_email  
+**Blocked by / blocks / related:** parent: AST-1711
+
+### Description
+
+## What this implements
+
+For one candidate, each bound inbox message is handed to staging as the full message, then archived, with last email check stamped, and the dispatcher runs that instead of `check_inbox`. Does not classify or choose the row state. After #2.
+
+## Citations
+
+`stat.logging.debug`; `stat.logging.error`; `stat.logging.info`; `stat.logging.info.dispatcher`; `stat.logging.warning`.
+
+## Scope
+
+* `src/core/inbox.py` — modified — new `check_email` hands each bound message's full text to `stage_meteorite`.
+* `src/core/dispatcher.py` — modified — mailbox run calls `inbox.check_email`, and existing `meteorite_email` dispatch rows are renamed in place.
+* `src/ui/api/api_admin.py` — modified — admin mailbox task-key checks follow the rename.
+* `src/core/inbox.py`: new `check_email` — for one candidate, take each inbox message bound to that candidate, pass the full message (headers and body, not body-only) to `meteorite.stage_meteorite`, skip a message already stored for that inbox id, archive it after a successful stage, and stamp last email check.
+* `src/core/dispatcher.py`: modified mailbox branch — call `inbox.check_email` instead of `meteorite.check_inbox`; modified provision — rewrite existing dispatch rows whose task key is `meteorite_email` to `stage_email_meteorite`.
+* `src/ui/api/api_admin.py`: modified mailbox checks — recognize `stage_email_meteorite` wherever they now recognize `meteorite_email`.
+
+## Acceptance criteria
+
+4. `rg -n 'def check_email' src/core/inbox.py` finds the function, and the body of that function passes the assembled message (`strip_extract_email_html` or `assembled_html`), not `html_body` alone. Fail: no `check_email`, or the argument is body-only. `rg -n check_inbox src/core/dispatcher.py` prints nothing, and `rg -n check_email src/core/dispatcher.py` finds the mailbox call. Fail: dispatcher still runs `check_inbox`, or does not call `check_email`.
+5. After provision, `SELECT COUNT(*) FROM dispatch_task WHERE task_key = 'meteorite_email'` is 0, and the same count for `task_key = 'stage_email_meteorite'` is one row per candidate that had the old key. Fail: any `meteorite_email` dispatch row remains, or a candidate who had one has no `stage_email_meteorite` row.
+
+## Boundaries
+
+Does not classify or choose the row state (sibling #2). After #2.
+
+## Notes for planning
+
+Citations above are the canon scope for this slice. Exact function names are yours; the Scope lines are the files and the kind of change.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1711-rework-meteorite-email`. Child ref is recorded in the epic registry at dispatch.
+
+### Comments
+
+#### radia — 2026-09-20T01:15:21.739Z
+[code-rubric] PROCEED (Commit: b90b86fd) inbox check_email runner clean
+
+#### betty — 2026-09-20T01:12:46.014Z
+`origin/sub/AST-1711/AST-1714-inbox-check-email-runner` @ `b90b86fd640fc159f93935ae2517b2e41cb18f82` · check_email runner tests
+
+#### joan — 2026-09-20T01:03:51.291Z
+[plan-rubric] PROCEED (Commit: 132715f21fbdb7af2b23beb5fb07a196433d13ae) inbox runner ready
+
+#### katherine — 2026-09-20T01:02:48.790Z
+[plan-discuss] round=1 reply
+
+Stage 2 step 2 now deletes retired-key rows with empty candidate_id in the same pre-ensure scan (mirror gaze_email / null-candidate purge), and only rewrites bound retired-key rows to tk. Parent AC5 COUNT is zero for orphans and bound rows. Discuss item on entity-info stamp: no change.
+
+`origin/sub/AST-1711/AST-1714-inbox-check-email-runner` @ `132715f21fbdb7af2b23beb5fb07a196433d13ae` · orphan gap closed
+
+#### joan — 2026-09-20T01:01:20.988Z
+[plan-rubric] REVIEW (Commit: a459ce8400c1cf801966d521c6bb831c4d657a30) provision orphan gap
+
+#### katherine — 2026-09-20T00:59:27.390Z
+`origin/sub/AST-1711/AST-1714-inbox-check-email-runner` @ `a459ce84` · plan ready
+
+---
+
 # AST-1714 — inbox.check_email runner
 
 **Linear:** [AST-1714](https://linear.app/astralcareermatch/issue/AST-1714/inbox-check-email-runner-rework-meteorite-email)  

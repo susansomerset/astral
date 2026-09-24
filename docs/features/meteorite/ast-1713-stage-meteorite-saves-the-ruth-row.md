@@ -1,3 +1,96 @@
+<!-- linear-archive: AST-1713 archived 2026-09-24 -->
+
+## Linear archive (AST-1713)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1713/stage-meteorite-saves-the-ruth-row-rework-meteorite-email  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / 5  
+**Parent:** AST-1711 — Rework meteorite_email  
+**Blocked by / blocks / related:** parent: AST-1711; blocks: AST-1714
+
+### Description
+
+## What this implements
+
+Staging sends any text blob to Ruth through the agent and saves the meteorite row (`SCRAPE_LINK`, `READY`, `NOT_A_JOB`, or `NEW_EMAIL_ERROR`), and consult is no longer on that path. After #1. Scrape and land `SCRAPE_ERROR` writes are already AST-1712; do not retarget them again.
+
+## Citations
+
+`patt.task.dispatch-retry`; `stat.logging.debug`; `stat.logging.error`; `stat.logging.info`; `stat.logging.info.entity`; `stat.logging.warning`.
+
+## Scope
+
+* `src/core/meteorite.py` — modified — `stage_meteorite` calls the agent directly and saves rows, including `NOT_A_JOB` and `NEW_EMAIL_ERROR`. Do not retarget scrape or land `SCRAPE_ERROR` writes.
+* `src/data/database.py` — modified — meteorite table gains columns `job_title` and `employer_name` (added when missing, same migrate pattern as `electronic_contact`); insert writes those fields from the row and persists the caller's state instead of always `NEW`.
+* `src/core/consult.py` — modified — remove the stage-meteorite invoke so this path cannot reach Ruth through consult.
+* `src/core/meteorite.py` — modified — relocate `enrich_meteorite_land_packet` and the consult-private helpers it needs (`_hold_log_batch`, `_resolve_company_job_id`) so `meteorite.py` has no consult import. `qualify_meteorite` still calls `_resolve_company_job_id` (that caller stays; meteorite does not import consult to reach it). `_land_scrap_body` already lives in `meteorite.py`. Do not retarget scrape or land `SCRAPE_ERROR` writes.
+* `src/core/meteorite.py`: modified `stage_meteorite` — send the blob to Ruth through the agent's existing task entry for `stage_meteorite`, then save one meteorite row per returned job in `SCRAPE_LINK` or `READY`, one `NOT_A_JOB` row when Ruth says it is not a job, and one `NEW_EMAIL_ERROR` row when the stage fails; store the candidate-facing source string on the existing `link` column (email-and-date breadcrumb when there is no job link, otherwise the http job link); save the metadata Ruth already returns (title, employer, description text, electronic contact) on that row; keep the return shape `contact_land_meteorite` already passes through; modified inbox ingest — call this save instead of consult; `check_inbox` is no longer the mailbox runner; modified retention selection — the scheduled cleanup reads the registry set that includes `NOT_A_JOB`.
+* `src/data/database.py`: modified meteorite schema and insert — add columns `job_title TEXT` and `employer_name TEXT` (Ruth's `stage_meteorite` response keys); `INSERT INTO meteorite` includes both from the row; the state written is the state on the row, not a hardcoded `NEW`.
+* `src/core/consult.py`: removed function — the stage-meteorite invoke is deleted.
+* `src/core/meteorite.py`: modified `land_meteorite` — `enrich_meteorite_land_packet` lives in this file; delete the late consult import. Helpers it needs move with it.
+* `src/core/consult.py`: removed `enrich_meteorite_land_packet` (moved to `meteorite.py`). `_hold_log_batch` moves with it (its only other caller is the stage invoke this slice deletes). `_resolve_company_job_id` moves with it; `qualify_meteorite` keeps calling that helper.
+
+## Acceptance criteria
+
+2. `rg -n invoke_stage_meteorite src/` prints nothing, and `rg -n consult src/core/meteorite.py` prints nothing. Fail: meteorite still calls consult, or the stage invoke still exists.
+3. `rg -n -A 40 'def insert_meteorite_rows' src/data/database.py` does not contain the literal `"NEW"`. Fail: insert still binds state `NEW` for every row.
+4. A blob Ruth classifies as not a job inserts one meteorite row whose `state` is `NOT_A_JOB`. A blob she classifies as having a job link inserts a row whose `state` is `SCRAPE_LINK` and whose `link` starts with `http://` or `https://`. A blob she classifies as needing no scrape inserts a row whose `state` is `READY` and whose `link` is the email-and-date breadcrumb (not empty, not an http URL). Fail: not-a-job inserts zero rows or any state other than `NOT_A_JOB`; a link row is not `SCRAPE_LINK` or its `link` is not http; a no-scrape row is not `READY` or its `link` is empty or http.
+
+## Boundaries
+
+Does not own the mailbox task key or the inbox loop (siblings #1 and #3). After #1. Does not retarget scrape or land `SCRAPE_ERROR` writes.
+
+## Notes for planning
+
+Citations above are the canon scope for this slice. Exact function names are yours; the Scope lines are the files and the kind of change.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1711-rework-meteorite-email`. Child ref is recorded in the epic registry at dispatch.
+
+### Comments
+
+#### radia — 2026-09-20T00:53:51.755Z
+[code-rubric] PROCEED (Commit: 8a1490f0) Ruth save path clean
+
+#### betty — 2026-09-20T00:49:45.744Z
+`origin/sub/AST-1711/AST-1713-stage-meteorite-saves-the-ruth-row` @ `8a1490f098478d1589de476747dfea48c9fbb291` · Ruth row save tests
+
+#### joan — 2026-09-20T00:27:25.458Z
+[plan-rubric] PROCEED (Commit: 9aa2a45b3acda54d5a33a5c731ebbdc5523d4434) Ruth save path ready
+
+#### hedy — 2026-09-20T00:24:47.344Z
+`origin/sub/AST-1711/AST-1713-stage-meteorite-saves-the-ruth-row` @ `9aa2a45b3acda54d5a33a5c731ebbdc5523d4434` · plan saves Ruth row
+
+#### hedy — 2026-09-19T23:06:28.052Z
+[scope-gate] AC2 cannot be met inside this ticket's Scope.
+
+`rg -n consult src/core/meteorite.py` must print nothing. After the stage invoke is deleted, one call remains: `land_meteorite` late-imports `enrich_meteorite_land_packet` from `src.core.consult`. That function's only caller is `land_meteorite`. The body uses consult-private helpers (`_resolve_company_job_id`, `_hold_log_batch`), so it cannot move into `meteorite.py` as a cut-paste without also moving those helpers.
+
+Quoted Scope that does not cover it:
+- `src/core/consult.py`: "removed function — the stage-meteorite invoke is deleted."
+- `src/core/meteorite.py`: do not retarget scrape or land `SCRAPE_ERROR` writes. The listed meteorite changes are stage save, inbox ingest calling that save, `check_inbox` no longer the mailbox runner, and retention reading the registry set that includes `NOT_A_JOB`.
+
+Leaving the import fails AC2. Deleting it breaks land. Copying land enrich and its helpers is a different capability than stage-save.
+
+Chuckles: either narrow AC2 so `land_meteorite`'s enrich import may remain (stage and ingest must not import consult), or add that land-enrich relocation to this ticket's Scope. Then re-spawn. No plan file this pass.
+
+#### hedy — 2026-09-19T23:01:25.474Z
+[scope-gate] `src/data/database.py` needs a table-level change this ticket's Scope does not cover: persist Ruth's `job_title` and `employer_name` on the meteorite row.
+
+Meteorite.py Scope says: "save the metadata Ruth already returns (title, employer, description text, electronic contact) on that row". Description text already maps to `content`. Electronic contact already maps to `electronic_contact`. There is no `job_title` column and no employer column. `_UPDATE_METEORITE_ALLOWED` is state, content, classify_outcome, link, astral_job_id, estelle fields, nag_count, error, source_ref, electronic_contact.
+
+Database.py Scope says only: "modified meteorite insert — the state written is the state on the row, not a hardcoded `NEW`." That covers binding `row["state"]` instead of the literal `"NEW"`. It does not cover new columns or widening the INSERT for title and employer.
+
+Stuffing title or employer into `content` or `source_ref` would overwrite the description text and the source handle. I am not doing that.
+
+Chuckles: add to this ticket's `## Scope` the database kind of change that stores `job_title` and employer on the meteorite row (column names and insert fields). Then re-spawn plan-child. No plan file this pass.
+
+---
+
 # AST-1713 — stage_meteorite saves the Ruth row
 
 **Linear:** [AST-1713](https://linear.app/astralcareermatch/issue/AST-1713/stage-meteorite-saves-the-ruth-row-rework-meteorite-email)
