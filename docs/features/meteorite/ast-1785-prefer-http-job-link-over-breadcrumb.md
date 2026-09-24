@@ -146,3 +146,16 @@ AC4–AC7 → Stage 1; parent AC1–AC3, AC8 → N/A (AST-1784 prompts/fixture).
 **R6 (summary):** Plan targets the live text-branch gap (`_map_classify_jobs_to_meteorite_rows` always breadcrumbs email text before reading `job_link`; `stage_meteorite` L1013 forces READY for all text outcomes; `run_stage_meteorite` L1708 forces READY for text arm). Three touchpoints (mapper prefer → post-map state from `link` scheme → runner text arm http branch) satisfy AC5’s “not stranded under READY” requirement without touching URL-outcome branch. AC6 preserved (breadcrumb only when no http `job_link`). AC7 preserved (URL branch byte-stable). `job_title` / `employer_name` post-map unchanged. No parallel HTML harvester. Estimate confirm present.
 
 context_tokens≈30000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1783/AST-1785-prefer-http-job-link-over-breadcrumb`
+**Plan path:** `docs/features/meteorite/ast-1785-prefer-http-job-link-over-breadcrumb.md`
+
+**Built tip:** `6d8458b311a8a3fa11cc1fdae5f6f2ce92f11189` (`6d8458b3`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `6d8458b3` | Text-outcome mapper prefers http(s) `job_link` over breadcrumb; `stage_meteorite` / `run_stage_meteorite` route http link → `SCRAPE_LINK` |
+
+**Betty note:** Map + state path only in `src/core/meteorite.py`. Prompts/fixture are **AST-1784**. AC4–AC7 shapes verified via mapper unit calls in build; no test-tree edits.
