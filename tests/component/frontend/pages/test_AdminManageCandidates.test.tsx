@@ -30,6 +30,7 @@ const shapes = {
     manage: [
       { key: "astral_candidate_id", label: "ID" },
       { key: "first", label: "First" },
+      { key: "slack_username", label: "Slack username" },
       { key: "api_key_status", label: "API Key" },
       { key: "dispatch_task_count", label: "Dispatch tasks", type: "int" },
     ],
@@ -78,6 +79,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts }) } as Response
       // AST-1668 sibling GET — default empty so Add/Edit open does not throw Unhandled api.
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: unbound }) } as Response
       }
@@ -148,6 +152,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
       }
@@ -200,6 +207,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
       }
@@ -240,6 +250,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: {} }) } as Response
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
       }
@@ -267,6 +280,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
       }
@@ -274,6 +290,9 @@ describe("AdminManageCandidates", () => {
         countsCalls += 1
         const n = setBody ? 7 : 3
         return { ok: true, json: async () => ({ counts: { doe_jane: n } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
       }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
@@ -329,11 +348,17 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
       }
       if (url === "/api/admin/dispatch_tasks/counts") {
         return { ok: true, json: async () => ({ counts: { doe_jane: 1 } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
       }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
@@ -368,11 +393,17 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates?include_deleted=true") {
         return { json: async () => [hopCandidate] } as Response
       }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
       }
       if (url === "/api/admin/dispatch_tasks/counts") {
         return { ok: true, json: async () => ({ counts: { doe_jane: 0 } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
       }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return { ok: true, json: async () => ({ users: [] }) } as Response
@@ -499,6 +530,9 @@ describe("AdminManageCandidates", () => {
     expect(setTasks).toHaveClass("icon-control")
     expect(setTasks).toHaveTextContent("T")
     expect(setTasks).not.toHaveTextContent("Set dispatch tasks")
+    const snap = screen.getByRole("button", { name: "Snapshot Slack channel for doe_jane" })
+    expect(snap).toHaveClass("icon-control")
+    expect(snap).toHaveTextContent("S")
     expect(view).not.toHaveClass("list-page-edit-btn")
     expect(setTasks).not.toHaveClass("dep-btn")
   }, 20000)
@@ -517,6 +551,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") {
         return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
       }
       if (url === "/api/admin/contact/unbound_slack_users") {
         unboundCalls += 1
@@ -574,6 +611,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/admin/dispatch_tasks/counts") {
         return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
       }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         // Bound id absent from unbound (already bound) — page prepends synthetic option.
         return {
@@ -616,6 +656,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         unboundCalls += 1
         // After bind, sibling GET omits the newly bound id (AC6).
@@ -670,6 +713,9 @@ describe("AdminManageCandidates", () => {
       if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
       if (url === "/api/candidates?include_deleted=true") return { json: async () => [boundCand] } as Response
       if (url === "/api/admin/dispatch_tasks/counts") return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
       if (url === "/api/admin/contact/unbound_slack_users") {
         return {
           ok: true,
@@ -698,5 +744,237 @@ describe("AdminManageCandidates", () => {
     expect(contact.slack_username).toBeUndefined()
     expect(contact.contact_email).toBe("jane@example.com")
   }, 20000)
+
+
+  // AST-1789: channel column, membership warning, S snapshot (§6c routed page).
+  it("AST-1789: list shows slack_username or em dash placeholder", async () => {
+    const withUser = {
+      ...candidate,
+      candidate_data: {
+        contact: { contact_email: "jane@example.com", slack_username: "jane.bound" },
+      },
+    }
+    const unbound = {
+      ...candidate,
+      astral_candidate_id: "doe_unbound",
+      first: "Un",
+      last: "Bound",
+      candidate_data: { contact: { contact_email: "u@example.com" } },
+    }
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") {
+        return { json: async () => [withUser, unbound] } as Response
+      }
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 1, doe_unbound: 0 } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    expect(screen.getByText("jane.bound")).toBeInTheDocument()
+    // Empty username → em dash placeholder in slack_username column.
+    const dashes = screen.getAllByText("—")
+    expect(dashes.length).toBeGreaterThanOrEqual(1)
+  }, 20000)
+
+  it("AST-1789: add stamps channel id+name; unbound warn without membership GET", async () => {
+    let postBody: Record<string, unknown> | null = null
+    const channels = [
+      { id: "C_ALPHA", name: "alpha" },
+      { id: "C_EMPTY", name: "" },
+    ]
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") return { json: async () => [candidate] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 3 } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
+      if (url.includes("/api/admin/contact/slack_channel_membership")) {
+        throw new Error("membership must not be called on add")
+      }
+      if (url === "/api/candidates" && init?.method === "POST") {
+        postBody = JSON.parse(String(init.body))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "+ Add Candidate" }))
+    const addModal = screen.getByText("Add Candidate").closest(".modal-card") as HTMLElement
+    const channelSelect = comboboxByFieldLabel(addModal, "Slack channel")
+    await waitFor(() =>
+      expect(within(channelSelect).getByRole("option", { name: "alpha" })).toBeInTheDocument(),
+    )
+    expect(within(channelSelect).getByRole("option", { name: "(unnamed)" })).toBeInTheDocument()
+    await userEvent.selectOptions(channelSelect, "C_ALPHA")
+    expect(await within(addModal).findByRole("alert")).toHaveTextContent(
+      /no Slack user is bound/i,
+    )
+    expect(mockedApi.mock.calls.every(c => !String(c[0]).includes("slack_channel_membership"))).toBe(
+      true,
+    )
+    expect(mockedApi.mock.calls.every(c => !String(c[0]).includes("slack.com"))).toBe(true)
+
+    fireEvent.change(textboxByFieldLabel(addModal, "First Name"), { target: { value: "Ada" } })
+    fireEvent.change(textboxByFieldLabel(addModal, "Last Name"), { target: { value: "Lovelace" } })
+    await userEvent.click(within(addModal).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(postBody).not.toBeNull())
+    const contact = (postBody!.candidate_data as { contact: Record<string, string> }).contact
+    expect(contact.slack_channel_id).toBe("C_ALPHA")
+    expect(contact.slack_channel_name).toBe("alpha")
+  }, 20000)
+
+  it("AST-1789: edit membership warn for not_member; clears when member", async () => {
+    const bound = {
+      ...candidate,
+      candidate_data: {
+        contact: {
+          contact_email: "jane@example.com",
+          slack_user_id: "U_BOUND",
+          slack_username: "jane.bound",
+          slack_channel_id: "C1",
+          slack_channel_name: "general",
+        },
+      },
+    }
+    let membershipCalls = 0
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") return { json: async () => [bound] } as Response
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 1 } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return {
+          ok: true,
+          json: async () => ({
+            channels: [
+              { id: "C1", name: "general" },
+              { id: "C2", name: "private" },
+            ],
+          }),
+        } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
+      if (url.startsWith("/api/admin/contact/slack_channel_membership")) {
+        membershipCalls += 1
+        const u = new URL(url, "http://local")
+        const channel = u.searchParams.get("channel")
+        if (channel === "C2") {
+          return {
+            ok: true,
+            json: async () => ({
+              channel: "C2",
+              slack_user_id: "U_BOUND",
+              is_member: false,
+              warn: true,
+              warn_reason: "not_member",
+            }),
+          } as Response
+        }
+        return {
+          ok: true,
+          json: async () => ({
+            channel: channel,
+            slack_user_id: "U_BOUND",
+            is_member: true,
+            warn: false,
+            warn_reason: null,
+          }),
+        } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
+    const channelSelect = comboboxByFieldLabel(editModal, "Slack channel")
+    await waitFor(() => expect(channelSelect).toHaveValue("C1"))
+    // openEdit re-checks stored channel — member → no alert
+    await waitFor(() => expect(membershipCalls).toBeGreaterThanOrEqual(1))
+    expect(within(editModal).queryByRole("alert")).toBeNull()
+
+    await userEvent.selectOptions(channelSelect, "C2")
+    expect(await within(editModal).findByRole("alert")).toHaveTextContent(
+      /not a member of this channel/i,
+    )
+
+    await userEvent.selectOptions(channelSelect, "C1")
+    await waitFor(() => expect(within(editModal).queryByRole("alert")).toBeNull())
+  }, 20000)
+
+  it("AST-1789: S icon-control copies snapshot JSON to clipboard", async () => {
+    const withChannel = {
+      ...candidate,
+      candidate_data: {
+        contact: {
+          contact_email: "jane@example.com",
+          slack_channel_id: "C_SNAP",
+          slack_channel_name: "snap",
+        },
+      },
+    }
+    const snapshotBody = {
+      astral_candidate_id: "doe_jane",
+      channel_id: "C_SNAP",
+      channel_name: "snap",
+      messages: [{ ts: "1.0", text: "hi" }, { ts: "2.0", text: "later" }],
+    }
+    const writeText = vi.fn(async () => undefined)
+    Object.assign(navigator, { clipboard: { writeText } })
+
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") return { json: async () => ["ACTIVE", "DELETED"] } as Response
+      if (url === "/api/candidates?include_deleted=true") {
+        return { json: async () => [withChannel] } as Response
+      }
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 1 } }) } as Response
+      }
+      if (url === "/api/admin/contact/slack_channels") {
+        return { ok: true, json: async () => ({ channels: [] }) } as Response
+      }
+      if (url === "/api/admin/contact/unbound_slack_users") {
+        return { ok: true, json: async () => ({ users: [] }) } as Response
+      }
+      if (url.startsWith("/api/admin/contact/slack_channel_snapshot")) {
+        return { ok: true, json: async () => snapshotBody } as Response
+      }
+    })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    const snap = screen.getByRole("button", { name: "Snapshot Slack channel for doe_jane" })
+    expect(snap).toHaveClass("icon-control")
+    await userEvent.click(snap)
+    await waitFor(() => expect(writeText).toHaveBeenCalled())
+    expect(writeText.mock.calls[0][0]).toBe(JSON.stringify(snapshotBody, null, 2))
+    expect(screen.getByText("Slack channel snapshot copied")).toBeInTheDocument()
+    expect(
+      mockedApi.mock.calls.some(c =>
+        String(c[0]).startsWith("/api/admin/contact/slack_channel_snapshot"),
+      ),
+    ).toBe(true)
+    expect(mockedApi.mock.calls.every(c => !String(c[0]).includes("slack.com"))).toBe(true)
+  }, 20000)
+
 
 })
