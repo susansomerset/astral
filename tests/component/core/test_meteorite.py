@@ -3125,3 +3125,138 @@ class TestAst1775RuthDuplicateReviewInvoke:
         assert out["total_processed"] == 0
         assert db.get_meteorite(row_id)["state"] == "DUPLICATE"
         assert METEORITE_INGRESS_DISPATCH_CONFIG["land_trigger_state"] == "READY"
+
+
+# Branches: text outcome + http job_link → URL on link + SCRAPE_LINK; breadcrumb only
+# when no http job_link; URL outcomes unchanged (AST-1785).
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "_map_classify_jobs_to_meteorite_rows"),
+    reason="AST-1785 map helper not on this publish tip",
+)
+class TestAst1785PreferHttpJobLinkOverBreadcrumb:
+    """AST-1785: http(s) job_link wins over email breadcrumb; scrape path when link is http."""
+
+    def test_map_text_outcome_http_job_link_wins_over_breadcrumb(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        url = "https://example.com/jobs/1"
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{
+                "jd_text": "JD " + ("x" * 40),
+                "job_link": url,
+                "job_title": "Senior Widget Engineer",
+                "from_email": "recruiter@co.com",
+                "to_email": "me@ex.com",
+                "sent_at": "2026-09-17T18:05:00+00:00",
+            }],
+            candidate_id="cand-1785-map",
+            source_kind="email",
+            source_id="mid-1785-map",
+            timezone_key="America/New_York",
+        )
+        assert err is None and len(rows) == 1
+        assert rows[0]["link"] == url
+        assert not str(rows[0]["link"]).startswith("From:")
+
+    def test_map_text_outcome_without_http_job_link_keeps_breadcrumb(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{
+                "jd_text": "JD " + ("x" * 40),
+                "from_email": "recruiter@co.com",
+                "to_email": "me@ex.com",
+                "sent_at": "2026-09-17T18:05:00+00:00",
+            }],
+            candidate_id="cand-1785-crumb",
+            source_kind="email",
+            source_id="mid-1785-crumb",
+            timezone_key="America/Chicago",
+        )
+        assert err is None and len(rows) == 1
+        link = rows[0]["link"] or ""
+        assert link.startswith("From:recruiter@co.com")
+        assert not link.startswith("http")
+
+    def test_map_url_outcome_still_requires_http_job_link(self) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        outcome = STAGE_METEORITE_CONFIG["url_scrape_outcomes"][0]
+        url = "https://jobs.example.com/list-item"
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            outcome,
+            [{"job_link": url, "jd_text": ""}],
+            candidate_id="cand-1785-url",
+            source_kind="email",
+            source_id="mid-1785-url",
+        )
+        assert err is None and len(rows) == 1
+        assert rows[0]["link"] == url
+
+    @pytest.mark.asyncio
+    async def test_stage_text_outcome_http_job_link_scrape_link_and_title(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import STAGE_METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "cand-1785-stage"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+        outcome = STAGE_METEORITE_CONFIG["text_source_ref_outcomes"][0]
+        url = "https://example.com/jobs/1"
+
+        async def _classify(*_a, **_k):
+            return {
+                "success": True,
+                "outcome": outcome,
+                "jobs": [{
+                    "jd_text": "JD " + ("t" * 40),
+                    "job_link": url,
+                    "job_title": "Senior Widget Engineer",
+                    "from_email": "recruiter@co.com",
+                    "to_email": "me@ex.com",
+                    "sent_at": "2026-09-17T18:05:00+00:00",
+                }],
+                "error": None,
+                "batch_id": "b-1785",
+            }
+
+        monkeypatch.setattr(meteorite_mod, "_classify_stage_blob", _classify)
+        out = await meteorite_mod.stage_meteorite(
+            cid, '<a href="https://example.com/jobs/1">Senior Widget Engineer</a>',
+            source_kind="email", source_id="mid-1785-stage",
+        )
+        assert out.get("error") is None
+        rows = db.list_meteorites_by_source("email", "mid-1785-stage")
+        assert len(rows) == 1
+        assert rows[0]["link"] == url
+        assert rows[0]["state"] == "SCRAPE_LINK"
+        assert rows[0]["job_title"] == "Senior Widget Engineer"
+
+    @pytest.mark.asyncio
+    async def test_run_stage_text_outcome_http_link_to_scrape_link(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        cid = "cand-1785-run"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "R"})
+        url = "https://example.com/jobs/1"
+        row_id = _insert_meteorite_row(
+            db,
+            cid,
+            classify_outcome="single_jd_no_link",
+            content="JD " + ("z" * 40),
+            link=url,
+            source_kind="email",
+        )
+        out = await meteorite_mod.run_stage_meteorite(
+            _ingress_task(batch_id="stage-batch-1785-http", candidate_id=cid)
+        )
+        assert out["total_passed"] == 1
+        row = db.get_meteorite(row_id)
+        assert row["state"] == "SCRAPE_LINK"
+        assert row["link"] == url
