@@ -106,3 +106,34 @@ Confirm Chuckles estimate: 3 — agree
 | `stat.logging.error` | pattern — read in full; external raises, does not log-and-re-raise; handlers (siblings) log once |
 
 No placement statutes named on this ticket. No harvested pattern ids apply (`no established pattern applies` on parent).
+
+## Joan validate
+
+```
+[plan-rubric]
+**Ticket:** AST-1787
+**Overall:** APPROVED
+**Corpus:** 2ac86c3f693409c364f8630a97198c8dbfa9c6f3
+**Publish ref:** `e8c548243066583fe743d3807e633de2e1f90a40`
+
+## Canon scores
+
+stat.logging.debug | A | | plan Stage 1 — begin/end + Calling/Response on all three helpers; no truncate; no call-site gate; matches existing slack.py outer-loop pattern
+stat.logging.error | A | | external raises on hard Slack failures; no log-and-re-raise; ValueError for empty inputs; siblings log per statute
+
+## Traceability
+
+AC6 (partial — full pagination + ascending in external) → Stage 1 step 5 `fetch_full_conversation_history` (`_paginate_messages` all pages, `ts` ascending sort); AC8 → Files Changed + Stage 1 steps 3–5 (`slack.py` only, gated I/O); AC9 → Stage 1 step 4 `is_channel_member` + step 6 poster-pool unchanged + sanity `rg`; AC1–5, AC7, AC10 → N/A — sibling #2/#3 scope
+
+## Findings
+
+### acceptable
+
+- **Scope fidelity:** Single file `src/external/slack.py`; explicit scope gate matches ticket `## Scope`; siblings correctly excluded.
+- **Definition fidelity:** Implements child slice only — three exported helpers for picker list, membership bool, full ascending history; leaves `fetch_conversation_history` and poster-pool path untouched per parent Technical scope and AC9.
+- **UAT fitness:** Correctly rejects one-page/limit-only history extension and poster-pool `conversations.members` misuse; sibling AST-1667 boundary called out.
+- **DRY / reuse:** `list_bot_channels` parallels `_iter_conversations` with a documented narrower `types` filter and `{id,name}` shape — justified for picker vs poster scan; reuses `_slack_bot_get`, `_PAGE_LIMIT`, `_paginate_messages`.
+- **Self-assessment:** Estimate confirm 3 — agree; one stage, one file, three functions; proportionate to AST-1667 precedent.
+
+context_tokens≈32000
+```
