@@ -1,3 +1,77 @@
+<!-- linear-archive: AST-1703 archived 2026-09-24 -->
+
+## Linear archive (AST-1703)
+
+**Archived:** 2026-09-24  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1703/email-breadcrumb-on-meteoritelink-forward-peel-timezone-clock-job  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1640 — Job source_entity parent (meteorite|company) + candidate-facing link  
+**Blocked by / blocks / related:** parent: AST-1640; blocks: AST-1704
+
+### Description
+
+## What this implements
+
+Owns no-URL email breadcrumb authorship (`single_jd_no_link` / `multi_jd_inline`): peel inner From/To when forwarded; format clock in `contact.timezone`. Does not own parent columns, bot-block append, or Job Detail.
+
+## Citations
+
+`stat.logging.info.entity`, `stat.logging.debug`.
+
+## Scope
+
+`src/core/meteorite.py` — classify/land path that authors non-http `meteorite.link` breadcrumbs (forward peel + timezone clock); does not re-own parent/inherit/append writes from #2. `data/admin/agent_task.json` (`task_key=stage_meteorite`) — instruct peel of inner From/To on forwards; require returning from_email / to_email / sent_at for text outcomes (`source_ref` stays unused; breadcrumb lands on `meteorite.link`). `src/utils/config.py` — call AST-1701 breadcrumb format / timezone helpers (no second SSOT); extend `TASK_CONFIG["stage_meteorite"]["response_schema"]` so those fields are accepted (prefer on `jobs` `items_schema` so `invoke_stage_meteorite` returns them without touching `consult.py`). Technical: breadcrumb writer for text outcomes — agent returns from / to / sent-at; Python formats clock in `contact.timezone`; forwarded mail uses inner headers; `source_ref` stays unused.
+
+## Acceptance criteria
+
+- [X] 6\. After land, `job.job_link` equals `meteorite.link` for that row’s linked job (breadcrumb authored here, inherited by #2). Fail: non-http breadcrumb missing on `meteorite.link` for no-URL email outcomes. (This ticket authors breadcrumb on `meteorite.link` at email text insert; #2 inherit lands `job.job_link`.)
+
+## Boundaries
+
+- [X] Does not own parent columns, bot-block append (#2), or Job Detail (#4). After #1; coordinates with #2 inherit.
+
+## Notes for planning
+
+Estimate 3. Bang ! — after #1.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1640-job-source-entity-parent`, child `sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-09-17T01:30:32.850Z
+[code-rubric] PROCEED (Commit: 0dbf963a) email breadcrumb authorship clean
+
+#### betty — 2026-09-17T01:27:49.730Z
+`origin/sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock` @ `0dbf963a45e8aca76376089358a5b3ced880348f` · email breadcrumb coverage
+
+#### joan — 2026-09-17T01:19:26.841Z
+[plan-rubric] PROCEED (Commit: 76def513) email breadcrumb authorship clear
+
+#### katherine — 2026-09-17T01:17:29.236Z
+`origin/sub/AST-1640/AST-1703-email-breadcrumb-on-meteorite-link-forward-peel-timezone-clock` @ `76def5139ed280f45a51005b4960c8c36ba51c5e` · plan ready
+
+#### katherine — 2026-09-17T01:14:19.837Z
+[scope-gate] Cannot Plan Ready — agent peel + return fields sit outside ## Scope
+
+Parent Locked decisions + this ticket’s Technical scope require: Ruth peels inner From/To on forwards; agent returns from / to / sent-at; Python only formats the clock via AST-1701 helpers and writes `meteorite.link`. Today `_map_classify_jobs_to_meteorite_rows` sets `link: None` for `single_jd_no_link` / `multi_jd_inline`, and `stage_meteorite` schema/prompt have no from/to/sent-at fields.
+
+**In Scope today:** `src/core/meteorite.py` (authorship) + `src/utils/config.py` only as “calling #1 breadcrumb/timezone helpers (no second SSOT)”.
+
+**Missing from Scope (needed to execute Technical literally):**
+1. `data/admin/agent_task.json` (`task_key=stage_meteorite`) — instruct peel of inner headers on forwards; require returning from_email / to_email / sent_at for text outcomes (prompt still says job_link/company_job_id will be source-refs — contradicts AST-1640 `source_ref` unused + breadcrumb on `meteorite.link`).
+2. `src/utils/config.py` — extend `TASK_CONFIG["stage_meteorite"]["response_schema"]` so those fields are accepted (prefer on `jobs` `items_schema` so `invoke_stage_meteorite` already returns them without touching `consult.py`). This is schema wiring, not a second breadcrumb format SSOT.
+
+**Why not invent inside current Scope:** Envelope-only From/To from `get_message_html` fails the forward case (envelope From is the candidate). Skipping prompt/schema leaves Ruth unable to return the fields Technical names.
+
+Please amend this ticket’s ## Scope with (1)+(2), then re-spawn plan-child. No @susan — small partition omission Chuckles can add.
+
+---
+
 # AST-1703 — Email breadcrumb on meteorite.link (forward peel + timezone clock)
 
 **Linear:** [AST-1703](https://linear.app/astralcareermatch/issue/AST-1703/email-breadcrumb-on-meteoritelink-forward-peel-timezone-clock)  
