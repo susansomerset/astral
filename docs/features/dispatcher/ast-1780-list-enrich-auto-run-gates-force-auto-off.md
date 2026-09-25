@@ -657,3 +657,8 @@ All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.p
 - Job / non-candidate tokens alone still must not flip the flag (`entity_contexts=None`).
 - API-key gate remains independent of empty-render.
 - No edits outside `api_admin.py` for this delta.
+
+
+## Fix-board Joan findings (AST-1794)
+
+**Verdict: CANON: OK** — ValueError soft-miss is a pass, not a failed item (`stat.logging.warning` Resolution #4). Silencing the warning aligns with statute; fail-closed branches keep warning/exception logging. No statute update needed.
