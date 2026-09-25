@@ -865,3 +865,48 @@ AST-1801 removes the multi-state registry gate that caused the live hop failure.
 ## Fix-board Joan findings (AST-1802)
 
 **Verdict: CANON: OK** — Test/bible-only gap locking absent-companion claim contract; no product or canon edits.
+
+
+## Review-fix findings (AST-1802)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — Betty qa-fix manifest names `test_get_new_company_batch_states_allows_registry_absent_companion` as the repro gate. Body pins **To-be** concretely: guard `"HOMEPAGE_READY_RETRY" not in COMPANY_STATES`, live pairing `states=["HOMEPAGE_READY","HOMEPAGE_READY_RETRY"]`, no `ValueError`, and `claim_company_batch` kwargs `states` forwarded unchanged. Would fail pre–AST-1801 (multi-state registry loop); passes with AST-1801 product (on ftr per merge ancestry). Tracker/candidate mirrors assert absent `{primary}_RETRY` + `states=` forward — same contract, not tautological.
+
+**`## What must still hold`:** OK
+- **AST-1801 contract** encoded in new cases + bible § AST-1802 · AST-1801; no `src/` edits.
+- **AST-1798 / `dispatch_claim_states`:** untouched; no cross-name companion asserts added.
+- **Single-state reject:** `test_get_new_company_batch_rejects_unknown_state` unchanged in diff (still in manifest).
+- **No registry seeding:** tests assert companions absent from `COMPANY_STATES` / `JOB_STATES` / `CANDIDATE_STATES`; no config/registry diffs.
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on gap ticket (same pattern as AST-1799 / AST-1801). Joan fix-board OK only.  
+  **Recommendation:** No Canon Scope amendment required.
+
+### advisory
+
+- **Location:** `test_roster.py::TestBatchApi::test_get_new_company_batch_states_allows_registry_absent_companion`  
+  **Finding:** No `[bug-repro]` docstring/first-line tag (unlike e.g. AST-1724 roster case); Betty labels it in the qa-fix manifest only. Machinery that greps `[bug-repro]` may miss it.  
+  **Recommendation:** Optional bible/docstring hygiene later; not fix-now — assertions satisfy repro-first intent.
+
+- **Location:** `test_roster.py` absent-companion case  
+  **Finding:** Asserts companion ∉ registry but not explicitly `HOMEPAGE_READY in COMPANY_STATES` (plan repro assumes primary is valid). Low risk given `states=` path and live repro state.  
+  **Recommendation:** None for resolve-child.
+
+## What's solid
+
+- Plan-fix § Proposed change (1)–(4) delivered: roster + tracker + candidate mirrors, bible table + run command; item (5) boundaries honored (no `src/`, no `dispatch_claim_states` edits).
+- Scope gate: tests + `docs/test-bible/core/roster.md` + feature-doc plan patch only — aligns with `astral.git.betty-no-src-or-features` / engineer test-tree ban (Betty `merge-tests` path).
+- Closes AST-1801 `[board-betty] TESTS: REVISE` bar; mirrors AST-1799 gap pattern for AST-1798.
+- Estimate **2** fits footprint.
+- Parent **AST-1800** In Progress; diff base `origin/ftr/AST-1800-claim-union-no-registry-validate` — **normal** parent shape.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1800 In Progress) | → **Review Posted** → append artifact + `docs(AST-1802): Radia review — clean` on publish ref → post slim upshot `--as radia` → §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
