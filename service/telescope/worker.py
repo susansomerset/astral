@@ -52,6 +52,7 @@ class QueueWorker:
         self.worker_id = worker_id or make_worker_id()
         self._concurrency = concurrency or settings.worker_concurrency
         self._in_flight: Dict[str, asyncio.Task] = {}
+        self._job_urls: Dict[str, str] = {}  # for lines logged outside the job's own task
         self._wake = asyncio.Event()
         self._stopping = asyncio.Event()
         self._listener: Optional[asyncpg.Connection] = None
@@ -192,6 +193,8 @@ class QueueWorker:
                     backoff = min(backoff * 2, _DB_RETRY_MAX_SECONDS)
                     continue
                 for job in jobs:
+                    raw = job.request if isinstance(job.request, dict) else {}
+                    self._job_urls[job.id] = str(raw.get("url") or "")
                     task = asyncio.create_task(self._run_job(job), name=f"job-{job.id}")
                     self._in_flight[job.id] = task
                     task.add_done_callback(lambda _t, jid=job.id: self._job_done(jid))
@@ -207,6 +210,7 @@ class QueueWorker:
 
     def _job_done(self, job_id: str) -> None:
         self._in_flight.pop(job_id, None)
+        self._job_urls.pop(job_id, None)
         self.last_busy_at = time.monotonic()
         self._wake.set()  # a slot freed up
 
@@ -228,10 +232,12 @@ class QueueWorker:
                 for job_id in checked:
                     task = self._in_flight.get(job_id)
                     if job_id not in alive and task is not None and not task.done():
+                        url = self._job_urls.get(job_id, "")
                         _log.warning(
-                            "%s | telescope job cancelled: caller gave up or lease lost",
+                            "%s | telescope job cancelled: %s caller gave up or lease lost",
                             short_id(job_id),
-                            extra={"job": short_id(job_id)},
+                            url or "-",
+                            extra={"job": short_id(job_id), "url": url},
                         )
                         task.cancel()
                 self._maybe_log_stats()
@@ -311,6 +317,7 @@ class QueueWorker:
             attempt=job.attempts,
             max_attempts=job.max_attempts,
             debug=bool(raw.get("debug")),
+            url=url,
         )
         started = time.monotonic()
         try:
@@ -337,8 +344,9 @@ class QueueWorker:
             )
             if not ours:
                 _log.warning(
-                    "%s | telescope job discarded: finished after it was cancelled or reaped",
+                    "%s | telescope job discarded: %s finished after it was cancelled or reaped",
                     short_id(job.id),
+                    url,
                 )
                 return
             self._stats["done"] += 1
@@ -392,8 +400,9 @@ class QueueWorker:
             )
         else:
             _log.warning(
-                "%s | telescope job discarded: failed after it was cancelled or reaped (%s)",
+                "%s | telescope job discarded: %s failed after it was cancelled or reaped (%s)",
                 short_id(job.id),
+                url,
                 exc.error_class,
             )
 

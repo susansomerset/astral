@@ -255,13 +255,18 @@ async def _submit_and_resolve(q, row: dict) -> Any:
 class TestTelescopeQueueClient:
     @pytest.mark.asyncio
     async def test_done_returns_decoded_result_and_notifies_worker(
-        self, monkeypatch: pytest.MonkeyPatch,
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
     ) -> None:
         q, db = _queue_with_fake_db(monkeypatch)
         payload = {"final_url": "https://example.com/", "text": "hi \x00"}
         blob = zlib.compress(json.dumps(payload).encode())
-        out = await _submit_and_resolve(q, {"status": "done", "result": blob})
+        with caplog.at_level("INFO", logger="src.external.telescope"):
+            out = await _submit_and_resolve(q, {"status": "done", "result": blob})
         assert out == payload
+        done = [r.getMessage() for r in caplog.records if "telescope job done" in r.getMessage()]
+        assert len(done) == 1 and done[0].endswith(
+            "telescope job done: https://example.com -> https://example.com/ fields:text"
+        )
         sql = " ".join(str(c.args[0]) for c in db.conn.execute.await_args_list)
         assert "INSERT INTO telescope_job" in sql and "pg_notify" in sql
         assert q._waiters == {}

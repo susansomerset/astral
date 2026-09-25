@@ -36,14 +36,19 @@ class TestRailwayJsonLogging:
     def test_job_lines_carry_job_attempt_firefox(self, lines) -> None:
         import joblog
 
-        tokens = joblog.begin_job("9c72bc3c-edc9-4c47", attempt=2, max_attempts=4, debug=False)
+        tokens = joblog.begin_job(
+            "9c72bc3c-edc9-4c47", attempt=2, max_attempts=4, debug=False,
+            url="https://acme.com/careers",
+        )
         joblog.bind_firefox("F-003")
         logging.getLogger("worker").info("done")
         joblog.end_job(tokens)
         logging.getLogger("worker").info("after")
         done, after = lines()
-        assert (done["job"], done["attempt"], done["firefox"]) == ("9c72bc3c", "2/4", "F-003")
-        assert "job" not in after and "firefox" not in after
+        assert (done["job"], done["attempt"], done["firefox"], done["url"]) == (
+            "9c72bc3c", "2/4", "F-003", "https://acme.com/careers",
+        )
+        assert not {"job", "firefox", "url"} & after.keys()
 
     def test_debug_prints_only_for_debug_jobs_and_own_loggers(self, lines) -> None:
         import joblog

@@ -363,7 +363,15 @@ class _TelescopeQueue:
             self._waiters.pop(job_id, None)
         status = row["status"]
         if status == "done":
-            return _decode_result(row["result"])
+            data = _decode_result(row["result"])
+            _log.info(
+                "%s | telescope job done: %s -> %s fields:%s",
+                job_id[:8],
+                request.get("url"),
+                (data or {}).get("final_url"),
+                ",".join(request.get("fields") or []),
+            )
+            return data
         error_class = row["error_class"] or "unknown"
         detail = f"job {job_id} {status} ({error_class}): {row['error'] or ''}"
         if error_class in ("timeout", "expired"):
@@ -481,7 +489,6 @@ async def _post_telescope(
         body["id"] = id
     _log.debug("Calling _post_telescope: [body=%s]", body)
     data = await _pool.submit(body, priority=priority)
-    # Completion's info line is the worker's `<job> | telescope job done` — not repeated here.
     _log.debug("Response from _post_telescope: %s", data)
     return data
 
