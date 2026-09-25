@@ -3866,6 +3866,26 @@ class TestAst1791NoPromptValueErrorEmptyRender:
         }
         assert admin_mod._candidate_dispatch_empty_render_error("c1", "gaze") is None
 
+    def test_evaluate_valueerror_soft_miss_no_warning(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] red on pre-AST-1794 (soft-miss still warns); green after silence.
+        self._stub_no_agent_task_prompts(monkeypatch)
+        warn = MagicMock()
+        monkeypatch.setattr(admin_mod.logger, "warning", warn)
+        assert admin_mod._evaluate_dispatch_empty_render("c1", "gaze") == {
+            "empty_render": False,
+            "empty_tokens": [],
+        }
+        # Soft-miss must not emit AST-1791's "no prompts to validate" warning.
+        soft_miss = [
+            c
+            for c in warn.call_args_list
+            if "no prompts to validate" in " ".join(str(a) for a in c.args)
+        ]
+        assert soft_miss == []
+        assert warn.call_count == 0
+
     def test_list_valueerror_no_prompts_keeps_auto(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:

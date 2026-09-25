@@ -2002,15 +2002,9 @@ def _evaluate_dispatch_empty_render(
     cd = build_candidate_token_view(cand)
     try:
         texts = _dispatch_empty_render_prompt_texts(tk)
-    except ValueError as exc:
-        # No agent_task / prompts to score → nothing expected missing (AST-1791).
-        logger.warning(
-            "%s | dispatch empty_render task_key=%r — %s; "
-            "no prompts to validate, empty_render false",
-            cid,
-            tk,
-            exc,
-        )
+    except ValueError:
+        # No agent_task / prompts to score → intentional soft-miss pass (AST-1791);
+        # silent — do not warn (AST-1794: n/a agent is not a misconfiguration).
         return {"empty_render": False, "empty_tokens": []}
     except Exception as exc:
         logger.exception(
