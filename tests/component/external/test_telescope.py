@@ -617,11 +617,12 @@ class TestFetchCareersListTextAndDom:
 class TestTelescopeWake:
     """Serverless Telescope: throttled fire-and-forget GET /wake when no worker is live."""
 
-    def _queue(self, monkeypatch, *, live: int, url: str = "http://telescope.railway.internal:8080/wake"):
+    def _queue(self, monkeypatch, *, live: int, url: str = "http://telescope.railway.internal:8080"):
+        monkeypatch.delenv("TELESCOPE_BASE_URLS", raising=False)
         if url:
-            monkeypatch.setenv("TELESCOPE_WAKE_URL", url)
+            monkeypatch.setenv("TELESCOPE_BASE_URL", url)
         else:
-            monkeypatch.delenv("TELESCOPE_WAKE_URL", raising=False)
+            monkeypatch.delenv("TELESCOPE_BASE_URL", raising=False)
         q = pw_mod._TelescopeQueue()
         monkeypatch.setattr(q, "_live_workers", AsyncMock(return_value=live))
         ping = AsyncMock()
@@ -727,9 +728,20 @@ class TestTelescopeQueuePerLoopState:
 
     @pytest.mark.asyncio
     async def test_missing_wake_url_warns_when_no_worker(self, monkeypatch, caplog) -> None:
-        monkeypatch.delenv("TELESCOPE_WAKE_URL", raising=False)
+        monkeypatch.delenv("TELESCOPE_BASE_URL", raising=False)
+        monkeypatch.delenv("TELESCOPE_BASE_URLS", raising=False)
         q = pw_mod._TelescopeQueue()
         monkeypatch.setattr(q, "_live_workers", AsyncMock(return_value=0))
         with caplog.at_level("WARNING", logger="src.external.telescope"):
             await q._maybe_wake(MagicMock(), q._state())
-        assert any("TELESCOPE_WAKE_URL is not set" in r.getMessage() for r in caplog.records)
+        assert any("TELESCOPE_BASE_URL / TELESCOPE_BASE_URLS is not set" in r.getMessage() for r in caplog.records)
+
+
+    def test_wake_url_from_base_url_or_first_of_list(self, monkeypatch) -> None:
+        monkeypatch.setenv("TELESCOPE_BASE_URL", "http://telescope.railway.internal:8080/")
+        assert pw_mod._telescope_wake_url() == "http://telescope.railway.internal:8080/wake"
+        monkeypatch.delenv("TELESCOPE_BASE_URL")
+        monkeypatch.setenv("TELESCOPE_BASE_URLS", " http://a.internal:8080 , http://b.internal:8080")
+        assert pw_mod._telescope_wake_url() == "http://a.internal:8080/wake"
+        monkeypatch.delenv("TELESCOPE_BASE_URLS")
+        assert pw_mod._telescope_wake_url() == ""

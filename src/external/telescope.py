@@ -188,6 +188,15 @@ def _decode_result(blob: Optional[bytes]) -> Any:
     return json.loads(zlib.decompress(blob).decode("utf-8"))
 
 
+def _telescope_wake_url() -> str:
+    """Telescope's private base url + wake path, or "" when no base url is set."""
+    for env_key in TELESCOPE_CONFIG["base_url_envs"]:
+        first = (os.environ.get(env_key) or "").split(",")[0].strip()
+        if first:
+            return first.rstrip("/") + TELESCOPE_CONFIG["wake_path"]
+    return ""
+
+
 class _LoopState:
     """Everything bound to one event loop: pool, listener, waiters, poller."""
 
@@ -421,8 +430,7 @@ class _TelescopeQueue:
         Telescope is Railway Serverless: it sleeps when idle and wakes on a
         private-network request. The ping only starts it; queued jobs wait safely.
         """
-        env_key = TELESCOPE_CONFIG["wake_url_env"]
-        url = (os.environ.get(env_key) or "").strip()
+        url = _telescope_wake_url()
         throttle = float(TELESCOPE_CONFIG["wake_throttle_seconds"])
         with self._wake_lock:
             if time.monotonic() - self._last_wake < throttle:
@@ -440,7 +448,7 @@ class _TelescopeQueue:
             _log.warning(
                 "telescope wake skipped: no live Telescope worker and %s is not set; "
                 "queued jobs wait until a worker starts",
-                env_key,
+                " / ".join(TELESCOPE_CONFIG["base_url_envs"]),
             )
             return
         task = asyncio.create_task(self._ping_wake(url))
