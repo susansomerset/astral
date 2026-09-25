@@ -18,7 +18,7 @@ from capture import (
 from interact import dismiss_cookies, expand_page, navigate, wait_ready_generic
 from logging_util import get_logger
 from meta import build_scrape_meta
-from scrape_debug import log_scrape_capture
+from joblog import capture_summary
 from settings import settings
 
 _log = get_logger(__name__)
@@ -126,8 +126,8 @@ def parse_request(raw: Any) -> tuple[TelescopeRequest, Optional[str]]:
     cn = (req.class_name or "").strip() or None
     eid = (req.id or "").strip() or None
     if primary or cn or eid:
-        _log.info(
-            "telescope filter mode=primary(+class/id) primary=%s class_name=%s id=%s resolved=%s",
+        _log.debug(
+            "Filter: primary=%s class_name=%s id=%s resolved=%s",
             primary,
             cn,
             eid,
@@ -158,7 +158,7 @@ async def run_scrape(
             out["links"] = await capture_links(page, sel)
         if "html" in want:
             out["html"] = await capture_html(page, sel)
-        log_scrape_capture(out)
+        _log.debug("Captured %s", capture_summary(out))
         return out
 
     try:

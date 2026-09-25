@@ -32,8 +32,8 @@ async def lifespan(app: FastAPI):
     )
     await jobqueue.ensure_schema(db)
     firefox = Firefox()
+    worker = QueueWorker(db, firefox)  # sets the worker label before Firefox logs
     await firefox.start()
-    worker = QueueWorker(db, firefox)
     await worker.start()
     app.state.firefox = firefox
     app.state.worker = worker

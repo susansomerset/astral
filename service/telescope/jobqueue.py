@@ -75,6 +75,7 @@ class ClaimedJob:
     request: dict
     attempts: int
     max_attempts: int
+    wait_s: float = 0.0  # time since the job became claimable (queue wait)
 
 
 def encode_result(result: Any) -> bytes:
@@ -126,7 +127,8 @@ async def claim(
             started_at = now()
         FROM picked
         WHERE j.id = picked.id
-        RETURNING j.id, j.request, j.attempts, j.max_attempts
+        RETURNING j.id, j.request, j.attempts, j.max_attempts,
+                  EXTRACT(EPOCH FROM now() - j.run_after)::float8 AS wait_s
         """,
         limit,
         worker_id,
@@ -138,6 +140,7 @@ async def claim(
             request=r["request"],
             attempts=r["attempts"],
             max_attempts=r["max_attempts"],
+            wait_s=max(0.0, r["wait_s"] or 0.0),
         )
         for r in rows
     ]
