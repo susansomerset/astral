@@ -26,11 +26,13 @@ from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
 from src.utils.cost_calculator import sum_calc_cost_components
+from src.external.telescope import PlaywrightInfraError, admin_telescope_scrape
 from src.core.dispatcher import (
     list_dispatch_ledger, get_dispatch_ledger, list_log_entries,
     list_dispatch_tasks, save_dispatch_task, update_dispatch_task,
     count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
+    meteorite_mailbox_trigger_allows,
 )
 from src.core.candidate import (
     build_candidate_token_view,
@@ -40,7 +42,9 @@ from src.core.candidate import (
 from src.core.builder import build_session_base_resume, build_session_cover_letter
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
 from src.core.repo_admin_json import (
+    export_repo_admin_json_table_to_file,
     get_repo_admin_json_divergence_status,
+    get_repo_admin_json_table_comparison,
     revert_repo_admin_json_table,
 )
 from src.utils.config import (
@@ -50,6 +54,7 @@ from src.utils.config import (
     DEEPSEEK_MODEL_PRICING,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
+    get_repo_admin_json_table_keys,
     get_tokens,
     resolve_tokens,
     get_model,
@@ -57,6 +62,7 @@ from src.utils.config import (
     brain_setting_for_anthropic_agent_key,
     TASK_CONFIG,
     TRACKER_CONFIG,
+    UI_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
     CANDIDATE_STATES,
@@ -67,14 +73,16 @@ from src.utils.config import (
     admin_always_visible_under_avail_gt0_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
-    GAZE_EMAIL_CONFIG,
     dispatch_task_admin_defaults,
-    dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     _dispatch_entity_type_for_task_key,
+    _dispatch_sort_by_for,
+    _dispatch_trigger_state_for_task_key,
+    is_meteorite_email_mailbox_task_key,
     get_task_keys,
     dispatch_claim_uses_score_floor,
+    dispatch_score_floor_option_labels,
     is_dispatch_chain_trigger,
     parse_dispatch_hop_label,
     get_active_llm_provider,
@@ -90,10 +98,12 @@ from src.utils.rubric_feedback import hydrate_vector_review_strings
 # Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
 from src.core.agent import (
     run_adhoc_workbench_test,
+    list_agent_data_runs,
     _decode_payload,
     resolved_agent_content,
     resolved_task_system,
     _chain_context,
+    _caller_response_blob,
 )
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
@@ -308,13 +318,37 @@ def repo_json_status():
 @admin_bp.route("/repo_json/revert/<table_key>", methods=["POST"])
 @require_admin
 def repo_json_revert(table_key: str):
-    if table_key not in ("agent", "agent_task"):
-        return jsonify({"error": "table_key must be agent or agent_task"}), 400
+    if table_key not in get_repo_admin_json_table_keys():
+        return jsonify({"error": "unknown repo admin JSON table"}), 400
     try:
         count = revert_repo_admin_json_table(table_key)
     except (RuntimeError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 500
     return jsonify({"ok": True, "table_key": table_key, "row_count": count})
+
+
+@admin_bp.route("/repo_json/compare/<table_key>")
+@require_admin
+def repo_json_compare(table_key: str):
+    if table_key not in get_repo_admin_json_table_keys():
+        return jsonify({"error": "unknown repo admin JSON table"}), 400
+    try:
+        comparison = get_repo_admin_json_table_comparison(table_key)
+    except (RuntimeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify(comparison)
+
+
+@admin_bp.route("/repo_json/write/<table_key>", methods=["POST"])
+@require_admin
+def repo_json_write(table_key: str):
+    if table_key not in get_repo_admin_json_table_keys():
+        return jsonify({"error": "unknown repo admin JSON table"}), 400
+    try:
+        result = export_repo_admin_json_table_to_file(table_key)
+    except (RuntimeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, **result})
 
 
 # ---------------------------------------------------------------------------
@@ -364,7 +398,8 @@ def _enrich_tasks(candidate_id: str) -> list:
             brain_setting_eff = ""
             resolved_model_key = ""
             model_cfg: Dict = {}
-            _cc = _chain_context(agent, cd, task_key, None) if agent else None
+            # List probe, not a hop — empty {$CALLER_*} is expected (AST-530 chain_entry).
+            _cc = _chain_context(agent, cd, task_key, None, chain_entry=True) if agent else None
             if agent:
                 brain_setting_eff = (agent.get("brain_setting") or "").strip()
                 if not brain_setting_eff:
@@ -378,9 +413,13 @@ def _enrich_tasks(candidate_id: str) -> list:
                     resolved_model_key = vm
                     model_cfg = DEEPSEEK_MODEL_PRICING.get(vm, {})
             if full_task and agent:
-                system_content = resolved_task_system(agent, full_task, cd, task_key, _cc)
+                system_content = resolved_task_system(
+                    agent, full_task, cd, task_key, _cc, chain_entry=True
+                )
             elif agent:
-                system_content = resolve_tokens(agent.get("content") or "", cd, task_key, _cc)
+                system_content = resolve_tokens(
+                    agent.get("content") or "", cd, task_key, _cc, chain_entry=True
+                )
             else:
                 system_content = ""
             system_tokens = len(system_content) // CHARS_PER_TOKEN
@@ -399,7 +438,9 @@ def _enrich_tasks(candidate_id: str) -> list:
             cache_probe_parts = []
             if full_task and agent_id:
                 for ck in ("cache_prompt", "cache_prompt_b", "cache_prompt_c", "cache_prompt_d"):
-                    txt = resolve_tokens(full_task.get(ck) or "", cd, task_key, _cc)
+                    txt = resolve_tokens(
+                        full_task.get(ck) or "", cd, task_key, _cc, chain_entry=True
+                    )
                     cache_probe_parts.append(txt)
                 combined_cache_probe = "\n---\n".join(cache_probe_parts)
             else:
@@ -444,6 +485,13 @@ def _enrich_tasks(candidate_id: str) -> list:
                 "avg_output_tokens":    avg_output,
                 "task_ready":           task_ready,
                 "updated_at":           t.get("updated_at"),
+                "user_prompt_len":       int(t.get("user_prompt_len") or 0),
+                "cache_prompt_len":      int(t.get("cache_prompt_len") or 0),
+                "cache_prompt_b_len":    int(t.get("cache_prompt_b_len") or 0),
+                "cache_prompt_c_len":    int(t.get("cache_prompt_c_len") or 0),
+                "cache_prompt_d_len":    int(t.get("cache_prompt_d_len") or 0),
+                "nocache_prompt_len":    int(t.get("nocache_prompt_len") or 0),
+                "system_prompt_len":     int(t.get("system_prompt_len") or 0),
                 **_grouping_from_agent_task_row(t, task_key),
             })
         return rows
@@ -858,19 +906,23 @@ _DISPATCH_TASK_COLUMNS = [
 def list_dtasks():
     rows = list_dispatch_tasks()
     rows = [r for r in rows if r.get("task_key") not in DISPATCH_RETIRED_TASK_KEYS]
-    gaze_tk = GAZE_EMAIL_CONFIG["task_key"]
-    # One inbox snapshot for every candidate-bound gaze_email Avail stamp (AST-1135).
-    need_gaze_counts = any(
-        (r.get("task_key") or "").strip() == gaze_tk
+
+    def _inbox_avail_task_key(tk: str) -> bool:
+        # meteorite mailbox fold — Gmail inbox ping Avail (AST-1214 / AST-1466).
+        return is_meteorite_email_mailbox_task_key(tk)
+
+    # One inbox snapshot when any candidate-bound mailbox Avail row is present.
+    need_mailbox_counts = any(
+        _inbox_avail_task_key((r.get("task_key") or "").strip())
         and str(r.get("candidate_id") or "").strip()
         for r in rows
     )
     bound_counts: Dict[str, int] = {}
-    if need_gaze_counts:
+    if need_mailbox_counts:
         try:
             bound_counts = count_inbox_bound_by_candidate()
         except Exception as exc:
-            logger.warning("list_dtasks: gaze_email inbox bind counts failed: %s", exc)
+            logger.warning("list_dtasks: mailbox inbox bind counts failed: %s", exc)
             bound_counts = {}
     # Enrich each row with live available entity count
     for row in rows:
@@ -883,14 +935,19 @@ def list_dtasks():
         et = row.get("entity_type")
         ts = row.get("trigger_state")
         cid = row.get("candidate_id", "")
-        if (row.get("task_key") or "").strip() == gaze_tk:
+        if _inbox_avail_task_key((row.get("task_key") or "").strip()):
             cid_s = str(cid or "").strip()
-            row["available_count"] = int(bound_counts.get(cid_s, 0)) if cid_s else 0
+            if cid_s and meteorite_mailbox_trigger_allows(row):
+                row["available_count"] = int(bound_counts.get(cid_s, 0))
+            else:
+                row["available_count"] = 0
         else:
             try:
-                row["available_count"] = (
-                    database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
-                )
+                # Meteorite claim pool is global — count without requiring candidate_id (AST-1623).
+                if et and ts and (cid or et == "meteorite"):
+                    row["available_count"] = database.count_eligible_for_dispatch_task(row)
+                else:
+                    row["available_count"] = 0
             except Exception as exc:
                 logger.warning(
                     "list_dtasks: available_count failed for dispatch_task id=%s task_key=%r: %s",
@@ -922,56 +979,74 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
-    """Scheduled Actions form defaults: TASK_CONFIG keys use dispatch_task_admin_defaults
-    when defaults resolve; grouping fields from agent_task via dispatch_task_grouping_catalog_key;
+    """Scheduled Actions form defaults: TASK_CONFIG / mailbox keys use dispatch_task_admin_defaults
+    when defaults resolve; grouping fields from agent_task (identity catalog key);
     entity/trigger keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
-    grouping_key = dispatch_task_grouping_catalog_key(task_key)
-    cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
+    grouping_key = catalog_key
+    cfg = TASK_CONFIG.get(catalog_key) or {}
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
     trigger_state = (ts or "") if ts is not None else ""
-    # Prefer derived admin defaults when the key is registered and has a trigger rule.
-    if task_key in TASK_CONFIG:
+    # Prefer derived admin defaults (TASK_CONFIG + meteorite mailbox fold).
+    if catalog_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(catalog_key):
         try:
-            derived = dispatch_task_admin_defaults(task_key)
-            entity_type = derived["entity_type"]
-            trigger_state = derived["trigger_state"]
+            derived = dispatch_task_admin_defaults(catalog_key)
+            entity_type = derived["entity_type"] or ""
+            trigger_state = (
+                (derived["trigger_state"] or "")
+                if derived["trigger_state"] is not None
+                else ""
+            )
         except KeyError:
-            pass  # mid-chain / no default trigger — keep TASK_CONFIG field values
+            pass  # mid-chain / no default — keep prior field values
+    # Helper-resolvable agent_task-only hops fill empty entity/trigger.
+    if not entity_type:
+        try:
+            entity_type = _dispatch_entity_type_for_task_key(catalog_key) or ""
+        except KeyError:
+            pass
+    if not trigger_state:
+        try:
+            trigger_state = _dispatch_trigger_state_for_task_key(catalog_key) or ""
+        except KeyError:
+            pass
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
-        "is_scored": dispatch_task_key_is_scored(task_key),
+        "is_scored": dispatch_task_key_is_scored(catalog_key),
         **_catalog_task_grouping_meta(grouping_key),
     }
+
+
+def _admin_dispatch_task_key_catalog() -> dict[str, dict]:
+    """Live Admin picker catalog: agent_task ∪ TASK_CONFIG ∪ dispatch orphans, alpha by task_key."""
+    membership: set[str] = set(get_task_keys())
+    for row in database.list_candidate_tasks():
+        tk = (row.get("task_key") or "").strip()
+        if tk:
+            membership.add(tk)
+    for r in list_dispatch_tasks():
+        k = (r.get("task_key") or "").strip()
+        if k:
+            membership.add(k)
+    membership -= set(admin_hidden_dispatch_task_keys())
+    membership -= set(DISPATCH_RETIRED_TASK_KEYS)
+    return {tk: _dispatch_task_key_form_meta(tk) for tk in sorted(membership)}
 
 
 @admin_bp.route("/dispatch_tasks/task_keys")
 @require_admin
 def dispatch_task_keys():
-    """task_key → entity_type / trigger_state for Scheduled Actions forms.
+    """task_key → form meta for Scheduled Actions (and peer Admin pickers).
 
-    Every TASK_CONFIG key is selectable. Registered keys use config-built defaults when
-    available; other keys inherit from TASK_CONFIG. Existing dispatch_task rows may add keys."""
-    seen: dict[str, dict] = {}
-    for tk in get_task_keys():
-        seen[tk] = _dispatch_task_key_form_meta(tk)
-    for r in list_dispatch_tasks():
-        k = r.get("task_key", "")
-        if not k:
-            continue
-        if k in DISPATCH_RETIRED_TASK_KEYS:
-            continue
-        if k not in seen:
-            # Same grouping path as registry keys — do not wipe agent_task metadata.
-            seen[k] = _dispatch_task_key_form_meta(k)
-    hidden = admin_hidden_dispatch_task_keys()
-    for tk in hidden:
-        seen.pop(tk, None)
-    for tk in DISPATCH_RETIRED_TASK_KEYS:
-        seen.pop(tk, None)
-    return jsonify(seen)
+    Membership is the live union of TASK_CONFIG keys, current agent_task keys
+    (including fetch_* and peers), and existing dispatch_task keys — sorted
+    alphabetically by task_key via sorted(membership). Retired / admin-hidden
+    keys are omitted. Grouping fields come from agent_task; no parallel
+    section inventory.
+    """
+    return jsonify(_admin_dispatch_task_key_catalog())
 
 
 @admin_bp.route("/dispatch_tasks/state_options")
@@ -981,7 +1056,15 @@ def dispatch_task_state_options():
         "job": list(JOB_STATES.keys()),
         "company": list(COMPANY_STATES.keys()),
         "candidate": list(CANDIDATE_STATES.keys()),
+        "meteorite": list(dispatch_entity_state_registry("meteorite").keys()),
     })
+
+
+@admin_bp.route("/dispatch_tasks/score_floor_options")
+@require_admin
+def dispatch_task_score_floor_options():
+    # pattern.ui.admin-endpoint — options catalog from config (AST-1278 / AST-750)
+    return jsonify({"values": dispatch_score_floor_option_labels()})
 
 
 @admin_bp.route("/dispatch_tasks/counts")
@@ -1016,9 +1099,19 @@ def create_dtask():
     missing = [k for k in required if k not in data]
     if missing:
         return jsonify({"error": f"Missing fields: {missing}"}), 400
-    retired = dispatch_task_key_retired_message(data.get("task_key", ""))
+    task_key = (data.get("task_key") or "").strip()
+    retired = dispatch_task_key_retired_message(task_key)
     if retired:
         return jsonify({"error": retired}), 400
+    # Absent / JSON null → catalog defaults in save; non-empty must be ENTITY_TYPES.
+    submitted_entity = None
+    if "entity_type" in data and data.get("entity_type") is not None:
+        raw_et = str(data.get("entity_type") or "").strip()
+        if raw_et == "":
+            return jsonify({"error": "entity_type must be non-empty when provided"}), 400
+        if raw_et not in ENTITY_TYPES:
+            return jsonify({"error": f"unsupported entity_type {raw_et!r}"}), 400
+        submitted_entity = raw_et
     is_scored = dispatch_claim_uses_score_floor(data.get("trigger_state"))
     raw_score_floor = data.get("score_floor", None)
     score_floor = float(raw_score_floor) if (is_scored and raw_score_floor is not None) else (1.0 if is_scored else None)
@@ -1026,15 +1119,20 @@ def create_dtask():
         err = _candidate_dispatch_api_key_error(data.get("candidate_id"))
         if err:
             return jsonify({"error": err}), 400
-    tk_err = _dispatch_task_key_trigger_error(data.get("task_key", ""), data.get("trigger_state"))
+    tk_err = _dispatch_task_key_trigger_error(
+        task_key,
+        data.get("trigger_state"),
+        entity_type=submitted_entity,
+    )
     if tk_err:
         return jsonify({"error": tk_err}), 400
     try:
         task_id = save_dispatch_task(
             candidate_id=data["candidate_id"],
-            task_key=data["task_key"],
+            task_key=task_key,
             min_count=int(data["min_count"]),
             auto_mode=bool(data.get("auto_mode", False)),
+            entity_type=submitted_entity,
             trigger_state=data.get("trigger_state"),
             batch_size=int(data["batch_size"]) if data.get("batch_size") else None,
             freq_hrs=float(data.get("freq_hrs", 0)),
@@ -1045,29 +1143,54 @@ def create_dtask():
             return jsonify({
                 "error": (
                     f"Dispatch row already exists for candidate '{data['candidate_id']}', "
-                    f"task_key '{data['task_key']}', trigger_state '{data['trigger_state']}'"
+                    f"task_key '{task_key}', trigger_state '{data['trigger_state']}'"
                 )
             }), 409
         return jsonify({"error": str(e)}), 500
+    if data.get("skip_daisy_chain"):
+        update_dispatch_task(task_id, skip_daisy_chain=1)
     return jsonify({"id": task_id}), 201
 
 
-def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -> str | None:
+def _dispatch_task_key_trigger_error(
+    task_key: str,
+    trigger_state: str | None,
+    entity_type: str | None = None,
+) -> str | None:
     tk = (task_key or "").strip()
     if not tk:
         return "task_key is required"
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    if tk not in TASK_CONFIG:
-        return f"Unknown task_key: {tk!r}"
+    # stage_email_meteorite mailbox fold is candidate-bound: empty trigger = no state gate; otherwise CANDIDATE_STATES.
+    if is_meteorite_email_mailbox_task_key(tk):
+        ts = (trigger_state or "").strip()
+        if not ts:
+            return None
+        registry = dispatch_entity_state_registry("candidate")
+        registry_ts = ts
+        parsed = parse_dispatch_hop_label(ts)
+        if parsed:
+            registry_ts = parsed[0]
+        if registry_ts not in registry:
+            return f"task_key {tk!r} (candidate) is not valid for trigger_state {ts!r}"
+        return None
+    # Optional override from admin form; else catalog entity for task_key.
+    if entity_type is not None and str(entity_type).strip():
+        et = str(entity_type).strip()
+        if et not in ENTITY_TYPES:
+            return f"unsupported entity_type {et!r}"
+    else:
+        try:
+            et = _dispatch_entity_type_for_task_key(tk)
+        except KeyError:
+            if tk in TASK_CONFIG:
+                return f"task_key {tk!r} has unsupported entity_type"
+            return f"Unknown task_key: {tk!r}"
     ts = (trigger_state or "").strip()
     if not ts:
         return "trigger_state is required"
-    try:
-        et = _dispatch_entity_type_for_task_key(tk)
-    except KeyError:
-        return f"task_key {tk!r} has unsupported entity_type"
     if et not in ENTITY_TYPES:
         return f"task_key {tk!r} has unsupported entity_type {et!r}"
     try:
@@ -1097,34 +1220,77 @@ def update_dtask(task_id):
     if row.get("auto_mode") and (set(data.keys()) - {"auto_mode"}):
         return jsonify({"error": "Turn AUTO mode off before editing this row"}), 400
     allowed = {
-        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs",
-        "max_runs", "score_floor", "trigger_state", "task_key",
+        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "skip_daisy_chain", "freq_hrs",
+        "max_runs", "score_floor", "trigger_state", "task_key", "entity_type",
     }
     updates: Dict[str, Any] = {}
-    if "task_key" in data:
-        effective_trigger_state = data.get("trigger_state", row.get("trigger_state"))
-        tk_err = _dispatch_task_key_trigger_error(data["task_key"], effective_trigger_state)
-        if tk_err:
-            return jsonify({"error": tk_err}), 400
-        defaults = dispatch_task_admin_defaults(
-            (data["task_key"] or "").strip(),
-            trigger_state=effective_trigger_state,
+    # JSON null on entity_type mirrors create — treat as omitted (Joan discuss).
+    entity_in_body = "entity_type" in data and data.get("entity_type") is not None
+    effective_task_key = (
+        (data["task_key"] if "task_key" in data else row.get("task_key") or "")
+    )
+    if isinstance(effective_task_key, str):
+        effective_task_key = effective_task_key.strip()
+    else:
+        effective_task_key = str(effective_task_key or "").strip()
+    effective_trigger_state = data.get("trigger_state", row.get("trigger_state"))
+    if entity_in_body:
+        submitted_et = str(data.get("entity_type") or "").strip()
+        if submitted_et == "":
+            return jsonify({"error": "entity_type must be non-empty when provided"}), 400
+        if submitted_et not in ENTITY_TYPES:
+            return jsonify({"error": f"unsupported entity_type {submitted_et!r}"}), 400
+        effective_entity_type = submitted_et
+    elif "task_key" in data:
+        try:
+            effective_entity_type = dispatch_task_admin_defaults(
+                effective_task_key, trigger_state=effective_trigger_state,
+            )["entity_type"]
+        except KeyError as exc:
+            return jsonify({"error": str(exc)}), 400
+    else:
+        effective_entity_type = row.get("entity_type")
+    if "task_key" in data or "trigger_state" in data or entity_in_body:
+        tk_err = _dispatch_task_key_trigger_error(
+            effective_task_key,
+            effective_trigger_state,
+            entity_type=effective_entity_type,
         )
-        updates["task_key"] = (data["task_key"] or "").strip()
-        updates["entity_type"] = defaults["entity_type"]
-        updates["sort_by"] = defaults["sort_by"]
-        updates["batch_call_mode"] = defaults["batch_call_mode"]
-    elif "trigger_state" in data:
-        tk_err = _dispatch_task_key_trigger_error(row.get("task_key", ""), data.get("trigger_state"))
         if tk_err:
             return jsonify({"error": tk_err}), 400
+    if "task_key" in data:
+        try:
+            defaults = dispatch_task_admin_defaults(
+                effective_task_key, trigger_state=effective_trigger_state,
+            )
+        except KeyError as exc:
+            return jsonify({"error": str(exc)}), 400
+        updates["task_key"] = effective_task_key
+        updates["entity_type"] = effective_entity_type
+        updates["batch_call_mode"] = defaults["batch_call_mode"]
+    if entity_in_body:
+        updates["entity_type"] = effective_entity_type
+    if "task_key" in data or "trigger_state" in data or entity_in_body:
+        mailbox = is_meteorite_email_mailbox_task_key(effective_task_key)
+        ts_for_sort = str(effective_trigger_state or "").strip()
+        if mailbox and not ts_for_sort:
+            if "trigger_state" in data:
+                updates["sort_by"] = None
+        else:
+            et_sort = (effective_entity_type or "candidate") if mailbox else effective_entity_type
+            try:
+                updates["sort_by"] = _dispatch_sort_by_for(
+                    et_sort, effective_trigger_state,
+                )
+            except KeyError as exc:
+                return jsonify({"error": str(exc)}), 400
     trigger_state = data.get("trigger_state", row.get("trigger_state"))
     is_scored = dispatch_claim_uses_score_floor(trigger_state)
     for k in allowed:
-        if k in data and k != "task_key":
+        if k in data and k not in ("task_key", "entity_type"):
             if k in ("min_count", "batch_size", "max_runs"):
                 updates[k] = int(data[k]) if data[k] is not None else None
-            elif k in ("auto_mode", "debug", "skip_cache"):
+            elif k in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain"):
                 updates[k] = int(bool(data[k]))
             elif k == "freq_hrs":
                 updates[k] = float(data[k])
@@ -1175,7 +1341,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
         if not company:
             return ""
         cdata = company.get("company_data", {}) or {}
-        if task_key == "prefilter":
+        if task_key == "prefilter_company":
             homepage = cdata.get("homepage_text") or cdata.get("website_content") or ""
             nav_links = cdata.get("nav_links") or []
             parts = []
@@ -1284,6 +1450,22 @@ def adhoc_entities():
     })
 
 
+@admin_bp.route("/adhoc/runs")
+@require_admin
+def adhoc_runs():
+    """Import picker source: candidate-scoped agent_data batches, newest first, config-capped."""
+    candidate_id = (request.args.get("candidate_id") or "").strip()
+    task_key = (request.args.get("task_key") or "").strip()
+    return jsonify(
+        list_agent_data_runs(
+            candidate_id=candidate_id or None,
+            task_key=task_key or None,
+            limit=UI_CONFIG["adhoc_import_runs_limit"],
+            debug=ui_llm_debug(),
+        )
+    )
+
+
 def _resolve_adhoc(body):
     """Load agent, resolve tokens, return resolved prompts + model params.
     Returns (dict, error_tuple). On success error_tuple is None."""
@@ -1349,13 +1531,26 @@ def _resolve_adhoc(body):
 
                 jc = build_job_token_context(job, cd)
     _cc = _chain_context(agent, cd, task_key, jc)
-    agent_task_for_system = (
-        {"system_prompt": ""} if agent_task_row is None and task_key == "adhoc" else (agent_task_row or {})
-    )
+    if "system_prompt" in body:
+        # Editor sent the field (sibling #2): empty → agent content via resolved_task_system.
+        agent_task_for_system = {"system_prompt": body.get("system_prompt") or ""}
+    else:
+        # Key omitted (today’s three-slot UI): keep DB task system, then agent content.
+        agent_task_for_system = (
+            {"system_prompt": ""} if agent_task_row is None and task_key == "adhoc" else (agent_task_row or {})
+        )
+    cache_a = resolve_tokens(body.get("cache_prompt", "") or "", cd, task_key, _cc, jc)
+    cache_b = resolve_tokens(body.get("cache_prompt_b", "") or "", cd, task_key, _cc, jc)
+    cache_c = resolve_tokens(body.get("cache_prompt_c", "") or "", cd, task_key, _cc, jc)
+    cache_d = resolve_tokens(body.get("cache_prompt_d", "") or "", cd, task_key, _cc, jc)
     return {
         "system": resolved_task_system(agent, agent_task_for_system, cd, task_key, _cc, jc),
         "user": resolve_tokens(body.get("user_prompt", ""), cd, task_key, _cc, jc),
-        "cache": resolve_tokens(body.get("cache_prompt", ""), cd, task_key, _cc, jc),
+        "cache": cache_a,
+        "cache_a": cache_a,
+        "cache_b": cache_b,
+        "cache_c": cache_c,
+        "cache_d": cache_d,
         "nocache": resolve_tokens(body.get("nocache_prompt", ""), cd, task_key, _cc, jc),
         "model_code": model_code,
         "tier_meta": tier_meta,
@@ -1382,6 +1577,10 @@ def adhoc_preview():
         "system": resolved["system"],
         "user": resolved["user"],
         "cache": resolved["cache"],
+        "cache_a": resolved["cache_a"],
+        "cache_b": resolved["cache_b"],
+        "cache_c": resolved["cache_c"],
+        "cache_d": resolved["cache_d"],
         "nocache": resolved["nocache"],
         "live_content": live_content,
     })
@@ -1410,8 +1609,11 @@ def adhoc_test():
             entity_id=entity_id or None,
             system_content=resolved["system"],
             user_content=resolved["user"],
-            cache_content=resolved["cache"] or None,
-            nocache_content=resolved["nocache"] or None,
+            cache_content=resolved.get("cache") or None,
+            cache_content_b=resolved.get("cache_b") or None,
+            cache_content_c=resolved.get("cache_c") or None,
+            cache_content_d=resolved.get("cache_d") or None,
+            nocache_content=resolved.get("nocache") or None,
             live_content=live_content,
             response_format=task_response_format,
             model_code=resolved["model_code"],
@@ -1426,15 +1628,17 @@ def adhoc_test():
         return jsonify({"success": False, "error": str(e)}), 500
 
     if not result.get("success"):
-        return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 500
+        err_body = {"success": False, "error": result.get("error", "Unknown error")}
+        if result.get("batch_id"):
+            err_body["batch_id"] = result["batch_id"]
+        return jsonify(err_body), 500
 
-    response_text = result.get("parsed_response") or ""
-    # For tasks with JSON envelope, do_task auto-extracts agent_payload into parsed_response.
-    # If it's still a dict here (e.g. run_adhoc doesn't do the extraction), pull it out.
-    if isinstance(response_text, dict) and "agent_payload" in response_text:
-        response_text = response_text["agent_payload"] or ""
-    if not isinstance(response_text, str):
-        response_text = str(response_text)
+    parsed = result.get("parsed_response")
+    if isinstance(parsed, dict) and "agent_payload" in parsed:
+        body = parsed["agent_payload"]
+    else:
+        body = parsed
+    response_text = _caller_response_blob(body)
     timesheet = result.get("timesheet", {})
 
     # Decode encoded payload if the task uses a compact encoded output_type
@@ -1448,7 +1652,13 @@ def adhoc_test():
         except Exception as e:
             hydrated = {"error": str(e)}
 
-    return jsonify({"success": True, "response_text": response_text, "hydrated": hydrated, "timesheet": timesheet})
+    return jsonify({
+        "success": True,
+        "response_text": response_text,
+        "hydrated": hydrated,
+        "timesheet": timesheet,
+        "batch_id": result.get("batch_id"),
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -1857,3 +2067,50 @@ def download_db():
     """Send the raw SQLite file as a binary download."""
     db_path = ASTRAL_CONFIG["db_dir"] / "astral.db"
     return send_file(str(db_path), mimetype="application/octet-stream", as_attachment=True, download_name="astral.db")
+
+
+@admin_bp.route("/telescope", methods=["POST"])
+@require_admin
+def admin_telescope():
+    """Operator workbench — proxy to Telescope with scrape_meta (AST-1728)."""
+    body = request.get_json(silent=True) or {}
+    url = (body.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "url required"}), 400
+    response_type = (body.get("response_type") or "").strip().lower()
+    if response_type not in ("text", "html"):
+        return jsonify({"error": "response_type must be text or html"}), 400
+    expand = body.get("expand", True)
+    wait_ready = body.get("wait_ready", False)
+    links = body.get("links", True)
+    cull = body.get("cull", False)
+    selector = body.get("selector")
+    if selector is not None:
+        selector = str(selector).strip() or None
+    tag = body.get("tag")
+    if tag is not None:
+        tag = str(tag).strip() or None
+    class_name = body.get("class_name")
+    if class_name is not None:
+        class_name = str(class_name).strip() or None
+    try:
+        data = asyncio.run(
+            admin_telescope_scrape(
+                url,
+                response_type=response_type,
+                expand=bool(expand),
+                wait_ready=bool(wait_ready),
+                links=bool(links),
+                selector=selector,
+                tag=tag,
+                class_name=class_name,
+                cull=bool(cull),
+            )
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except PlaywrightInfraError as e:
+        return jsonify({"error": e.failure_class, "detail": str(e)}), 502
+    except Exception as e:
+        return jsonify({"error": "telescope_error", "detail": str(e)}), 502
+    return jsonify(data)

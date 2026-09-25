@@ -29,8 +29,9 @@ export default defineConfig({
     },
     proxy: {
       '/api': 'http://localhost:5001',
-      // AST-1117: Print / Materials HTML routes (resume_html_bp) — not under /api.
-      '/candidate': 'http://localhost:5001',
+      // AST-1117 / AST-1433: print HTML only — not candidate SPA routes.
+      '/candidate/resume': 'http://localhost:5001',
+      '/candidate/cover': 'http://localhost:5001',
     },
   },
   test: {

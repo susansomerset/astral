@@ -5,6 +5,7 @@ import RepoJsonDivergenceBanner from "../components/RepoJsonDivergenceBanner"
 import Toast, { type ToastMessage } from "../components/Toast"
 import TokenTextarea from "../components/TokenTextarea"
 import { useCandidate } from "../contexts/CandidateContext"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 import type { Column } from "../components/ListPage"
@@ -66,7 +67,7 @@ export default function AgentPrompts() {
   const tokenList = useAgentTokenList()
   const [agents, setAgents]   = useState<Agent[]>([])
   const [brainSettings, setBrainSettings] = useState<BrainSettingCatalogRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [toast, setToast]     = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -97,16 +98,16 @@ export default function AgentPrompts() {
   const [previewSource, setPreviewSource] = useState<"edit" | "add">("edit")
   const [repoJsonRefresh, setRepoJsonRefresh] = useState(0)
 
-  const loadAll = useCallback(() => {
-    setLoading(true)
+  const loadAll = useCallback((showSpinner = false) => {
+    beginRefresh(showSpinner)
     api("/api/admin/agents").then(r => r.json()).then(data => {
       setAgents(Array.isArray(data) ? data : [])
     }).catch(() => setAgents([]))
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => endRefresh())
+  }, [beginRefresh, endRefresh])
 
   useEffect(() => {
-    loadAll()
+    loadAll(true)
     api("/api/admin/agents/brain_settings")
       .then(r => r.json())
       .then(data => {
@@ -276,7 +277,7 @@ export default function AgentPrompts() {
         loading={loading}
         onRowClick={row => openEdit(agents.find(a => a.agent_id === row.agent_id) ?? row)}
         actions={
-          <button className="dep-btn save" onClick={() => openAddModal()} style={{ padding: "6px 14px", fontSize: 13 }}>
+          <button className="btn primary" onClick={() => openAddModal()}>
             + Add Agent
           </button>
         }
@@ -286,13 +287,14 @@ export default function AgentPrompts() {
           const disabled = count > 0
           return (
             <button
-              className="dep-btn danger"
+              type="button"
+              className="icon-control"
               disabled={disabled}
               title={disabled ? `Agent is assigned to ${count} task(s) — unassign first` : "Delete agent"}
+              aria-label="Delete"
               onClick={e => { e.stopPropagation(); if (agent) setDeleteTarget(agent) }}
-              style={{ padding: "3px 10px", fontSize: 12 }}
             >
-              Delete
+              D
             </button>
           )
         }}
@@ -326,11 +328,10 @@ export default function AgentPrompts() {
           />
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
             <button
-              className="dep-btn cancel"
+              className="btn secondary"
               type="button"
               onClick={() => handlePreview("edit")}
               disabled={previewLoading}
-              style={{ fontSize: 12, padding: "5px 12px" }}
             >
               {previewLoading && previewSource === "edit" ? "Loading..." : "Preview Resolved"}
             </button>
@@ -374,11 +375,10 @@ export default function AgentPrompts() {
           />
           <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
             <button
-              className="dep-btn cancel"
+              className="btn secondary"
               type="button"
               onClick={() => handlePreview("add")}
               disabled={previewLoading}
-              style={{ fontSize: 12, padding: "5px 12px" }}
             >
               {previewLoading && previewSource === "add" ? "Loading..." : "Preview Resolved"}
             </button>

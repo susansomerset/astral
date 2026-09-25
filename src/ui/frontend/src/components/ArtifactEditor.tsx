@@ -1,5 +1,10 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import CollapsiblePanel from "./CollapsiblePanel"
+import type { Catalog, SectionRow } from "./ResumeStructureEditor"
+import ExperienceJobsEditor, {
+  type ExperienceJob,
+  type ExperienceJobField,
+} from "./ExperienceJobsEditor"
 import LabeledTextArea from "./LabeledTextArea"
 import type { SideTab } from "./SideTabPanel"
 import Toast, { type ToastMessage } from "./Toast"
@@ -7,9 +12,67 @@ import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
+import { artifactBlobHasContent } from "../lib/artifactBlobHasContent"
 import { formatRubricVectorHeader, RUBRIC_DEFAULT_IMPORTANCE, rubricItemImportance } from "../lib/rubricDisplay"
 
 interface ShapeField { key: string; label: string; type?: string }
+
+/** AST-1351: contract keys when ui_config fetch fails (Title-Case labels). */
+const EXPERIENCE_JOB_FIELD_FALLBACK: ExperienceJobField[] = [
+  { key: "company", label: "Company" },
+  { key: "title", label: "Title" },
+  { key: "dates", label: "Dates" },
+  { key: "location", label: "Location" },
+  { key: "accomplishments", label: "Accomplishments" },
+]
+
+function isExperienceTab(key: string, fieldType?: string): boolean {
+  return fieldType === "experience_jobs" || key === "experience"
+}
+
+function normalizeExperienceJob(
+  raw: Record<string, unknown>,
+  fieldKeys: string[],
+): ExperienceJob {
+  const out: ExperienceJob = {}
+  for (const k of fieldKeys) {
+    const v = raw[k]
+    if (k === "accomplishments") {
+      // AST-1381: persist string[]; coerce legacy newline string on read.
+      if (Array.isArray(v)) {
+        out[k] = v.map(x => String(x)).map(s => s.trim()).filter(Boolean)
+      } else if (typeof v === "string" && v.trim()) {
+        out[k] = v.replace(/\r\n/g, "\n").split("\n").map(s => s.trim()).filter(Boolean)
+      } else {
+        out[k] = []
+      }
+      continue
+    }
+    out[k] = typeof v === "string" ? v : v == null ? "" : String(v)
+  }
+  return out
+}
+
+function parseExperienceJobs(
+  content: string,
+  fieldKeys: string[],
+): { ok: true; jobs: ExperienceJob[] } | { ok: false; raw: string } {
+  const t = content.trim()
+  if (!t) return { ok: true, jobs: [] }
+  try {
+    const parsed = JSON.parse(t) as unknown
+    if (!Array.isArray(parsed)) return { ok: false, raw: content }
+    if (!parsed.every(item => item != null && typeof item === "object" && !Array.isArray(item))) {
+      return { ok: false, raw: content }
+    }
+    return {
+      ok: true,
+      jobs: parsed.map(item => normalizeExperienceJob(item as Record<string, unknown>, fieldKeys)),
+    }
+  } catch {
+    return { ok: false, raw: content }
+  }
+}
 
 function sectionValueToTabContent(val: unknown): string {
   if (typeof val === "string") return val
@@ -19,7 +82,7 @@ function sectionValueToTabContent(val: unknown): string {
 
 function tabContentToSectionValue(key: string, content: string, fieldType?: string): unknown {
   // experience_jobs from DATA_SHAPES, or structureMode tabs that only carry key/label
-  if (fieldType === "experience_jobs" || key === "experience") {
+  if (isExperienceTab(key, fieldType)) {
     const t = content.trim()
     if (!t) return []
     return JSON.parse(t)
@@ -35,9 +98,20 @@ interface ArtifactEditorProps {
   taskKey: string              // craft_* task to call for Generate
   shapesKey?: string           // key in DATA_SHAPES.candidates.detail — if set, tabs are fixed
   useCandidateResumeStructure?: boolean
+  /** Catalog body_shape (BUILD_CONFIG artifact_shapes / ARTIFACT_CONFIG). Pilot: resume_content. AST-1577 / patt.artifacts.ui-consistency — structure-dict mode by shape. */
+  bodyShape?: string
   structureSections?: StructureSection[] | null
+  /** AST-1323: Base Resume Content structure authoring on collapsible headers. */
+  structureCatalog?: Catalog | null
+  structureRows?: SectionRow[]
+  onStructureRowsChange?: (rows: SectionRow[]) => void
+  onStructureSave?: (rows: SectionRow[]) => void
+  structureSaving?: boolean
+  structureError?: string | null
   /** Job-scoped artifact load/save (AST-553/565); no Generate. */
   jobPersistence?: { jobId: string; artifactKey: string; onSaved?: () => void }
+  /** Optional controls after Generate/Regenerate in dep-actions (e.g. Base Resume Print). */
+  headerActions?: ReactNode
 }
 
 const AUTOSAVE_MS = 2000
@@ -68,11 +142,19 @@ export default function ArtifactEditor({
   taskKey,
   shapesKey,
   useCandidateResumeStructure = false,
+  bodyShape,
   structureSections = undefined,
+  structureCatalog = null,
+  structureRows,
+  onStructureRowsChange,
+  onStructureSave,
+  structureSaving = false,
+  structureError = null,
   jobPersistence,
+  headerActions,
 }: ArtifactEditorProps) {
   const { manifest, loadState } = useStateUi()
-  const { selectedId, candidates } = useCandidate()
+  const { selectedId, candidates, refresh: refreshCandidate } = useCandidate()
   const [shapeFields, setShapeFields] = useState<ShapeField[] | null>(shapesKey ? null : [])
   const [shapeError, setShapeError] = useState(false)
   const [jobLoadError, setJobLoadError] = useState(false)
@@ -97,6 +179,7 @@ export default function ArtifactEditor({
   snapshotRef.current = snapshot
   const [generating, setGenerating] = useState(false)
   const [confirmRegen, setConfirmRegen] = useState(false)
+  const [hasChainData, setHasChainData] = useState(false)
   const [expandedTabId, setExpandedTabId] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -109,11 +192,118 @@ export default function ArtifactEditor({
     }
   }, [])
 
-  const structureMode = !!useCandidateResumeStructure
-  const editable = !shapesKey && !structureMode
+  const structureMode =
+    !!useCandidateResumeStructure || bodyShape === "resume_content"
+  // Tab chrome (rename/add/remove/rubric) stays off in structure/shapes mode; bodies use bodiesEditable.
+  const tabChromeEditable = !shapesKey && !structureMode
+  const structureAuthoring = !!(
+    structureMode
+    && structureCatalog
+    && structureRows
+    && onStructureRowsChange
+    && onStructureSave
+  )
+  const [addTitle, setAddTitle] = useState("")
+  const [addFormat, setAddFormat] = useState(
+    structureCatalog?.new_extra_default_format || structureCatalog?.body_formats?.[0] || "",
+  )
+  // AST-1351: experience job UI spine from BUILD_CONFIG via ui_config
+  const [experienceJobFields, setExperienceJobFields] = useState<ExperienceJobField[]>(
+    EXPERIENCE_JOB_FIELD_FALLBACK,
+  )
+  const [unsupportedExperienceMessage, setUnsupportedExperienceMessage] = useState(
+    "unsupported resume structure, please regenerate",
+  )
+  useEffect(() => {
+    api("/api/system/ui_config")
+      .then(r => r.json())
+      .then(cfg => {
+        const fields = cfg.experience_job_ui_fields
+        if (Array.isArray(fields) && fields.length > 0) {
+          setExperienceJobFields(
+            fields
+              .filter((f: { key?: string; label?: string }) => typeof f?.key === "string")
+              .map((f: { key: string; label?: string }) => ({
+                key: f.key,
+                label:
+                  typeof f.label === "string" && f.label
+                    ? f.label
+                    : f.key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+              })),
+          )
+        }
+        if (
+          typeof cfg.unsupported_resume_structure_message === "string"
+          && cfg.unsupported_resume_structure_message
+        ) {
+          setUnsupportedExperienceMessage(cfg.unsupported_resume_structure_message)
+        }
+      })
+      .catch(() => {
+        setExperienceJobFields(EXPERIENCE_JOB_FIELD_FALLBACK)
+      })
+  }, [])
+  useEffect(() => {
+    if (!structureCatalog) return
+    setAddFormat(structureCatalog.new_extra_default_format || structureCatalog.body_formats[0] || "")
+  }, [structureCatalog])
+
+  function reindexStructureRows(next: SectionRow[]) {
+    return next.map((row, i) => ({ ...row, order: i }))
+  }
+
+  function patchStructureRow(sid: string, patch: Partial<SectionRow>) {
+    if (!structureRows || !onStructureRowsChange) return
+    onStructureRowsChange(structureRows.map(r => (r.id === sid ? { ...r, ...patch } : r)))
+  }
+
+  function moveStructureRow(sid: string, delta: number) {
+    if (!structureRows || !onStructureRowsChange) return
+    const index = structureRows.findIndex(r => r.id === sid)
+    const j = index + delta
+    if (index < 0 || j < 0 || j >= structureRows.length) return
+    const next = structureRows.slice()
+    const tmp = next[index]
+    next[index] = next[j]
+    next[j] = tmp
+    onStructureRowsChange(reindexStructureRows(next))
+  }
+
+  function removeStructureRow(sid: string) {
+    if (!structureRows || !onStructureRowsChange) return
+    onStructureRowsChange(reindexStructureRows(structureRows.filter(r => r.id !== sid)))
+  }
+
+  function addStructureSection() {
+    if (!structureRows || !onStructureRowsChange || !structureCatalog) return
+    const title = addTitle.trim()
+    if (!title) return
+    onStructureRowsChange(reindexStructureRows([
+      ...structureRows,
+      {
+        id: `_pending_${structureRows.length}`,
+        title,
+        enabled: true,
+        order: structureRows.length,
+        format: addFormat || structureCatalog.new_extra_default_format || structureCatalog.body_formats[0] || "",
+        job_agent_editable: true,
+        required: false,
+        format_locked: false,
+        page_break_policy: structureCatalog.page_break_policy_default || "",
+      },
+    ]))
+    setAddTitle("")
+  }
+
   const fixedFields = shapeFields && shapeFields.length > 0 ? shapeFields : null
   const rubricMode = !fixedFields
   const inReview = snapshot !== null
+  // Bodies editable in rubric chrome mode OR structure/shapes/job fixed tabs; never during Generate review.
+  const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)
+  // Stable id-set signature: label-only and reorder-only edits do not re-GET / wipe tabs.
+  const fixedFieldKeys = fixedFields
+    ? [...fixedFields.map(f => f.key)].sort().join("\0")
+    : ""
 
   /** Display order: importance descending (plan); storage order unchanged in `tabs` / payload. */
   const tabsSortedForRail = useMemo(() => {
@@ -185,8 +375,41 @@ export default function ArtifactEditor({
     () => new Set(manifest?.candidate.artifact_generate_states ?? []),
     [manifest?.candidate.artifact_generate_states],
   )
-  const canGenerate = !jobPersistence && generateStates.has(candidateState)
+  const inflightHideStates = useMemo(
+    () => new Set(manifest?.candidate.artifact_generate_inflight_hide_states ?? []),
+    [manifest?.candidate.artifact_generate_inflight_hide_states],
+  )
+  const chainTaskKeys = useMemo(
+    () => new Set(manifest?.candidate.artifacts_chain_task_keys ?? []),
+    [manifest?.candidate.artifacts_chain_task_keys],
+  )
+  const chainHopLabels = manifest?.candidate.artifacts_chain_hop_labels ?? []
+  const chainArtifactKeys = useMemo(
+    () => manifest?.candidate.artifacts_chain_artifact_keys ?? [],
+    [manifest?.candidate.artifacts_chain_artifact_keys],
+  )
+  // Same parse failure that drives the unsupported experience notice (message + affordance).
+  const experienceUnsupported = useMemo(() => {
+    const fieldKeys = experienceJobFields.map(f => f.key)
+    return tabs.some(tab => {
+      const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
+      if (!isExperienceTab(tab.id, fieldType)) return false
+      return !parseExperienceJobs(tab.content, fieldKeys).ok
+    })
+  }, [tabs, fixedFields, experienceJobFields])
+  // AST-1253: craft-chain pages hand off to REQUESTED_ARTIFACTS (not per-artifact generate)
+  const isChainHandoff = !jobPersistence && chainTaskKeys.has(taskKey)
+  // Base Resume: show Generate/Regenerate when experience is unsupported, except in-flight hide states.
+  const baseResumeUnsupportedEscape =
+    !jobPersistence
+    && (bodyShape === "resume_content" || artifactKey === "base_resume")
+    && experienceUnsupported
+    && !inflightHideStates.has(candidateState)
+  const canGenerate =
+    !jobPersistence
+    && (generateStates.has(candidateState) || baseResumeUnsupportedEscape)
   const hasData = useMemo(() => tabs.some(t => t.content.trim() !== ""), [tabs])
+  const showAsRegenerate = isChainHandoff ? hasChainData : hasData
 
   // Fetch shape definitions for fixed-tab mode (global DATA_SHAPES)
   useEffect(() => {
@@ -198,9 +421,20 @@ export default function ArtifactEditor({
     }).catch(() => setShapeError(true))
   }, [shapesKey])
 
-  // Per-candidate structure from parent prop
+  // Per-candidate structure: prefer authoring rows (all sections) so Enabled toggles stay visible;
+  // otherwise parent structureSections or internal fetch.
   useEffect(() => {
-    if (!structureMode || structureSections === undefined) return
+    if (!structureMode) return
+    if (structureAuthoring && structureRows && structureRows.length > 0) {
+      setShapeError(false)
+      setShapeFields(structureRows.map(r => ({
+        key: r.id,
+        label: r.title,
+        ...(r.id === "experience" ? { type: "experience_jobs" as const } : {}),
+      })))
+      return
+    }
+    if (structureSections === undefined) return
     if (structureSections === null) {
       setShapeFields(null)
       return
@@ -208,24 +442,35 @@ export default function ArtifactEditor({
     if (structureSections.length === 0) setShapeError(true)
     else {
       setShapeError(false)
-      setShapeFields(structureSections.map(s => ({ key: s.id, label: s.label })))
+      // AST-1351: mark experience so Save + editor use job-array path
+      setShapeFields(structureSections.map(s => ({
+        key: s.id,
+        label: s.label,
+        ...(s.id === "experience" ? { type: "experience_jobs" as const } : {}),
+      })))
     }
-  }, [structureMode, structureSections])
+  }, [structureMode, structureSections, structureAuthoring, structureRows])
 
   // Per-candidate structure fetch when page does not pass sections
   useEffect(() => {
     if (!structureMode || structureSections !== undefined || !selectedId) return
+    if (structureAuthoring) return
     setShapeFields(null)
     setShapeError(false)
     api(`/api/candidates/${selectedId}/resume_structure`).then(r => r.json()).then(data => {
       const sections = Array.isArray(data.sections) ? data.sections : []
       if (sections.length === 0) setShapeError(true)
-      else setShapeFields(sections.map((s: { id: string; label: string }) => ({ key: s.id, label: s.label })))
+      else setShapeFields(sections.map((s: { id: string; label: string }) => ({
+        key: s.id,
+        label: s.label,
+        ...(s.id === "experience" ? { type: "experience_jobs" as const } : {}),
+      })))
     }).catch(() => setShapeError(true))
-  }, [structureMode, structureSections, selectedId])
+  }, [structureMode, structureSections, selectedId, structureAuthoring])
 
   function mapFixedFieldsFromRaw(raw: unknown) {
     if (!fixedFields) return
+    // Dict or legacy [{label,content}]; reject pin strings / non-objects so bodies stay empty not garbage.
     const dict = Array.isArray(raw)
       ? Object.fromEntries(
           (raw as { label: string; content: string }[]).map(v => {
@@ -233,13 +478,37 @@ export default function ArtifactEditor({
             return [field ? field.key : v.label, v.content ?? ""]
           }),
         )
-      : ((raw ?? {}) as Record<string, unknown>)
+      : (raw && typeof raw === "object"
+        ? (raw as Record<string, unknown>)
+        : {})
     setTabs(fixedFields.map(f => ({
       id: f.key,
       label: f.label,
       content: sectionValueToTabContent(dict[f.key]),
     })))
   }
+
+  /** Same field key set: refresh labels; reorder tabs to match structure rows without re-GET. */
+  useEffect(() => {
+    if (!fixedFields) return
+    setTabs(prev => {
+      if (prev.length === 0) return prev
+      const prevSet = [...prev.map(t => t.id)].sort().join("\0")
+      const nextSet = [...fixedFields.map(f => f.key)].sort().join("\0")
+      if (prevSet !== nextSet) return prev
+      const byId = Object.fromEntries(prev.map(t => [t.id, t]))
+      return fixedFields.map(f => {
+        const existing = byId[f.key]
+        return {
+          id: f.key,
+          label: f.label,
+          content: existing?.content ?? "",
+          code: existing?.code,
+          importance: existing?.importance,
+        }
+      })
+    })
+  }, [fixedFields])
 
   function mapJobDictArtifactFromRaw(raw: unknown) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -255,56 +524,78 @@ export default function ArtifactEditor({
     )
   }
 
+  function applyJobArtifactResponse(job: { job_data?: { artifacts?: Record<string, unknown> } }) {
+    const persistKey = jobPersistence!.artifactKey
+    const artifacts = (job.job_data?.artifacts ?? {}) as Record<string, unknown>
+    // AST-1593: trust GET hydrate current under leaf key — do not promote resume_content as SoT.
+    const raw = artifacts[persistKey]
+    if (fixedFields) mapFixedFieldsFromRaw(raw)
+    else mapJobDictArtifactFromRaw(raw)
+  }
+
+  function applyCandidateArtifactResponse(c: {
+    candidate_data?: { artifacts?: Record<string, unknown> }
+    company_search_terms?: unknown
+  }) {
+    const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
+    const raw = artifacts[artifactKey]
+
+    if (fixedFields) {
+      mapFixedFieldsFromRaw(raw)
+    } else {
+      const arr = Array.isArray(raw) ? raw : []
+      if (arr.length > 0) {
+        setTabs(arr.map((v: { code?: string; label?: string; content?: string; importance?: number }, i: number) => ({
+          id: `v_${i}`,
+          code: v.code,
+          label: v.label ?? `Criterion ${i + 1}`,
+          content: v.content ?? "",
+          importance: rubricItemImportance(v),
+        })))
+      } else {
+        setTabs([{ id: "v_0", code: undefined, label: "New Criterion", content: "", importance: RUBRIC_DEFAULT_IMPORTANCE }])
+      }
+    }
+    const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
+    const terms = c.company_search_terms
+    const termsHit = typeof terms === "string" && terms.trim() !== ""
+    setHasChainData(rubricHit || termsHit)
+  }
+
+  const jobPersistJobId = jobPersistence?.jobId
+
   // Load artifact data from job (AST-553/565 job persistence mode)
   useEffect(() => {
     if (!jobPersistence) return
-    if ((shapesKey || structureMode) && !fixedFields) return
+    if ((shapesKey || structureMode) && !fixedFieldKeys) return
     setLoaded(false)
     setSnapshot(null)
     setJobLoadError(false)
-    const persistKey = jobPersistence.artifactKey
     api(`/api/jobs/${encodeURIComponent(jobPersistence.jobId)}`).then(r => r.json()).then(job => {
-      const artifacts = (job.job_data?.artifacts ?? {}) as Record<string, unknown>
-      const raw = artifacts[persistKey]
-      if (fixedFields) mapFixedFieldsFromRaw(raw)
-      else mapJobDictArtifactFromRaw(raw)
+      applyJobArtifactResponse(job)
       setLoaded(true)
       setDirty(false)
     }).catch(() => setJobLoadError(true))
-  }, [jobPersistence, artifactKey, fixedFields, shapesKey, structureMode])
+  // jobPersistJobId: parent inline jobPersistence object must not re-GET on reorder churn
+  // fixedFieldKeys: ignore label/reorder shapeField churn
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobPersistJobId, artifactKey, fixedFieldKeys, shapesKey, structureMode])
 
   // Load artifact data from candidate
   useEffect(() => {
     if (jobPersistence) return
-    if (!selectedId || ((shapesKey || structureMode) && !fixedFields)) return
+    if (!selectedId || ((shapesKey || structureMode) && !fixedFieldKeys)) return
     setLoaded(false)
     // Don't let a stale loaded render claim seedKey for the new page/candidate (Radia / Joan).
     didSeedCriteriaExpandRef.current = ""
     setSnapshot(null)
     api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
-      const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
-      const raw = artifacts[artifactKey]
-
-      if (fixedFields) {
-        mapFixedFieldsFromRaw(raw)
-      } else {
-        const arr = Array.isArray(raw) ? raw : []
-        if (arr.length > 0) {
-          setTabs(arr.map((v: { code?: string; label?: string; content?: string; importance?: number }, i: number) => ({
-            id: `v_${i}`,
-            code: v.code,
-            label: v.label ?? `Criterion ${i + 1}`,
-            content: v.content ?? "",
-            importance: rubricItemImportance(v),
-          })))
-        } else {
-          setTabs([{ id: "v_0", code: undefined, label: "New Criterion", content: "", importance: RUBRIC_DEFAULT_IMPORTANCE }])
-        }
-      }
+      applyCandidateArtifactResponse(c)
       setLoaded(true)
       setDirty(false)
     })
-  }, [jobPersistence, selectedId, artifactKey, fixedFields, shapesKey, structureMode])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobPersistence, selectedId, artifactKey, fixedFieldKeys, shapesKey, structureMode, chainArtifactKeys])
 
   // Build the payload from current tabs
   function buildPayload(t: SideTab[]) {
@@ -324,13 +615,24 @@ export default function ArtifactEditor({
     }))
   }
 
-  // Save to backend
+  // Save to backend — AST-1381: when structure authoring is on, persist formats with content Save.
   const doSave = useCallback(async (t: SideTab[]) => {
+    const fieldKeys = experienceJobFields.map(f => f.key)
+    for (const tab of t) {
+      const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
+      if (isExperienceTab(tab.id, fieldType)) {
+        const parsed = parseExperienceJobs(tab.content, fieldKeys)
+        if (!parsed.ok) {
+          setToast({ text: unsupportedExperienceMessage, variant: "error" })
+          return
+        }
+      }
+    }
     let payload: ReturnType<typeof buildPayload>
     try {
       payload = buildPayload(t)
     } catch {
-      setToast({ text: "Experience must be valid JSON", variant: "error" })
+      setToast({ text: unsupportedExperienceMessage, variant: "error" })
       return
     }
     if (jobPersistence) {
@@ -364,10 +666,27 @@ export default function ArtifactEditor({
     if (!selectedId) return
     setSaving(true)
     try {
+      const arts: Record<string, unknown> = { [artifactKey]: payload }
+      if (structureAuthoring && structureRows) {
+        const sections: Record<string, Record<string, unknown>> = {}
+        structureRows.forEach((row, index) => {
+          const spec: Record<string, unknown> = {
+            id: row.id,
+            title: row.title,
+            enabled: row.enabled,
+            order: index,
+            job_agent_editable: row.job_agent_editable,
+            page_break_policy: row.page_break_policy,
+          }
+          if (row.format) spec.format = row.format
+          sections[row.id] = spec
+        })
+        arts.resume_structure = { sections }
+      }
       const resp = await api(`/api/candidates/${selectedId}/data`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artifacts: { [artifactKey]: payload } }),
+        body: JSON.stringify({ artifacts: arts }),
       })
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
@@ -384,13 +703,22 @@ export default function ArtifactEditor({
       setSaving(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobPersistence, selectedId, artifactKey])
+  }, [
+    jobPersistence,
+    selectedId,
+    artifactKey,
+    experienceJobFields,
+    unsupportedExperienceMessage,
+    fixedFields,
+    structureAuthoring,
+    structureRows,
+  ])
 
   function handleChange(next: SideTab[]) {
     setTabs(next)
     setDirty(true)
     // Skip auto-save while reviewing generated content
-    if (editable && !inReview) {
+    if (tabChromeEditable && !inReview) {
       if (timerRef.current) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => doSave(next), AUTOSAVE_MS)
     }
@@ -506,11 +834,44 @@ export default function ArtifactEditor({
   // --- Generate / Regenerate ---
 
   function handleGenerateClick() {
+    if (isChainHandoff) {
+      if (hasChainData) {
+        setConfirmRegen(true)
+        return
+      }
+      void doRequestArtifacts()
+      return
+    }
     if (hasData) {
       setConfirmRegen(true)
       return
     }
-    doGenerate()
+    void doGenerate()
+  }
+
+  /** AST-1253: handoff to REQUESTED_ARTIFACTS (dispatch chain). */
+  async function doRequestArtifacts() {
+    if (!selectedId) return
+    setConfirmRegen(false)
+    setGenerating(true)
+    try {
+      const resp = await api(`/api/candidates/${selectedId}/generate_artifacts`, { method: "POST" })
+      if (!mountedRef.current) return
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
+        throw new Error(err.error || "Request failed")
+      }
+      const data = await resp.json()
+      if (!mountedRef.current) return
+      if (!data.ok) throw new Error(data.error || "Request failed")
+      setToast({ text: "Artifacts build requested — watch Execution History", variant: "success" })
+      refreshCandidate()
+    } catch (e) {
+      if (!mountedRef.current) return
+      setToast({ text: (e as Error).message || "Request failed", variant: "error" })
+    } finally {
+      if (mountedRef.current) setGenerating(false)
+    }
   }
 
   async function doGenerate() {
@@ -584,9 +945,21 @@ export default function ArtifactEditor({
       setTabs(snapshot)
       setSnapshot(null)
       setDirty(false)
-    } else {
-      window.location.reload()
+      return
     }
+    if (jobPersistence) {
+      if ((shapesKey || structureMode) && !fixedFieldKeys) return
+      api(`/api/jobs/${encodeURIComponent(jobPersistence.jobId)}`).then(r => r.json()).then(job => {
+        applyJobArtifactResponse(job)
+        setDirty(false)
+      }).catch(() => setJobLoadError(true))
+      return
+    }
+    if (!selectedId || ((shapesKey || structureMode) && !fixedFieldKeys)) return
+    api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
+      applyCandidateArtifactResponse(c)
+      setDirty(false)
+    })
   }
 
   if (!jobPersistence && !selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>
@@ -611,18 +984,21 @@ export default function ArtifactEditor({
           <div className="dep-actions">
             {canGenerate && (
               <button
-                className={`dep-btn save${generating ? " in-flight" : ""}`}
+                className={`btn primary${generating ? " in-flight" : ""}`}
                 onClick={handleGenerateClick}
                 disabled={generating}
                 style={{ marginRight: 8 }}
               >
-                {generating ? "Generating..." : hasData ? "Regenerate" : "Generate"}
+                {generating
+                  ? (isChainHandoff ? "Requesting..." : "Generating...")
+                  : showAsRegenerate ? "Regenerate" : "Generate"}
               </button>
             )}
+            {headerActions}
             {(fixedFields || inReview || jobPersistence) ? (
               <>
-                <button className="dep-btn cancel" onClick={handleCancel}>Cancel</button>
-                <button className="dep-btn save" onClick={() => doSave(tabs)} disabled={saving}>
+                <button className="btn secondary" onClick={handleCancel}>Cancel</button>
+                <button className="btn primary" onClick={() => doSave(tabs)} disabled={saving}>
                   {saving ? "Saving..." : "Save"}
                 </button>
               </>
@@ -635,11 +1011,106 @@ export default function ArtifactEditor({
         </div>
         <div className="dep-body">
           <div className="artifact-editor-collapsible-stack">
-            {tabsForRail.map((tab, i) => (
+            {tabsForRail.map((tab, i) => {
+              const structureRow = structureAuthoring
+                ? structureRows!.find(r => r.id === tab.id)
+                : undefined
+              const formatValue = structureRow
+                ? (structureRow.format_locked
+                  ? (structureRow.format ?? "")
+                  : (structureRow.format && structureCatalog!.body_formats.includes(structureRow.format)
+                    ? structureRow.format
+                    : structureCatalog!.new_extra_default_format))
+                : ""
+              const structureRowIndex = structureRow
+                ? structureRows!.findIndex(r => r.id === structureRow.id)
+                : -1
+              return (
               <CollapsiblePanel
                 key={tab.id}
                 label={
-                  editable && editingId === tab.id ? (
+                  structureRow ? (
+                    <div
+                      className="structure-authoring-header"
+                      onClick={e => e.stopPropagation()}
+                      onKeyDown={e => e.stopPropagation()}
+                    >
+                      <input
+                        className="dep-input structure-authoring-name"
+                        type="text"
+                        value={structureRow.title}
+                        onChange={e => patchStructureRow(structureRow.id, { title: e.target.value })}
+                      />
+                      <select
+                        className="dep-input structure-authoring-style"
+                        value={formatValue}
+                        disabled={structureRow.format_locked}
+                        onChange={e => patchStructureRow(structureRow.id, { format: e.target.value })}
+                      >
+                        {structureCatalog!.body_formats.map(f => (
+                          <option key={f} value={f}>{f}</option>
+                        ))}
+                      </select>
+                      {structureCatalog!.page_break_policies?.length ? (() => {
+                        const policyValue = (
+                          structureRow.page_break_policy
+                          && structureCatalog!.page_break_policies.includes(structureRow.page_break_policy)
+                        )
+                          ? structureRow.page_break_policy
+                          : structureCatalog!.page_break_policy_default
+                        return (
+                          <select
+                            className="dep-input structure-authoring-style"
+                            aria-label="Page break"
+                            value={policyValue}
+                            onChange={e => patchStructureRow(structureRow.id, { page_break_policy: e.target.value })}
+                          >
+                            {structureCatalog!.page_break_policies.map(token => (
+                              <option key={token} value={token}>
+                                {structureCatalog!.page_break_policy_labels?.[token] ?? token}
+                              </option>
+                            ))}
+                          </select>
+                        )
+                      })() : null}
+                      <label className="structure-authoring-flag">
+                        Enabled:
+                        <input
+                          type="checkbox"
+                          checked={structureRow.enabled}
+                          disabled={structureRow.required}
+                          onChange={e => patchStructureRow(structureRow.id, { enabled: e.target.checked })}
+                        />
+                      </label>
+                      <label className="structure-authoring-flag">
+                        Job Edit:
+                        <input
+                          type="checkbox"
+                          checked={structureRow.job_agent_editable}
+                          onChange={e => patchStructureRow(structureRow.id, { job_agent_editable: e.target.checked })}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        disabled={structureRowIndex <= 0}
+                        onClick={() => moveStructureRow(structureRow.id, -1)}
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        disabled={structureRowIndex < 0 || structureRowIndex >= structureRows!.length - 1}
+                        onClick={() => moveStructureRow(structureRow.id, 1)}
+                      >
+                        Down
+                      </button>
+                      {!structureRow.required && (
+                        <button type="button" onClick={() => removeStructureRow(structureRow.id)}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ) : tabChromeEditable && editingId === tab.id ? (
                     <input
                       className="side-tab-rename"
                       value={tab.label}
@@ -654,7 +1125,7 @@ export default function ArtifactEditor({
                   ) : (
                     <span
                       className="side-tab-label"
-                      onDoubleClick={editable ? () => setEditingId(tab.id) : undefined}
+                      onDoubleClick={tabChromeEditable ? () => setEditingId(tab.id) : undefined}
                     >
                       {rubricMode
                         ? formatRubricVectorHeader(tab.importance, tab.label, tab.code)
@@ -663,7 +1134,7 @@ export default function ArtifactEditor({
                   )
                 }
                 actions={
-                  editable ? (
+                  structureRow ? undefined : tabChromeEditable ? (
                     <span className="side-tab-controls">
                       {!rubricMode && (
                         <>
@@ -693,27 +1164,96 @@ export default function ArtifactEditor({
                   else setExpandedTabId("")
                 }}
               >
-                <LabeledTextArea
-                  label={tab.label}
-                  value={tab.content}
-                  onChange={v => updateTab(tab.id, { content: v })}
-                  onLabelChange={undefined}
-                  code={tab.code}
-                  onCodeChange={editable ? v => updateTab(tab.id, { code: v }) : undefined}
-                  importance={tab.importance}
-                  onImportanceChange={
-                    editable && rubricMode ? n => updateTab(tab.id, { importance: n }) : undefined
+                {(() => {
+                  const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
+                  if (isExperienceTab(tab.id, fieldType)) {
+                    const fieldKeys = experienceJobFields.map(f => f.key)
+                    const parsed = parseExperienceJobs(tab.content, fieldKeys)
+                    if (parsed.ok) {
+                      return (
+                        <ExperienceJobsEditor
+                          fields={experienceJobFields}
+                          value={parsed.jobs}
+                          onChange={
+                            bodiesEditable
+                              ? jobs => updateTab(tab.id, { content: JSON.stringify(jobs) })
+                              : () => {}
+                          }
+                          disabled={!bodiesEditable}
+                        />
+                      )
+                    }
+                    return (
+                      <>
+                        <p className="experience-jobs-editor-unsupported">
+                          {unsupportedExperienceMessage}
+                        </p>
+                        <LabeledTextArea
+                          label={tab.label}
+                          value={parsed.raw}
+                          onChange={() => {}}
+                          onLabelChange={undefined}
+                          disabled
+                          hideTitle
+                        />
+                      </>
+                    )
                   }
-                  onImportanceFocus={
-                    editable && rubricMode ? () => setRailOrderFreeze(tabsSortedForRail.map(t => t.id)) : undefined
-                  }
-                  onImportanceBlur={editable && rubricMode ? () => setRailOrderFreeze(null) : undefined}
-                  hideTitle
-                />
+                  return (
+                    <LabeledTextArea
+                      label={tab.label}
+                      value={tab.content}
+                      onChange={bodiesEditable ? v => updateTab(tab.id, { content: v }) : () => {}}
+                      onLabelChange={undefined}
+                      code={tab.code}
+                      onCodeChange={tabChromeEditable ? v => updateTab(tab.id, { code: v }) : undefined}
+                      importance={tab.importance}
+                      onImportanceChange={
+                        tabChromeEditable && rubricMode ? n => updateTab(tab.id, { importance: n }) : undefined
+                      }
+                      onImportanceFocus={
+                        tabChromeEditable && rubricMode ? () => setRailOrderFreeze(tabsSortedForRail.map(t => t.id)) : undefined
+                      }
+                      onImportanceBlur={tabChromeEditable && rubricMode ? () => setRailOrderFreeze(null) : undefined}
+                      disabled={!bodiesEditable}
+                      hideTitle
+                    />
+                  )
+                })()}
               </CollapsiblePanel>
-            ))}
+              )
+            })}
           </div>
-          {editable && tabs.length < MAX_ARTIFACT_TABS && (
+          {structureAuthoring && (
+            <div className="base-resume-structure-add">
+              <input
+                className="dep-input"
+                type="text"
+                value={addTitle}
+                onChange={e => setAddTitle(e.target.value)}
+              />
+              <select
+                className="dep-input"
+                value={addFormat}
+                onChange={e => setAddFormat(e.target.value)}
+              >
+                {structureCatalog!.body_formats.map(f => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+              <button type="button" onClick={addStructureSection}>Add section</button>
+              <button
+                type="button"
+                className="base-resume-structure-save"
+                disabled={structureSaving}
+                onClick={() => onStructureSave!(structureRows!)}
+              >
+                Save sections
+              </button>
+              {structureError ? <div>{structureError}</div> : null}
+            </div>
+          )}
+          {tabChromeEditable && tabs.length < MAX_ARTIFACT_TABS && (
             <button type="button" className="side-tab-add artifact-editor-add-criterion" onClick={addCriterionTab}>
               + Add
             </button>
@@ -732,20 +1272,50 @@ export default function ArtifactEditor({
             background: "var(--bg-elevated)", border: "2px solid #ff6b6b",
             borderRadius: 8, padding: 24, maxWidth: 460, width: "90%",
           }}>
-            <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>Regenerate {title}?</h3>
-            <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
-              This will replace the current content with a new AI-generated version.
-              You can review the result and <strong>Cancel</strong> to restore your previous version,
-              or <strong>Save</strong> to keep it. Saving cannot be undone.
-            </p>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button className="dep-btn cancel" onClick={() => setConfirmRegen(false)}>
-                Cancel
-              </button>
-              <button className="dep-btn save" onClick={doGenerate} style={{ background: "#ff6b6b" }}>
-                Regenerate
-              </button>
-            </div>
+            {isChainHandoff ? (
+              <>
+                <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>
+                  Reset all artifact rubrics?
+                </h3>
+                <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
+                  This rebuilds the full craft chain and resets all of these rubrics:{" "}
+                  <strong>{chainHopLabels.join(", ") || "all chain hops"}</strong>.
+                  History is kept, but regeneration is expensive. Default is No.
+                </p>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button
+                    className="btn secondary"
+                    autoFocus
+                    onClick={() => setConfirmRegen(false)}
+                  >
+                    No
+                  </button>
+                  <button
+                    className="btn danger"
+                    onClick={() => void doRequestArtifacts()}
+                  >
+                    Yes
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>Regenerate {title}?</h3>
+                <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
+                  This will replace the current content with a new AI-generated version.
+                  You can review the result and <strong>Cancel</strong> to restore your previous version,
+                  or <strong>Save</strong> to keep it. Saving cannot be undone.
+                </p>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button className="btn secondary" onClick={() => setConfirmRegen(false)}>
+                    Cancel
+                  </button>
+                  <button className="btn danger" onClick={() => void doGenerate()}>
+                    Regenerate
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

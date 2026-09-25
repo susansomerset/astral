@@ -1,3 +1,483 @@
+<!-- linear-archive: AST-1075 archived 2026-08-07 -->
+
+## Linear archive (AST-1075)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1075/estelle-preamble-confirm-and-topic-menu-generation-topic-menu  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-953 — Topic Menu Generation  
+**Blocked by / blocks / related:** parent: AST-953
+
+### Description
+
+## What this implements
+
+Topic Menu step 1: Estelle confirmable preamble summary (“Anything here you would change?”), then pure-Estelle generation of a valid Topic Menu with informs-coverage confirmation (one ask may inform many). After AST-1074; needs AST-952 handoff packet. Does **not** own the later satisfaction conversation or state hops.
+
+## Acceptance criteria
+
+- [X] After a Valid preamble packet exists, Estelle runs a confirmable “Anything here you would change?” pass; the candidate can accept or correct before Topic Menu generation proceeds.
+- [X] Given a confirmed preamble, Estelle produces a persisted Topic Menu (pure Estelle authorship) whose topics each have name, ask, required flag, status (`open` / `ready` / `retired`), and non-empty `informs` drawn only from rubrics, base resume, strengths, priorities, deal breakers, and/or backstory.
+- [X] Estelle’s generation confirms informs coverage (one topic may cover multiple informs); topics without an allowed `informs` target are not accepted into the menu.
+- [X] Every generated topic is directed and short enough to answer in a few minutes.
+- [X] Touched backend `debug=True` confirm/generation paths emit per-step found/recorded debug lines per the contract above.
+
+## Boundaries
+
+Does **not** own Topic Menu model/persistence (AST-1074). Does **not** own later satisfaction conversation or REQUIRED/ALL_TOPICS_READY hops. Does **not** own AST-952 mechanical preamble.
+
+## In scope
+
+- [X] Estelle preamble confirm pass (“Anything here you would change?”) — `topic_menu_preamble_confirm` agent_task + core + API
+- [X] Pure-Estelle Topic Menu generation from confirmed preamble — `topic_menu_generate` + `save_topic_menu(revise=True)`
+- [X] Informs-coverage confirmation (closed catalog only; invalid topics dropped)
+- [X] `TOPIC_MENU_GEN_CONFIG` + `TASK_CONFIG` schemas (`pattern.config.config-block` / `astral.config.config-source-of-truth` / `astral.standards.no-hardcoded-sets`)
+- [X] `astral.agent.do-task-delegation` — confirm/generate via `do_task` only
+- [X] `astral.standards.debug-contract-gated` — Style D on confirm/generate/mark-confirmed when `debug=True`
+- [X] `astral.layers.import-direction` / `astral.layers.ui-config-driven-business-logic` — thin API + IntakeTopicMenuPanel labels from ui_config
+- [X] Optional `topic_menu.preamble_confirmed_at` stamp + `CANDIDATE_DATA_MODEL.md`
+- [X] CandidateIntake handoff: preamble complete → topic_menu phase (legacy chat only for active-session resume)
+- [X] `astral.docs.features-single-file-per-ticket` — plan at `docs/features/candidate/ast-1075-estelle-preamble-confirm-and-topic-menu-generation.md`
+
+## Considered but excluded
+
+- [X] Topic Menu model / `TOPIC_MENU_CONFIG` informs catalog ownership — AST-1074
+- [X] Satisfaction conversation / progress UI / REQUIRED_TOPICS_READY / ALL_TOPICS_READY — follow-on epic
+- [X] Mechanical preamble / Ruth Valid / PREAMBLE_CONFIG copy — AST-952 family
+- [X] Rewriting legacy `intake_initiate_candidate` / `intake_candidate_response` / `intake_build_request` prompts — active-session resume keeps AST-539 chat; new starts use Topic Menu path
+- [X] `save_topic_menu(..., revise=False)` — forbidden caller path (AST-1074 contract)
+- [X] `tests/` / `docs/test-bible/**` — Betty after Code Complete
+- [X] Candidate state-machine vocabulary changes
+- [X] Per-rubric informs keys (`like_rubric`, …) — parent closed catalog uses umbrella `rubrics`
+
+## Notes for planning
+
+Citations: new Estelle preamble-confirm-before-menu pattern; Topic Menu + closed informs; `astral.agent.do-task-delegation`; `astral.standards.debug-contract-gated`. After AST-1074. Needs AST-952 preamble packet.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-953-topic-menu-generation`, child `sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-30T19:10:53.663Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1075
+**Publish ref:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation` @ `ac813e90` (product tip was `26b789b5`; docs review appended)
+**Baseline:** `origin/dev` (three-dot)
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | no graded agent_task / confidence fields |
+| `astral.agent.do-task-delegation` | scoped | conforms | confirm/generate via `_run_intake_task` → `do_task` only |
+| `astral.agent.grade-vector-validation` | scoped | conforms | no grade vectors |
+| `astral.batch.batch-id-first` | scoped | conforms | on-demand ledger via `_run_intake_task`; no claim batch |
+| `astral.batch.batch-id-format` | scoped | conforms | `intake-{task_key}-{uuid}` via existing helper |
+| `astral.batch.claim-process-release` | scoped | conforms | no entity batch claim |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | do_task RESPONSE path unchanged |
+| `astral.config.config-source-of-truth` | scoped | conforms | TOPIC_MENU_GEN_CONFIG + TASK_CONFIG; packet keys ⊆ library |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | no scoring |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | no secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss tip |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | production features/docs only |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | one plan file + shared data-model amend |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test SHA touches tests/bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | engineer code/docs omit tests/bible; Betty owns tip tests |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | external only via do_task/agent |
+| `astral.layers.import-direction` | scoped | conforms | UI→core; core→agent/candidate/utils; no UI→data |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers ∩ tip empty |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | panel labels via ui_config; validation in core |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | no coat-check |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | no consult |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | conforms | confirm/generate routes `@require_auth` |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | ValueError for missing/incomplete; UI maps HTTP |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no src/data/** |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Style D on confirm/generate/mark-confirmed when debug=True |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | reuses `_run_intake_task` / `save_topic_menu` |
+| `astral.standards.in-scope-only` | scoped | conforms | no preferred_name; no satisfaction/state hops |
+| `astral.standards.logging-via-utils` | scoped | conforms | module logger Style D |
+| `astral.standards.no-cross-contamination` | scoped | conforms | named layers only |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | outcomes/keys/informs from config |
+| `astral.standards.public-then-helpers` | scoped | conforms | public confirm/generate + private patch helper |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | no new utils→data |
+| `astral.state.core-decides-transitions` | scoped | conforms | no candidate state hops |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | no job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | no dispatch chains |
+| `astral.ui.frontend-file-placement` | scoped | conforms | IntakeTopicMenuPanel in components/; page CandidateIntake |
+| `astral.ui.naming-conventions` | scoped | conforms | PascalCase panel; snake_case API |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | no worker changes |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | single merge-tests(AST-1075) SHA |
+| `orch.git.commit-vocabulary` | universal | conforms | plan/code/docs/test/merge-tests/merge vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | publish only on origin/sub/AST-953/AST-1075-… |
+| `orch.git.ftr-sub-topology` | universal | conforms | sub under AST-953 |
+| `orch.git.merge-on-checkout` | universal | conforms | tip includes origin/dev merges; BEHIND=0 |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | none in tip for this child |
+| `orch.git.no-dev-agent-branches` | universal | conforms | sub/AST-953/AST-1075-… only |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | epic worktree astral-AST-953 |
+| `orch.git.three-permanent-branches` | universal | conforms | no new permanent branches |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Joan round-1 Decisions documented; no new product OQs |
+| `orch.pipeline.plan-is-bible` | universal | conforms | stages 1–6 match tip after Revision 1 |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | single-child review |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no statute corpus edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test(AST-1075)+merge-tests; engineer omitted tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee remains Hedy |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Hedy still assignee at Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned path edits by engineer |
+
+## Pattern conformance
+
+| cited | verdict |
+|-------|---------|
+| `pattern.config.config-block` | conforms — `TOPIC_MENU_GEN_CONFIG` |
+| Estelle preamble-confirm-before-menu (proposed) | conforms — confirm task + stamp gate |
+| Topic Menu + closed informs | conforms — validate_topic soft-drop + coverage recompute |
+| `astral.agent.do-task-delegation` | conforms (statute; via do_task) |
+| `astral.standards.debug-contract-gated` | conforms (statute; Style D) |
+
+## Plan adherence
+
+MAJOR-CHANGE footprint matches Self-Assessment. Revision 1 (drop preferred_name; name columns; hopes/interests/concerns; survivor `informs_covered`) implemented. Always `revise=True`. New-start → `topic_menu` phase; active-session resume → chat preserved. Boundaries held (no satisfaction/state hops; no AST-1074 catalog ownership churn beyond stamp).
+
+## Findings
+
+**discuss (C4 straggler):** Joan Excluded `astral.git.engineer-test-tree-ban`; tip three-dot includes Betty tests/bible. Statute row still **conforms**. No product fix.
+
+**advisory:** Confirm path logs `truncate_debug_content(msg)!r` (list repr) instead of iterating truncated lines.
+
+**advisory:** Duplicate topic ids among soft-drop survivors fail at `validate_topic_menu` on save (API ValueError→400) rather than soft-drop.
+
+**fix-now:** none
+
+### What’s solid
+
+Config asserts, do_task-only AI, whitelist patches, coverage recompute, auth on routes, UI labels from ui_config.
+
+### Notes
+
+Joan plan-rubric APPROVED (rev 1) recovered from Linear comment. Active statutes: 56.
+
+context_tokens≈62000
+
+— Radia
+
+#### betty — 2026-07-30T18:49:34.426Z
+## QA test manifest — AST-1075
+
+**Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation` @ `b4931946` (`merge-tests(AST-1075): origin/tests 4461f886`)
+
+### 1. Existing coverage (bible-backed)
+- AST-1074 Topic Menu persistence/config still applies: `TestAst1074TopicMenuPersistence`, `TestAst1074TopicMenuConfig`
+
+### 2. Broken / obsolete (revised this pass)
+1. `test_CandidateIntake.test.tsx` — **preamble Valid handoff opens Estelle chat** → now **Topic Menu confirm** phase (AST-1075 product handoff)
+
+### 3. Gaps (new this pass)
+1. `tests/component/utils/test_config.py::TestAst1075TopicMenuGenConfig`
+2. `tests/component/core/test_candidate.py::TestAst1075PreambleConfirmedAt`
+3. `tests/component/core/test_intake.py::TestAst1075TopicMenuConfirmGenerate`
+4. `tests/component/ui/api/test_api_intake.py::TestAst1075TopicMenuRoutes`
+5. `tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows`
+6. `tests/component/frontend/components/test_IntakeTopicMenuPanel.test.tsx`
+7. Revised `tests/component/frontend/pages/test_CandidateIntake.test.tsx` (§6c routed page)
+
+### Run
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1075TopicMenuGenConfig \
+  tests/component/core/test_candidate.py::TestAst1075PreambleConfirmedAt \
+  tests/component/core/test_intake.py::TestAst1075TopicMenuConfirmGenerate \
+  tests/component/ui/api/test_api_intake.py::TestAst1075TopicMenuRoutes \
+  tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_IntakeTopicMenuPanel.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx
+```
+
+### Bible shasums (`origin/sub/…` tip)
+- `a3fedfe1a13179586549d83d53a509cd7c01c0fe585b5d60ffb553d0fdaedf6f` docs/test-bible/utils/config.md
+- `fbce06350789f09535d92e0414b7735025d0158e5b05b952c20338c717a289ee` docs/test-bible/core/candidate.md
+- `7cf1cba641d9be4a0b6d40c104d37ff00d9c9ca2c449fe1c999e1dafcce73701` docs/test-bible/core/intake.md
+- `af5bde38474ea153043764de614b031d955ca208e51c80334a6db87277146cee` docs/test-bible/ui/api/api_intake.md
+- `63ddf10a554312f85a757e0273f2cfb5f2a31325cb527f9e74bb3dd1a7112636` docs/test-bible/core/repo_admin_json.md
+- `4ff2d4001db1308f93becb79f594d79f206cac4d2c94f5b191c15a90cb495829` docs/test-bible/frontend/pages.md
+- `770cb3c9ff9b61d4fec758395274812b5e19091a97b60fdac3c3e50245517624` docs/test-bible/frontend/components.md
+
+— Betty
+
+#### joan — 2026-07-30T16:48:52.637Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1075
+**Overall:** APPROVED
+
+**Plan Discuss:** round=1 completed (concern + reply). Revision 1 on publish-ref addresses fix-now and both discuss notes.
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 Estelle “Anything here you would change?” confirm | Stages 2, 4–6 — confirm task + API + IntakeTopicMenuPanel |
+| AC2 persisted Topic Menu with required fields / closed informs | Stages 2, 4 — generate + `validate_topic` + `save_topic_menu(revise=True)` |
+| AC3 informs coverage; reject topics without allowed informs | Stage 2 prompt + Stage 4 soft-drop + recompute `informs_covered` from survivors |
+| AC4 directed / few-minute topics | Stage 2 generate prompt (Estelle judgment) |
+| AC5 revise without wipe | Stage 4 always `revise=True`; forbids `revise=False` |
+| AC6 no satisfaction / state hops required | N/A — boundary |
+| AC7 debug=True found/recorded on confirm/generation | Stages 3–4 Style D on mark-confirmed / confirm / generate |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 TOPIC_MENU_GEN_CONFIG + TASK_CONFIG | Config-block; confirm/generate orchestration keys |
+| Stage 2 Estelle agent_task rows | Preamble confirm + pure-Estelle generation |
+| Stage 3 preamble_confirmed_at | Gate between accept and generate |
+| Stage 4 core intake orchestration | do_task; packet snapshot (name/context/contact); whitelist patches; save |
+| Stage 5 thin API + ui_config | Thin wrappers; labels from config |
+| Stage 6 IntakeTopicMenuPanel + CandidateIntake phase | Step-1 UX; new-start vs active-session resume |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Publish on sub ref |
+| orch.git.flow-direction-inviolable | conforms | Publish only to origin/sub/AST-953/AST-1075-… |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | Build waits for AST-1074 on ftr |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-953/AST-1075-… only |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree astral-AST-953 |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Round-1 Decisions documented; Open questions none |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed + Revision 1 |
+| orch.pipeline.project-scoped-queues | conforms | Single-child scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Discuss re-validate gate |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/bible edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Hedy) owns build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer path after approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded vectors |
+| astral.agent.do-task-delegation | conforms | Confirm/generate via do_task only |
+| astral.agent.grade-vector-validation | conforms | No grade vectors |
+| astral.batch.batch-id-first | conforms | On-demand ledger; no claim batch |
+| astral.batch.batch-id-format | conforms | topic-menu-confirm-/generate- prefixes |
+| astral.batch.claim-process-release | conforms | No entity batch claim |
+| astral.batch.entity-agent-responses-latest-only | conforms | do_task RESPONSE path unchanged |
+| astral.config.config-source-of-truth | conforms | Packet keys asserted ⊆ library contact/context/name_columns; preferred_name removed |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.debug.spikes-under-debug-dir | conforms | Production features/docs only |
+| astral.docs.features-single-file-per-ticket | conforms | One plan file; shared data-model amend OK |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src/features |
+| astral.layers.core-vs-external-bright-line | conforms | External only via do_task/agent |
+| astral.layers.import-direction | conforms | UI→core; core→agent/data/utils |
+| astral.layers.ui-config-driven-business-logic | conforms | Panel labels via ui_config; validation in core |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | New routes @require_auth |
+| astral.standards.data-raises-caller-logs | conforms | ValueError for missing/incomplete; UI maps HTTP |
+| astral.standards.debug-contract-gated | conforms | Style D only when debug=True |
+| astral.standards.dry-and-focused-functions | conforms | Reuse _run_intake_task / save_topic_menu |
+| astral.standards.in-scope-only | conforms | No invented contact keys; name via columns; no satisfaction/state hops |
+| astral.standards.logging-via-utils | conforms | Module logger Style D |
+| astral.standards.no-cross-contamination | conforms | Named layers only |
+| astral.standards.no-hardcoded-sets | conforms | Outcomes/keys/informs from config |
+| astral.standards.public-then-helpers | conforms | Public confirm/generate + private patch helper |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data |
+| astral.state.core-decides-transitions | conforms | Explicitly no state hops |
+| astral.state.job-prior-states-enforced | conforms | No job states |
+| astral.state.no-daisy-chain-in-run | conforms | No dispatch chains |
+| astral.ui.frontend-file-placement | conforms | Component in components/; page CandidateIntake; App.css |
+| astral.ui.naming-conventions | conforms | PascalCase panel; snake_case API |
+| astral.ui.single-gunicorn-worker | conforms | No worker changes |
+
+## Considered and excluded
+
+**Notes:** Files Changed layer cell `data (repo admin JSON)` → `docs` per matching algorithm (path `data/admin/agent_task.json`).
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.debug.spikes-under-debug-dir, astral.docs.features-single-file-per-ticket, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.frontend-file-placement, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers ∩ plan empty
+- astral.standards.database-header-inventory — layers {data} ∩ plan empty (layer cell mapped to docs)
+
+## Findings
+
+None fix-now.
+
+**Round-1 resolution:** `preferred_name` removed; `packet_name_columns` + asserts; hopes/interests/concerns in packet/patch lists; post-soft-drop `informs_covered` recomputed from survivors.
+
+**acceptable:** Self-assessment MAJOR-CHANGE / high / Medium remains honest.
+
+**R6:** Definition fidelity pass after Revision 1. Layer/import/auth/do_task/config patterns sound. No satisfaction/state-hop creep.
+
+context_tokens≈58000
+
+— Joan
+
+#### hedy — 2026-07-30T16:47:01.835Z
+[plan-discuss] round=1 reply
+
+Addressed Joan fix-now + discuss notes on `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation` @ tip after this push.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation/docs/features/candidate/ast-1075-estelle-preamble-confirm-and-topic-menu-generation.md
+
+**Delta (Revision 1)**
+1. **fix-now:** Removed fake `contact.preferred_name`. `packet_contact_keys` is now `title_patterns` only. Added `packet_name_columns` (`full`/`first`/`last`) with Stage 1 asserts ⊆ `CANDIDATE_LIBRARY_CONFIG["name_columns"]` and ⊆ `contact_keys` for contact keys. Snapshot puts identity under top-level `name` from table columns.
+2. **discuss:** Included `hopes` / `interests` / `concerns` in `packet_context_keys` + `patchable_context_keys`.
+3. **discuss:** After soft-drop, recompute authoritative `informs_covered` from surviving topics; Estelle’s `informs_coverage_confirmed is True` stays the hard gate.
+
+Also merged `origin/dev` (BEHIND=0) before the plan patch.
+
+#### joan — 2026-07-30T16:45:06.329Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1075
+**Overall:** REVISE
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 Estelle “Anything here you would change?” confirm | Stages 2, 4–6 — confirm task + API + IntakeTopicMenuPanel |
+| AC2 persisted Topic Menu with required fields / closed informs | Stages 2, 4 — generate + `validate_topic` + `save_topic_menu(revise=True)` (model owned by AST-1074) |
+| AC3 informs coverage; reject topics without allowed informs | Stage 2 generate prompt + Stage 4 soft-drop via `validate_topic`; require `informs_coverage_confirmed` |
+| AC4 directed / few-minute topics | Stage 2 generate prompt (Estelle judgment); core does not encode duration |
+| AC5 revise without wipe | Stage 4 always `revise=True`; forbids `revise=False` |
+| AC6 no satisfaction / state hops required | N/A — boundary |
+| AC7 debug=True found/recorded on confirm/generation | Stages 3–4 Style D on mark-confirmed / confirm / generate |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 TOPIC_MENU_GEN_CONFIG + TASK_CONFIG | Architectural config-block; confirm/generate orchestration keys |
+| Stage 2 Estelle agent_task rows | Functional scope preamble confirm + pure-Estelle generation |
+| Stage 3 preamble_confirmed_at | Gate between confirm accept and generate |
+| Stage 4 core intake orchestration | do_task delegation; packet snapshot; whitelist patches; save menu |
+| Stage 5 thin API + ui_config | UI layer thin wrappers; labels from config |
+| Stage 6 IntakeTopicMenuPanel + CandidateIntake phase | Purpose step-1 UX; new-start vs active-session resume Decision |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Publish on sub ref |
+| orch.git.flow-direction-inviolable | conforms | Publish only to origin/sub/AST-953/AST-1075-… |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | Build waits for AST-1074 on ftr |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-953/AST-1075-… only |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree astral-AST-953 |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Decisions documented; Open questions none |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed |
+| orch.pipeline.project-scoped-queues | conforms | Single-child scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate-plan gate |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/bible edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Hedy) owns build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer path after approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded vectors in these tasks |
+| astral.agent.do-task-delegation | conforms | Confirm/generate via do_task only |
+| astral.agent.grade-vector-validation | conforms | No grade vectors |
+| astral.batch.batch-id-first | conforms | On-demand ledger prefixes; no claim batch |
+| astral.batch.batch-id-format | conforms | Prefixes topic-menu-confirm-/generate- |
+| astral.batch.claim-process-release | conforms | No entity batch claim |
+| astral.batch.entity-agent-responses-latest-only | conforms | do_task RESPONSE path unchanged |
+| astral.config.config-source-of-truth | violates | `packet_contact_keys` includes `preferred_name` — not in library/contact/name vocabulary |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.debug.spikes-under-debug-dir | conforms | Production features/docs only |
+| astral.docs.features-single-file-per-ticket | conforms | One plan file; shared data-model amend OK |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src/features |
+| astral.layers.core-vs-external-bright-line | conforms | External only via do_task/agent |
+| astral.layers.import-direction | conforms | UI→core; core→agent/data/utils |
+| astral.layers.ui-config-driven-business-logic | conforms | Panel labels via ui_config; validation in core |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | New routes @require_auth |
+| astral.standards.data-raises-caller-logs | conforms | ValueError for missing/incomplete; UI maps HTTP |
+| astral.standards.debug-contract-gated | conforms | Style D only when debug=True |
+| astral.standards.dry-and-focused-functions | conforms | Reuse _run_intake_task / save_topic_menu patterns |
+| astral.standards.in-scope-only | violates | Invents `preferred_name` contact field absent from CANDIDATE_LIBRARY_CONFIG / name columns |
+| astral.standards.logging-via-utils | conforms | Module logger Style D |
+| astral.standards.no-cross-contamination | conforms | Named layers only |
+| astral.standards.no-hardcoded-sets | conforms | Outcomes/keys/informs from config blocks |
+| astral.standards.public-then-helpers | conforms | Public confirm/generate + private patch helper |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data |
+| astral.state.core-decides-transitions | conforms | Explicitly no state hops |
+| astral.state.job-prior-states-enforced | conforms | No job states |
+| astral.state.no-daisy-chain-in-run | conforms | No dispatch chains |
+| astral.ui.frontend-file-placement | conforms | Component in components/; page CandidateIntake; App.css |
+| astral.ui.naming-conventions | conforms | PascalCase panel; snake_case API |
+| astral.ui.single-gunicorn-worker | conforms | No worker changes |
+
+## Considered and excluded
+
+**Notes:** Files Changed layer cell `data (repo admin JSON)` treated as unrecognized → `docs` per matching algorithm (path still `data/admin/agent_task.json`).
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.debug.spikes-under-debug-dir, astral.docs.features-single-file-per-ticket, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.frontend-file-placement, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers ∩ plan empty
+- astral.standards.database-header-inventory — layers {data} ∩ plan empty (layer cell mapped to docs)
+
+## Findings
+
+### fix-now
+1. **Location:** Stage 1 `TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]` / Stage 4 `build_preamble_packet_snapshot`
+2. **Finding:** Plan lists `preferred_name` under contact packet keys. That key does **not** exist in `CANDIDATE_LIBRARY_CONFIG["contact_keys"]`, name columns (`first`/`last`/`full`/`pronouns`), or anywhere on `origin/dev` / ftr tip. Snapshot would always read empty; Stage 1 asserts do not cross-check `packet_contact_keys` against `contact_keys`.
+3. **Recommendation:** Drop `preferred_name` **or** populate display name from candidate **name columns** (e.g. `full` / `first`) in the snapshot helper (not as a fake contact key). Add Stage 1 asserts: every `packet_contact_keys` entry ∈ `CANDIDATE_LIBRARY_CONFIG["contact_keys"]` (and keep name columns as a separate snapshot field if needed). `title_patterns` is fine.
+
+### discuss (non-blocking)
+- `packet_context_keys` omits `hopes` / `interests` / `concerns` (AST-952 Topic Menu seed fields). Confirm whether Estelle’s confirm summary should include them.
+- After soft-dropping invalid generate topics, plan does not re-check that surviving topics still satisfy Estelle’s `informs_covered` claim — acceptable if at least one valid topic remains, but worth a one-line note in Stage 4.
+
+### acceptable
+- Self-assessment MAJOR-CHANGE / high / Medium is honest; Medium mitigations (whitelist, validate_topic drop, resume→chat) are specific.
+- New-start skips legacy Estelle interview by Decision; active-session resume preserved.
+
+**R6:** Definition largely faithful; fix-now blocks approve. Layer/import/auth/do_task/config patterns otherwise sound. No satisfaction/state-hop creep.
+
+context_tokens≈55000
+
+— Joan
+
+#### hedy — 2026-07-30T16:42:32.082Z
+Plan published on `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation` @ `918a231e`.
+
+**Plan doc:** https://github.com/susansomerset/astral/blob/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation/docs/features/candidate/ast-1075-estelle-preamble-confirm-and-topic-menu-generation.md
+
+**Self-assessment**
+- **Scope:** `MAJOR-CHANGE` — Estelle agent tasks + TASK_CONFIG, core confirm/generate orchestration, intake API, and CandidateIntake phase wiring; AST-1074 helpers only extended for `preamble_confirmed_at`.
+- **Conf:** `high` — mirrors AST-1015 Ruth `do_task` + thin API, AST-1074 `save_topic_menu(revise=True)` caller contract, and IntakePreamblePanel handoff already on this tip; parent Open questions: none.
+- **Risk:** `Medium` — bad prompts/schemas could yield empty/invalid menus or patch wrong library fields (whitelist + `validate_topic` drop); new-start navigation skips legacy Estelle interview (active-session resume still opens chat).
+
+---
+
 # AST-1075 — Estelle preamble confirm and Topic Menu generation
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-1075/estelle-preamble-confirm-and-topic-menu-generation-topic-menu  

@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import React from "react"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import ArtifactEditor from "../../../../src/ui/frontend/src/components/ArtifactEditor"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
@@ -18,6 +19,22 @@ function stateUiManifestResponse(): Response {
   return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
 }
 
+const EXPERIENCE_UI_CONFIG = {
+  experience_job_ui_fields: [
+    { key: "company", label: "Company" },
+    { key: "title", label: "Title" },
+    { key: "dates", label: "Dates" },
+    { key: "location", label: "Location" },
+    { key: "accomplishments", label: "Accomplishments" },
+  ],
+  unsupported_resume_structure_message: "unsupported resume structure, please regenerate",
+}
+
+function uiConfigResponse(): Response {
+  return { ok: true, json: async () => EXPERIENCE_UI_CONFIG } as Response
+}
+
+
 /** AST-902 recovery GETs …/generate/<task>/pending after load; 404 = no-op. */
 function pendingNotFoundResponse(): Response {
   return {
@@ -34,6 +51,7 @@ function isPendingGenerateUrl(url: string): boolean {
 function mockApis(state = "ACTIVE_SEARCH") {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
     if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+    if (url === "/api/system/ui_config") return uiConfigResponse()
     if (url === "/api/candidates") {
       return {
         json: async () => [{ astral_candidate_id: "c1", state, candidate_data: {} }],
@@ -78,6 +96,31 @@ function mockApis(state = "ACTIVE_SEARCH") {
   })
 }
 
+
+/** Base Resume + legacy string experience under a candidate state (AST-1375 escape hatch). */
+function mockBaseResumeUnsupported(state: string) {
+  mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+    if (url === "/api/system/ui_config") return uiConfigResponse()
+    if (url === "/api/candidates") {
+      return { json: async () => [{ astral_candidate_id: "c1", state, candidate_data: {} }] } as Response
+    }
+    if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+    if (url === "/api/candidates/c1" && !init) {
+      return {
+        json: async () => ({
+          candidate_data: {
+            artifacts: {
+              base_resume: { experience: "legacy prose blob" },
+            },
+          },
+        }),
+      } as Response
+    }
+    throw new Error(url)
+  })
+}
+
 describe("ArtifactEditor", () => {
   beforeEach(() => {
     localStorage.clear()
@@ -87,6 +130,7 @@ describe("ArtifactEditor", () => {
   it("shows no-candidate and shape error states", async () => {
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [] } as Response
       }
@@ -100,6 +144,7 @@ describe("ArtifactEditor", () => {
 
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -137,6 +182,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -175,7 +221,8 @@ describe("ArtifactEditor", () => {
       }),
     } as Response)
     await waitFor(() => expect(generateBtn).not.toHaveClass("in-flight"))
-    expect(generateBtn).toHaveClass("save")
+    expect(generateBtn).toHaveClass("btn")
+    expect(generateBtn).toHaveClass("primary")
   })
 
   it("supports fixed-shape artifacts and add/remove controls", async () => {
@@ -191,6 +238,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -276,6 +324,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -313,6 +362,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -360,6 +410,7 @@ describe("ArtifactEditor", () => {
     let pendingCalls = 0
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -410,6 +461,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -442,9 +494,11 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-904: Save failure shows server error and keeps review mode", async () => {
+    // Non-chain craft_rubric keeps ad-hoc regenerate → review → Save (chain keys hand off).
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -455,12 +509,12 @@ describe("ArtifactEditor", () => {
         return {
           json: async () => ({
             candidate_data: {
-              artifacts: { get_rubric: [{ label: "Fit", content: "Body", importance: 5 }] },
+              artifacts: { rubric: [{ label: "Fit", content: "Body", importance: 5 }] },
             },
           }),
         } as Response
       }
-      if (url === "/api/candidates/c1/generate/craft_get_rubric" && init?.method === "POST") {
+      if (url === "/api/candidates/c1/generate/craft_rubric" && init?.method === "POST") {
         return {
           ok: true,
           status: 200,
@@ -482,7 +536,7 @@ describe("ArtifactEditor", () => {
       throw new Error(url)
     })
     renderWithProviders(
-      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+      <ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />,
     )
     await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
@@ -498,20 +552,21 @@ describe("ArtifactEditor", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
   })
 
-  it("AST-996: experience job array loads as JSON and Saves as parsed array", async () => {
+  it("AST-996/AST-1351: experience job array loads in ExperienceJobsEditor and Saves as array", async () => {
     const jobs = [
       {
         company: "Acme Corp",
         title: "Engineer",
         dates: "2020-2023",
         location: "Remote",
-        accomplishments: "Shipped widgets",
+        accomplishments: ["Shipped widgets"],
       },
     ]
     const putBodies: { artifacts?: { base_resume?: Record<string, unknown> } }[] = []
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -548,18 +603,23 @@ describe("ArtifactEditor", () => {
       />,
     )
     await waitFor(() => expect(screen.getByDisplayValue("Summary body")).toBeInTheDocument())
-    // Pretty-printed JSON for the job array (not "[object Object]")
-    expect(screen.getByDisplayValue(/"company": "Acme Corp"/)).toBeInTheDocument()
+    // AST-1351/1382: collapsible header (not Role N / JSON textarea)
+    expect(screen.getByText(/Acme Corp, Engineer \/ 2020-2023/)).toBeInTheDocument()
+    await userEvent.click(screen.getByText(/Acme Corp, Engineer \/ 2020-2023/))
+    expect(screen.getByDisplayValue("Acme Corp")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Engineer")).toBeInTheDocument()
+    expect(screen.queryByDisplayValue(/"company": "Acme Corp"/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.artifacts?.base_resume?.experience).toEqual(jobs)
     expect(typeof putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toBe("string")
   })
 
-  it("AST-996: invalid experience JSON shows toast and aborts Save", async () => {
+  it("AST-1351: legacy string experience shows unsupported notice and Save aborts", async () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -569,7 +629,7 @@ describe("ArtifactEditor", () => {
             candidate_data: {
               artifacts: {
                 base_resume: {
-                  experience: [{ company: "Acme", title: "Eng", dates: "2020", location: "", accomplishments: "x" }],
+                  experience: "legacy prose blob",
                 },
               },
             },
@@ -590,19 +650,180 @@ describe("ArtifactEditor", () => {
         structureSections={[{ id: "experience", label: "Custom Jobs" }]}
       />,
     )
-    const field = await screen.findByDisplayValue(/"company": "Acme"/)
-    fireEvent.change(field, { target: { value: "not-valid-json{{{" } })
+    await waitFor(() =>
+      expect(screen.getByText("unsupported resume structure, please regenerate")).toBeInTheDocument(),
+    )
+    expect(screen.getByDisplayValue("legacy prose blob")).toBeDisabled()
+    expect(screen.queryByText("Role 1")).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(screen.getByText("Experience must be valid JSON")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getAllByText("unsupported resume structure, please regenerate").length).toBeGreaterThan(0),
+    )
     expect(mockedApi.mock.calls.some(([u, init]) => u === "/api/candidates/c1/data" && init?.method === "PUT")).toBe(
       false,
     )
+  })
+
+
+  it("AST-1375: unsupported experience outside generate allowlist shows Regenerate", async () => {
+    // REQUESTED_ARTIFACTS_ERROR is not in artifact_generate_states — escape hatch must surface Regenerate.
+    mockBaseResumeUnsupported("REQUESTED_ARTIFACTS_ERROR")
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+      />,
+    )
+    await waitFor(() =>
+      expect(screen.getByText("unsupported resume structure, please regenerate")).toBeInTheDocument(),
+    )
+    expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument()
+  })
+
+  it("AST-1375: inflight hide states keep Generate/Regenerate hidden when unsupported", async () => {
+    for (const state of ["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"] as const) {
+      mockBaseResumeUnsupported(state)
+      const { unmount } = renderWithProviders(
+        <ArtifactEditor
+          title="Base Resume Content"
+          artifactKey="base_resume"
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+        />,
+      )
+      await waitFor(() =>
+        expect(screen.getByText("unsupported resume structure, please regenerate")).toBeInTheDocument(),
+      )
+      expect(screen.queryByRole("button", { name: "Regenerate" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Generate" })).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it("AST-1375: Regenerate confirms then POSTs craft_resume_base; array experience clears notice", async () => {
+    const jobs = [
+      {
+        company: "Acme Corp",
+        title: "Engineer",
+        dates: "2020-2023",
+        location: "Remote",
+        accomplishments: ["Shipped widgets"],
+      },
+    ]
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [
+            { astral_candidate_id: "c1", state: "REQUESTED_ARTIFACTS_ERROR", candidate_data: {} },
+          ],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { base_resume: { experience: "legacy prose blob" } },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_resume_base" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            parsed_response: { experience: jobs },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    await userEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1])
+    await waitFor(() => expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument())
+    expect(
+      mockedApi.mock.calls.some(
+        ([u, init]) => u === "/api/candidates/c1/generate/craft_resume_base" && init?.method === "POST",
+      ),
+    ).toBe(true)
+    expect(screen.queryByText("unsupported resume structure, please regenerate")).not.toBeInTheDocument()
+    expect(screen.getByText(/Acme Corp, Engineer \/ 2020-2023/)).toBeInTheDocument()
+    await userEvent.click(screen.getByText(/Acme Corp, Engineer \/ 2020-2023/))
+    expect(screen.getByDisplayValue("Acme Corp")).toBeInTheDocument()
+  })
+
+  it("AST-1375: valid job-array experience stays allowlist-only (no escape)", async () => {
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [
+            { astral_candidate_id: "c1", state: "REQUESTED_ARTIFACTS_ERROR", candidate_data: {} },
+          ],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: {
+                  experience: [
+                    {
+                      company: "Acme",
+                      title: "Dev",
+                      dates: "2021",
+                      location: "Remote",
+                      accomplishments: ["Shipped"],
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText(/Acme, Dev \/ 2021/)).toBeInTheDocument())
+    expect(screen.queryByRole("button", { name: "Regenerate" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Generate" })).not.toBeInTheDocument()
   })
 
   it("AST-1200: candidate criteria expand-all shows prompt bodies without chevron click", async () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -641,6 +862,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -721,6 +943,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -750,6 +973,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -794,5 +1018,694 @@ describe("ArtifactEditor", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue("Summary body").closest(".collapsible-panel-body")).not.toHaveAttribute("hidden"),
     )
+  })
+
+  it("AST-1253: empty chain Generate POSTs generate_artifacts without modal", async () => {
+    const posts: string[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return { json: async () => ({ candidate_data: { artifacts: { get_rubric: [] } } }) } as Response
+      }
+      if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
+        posts.push(url)
+        return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Generate" }))
+    expect(screen.queryByText(/Reset all artifact rubrics/i)).not.toBeInTheDocument()
+    await waitFor(() => expect(posts).toEqual(["/api/candidates/c1/generate_artifacts"]))
+    await waitFor(() =>
+      expect(screen.getByText("Artifacts build requested — watch Execution History")).toBeInTheDocument(),
+    )
+  })
+
+  it("AST-1253: Regenerate lists hop labels; Yes posts generate_artifacts; No cancels", async () => {
+    const posts: string[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { get_rubric: [{ label: "Fit", content: "Body", importance: 5 }] },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
+        posts.push(url)
+        return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    expect(screen.getByRole("heading", { name: /Reset all artifact rubrics/i })).toBeInTheDocument()
+    expect(screen.getByText(/Job Description Criteria/)).toBeInTheDocument()
+    expect(screen.getByText(/Like Job Criteria/)).toBeInTheDocument()
+    expect(screen.getByText(/Do Job Criteria/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "No" }))
+    expect(posts).toEqual([])
+    expect(screen.queryByRole("heading", { name: /Reset all artifact rubrics/i })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    await userEvent.click(screen.getByRole("button", { name: "Yes" }))
+    await waitFor(() => expect(posts).toEqual(["/api/candidates/c1/generate_artifacts"]))
+  })
+
+  it("AST-1382 [bug-repro]: content Save bundles resume_structure format (prior free_prose)", async () => {
+    const putBodies: { artifacts?: { base_resume?: unknown; resume_structure?: { sections?: Record<string, { format?: string; page_break_policy?: string }> } } }[] = []
+    const catalog = {
+      body_formats: ["free_prose", "word_cloud", "bullet_list"],
+      required_ids: ["prior_experience"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const structureRows = [
+      {
+        id: "prior_experience",
+        title: "Prior Experience",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: { prior_experience: "Earlier ops and delivery." },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "prior_experience", label: "Prior Experience" }]}
+        structureCatalog={catalog}
+        structureRows={structureRows}
+        onStructureRowsChange={() => {}}
+        onStructureSave={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Earlier ops and delivery.")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    const arts = putBodies.at(-1)?.artifacts
+    expect(arts?.resume_structure?.sections?.prior_experience?.format).toBe("free_prose")
+    expect(arts?.resume_structure?.sections?.prior_experience?.page_break_policy).toBe("avoid_split")
+    expect(arts?.base_resume).toEqual({ prior_experience: "Earlier ops and delivery." })
+  })
+
+  it("AST-1476: page-break dropdown + content Save and Save sections persist policy", async () => {
+    const putBodies: { artifacts?: { resume_structure?: { sections?: Record<string, { page_break_policy?: string }> } } }[] = []
+    const structureSaves: { id: string; page_break_policy: string }[][] = []
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const initialRows = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { base_resume: { professional_summary: "Summary body" } },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    function Harness() {
+      const [rows, setRows] = React.useState(initialRows)
+      return (
+        <ArtifactEditor
+          title="Base Resume Content"
+          artifactKey="base_resume"
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={[{ id: "professional_summary", label: "Summary" }]}
+          structureCatalog={catalog}
+          structureRows={rows}
+          onStructureRowsChange={setRows}
+          onStructureSave={next => {
+            structureSaves.push(next.map(r => ({ id: r.id, page_break_policy: r.page_break_policy })))
+          }}
+        />
+      )
+    }
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByDisplayValue("Summary body")).toBeInTheDocument())
+    const pageBreak = screen.getByRole("combobox", { name: "Page break" })
+    expect(Array.from(pageBreak.querySelectorAll("option")).map(o => o.textContent)).toEqual([
+      "Flow uninterrupted",
+      "New page before",
+      "Keep block together",
+    ])
+    await userEvent.selectOptions(pageBreak, "page_break_before")
+    await userEvent.click(screen.getByRole("button", { name: "Save sections" }))
+    expect(structureSaves.at(-1)?.[0]?.page_break_policy).toBe("page_break_before")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(
+      putBodies.at(-1)?.artifacts?.resume_structure?.sections?.professional_summary?.page_break_policy,
+    ).toBe("page_break_before")
+  })
+
+  it("AST-1410: no-snapshot Cancel re-GETs last-saved tabs without location.reload", async () => {
+    const reload = vi.fn()
+    vi.stubGlobal("location", { ...window.location, reload })
+    let jobGets = 0
+    installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/jobs/j1" && !init?.method) {
+        jobGets += 1
+        const summary = jobGets === 1 ? "hello" : "from-server"
+        return {
+          json: async () => ({
+            astral_job_id: "j1",
+            job_data: { artifacts: { resume_content: { professional_summary: summary } } },
+          }),
+        } as Response
+      }
+      throw new Error(`${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Resume draft"
+        artifactKey="resume_content"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "professional_summary", label: "Summary" }]}
+        jobPersistence={{ jobId: "j1", artifactKey: "resume_content" }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Resume draft")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    const field = await screen.findByDisplayValue("hello")
+    await userEvent.clear(field)
+    await userEvent.type(field, "dirty local")
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    await waitFor(() => expect(screen.getByDisplayValue("from-server")).toBeInTheDocument())
+    expect(screen.getByText("Resume draft")).toBeInTheDocument()
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+    expect(reload).not.toHaveBeenCalled()
+    expect(jobGets).toBe(2)
+    vi.unstubAllGlobals()
+  })
+
+  // AST-1480: structure-mode body hydrate + edit loop (chrome vs body split; label-churn; JAR overlay)
+  it("AST-1480: structure title rename keeps hydrated body and Save still works", async () => {
+    let candidateGets = 0
+    const putBodies: { artifacts?: { base_resume?: Record<string, string> } }[] = []
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const initialRows = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        candidateGets += 1
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { base_resume: { professional_summary: "Persisted summary" } },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    function Harness() {
+      const [rows, setRows] = React.useState(initialRows)
+      return (
+        <ArtifactEditor
+          title="Base Resume Content"
+          artifactKey="base_resume"
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={[{ id: "professional_summary", label: "Summary" }]}
+          structureCatalog={catalog}
+          structureRows={rows}
+          onStructureRowsChange={setRows}
+          onStructureSave={() => {}}
+        />
+      )
+    }
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByDisplayValue("Persisted summary")).toBeInTheDocument())
+    const getsAfterHydrate = candidateGets
+    // Header name input (structure authoring) — not the body textarea
+    const nameInput = document.querySelector(".structure-authoring-name") as HTMLInputElement
+    expect(nameInput).toBeTruthy()
+    expect(nameInput.value).toBe("Summary")
+    fireEvent.change(nameInput, { target: { value: "Renamed Summary" } })
+    await waitFor(() => expect(nameInput.value).toBe("Renamed Summary"))
+    // Label-only churn must keep body and must not re-GET wipe
+    expect(screen.getByDisplayValue("Persisted summary")).toBeInTheDocument()
+    expect(candidateGets).toBe(getsAfterHydrate)
+    const body = screen.getByDisplayValue("Persisted summary")
+    expect(body).not.toBeDisabled()
+    await userEvent.clear(body)
+    await userEvent.type(body, "Edited after rename")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Edited after rename/)
+  })
+
+  it("AST-1490: structure reorder does not re-GET candidate artifact", async () => {
+    let candidateGets = 0
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const initialRows = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+      {
+        id: "prior_experience",
+        title: "Prior Experience",
+        enabled: true,
+        order: 1,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: false,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        candidateGets += 1
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: {
+                  professional_summary: "Persisted summary",
+                  prior_experience: "Earlier roles",
+                },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    function Harness() {
+      const [rows, setRows] = React.useState(initialRows)
+      return (
+        <ArtifactEditor
+          title="Base Resume Content"
+          artifactKey="base_resume"
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={[
+            { id: "professional_summary", label: "Summary" },
+            { id: "prior_experience", label: "Prior Experience" },
+          ]}
+          structureCatalog={catalog}
+          structureRows={rows}
+          onStructureRowsChange={setRows}
+          onStructureSave={() => {}}
+        />
+      )
+    }
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByDisplayValue("Persisted summary")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByDisplayValue("Earlier roles")).toBeInTheDocument())
+    const getsAfterHydrate = candidateGets
+    const downButtons = screen.getAllByRole("button", { name: "Down" })
+    await userEvent.click(downButtons[0]!)
+    await waitFor(() => expect(screen.queryByText("Loading...")).not.toBeInTheDocument())
+    expect(candidateGets).toBe(getsAfterHydrate)
+    expect(screen.getByDisplayValue("Persisted summary")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Earlier roles")).toBeInTheDocument()
+  })
+
+  it("AST-1593: empty job_resume leaf does not fall back to resume_content sibling", async () => {
+    installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/jobs/j1" && !init?.method) {
+        return {
+          json: async () => ({
+            astral_job_id: "j1",
+            job_data: {
+              artifacts: {
+                job_resume: "",
+                resume_content: { professional_summary: "From sibling" },
+              },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(`${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Job Resume"
+        artifactKey="job_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "professional_summary", label: "Summary" }]}
+        jobPersistence={{ jobId: "j1", artifactKey: "job_resume" }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Job Resume")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    expect(screen.queryByDisplayValue("From sibling")).not.toBeInTheDocument()
+  })
+
+  it("AST-1593: job_resume load uses hydrated current leaf body", async () => {
+    const putBodies: { job_resume?: Record<string, string> }[] = []
+    installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/jobs/j1" && !init?.method) {
+        return {
+          json: async () => ({
+            astral_job_id: "j1",
+            job_data: {
+              artifacts: {
+                job_resume: { professional_summary: "From catalog current" },
+                resume_content: { professional_summary: "legacy sibling" },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/jobs/j1/artifacts/job_resume" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({ ok: true }) } as Response
+      }
+      throw new Error(`${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Job Resume"
+        artifactKey="job_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "professional_summary", label: "Summary" }]}
+        jobPersistence={{ jobId: "j1", artifactKey: "job_resume" }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Job Resume")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    const field = await screen.findByDisplayValue("From catalog current")
+    expect(field).not.toBeDisabled()
+    await userEvent.clear(field)
+    await userEvent.type(field, "Edited JAR")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(putBodies.at(-1)?.job_resume?.professional_summary).toMatch(/Edited JAR/)
+  })
+
+  it("AST-1480: structure mode bodies stay editable; tab chrome stays off", async () => {
+    const putBodies: { artifacts?: { base_resume?: Record<string, string> } }[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { base_resume: { professional_summary: "Struct body" } },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "professional_summary", label: "Custom Summary" }]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Struct body")).toBeInTheDocument())
+    // Tab chrome locked in structure mode
+    expect(screen.queryByRole("button", { name: "+ Add" })).not.toBeInTheDocument()
+    const body = screen.getByDisplayValue("Struct body")
+    expect(body).not.toBeDisabled()
+    await userEvent.clear(body)
+    await userEvent.type(body, "Bodies editable")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Bodies editable/)
+  })
+
+  it("AST-1480: rubric free-form body edit PUTs edited content", async () => {
+    // Radia fix-now: bodiesEditable must stay true in rubric chrome mode (not only fixedFields/jobPersistence).
+    const putBodies: { artifacts?: { rubric?: { label?: string; content?: string }[] } }[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                rubric: [{ label: "Fit", content: "Body", importance: 5 }],
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    const { unmount } = renderWithProviders(
+      <ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />,
+    )
+    const field = await screen.findByDisplayValue("Body")
+    expect(field).not.toBeDisabled()
+    await userEvent.clear(field)
+    await userEvent.type(field, "Edited free-form body")
+    // Rubric chrome uses autosave / unmount flush (no explicit Save button outside review)
+    unmount()
+    await waitFor(() => expect(putBodies.length).toBeGreaterThan(0))
+    expect(
+      putBodies.some(b =>
+        (b.artifacts?.rubric ?? []).some(r => /Edited free-form body/.test(String(r.content ?? ""))),
+      ),
+    ).toBe(true)
+  })
+
+  it("AST-1577: bodyShape resume_content structures without useCandidateResumeStructure", async () => {
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: { professional_summary: "Struct body", orphan_section: "skip" },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        bodyShape="resume_content"
+        structureSections={[
+          { id: "professional_summary", label: "Custom Summary" },
+          { id: "technical_skills", label: "Custom Skills" },
+        ]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Struct body")).toBeInTheDocument())
+    expect(screen.queryByDisplayValue("skip")).not.toBeInTheDocument()
+    expect(mockedApi.mock.calls.some(([u]) => u === "/api/shapes/candidates")).toBe(false)
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    const putCall = mockedApi.mock.calls.find(
+      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
+    )
+    const body = JSON.parse(String(putCall?.[1]?.body))
+    expect(body.artifacts.base_resume.professional_summary).toBe("Struct body")
   })
 })

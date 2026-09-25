@@ -51,10 +51,10 @@ function IntakeResumeDialog({ onContinue, onStartOver, onDismiss, busy = false }
           <p id="intake-resume-message" className="user-prompt-message">{RESUME_INTAKE_MESSAGE}</p>
         </div>
         <div className="modal-footer">
-          <button type="button" className="modal-btn cancel" disabled={busy} onClick={onStartOver}>
+          <button type="button" className="btn secondary" disabled={busy} onClick={onStartOver}>
             Start Over
           </button>
-          <button type="button" className="modal-btn save" disabled={busy} onClick={onContinue}>
+          <button type="button" className="btn primary" disabled={busy} onClick={onContinue}>
             Continue
           </button>
         </div>
