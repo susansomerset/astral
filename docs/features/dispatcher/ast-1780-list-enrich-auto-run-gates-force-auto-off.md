@@ -812,3 +812,5 @@ AST-1792 proved the fail-open return. AST-1794’s delta is log-only; Betty’s 
 ## Docs-Acceptance (AST-1795)
 
 Test/bible gap only — product silence on sibling AST-1794 / ftr.
+
+_Product silence: sibling AST-1794 / ftr. Test delivery: merge-tests(AST-1795)._
