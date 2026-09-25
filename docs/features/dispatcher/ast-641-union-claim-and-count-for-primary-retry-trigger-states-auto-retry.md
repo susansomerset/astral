@@ -737,3 +737,59 @@ AST-641 Stage 3 wired optional `states=` on claim wrappers and **validated every
 ## Fix-board Joan findings (AST-1801)
 
 **Verdict: CANON: OK** — Dropping multi-state registry gates on `get_new_company_batch` / `get_new_job_batch` / `get_new_candidate_batch` when `states=` is set matches `patt.task.dispatch-retry` (companion need not exist in registry). Single-state callers stay registry-bound. No statute update; F3 not triggered.
+
+
+## Review-fix findings (AST-1801)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — `[board-betty] TESTS: REVISE` defers absent-companion claim coverage to sibling **AST-1802** (gap ticket in plan doc). No qa-fix spawn / no `[bug-repro]` in diff. Same intentional product-only + docs-acceptance split as **AST-1798** / **AST-1791**.
+
+**`## What must still hold`:** OK
+- **AST-1798 suffix-always pairing:** `dispatch_claim_states` untouched in diff; only wrapper validation relaxed.
+- **Retry-only rows single-state:** no change to dispatch pairing or `endswith("_RETRY")` logic.
+- **Score-floor gating:** `dispatch_claim_uses_score_floor` / dispatcher call sites unchanged.
+- **Registry `retry_state` / routing:** no registry or routing writes in diff.
+- **`astral.batch.claim-process-release` shape:** `claim_*_batch` → `get_*_batch` → return unchanged; only pre-claim registry loops removed when `states=` set.
+- **Single-state callers (`states is None`):** roster / tracker / candidate still registry-gate primary `state` (diff keeps `if states is None` branches only).
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on bug ticket. Joan fix-board cites `patt.task.dispatch-retry` informally only. Process observation for Archie — not blocking; product matches board-cited dispatch-retry law (same pattern as AST-1798 / AST-1799).  
+  **Recommendation:** No in-flight Canon Scope amendment required unless Archie wants Radia comparability on every fix-lane bug.
+
+- **Location:** `[board-betty] TESTS: REVISE` / sibling **AST-1802** (Plan Ready per plan doc)  
+  **Finding:** No component test on this tip pins `get_new_*_batch(..., states=[primary, {primary}_RETRY])` with companion ∉ registry. Expected on product-only tip; AST-1802 owns repro-first flip + bible.  
+  **Recommendation:** Chuckles: mark **Docs-Acceptance** on AST-1801 (mirror AST-1798). Do not block product UT on AST-1802; land AST-1802 before expecting roster/tracker/candidate absent-companion cases green on ftr.
+
+### advisory
+
+- **Location:** Board-cited law (informal, not frozen) — `patt.task.dispatch-retry`, `astral.dispatch.entity-state-bound`, `astral.batch.claim-process-release`  
+  **Finding:** Diff aligns with Joan fix-board narrative: companions may be absent from registry at claim time; single-state path stays bound; claim→get shape preserved.  
+  **Recommendation:** None for resolve-child.
+
+## What's solid
+
+- Diff isolates plan-fix § Proposed change (1)–(3): removes multi-state registry `for s in states` loops in `roster.get_new_company_batch`, `tracker.get_new_job_batch`, `candidate.get_new_candidate_batch`; inline comments cite AST-1801 / AST-1798.
+- Scope gate honored: only scoped `src/core/{roster,tracker,candidate}.py` + plan-fix patch on `ast-641-…` feature doc; no registry seeding, no `dispatch_claim_states` / `database.py` edits.
+- Plan fidelity: matches **To-be** (union passes through when `states=` set; `states is None` still validates primary).
+- Estimate **3** fits footprint (three mirrored helpers + plan doc).
+- Parent **AST-1800** In Progress with `origin/ftr/AST-1800-claim-union-no-registry-validate` present — **normal** fix-lane parent shape (not `ORPHANED — target dev`).
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1800 In Progress; diff base `origin/ftr/AST-1800-claim-union-no-registry-validate`) | → **Review Posted** → append artifact + `docs(AST-1801): Radia review — clean` on publish ref → post slim upshot `--as radia` → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+| — | Sibling **AST-1802** | Parallel: close Betty `TESTS: REVISE` bar (test/bible only). |
+
+**Chuckles note:** `[board-betty] TESTS: REVISE` owned by sibling gap AST-1802. Product tip docs-acceptance — no merge-tests on AST-1801.
+
+
+
+## Docs-Acceptance (AST-1801)
+
+Test-tree / absent-companion claim asserts owned by sibling gap AST-1802 (fix-board TESTS: REVISE). No merge-tests on this tip.
