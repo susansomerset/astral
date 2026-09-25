@@ -808,3 +808,25 @@ Discovery lands **`DISCOVERED`**; CSE-only **`resolve_company_website`** (persis
 | Readiness ready / empty | `TestAst689ScrapeReadiness` |
 
 Canonical external map: [`external/telescope.md`](../external/telescope.md).
+
+---
+
+### AST-1802 · AST-1801 (claim union — registry-absent companion)
+
+**Product (AST-1801):** when `states=` is provided, `get_new_company_batch` / `get_new_job_batch` / `get_new_candidate_batch` do **not** require every list member ∈ the entity-state registry; single-`state` callers (`states` omitted) still reject unknown primaries. Live repro: `HOMEPAGE_READY` + `HOMEPAGE_READY_RETRY` (companion ∉ `COMPANY_STATES`).
+
+| Area | Behavior | Manifest tests |
+| --- | --- | --- |
+| Roster multi-state | `states=["HOMEPAGE_READY","HOMEPAGE_READY_RETRY"]` — no registry `ValueError`; `states=` forwarded to claim | `tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_states_allows_registry_absent_companion` |
+| Roster single-state | unknown primary still raises | `TestBatchApi::test_get_new_company_batch_rejects_unknown_state` |
+| Job mirror | `INVALID_TITLE` + absent `INVALID_TITLE_RETRY` | `tests/component/core/test_tracker.py::TestBatchApi::test_states_list_allows_registry_absent_companion` |
+| Candidate mirror | `ACTIVE_SEARCH` + absent `ACTIVE_SEARCH_RETRY` | `tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi::test_states_list_allows_registry_absent_companion` |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_states_allows_registry_absent_companion \
+  tests/component/core/test_roster.py::TestBatchApi::test_get_new_company_batch_rejects_unknown_state \
+  tests/component/core/test_tracker.py::TestBatchApi::test_states_list_allows_registry_absent_companion \
+  tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi::test_states_list_allows_registry_absent_companion \
+  -q
+```

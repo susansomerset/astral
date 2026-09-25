@@ -1968,15 +1968,11 @@ def get_new_candidate_batch(
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
     # Registry keys + REQUESTED_ARTIFACTS.<hop> runtime labels (AST-1388).
+    # Multi-state claim (states=): skip registry gate on companions (AST-1801).
     if states is None:
         if not is_valid_candidate_batch_claim_state(state):
             allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
             raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
-    else:
-        for s in states:
-            if not is_valid_candidate_batch_claim_state(s):
-                allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
-                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
     limit_val = limit if limit is not None else 10
     if not batch_id and not context:
         raise ValueError("batch_id or context is required for batch_id generation")

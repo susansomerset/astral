@@ -1412,14 +1412,12 @@ def get_new_company_batch(
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
+    # Multi-state claim (states=): do not registry-gate companions — AST-1801 /
+    # AST-1798 suffix-always may include keys absent from COMPANY_STATES.
     allowed = list(COMPANY_STATES.keys()) if COMPANY_STATES else []
     if states is None:
         if not allowed or state not in allowed:
             raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
-    else:
-        for s in states:
-            if not allowed or s not in allowed:
-                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
     state_config = (COMPANY_STATES or {}).get(state, {})
     batch_criteria = state_config.get("batch_criteria", {})
     limit_val = limit if limit is not None else batch_criteria.get("limit", 10)
