@@ -593,3 +593,67 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1792 | sub/AST-1790/AST-1792-no-prompt-valueerror-empty-render-tests |
 
 **Epic worktree:** `astral-AST-1790/` — one active sub checked out at a time.
+
+## Bug: AST-1794 — Silence no-agent empty_render warning
+
+Orphaned fix child of AST-1793 (mini-parent off `origin/dev`; no ancestor box checked). Scope gate is this ticket’s own `## Scope` (copied from the bug Component/Technical scope) — `api_admin.py` ValueError soft-miss **logging** only; `config.py` / React unchanged. Residual noise after AST-1791 flipped that branch to `empty_render: false` while keeping `logger.warning`.
+
+### As-is
+
+List enrichment for mailbox / non-agent dispatch rows (e.g. `stage_email_meteorite`, agent n/a) correctly returns `empty_render: false` after AST-1791, but the ValueError branch in `_evaluate_dispatch_empty_render` still emits `logger.warning` with text like `agent_task '…' has no agent_id assigned. Configure via Manage Tasks.; no prompts to validate, empty_render false` — one noise line per candidate poll. Operators read it as an error.
+
+### To-be
+
+When prompt-load raises `ValueError` (intentional no agent / no prompts to score), evaluation still returns `{"empty_render": False, "empty_tokens": []}` and does **not** emit a warning or error log for that soft miss. Blank/`candidate_id` miss and unexpected `Exception` keep their existing `logger.warning` / `logger.exception` fail-closed paths.
+
+### Repro
+
+1. Fixture / live shape: a `dispatch_task` row with a real `candidate_id` and `task_key` that cannot load prompts via `_resolve_task_prompts` (e.g. `stage_email_meteorite` with empty / n/a `agent_id`, or no current `agent_task` row).
+2. Trigger list enrichment (`GET /api/admin/dispatch_tasks` or Scheduled Actions refresh for that candidate).
+3. As-is: row has `empty_render: false` (AUTO/Run allowed), but logs show `ui.api.api_admin: … | dispatch empty_render task_key='…' — …; no prompts to validate, empty_render false`.
+4. To-be: same `empty_render: false` / gates; **no** empty-render warning line for that ValueError soft miss. Contrast: blank `candidate_id` or missing candidate still warns and stays `empty_render: true`.
+
+### Root cause
+
+AST-1791’s Proposed change kept a per-item `logger.warning` on the ValueError → pass path (`stat.logging.warning` who/why). That was appropriate when the branch was fail-closed (“treating as empty_render”); after the flip to intentional pass for no-prompts, the same warning reads as a misconfiguration error on every poll for n/a-agent mailbox tasks.
+
+### Proposed change
+
+All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.py` or `AdminScheduledActions.tsx`.
+
+1. **`_evaluate_dispatch_empty_render(candidate_id, task_key)`** — change only the `except ValueError as exc:` block after `_dispatch_empty_render_prompt_texts(tk)` (today ~lines 1992–2001):
+
+   - **Remove** the `logger.warning(...)` call (the message that interpolates `exc` and ends with `no prompts to validate, empty_render false`).
+   - **Keep** the return exactly: `{"empty_render": False, "empty_tokens": []}`.
+   - Optional: leave a brief inline comment that ValueError here is intentional soft-miss (no prompts) — silent pass; do not reintroduce a warning.
+   - Do **not** change the `exc` binding if unused after removal — drop `as exc` if the exception value is no longer referenced.
+
+2. Leave these branches **byte-for-byte unchanged** (still log + fail-closed):
+
+   - blank / missing `candidate_id` → `logger.warning` + `empty_render: True`
+   - `database.get_candidate` miss → `logger.warning` + `empty_render: True`
+   - any other `Exception` → `logger.exception` + `empty_render: True`
+   - successful prompt load → `return empty_render_for_prompts(...)` unchanged
+
+3. **`_candidate_dispatch_empty_render_error`**, list enrichment, create/update/run gates — **unchanged** (they already treat `empty_render: false` as allow).
+
+4. **Logging statutes:** this is deliberate silence on a non-problem soft miss — do not replace the removed warning with `logger.info` / `logger.debug` / `logger.error`. Fail-closed paths keep `stat.logging.warning` / exception logging as today. Do not add route-level `logger.info` (`stat.logging.info.api`).
+
+⚠️ **Decision:** All `_resolve_task_prompts` `ValueError` reasons stay one silent fail-open return (same carve-out as AST-1791) — do not special-case “No agent_task row” vs empty `agent_id` / missing agent for logging either.
+
+### Blast radius
+
+- Same helper feeds list enrichment, AUTO-on 400, and Run 400 — return value already correct; only log volume changes for n/a-agent / no-prompt rows.
+- UI (`AdminScheduledActions.tsx`) unchanged — already trusts `empty_render`.
+- AST-1781 database revalidation hooks remain out of Scope (same as AST-1791).
+- AST-1792 / component tests that assert ValueError → `empty_render: false` stay valid; they do not require absence of logs unless Betty adds that later. Engineer must not edit `tests/` / bible on this ticket.
+
+### What must still hold
+
+- ValueError soft-miss still returns `empty_render: false` (AST-1791 / AST-1790 intent) — AUTO/Run still allowed; list does not force AUTO off for that reason alone.
+- When prompts load and a referenced candidate-scoped token resolves `""`, `empty_render` stays `true`; gates and force-off still apply (AST-1780 / AST-1766 AC1, AC3–5).
+- Blank `candidate_id` / missing candidate still `empty_render: true` with existing warnings.
+- Unexpected evaluation exceptions still fail-closed with `logger.exception`.
+- Job / non-candidate tokens alone still must not flip the flag (`entity_contexts=None`).
+- API-key gate remains independent of empty-render.
+- No edits outside `api_admin.py` for this delta.
