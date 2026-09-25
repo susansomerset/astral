@@ -3260,3 +3260,43 @@ class TestAst1785PreferHttpJobLinkOverBreadcrumb:
         row = db.get_meteorite(row_id)
         assert row["state"] == "SCRAPE_LINK"
         assert row["link"] == url
+
+
+# Branches: blank jd_text + http job_link under text outcome must NOT use ingress_blob
+# (combo link-only scrap); classic blank+no-link still uses blob (AST-1756) (AST-1796).
+@pytest.mark.skipif(
+    not hasattr(meteorite_mod, "_map_classify_jobs_to_meteorite_rows"),
+    reason="AST-1796 map helper not on this publish tip",
+)
+class TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob:
+    """AST-1796 bug-repro: link-only jobs item under text outcome must not swallow the email blob."""
+
+    _BLOB = (
+        "Here is the full JD for role A.\n\n"
+        "Also open: https://example.com/jobs/other"
+    )
+
+    def test_blank_jd_text_with_http_job_link_skips_ingress_blob(self) -> None:
+        # Pre-fix: AST-1756 fills content from ingress_blob before AST-1785 sets link —
+        # link-only combo items become full-email scraps. Fixed: empty content + http link.
+        url = "https://example.com/jobs/other"
+        rows, err = meteorite_mod._map_classify_jobs_to_meteorite_rows(
+            "multi_jd_inline",
+            [{
+                "jd_text": "",
+                "job_link": url,
+                "from_email": "recruiter@co.com",
+                "to_email": "me@ex.com",
+                "sent_at": "2026-09-17T18:05:00+00:00",
+            }],
+            candidate_id="cand-1796",
+            source_kind="email",
+            source_id="mid-1796",
+            ingress_blob=self._BLOB,
+            timezone_key="America/New_York",
+        )
+        assert err is None and len(rows) == 1
+        assert rows[0]["link"] == url
+        content = (rows[0].get("content") or "").strip()
+        assert content != self._BLOB.strip()
+        assert content == ""

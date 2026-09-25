@@ -987,6 +987,42 @@ class TestAst1784StageMeteoriteLinkedTitlePrompts:
         assert len(STAGE_METEORITE_CONFIG["outcomes"]) == 6
 
 
+
+class TestAst1796StageMeteoriteComboPrompts:
+    """AST-1796 bug-repro: combo (inline JD + separate links) taught under multi_jd_inline."""
+
+    def test_cache_and_user_prompt_combo_section(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "stage_meteorite")
+        cache = row["cache_prompt"] or ""
+        user = row["user_prompt"] or ""
+        nocache = row.get("nocache_prompt") or ""
+        assert "## COMBO (inline JD + separate job links)" in cache
+        assert "multi_jd_inline" in cache
+        assert "separate job-page URL" in cache or "separate job-page URLs" in cache
+        assert "do not collapse" in cache.lower() or "Do not collapse" in cache
+        # multi_jd_inline must allow job_link on combo landables (not forbid it).
+        assert "one jobs item per" in cache.lower() or "one jobs item per landable" in cache.lower()
+        assert "mixes inline JD" in user or "separate job-page URLs" in user
+        assert "multi_jd_inline" in user
+        for field in (cache, user, nocache):
+            assert "$RESPONSE_SCHEMA" not in field
+        from src.utils.config import STAGE_METEORITE_CONFIG
+        assert len(STAGE_METEORITE_CONFIG["outcomes"]) == 6
+
+    def test_fixture_stage_meteorite_combo_lockstep(self) -> None:
+        cat = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        fix = json.loads(
+            Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        cat_row = next(r for r in cat if r.get("task_key") == "stage_meteorite")
+        fix_row = next(r for r in fix if r.get("task_key") == "stage_meteorite")
+        assert fix_row["cache_prompt"] == cat_row["cache_prompt"]
+        assert fix_row["user_prompt"] == cat_row["user_prompt"]
+
+
 class TestAst1773StageEmployerNameAndReviewDuplicateCatalog:
     """AST-1773: stage employer_name prompts + review_duplicate_meteorite Ruth row + fixture twin."""
 
