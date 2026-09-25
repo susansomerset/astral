@@ -17,6 +17,8 @@ AST-1561: BOT_BLOCKED paste recovery via `apply_paste` (no re-classify).
 AST-1515: Contact-task markup parse/dispatch + same-event follow-up turn.
 AST-1585 / patt.artifact.read-operative — Estelle pin→body for pilot
 base_resume via get_operative_base_resume.
+AST-1788: admin channel-list / membership / snapshot orchestration for
+Manage Candidates (no Estelle turn-loop changes).
 """
 
 from __future__ import annotations
@@ -51,7 +53,10 @@ from src.data.contact_listen import (
 )
 from src.external.slack import (
     fetch_conversation_history,
+    fetch_full_conversation_history,
     fetch_user_profile,
+    is_channel_member,
+    list_bot_channels,
     list_workspace_members,
     list_workspace_posters,  # imported so unbound must not call it (AST-1738)
     parse_url_verification,
@@ -736,6 +741,99 @@ def list_unbound_slack_users(*, debug: bool = False) -> list[dict]:
         )
     log.debug("End unbound filter loop after %s items", len(out))
     return out
+
+
+def _candidate_contact(candidate_id: str) -> Tuple[Optional[dict], dict]:
+    """Return (candidate_row_or_None, contact_dict). contact_dict is {} when missing."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        return None, {}
+    row = get_candidate(cid)
+    if row is None:
+        return None, {}
+    cd = row.get("candidate_data")
+    contact = cd.get("contact") if isinstance(cd, dict) else {}
+    return row, contact if isinstance(contact, dict) else {}
+
+
+def list_admin_slack_channels(*, debug: bool = False) -> list[dict]:
+    """Bot-visible public/private channels for Manage Candidates picker."""
+    log = get_logger(__name__)
+    if debug:
+        log.set_debug_flag(True)
+    log.debug("Calling list_bot_channels: []")
+    channels = list_bot_channels()
+    log.debug("Response from list_bot_channels: %s", channels)
+    return channels
+
+
+def check_admin_slack_channel_membership(
+    *,
+    astral_candidate_id: str,
+    channel: str,
+    debug: bool = False,
+) -> dict:
+    """Membership of the candidate's bound Slack user in ``channel`` (admin warn)."""
+    log = get_logger(__name__)
+    if debug:
+        log.set_debug_flag(True)
+    ch = (channel or "").strip()
+    if not ch:
+        raise ValueError("channel is required")
+    row, contact = _candidate_contact(astral_candidate_id)
+    if row is None:
+        raise ValueError("candidate not found")
+    raw_uid = contact.get("slack_user_id")
+    uid = raw_uid.strip() if isinstance(raw_uid, str) else ""
+    if not uid:
+        # Unbound — do not call is_channel_member (raises on empty slack_user_id).
+        return {
+            "channel": ch,
+            "slack_user_id": "",
+            "is_member": False,
+            "warn": True,
+            "warn_reason": "unbound",
+        }
+    log.debug("Calling is_channel_member: channel=%s slack_user_id=%s", ch, uid)
+    member = is_channel_member(channel=ch, slack_user_id=uid)
+    log.debug("Response from is_channel_member: %s", member)
+    return {
+        "channel": ch,
+        "slack_user_id": uid,
+        "is_member": bool(member),
+        "warn": not bool(member),
+        "warn_reason": None if member else "not_member",
+    }
+
+
+def get_admin_slack_channel_snapshot(
+    *,
+    astral_candidate_id: str,
+    debug: bool = False,
+) -> dict:
+    """Full ascending message history for the candidate's stored Slack channel."""
+    log = get_logger(__name__)
+    if debug:
+        log.set_debug_flag(True)
+    cid = (astral_candidate_id or "").strip()
+    row, contact = _candidate_contact(cid)
+    if row is None:
+        raise ValueError("candidate not found")
+    raw_id = contact.get("slack_channel_id")
+    channel_id = raw_id.strip() if isinstance(raw_id, str) else ""
+    if not channel_id:
+        raise ValueError("slack_channel_id is required")
+    raw_name = contact.get("slack_channel_name")
+    channel_name = raw_name.strip() if isinstance(raw_name, str) else ""
+    log.debug("Calling fetch_full_conversation_history: channel=%s", channel_id)
+    messages = fetch_full_conversation_history(channel=channel_id)
+    log.debug("Response from fetch_full_conversation_history: %s", messages)
+    return {
+        "astral_candidate_id": cid,
+        "channel_id": channel_id,
+        "channel_name": channel_name,
+        "messages": messages,
+    }
 
 
 _CONTACT_TASK_MARKUP_RE = re.compile(
