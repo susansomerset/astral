@@ -68,6 +68,12 @@ src/ui/frontend/dist/
 # Vite dependency pre-bundle cache (regenerated locally)
 src/ui/frontend/.vite/
 
+# Astral Surfer extension (WXT) build artifacts
+src/ui/extension/node_modules/
+src/ui/extension/.output/
+src/ui/extension/.wxt/
+src/ui/extension/*.pem
+
 # Playwright browser binaries (installed during build)
 .browsers/
 
