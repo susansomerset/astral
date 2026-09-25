@@ -366,3 +366,8 @@ All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.p
 - Unexpected evaluation exceptions still fail-closed with `logger.exception`.
 - No second list boolean name; no client-side `resolve_tokens` / `TOKEN_SOURCES` (AST-1782).
 - API-key gate (`_candidate_dispatch_api_key_error`) still runs and is independent of empty-render.
+
+
+## Fix-board Joan findings (AST-1791)
+
+**Verdict: CANON: OK** — AST-1780 fail-closed-on-ValueError was a plan Decision, not an in-force statute. Fix restores AST-1766 intent inside `api_admin.py`; `empty_render_for_prompts` untouched. Note: AST-1781 hooks may still force-off on missing agent_task (out of scope).
