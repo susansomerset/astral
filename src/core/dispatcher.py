@@ -1240,6 +1240,11 @@ def _tick_loop() -> None:
             # late: avoid cycle with candidate → dispatcher (module-top import)
             from src.core.candidate import age_stale_candidate_states
             age_stale_candidate_states()
+            # AST-1122: run due admin Scheduled Queries (interval_hours cadence)
+            try:
+                database.run_due_scheduled_queries()
+            except Exception:
+                _sched_log.exception("Scheduled query tick error")
             # Claim-queue AUTO rows from data; gaze_email AUTO merged via live bind Avail (AST-1135).
             due = list(database.get_due_tasks()) + _gaze_email_due_tasks()
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
