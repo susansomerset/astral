@@ -1350,18 +1350,23 @@ def _map_classify_jobs_to_meteorite_rows(
             return [], "text outcome produced no jobs"
         for job in rows:
             text = (job.get("jd_text") or "").strip() if isinstance(job.get("jd_text"), str) else ""
-            # Prefer Ruth jd_text; blank → classify ingress blob (subject+body), not map fail
-            if not text:
-                fallback = ingress_blob.strip() if isinstance(ingress_blob, str) else ""
-                if not fallback:
-                    return [], "text scrap missing jd_text"
-                text = fallback
-            link: Optional[str] = None
             # AST-1785: http(s) job_link wins over email breadcrumb on text outcomes
             job_link = (
                 (job.get("job_link") or "").strip()
                 if isinstance(job.get("job_link"), str) else ""
             )
+            # Prefer Ruth jd_text; blank → classify ingress blob (AST-1756) — except link-only
+            # combo scraps under multi_jd_inline (AST-1796): blank + http job_link must not
+            # swallow the whole email as content.
+            if not text:
+                if _is_http_url(job_link):
+                    text = ""
+                else:
+                    fallback = ingress_blob.strip() if isinstance(ingress_blob, str) else ""
+                    if not fallback:
+                        return [], "text scrap missing jd_text"
+                    text = fallback
+            link: Optional[str] = None
             if _is_http_url(job_link):
                 link = job_link
                 logger.debug("Preferring http job_link over breadcrumb: %s", link)

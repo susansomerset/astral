@@ -793,3 +793,33 @@ Text-outcome map prefers http(s) `job_link` over `_email_breadcrumb_link`; `stag
 
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/meteorite.md`
+
+### AST-1796 · AST-1783 (bug-repro)
+
+**Parent:** [AST-1783](https://linear.app/astralcareermatch/issue/AST-1783/parsing-emails-with-linked-job-titles). **Bug:** [AST-1796](https://linear.app/astralcareermatch/issue/AST-1796). **Publish:** `origin/sub/AST-1783/AST-1796-combo-email-mixed-jd-job-link-array`.
+
+**qa-fix:** blank `jd_text` + http(s) `job_link` under a text outcome must **not** fall back to `ingress_blob` (combo link-only scrap). Classic blank+no-link still uses AST-1756 blob fallback. Prompt combo section: **`docs/test-bible/core/repo_admin_json.md`** § AST-1796.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skip ingress_blob when blank jd_text + http job_link | `src/core/meteorite.py` | **`TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob`** (bug-repro) |
+
+**Broken / obsolete this pass:** none — AST-1756 blank+no-link cases unchanged.
+
+## QA test manifest
+
+1. Bug-repro map: `tests/component/core/test_meteorite.py::TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob`
+2. Bug-repro prompts: `tests/component/core/test_repo_admin_json.py::TestAst1796StageMeteoriteComboPrompts`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob \
+  tests/component/core/test_repo_admin_json.py::TestAst1796StageMeteoriteComboPrompts \
+  -q
+```
+
+**Pass criterion (test-fix):** both were red pre-fix; green after make-fix.
+
+**Bible path shasums (record after publish):**
+- `docs/test-bible/core/meteorite.md`
+- `docs/test-bible/core/repo_admin_json.md`
