@@ -608,3 +608,58 @@ class TestFetchCareersListTextAndDom:
         await page.close()
         with pytest.raises(pw_mod.PlaywrightInfraError):
             await pw_mod.fetch_careers_list_text_and_dom(page, {})
+
+
+class TestTelescopeWake:
+    """Serverless Telescope: throttled fire-and-forget GET /wake when no worker is live."""
+
+    def _queue(self, monkeypatch, *, live: int, url: str = "http://telescope.railway.internal:8080/wake"):
+        if url:
+            monkeypatch.setenv("TELESCOPE_WAKE_URL", url)
+        else:
+            monkeypatch.delenv("TELESCOPE_WAKE_URL", raising=False)
+        q = pw_mod._TelescopeQueue()
+        monkeypatch.setattr(q, "_live_workers", AsyncMock(return_value=live))
+        ping = AsyncMock()
+        monkeypatch.setattr(q, "_ping_wake", ping)
+        return q, ping
+
+    @pytest.mark.asyncio
+    async def test_pings_once_when_no_worker_then_throttles(self, monkeypatch) -> None:
+        q, ping = self._queue(monkeypatch, live=0)
+        for _ in range(50):
+            await q._maybe_wake(MagicMock())
+        await asyncio.sleep(0)
+        ping.assert_awaited_once_with("http://telescope.railway.internal:8080/wake")
+
+    @pytest.mark.asyncio
+    async def test_no_ping_when_a_worker_is_live(self, monkeypatch) -> None:
+        q, ping = self._queue(monkeypatch, live=2)
+        await q._maybe_wake(MagicMock())
+        await asyncio.sleep(0)
+        ping.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_ping_without_wake_url(self, monkeypatch) -> None:
+        q, ping = self._queue(monkeypatch, live=0, url="")
+        await q._maybe_wake(MagicMock())
+        await asyncio.sleep(0)
+        ping.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_ping_errors_are_swallowed(self, monkeypatch) -> None:
+        class _Boom:
+            def __init__(self, *a, **k): ...
+            async def __aenter__(self): raise OSError("502 while booting")
+            async def __aexit__(self, *a): return False
+
+        monkeypatch.setattr(pw_mod.httpx, "AsyncClient", _Boom)
+        await pw_mod._TelescopeQueue()._ping_wake("http://x/wake")  # no raise
+
+    @pytest.mark.asyncio
+    async def test_healthy_means_queue_reachable_and_wakes(self, monkeypatch) -> None:
+        q, ping = self._queue(monkeypatch, live=0)
+        monkeypatch.setattr(q, "_get_db", AsyncMock(return_value=MagicMock()))
+        assert await q.healthy() is True  # no live worker is fine: Telescope may be asleep
+        await asyncio.sleep(0)
+        ping.assert_awaited_once()

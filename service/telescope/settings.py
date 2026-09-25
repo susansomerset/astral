@@ -24,6 +24,7 @@ from telescope_config import (
     QUEUE_POLL_SECONDS,
     SCRAPE_RETRY_BASE_DELAY_SECONDS,
     SHUTDOWN_GRACE_SECONDS,
+    IDLE_SLEEP_SECONDS,
     TIMEOUT_MAX_ATTEMPTS,
     VIEWPORT,
     WAIT_READY_MAX_MS,
@@ -49,6 +50,7 @@ class Settings:
     job_retention_hours: int
     worker_stale_seconds: int
     shutdown_grace_seconds: float
+    idle_sleep_seconds: float
     db_pool_max_size: int
     recycle_after_n: int
     port: int
@@ -94,6 +96,9 @@ def load_settings() -> Settings:
         job_retention_hours=JOB_RETENTION_HOURS,
         worker_stale_seconds=WORKER_STALE_SECONDS,
         shutdown_grace_seconds=SHUTDOWN_GRACE_SECONDS,
+        idle_sleep_seconds=float(
+            os.environ.get("TELESCOPE_IDLE_SLEEP_SECONDS") or IDLE_SLEEP_SECONDS
+        ),
         db_pool_max_size=DB_POOL_MAX_SIZE,
         recycle_after_n=RECYCLE_AFTER_N,
         port=PORT,

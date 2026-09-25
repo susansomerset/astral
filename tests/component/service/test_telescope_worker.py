@@ -204,15 +204,16 @@ class TestResultCodec:
 
 
 class TestHealthz:
-    def _client(self, *, db_ok: bool, browser_ok: bool) -> TestClient:
+    def _client(self, *, db_ok: bool, browser_ok: bool, asleep: bool = False) -> TestClient:
         import app as app_mod
 
         firefox = MagicMock()
         firefox.health_poke = AsyncMock(return_value=browser_ok)
         w = _worker()
         w.db_ok = db_ok
-        app_mod.app.state.firefox = firefox
-        app_mod.app.state.worker = w
+        runtime = app_mod.Runtime()
+        runtime.worker, runtime.firefox, runtime.asleep = w, firefox, asleep
+        app_mod.app.state.runtime = runtime
         return TestClient(app_mod.app)  # no `with` — lifespan (DB, Firefox) not started
 
     def test_ok_without_auth(self) -> None:
@@ -224,3 +225,18 @@ class TestHealthz:
         resp = self._client(db_ok=False, browser_ok=True).get("/healthz")
         assert resp.status_code == 503
         assert resp.json()["db_ok"] is False
+
+    def test_asleep_is_healthy_and_not_woken(self) -> None:
+        resp = self._client(db_ok=False, browser_ok=False, asleep=True).get("/healthz")
+        assert resp.status_code == 200 and resp.json() == {"status": "asleep"}
+
+
+class TestIdleSeconds:
+    def test_zero_while_busy_then_counts_from_last_job(self) -> None:
+        w = _worker()
+        w._in_flight["j"] = MagicMock()
+        assert w.idle_seconds() == 0.0
+        w._job_done("j")
+        assert 0.0 <= w.idle_seconds() < 1.0
+        w.last_busy_at -= 400
+        assert w.idle_seconds() >= 400

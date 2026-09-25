@@ -22,6 +22,7 @@ from typing import Any, Dict, List, Optional, Tuple, TypedDict
 from urllib.parse import urlparse
 
 import asyncpg
+import httpx
 from bs4 import BeautifulSoup
 
 from src.utils.config import ASTRAL_CONFIG, PLAYWRIGHT_CONFIG, TELESCOPE_CONFIG
@@ -201,6 +202,9 @@ class _TelescopeQueue:
         self._wake: Optional[asyncio.Event] = None
         self._poller: Optional[asyncio.Task] = None
         self._init_lock: Optional[asyncio.Lock] = None
+        # Serverless wake: last ping time (monotonic) and in-flight ping tasks.
+        self._last_wake = float("-inf")
+        self._wake_tasks: set = set()
         # Loop-bound resources must be rebuilt when the running loop changes — admin
         # uses asyncio.run() per request (fresh loop each time).
         self._loop: Optional[asyncio.AbstractEventLoop] = None
@@ -327,6 +331,9 @@ class _TelescopeQueue:
                             deadline,
                         )
                         await conn.execute("SELECT pg_notify($1, '')", _CHANNEL_NEW)
+                # After the insert commits (the order the worker's sleep race guard
+                # relies on): wake a sleeping Telescope if no worker is live.
+                await self._maybe_wake(db)
             except asyncpg.UndefinedTableError as e:
                 raise PlaywrightInfraError(
                     "connectivity_failure",
@@ -380,17 +387,54 @@ class _TelescopeQueue:
         except Exception as e:
             _log.warning("telescope cancel job=%s failed: %s", job_id, e)
 
-    async def healthy(self) -> bool:
-        """Queue reachable and at least one worker heartbeat is fresh."""
-        db = await self._get_db()
-        live = await db.fetchval(
-            f"""
-            SELECT count(*) FROM {_WORKER_TABLE}
-            WHERE last_seen > now() - make_interval(secs => $1)
-            """,
-            float(TELESCOPE_CONFIG["worker_stale_seconds"]),
+    async def _live_workers(self, db: Any) -> int:
+        return int(
+            await db.fetchval(
+                f"""
+                SELECT count(*) FROM {_WORKER_TABLE}
+                WHERE last_seen > now() - make_interval(secs => $1)
+                """,
+                float(TELESCOPE_CONFIG["worker_stale_seconds"]),
+            )
+            or 0
         )
-        return bool(live)
+
+    async def _maybe_wake(self, db: Any) -> None:
+        """Throttled fire-and-forget GET /wake when no Telescope worker is live.
+
+        Telescope is Railway Serverless: it sleeps when idle and wakes on a
+        private-network request. The ping only starts it; queued jobs wait safely.
+        """
+        url = (os.environ.get(TELESCOPE_CONFIG["wake_url_env"]) or "").strip()
+        if not url:
+            return
+        if time.monotonic() - self._last_wake < float(TELESCOPE_CONFIG["wake_throttle_seconds"]):
+            return
+        try:
+            if await self._live_workers(db):
+                return
+        except Exception as e:
+            _log.debug("telescope wake check failed, pinging anyway: %s", e)
+        self._last_wake = time.monotonic()
+        task = asyncio.create_task(self._ping_wake(url))
+        self._wake_tasks.add(task)
+        task.add_done_callback(self._wake_tasks.discard)
+
+    async def _ping_wake(self, url: str) -> None:
+        _log.debug("Calling telescope wake: %s", url)
+        try:
+            async with httpx.AsyncClient(timeout=float(TELESCOPE_CONFIG["wake_timeout_seconds"])) as client:
+                resp = await client.get(url)
+            _log.debug("Response from telescope wake: %s %s", resp.status_code, resp.text[:200])
+        except Exception as e:
+            # Expected while a slept container boots (502 / timeout); the job waits in the queue.
+            _log.debug("Response from telescope wake: %s: %s", type(e).__name__, e)
+
+    async def healthy(self) -> bool:
+        """Queue reachable. Wakes a sleeping Telescope so it boots before the batch."""
+        db = await self._get_db()
+        await self._maybe_wake(db)
+        return True
 
 
 _pool = _TelescopeQueue()
