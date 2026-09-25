@@ -104,3 +104,37 @@ Signature verify (HMAC v0 + skew), URL challenge parse, `chat.postMessage` behin
 **Bible shasum (publish tip):**
 - `docs/test-bible/external/slack.md` — *(filled after publish)*
 
+---
+
+### AST-1787 · AST-1786
+
+**Parent:** [AST-1786 — Manage Candidates Snapshot Slack Channel + candidate mapping](https://linear.app/astralcareermatch/issue/AST-1786/manage-candidates-snapshot-slack-channel-candidate-mapping). **Publish:** `origin/sub/AST-1786/AST-1787-slack-channel-list-membership-full-history`.
+
+Three public helpers on `src/external/slack.py`: `list_bot_channels` (public/private picker options, name-sorted), `is_channel_member` (`conversations.members` for a known user+channel only), `fetch_full_conversation_history` (all pages, `ts` ascending). Limited `fetch_conversation_history` and poster-pool path unchanged (AC9 / AST-1667). Contact/API/UI: siblings AST-1788 / AST-1789.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Channel list / membership / full ascending history | `src/external/slack.py` | **`TestAst1787ChannelListMembershipFullHistory`** |
+| AC9 poster-pool still avoids `conversations.members` | `src/external/slack.py` | existing **`TestAst1667WorkspacePosterPool`** |
+
+**Broken / obsolete this pass:** none — additive helpers; AST-1069/1070/1105/1667 suites unchanged.
+
+**Integration:** no existing scenario exercises these Slack helpers — no revision; do not invent.
+
+## QA test manifest
+
+1. Existing AC9 regression: `tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool`
+2. Channel list / membership / full history (new): `tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_slack.py::TestAst1667WorkspacePosterPool \
+  tests/component/external/test_slack.py::TestAst1787ChannelListMembershipFullHistory \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/external/slack.md` — *(filled after publish)*
+

@@ -303,3 +303,293 @@ context_tokens≈24000
 2. Post slim upshot via `linear_proxy --as radia save-comment`.
 3. Move to **Review Posted**; datt routes PROCEED per §3h.
 4. Track operative-view divergence (discuss) during epic UAT alongside AST-1781 — escalate only if operators see list/gate vs hook mismatch on artifact-backed tokens.
+
+## Bug: AST-1791 — Default validation TRUE when no prompts/keys
+
+Orphaned fix child of AST-1790 (mini-parent off `origin/dev`; Done ancestor AST-1766). Scope gate is this ticket’s own `## Scope` (copied from the bug Component/Technical scope) — `api_admin.py` soft-miss branch only; `config.py` / React unchanged unless this plan says otherwise.
+
+### As-is
+
+`_evaluate_dispatch_empty_render` treats every soft miss as `empty_render: true`, including when `_dispatch_empty_render_prompt_texts` / `_resolve_task_prompts` raises `ValueError` (no `agent_task` row, no `agent_id`, missing agent). Non-agent `dispatch_task` rows (no prompts / no expected tokens) therefore get `empty_render: true` on list enrichment, force AUTO off, and HTTP 400 on AUTO-on / Run — even though nothing in prompts expects a candidate token fill.
+
+### To-be
+
+Validation defaults to pass (`empty_render: false`, empty `empty_tokens`) when there are **no prompts to validate** (prompt-load `ValueError`). Disable AUTO/Run only when prompts load and `empty_render_for_prompts` reports candidate-scoped tokens that resolve blank (tokens expected and missing). Missing / blank `candidate_id` and unexpected evaluation exceptions stay fail-closed.
+
+### Repro
+
+1. Fixture shape (file/JSON persistence — no SQL seed): a `dispatch_task` row with a real `candidate_id` (candidate exists and has an API key) and a `task_key` that has **no** current `agent_task` row (non-agent keys such as gaze / `recheck_no_openings`-class tasks from AST-537).
+2. `GET /api/admin/dispatch_tasks` → that row’s `empty_render` is `true`; if `auto_mode` was on, enrichment forces it off.
+3. `PUT` with `auto_mode: true` or `POST …/run` → HTTP 400 with body mentioning prompts could not be validated / empty-render.
+4. Contrast (still broken after fix would be a regression): same candidate, `task_key` whose `agent_task` prompts reference `{$FIRST_NAME}` (or another candidate-scoped token) that resolves to `""` → must remain `empty_render: true` and gated.
+
+### Root cause
+
+AST-1780 Stage 1 step 4 / Decision explicitly **fail-closed** on “cannot prove fills” — including missing `agent_task`. That conflates “prompts reference tokens that are blank” with “there are no prompts / no agent_task to score.” Predicate intent (AST-1766 AC1 / AST-1779) is blank **referenced** candidate-scoped tokens; no prompts ⇒ nothing expected ⇒ should not disable.
+
+### Proposed change
+
+All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.py` or `AdminScheduledActions.tsx`.
+
+1. **`_evaluate_dispatch_empty_render(candidate_id, task_key)`** — change only the `ValueError` branch after `_dispatch_empty_render_prompt_texts(tk)`:
+
+   - On `ValueError` (raised by `_resolve_task_prompts`: no `agent_task` row, empty `agent_id`, or agent not found): `logger.warning` with who/why (candidate_id, task_key, `str(exc)`) stating that prompts could not be loaded and **validation passes** (no expected tokens to score) — not “treating as empty_render”. Return `{"empty_render": False, "empty_tokens": []}`.
+   - Leave these branches **unchanged** (still `empty_render: True`, empty `empty_tokens`, existing warning / exception text):
+     - blank / missing `candidate_id`
+     - `database.get_candidate` miss
+     - any other `Exception` (`logger.exception` + “Leaving empty_render true for this row”)
+   - Successful prompt load → still `return empty_render_for_prompts(texts, cd, tk, entity_contexts=None)` unchanged.
+
+2. **`_candidate_dispatch_empty_render_error`** — no message change required for the no-prompt case: after step 1, that path returns `empty_render` falsy so this helper returns `None` (AUTO/Run allowed). Keep the existing two user-facing strings for remaining `empty_render` true cases (`empty_tokens` non-empty vs soft-miss with empty `empty_tokens` — the latter now only covers no-`candidate_id` / candidate-missing / unexpected Exception).
+
+3. **`src/utils/config.py` / `empty_render_for_prompts`** — **unchanged**. Helper already returns `empty_render: false` when no scored tokens are blank (including empty / all-blank `prompt_texts`). Policy for “cannot load prompts” lives in the api_admin soft-miss branch, not the helper.
+
+4. **Logging statutes:** ValueError path remains a per-item `logger.warning` (`stat.logging.warning` who/why); do not add route-level `logger.info` (`stat.logging.info.api`). Unexpected throws stay `logger.exception` + fail-closed.
+
+⚠️ **Decision:** Blank `candidate_id` and missing candidate stay fail-closed. Product intent for non-agent rows is “no prompts,” not “no candidate” — `astral.dispatch.entity-state-bound` / AST-1766 still require a real `candidate_id` on every row; API-key gate already blocks Run/Auto without a candidate. Unexpected `Exception` stays fail-closed (not a “no prompts” soft miss).
+
+⚠️ **Decision:** All `_resolve_task_prompts` `ValueError` reasons share one fail-open return — do not special-case “No agent_task row” vs missing `agent_id` / agent. Scope treats “cannot load prompt texts” as no prompts to validate at this gate.
+
+### Blast radius
+
+- Same helper feeds `list_dtasks` enrichment + force AUTO off, create/update AUTO-on 400, and `run_dtask` 400 — one branch change flips all three surfaces; UI (`AdminScheduledActions.tsx`) already trusts `row.empty_render` (AST-1782) and needs no edit.
+- AST-1781 (`database.py` / `candidate.py` revalidation + `_force_auto_off_if_empty_render`) does **not** call `_evaluate_dispatch_empty_render`; out of this bug’s Scope. If those hooks independently treat missing agent_task as force-off, that is a separate delta — do not expand this fix into `database.py`.
+- Component tests that monkeypatch `_evaluate_dispatch_empty_render` / `_candidate_dispatch_empty_render_error` (AST-1780) are unaffected; any test that asserted real ValueError → `empty_render: true` would need Betty’s lane, not this engineer patch.
+- `empty_render_for_prompts` callers elsewhere keep current semantics.
+
+### What must still hold
+
+- When prompts load and a referenced candidate-scoped token resolves `""`, `empty_render` stays `true`; AUTO-on / Run still 400; list still force-off AUTO (AST-1780 Stage 1–2 / AST-1766 AC1, AC3–5).
+- Job / non-candidate tokens alone still must not flip the flag (`entity_contexts=None`) (AST-1766 AC9–10 / AST-1780 AC5).
+- Chain tokens still ignored (AST-1779).
+- Blank `candidate_id` / missing candidate still `empty_render: true` (entity-state-bound; not this bug’s carve-out).
+- Unexpected evaluation exceptions still fail-closed with `logger.exception`.
+- No second list boolean name; no client-side `resolve_tokens` / `TOKEN_SOURCES` (AST-1782).
+- API-key gate (`_candidate_dispatch_api_key_error`) still runs and is independent of empty-render.
+
+
+## Fix-board Joan findings (AST-1791)
+
+**Verdict: CANON: OK** — AST-1780 fail-closed-on-ValueError was a plan Decision, not an in-force statute. Fix restores AST-1766 intent inside `api_admin.py`; `empty_render_for_prompts` untouched. Note: AST-1781 hooks may still force-off on missing agent_task (out of scope).
+
+
+## Review-fix findings (AST-1791)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — board REVISE (Betty) routed real-path coverage to sibling AST-1792; issue Notes state qa-fix skipped on this tip; no `[bug-repro]` in diff. Product fix is a two-line branch flip; AST-1780 tests monkeypatch eval and would not catch this path anyway (plan-fix Blast radius).
+
+**## What must still hold — OK** — all seven plan-fix items verified against diff:
+- Blank-token / gated AUTO-on / Run / force-off path untouched (successful load still calls `empty_render_for_prompts`).
+- `entity_contexts=None` unchanged.
+- Blank `candidate_id` / missing candidate still `empty_render: true`.
+- Unexpected `Exception` still `logger.exception` + fail-closed.
+- No new list field / no React / API-key gate unchanged.
+
+## Findings
+
+### discuss — Canon Scope gap (inherited; do not score)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs `api_admin.py`-only fix footprint
+- **Finding:** `astral.standards.in-scope-only` plainly governs this slice but is absent from the scored four-id list (same gap Joan raised at AST-1780 plan).
+- **Recommendation:** Plan scope + diff honor it (`api_admin.py` only). Archie may amend Canon Scope; no product defect.
+
+### discuss — Test coverage deferred to AST-1792
+
+- **Severity:** discuss
+- **Location:** `[board-betty] TESTS: REVISE` / Notes for planning
+- **Finding:** Betty flagged missing real-path test for ValueError soft-miss → `empty_render: false`. No qa-fix / `[bug-repro]` on this tip; sibling AST-1792 owns the gap.
+- **Recommendation:** Not fix-now on this engineer patch; track AST-1792 for repro-first bar. UAT should still spot-check non-agent rows per plan-fix Repro step 4 contrast case.
+
+### discuss — AST-1781 hook divergence (out of scope; plan acknowledges)
+
+- **Severity:** discuss
+- **Location:** plan-fix Blast radius
+- **Finding:** `database.py` / `candidate.py` revalidation may still force AUTO off on missing `agent_task` independently of this api_admin fix.
+- **Recommendation:** Separate delta if UAT surfaces it; do not expand AST-1791 into `database.py`.
+
+### advisory — Operative token view (inherited from AST-1780 Radia)
+
+- **Severity:** advisory
+- **Location:** `_evaluate_dispatch_empty_render` successful path — `build_candidate_token_view` only
+- **Finding:** Unchanged by this fix; list vs AST-1781 hook mismatch on artifact-backed tokens remains an epic UAT awareness item.
+- **Recommendation:** None for resolve-child on AST-1791.
+
+## What's solid
+
+- Diff isolates exactly the plan-fix delta: `ValueError` from `_dispatch_empty_render_prompt_texts` now returns `{"empty_render": False, "empty_tokens": []}` with who/why `logger.warning`; all other branches untouched.
+- `_candidate_dispatch_empty_render_error` needs no edit — falsy eval correctly yields `None` for AUTO/Run on no-prompt rows.
+- Scope gate honored: product code only in `api_admin.py`; `config.py` / React untouched.
+- Estimate **3** fits a single-branch policy correction.
+- Logging: no new route `logger.info`; soft miss stays warning; unexpected throws stay `logger.exception`.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | Normal (AST-1790 In Progress; diff base `origin/ftr/AST-1790-default-validation-no-prompts`) | Append artifact → `docs(AST-1791): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+
+1. Append this verdict to `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md`.
+2. Post slim upshot via `linear_proxy --as radia save-comment`.
+3. Do **not** block on AST-1792 test gap for this product fix.
+
+
+## Docs-Acceptance (AST-1791)
+
+Test-tree / [bug-repro] owned by sibling gap AST-1792 (fix-board TESTS: REVISE). No merge-tests on this tip.
+
+## Bug: AST-1792 — Gap: no-prompt ValueError → empty_render false (tests)
+
+Gap child of AST-1790 from `[board-betty] TESTS: REVISE` on AST-1791. Scope is **test + bible only** (this ticket’s `## Scope`). Product soft-miss → pass is sibling **AST-1791** (`api_admin.py`); do not re-plan or re-implement that delta here.
+
+### As-is
+
+`TestAst1780EmptyRenderListGatesForceOff` monkeypatches `_evaluate_dispatch_empty_render` / `_candidate_dispatch_empty_render_error`, so the ValueError soft-miss branch inside `_evaluate_dispatch_empty_render` is never exercised. Bible § AST-1780 has no node for “no agent_task / prompt-load ValueError → `empty_render: false`.” Pre-AST-1791 product returns `empty_render: true` on that path; nothing asserts the post-fix pass.
+
+### To-be
+
+Component coverage (and bible rows) that drive the real soft-miss branch: when `_dispatch_empty_render_prompt_texts` raises `ValueError` (no `agent_task` / cannot load prompts) and a candidate exists, `_evaluate_dispatch_empty_render` returns `empty_render: false` — list does not force AUTO off, and AUTO-on / Run are not 400’d for empty-render. Tests are **red** against pre-AST-1791 product and **green** after AST-1791 lands. Existing monkeypatched AST-1780 wiring tests stay as-is.
+
+### Repro
+
+1. On a tip **without** AST-1791’s ValueError→false change: call `_evaluate_dispatch_empty_render("c1", "no_agent_task_key")` with `database.get_candidate` returning a row and `_dispatch_empty_render_prompt_texts` raising `ValueError("No agent_task row for '…'")` → today returns `{"empty_render": True, …}`.
+2. Same setup after AST-1791 → must return `{"empty_render": False, "empty_tokens": []}`.
+3. List row with `auto_mode: 1`, same ValueError soft-miss on the live evaluate path → must keep `auto_mode` and set `empty_render: false` (pre-fix forces off).
+
+### Root cause
+
+AST-1780 QA deliberately stubbed the eval helper (wiring-only). That left the soft-miss policy untested; when AST-1791 flips ValueError from fail-closed to fail-open, there is no `[bug-repro]` to prove the flip.
+
+### Proposed change
+
+**Files only (Scope gate):**
+
+| File | Change |
+|------|--------|
+| `tests/component/ui/api/test_api_admin.py` | New cases under `TestAst1780EmptyRenderListGatesForceOff` (or a sibling class `TestAst1791NoPromptValueErrorEmptyRender` in the same module) |
+| `docs/test-bible/ui/api/api_admin.md` | Extend § AST-1780 (or add § AST-1791 / AST-1792 under it) with the new node ids |
+
+**Do not edit** `src/ui/api/api_admin.py`, `src/utils/config.py`, or React — AST-1791 owns product.
+
+1. **Helper unit (primary `[bug-repro]`):** `test_evaluate_valueerror_no_agent_task_empty_render_false`
+   - Stub `admin_mod.database.get_candidate` → minimal candidate dict for `"c1"`.
+   - Stub `admin_mod._dispatch_empty_render_prompt_texts` to **raise** `ValueError("No agent_task row for 'gaze'")` (or any `_resolve_task_prompts`-style message).
+   - **Do not** monkeypatch `_evaluate_dispatch_empty_render`.
+   - Assert `admin_mod._evaluate_dispatch_empty_render("c1", "gaze") == {"empty_render": False, "empty_tokens": []}`.
+   - Assert `_candidate_dispatch_empty_render_error("c1", "gaze") is None`.
+   - Red on pre-AST-1791 (expects True / non-None error); green after AST-1791.
+
+2. **List enrich (same soft-miss, HTTP surface):** `test_list_valueerror_no_prompts_keeps_auto`
+   - Same candidate + `_dispatch_empty_render_prompt_texts` → ValueError stubs; real `_evaluate_dispatch_empty_render`.
+   - `list_dispatch_tasks` returns one row (`id`, `candidate_id: "c1"`, `task_key`, `auto_mode: 1`); hide-set empty; track `update_dispatch_task`.
+   - `GET /api/admin/dispatch_tasks` → `empty_render is False`, `auto_mode == 1`, no force-off update.
+   - Stub whatever else list enrichment already needs (same patterns as `test_list_empty_render_false_keeps_auto`) but **never** replace `_evaluate_dispatch_empty_render`.
+
+3. **Run gate allow (optional but preferred if cheap):** `test_run_valueerror_no_prompts_allowed`
+   - `get_dispatch_task` → `{candidate_id: "c1", task_key: …}`; `_candidate_dispatch_api_key_error` → `None`; same ValueError stub on `_dispatch_empty_render_prompt_texts`; real empty-render error helper.
+   - `POST …/run` → not 400 for empty-render; `run_task` called (or at least not blocked by empty-render message). If create/PUT AUTO-on is cheaper than run, one AUTO-on success path with the same stub is enough instead of all three gates.
+
+4. **Bible** (`docs/test-bible/ui/api/api_admin.md` § AST-1780):
+   - Add table rows + QA manifest lines for the new test node ids.
+   - One-line note: AST-1791 / AST-1790 — prompt-load `ValueError` soft-miss → `empty_render: false` (no monkeypatch of `_evaluate_dispatch_empty_render`).
+   - Keep existing AST-1780 monkeypatched wiring rows; do not mark them obsolete.
+   - **Integration:** none — do not invent new integration scenarios.
+
+5. **Implementer lane:** land tests + bible on `astral-tests` / publish to this gap’s `origin/sub/…` per qa-fix / Betty ownership of the test tree — engineer `make-fix` must not edit `tests/` or `docs/test-bible/**`. Tag the primary helper test handoff `[bug-repro]` when qa-fix runs against AST-1791.
+
+⚠️ **Decision:** Prefer stubbing `_dispatch_empty_render_prompt_texts` (raises `ValueError`) over full agent_task DB fixtures — isolates the soft-miss branch Betty flagged without re-testing AST-1779 token scoring.
+
+⚠️ **Decision:** Blank `candidate_id` / missing-candidate fail-closed paths stay covered only by existing product behavior / optional future tests — **out of this gap’s Scope** (board asked only for no-prompt ValueError → false).
+
+### Blast radius
+
+- Sibling AST-1791 product tip must be on the line under test for green; red proves pre-fix. Coordinated via parent `ftr/AST-1790-…` / sync — do not change AST-1791’s `api_admin.py` here.
+- Existing `TestAst1780EmptyRenderListGatesForceOff` monkeypatched cases unchanged — still validate wiring when the helper is stubbed.
+- AST-1781 database revalidation hooks remain out of scope (same as AST-1791 blast note).
+
+### What must still hold
+
+- When prompts load and a blank candidate-scoped token is scored, `empty_render: true` / AUTO-Run 400 / force-off still pass (existing AST-1780 tests).
+- Job tokens alone still must not flip the flag (`entity_contexts=None`).
+- Blank/`candidate_id` miss and unexpected `Exception` remain fail-closed in product (AST-1791 decisions) — this gap does not assert those branches unless already covered.
+- No second list boolean; no client-side token resolution.
+- Bible remains the manifest source for AST-1780 + this gap; no invented integration tier.
+
+
+## Review-fix findings (AST-1792)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst1791NoPromptValueErrorEmptyRender::test_evaluate_valueerror_no_agent_task_empty_render_false` is tagged `[bug-repro]` and pins concrete To-be values:
+- Does **not** monkeypatch `_evaluate_dispatch_empty_render`.
+- Stubs `database.get_candidate` + `_dispatch_empty_render_prompt_texts` → `ValueError("No agent_task row for 'gaze'")`.
+- Asserts `{"empty_render": False, "empty_tokens": []}` and `_candidate_dispatch_empty_render_error(...) is None`.
+- Would fail pre-AST-1791 (`empty_render: True`); passes with AST-1791 product already on `ftr` base.
+
+List + Run companions (`test_list_valueerror_no_prompts_keeps_auto`, `test_run_valueerror_no_prompts_allowed`) exercise real eval on HTTP surfaces without replacing the helper — matches plan-fix optional Run gate preference.
+
+**## What must still hold — OK**
+- Existing `TestAst1780EmptyRenderListGatesForceOff` monkeypatched wiring cases untouched (additive class only).
+- No product edits; no second boolean; no integration tier invented (bible says none).
+- Blank-candidate / unexpected-Exception fail-closed branches correctly out of gap scope per plan-fix Decision.
+
+## Findings
+
+### discuss — Cross-epic merge-tests spill on publish ref (not AST-1792 scope)
+
+- **Severity:** discuss
+- **Location:** Full `ftr…sub` diff (~1122 lines) vs scoped ticket footprint (~178 lines)
+- **Finding:** `merge-tests(AST-1792)` / prior commits land AST-1786/1787/1788/1789 test+bible suites (`test_contact.py`, `test_slack.py`, `test_AdminManageCandidates.test.tsx`, `test_api_contact.py`, `test_config.py`, four bible files) — unrelated Manage Candidates Slack epic, not AST-1790 validation scope.
+- **Recommendation:** AST-1792 **scoped** work is clean; Chuckles should attribute merge-tests spill to correct tickets at ftr rollup and not treat AST-1792 as owner of AST-1786-family coverage. Not fix-now on the gap tests themselves.
+
+### advisory — Optional AUTO-on create/PUT success path omitted
+
+- **Severity:** advisory
+- **Location:** plan-fix Proposed change step 3
+- **Finding:** Plan marked create/PUT AUTO-on success as optional if Run is covered; Run + list + helper repro are present.
+- **Recommendation:** None — plan satisfied.
+
+## What's solid
+
+- Scoped delta matches plan-fix exactly: new `TestAst1791NoPromptValueErrorEmptyRender` class, bible § AST-1792 under § AST-1780, plan-fix doc appended.
+- Stub strategy isolates ValueError soft-miss without re-testing AST-1779 token scoring (per plan Decision).
+- Estimate **2** fits ~80-line test class + bible rows; merge-tests spill is integration-line hygiene, not ticket footprint.
+- No `src/ui/api/api_admin.py` change on this diff (AST-1791 product already on `ftr`).
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | Normal (AST-1790 In Progress) | Append artifact → `docs(AST-1792): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h → **User Testing** directly (`resolve-child` skipped). |
+
+1. Append this verdict to `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md`.
+2. Post slim upshot via `linear_proxy --as radia save-comment`.
+3. Note merge-tests AST-1786 spill for rollup attribution — does not block UT on gap coverage.
+
+
+## Docs-Acceptance (AST-1792)
+
+Test/bible gap only — no product `src/` delivery; product soft-miss fix lives on AST-1791 / ftr.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/ebc0c3e8168c224834285a014fcaf396/f8ce3ca4-89f5-4981-8633-5ad49c069fa1/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/b70c6a80-337d-47a1-bdc0-a4a8c725cfe2/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/ebc0c3e8168c224834285a014fcaf396/54435071-678e-4245-9266-f1aaed714193/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1790 (parent) | ftr/AST-1790-default-validation-no-prompts |
+| AST-1791 | sub/AST-1790/AST-1791-default-validation-no-prompts |
+| AST-1792 | sub/AST-1790/AST-1792-no-prompt-valueerror-empty-render-tests |
+
+**Epic worktree:** `astral-AST-1790/` — one active sub checked out at a time.

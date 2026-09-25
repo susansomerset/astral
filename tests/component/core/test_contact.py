@@ -2098,3 +2098,134 @@ class TestAst1738UnboundMembersNotPosters:
         assert out == [{"slack_user_id": "U_FREE", "username": "free.user"}]
         posters.assert_not_called()
 
+
+
+# Branches: channel list passthrough; membership unbound/member/not_member;
+# snapshot missing channel / happy path (AST-1788).
+class TestAst1788AdminSlackChannelOrchestration:
+    def test_list_admin_slack_channels_passthrough(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        channels = [{"id": "C1", "name": "alpha"}]
+        stub = MagicMock(return_value=channels)
+        monkeypatch.setattr(contact_mod, "list_bot_channels", stub)
+        assert contact_mod.list_admin_slack_channels() == channels
+        stub.assert_called_once_with()
+
+    def test_membership_unbound_skips_external(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_mod,
+            "get_candidate",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "candidate_data": {"contact": {}},
+                }
+            ),
+        )
+        ext = MagicMock()
+        monkeypatch.setattr(contact_mod, "is_channel_member", ext)
+        out = contact_mod.check_admin_slack_channel_membership(
+            astral_candidate_id="c1", channel=" C9 "
+        )
+        assert out == {
+            "channel": "C9",
+            "slack_user_id": "",
+            "is_member": False,
+            "warn": True,
+            "warn_reason": "unbound",
+        }
+        ext.assert_not_called()
+
+    def test_membership_member_and_not_member(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_mod,
+            "get_candidate",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "candidate_data": {
+                        "contact": {"slack_user_id": " U1 "}
+                    },
+                }
+            ),
+        )
+        ext = MagicMock(return_value=True)
+        monkeypatch.setattr(contact_mod, "is_channel_member", ext)
+        out = contact_mod.check_admin_slack_channel_membership(
+            astral_candidate_id="c1", channel="C1"
+        )
+        assert out["is_member"] is True
+        assert out["warn"] is False
+        assert out["warn_reason"] is None
+        assert out["slack_user_id"] == "U1"
+        ext.assert_called_once_with(channel="C1", slack_user_id="U1")
+
+        ext.return_value = False
+        out2 = contact_mod.check_admin_slack_channel_membership(
+            astral_candidate_id="c1", channel="C1"
+        )
+        assert out2["is_member"] is False
+        assert out2["warn"] is True
+        assert out2["warn_reason"] == "not_member"
+
+    def test_membership_missing_candidate_and_channel(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate", MagicMock(return_value=None))
+        with pytest.raises(ValueError, match="candidate not found"):
+            contact_mod.check_admin_slack_channel_membership(
+                astral_candidate_id="missing", channel="C1"
+            )
+        with pytest.raises(ValueError, match="channel is required"):
+            contact_mod.check_admin_slack_channel_membership(
+                astral_candidate_id="c1", channel="  "
+            )
+
+    def test_snapshot_requires_stored_channel(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            contact_mod,
+            "get_candidate",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "candidate_data": {"contact": {"slack_channel_name": "x"}},
+                }
+            ),
+        )
+        with pytest.raises(ValueError, match="slack_channel_id is required"):
+            contact_mod.get_admin_slack_channel_snapshot(astral_candidate_id="c1")
+
+    def test_snapshot_happy_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            contact_mod,
+            "get_candidate",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "candidate_data": {
+                        "contact": {
+                            "slack_channel_id": " C_SNAP ",
+                            "slack_channel_name": " snap ",
+                        }
+                    },
+                }
+            ),
+        )
+        msgs = [{"ts": "1.0", "text": "hi"}]
+        hist = MagicMock(return_value=msgs)
+        monkeypatch.setattr(contact_mod, "fetch_full_conversation_history", hist)
+        out = contact_mod.get_admin_slack_channel_snapshot(astral_candidate_id=" c1 ")
+        assert out == {
+            "astral_candidate_id": "c1",
+            "channel_id": "C_SNAP",
+            "channel_name": "snap",
+            "messages": msgs,
+        }
+        hist.assert_called_once_with(channel="C_SNAP")

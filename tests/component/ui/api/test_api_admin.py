@@ -3831,3 +3831,83 @@ class TestAst1780EmptyRenderListGatesForceOff:
         )
         assert admin_mod._candidate_dispatch_empty_render_error("c1", "qualify_job_listings") is None
 
+
+class TestAst1791NoPromptValueErrorEmptyRender:
+    """AST-1792 / AST-1791: prompt-load ValueError soft-miss → empty_render false (no eval monkeypatch)."""
+
+    @staticmethod
+    def _stub_no_agent_task_prompts(monkeypatch: pytest.MonkeyPatch) -> None:
+        # Real evaluate path: candidate exists, prompt load raises (no agent_task).
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": "c1",
+                "first": "Ada",
+                "last": "Lovelace",
+                "candidate_data": {},
+            },
+        )
+        monkeypatch.setattr(admin_mod, "build_candidate_token_view", lambda cand: {"first": "Ada"})
+        monkeypatch.setattr(
+            admin_mod,
+            "_dispatch_empty_render_prompt_texts",
+            lambda tk: (_ for _ in ()).throw(ValueError(f"No agent_task row for '{tk}'")),
+        )
+
+    def test_evaluate_valueerror_no_agent_task_empty_render_false(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # [bug-repro] red on pre-AST-1791 (ValueError → true); green after soft-miss → false.
+        self._stub_no_agent_task_prompts(monkeypatch)
+        assert admin_mod._evaluate_dispatch_empty_render("c1", "gaze") == {
+            "empty_render": False,
+            "empty_tokens": [],
+        }
+        assert admin_mod._candidate_dispatch_empty_render_error("c1", "gaze") is None
+
+    def test_list_valueerror_no_prompts_keeps_auto(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub_no_agent_task_prompts(monkeypatch)
+        rows = [
+            {
+                "id": 9,
+                "task_key": "gaze",
+                "trigger_state": "NEW",
+                "entity_type": "company",
+                "candidate_id": "c1",
+                "score_floor": None,
+                "auto_mode": 1,
+            }
+        ]
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        updates: list[tuple] = []
+        monkeypatch.setattr(
+            admin_mod,
+            "update_dispatch_task",
+            lambda tid, **kw: updates.append((tid, kw)),
+        )
+        out = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        assert out[0]["empty_render"] is False
+        assert out[0]["auto_mode"] == 1
+        assert updates == []
+
+    def test_run_valueerror_no_prompts_allowed(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub_no_agent_task_prompts(monkeypatch)
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {"candidate_id": "c1", "task_key": "gaze"},
+        )
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        run = MagicMock(return_value=True)
+        monkeypatch.setattr(admin_mod, "run_task", run)
+        resp = admin_client.post("/api/admin/dispatch_tasks/1/run", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json()["started"] is True
+        run.assert_called_once()
+

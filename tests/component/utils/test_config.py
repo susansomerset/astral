@@ -6893,3 +6893,30 @@ class TestAst1779EmptyRenderForPrompts:
             texts, cd, self._TASK, entity_contexts={"rubric": {}}
         )
         assert out == {"empty_render": True, "empty_tokens": ["GET_RUBRIC"]}
+
+
+class TestAst1788ManageListAndProfileSlackChannelShapes:
+    """AST-1788: manage list slack_username + profile channel id/name after username."""
+
+    def test_manage_list_slack_username_column(self) -> None:
+        manage = cfg.DATA_SHAPES["candidates"]["list"]["manage"]
+        by_key = {c["key"]: c for c in manage}
+        assert by_key["slack_username"]["label"] == "Slack username"
+        assert by_key["slack_username"].get("sortable") is True
+        keys = [c["key"] for c in manage]
+        assert keys.index("slack_username") == keys.index("contact_email") + 1
+
+    def test_profile_slack_channel_fields_after_username(self) -> None:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        by_key = {f["key"]: f for f in section["fields"]}
+        assert by_key["contact.slack_channel_id"]["label"] == "Slack channel id"
+        assert by_key["contact.slack_channel_id"]["type"] == "text"
+        assert by_key["contact.slack_channel_name"]["label"] == "Slack channel name"
+        assert by_key["contact.slack_channel_name"]["type"] == "text"
+        keys = [f["key"] for f in section["fields"]]
+        assert keys.index("contact.slack_channel_id") == keys.index("contact.slack_username") + 1
+        assert keys.index("contact.slack_channel_name") == keys.index("contact.slack_channel_id") + 1
