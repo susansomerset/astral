@@ -656,6 +656,144 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 ---
 
+## Bug: AST-1801 — claim union must not registry-validate companion states
+
+Orphaned mini-parent: AST-1800 (no ancestor box checked). This section patches the historical home of union claim / AST-1798. Scope gate: AST-1801 `## Scope` / Component + Technical scope only (`roster` / `tracker` / `candidate` claim helpers).
+
+### As-is
+
+`prefilter_company` with `trigger_state=HOMEPAGE_READY` resolves `claim_states=["HOMEPAGE_READY","HOMEPAGE_READY_RETRY"]` via AST-1798 suffix-always `dispatch_claim_states`, then `get_new_company_batch(..., states=claim_states)` raises `ValueError: state must be one of [...], got 'HOMEPAGE_READY_RETRY'` because the multi-state branch requires every list member ∈ `COMPANY_STATES`. Dispatcher truncates the batch; the hop fails. The companion key is intentionally absent from the registry (AST-1798 / AST-641: do not seed synthetic `_RETRY` keys).
+
+### To-be
+
+When `states=` is provided, claim helpers pass the union through to SQL without registry-membership checks on list members. `HOMEPAGE_READY` may claim `['HOMEPAGE_READY','HOMEPAGE_READY_RETRY']` even when `HOMEPAGE_READY_RETRY` ∉ `COMPANY_STATES`; zero matching rows for an unused companion is fine. When `states` is `None`, the single primary `state` argument remains registry-validated. Data validation stays upstream of claim; do not add synthetic companions to any entity-state registry.
+
+### Repro
+
+Against current tip (AST-1798 product landed; this fix not applied):
+
+```python
+from src.utils import config as cfg
+from src.core.roster import get_new_company_batch
+
+assert cfg.dispatch_claim_states("HOMEPAGE_READY", "company") == [
+    "HOMEPAGE_READY",
+    "HOMEPAGE_READY_RETRY",
+]
+assert "HOMEPAGE_READY_RETRY" not in cfg.COMPANY_STATES
+
+# Raises today (matches live log 2026-09-25 20:43:15):
+get_new_company_batch(
+    "HOMEPAGE_READY",
+    limit=1,
+    candidate_id="abrams",
+    batch_id="repro-ast-1801",
+    states=["HOMEPAGE_READY", "HOMEPAGE_READY_RETRY"],
+)
+# ValueError: state must be one of [...], got 'HOMEPAGE_READY_RETRY'
+```
+
+After fix: same call returns `(batch_id, companies)` with no ValueError (companies may be empty if no rows match either state).
+
+### Root cause
+
+AST-641 Stage 3 wired optional `states=` on claim wrappers and **validated every list member against the entity registry**. AST-1798 made claim pairing suffix-always and explicitly allowed companions absent from the registry, but left those wrapper loops in place. The raise site on the live log is `roster.get_new_company_batch` (~1412–1414); `tracker.get_new_job_batch` and `candidate.get_new_candidate_batch` share the same multi-state registry gate.
+
+### Proposed change
+
+1. **`src/core/roster.py` — `get_new_company_batch`** (~1408–1414):
+   - Keep: when `states is None`, raise if `state` ∉ `COMPANY_STATES` (single-state callers stay bound).
+   - Change: when `states` is provided, **do not** loop `for s in states` against `COMPANY_STATES` — pass `states` through to `claim_company_batch` unchanged.
+   - Leave `state_config = COMPANY_STATES.get(state, {})` for batch_criteria (trigger-state keyed; empty dict if absent is fine).
+
+2. **`src/core/tracker.py` — `get_new_job_batch`** (~1510–1514):
+   - Keep: when `states is None`, call `_assert_valid_job_batch_claim_state(state)`.
+   - Change: when `states` is provided, **do not** call `_assert_valid_job_batch_claim_state` on each member — pass `states` through to `database.claim_job_batch`.
+
+3. **`src/core/candidate.py` — `get_new_candidate_batch`** (~1971–1979):
+   - Keep: when `states is None`, validate `state` via `is_valid_candidate_batch_claim_state`.
+   - Change: when `states` is provided, **do not** loop registry/`is_valid_candidate_batch_claim_state` on each member — pass `states` through to `database.claim_candidate_batch`.
+
+4. **Out of scope / boundaries:** do **not** add `HOMEPAGE_READY_RETRY` (or other synthetic companions) to `COMPANY_STATES` / `JOB_STATES` / `CANDIDATE_STATES`. Do **not** change `dispatch_claim_states` (already suffix-always on AST-1798). Do **not** change data-layer `_state_in_sql` / claim SQL (already accepts arbitrary non-empty string lists). Smoke: `prefilter_company` with `HOMEPAGE_READY` + union claim completes without the ValueError.
+
+### Blast radius
+
+- **Claim path only:** multi-state dispatch claims (primary + `_RETRY` via `_run_unified`) stop failing when a companion key is absent from the registry. Live flip: `prefilter_company` / `HOMEPAGE_READY` no longer truncates on `HOMEPAGE_READY_RETRY`.
+- **Single-state callers** (`get_new_*_batch(state, ...)` without `states=`) unchanged — still registry-gated.
+- **SQL:** unused companion still matches zero rows — no error, no inventing rows.
+- **Shared consumers:** dispatcher already passes `claim_states` from `dispatch_claim_states`; no change to pairing or score-floor gating.
+- **Tests** that assert the multi-state ValueError for registry-absent companions (if any) would flip; AST-1798 plan item 2 already expected claim paths not to reject absent `{ts}_RETRY`. Betty owns test-tree flips if the board asks.
+
+### What must still hold
+
+- AST-1798 suffix-always pairing: primary → `[ts, f"{ts}_RETRY"]`; already-`*_RETRY` → `[ts]` only; no cross-name `retry_state` claim unions.
+- Retry-only trigger rows still claim a single state (AST-641 AC).
+- Score-floor gating still keyed off the dispatch row’s `trigger_state` via `dispatch_claim_uses_score_floor` (AST-641).
+- Registry `retry_state` / `error_state` continue to drive failure **routing** writes; claim helpers still must not invent registry keys.
+- `batch_id`-first claim → get → clear shape unchanged (`astral.batch.claim-process-release`).
+- Direct single-state claim callers (tests / non-dispatch paths) still reject unknown primary `state` values when `states` is omitted.
+
+
+## Fix-board Joan findings (AST-1801)
+
+**Verdict: CANON: OK** — Dropping multi-state registry gates on `get_new_company_batch` / `get_new_job_batch` / `get_new_candidate_batch` when `states=` is set matches `patt.task.dispatch-retry` (companion need not exist in registry). Single-state callers stay registry-bound. No statute update; F3 not triggered.
+
+
+## Review-fix findings (AST-1801)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — `[board-betty] TESTS: REVISE` defers absent-companion claim coverage to sibling **AST-1802** (gap ticket in plan doc). No qa-fix spawn / no `[bug-repro]` in diff. Same intentional product-only + docs-acceptance split as **AST-1798** / **AST-1791**.
+
+**`## What must still hold`:** OK
+- **AST-1798 suffix-always pairing:** `dispatch_claim_states` untouched in diff; only wrapper validation relaxed.
+- **Retry-only rows single-state:** no change to dispatch pairing or `endswith("_RETRY")` logic.
+- **Score-floor gating:** `dispatch_claim_uses_score_floor` / dispatcher call sites unchanged.
+- **Registry `retry_state` / routing:** no registry or routing writes in diff.
+- **`astral.batch.claim-process-release` shape:** `claim_*_batch` → `get_*_batch` → return unchanged; only pre-claim registry loops removed when `states=` set.
+- **Single-state callers (`states is None`):** roster / tracker / candidate still registry-gate primary `state` (diff keeps `if states is None` branches only).
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on bug ticket. Joan fix-board cites `patt.task.dispatch-retry` informally only. Process observation for Archie — not blocking; product matches board-cited dispatch-retry law (same pattern as AST-1798 / AST-1799).  
+  **Recommendation:** No in-flight Canon Scope amendment required unless Archie wants Radia comparability on every fix-lane bug.
+
+- **Location:** `[board-betty] TESTS: REVISE` / sibling **AST-1802** (Plan Ready per plan doc)  
+  **Finding:** No component test on this tip pins `get_new_*_batch(..., states=[primary, {primary}_RETRY])` with companion ∉ registry. Expected on product-only tip; AST-1802 owns repro-first flip + bible.  
+  **Recommendation:** Chuckles: mark **Docs-Acceptance** on AST-1801 (mirror AST-1798). Do not block product UT on AST-1802; land AST-1802 before expecting roster/tracker/candidate absent-companion cases green on ftr.
+
+### advisory
+
+- **Location:** Board-cited law (informal, not frozen) — `patt.task.dispatch-retry`, `astral.dispatch.entity-state-bound`, `astral.batch.claim-process-release`  
+  **Finding:** Diff aligns with Joan fix-board narrative: companions may be absent from registry at claim time; single-state path stays bound; claim→get shape preserved.  
+  **Recommendation:** None for resolve-child.
+
+## What's solid
+
+- Diff isolates plan-fix § Proposed change (1)–(3): removes multi-state registry `for s in states` loops in `roster.get_new_company_batch`, `tracker.get_new_job_batch`, `candidate.get_new_candidate_batch`; inline comments cite AST-1801 / AST-1798.
+- Scope gate honored: only scoped `src/core/{roster,tracker,candidate}.py` + plan-fix patch on `ast-641-…` feature doc; no registry seeding, no `dispatch_claim_states` / `database.py` edits.
+- Plan fidelity: matches **To-be** (union passes through when `states=` set; `states is None` still validates primary).
+- Estimate **3** fits footprint (three mirrored helpers + plan doc).
+- Parent **AST-1800** In Progress with `origin/ftr/AST-1800-claim-union-no-registry-validate` present — **normal** fix-lane parent shape (not `ORPHANED — target dev`).
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1800 In Progress; diff base `origin/ftr/AST-1800-claim-union-no-registry-validate`) | → **Review Posted** → append artifact + `docs(AST-1801): Radia review — clean` on publish ref → post slim upshot `--as radia` → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+| — | Sibling **AST-1802** | Parallel: close Betty `TESTS: REVISE` bar (test/bible only). |
+
+**Chuckles note:** `[board-betty] TESTS: REVISE` owned by sibling gap AST-1802. Product tip docs-acceptance — no merge-tests on AST-1801.
+
+
+
+## Docs-Acceptance (AST-1801)
+
+Test-tree / absent-companion claim asserts owned by sibling gap AST-1802 (fix-board TESTS: REVISE). No merge-tests on this tip.
+
 ## Bug: AST-1802 — gap: claim-union absent-companion registry tests (AST-1801 board)
 
 Sibling test gap for AST-1801 (`[board-betty] TESTS: REVISE`). Product fix (drop multi-state registry gates on claim helpers) lands on AST-1801; this ticket is **test/bible only**. Scope gate: AST-1802 `## Scope` (Component + Technical). Same plan-doc home as union claim / AST-1798 / AST-1801 (`ast-641-…`).
