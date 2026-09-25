@@ -97,6 +97,7 @@ class TestRunJob:
         assert len(done) == 1 and done[0]["level"] == "info"
         assert done[0]["message"].startswith("00000000 | telescope job done: https://example.com -> https://example.com/")
         assert done[0]["job"] == "00000000" and done[0]["attempt"] == "1/4"
+        assert done[0]["url"] == "https://example.com"
         assert any(p["level"] == "debug" and p["message"].startswith("Claimed job") for p in out)
 
     async def test_no_debug_lines_without_debug_flag(self, monkeypatch, capsys) -> None:
@@ -181,10 +182,11 @@ class TestHeartbeat:
         old.cancel()
         new.cancel()
 
-    async def test_job_missing_from_db_is_cancelled(self, monkeypatch) -> None:
+    async def test_job_missing_from_db_is_cancelled(self, monkeypatch, capsys) -> None:
         w = _worker()
         task = asyncio.create_task(asyncio.sleep(60))
         w._in_flight["gone"] = task
+        w._job_urls["gone"] = "https://acme.com/careers"
 
         async def fake_heartbeat(_db, **_kw):
             w._stopping.set()
@@ -194,6 +196,9 @@ class TestHeartbeat:
         await w._heartbeat_loop()
         await asyncio.sleep(0)
         assert task.cancelled()
+        (line,) = [p for p in _json_lines(capsys) if "cancelled" in p["message"]]
+        assert "https://acme.com/careers" in line["message"]
+        assert line["url"] == "https://acme.com/careers" and line["job"] == "gone"
 
 
 class TestResultCodec:

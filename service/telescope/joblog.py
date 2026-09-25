@@ -1,7 +1,7 @@
 """Per-job log context.
 
 While a job runs, every log line carries ``job`` (first 8 chars of its id),
-``attempt`` (e.g. 2/4) and, once it has a page, ``firefox`` (e.g. F-003 — the
+``attempt`` (e.g. 2/4), ``url`` (as requested) and, once it has a page, ``firefox`` (e.g. F-003 — the
 Firefox launch serving it, numbered per process). The job's ``debug`` flag, set
 by the platform from its log_debug, turns on that job's ``_log.debug`` lines.
 """
@@ -18,6 +18,7 @@ _debug: contextvars.ContextVar[bool] = contextvars.ContextVar("telescope_job_deb
 _job: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("telescope_job", default=None)
 _attempt: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("telescope_attempt", default=None)
 _firefox: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("telescope_firefox", default=None)
+_url: contextvars.ContextVar[Optional[str]] = contextvars.ContextVar("telescope_url", default=None)
 
 _firefox_seq = itertools.count(1)
 
@@ -35,18 +36,19 @@ def bind_firefox(firefox_id: str) -> None:
 
 
 def begin_job(
-    job_id: str, *, attempt: int, max_attempts: int, debug: bool
+    job_id: str, *, attempt: int, max_attempts: int, debug: bool, url: str = ""
 ) -> Tuple[Any, ...]:
     return (
         _job.set(short_id(job_id)),
         _attempt.set(f"{attempt}/{max_attempts}"),
         _firefox.set(None),
         _debug.set(bool(debug)),
+        _url.set(url or None),
     )
 
 
 def end_job(tokens: Tuple[Any, ...]) -> None:
-    for var, token in zip((_job, _attempt, _firefox, _debug), tokens):
+    for var, token in zip((_job, _attempt, _firefox, _debug, _url), tokens):
         var.reset(token)
 
 
@@ -59,6 +61,8 @@ def _fields() -> dict[str, Any]:
     if _job.get():
         out["job"] = _job.get()
         out["attempt"] = _attempt.get()
+        if _url.get():
+            out["url"] = _url.get()
     if _firefox.get():
         out["firefox"] = _firefox.get()
     return out
