@@ -271,7 +271,7 @@ Structured **`run_next`** hop observability: parent → child **`task_key`**, **
 
 ### AST-641 · AST-642 · AST-630
 
-**AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and its registry companion `trigger_state + "_RETRY"` when that companion exists in `JOB_STATES` / `COMPANY_STATES`. Retry-only rows stay single-state. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored. Mixed consult batches route envelope/hydration/missing-ID/bad-grade failures **per entity** — primary → `retry_state`, `*_RETRY` → terminal `error_state`; `analysis_upshot` second failure → `FAILED_TECHNICAL`.
+**AST-630 (parent):** Primary dispatch `trigger_state` rows (not ending in `_RETRY`) **count** and **claim** eligible entities in both the primary state and `trigger_state + "_RETRY"` always (companion need not exist in `JOB_STATES` / `COMPANY_STATES` — **AST-1798** / **AST-1799**). Retry-only rows stay single-state. Registry `retry_state` is for failure **routing** only, not claim grouping. Score-floor gating remains keyed off the dispatch row’s `trigger_state` via **`dispatch_claim_uses_score_floor`** — one floor across the combined pool when scored. Mixed consult batches route envelope/hydration/missing-ID/bad-grade failures **per entity** — primary → `retry_state`, `*_RETRY` → terminal `error_state`; `analysis_upshot` second failure → `FAILED_TECHNICAL`.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
@@ -738,11 +738,11 @@ UI wiring: **`docs/test-bible/frontend/pages.md`** (**AST-876**).
 
 ### AST-882 · AST-881
 
-**`dispatch_claim_states`** prefers registry **`retry_state`** over **`{ts}_RETRY`** name convention — **`HOMEPAGE_READY`** claims **`WEBSITE_FOUND_RETRY`**. **`WEBSITE_FOUND`** companion claim unchanged.
+**`dispatch_claim_states`** is suffix-always (**AST-1798** / **AST-1799**): **`HOMEPAGE_READY`** claims **`HOMEPAGE_READY_RETRY`** (never **`WEBSITE_FOUND_RETRY`** via claim). Registry **`retry_state`** (e.g. **`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`**) remains for failure routing only. **`WEBSITE_FOUND`** companion claim still **`WEBSITE_FOUND_RETRY`** (suffix match).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| HOMEPAGE_READY → WFR claim list | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst882DispatchClaimStates` |
+| HOMEPAGE_READY → HOMEPAGE_READY_RETRY claim list | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst882DispatchClaimStates` |
 
 Roster / gazer / dispatch: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/gazer.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-882**).
 
@@ -764,7 +764,7 @@ Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**
 
 ### AST-898 · AST-895
 
-**`NEW_RETRY`** qualify holding; **`NEW`** / **`VALID_TITLE`** `retry_state` → **`NEW_RETRY`**; primary qualify claim **`["NEW","NEW_RETRY"]`**; **`VALID_TITLE_RETRY`** remains in registry for drain only (no new writes from NEW qualify path). UI: **`NEW_RETRY`** / **"New (retry)"** + grade field.
+**`NEW_RETRY`** qualify holding; **`NEW`** / **`VALID_TITLE`** registry `retry_state` → **`NEW_RETRY`** (routing / fail-dest). Primary **claim** is suffix-always (**AST-1798** / **AST-1799**): **`["NEW","NEW_RETRY"]`**, **`["VALID_TITLE","VALID_TITLE_RETRY"]`**. **`VALID_TITLE_RETRY`** remains in registry for drain only (no new writes from NEW qualify path). UI: **`NEW_RETRY`** / **"New (retry)"** + grade field.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
