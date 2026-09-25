@@ -4815,6 +4815,11 @@ TELESCOPE_CONFIG = {
     "default_priority": 0,
     "admin_priority": 10,
     "worker_stale_seconds": 60,
+    # Serverless Telescope: GET this private URL (…railway.internal:8080/wake) to wake it
+    # when no worker is live. Unset → no wake pings (e.g. local dev, always-on worker).
+    "wake_url_env": "TELESCOPE_WAKE_URL",
+    "wake_throttle_seconds": 30,
+    "wake_timeout_seconds": 5,
     "cull_html_default": True,
     "default_expand": True,
     "default_wait_ready": False,

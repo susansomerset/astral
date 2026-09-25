@@ -299,6 +299,15 @@ async def maintain(
     }
 
 
+async def has_pending(pool: asyncpg.Pool) -> bool:
+    """Any job queued (including retries waiting on run_after) or running anywhere."""
+    return bool(
+        await pool.fetchval(
+            f"SELECT EXISTS (SELECT 1 FROM {JOB_TABLE} WHERE status IN ('queued', 'running'))"
+        )
+    )
+
+
 async def release_all(pool: asyncpg.Pool, *, worker_id: str) -> int:
     """Shutdown: hand unfinished jobs back without charging them an attempt."""
     rows = await pool.fetch(

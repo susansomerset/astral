@@ -25,6 +25,10 @@ MAINTENANCE_SECONDS = 30
 JOB_RETENTION_HOURS = 24
 WORKER_STALE_SECONDS = 60
 SHUTDOWN_GRACE_SECONDS = 25
+# Serverless: after this long with nothing queued, running or in flight, the process
+# drops its Postgres connections and Firefox so Railway can put it to sleep. The
+# platform wakes it with GET /wake (TELESCOPE_WAKE_URL) when it enqueues work.
+IDLE_SLEEP_SECONDS = 300
 DB_POOL_MAX_SIZE = 5
 
 # One Firefox per process, a fresh context per job. After this many jobs a new

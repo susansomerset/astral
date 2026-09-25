@@ -57,6 +57,7 @@ class QueueWorker:
         self._listener: Optional[asyncpg.Connection] = None
         self._tasks: list[asyncio.Task] = []
         self.last_loop_at = time.monotonic()
+        self.last_busy_at = time.monotonic()
         self.db_ok = False
         # Short replica label on every log line; worker_id stays unique per process.
         self.label = self.worker_id.split(":")[0][:8]
@@ -124,6 +125,12 @@ class QueueWorker:
     @property
     def in_flight(self) -> int:
         return len(self._in_flight)
+
+    def idle_seconds(self) -> float:
+        """How long this worker has had nothing in flight (0 while busy)."""
+        if self._in_flight:
+            return 0.0
+        return time.monotonic() - self.last_busy_at
 
     # -- listener ------------------------------------------------------------
 
@@ -200,6 +207,7 @@ class QueueWorker:
 
     def _job_done(self, job_id: str) -> None:
         self._in_flight.pop(job_id, None)
+        self.last_busy_at = time.monotonic()
         self._wake.set()  # a slot freed up
 
     async def _heartbeat_loop(self) -> None:
