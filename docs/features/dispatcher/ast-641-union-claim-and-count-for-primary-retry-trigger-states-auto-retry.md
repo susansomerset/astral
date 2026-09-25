@@ -412,3 +412,19 @@ AST-882 / AST-898 taught the component suite and bible that claim companions fol
 - Primaries whose suffix already matched `retry_state` (`JD_READY`, `WEBSITE_FOUND`, `NEW` job, candidate `REQUESTED_*`) keep the same two-state claim lists.
 - AST-898 registry holding and consult fail-dest to `NEW_RETRY` remain documented and tested as routing, not claim.
 - AST-1798 product contract: no cross-name claim companions; companion need not exist in registry.
+
+
+## Fix-board Joan findings (AST-1799)
+
+**Triage notes**
+
+AST-1799 is test/bible-only (gap from Betty’s AST-1798 `TESTS: REVISE`). Scope: flip `TestAst882` / `TestAst641` / `TestAst898` claim asserts and `docs/test-bible/utils/config.md` claim-contract prose to suffix-always pairing; no `src/` edits; registry `retry_state` routing asserts stay.
+
+No active statute or pattern needs a change:
+
+- **`patt.task.dispatch-retry`** — claim is trigger + `{trigger}_RETRY`; routing via config `retry_state` is separate. The plan keeps that split (claim asserts flip; fail-dest / registry `retry_state` asserts unchanged).
+- **`astral.dispatch.entity-state-bound`** / **`astral.batch.claim-process-release`** — not touched; bible alignment with AST-1798 product supports them.
+- Test bible is not canon; updating it to match suffix-only claim law is documentation, not a directive amendment.
+
+No F3 `validate-plan` fix mode from this board pass.
+[AST-1797 | AST-1799] Joan/validate fix-board - complete 78c1bebf model=composer-2.5 - (15s) > OK
