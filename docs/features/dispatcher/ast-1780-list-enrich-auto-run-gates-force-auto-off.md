@@ -303,3 +303,66 @@ context_tokens≈24000
 2. Post slim upshot via `linear_proxy --as radia save-comment`.
 3. Move to **Review Posted**; datt routes PROCEED per §3h.
 4. Track operative-view divergence (discuss) during epic UAT alongside AST-1781 — escalate only if operators see list/gate vs hook mismatch on artifact-backed tokens.
+
+## Bug: AST-1791 — Default validation TRUE when no prompts/keys
+
+Orphaned fix child of AST-1790 (mini-parent off `origin/dev`; Done ancestor AST-1766). Scope gate is this ticket’s own `## Scope` (copied from the bug Component/Technical scope) — `api_admin.py` soft-miss branch only; `config.py` / React unchanged unless this plan says otherwise.
+
+### As-is
+
+`_evaluate_dispatch_empty_render` treats every soft miss as `empty_render: true`, including when `_dispatch_empty_render_prompt_texts` / `_resolve_task_prompts` raises `ValueError` (no `agent_task` row, no `agent_id`, missing agent). Non-agent `dispatch_task` rows (no prompts / no expected tokens) therefore get `empty_render: true` on list enrichment, force AUTO off, and HTTP 400 on AUTO-on / Run — even though nothing in prompts expects a candidate token fill.
+
+### To-be
+
+Validation defaults to pass (`empty_render: false`, empty `empty_tokens`) when there are **no prompts to validate** (prompt-load `ValueError`). Disable AUTO/Run only when prompts load and `empty_render_for_prompts` reports candidate-scoped tokens that resolve blank (tokens expected and missing). Missing / blank `candidate_id` and unexpected evaluation exceptions stay fail-closed.
+
+### Repro
+
+1. Fixture shape (file/JSON persistence — no SQL seed): a `dispatch_task` row with a real `candidate_id` (candidate exists and has an API key) and a `task_key` that has **no** current `agent_task` row (non-agent keys such as gaze / `recheck_no_openings`-class tasks from AST-537).
+2. `GET /api/admin/dispatch_tasks` → that row’s `empty_render` is `true`; if `auto_mode` was on, enrichment forces it off.
+3. `PUT` with `auto_mode: true` or `POST …/run` → HTTP 400 with body mentioning prompts could not be validated / empty-render.
+4. Contrast (still broken after fix would be a regression): same candidate, `task_key` whose `agent_task` prompts reference `{$FIRST_NAME}` (or another candidate-scoped token) that resolves to `""` → must remain `empty_render: true` and gated.
+
+### Root cause
+
+AST-1780 Stage 1 step 4 / Decision explicitly **fail-closed** on “cannot prove fills” — including missing `agent_task`. That conflates “prompts reference tokens that are blank” with “there are no prompts / no agent_task to score.” Predicate intent (AST-1766 AC1 / AST-1779) is blank **referenced** candidate-scoped tokens; no prompts ⇒ nothing expected ⇒ should not disable.
+
+### Proposed change
+
+All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.py` or `AdminScheduledActions.tsx`.
+
+1. **`_evaluate_dispatch_empty_render(candidate_id, task_key)`** — change only the `ValueError` branch after `_dispatch_empty_render_prompt_texts(tk)`:
+
+   - On `ValueError` (raised by `_resolve_task_prompts`: no `agent_task` row, empty `agent_id`, or agent not found): `logger.warning` with who/why (candidate_id, task_key, `str(exc)`) stating that prompts could not be loaded and **validation passes** (no expected tokens to score) — not “treating as empty_render”. Return `{"empty_render": False, "empty_tokens": []}`.
+   - Leave these branches **unchanged** (still `empty_render: True`, empty `empty_tokens`, existing warning / exception text):
+     - blank / missing `candidate_id`
+     - `database.get_candidate` miss
+     - any other `Exception` (`logger.exception` + “Leaving empty_render true for this row”)
+   - Successful prompt load → still `return empty_render_for_prompts(texts, cd, tk, entity_contexts=None)` unchanged.
+
+2. **`_candidate_dispatch_empty_render_error`** — no message change required for the no-prompt case: after step 1, that path returns `empty_render` falsy so this helper returns `None` (AUTO/Run allowed). Keep the existing two user-facing strings for remaining `empty_render` true cases (`empty_tokens` non-empty vs soft-miss with empty `empty_tokens` — the latter now only covers no-`candidate_id` / candidate-missing / unexpected Exception).
+
+3. **`src/utils/config.py` / `empty_render_for_prompts`** — **unchanged**. Helper already returns `empty_render: false` when no scored tokens are blank (including empty / all-blank `prompt_texts`). Policy for “cannot load prompts” lives in the api_admin soft-miss branch, not the helper.
+
+4. **Logging statutes:** ValueError path remains a per-item `logger.warning` (`stat.logging.warning` who/why); do not add route-level `logger.info` (`stat.logging.info.api`). Unexpected throws stay `logger.exception` + fail-closed.
+
+⚠️ **Decision:** Blank `candidate_id` and missing candidate stay fail-closed. Product intent for non-agent rows is “no prompts,” not “no candidate” — `astral.dispatch.entity-state-bound` / AST-1766 still require a real `candidate_id` on every row; API-key gate already blocks Run/Auto without a candidate. Unexpected `Exception` stays fail-closed (not a “no prompts” soft miss).
+
+⚠️ **Decision:** All `_resolve_task_prompts` `ValueError` reasons share one fail-open return — do not special-case “No agent_task row” vs missing `agent_id` / agent. Scope treats “cannot load prompt texts” as no prompts to validate at this gate.
+
+### Blast radius
+
+- Same helper feeds `list_dtasks` enrichment + force AUTO off, create/update AUTO-on 400, and `run_dtask` 400 — one branch change flips all three surfaces; UI (`AdminScheduledActions.tsx`) already trusts `row.empty_render` (AST-1782) and needs no edit.
+- AST-1781 (`database.py` / `candidate.py` revalidation + `_force_auto_off_if_empty_render`) does **not** call `_evaluate_dispatch_empty_render`; out of this bug’s Scope. If those hooks independently treat missing agent_task as force-off, that is a separate delta — do not expand this fix into `database.py`.
+- Component tests that monkeypatch `_evaluate_dispatch_empty_render` / `_candidate_dispatch_empty_render_error` (AST-1780) are unaffected; any test that asserted real ValueError → `empty_render: true` would need Betty’s lane, not this engineer patch.
+- `empty_render_for_prompts` callers elsewhere keep current semantics.
+
+### What must still hold
+
+- When prompts load and a referenced candidate-scoped token resolves `""`, `empty_render` stays `true`; AUTO-on / Run still 400; list still force-off AUTO (AST-1780 Stage 1–2 / AST-1766 AC1, AC3–5).
+- Job / non-candidate tokens alone still must not flip the flag (`entity_contexts=None`) (AST-1766 AC9–10 / AST-1780 AC5).
+- Chain tokens still ignored (AST-1779).
+- Blank `candidate_id` / missing candidate still `empty_render: true` (entity-state-bound; not this bug’s carve-out).
+- Unexpected evaluation exceptions still fail-closed with `logger.exception`.
+- No second list boolean name; no client-side `resolve_tokens` / `TOKEN_SOURCES` (AST-1782).
+- API-key gate (`_candidate_dispatch_api_key_error`) still runs and is independent of empty-render.
