@@ -790,6 +790,20 @@ Keep AST-1780 monkeypatched wiring rows above; do not mark them obsolete.
 
 **Integration:** none — do not invent new integration scenarios.
 
+### AST-1795 · AST-1793 (gap: soft-miss warning silence)
+
+**Parent:** [AST-1793](https://linear.app/astralcareermatch/issue/AST-1793). **Sibling product:** AST-1794. **Publish:** `origin/sub/AST-1793/AST-1795-no-agent-empty-render-warning-tests`.
+
+AST-1794 — ValueError soft-miss stays `empty_render: false` **and** emits no `no prompts to validate` warning. Same stubs as AST-1792; spy `admin_mod.logger.warning`. Red on pre-AST-1794 product; green after silence.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper soft-miss silence `[bug-repro]` | `src/ui/api/api_admin.py` | **`TestAst1791NoPromptValueErrorEmptyRender::test_evaluate_valueerror_soft_miss_no_warning`** |
+
+Keep AST-1780 / AST-1792 rows; do not mark them obsolete.
+
+**Integration:** none — do not invent new integration scenarios.
+
 ## QA test manifest
 
 1. List force off: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`
@@ -801,9 +815,10 @@ Keep AST-1780 monkeypatched wiring rows above; do not mark them obsolete.
 7. Revised run success: `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls`
 8. Revised create AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`
 9. Revised update AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`
-10. **`[bug-repro]`** ValueError soft-miss: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_evaluate_valueerror_no_agent_task_empty_render_false`
-11. List soft-miss keeps AUTO: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_list_valueerror_no_prompts_keeps_auto`
-12. Run soft-miss allowed: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_run_valueerror_no_prompts_allowed`
+10. ValueError soft-miss return: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_evaluate_valueerror_no_agent_task_empty_render_false`
+11. **`[bug-repro]`** soft-miss silence: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_evaluate_valueerror_soft_miss_no_warning`
+12. List soft-miss keeps AUTO: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_list_valueerror_no_prompts_keeps_auto`
+13. Run soft-miss allowed: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_run_valueerror_no_prompts_allowed`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -815,7 +830,7 @@ Keep AST-1780 monkeypatched wiring rows above; do not mark them obsolete.
   -q
 ```
 
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate. AST-1792 `[bug-repro]` nodes stay red until AST-1791 product lands on the tree under test.
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate. AST-1795 `[bug-repro]` stays red until AST-1794 product silence lands on the tree under test.
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/ui/api/api_admin.md`
