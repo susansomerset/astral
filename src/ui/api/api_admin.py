@@ -1990,13 +1990,15 @@ def _evaluate_dispatch_empty_render(
     try:
         texts = _dispatch_empty_render_prompt_texts(tk)
     except ValueError as exc:
+        # No agent_task / prompts to score → nothing expected missing (AST-1791).
         logger.warning(
-            "%s | dispatch empty_render task_key=%r — %s; treating as empty_render",
+            "%s | dispatch empty_render task_key=%r — %s; "
+            "no prompts to validate, empty_render false",
             cid,
             tk,
             exc,
         )
-        return {"empty_render": True, "empty_tokens": []}
+        return {"empty_render": False, "empty_tokens": []}
     except Exception as exc:
         logger.exception(
             "%s | dispatch empty_render task_key=%r\n  %s: %s\n  Leaving empty_render true for this row",
