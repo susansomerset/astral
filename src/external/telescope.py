@@ -13,6 +13,7 @@ import asyncio
 import json
 import os
 import re
+import threading
 import time
 import uuid
 import zlib
@@ -187,27 +188,38 @@ def _decode_result(blob: Optional[bytes]) -> Any:
     return json.loads(zlib.decompress(blob).decode("utf-8"))
 
 
+class _LoopState:
+    """Everything bound to one event loop: pool, listener, waiters, poller."""
+
+    def __init__(self) -> None:
+        self.db: Optional[asyncpg.Pool] = None
+        self.listener: Optional[asyncpg.Connection] = None
+        self.waiters: Dict[str, asyncio.Future] = {}
+        self.wake = asyncio.Event()
+        self.poller: Optional[asyncio.Task] = None
+        self.init_lock = asyncio.Lock()
+        self.wake_tasks: set = set()
+
+
 class _TelescopeQueue:
     """Enqueue a scrape job and await its result.
 
     One shared poller per event loop resolves every waiting caller with a single
     query; LISTEN telescope_job_done only wakes it early, so a dropped notification
     costs at most poll_interval_seconds, never a lost result.
+
+    State is kept per event loop: dispatch tasks each run their own long-lived loop
+    on their own thread (dispatcher._task_thread_target) and admin/intake paths use
+    asyncio.run, so several loops use this client at the same time. asyncpg
+    connections, Events and Futures must never cross loops.
     """
 
     def __init__(self) -> None:
-        self._db: Optional[asyncpg.Pool] = None
-        self._listener: Optional[asyncpg.Connection] = None
-        self._waiters: Dict[str, asyncio.Future] = {}
-        self._wake: Optional[asyncio.Event] = None
-        self._poller: Optional[asyncio.Task] = None
-        self._init_lock: Optional[asyncio.Lock] = None
-        # Serverless wake: last ping time (monotonic) and in-flight ping tasks.
+        self._states: Dict[asyncio.AbstractEventLoop, _LoopState] = {}
+        self._states_lock = threading.Lock()
+        # Serverless wake throttle — process-wide, shared across loops/threads.
         self._last_wake = float("-inf")
-        self._wake_tasks: set = set()
-        # Loop-bound resources must be rebuilt when the running loop changes — admin
-        # uses asyncio.run() per request (fresh loop each time).
-        self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._wake_lock = threading.Lock()
 
     def _dsn(self) -> str:
         env_key = TELESCOPE_CONFIG["database_url_env"]
@@ -216,25 +228,23 @@ class _TelescopeQueue:
             raise PlaywrightInfraError("connectivity_failure", f"{env_key} not set")
         return dsn
 
-    def _ensure_loop(self) -> None:
+    def _state(self) -> _LoopState:
         loop = asyncio.get_running_loop()
-        if self._loop is loop:
-            return
-        self._loop = loop
-        self._db = None
-        self._listener = None
-        self._waiters = {}
-        self._wake = asyncio.Event()
-        self._poller = None
-        self._init_lock = asyncio.Lock()
+        with self._states_lock:
+            st = self._states.get(loop)
+            if st is None:
+                # Forget closed loops (finished asyncio.run calls, exited task threads).
+                for old in [lp for lp in self._states if lp.is_closed()]:
+                    del self._states[old]
+                st = self._states[loop] = _LoopState()
+            return st
 
     async def _get_db(self) -> asyncpg.Pool:
-        self._ensure_loop()
-        assert self._init_lock is not None
-        async with self._init_lock:
-            if self._db is None:
+        st = self._state()
+        async with st.init_lock:
+            if st.db is None:
                 try:
-                    self._db = await asyncpg.create_pool(
+                    st.db = await asyncpg.create_pool(
                         self._dsn(),
                         min_size=1,
                         max_size=int(TELESCOPE_CONFIG["db_pool_max_size"]),
@@ -245,41 +255,36 @@ class _TelescopeQueue:
                     raise PlaywrightInfraError(
                         "connectivity_failure", f"telescope queue db: {e}"
                     ) from e
-            if self._poller is None or self._poller.done():
-                self._poller = asyncio.create_task(
-                    self._poll_loop(), name="telescope-result-poller"
+            if st.poller is None or st.poller.done():
+                st.poller = asyncio.create_task(
+                    self._poll_loop(st), name="telescope-result-poller"
                 )
-        return self._db
+        return st.db
 
-    async def _ensure_listener(self) -> None:
-        if self._listener is not None and not self._listener.is_closed():
+    async def _ensure_listener(self, st: _LoopState) -> None:
+        if st.listener is not None and not st.listener.is_closed():
             return
         try:
-            self._listener = await asyncpg.connect(self._dsn())
-            await self._listener.add_listener(_CHANNEL_DONE, self._on_done)
+            st.listener = await asyncpg.connect(self._dsn())
+            await st.listener.add_listener(_CHANNEL_DONE, lambda *_a: st.wake.set())
         except Exception as e:
-            self._listener = None
+            st.listener = None
             _log.warning("telescope result listener unavailable (polling only): %s", e)
 
-    def _on_done(self, *_args: Any) -> None:
-        if self._wake is not None:
-            self._wake.set()
-
-    async def _poll_loop(self) -> None:
+    async def _poll_loop(self, st: _LoopState) -> None:
         interval = float(TELESCOPE_CONFIG["poll_interval_seconds"])
         while True:
-            assert self._wake is not None
             try:
-                await asyncio.wait_for(self._wake.wait(), timeout=interval)
-            except asyncio.TimeoutError:
-                pass
-            self._wake.clear()
-            ids = [i for i, f in self._waiters.items() if not f.done()]
-            if not ids:
-                continue
-            try:
-                await self._ensure_listener()
-                rows = await self._db.fetch(
+                try:
+                    await asyncio.wait_for(st.wake.wait(), timeout=interval)
+                except asyncio.TimeoutError:
+                    pass
+                st.wake.clear()
+                ids = [i for i, f in st.waiters.items() if not f.done()]
+                if not ids:
+                    continue
+                await self._ensure_listener(st)
+                rows = await st.db.fetch(
                     f"""
                     SELECT id, status, result, error, error_class FROM {_JOB_TABLE}
                     WHERE id = ANY($1::uuid[]) AND status = ANY($2::text[])
@@ -290,10 +295,12 @@ class _TelescopeQueue:
             except asyncio.CancelledError:
                 raise
             except Exception as e:
+                # Never let the poller die: every waiter on this loop depends on it.
                 _log.warning("telescope result poll failed: %s: %s", type(e).__name__, e)
+                await asyncio.sleep(interval)
                 continue
             for row in rows:
-                fut = self._waiters.get(str(row["id"]))
+                fut = st.waiters.get(str(row["id"]))
                 if fut is not None and not fut.done():
                     fut.set_result(row)
 
@@ -303,12 +310,13 @@ class _TelescopeQueue:
         """Enqueue one scrape and wait for its result dict (or raise PlaywrightInfraError)."""
         require_controlled_external_io("telescope.request")
         db = await self._get_db()
+        st = self._state()
         deadline = float(TELESCOPE_CONFIG["job_deadline_seconds"])
         job_id = str(uuid.uuid4())
         # job_id[:8] is the `job` field on the worker's log lines for this scrape.
         _log.debug("Calling telescope job %s: %s", job_id, request)
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
-        self._waiters[job_id] = fut
+        st.waiters[job_id] = fut
         try:
             try:
                 async with db.acquire() as conn:
@@ -333,7 +341,7 @@ class _TelescopeQueue:
                         await conn.execute("SELECT pg_notify($1, '')", _CHANNEL_NEW)
                 # After the insert commits (the order the worker's sleep race guard
                 # relies on): wake a sleeping Telescope if no worker is live.
-                await self._maybe_wake(db)
+                await self._maybe_wake(db, st)
             except asyncpg.UndefinedTableError as e:
                 raise PlaywrightInfraError(
                     "connectivity_failure",
@@ -346,7 +354,7 @@ class _TelescopeQueue:
             try:
                 row = await asyncio.wait_for(asyncio.shield(fut), timeout=deadline)
             except asyncio.TimeoutError:
-                await self._cancel(job_id)
+                await self._cancel(db, job_id)
                 _log.warning(
                     "%s | telescope job cancelled: deadline %ss exceeded url=%s",
                     job_id[:8],
@@ -357,10 +365,10 @@ class _TelescopeQueue:
                     "telescope_timeout", f"job {job_id} exceeded {deadline}s"
                 ) from None
             except asyncio.CancelledError:
-                await asyncio.shield(self._cancel(job_id))
+                await asyncio.shield(self._cancel(db, job_id))
                 raise
         finally:
-            self._waiters.pop(job_id, None)
+            st.waiters.pop(job_id, None)
         status = row["status"]
         if status == "done":
             data = _decode_result(row["result"])
@@ -380,10 +388,10 @@ class _TelescopeQueue:
             raise PlaywrightInfraError("telescope_bad_request", detail)
         raise PlaywrightInfraError("telescope_job_failed", detail)
 
-    async def _cancel(self, job_id: str) -> None:
+    async def _cancel(self, db: Any, job_id: str) -> None:
         """Best effort: stop a worker spending Firefox time on a result nobody wants."""
         try:
-            await self._db.execute(
+            await db.execute(
                 f"""
                 UPDATE {_JOB_TABLE}
                 SET status = 'cancelled', error_class = 'cancelled',
@@ -407,26 +415,37 @@ class _TelescopeQueue:
             or 0
         )
 
-    async def _maybe_wake(self, db: Any) -> None:
+    async def _maybe_wake(self, db: Any, st: _LoopState) -> None:
         """Throttled fire-and-forget GET /wake when no Telescope worker is live.
 
         Telescope is Railway Serverless: it sleeps when idle and wakes on a
         private-network request. The ping only starts it; queued jobs wait safely.
         """
-        url = (os.environ.get(TELESCOPE_CONFIG["wake_url_env"]) or "").strip()
-        if not url:
-            return
-        if time.monotonic() - self._last_wake < float(TELESCOPE_CONFIG["wake_throttle_seconds"]):
-            return
+        env_key = TELESCOPE_CONFIG["wake_url_env"]
+        url = (os.environ.get(env_key) or "").strip()
+        throttle = float(TELESCOPE_CONFIG["wake_throttle_seconds"])
+        with self._wake_lock:
+            if time.monotonic() - self._last_wake < throttle:
+                return
         try:
             if await self._live_workers(db):
                 return
         except Exception as e:
             _log.debug("telescope wake check failed, pinging anyway: %s", e)
-        self._last_wake = time.monotonic()
+        with self._wake_lock:
+            if time.monotonic() - self._last_wake < throttle:
+                return
+            self._last_wake = time.monotonic()
+        if not url:
+            _log.warning(
+                "telescope wake skipped: no live Telescope worker and %s is not set; "
+                "queued jobs wait until a worker starts",
+                env_key,
+            )
+            return
         task = asyncio.create_task(self._ping_wake(url))
-        self._wake_tasks.add(task)
-        task.add_done_callback(self._wake_tasks.discard)
+        st.wake_tasks.add(task)
+        task.add_done_callback(st.wake_tasks.discard)
 
     async def _ping_wake(self, url: str) -> None:
         _log.debug("Calling telescope wake: %s", url)
@@ -441,7 +460,7 @@ class _TelescopeQueue:
     async def healthy(self) -> bool:
         """Queue reachable. Wakes a sleeping Telescope so it boots before the batch."""
         db = await self._get_db()
-        await self._maybe_wake(db)
+        await self._maybe_wake(db, self._state())
         return True
 
 
