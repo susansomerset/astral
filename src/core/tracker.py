@@ -1507,11 +1507,9 @@ def get_new_job_batch(
     candidate_id: when provided, scopes claim to jobs whose company belongs to this candidate.
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided)."""
+    # Multi-state claim (states=): skip registry gate on companions (AST-1801).
     if states is None:
         _assert_valid_job_batch_claim_state(state)
-    else:
-        for s in states:
-            _assert_valid_job_batch_claim_state(s)
     limit_val = limit if limit is not None else 10
     sort_by_val = sort_by
     if not batch_id and not context:
