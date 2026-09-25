@@ -546,3 +546,65 @@ class TestPlaywrightModuleGone:
     def test_src_external_playwright_import_fails(self) -> None:
         with pytest.raises(ModuleNotFoundError):
             __import__("src.external.playwright")
+
+
+class TestFetchCareersListTextAndDom:
+    """parse_job_list scrape: one Telescope job for body text + body html."""
+
+    @pytest.mark.asyncio
+    async def test_one_body_scoped_job_for_text_and_html(self, monkeypatch) -> None:
+        calls: list[dict] = []
+
+        async def fake_submit(body, priority=None):
+            calls.append(body)
+            return {
+                "final_url": "https://acme.com/careers/",
+                "text": ["Engineer", "Designer"],
+                "html": ["<body><div class='jobs'>x</div></body>"],
+            }
+
+        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
+        monkeypatch.setattr(pw_mod, "_cull_html", lambda h: f"CULLED:{h}")
+        page = pw_mod.PageHandle("https://acme.com/careers", session=pw_mod.BrowserSession())
+
+        text, dom, meta = await pw_mod.fetch_careers_list_text_and_dom(
+            page, {"run_load_all_jobs": True}
+        )
+
+        assert len(calls) == 1
+        assert calls[0]["fields"] == ["text", "html"]
+        assert calls[0]["selector"] == "body"
+        assert calls[0]["wait_ready"] is True and calls[0]["expand"] is True
+        assert text == "Engineer\n\nDesigner"
+        assert dom == "CULLED:<body><div class='jobs'>x</div></body>"
+        assert meta["ready"] is True and meta["visible_chars"] == len(text)
+        assert page.url == "https://acme.com/careers/"
+
+    @pytest.mark.asyncio
+    async def test_empty_text_is_not_ready_and_cull_can_be_off(self, monkeypatch) -> None:
+        async def fake_submit(body, priority=None):
+            return {"text": "", "html": "<body></body>"}
+
+        monkeypatch.setattr(pw_mod._pool, "submit", fake_submit)
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "cull_html_default", False)
+        page = pw_mod.PageHandle("https://acme.com/careers", session=pw_mod.BrowserSession())
+        text, dom, meta = await pw_mod.fetch_careers_list_text_and_dom(
+            page, {"run_load_all_jobs": False}
+        )
+        assert (text, dom) == ("", "<body></body>")
+        assert meta["outcome"] == "empty" and meta["ready"] is False
+
+    @pytest.mark.asyncio
+    async def test_blank_url_skips_telescope(self, monkeypatch) -> None:
+        submit = AsyncMock()
+        monkeypatch.setattr(pw_mod._pool, "submit", submit)
+        page = pw_mod.PageHandle("", session=pw_mod.BrowserSession())
+        assert (await pw_mod.fetch_careers_list_text_and_dom(page, {}))[:2] == ("", "")
+        submit.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_closed_page_raises(self) -> None:
+        page = pw_mod.PageHandle("https://acme.com", session=pw_mod.BrowserSession())
+        await page.close()
+        with pytest.raises(pw_mod.PlaywrightInfraError):
+            await pw_mod.fetch_careers_list_text_and_dom(page, {})

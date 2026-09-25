@@ -5639,6 +5639,25 @@ class TestAst891ScrapeListPageInfra:
     """AST-891: list-page DOM scrape surfaces Playwright infra instead of empty DOM."""
 
     @pytest.mark.asyncio
+    async def test_single_body_fetch_returns_culled_dom(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        session = MagicMock()
+        page = MagicMock()
+        monkeypatch.setattr(roster_mod, "get_page", AsyncMock(return_value=page))
+        close = AsyncMock()
+        monkeypatch.setattr(roster_mod, "close_page", close)
+        fetch = AsyncMock(return_value=("Engineer", "<div>jobs</div>", {"ready": True}))
+        monkeypatch.setattr(roster_mod, "fetch_careers_list_text_and_dom", fetch)
+        dom = await roster_mod._scrape_list_page_dom_for_parse(
+            "https://acme.com/jobs", batch_session=session, short_name="acme",
+        )
+        assert dom == "<div>jobs</div>"
+        assert fetch.await_count == 1
+        assert fetch.await_args.kwargs["element"] == "body"
+        close.assert_awaited_once_with(page)
+
+    @pytest.mark.asyncio
     async def test_infra_error_raises_playwright_infra(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
