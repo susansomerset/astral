@@ -631,3 +631,25 @@ No F3 `validate-plan` fix mode from this board pass.
 With AST-1799 landed, the AST-1798 docs-acceptance split is closed for the Betty-flagged claim classes. Advisory: `test_dispatcher.py::test_ast641_company_prefilter_passes_union_claim_states` may still red on broader runs until a follow-up flips it.
 
 `
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/5a3773ac45ef22d5543e2b022b1fbc98/3ed1ed8b-cfbb-4d08-939a-e00238cce690/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/1129750e-d200-47dd-b89a-3d15ae4d989d/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/5a3773ac45ef22d5543e2b022b1fbc98/2f036639-2d41-4513-bd5e-622fb417f1d8/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1797 (parent) | ftr/AST-1797-retry-suffix-claim |
+| AST-1798 | sub/AST-1797/AST-1798-retry-suffix-claim |
+| AST-1799 | sub/AST-1797/AST-1799-retry-suffix-claim-tests |
+
+**Epic worktree:** `astral-AST-1797/` — one active sub checked out at a time.
