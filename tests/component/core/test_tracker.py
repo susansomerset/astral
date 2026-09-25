@@ -342,6 +342,19 @@ class TestBatchApi:
 
         claim.assert_called_once()
 
+    def test_states_list_allows_registry_absent_companion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1802 mirror: companion need not ∈ JOB_STATES when states= is provided.
+        assert "INVALID_TITLE" in cfg.JOB_STATES
+        assert "INVALID_TITLE_RETRY" not in cfg.JOB_STATES
+        claim = MagicMock()
+        monkeypatch.setattr(tracker_mod.database, "claim_job_batch", claim)
+        monkeypatch.setattr(tracker_mod.database, "get_job_batch", lambda batch_id: [])
+        states = ["INVALID_TITLE", "INVALID_TITLE_RETRY"]
+        tracker_mod.get_new_job_batch("INVALID_TITLE", batch_id="ast-1802-job", states=states)
+        assert claim.call_args.kwargs["states"] == states
+
     def test_get_and_clear_batch_delegate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(tracker_mod.database, "get_job_batch", lambda batch_id: ["job"])
         monkeypatch.setattr(tracker_mod.database, "clear_job_batch", lambda batch_id: 2)

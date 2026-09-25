@@ -4466,6 +4466,25 @@ class TestAst1259CandidateBatchApi:
         with pytest.raises(ValueError, match="state must be one of"):
             candidate_mod.get_new_candidate_batch("NOT_A_STATE", batch_id="b")
 
+    def test_states_list_allows_registry_absent_companion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1802 mirror: companion need not ∈ CANDIDATE_STATES when states= is provided.
+        assert "ACTIVE_SEARCH" in CANDIDATE_STATES
+        assert "ACTIVE_SEARCH_RETRY" not in CANDIDATE_STATES
+        claim = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "claim_candidate_batch", claim)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate_batch", lambda batch_id: [])
+        states = ["ACTIVE_SEARCH", "ACTIVE_SEARCH_RETRY"]
+        bid, out = candidate_mod.get_new_candidate_batch(
+            "ACTIVE_SEARCH",
+            batch_id="ast-1802-cand",
+            states=states,
+        )
+        assert bid == "ast-1802-cand"
+        assert out == []
+        assert claim.call_args.kwargs["states"] == states
+
     def test_claims_and_returns_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
         claim = MagicMock()
         rows: List[Dict[str, Any]] = [{"astral_candidate_id": "c1", "state": "REQUESTED_ARTIFACTS"}]

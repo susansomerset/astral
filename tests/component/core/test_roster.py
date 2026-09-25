@@ -257,6 +257,24 @@ class TestBatchApi:
         with pytest.raises(ValueError, match="state must be one of"):
             roster_mod.get_new_company_batch("NOT_A_STATE", context="ctx")
 
+    def test_get_new_company_batch_states_allows_registry_absent_companion(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1802 / AST-1801: multi-state claim must not registry-gate companions.
+        assert "HOMEPAGE_READY_RETRY" not in COMPANY_STATES
+        claim = MagicMock()
+        monkeypatch.setattr(roster_mod, "claim_company_batch", claim)
+        monkeypatch.setattr(roster_mod, "get_company_batch", MagicMock(return_value=[]))
+        states = ["HOMEPAGE_READY", "HOMEPAGE_READY_RETRY"]
+        bid, companies = roster_mod.get_new_company_batch(
+            "HOMEPAGE_READY",
+            batch_id="ast-1802",
+            states=states,
+        )
+        assert bid == "ast-1802"
+        assert companies == []
+        assert claim.call_args.kwargs["states"] == states
+
     def test_get_new_company_batch_claims_and_returns_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
         claim = MagicMock()
         monkeypatch.setattr(roster_mod, "claim_company_batch", claim)
