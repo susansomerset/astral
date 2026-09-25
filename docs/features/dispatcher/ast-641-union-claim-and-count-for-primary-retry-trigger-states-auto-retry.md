@@ -453,3 +453,59 @@ The proposed change restores suffix-only claim pairing in `dispatch_claim_states
 
 No statute or pattern update, carve-out, or Archie gate needed. Registry `retry_state` stays for failure routing (AST-882/702); only claim grouping stops reading it, which canon already expects. F3 `validate-plan` fix mode not triggered from this board pass.
 [AST-1797 | AST-1798] Joan/validate fix-board - complete 7b757bfd model=composer-2.5 - (52s) > OK
+
+
+## Review-fix findings (AST-1798)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — product-only tip; board `TESTS: REVISE` explicitly deferred to sibling **AST-1799** (Plan Ready). Issue Description and plan-fix both mark `tests/component/utils/test_config.py` out of scope on this tip. No qa-fix thread on AST-1798; intentional docs-acceptance split (AST-1794/AST-1795 precedent).
+
+**`## What must still hold`:** OK
+- `*_RETRY`-only triggers → single-state list preserved (`endswith("_RETRY")` branch unchanged).
+- Suffix-matched primaries (`JD_READY`, `WEBSITE_FOUND`, `NEW` job, candidate `REQUESTED_*`) → same two-state lists under suffix-only rule.
+- `dispatch_claim_uses_score_floor` untouched; score-floor still keyed on row `trigger_state`.
+- `fetch_website_prefilter_second_strike_filter` / AST-892 boundary untouched.
+- Registry `retry_state` / routing fields unchanged; only claim grouping stops reading them.
+- No new registry states seeded.
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on the bug ticket. Joan fix-board informal OK only. Process observation for Archie — not blocking; product aligns with board-cited dispatch-retry law.  
+  **Recommendation:** No in-flight Canon Scope amendment required unless Archie wants Radia comparability on fix-lane bugs.
+
+- **Location:** `[board-betty] TESTS: REVISE` / sibling **AST-1799** (Plan Ready)  
+  **Finding:** Claim test classes on tip still encode cross-name companions (`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`, etc.). Expected on a product-only tip; AST-1799 owns the flip.  
+  **Recommendation:** Chuckles: document **Docs-Acceptance** on AST-1798 (mirror AST-1794). Do not merge-tests on this tip. Land AST-1799 before expecting full `test_config.py` claim suite green on ftr.
+
+### advisory
+
+- **Location:** `tests/component/utils/test_config.py` (tip, unchanged on AST-1798 diff)  
+  **Finding:** `TestAst882DispatchClaimStates` / `TestAst641DispatchClaimStates` / `TestAst898NewRetryQualifyHolding` would fail if run against `8721f208` product. test-fix manifest likely excluded them or ran pre-code SHA; not a product defect on this tip.
+
+## What's solid
+
+- Diff isolates exactly plan-fix § Proposed change (1): `dispatch_claim_states` suffix-only, registry branch removed, `entity_type` kept for call-site compat, docstring updated.
+- `src/data/database.py` unchanged; `_state_in_sql` accepts arbitrary state strings — no registry membership gate (plan item 2 confirmed).
+- Registry `retry_state` values untouched — routing vs claim separation restored.
+- Estimate **3** fits footprint (one helper, docs-only plan-fix + board append).
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1797 In Progress; diff base `origin/ftr/AST-1797-retry-suffix-claim`) | → **Review Posted** → append artifact + `docs(AST-1798): Radia review — clean` on publish ref → post slim upshot `--as radia` → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+| — | Sibling **AST-1799** | Parallel track: close `TESTS: REVISE` bar (test/bible only). ftr rollup should not assume full claim-suite green until AST-1799 lands. |
+
+`
+
+**Chuckles note:** `[board-betty] TESTS: REVISE` owned by sibling gap AST-1799. Product tip docs-acceptance — no merge-tests on AST-1798.
+
+
+
+## Docs-Acceptance (AST-1798)
+
+Test-tree / claim-assert flips owned by sibling gap AST-1799 (fix-board TESTS: REVISE). No merge-tests on this tip.
