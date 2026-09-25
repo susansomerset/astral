@@ -583,3 +583,52 @@ No active statute or pattern needs a change:
 
 No F3 `validate-plan` fix mode from this board pass.
 [AST-1797 | AST-1799] Joan/validate fix-board - complete 78c1bebf model=composer-2.5 - (15s) > OK
+
+
+## Review-fix findings (AST-1799)
+
+## Fix-specific checks
+
+**`[bug-repro]`:** OK — no dedicated `[bug-repro]` tag (board `TESTS: OK`; qa-fix not spawned). Flipped assert bodies in `TestAst882DispatchClaimStates`, `TestAst641DispatchClaimStates`, and `TestAst898NewRetryQualifyHolding` pin concrete suffix-always To-be values (`HOMEPAGE_READY` → `HOMEPAGE_READY_RETRY`, `VALID_TITLE` → `VALID_TITLE_RETRY`, companion-less primaries → `[ts, f"{ts}_RETRY"]`). They would fail against pre-AST-1798 product and pass on current `dispatch_claim_states` — satisfies plan-fix repro intent.
+
+**`## What must still hold`:** OK
+- Retry-only rows (`VALID_TITLE_RETRY`, `NEW_RETRY`) still single-state.
+- Unchanged suffix pairs (`JD_READY`, `WEBSITE_FOUND`, `NEW` job, `REQUESTED_*`) preserved.
+- AST-898 registry `retry_state`, UI sections, and `consult_batch_fail_dest` → `NEW_RETRY` untouched (routing, not claim).
+- AST-1798 suffix-only product contract reflected in claim asserts; no `src/` edits on this tip.
+
+## Findings
+
+### discuss
+
+- **Location:** Linear Description — Canon Scope  
+  **Finding:** No frozen canon list on gap ticket (same pattern as AST-1798). Joan fix-board informal OK only.  
+  **Recommendation:** No in-flight Canon Scope amendment required.
+
+### advisory
+
+- **Location:** `tests/component/core/test_dispatcher.py` `test_ast641_company_prefilter_passes_union_claim_states`  
+  **Finding:** Still asserts `states == ["HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"]` — red against AST-1798 product. Plan-fix § Blast radius explicitly leaves downstream dispatcher tests out of AST-1799 scope.  
+  **Recommendation:** File follow-up or fold into a later dispatcher test sweep before assuming full `test_dispatcher.py` green on ftr; not a fix-now on this tip.
+
+- **Location:** `docs/test-bible/utils/config.md` § AST-641 manifest table  
+  **Finding:** Prose updated to suffix-always, but manifest row still cites `tests/component/core/test_dispatcher.py` **`test_ast641_*`** — that test encodes the old union.  
+  **Recommendation:** Optional bible hygiene in a follow-up; not blocking AST-1799 scope.
+
+## What's solid
+
+- Diff is test/bible only — no `src/` changes; scope gate honored.
+- Plan-fix § Proposed change (1)–(2) fully delivered: TestAst882/641/898 flipped; sibling `ACTIVE_SEARCH` and meteorite claim asserts flipped; bible § AST-641 / AST-882 / AST-898 prose updated with routing vs claim split.
+- Routing asserts in `TestAst898NewRetryQualifyHolding` (`retry_state`, fail-dest matrix) correctly left unchanged.
+- Closes AST-1798 `[board-betty] TESTS: REVISE` bar; ftr base already carries AST-1798 product (`8721f208`).
+- Estimate **2** fits footprint.
+
+## Chuckles — post-review branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (C7 complete) | Normal (AST-1797 In Progress; diff base `origin/ftr/AST-1797-retry-suffix-claim`) | → **Review Posted** → append artifact + `docs(AST-1799): Radia review — clean` on publish ref → post slim upshot `--as radia` → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+
+With AST-1799 landed, the AST-1798 docs-acceptance split is closed for the Betty-flagged claim classes. Advisory: `test_dispatcher.py::test_ast641_company_prefilter_passes_union_claim_states` may still red on broader runs until a follow-up flips it.
+
+`
