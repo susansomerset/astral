@@ -3020,3 +3020,35 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/frontend/pages.md`
+
+---
+
+### AST-1789 · AST-1786
+
+**Parent:** [AST-1786 — Manage Candidates Snapshot Slack Channel + candidate mapping](https://linear.app/astralcareermatch/issue/AST-1786/manage-candidates-snapshot-slack-channel-candidate-mapping). **Publish:** `origin/sub/AST-1786/AST-1789-manage-candidates-channel-column-s-snapshot`.
+
+Manage Candidates UI: `slack_username` list column (em dash when empty); Slack channel `<select>` from admin GET; membership `role="alert"` warn (unbound / not_member); stamp `contact.slack_channel_id` + `contact.slack_channel_name` on save; row **S** `icon-control` copies snapshot JSON via admin GET. No Slack Web API in TSX. Core/API/shapes: siblings AST-1787 / AST-1788.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Manage Candidates page (§6c) — column / select+warn / S clipboard | `AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — **`AST-1789`** |
+| Drift: row icon-control set includes **S** | same | revised **`AST-1302`** |
+| Drift: add/edit mocks stub `/slack_channels` | same | existing suites that open Add/Edit |
+
+**Broken / obsolete this pass:** AST-1302 icon-control assert omitted **S**; Add/Edit mocks needed `/api/admin/contact/slack_channels` stub after product load on modal open.
+
+**Integration:** no existing scenario exercises Manage Candidates Slack channel UI — no revision; do not invent.
+
+## QA test manifest
+
+1. Routed Manage Candidates channel UX (§6c): `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — pattern **`AST-1789`** (+ revised **`AST-1302`**)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+**Pass criterion:** Vitest green on file — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/frontend/pages.md` — *(filled after publish)*

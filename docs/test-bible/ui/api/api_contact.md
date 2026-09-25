@@ -110,3 +110,25 @@ Admin GET `/api/admin/contact/unbound_slack_users` (`@require_admin`) → `{user
   tests/component/ui/api/test_api_contact.py::TestAst1668UnboundSlackUsersApi \
   -q
 ```
+
+---
+
+### AST-1788 · AST-1786
+
+**Parent:** [AST-1786 — Manage Candidates Snapshot Slack Channel + candidate mapping](https://linear.app/astralcareermatch/issue/AST-1786/manage-candidates-snapshot-slack-channel-candidate-mapping). **Publish:** `origin/sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes`.
+
+Admin GETs `/slack_channels`, `/slack_channel_membership`, `/slack_channel_snapshot` (`@require_admin`); idempotent — no progress info line. Core: **`docs/test-bible/core/contact.md`** § AST-1788. Shapes: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Channel list / membership / snapshot routes + auth | `src/ui/api/api_contact.py` | **`TestAst1788AdminSlackChannelApis`** |
+
+**Broken / obsolete:** none — additive routes on `contact_bp`.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_contact.py::TestAst1788AdminSlackChannelApis \
+  -q
+```

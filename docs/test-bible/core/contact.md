@@ -424,3 +424,39 @@ UAT: Manage Candidates Slack dropdown empty because `list_unbound_slack_users` u
 **Bible shasum (publish tip):**
 - `docs/test-bible/core/contact.md` — *(filled after publish)*
 
+---
+
+### AST-1788 · AST-1786
+
+**Parent:** [AST-1786 — Manage Candidates Snapshot Slack Channel + candidate mapping](https://linear.app/astralcareermatch/issue/AST-1786/manage-candidates-snapshot-slack-channel-candidate-mapping). **Publish:** `origin/sub/AST-1786/AST-1788-contact-admin-channel-apis-shapes`.
+
+Contact orchestration for admin channel picker / membership warn / snapshot: `list_admin_slack_channels`, `check_admin_slack_channel_membership` (unbound short-circuit), `get_admin_slack_channel_snapshot`. Calls AST-1787 external helpers only. API: **`docs/test-bible/ui/api/api_contact.md`**. Shapes: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Channel list / membership / snapshot orchestration | `src/core/contact.py` | **`TestAst1788AdminSlackChannelOrchestration`** |
+
+**Broken / obsolete this pass:** none — additive helpers.
+
+**Integration:** no existing scenario exercises these Contact admin helpers — no revision; do not invent.
+
+## QA test manifest
+
+1. Orchestration: `tests/component/core/test_contact.py::TestAst1788AdminSlackChannelOrchestration`
+2. Admin APIs: `tests/component/ui/api/test_api_contact.py::TestAst1788AdminSlackChannelApis`
+3. Shapes: `tests/component/utils/test_config.py::TestAst1788ManageListAndProfileSlackChannelShapes`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1788AdminSlackChannelOrchestration \
+  tests/component/ui/api/test_api_contact.py::TestAst1788AdminSlackChannelApis \
+  tests/component/utils/test_config.py::TestAst1788ManageListAndProfileSlackChannelShapes \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/core/contact.md` — *(filled after publish)*
+- `docs/test-bible/ui/api/api_contact.md` — *(filled after publish)*
+- `docs/test-bible/utils/config.md` — *(filled after publish)*

@@ -774,6 +774,22 @@ Admin `state_options` exposes `meteorite` via `dispatch_entity_state_registry`; 
 
 **Integration:** none — no existing scenario asserts `empty_render` on dispatch list / AUTO-Run gates; do not invent new integration coverage.
 
+### AST-1792 · AST-1790 (gap: no-prompt ValueError → empty_render false)
+
+**Parent:** [AST-1790](https://linear.app/astralcareermatch/issue/AST-1790). **Sibling product:** AST-1791. **Publish:** `origin/sub/AST-1790/AST-1792-no-prompt-valueerror-empty-render-tests`.
+
+AST-1791 / AST-1790 — prompt-load `ValueError` soft-miss → `empty_render: false` (no monkeypatch of `_evaluate_dispatch_empty_render`). Stub `_dispatch_empty_render_prompt_texts` to raise; candidate present. Red on pre-AST-1791 product; green after AST-1791.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper ValueError → false `[bug-repro]` | `src/ui/api/api_admin.py` | **`TestAst1791NoPromptValueErrorEmptyRender::test_evaluate_valueerror_no_agent_task_empty_render_false`** |
+| List keeps AUTO on soft-miss | same | **`…::test_list_valueerror_no_prompts_keeps_auto`** |
+| Run allowed on soft-miss | same | **`…::test_run_valueerror_no_prompts_allowed`** |
+
+Keep AST-1780 monkeypatched wiring rows above; do not mark them obsolete.
+
+**Integration:** none — do not invent new integration scenarios.
+
 ## QA test manifest
 
 1. List force off: `tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff::test_list_sets_empty_render_and_forces_auto_off`
@@ -785,17 +801,21 @@ Admin `state_options` exposes `meteorite` via `dispatch_entity_state_registry`; 
 7. Revised run success: `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls`
 8. Revised create AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success`
 9. Revised update AUTO: `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success`
+10. **`[bug-repro]`** ValueError soft-miss: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_evaluate_valueerror_no_agent_task_empty_render_false`
+11. List soft-miss keeps AUTO: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_list_valueerror_no_prompts_keeps_auto`
+12. Run soft-miss allowed: `tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender::test_run_valueerror_no_prompts_allowed`
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/ui/api/test_api_admin.py::TestAst1780EmptyRenderListGatesForceOff \
+  tests/component/ui/api/test_api_admin.py::TestAst1791NoPromptValueErrorEmptyRender \
   tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_create_dispatch_task_auto_mode_success \
   tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_score_floor_and_auto_mode_success \
   -q
 ```
 
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate. AST-1792 `[bug-repro]` nodes stay red until AST-1791 product lands on the tree under test.
 
 **Bible shasum (publish tip):** fill after `merge-tests` —
 - `docs/test-bible/ui/api/api_admin.md`
