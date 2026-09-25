@@ -236,8 +236,7 @@ def _queue_with_fake_db(monkeypatch: pytest.MonkeyPatch):
     db = _FakeDb()
 
     async def fake_get_db():
-        q._ensure_loop()
-        q._db = db
+        q._state().db = db
         return db
 
     monkeypatch.setattr(q, "_get_db", fake_get_db)
@@ -246,9 +245,9 @@ def _queue_with_fake_db(monkeypatch: pytest.MonkeyPatch):
 
 async def _submit_and_resolve(q, row: dict) -> Any:
     task = asyncio.create_task(q.submit({"url": "https://example.com", "fields": ["text"]}))
-    while not q._waiters:
+    while not q._state().waiters:
         await asyncio.sleep(0)
-    next(iter(q._waiters.values())).set_result(row)
+    next(iter(q._state().waiters.values())).set_result(row)
     return await task
 
 
@@ -269,7 +268,7 @@ class TestTelescopeQueueClient:
         )
         sql = " ".join(str(c.args[0]) for c in db.conn.execute.await_args_list)
         assert "INSERT INTO telescope_job" in sql and "pg_notify" in sql
-        assert q._waiters == {}
+        assert q._state().waiters == {}
 
     @pytest.mark.parametrize(
         "error_class, failure_class",
@@ -301,7 +300,7 @@ class TestTelescopeQueueClient:
             await q.submit({"url": "https://example.com", "fields": ["text"]})
         assert exc_info.value.failure_class == "telescope_timeout"
         assert "status = 'cancelled'" in db.execute.await_args.args[0]
-        assert q._waiters == {}
+        assert q._state().waiters == {}
 
     @pytest.mark.asyncio
     async def test_missing_database_url_raises_connectivity(
@@ -618,11 +617,12 @@ class TestFetchCareersListTextAndDom:
 class TestTelescopeWake:
     """Serverless Telescope: throttled fire-and-forget GET /wake when no worker is live."""
 
-    def _queue(self, monkeypatch, *, live: int, url: str = "http://telescope.railway.internal:8080/wake"):
+    def _queue(self, monkeypatch, *, live: int, url: str = "http://telescope.railway.internal:8080"):
+        monkeypatch.delenv("TELESCOPE_BASE_URLS", raising=False)
         if url:
-            monkeypatch.setenv("TELESCOPE_WAKE_URL", url)
+            monkeypatch.setenv("TELESCOPE_BASE_URL", url)
         else:
-            monkeypatch.delenv("TELESCOPE_WAKE_URL", raising=False)
+            monkeypatch.delenv("TELESCOPE_BASE_URL", raising=False)
         q = pw_mod._TelescopeQueue()
         monkeypatch.setattr(q, "_live_workers", AsyncMock(return_value=live))
         ping = AsyncMock()
@@ -633,21 +633,21 @@ class TestTelescopeWake:
     async def test_pings_once_when_no_worker_then_throttles(self, monkeypatch) -> None:
         q, ping = self._queue(monkeypatch, live=0)
         for _ in range(50):
-            await q._maybe_wake(MagicMock())
+            await q._maybe_wake(MagicMock(), q._state())
         await asyncio.sleep(0)
         ping.assert_awaited_once_with("http://telescope.railway.internal:8080/wake")
 
     @pytest.mark.asyncio
     async def test_no_ping_when_a_worker_is_live(self, monkeypatch) -> None:
         q, ping = self._queue(monkeypatch, live=2)
-        await q._maybe_wake(MagicMock())
+        await q._maybe_wake(MagicMock(), q._state())
         await asyncio.sleep(0)
         ping.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_no_ping_without_wake_url(self, monkeypatch) -> None:
         q, ping = self._queue(monkeypatch, live=0, url="")
-        await q._maybe_wake(MagicMock())
+        await q._maybe_wake(MagicMock(), q._state())
         await asyncio.sleep(0)
         ping.assert_not_awaited()
 
@@ -668,3 +668,80 @@ class TestTelescopeWake:
         assert await q.healthy() is True  # no live worker is fine: Telescope may be asleep
         await asyncio.sleep(0)
         ping.assert_awaited_once()
+
+
+
+class TestTelescopeQueuePerLoopState:
+    """Dispatch tasks run their own event loops on their own threads, concurrently."""
+
+    def test_concurrent_loops_get_separate_state(self) -> None:
+        import threading
+
+        q = pw_mod._TelescopeQueue()
+        seen: dict = {}
+        barrier = threading.Barrier(2)
+
+        def run(name: str) -> None:
+            async def body():
+                st = q._state()
+                barrier.wait()  # both loops alive at once
+                await asyncio.sleep(0.01)
+                st.wake.set()
+                await st.wake.wait()  # would raise if the Event belonged to another loop
+                seen[name] = (st, q._state())
+
+            asyncio.run(body())
+
+        threads = [threading.Thread(target=run, args=(n,)) for n in ("a", "b")]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        assert seen["a"][0] is seen["a"][1] and seen["b"][0] is seen["b"][1]
+        assert seen["a"][0] is not seen["b"][0]
+
+    def test_closed_loops_are_pruned(self) -> None:
+        q = pw_mod._TelescopeQueue()
+
+        async def touch():
+            q._state()
+
+        asyncio.run(touch())
+        asyncio.run(touch())
+        assert len(q._states) == 1  # the first, closed loop was dropped
+
+    @pytest.mark.asyncio
+    async def test_poller_survives_a_failed_poll(self, monkeypatch) -> None:
+        monkeypatch.setitem(pw_mod.TELESCOPE_CONFIG, "poll_interval_seconds", 0.01)
+        q = pw_mod._TelescopeQueue()
+        st = q._state()
+        monkeypatch.setattr(q, "_ensure_listener", AsyncMock())
+        row = {"id": "j1", "status": "done"}
+        st.db = MagicMock(fetch=AsyncMock(side_effect=[OSError("blip"), [row]]))
+        fut = asyncio.get_running_loop().create_future()
+        st.waiters["j1"] = fut
+        poller = asyncio.create_task(q._poll_loop(st))
+        try:
+            assert await asyncio.wait_for(fut, 1.0) == row
+        finally:
+            poller.cancel()
+
+    @pytest.mark.asyncio
+    async def test_missing_wake_url_warns_when_no_worker(self, monkeypatch, caplog) -> None:
+        monkeypatch.delenv("TELESCOPE_BASE_URL", raising=False)
+        monkeypatch.delenv("TELESCOPE_BASE_URLS", raising=False)
+        q = pw_mod._TelescopeQueue()
+        monkeypatch.setattr(q, "_live_workers", AsyncMock(return_value=0))
+        with caplog.at_level("WARNING", logger="src.external.telescope"):
+            await q._maybe_wake(MagicMock(), q._state())
+        assert any("TELESCOPE_BASE_URL / TELESCOPE_BASE_URLS is not set" in r.getMessage() for r in caplog.records)
+
+
+    def test_wake_url_from_base_url_or_first_of_list(self, monkeypatch) -> None:
+        monkeypatch.setenv("TELESCOPE_BASE_URL", "http://telescope.railway.internal:8080/")
+        assert pw_mod._telescope_wake_url() == "http://telescope.railway.internal:8080/wake"
+        monkeypatch.delenv("TELESCOPE_BASE_URL")
+        monkeypatch.setenv("TELESCOPE_BASE_URLS", " http://a.internal:8080 , http://b.internal:8080")
+        assert pw_mod._telescope_wake_url() == "http://a.internal:8080/wake"
+        monkeypatch.delenv("TELESCOPE_BASE_URLS")
+        assert pw_mod._telescope_wake_url() == ""

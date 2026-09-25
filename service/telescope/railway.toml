@@ -14,9 +14,9 @@
 #     Telescope creates its telescope_* tables there on startup (idempotent).
 #   - No public domain needed. /healthz is unauthenticated and only reports status.
 #   - Serverless ON: after IDLE_SLEEP_SECONDS (telescope_config.py) with no work, Telescope
-#     closes Postgres + Firefox so Railway sleeps it. Set TELESCOPE_WAKE_URL on the
-#     *platform* to http://<telescope-service>.railway.internal:8080/wake — the platform
-#     pings it (throttled) when it enqueues work and no worker is live.
+#     closes Postgres + Firefox so Railway sleeps it. The platform pings
+#     $TELESCOPE_BASE_URL/wake (e.g. http://<telescope-service>.railway.internal:8080)
+#     — throttled — when it enqueues work and no worker is live.
 #   - Scale out by raising replicas; each replica claims up to WORKER_CONCURRENCY
 #     jobs (telescope_config.py). Queue depth is the signal for adding replicas.
 #   - /dev/shm: if Firefox flakes on shared memory, raise container disk or
