@@ -571,3 +571,25 @@ List + Run companions (`test_list_valueerror_no_prompts_keeps_auto`, `test_run_v
 ## Docs-Acceptance (AST-1792)
 
 Test/bible gap only — no product `src/` delivery; product soft-miss fix lives on AST-1791 / ftr.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/ebc0c3e8168c224834285a014fcaf396/f8ce3ca4-89f5-4981-8633-5ad49c069fa1/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/b70c6a80-337d-47a1-bdc0-a4a8c725cfe2/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/ebc0c3e8168c224834285a014fcaf396/54435071-678e-4245-9266-f1aaed714193/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1790 (parent) | ftr/AST-1790-default-validation-no-prompts |
+| AST-1791 | sub/AST-1790/AST-1791-default-validation-no-prompts |
+| AST-1792 | sub/AST-1790/AST-1792-no-prompt-valueerror-empty-render-tests |
+
+**Epic worktree:** `astral-AST-1790/` — one active sub checked out at a time.
