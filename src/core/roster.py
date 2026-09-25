@@ -32,6 +32,7 @@ from src.external.telescope import (
     BrowserSession,
     normalize_url,
     wait_for_careers_list_readiness,
+    fetch_careers_list_text_and_dom,
     PlaywrightInfraError,
     classify_playwright_failure,
     is_playwright_infra_failure,
@@ -1054,7 +1055,11 @@ async def _scrape_list_page_dom_for_parse(
     batch_session=None,
     short_name: str = "",
 ) -> str:
-    """Playwright DOM reload for parse_job_list — careers-list readiness (AST-689)."""
+    """DOM reload for parse_job_list — careers-list readiness (AST-689).
+
+    One Telescope job returns body text + body html together (no second page load,
+    no <head> shipped); the html comes back culled.
+    """
     _ = debug
     try:
         if batch_session is not None:
@@ -1063,9 +1068,12 @@ async def _scrape_list_page_dom_for_parse(
             pg = await get_page(browser_context, url)
         try:
             readiness_cfg = roster_scrape_readiness_config()
-            ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-            logger.debug("Response from wait_for_careers_list_readiness: %s", ready_meta)
-            return (await extract_page_dom(pg)) or ""
+            logger.debug("Calling fetch_careers_list_text_and_dom: [url=%s element=body]", url)
+            _text, dom_html, ready_meta = await fetch_careers_list_text_and_dom(
+                pg, readiness_cfg, element="body"
+            )
+            logger.debug("Response from fetch_careers_list_text_and_dom: %s", ready_meta)
+            return dom_html or ""
         finally:
             await close_page(pg)
     except Exception as scrape_err:

@@ -869,6 +869,60 @@ async def wait_for_careers_list_readiness(
     }
 
 
+async def fetch_careers_list_text_and_dom(
+    page: PageHandle,
+    cfg: Dict[str, Any],
+    element: str = "body",
+) -> Tuple[str, str, Dict[str, Any]]:
+    """One Telescope job: rendered text + culled html of `element`, with careers-list readiness.
+
+    Same readiness flags as wait_for_careers_list_readiness (wait_ready on, expand when
+    run_load_all_jobs), but text and html come from a single page load.
+    Returns (text, culled_html, readiness_meta).
+    """
+    if page._closed:
+        raise PlaywrightInfraError("context_closed", "page is closed")
+    started = time.monotonic()
+    page.wait_ready = True
+    load_all_jobs_ran = bool(cfg.get("run_load_all_jobs", True))
+    if load_all_jobs_ran:
+        page.expand = True
+    page._invalidate()
+    if not (page.url or "").strip():
+        return "", "", {"outcome": "empty", "wait_ms": 0, "visible_chars": 0,
+                        "load_all_jobs_ran": load_all_jobs_ran, "ready": False}
+    data = await _post_telescope(
+        page.url,
+        fields=["text", "html"],
+        selector=element,
+        expand=page.expand,
+        wait_ready=page.wait_ready,
+    )
+    text = data.get("text")
+    if isinstance(text, list):
+        text = "\n\n".join(t for t in text if t)
+    text = text or ""
+    html = data.get("html") or ""
+    if isinstance(html, list):
+        html = html[0] if html else ""
+    page._text = text
+    final = data.get("final_url")
+    if final:
+        page._final_url = final
+        page.url = final
+    if html and TELESCOPE_CONFIG.get("cull_html_default", True):
+        html = _cull_html(html)
+    visible_chars = len(text)
+    meta = {
+        "outcome": "ready" if visible_chars else "empty",
+        "wait_ms": int((time.monotonic() - started) * 1000),
+        "visible_chars": visible_chars,
+        "load_all_jobs_ran": load_all_jobs_ran,
+        "ready": bool(visible_chars),
+    }
+    return text, html, meta
+
+
 async def get_page_with_artifacts(context: BrowserSession, url: str) -> PageLoadArtifacts:
     page = await get_page(context, url)
     html = await _ensure_html(page)
