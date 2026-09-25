@@ -568,8 +568,7 @@ AST-882 / AST-898 taught the component suite and bible that claim companions fol
 - AST-898 registry holding and consult fail-dest to `NEW_RETRY` remain documented and tested as routing, not claim.
 - AST-1798 product contract: no cross-name claim companions; companion need not exist in registry.
 
-
-## Fix-board Joan findings (AST-1799)
+**test(AST-1799) confirmation:** `TestAst882DispatchClaimStates` / `TestAst641DispatchClaimStates` / `TestAst898NewRetryQualifyHolding` — 12 passed (suffix-always; `HOMEPAGE_READY` never `WEBSITE_FOUND_RETRY`).
 
 **Triage notes**
 
