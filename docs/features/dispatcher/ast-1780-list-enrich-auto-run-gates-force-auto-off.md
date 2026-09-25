@@ -515,3 +515,54 @@ AST-1780 QA deliberately stubbed the eval helper (wiring-only). That left the so
 - Blank/`candidate_id` miss and unexpected `Exception` remain fail-closed in product (AST-1791 decisions) — this gap does not assert those branches unless already covered.
 - No second list boolean; no client-side token resolution.
 - Bible remains the manifest source for AST-1780 + this gap; no invented integration tier.
+
+
+## Review-fix findings (AST-1792)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst1791NoPromptValueErrorEmptyRender::test_evaluate_valueerror_no_agent_task_empty_render_false` is tagged `[bug-repro]` and pins concrete To-be values:
+- Does **not** monkeypatch `_evaluate_dispatch_empty_render`.
+- Stubs `database.get_candidate` + `_dispatch_empty_render_prompt_texts` → `ValueError("No agent_task row for 'gaze'")`.
+- Asserts `{"empty_render": False, "empty_tokens": []}` and `_candidate_dispatch_empty_render_error(...) is None`.
+- Would fail pre-AST-1791 (`empty_render: True`); passes with AST-1791 product already on `ftr` base.
+
+List + Run companions (`test_list_valueerror_no_prompts_keeps_auto`, `test_run_valueerror_no_prompts_allowed`) exercise real eval on HTTP surfaces without replacing the helper — matches plan-fix optional Run gate preference.
+
+**## What must still hold — OK**
+- Existing `TestAst1780EmptyRenderListGatesForceOff` monkeypatched wiring cases untouched (additive class only).
+- No product edits; no second boolean; no integration tier invented (bible says none).
+- Blank-candidate / unexpected-Exception fail-closed branches correctly out of gap scope per plan-fix Decision.
+
+## Findings
+
+### discuss — Cross-epic merge-tests spill on publish ref (not AST-1792 scope)
+
+- **Severity:** discuss
+- **Location:** Full `ftr…sub` diff (~1122 lines) vs scoped ticket footprint (~178 lines)
+- **Finding:** `merge-tests(AST-1792)` / prior commits land AST-1786/1787/1788/1789 test+bible suites (`test_contact.py`, `test_slack.py`, `test_AdminManageCandidates.test.tsx`, `test_api_contact.py`, `test_config.py`, four bible files) — unrelated Manage Candidates Slack epic, not AST-1790 validation scope.
+- **Recommendation:** AST-1792 **scoped** work is clean; Chuckles should attribute merge-tests spill to correct tickets at ftr rollup and not treat AST-1792 as owner of AST-1786-family coverage. Not fix-now on the gap tests themselves.
+
+### advisory — Optional AUTO-on create/PUT success path omitted
+
+- **Severity:** advisory
+- **Location:** plan-fix Proposed change step 3
+- **Finding:** Plan marked create/PUT AUTO-on success as optional if Run is covered; Run + list + helper repro are present.
+- **Recommendation:** None — plan satisfied.
+
+## What's solid
+
+- Scoped delta matches plan-fix exactly: new `TestAst1791NoPromptValueErrorEmptyRender` class, bible § AST-1792 under § AST-1780, plan-fix doc appended.
+- Stub strategy isolates ValueError soft-miss without re-testing AST-1779 token scoring (per plan Decision).
+- Estimate **2** fits ~80-line test class + bible rows; merge-tests spill is integration-line hygiene, not ticket footprint.
+- No `src/ui/api/api_admin.py` change on this diff (AST-1791 product already on `ftr`).
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | Normal (AST-1790 In Progress) | Append artifact → `docs(AST-1792): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h → **User Testing** directly (`resolve-child` skipped). |
+
+1. Append this verdict to `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md`.
+2. Post slim upshot via `linear_proxy --as radia save-comment`.
+3. Note merge-tests AST-1786 spill for rollup attribution — does not block UT on gap coverage.
