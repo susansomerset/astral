@@ -352,3 +352,88 @@ No conflicts requiring `conf-!!-NONE`.
 Radia **Review Posted** (2026-06-14): **fix-now** none, **discuss** none. Advisory items (admin count covered via data-layer tests; `_state_in_sql` placement) — no product changes required.
 
 **Shipped:** `dispatch_claim_states` config helper; `_state_in_sql` + multi-state claim/count in `database.py`; optional `states=` on tracker/roster batch helpers; dispatcher union wiring. Betty manifest green (14 tests). §9a dry-run clean into `origin/dev` and `origin/ftr/ast-630-auto-retry`.
+
+---
+
+## Bug: AST-1798 — strict `_RETRY` suffix claim pairing (no `retry_state` companion)
+
+Orphaned mini-parent: AST-1797. No ancestor box checked; this section patches the historical home of `dispatch_claim_states` (AST-641). Scope gate: AST-1798 `## Scope` / Component + Technical scope only.
+
+### As-is
+
+A company (or any entity) dispatch row with `trigger_state=HOMEPAGE_READY` claims and counts `['HOMEPAGE_READY', 'WEBSITE_FOUND_RETRY']` because `dispatch_claim_states` prefers `COMPANY_STATES["HOMEPAGE_READY"]["retry_state"]` when that key is in the registry, then falls back to `{ts}_RETRY` only if that companion key exists in the registry. Live tip matches that preference. The only other live cross-name claim pair is job `VALID_TITLE` → `NEW_RETRY` (AST-898 `retry_state`).
+
+### To-be
+
+For every `dispatch_task` / every `entity_type`, claim/count companions are **only** the trigger plus the literal suffix `trigger_state + "_RETRY"`, whether or not that companion key exists in the entity registry. Do not validate suffix content against the registry and do not error when the suffix key is absent. `HOMEPAGE_READY` therefore claims `['HOMEPAGE_READY', 'HOMEPAGE_READY_RETRY']` — never `WEBSITE_FOUND_RETRY` via config. Registry `retry_state` may still describe failure **routing** destinations; it must not drive claim grouping. No exceptions by entity type or task key.
+
+### Repro
+
+```python
+from src.utils import config as cfg
+
+# Broken today (tip):
+assert cfg.dispatch_claim_states("HOMEPAGE_READY", "company") == [
+    "HOMEPAGE_READY",
+    "WEBSITE_FOUND_RETRY",
+]
+# Also broken cross-name (AST-898 retry_state used for claim):
+assert cfg.dispatch_claim_states("VALID_TITLE", "job") == [
+    "VALID_TITLE",
+    "NEW_RETRY",
+]
+
+# Expected after fix:
+assert cfg.dispatch_claim_states("HOMEPAGE_READY", "company") == [
+    "HOMEPAGE_READY",
+    "HOMEPAGE_READY_RETRY",
+]
+assert cfg.dispatch_claim_states("VALID_TITLE", "job") == [
+    "VALID_TITLE",
+    "VALID_TITLE_RETRY",
+]
+# Missing companion key is fine (no error); still append suffix:
+assert "HOMEPAGE_READY_RETRY" not in cfg.COMPANY_STATES
+assert cfg.dispatch_claim_states("HOMEPAGE_READY", "company")[1] == "HOMEPAGE_READY_RETRY"
+```
+
+Optional live check: Admin Available / claim for a `prefilter` row with `trigger_state=HOMEPAGE_READY` must not include companies in `WEBSITE_FOUND_RETRY`.
+
+### Root cause
+
+`dispatch_claim_states` (AST-882) prefers `registry[ts]["retry_state"]` when present-and-in-registry over the `{ts}_RETRY` name, and otherwise only appends `{ts}_RETRY` when that key is also in the registry. That turns failure-routing config into claim grouping and drops suffix companions that have no registry entry.
+
+### Proposed change
+
+1. **`src/utils/config.py` — `dispatch_claim_states`** (only product edit required for the pairing rule):
+   - Keep: `None` / blank → `[]`; already ends with `_RETRY` → `[ts]` only.
+   - Remove the branch that returns `[ts, registry[ts].retry_state]` when `retry_state` is a non-empty string in the registry.
+   - Remove the `if companion in registry` gate.
+   - For every non-`_RETRY` primary, always return `[ts, f"{ts}_RETRY"]` for all entity types (`job` / `company` / `candidate` / `meteorite` / unknown). Do not look up registry for claim companions at all.
+   - Keep the `entity_type` parameter (callers unchanged); it no longer selects a registry for companion resolution.
+   - Rewrite the docstring: suffix-only pairing; `retry_state` is not used here.
+   - Do **not** change `JOB_STATES` / `COMPANY_STATES` / etc. `retry_state` field values (routing stays).
+
+2. **`src/data/database.py` and claim callers** — **no change expected**. `_state_in_sql` already accepts an arbitrary non-empty string list and does not validate membership in the entity registry. Confirm during make-fix that no claim/count path rejects `{ts}_RETRY` absent from the registry; if one does, strip that validation only (do not invent cross-name companions). Out of scope: scrape ownership of `WEBSITE_FOUND` / `WEBSITE_FOUND_RETRY` on `fetch_website`.
+
+3. **`tests/component/utils/test_config.py`** (Betty / make-fix as owned — named here because Scope lists it): flip assertions that encode the broken preference:
+   - `TestAst882DispatchClaimStates`: `HOMEPAGE_READY` → `['HOMEPAGE_READY', 'HOMEPAGE_READY_RETRY']` (never `WEBSITE_FOUND_RETRY`); keep `WEBSITE_FOUND` → `['WEBSITE_FOUND', 'WEBSITE_FOUND_RETRY']`.
+   - `TestAst641DispatchClaimStates` / AST-898 claim asserts: `VALID_TITLE` → `['VALID_TITLE', 'VALID_TITLE_RETRY']` (not `NEW_RETRY`); primaries with no registry companion key (e.g. company `NEW`, meteorite primaries) → always `[ts, f"{ts}_RETRY"]`.
+   - Any other claim-state assert that equals a non-suffix `retry_state` companion must use the suffix form.
+
+### Blast radius
+
+- **Claim/count only:** Available counts and batch claims for primary rows stop unioning cross-named `retry_state` destinations. Concrete live flips: `HOMEPAGE_READY` drops `WEBSITE_FOUND_RETRY`; `VALID_TITLE` drops `NEW_RETRY` and picks up `VALID_TITLE_RETRY` (key already in `JOB_STATES`).
+- **Routing unchanged:** prefilter / qualify failure paths that write `retry_state` destinations keep using registry `retry_state` outside this helper.
+- **Absent suffix keys:** SQL `IN` for a never-written state (e.g. `HOMEPAGE_READY_RETRY`) matches zero rows — no error; that is intentional.
+- **Shared consumers:** `count_eligible_for_dispatch_task`, claim_*_batch paths, dispatcher `_run_unified` debug `claim_states` — all via this helper; no separate pairing logic to fork.
+- **Tests** that encode AST-882 / AST-898 cross-name claim expectations will fail until updated (listed above). Integration scenarios that assumed `HOMEPAGE_READY` unions WFR for prefilter Available need the same expectation flip if present.
+
+### What must still hold
+
+- Already-`*_RETRY` trigger rows still claim only that single state (AST-641 AC).
+- Primaries whose suffix already matches their `retry_state` (e.g. `JD_READY` → `JD_READY_RETRY`, `WEBSITE_FOUND` → `WEBSITE_FOUND_RETRY`, candidate `REQUESTED_*`) keep the same two-state list — behavior unchanged for those rows.
+- Score-floor gating still keyed off the dispatch row’s `trigger_state` via `dispatch_claim_uses_score_floor`, not off companion states (AST-641).
+- `fetch_website` ownership / second-strike filter for `WEBSITE_FOUND_RETRY` vs homepage-ready WFR is untouched (AST-882 / AST-892 boundary).
+- Registry `retry_state` / `error_state` continue to drive failure routing writes; only claim grouping stops reading them.
+- No new company/job states required; do not seed `HOMEPAGE_READY_RETRY` as part of this bug unless a later ticket asks.
