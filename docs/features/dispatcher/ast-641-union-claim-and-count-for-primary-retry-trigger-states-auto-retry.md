@@ -352,3 +352,63 @@ No conflicts requiring `conf-!!-NONE`.
 Radia **Review Posted** (2026-06-14): **fix-now** none, **discuss** none. Advisory items (admin count covered via data-layer tests; `_state_in_sql` placement) — no product changes required.
 
 **Shipped:** `dispatch_claim_states` config helper; `_state_in_sql` + multi-state claim/count in `database.py`; optional `states=` on tracker/roster batch helpers; dispatcher union wiring. Betty manifest green (14 tests). §9a dry-run clean into `origin/dev` and `origin/ftr/ast-630-auto-retry`.
+
+---
+
+## Bug: AST-1799 — gap: tests/bible suffix-always claim asserts
+
+Sibling test gap for AST-1798 (`[board-betty] TESTS: REVISE`). Product pairing lands on AST-1798; this ticket is **test/bible only**. Scope gate: AST-1799 `## Scope` (Component + Technical). Same plan-doc home as the claim helper (AST-641).
+
+### As-is
+
+`tests/component/utils/test_config.py` claim classes still encode registry-`retry_state` / membership-gated companions: `TestAst882DispatchClaimStates` expects `HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY` and `VALID_TITLE` → `NEW_RETRY`; `TestAst641DispatchClaimStates` expects `VALID_TITLE` → `NEW_RETRY` and companion-less primaries (`NEW` company, `INVALID_TITLE`) → single-state; `TestAst898NewRetryQualifyHolding` expects `VALID_TITLE` → `NEW_RETRY`. `docs/test-bible/utils/config.md` § AST-641 / AST-882 / AST-898 documents that same broken claim contract.
+
+### To-be
+
+Those claim asserts and the bible match AST-1798 suffix-always pairing: primary → always `[ts, f"{ts}_RETRY"]`; already-`*_RETRY` → `[ts]` only; never cross-name claim unions from `retry_state`. Registry `retry_state` field asserts (routing) stay unchanged.
+
+### Repro
+
+Against a tree with AST-1798 product landed (`dispatch_claim_states` suffix-always) and this gap **not** applied:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst882DispatchClaimStates \
+  tests/component/utils/test_config.py::TestAst641DispatchClaimStates \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  -q
+```
+
+Expect red on `HOMEPAGE_READY` / `VALID_TITLE` / companion-less primary claim asserts. Pre-fix product + current asserts: green for the old cross-name contract (Betty board finding).
+
+### Root cause
+
+AST-882 / AST-898 taught the component suite and bible that claim companions follow registry `retry_state` (and AST-641 gated on companion ∈ registry). AST-1798 restores suffix-only claim pairing; tests and bible were not updated on that tip (`TESTS: REVISE` → this gap).
+
+### Proposed change
+
+1. **`tests/component/utils/test_config.py`** — flip **claim-state** asserts only (do not change `JOB_STATES`/`COMPANY_STATES` `retry_state` field asserts, transition tables, or fail-dest matrices):
+   - **`TestAst882DispatchClaimStates`**: docstring → suffix-always (not “prefer retry_state”). `HOMEPAGE_READY` → `["HOMEPAGE_READY", "HOMEPAGE_READY_RETRY"]` (never `WEBSITE_FOUND_RETRY`). Keep `WEBSITE_FOUND` → `["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"]`. `VALID_TITLE` → `["VALID_TITLE", "VALID_TITLE_RETRY"]`.
+   - **`TestAst641DispatchClaimStates`**: `VALID_TITLE` → `["VALID_TITLE", "VALID_TITLE_RETRY"]` (drop AST-898 cross-name comment). Company `NEW` → `["NEW", "NEW_RETRY"]`; job `INVALID_TITLE` → `["INVALID_TITLE", "INVALID_TITLE_RETRY"]`. Keep retry-only single-state and `JD_READY` / `WEBSITE_FOUND` suffix pairs (already correct).
+   - **`TestAst898NewRetryQualifyHolding`**: claim asserts — `VALID_TITLE` → `["VALID_TITLE", "VALID_TITLE_RETRY"]`; keep `NEW` → `["NEW", "NEW_RETRY"]` and retry-only singles. Leave `JOB_STATES["VALID_TITLE"]["retry_state"] == "NEW_RETRY"` and consult fail-dest → `NEW_RETRY` (routing, not claim).
+   - **Sibling claim asserts in the same file** that still encode the old gate (same Scope “any sibling claim asserts”): e.g. candidate `ACTIVE_SEARCH` single-state → always append `_RETRY`; meteorite primaries in `test_dispatch_claim_states_meteorite` → always `[ts, f"{ts}_RETRY"]`. Do not invent new test classes beyond flipping these claim expectations.
+
+2. **`docs/test-bible/utils/config.md`** — revise claim-contract prose only:
+   - **§ AST-641 · AST-642 · AST-630**: primary rows always count/claim `trigger` + `trigger+"_RETRY"` whether or not the companion key exists in the registry (drop “when that companion exists”).
+   - **§ AST-882 · AST-881**: replace “prefers registry `retry_state`… HOMEPAGE_READY claims WEBSITE_FOUND_RETRY” with suffix-always: `HOMEPAGE_READY` → `HOMEPAGE_READY_RETRY`; note `retry_state` remains for failure routing. Update the HOMEPAGE_READY claim-list row accordingly.
+   - **§ AST-898 · AST-895**: keep `NEW`/`VALID_TITLE` **registry** `retry_state` → `NEW_RETRY` for routing; change primary **claim** language so `VALID_TITLE` claims `VALID_TITLE_RETRY` (not `NEW_RETRY`). `NEW` claim `["NEW","NEW_RETRY"]` stays (suffix matches).
+
+3. **Out of scope (AST-1798 / other tickets):** no `src/` product edits; do not change `docs/test-bible/core/roster.md` / `gazer.md` / `dispatch_tasks.md` unless a separate board finding names them — Betty’s REVISE named `utils/config.md` + these claim classes.
+
+### Blast radius
+
+- Component suite for utils/config claim helpers goes green against AST-1798 product once flipped; stays red against pre-fix product for the HOMEPAGE_READY / VALID_TITLE cases (desired).
+- Routing / transition / fail-dest tests that still assert `retry_state == WEBSITE_FOUND_RETRY` or `VALID_TITLE.retry_state == NEW_RETRY` remain valid and must not be “fixed” into suffix form.
+- Downstream data/dispatcher tests that hard-code old claim unions (e.g. `TestAst882HomepageReadyClaimsWfr` if still present) are **not** in this ticket’s Scope — leave them; file a follow-up only if Betty’s board expands.
+
+### What must still hold
+
+- Retry-only trigger rows still assert single-state claim lists.
+- Primaries whose suffix already matched `retry_state` (`JD_READY`, `WEBSITE_FOUND`, `NEW` job, candidate `REQUESTED_*`) keep the same two-state claim lists.
+- AST-898 registry holding and consult fail-dest to `NEW_RETRY` remain documented and tested as routing, not claim.
+- AST-1798 product contract: no cross-name claim companions; companion need not exist in registry.
