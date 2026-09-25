@@ -697,3 +697,19 @@ Primary numbered list: **`docs/test-bible/utils/config.md`** § AST-1773 (includ
 
 **Bible path shasums (record after publish):**
 - `docs/test-bible/core/repo_admin_json.md`
+
+### AST-1796 · AST-1783 (bug-repro)
+
+**Parent:** [AST-1783](https://linear.app/astralcareermatch/issue/AST-1783/parsing-emails-with-linked-job-titles). **Bug:** [AST-1796](https://linear.app/astralcareermatch/issue/AST-1796). **Publish:** `origin/sub/AST-1783/AST-1796-combo-email-mixed-jd-job-link-array`.
+
+**qa-fix:** `stage_meteorite` gains `## COMBO (inline JD + separate job links)` under existing `multi_jd_inline` (no seventh outcome); fixture surgical lockstep. Map skip-blob: **`docs/test-bible/core/meteorite.md`** § AST-1796.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Combo prompts + no `$RESPONSE_SCHEMA` + field lockstep | `data/admin/agent_task.json`, AST-756 fixture | **`TestAst1796StageMeteoriteComboPrompts`** (bug-repro) |
+
+**Broken / obsolete this pass:** none — prior TITLE-AS-HREF / job_title asserts remain.
+
+## QA test manifest
+
+Primary: **`docs/test-bible/core/meteorite.md`** § AST-1796 (includes this module’s node id).

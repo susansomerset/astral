@@ -239,3 +239,167 @@ context_tokens≈22000
 `[code-rubric] PROCEED (Commit: bb0e9e73) title-as-href prompts clean`
 
 context_tokens≈28000
+
+## Bug: AST-1796 — Combo email: mixed JD + job-link array of meteorites
+
+### As-is
+
+Combo emails that mix an inline job description with separate job links are not classified into an array of mixed meteorites (some link-only, some with full JD content — and a link when available). Ruth is steered toward `single_jd_with_more` (one jobs item) or a pure `multi_jd_inline` / `link_list` shape that drops half of the landables.
+
+### To-be
+
+Stage classify instructions accommodate that combo shape and return an array of meteorites covering both kinds: jobs with links, and jobs with full JD contents (plus link when present). Existing six closed outcomes only — no seventh outcome string.
+
+### Repro
+
+1. Ingress blob shaped like Susan's sample: one (or more) original JD bodies inline in the email **plus** one or more separate http(s) job-page URLs (not merely a single "more" URL glued onto one JD).
+2. Run live `stage_meteorite` classify on that blob.
+3. **Broken:** outcome collapses to `single_jd_with_more` (one jobs item) or `link_list`/`multi_jd_inline` that omits either the full JD landable(s) or the separate link landable(s) — staged meteorite count ≠ number of distinct landables.
+4. **Fixed:** classify returns `multi_jd_inline` with `jobs.length` equal to the distinct landables: each full JD → item with `jd_text` (and `job_link` when that posting has a URL); each separate job URL not already tied to a JD item → item with `job_link` and empty/omitted `jd_text`. Map inserts that many meteorite rows; http `job_link` items land on the scrape path (AST-1785).
+
+### Root cause
+
+1. **Prompts:** `multi_jd_inline` currently forbids `job_link`; `link_list` requires a URL on every item; `single_jd_with_more` is defined as **one** jobs item. A combo blob therefore has no taught path that returns a **mixed** `jobs[]` array under the closed six outcomes.
+2. **Map (blocks link-only rows under a text outcome):** In `_map_classify_jobs_to_meteorite_rows`, text outcomes with empty `jd_text` fall back to the full `ingress_blob` (AST-1756). A link-only jobs item under `multi_jd_inline` would therefore get the entire email as `content` instead of a link-only scrap.
+
+### Proposed change
+
+Parent epic **Component / Technical scope** is the bound (UAT-batch). Touch only those files; keep six outcomes; no `$RESPONSE_SCHEMA` in prompts.
+
+1. **`data/admin/agent_task.json`** — `stage_meteorite` row:
+
+   - In `## OUTCOMES` bullet **3. multi_jd_inline**, replace the current "leave job_link empty" rule with: return one jobs item per landable in the blob; each original JD gets `jd_text`; when a posting URL is present for that JD, also set `job_link`; when the blob also has separate job-page URLs that are not the body of an inline JD, add one jobs item per such URL with `job_link` set and `jd_text` omitted/empty. Still set the same `from_email` / `to_email` / `sent_at` on every jobs item for this outcome. Do **not** invent a seventh outcome.
+   - Leave bullets 1–2 and 4–6 otherwise intact (including `single_jd_with_more` = one JD + one "more" URL as **one** jobs item — that shape is not the multi-link combo).
+   - Append a new section after `## TITLE-AS-HREF (linked job titles)` with this literal heading and rules:
+
+```
+## COMBO (inline JD + separate job links)
+
+When CONTENT mixes one or more original job descriptions inline with one or more separate job-page URLs (a recruiter "here is the JD, and also these other openings" email), classify as multi_jd_inline and return one jobs item per distinct landable — do not collapse into single_jd_with_more, and do not drop either the JD bodies or the separate links.
+
+- Each original JD body → one jobs item with that text in jd_text; set job_link when that same posting also has an http(s) URL; omit job_link when the JD has no posting URL.
+- Each separate job-page URL that is not already represented as the job_link on a JD item → one jobs item with that URL as job_link and jd_text omitted/empty (never invent JD text for a bare link).
+- Title-as-href anchors that are themselves the job titles remain under ## TITLE-AS-HREF (prefer link_list / single_jd_with_more as that section already teaches). Pure URL lists stay link_list. A single JD plus exactly one "more" URL with no other separate links may still be single_jd_with_more.
+
+Never invent URLs or JD text. Keep electronic-contact, breadcrumb header, JOB TITLE, and EMPLOYER NAME rules.
+```
+
+   - Update `user_prompt` to add one sentence after the title-as-href sentence (keep all existing sentences):  
+     `When CONTENT mixes inline JD body text with separate job-page URLs, classify as multi_jd_inline and return one jobs item per landable (jd_text for JD bodies; job_link for separate URLs; both when a JD has its own URL); do not collapse to a single jobs item.`
+   - Do not insert `$RESPONSE_SCHEMA`. Leave `nocache_prompt` / `system_prompt` / empty cache slots unchanged.
+
+2. **`docs/uat-fixtures/AST-756/expected-agent_task.json`** — surgical lockstep: set `stage_meteorite` `cache_prompt` and `user_prompt` to the exact same strings as admin after step 1 (same discipline as AST-1784 Stage 1 §4).
+
+3. **`src/core/meteorite.py`** — in `_map_classify_jobs_to_meteorite_rows`, text-outcome branch (`text_source_ref_outcomes`): when `jd_text` is empty/blank **and** the jobs item has an http(s) `job_link` (`_is_http_url`), do **not** fall back to `ingress_blob`; use empty content (`""` or `None` consistent with URL-outcome rows that have no jd_text) and set `link` to that `job_link` (AST-1785 preference already applies). Keep the existing ingress-blob fallback only when there is **no** http(s) `job_link` (classic text landable with blank Ruth `jd_text`). Do not change URL-outcome mapping, breadcrumb helper call sites beyond this skip, or invent a parallel HTML harvester.
+
+⚠️ **Decision:** Teach combo under existing `multi_jd_inline` (not a seventh outcome, not `link_list`) because URL outcomes require http `job_link` on every jobs item and combo may include an unlinked JD body; AST-1785 already prefers http `job_link` over breadcrumb on text outcomes once the prompt returns mixed items.
+
+### Blast radius
+
+- `stage_meteorite` catalog + AST-756 fixture twin (Betty prompt / lockstep tests for AST-1784 / AST-1755 / AST-1529 may need a combo assertion — Betty owns test-tree).
+- `_map_classify_jobs_to_meteorite_rows` text path: classic blank-`jd_text` + no-link emails must still get ingress-blob fallback (AST-1756); only the http-link + blank-`jd_text` case changes.
+- AST-1785 map preference and scrape-state path remain the consumer of http `job_link` on text outcomes — do not re-implement preference elsewhere.
+- Title-as-href / employer / job_title / electronic-contact prompt sections must remain; combo section must not contradict TITLE-AS-HREF for pure title-link blobs.
+
+### What must still hold
+
+- Six closed `STAGE_METEORITE_CONFIG["outcomes"]` literals; no `$RESPONSE_SCHEMA` in `stage_meteorite` prompts (parent AC2–AC3 / AST-1784).
+- Title-as-href teaching (AST-1784) and fixture lockstep of `stage_meteorite` prompt fields remain.
+- Text landable with **no** http `job_link` still gets email breadcrumb (parent AC6 / AST-1785).
+- http `job_link` on a jobs item still wins over breadcrumb and uses scrape path (parent AC4–AC5 / AST-1785).
+- Bare URL-list and Dice-style `link_list` / `single_jd_with_more` shapes do not regress (parent AC7).
+- AST-1756 ingress-blob fallback for blank `jd_text` on text outcomes **without** http `job_link` still holds.
+
+
+## Radia review (AST-1796)
+
+[code-rubric]
+
+**Ticket:** AST-1796  
+**Publish ref:** `75d7a68954d362f47c6ca875aebe80ecaebba666` (`origin/sub/AST-1783/AST-1796-combo-email-mixed-jd-job-link-array`)  
+**Diff base:** `origin/ftr/AST-1783-parsing-emails-with-linked-job-titles`  
+**Corpus:** `2ac86c3f693409c364f8630a97198c8dbfa9c6f3`  
+**Parent shape:** Normal (AST-1783 in flight — not orphaned)  
+**Overall:** CLEAN
+
+## Canon scores
+
+| slug | grade | effort | one-line |
+|------|-------|--------|----------|
+| patt.task.daisy-chain | A | | |
+| stat.logging.debug | A | | |
+| stat.logging.info.entity | X | | no new entity info lines; mapper reorder only |
+
+**Notes (Canon Scope):** Linear Description has no frozen **Canon Scope** block; scored `patt.task.daisy-chain`, `stat.logging.debug`, `stat.logging.info.entity` from plan-fix boundaries + parent meteorite patch (`[board-joan] CANON: OK`). Not a product ESCALATE — process gap for Archie if bugs should carry explicit frozen lists.
+
+## Column diff vs plan stage
+
+no plan-stage canon scores attached (fix-board Joan: `CANON: OK` only)
+
+## Frame diff
+
+(none)
+
+## Fix-specific checks
+
+**[bug-repro] OK** — `TestAst1796ComboBlankJdTextHttpJobLinkSkipsIngressBlob::test_blank_jd_text_with_http_job_link_skips_ingress_blob` pins concrete **To-be** map behavior: `multi_jd_inline` item with blank `jd_text`, http `job_link`, and a non-empty `ingress_blob` must yield `link == url`, `content == ""`, and `content != ingress_blob`. That matches **Root cause §2** (AST-1756 blob fallback swallowing link-only scraps) and would fail pre-fix (blob filled before http preference). `TestAst1796StageMeteoriteComboPrompts` covers the prompt half (`## COMBO`, `multi_jd_inline` combo wording, fixture lockstep, six outcomes, no `$RESPONSE_SCHEMA`) — appropriate repro for the Ruth-instruction leg; it does not assert live multi-item `jobs.length` (LLM-shaped **To-be**), which is honest given component scope.
+
+**## What must still hold — OK**
+
+| Item | Verdict |
+|------|---------|
+| Six outcomes; no `$RESPONSE_SCHEMA` in `stage_meteorite` prompts | `TestAst1796StageMeteoriteComboPrompts` + unchanged outcome enum |
+| AST-1784 title-as-href + prompt field lockstep | `## TITLE-AS-HREF` retained; COMBO appended after; fixture `cache_prompt`/`user_prompt` lockstep test |
+| Text landable without http `job_link` → breadcrumb (AC6 / AST-1785) | `_email_breadcrumb_link` path unchanged in `elif source_kind == "email"` branch |
+| http `job_link` wins + scrape path (AC4–5 / AST-1785) | `_is_http_url(job_link)` preference block unchanged; `job_link` read moved earlier only to gate blob fallback |
+| `link_list` / `single_jd_with_more` (AC7) | URL-outcome branch unchanged aside from shared `_is_http_url` |
+| AST-1756 blob fallback when blank `jd_text` and **no** http `job_link` | `else` branch still uses `ingress_blob`; existing `TestAst1756*` cases preserved on branch |
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** `origin/ftr/AST-1783-parsing-emails-with-linked-job-titles...origin/sub/AST-1783/AST-1796-combo-email-mixed-jd-job-link-array` (full three-dot diff)  
+  **Finding:** Fix product is `75d7a689` (3 files) + `fd9ee8ee` (tests/bible). The publish tip also carries large stacked epic work (AST-1799, AST-1798, AST-1797, …) unrelated to this bug — same shared-sub pattern as feature children.  
+  **Recommendation:** Review/score the bug on the `6d8458b3`-scale AST-1796 commits; run Betty’s AST-1796 manifest only.
+
+- **Location:** Linear AST-1796 Description  
+  **Finding:** No frozen canon list in Description (only Report / As-is / To-be). Fix-board Joan cleared canon at F2; plan-fix patch in `docs/features/meteorite/ast-1784-stage-meteorite-linked-title-prompts.md` § Bug AST-1796 is the engineering contract.  
+  **Recommendation:** Archie/process: optional habit of freezing canon on bug tickets; not blocking this diff.
+
+- **Location:** `tests/component/core/test_meteorite.py` `TestAst1796…`  
+  **Finding:** Betty’s Linear `[bug-repro]` comment references the manifest; test module uses descriptive comments/docstrings rather than a first-line `[bug-repro]` tag (convention varies elsewhere in repo).  
+  **Recommendation:** Advisory only — assertions are substantive.
+
+### advisory
+
+- **Location:** `## HEADER / BREADCRUMB FIELDS` vs updated `multi_jd_inline` outcome bullet  
+  **Finding:** Outcome 3 now allows `job_link` on `multi_jd_inline` combo landables while the header still says text types leave `job_link` empty in some wording — intentional per plan **Proposed change §1**; COMBO section clarifies the exception.  
+  **Recommendation:** None for code; optional prompt polish later.
+
+- **Location:** End-to-end **To-be** (Ruth returns N jobs items for one combo email)  
+  **Finding:** Fix delivers taught prompts + map support for link-only items; no component test simulates Ruth returning JD + separate URL items in one classify response (would be integration/UAT).  
+  **Recommendation:** Parent UAT with Susan’s sample message; map/prompt regressions are gated by manifest.
+
+## What's solid
+
+- Plan **Proposed change** fully landed: `## COMBO (inline JD + separate job links)` + `multi_jd_inline` bullet update + `user_prompt` sentence; AST-756 surgical lockstep; mapper skips `ingress_blob` when blank `jd_text` **and** http `job_link`, preserving AST-1756 fallback otherwise.
+- `patt.task.daisy-chain`: mixed landables ride Ruth `jobs[]` + existing map/insert path — no parallel HTML harvester.
+- No new logging surface in the meteorite delta; AST-1785 http preference and scrape-state wiring untouched except ordering prerequisite for the blob skip.
+- Link-only combo scraps insert on **SCRAPE_LINK** at stage (AST-1785), avoiding `run_stage_meteorite`’s text-arm “missing content” gate for **NEW** rows — consistent with scrape-path **To-be**.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+1. Append artifact to issue doc (`ast-1784-stage-meteorite-linked-title-prompts.md` § Bug AST-1796 or dedicated bug doc if split later); `docs(AST-1796): Radia review — clean`; push.
+2. Post slim upshot `--as radia`; → **Review Posted**.
+3. **Normal parent:** `do-all-the-things` §3h clean shortcut → **User Testing** (skip `resolve-child`).
+
+---
+
+`[code-rubric] PROCEED (Commit: 75d7a689) combo map + prompts clean`
+
+context_tokens≈24000
