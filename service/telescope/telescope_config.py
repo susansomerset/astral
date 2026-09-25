@@ -5,7 +5,7 @@ Import fence forbids reading src/ from service/telescope/.
 Secrets (database URL) stay in env via settings.py.
 """
 
-# Scrape budget only — starts after a pool slot/page is acquired (not queue wait).
+# Scrape budget only — starts once the job has its page (not queue wait or Firefox launch).
 REQUEST_TIMEOUT_SECONDS = 120
 
 # Retries are queue re-deliveries: the platform sets max_attempts per job; a failed
@@ -14,8 +14,9 @@ SCRAPE_RETRY_BASE_DELAY_SECONDS = 2.0
 # Timeouts are expensive — only this many attempts end in a timeout before the job fails.
 TIMEOUT_MAX_ATTEMPTS = 2
 
-# Queue worker (Postgres-backed). WORKER_CONCURRENCY = scrapes in flight per replica —
-# the tuning knob for how hard one replica is pushed (must fit the ~2 GiB limit).
+# Queue worker (Postgres-backed). WORKER_CONCURRENCY = scrapes in flight per replica,
+# i.e. max live contexts in its one Firefox — the only concurrency knob (must fit the
+# replica's memory limit). Scale out by adding replicas.
 WORKER_CONCURRENCY = 20
 QUEUE_POLL_SECONDS = 2.0
 LEASE_SECONDS = 60
@@ -26,10 +27,8 @@ WORKER_STALE_SECONDS = 60
 SHUTDOWN_GRACE_SECONDS = 25
 DB_POOL_MAX_SIZE = 5
 
-# Pooled mode (AST-1725): W Firefox processes, fresh context per HTTP call.
-BROWSER_PER_REQUEST = False
-BROWSER_POOL_SIZE = 10
-MAX_CONTEXTS_PER_BROWSER = 15
+# One Firefox per process, a fresh context per job. After this many jobs a new
+# Firefox takes over and the old one closes once its last job finishes.
 RECYCLE_AFTER_N = 50
 
 PORT = 8080

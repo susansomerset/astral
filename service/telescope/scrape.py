@@ -7,7 +7,7 @@ from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 
-from browser import BrowserPool
+from browser import Firefox
 from capture import (
     CaptureQueryError,
     capture_html,
@@ -73,7 +73,7 @@ class TelescopeRequest(BaseModel):
         default=False,
         description=(
             "When true, emit structured scrape debug events to the service console "
-            "(Firefox slot, context lifecycle, navigation, ready state, capture sizes)."
+            "(Firefox / context lifecycle, navigation, ready state, capture sizes)."
         ),
     )
 
@@ -137,7 +137,7 @@ def parse_request(raw: Any) -> tuple[TelescopeRequest, Optional[str]]:
 
 
 async def run_scrape(
-    pool: BrowserPool, req: TelescopeRequest, sel: Optional[str]
+    firefox: Firefox, req: TelescopeRequest, sel: Optional[str]
 ) -> dict:
     """One attempt. Raises ScrapeError("timeout" | "scrape_failed", …) on failure."""
     want = set(req.fields)
@@ -162,8 +162,8 @@ async def run_scrape(
         return out
 
     try:
-        # Scrape budget starts after a pool slot/page is acquired.
-        async with pool.page() as page:
+        # Scrape budget starts once the job has its page (Firefox relaunch excluded).
+        async with firefox.page() as page:
             result = await asyncio.wait_for(
                 _scrape(page), timeout=settings.request_timeout_seconds
             )

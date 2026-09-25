@@ -1,4 +1,4 @@
-"""Astral Telescope — Postgres queue consumer with a Firefox pool.
+"""Astral Telescope — Postgres queue consumer driving one Firefox per process.
 
 No scrape HTTP API: the platform enqueues jobs in telescope_job and waits for results
 (see jobqueue.py). The HTTP server exists only for Railway's /healthz probe.
@@ -13,7 +13,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 import jobqueue
-from browser import BrowserPool
+from browser import Firefox
 from logging_util import configure_logging, get_logger
 from settings import settings
 from worker import QueueWorker
@@ -31,17 +31,17 @@ async def lifespan(app: FastAPI):
         settings.database_url, max_size=settings.db_pool_max_size
     )
     await jobqueue.ensure_schema(db)
-    pool = BrowserPool()
-    await pool.start()
-    worker = QueueWorker(db, pool)
+    firefox = Firefox()
+    await firefox.start()
+    worker = QueueWorker(db, firefox)
     await worker.start()
-    app.state.pool = pool
+    app.state.firefox = firefox
     app.state.worker = worker
     try:
         yield
     finally:
         await worker.stop()
-        await pool.stop()
+        await firefox.stop()
         await db.close()
 
 
@@ -51,12 +51,12 @@ app = FastAPI(title="Astral Telescope", lifespan=lifespan)
 @app.get("/healthz")
 async def healthz(request: Request):
     worker: QueueWorker = request.app.state.worker
-    pool: BrowserPool = request.app.state.pool
+    firefox: Firefox = request.app.state.firefox
     # The claim loop wakes at least every queue_poll_seconds; a long silence means it's stuck.
     loop_age_s = time.monotonic() - worker.last_loop_at
     loop_ok = loop_age_s < max(30.0, settings.queue_poll_seconds * 10)
     try:
-        browser_ok = await pool.health_poke()
+        browser_ok = await firefox.health_poke()
     except Exception as exc:
         _log.exception("healthz browser poke failed\n  %s: %s", type(exc).__name__, exc)
         browser_ok = False
