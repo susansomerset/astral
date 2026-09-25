@@ -732,3 +732,8 @@ AST-641 Stage 3 wired optional `states=` on claim wrappers and **validated every
 - Registry `retry_state` / `error_state` continue to drive failure **routing** writes; claim helpers still must not invent registry keys.
 - `batch_id`-first claim → get → clear shape unchanged (`astral.batch.claim-process-release`).
 - Direct single-state claim callers (tests / non-dispatch paths) still reject unknown primary `state` values when `states` is omitted.
+
+
+## Fix-board Joan findings (AST-1801)
+
+**Verdict: CANON: OK** — Dropping multi-state registry gates on `get_new_company_batch` / `get_new_job_batch` / `get_new_candidate_batch` when `states=` is set matches `patt.task.dispatch-retry` (companion need not exist in registry). Single-state callers stay registry-bound. No statute update; F3 not triggered.
