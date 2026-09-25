@@ -11,6 +11,7 @@ Isolated Postgres queue consumer (FastAPI only for `/healthz`) — **not** under
 | `service/telescope/capture.py` | `tests/component/service/test_telescope_capture.py` | no |
 | `service/telescope/worker.py`, `scrape.py`, `jobqueue.py` codec, `app.py` `/healthz` | `tests/component/service/test_telescope_worker.py` | no |
 | `service/telescope/browser.py` (one Firefox, context per job, recycle / relaunch) | `tests/component/service/test_telescope_browser.py` | no |
+| `service/telescope/logging_util.py` + `joblog.py` (worker/job fields, per-job debug gating) | `tests/component/service/test_telescope_logging.py` | no |
 | Import fence + Dockerfile / requirements | `tests/component/service/test_telescope_fence.py` | no |
 | Railway Phase 1 + bidirectional CI fence | `tests/component/service/test_telescope_deploy_ci.py` | no |
 

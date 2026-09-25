@@ -18,21 +18,19 @@ import asyncpg
 
 import jobqueue
 from browser import Firefox
-from logging_util import get_logger
+from logging_util import get_logger, set_worker_label
 from scrape import ScrapeError, parse_request, run_scrape
-from scrape_debug import (
-    begin_scrape_request,
-    disable_scrape_debug,
-    enable_scrape_debug,
-    end_scrape_request,
-    scrape_correlation_tag,
-    scrape_debug_event,
-)
+from joblog import begin_job, end_job, short_id
 from settings import settings
 
 _log = get_logger(__name__)
 
 _DB_RETRY_MAX_SECONDS = 30.0
+_STATS_SECONDS = 60.0
+
+
+def _first_line(text: str) -> str:
+    return (text or "").strip().splitlines()[0] if (text or "").strip() else "-"
 
 
 def make_worker_id() -> str:
@@ -60,6 +58,11 @@ class QueueWorker:
         self._tasks: list[asyncio.Task] = []
         self.last_loop_at = time.monotonic()
         self.db_ok = False
+        # Short replica label on every log line; worker_id stays unique per process.
+        self.label = self.worker_id.split(":")[0][:8]
+        set_worker_label(self.label)
+        self._stats = {"done": 0, "retried": 0, "failed": 0}
+        self._stats_at = time.monotonic()
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -71,9 +74,10 @@ class QueueWorker:
             asyncio.create_task(self._maintenance_loop(), name="telescope-maintenance"),
         ]
         _log.info(
-            "telescope worker started worker_id=%s concurrency=%d",
-            self.worker_id,
+            "%s | telescope worker started: concurrency:%d worker_id:%s",
+            self.label,
             self._concurrency,
+            self.worker_id,
         )
 
     async def stop(self) -> None:
@@ -83,10 +87,12 @@ class QueueWorker:
         for t in self._tasks:
             t.cancel()
         await asyncio.gather(*self._tasks, return_exceptions=True)
-        if self._in_flight:
+        draining = len(self._in_flight)
+        if draining:
             _log.info(
-                "telescope worker draining in_flight=%d grace_s=%s",
-                len(self._in_flight),
+                "%s | telescope worker draining: in_flight:%d grace:%ss",
+                self.label,
+                draining,
                 settings.shutdown_grace_seconds,
             )
             await asyncio.wait(
@@ -99,10 +105,20 @@ class QueueWorker:
         await asyncio.gather(*leftovers, return_exceptions=True)
         try:
             released = await jobqueue.release_all(self._db, worker_id=self.worker_id)
-            _log.info("telescope worker stopped released=%d", released)
+            _log.info(
+                "%s | telescope worker stopped: finished:%d handed_back:%d",
+                self.label,
+                draining - len(leftovers),
+                released,
+            )
         except Exception as exc:
             # Leases expire and maintenance re-queues them — nothing is lost.
-            _log.warning("telescope worker release failed: %s: %s", type(exc).__name__, exc)
+            _log.warning(
+                "%s | telescope worker stopped: hand-back failed, leases will expire (%s: %s)",
+                self.label,
+                type(exc).__name__,
+                exc,
+            )
         await self._close_listener()
 
     @property
@@ -121,7 +137,7 @@ class QueueWorker:
         except Exception as exc:
             self._listener = None
             _log.warning(
-                "telescope listener connect failed (polling only): %s: %s",
+                "telescope listener connect failed, polling only: %s: %s",
                 type(exc).__name__,
                 exc,
             )
@@ -204,8 +220,13 @@ class QueueWorker:
                 for job_id in checked:
                     task = self._in_flight.get(job_id)
                     if job_id not in alive and task is not None and not task.done():
-                        _log.info("telescope job %s no longer ours — cancelling", job_id)
+                        _log.warning(
+                            "%s | telescope job cancelled: caller gave up or lease lost",
+                            short_id(job_id),
+                            extra={"job": short_id(job_id)},
+                        )
                         task.cancel()
+                self._maybe_log_stats()
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
@@ -224,18 +245,44 @@ class QueueWorker:
                     retention_hours=settings.job_retention_hours,
                     worker_stale_seconds=settings.worker_stale_seconds,
                 )
-                if any(counts.values()):
-                    _log.info(
-                        "telescope maintenance expired=%d reaped=%d pruned=%d",
-                        counts["expired"],
+                if counts["expired"] or counts["reaped"]:
+                    _log.warning(
+                        "%s | telescope maintenance: reaped:%d (dead worker's jobs re-queued) expired:%d (never picked up)",
+                        self.label,
                         counts["reaped"],
-                        counts["pruned"],
+                        counts["expired"],
                     )
+                if counts["pruned"]:
+                    _log.debug("Pruned %d finished jobs", counts["pruned"])
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
                 _log.warning("telescope maintenance failed: %s: %s", type(exc).__name__, exc)
             await asyncio.sleep(settings.maintenance_seconds)
+
+    def _maybe_log_stats(self) -> None:
+        """One line per replica per minute — only when it did something."""
+        now = time.monotonic()
+        if now - self._stats_at < _STATS_SECONDS:
+            return
+        window = now - self._stats_at
+        stats, self._stats = self._stats, {"done": 0, "retried": 0, "failed": 0}
+        self._stats_at = now
+        if not any(stats.values()) and not self._in_flight:
+            return
+        firefox_id, served = self._firefox.status()
+        _log.info(
+            "%s | telescope stats: in_flight:%d/%d done:%d retried:%d failed:%d (%ds) firefox:%s served:%d",
+            self.label,
+            len(self._in_flight),
+            self._concurrency,
+            stats["done"],
+            stats["retried"],
+            stats["failed"],
+            round(window),
+            firefox_id,
+            served,
+        )
 
     # -- one job -------------------------------------------------------------
 
@@ -251,14 +298,15 @@ class QueueWorker:
     async def _run_job(self, job: jobqueue.ClaimedJob) -> None:
         raw = job.request if isinstance(job.request, dict) else {}
         url = str(raw.get("url") or "")
-        fields = raw.get("fields")
-        request_id, scrape_tokens = begin_scrape_request(
-            url, fields=list(fields) if isinstance(fields, list) else None
+        tokens = begin_job(
+            job.id,
+            attempt=job.attempts,
+            max_attempts=job.max_attempts,
+            debug=bool(raw.get("debug")),
         )
-        debug_token = enable_scrape_debug() if raw.get("debug") else None
         started = time.monotonic()
         try:
-            scrape_debug_event("request_start", url=url, fields=fields, job_id=job.id)
+            _log.debug("Claimed job %s: %s (waited %.1fs)", job.id, raw, job.wait_s)
             try:
                 req, sel = parse_request(raw)
                 result = await run_scrape(self._firefox, req, sel)
@@ -268,7 +316,7 @@ class QueueWorker:
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                _log.exception("telescope job=%s unexpected error", job.id)
+                _log.exception("%s | telescope job crashed: %s", short_id(job.id), url)
                 await self._record_failure(
                     job, ScrapeError("scrape_failed", f"{type(exc).__name__}: {exc}"), url
                 )
@@ -279,28 +327,30 @@ class QueueWorker:
                 worker_id=self.worker_id,
                 result=result,
             )
+            if not ours:
+                _log.warning(
+                    "%s | telescope job discarded: finished after it was cancelled or reaped",
+                    short_id(job.id),
+                )
+                return
+            self._stats["done"] += 1
             _log.info(
-                "telescope ok %s job=%s attempt=%d/%d url=%s final_url=%s fields=%s elapsed_s=%.1f%s",
-                scrape_correlation_tag(request_id=request_id),
-                job.id,
-                job.attempts,
-                job.max_attempts,
+                "%s | telescope job done: %s -> %s fields:%s scrape:%.1fs wait:%.1fs",
+                short_id(job.id),
                 url,
                 result.get("final_url"),
-                req.fields,
+                ",".join(req.fields),
                 time.monotonic() - started,
-                "" if ours else " (discarded: job no longer ours)",
+                job.wait_s,
             )
-            scrape_debug_event("request_done", url=url, final_url=result.get("final_url"))
         finally:
-            if debug_token is not None:
-                disable_scrape_debug(debug_token)
-            end_scrape_request(scrape_tokens)
+            end_job(tokens)
 
     async def _record_failure(
         self, job: jobqueue.ClaimedJob, exc: ScrapeError, url: str
     ) -> None:
         delay = self._retry_delay(job, exc.error_class)
+        _log.debug("Attempt error detail: %s", exc)
         status = await self._db_write(
             jobqueue.fail,
             job_id=job.id,
@@ -309,18 +359,35 @@ class QueueWorker:
             error_class=exc.error_class,
             retry_in_seconds=delay,
         )
-        log = _log.warning if status == "queued" else _log.error
-        log(
-            "telescope %s job=%s attempt=%d/%d url=%s status=%s retry_in_s=%s\n  %s",
-            exc.error_class,
-            job.id,
-            job.attempts,
-            job.max_attempts,
-            url,
-            status,
-            delay,
-            exc,
-        )
+        if status == "queued":
+            self._stats["retried"] += 1
+            _log.warning(
+                "%s | telescope job retry: %s %s attempt:%d/%d retry_in:%ss — %s",
+                short_id(job.id),
+                url,
+                exc.error_class,
+                job.attempts,
+                job.max_attempts,
+                delay,
+                _first_line(str(exc)),
+            )
+        elif status == "failed":
+            self._stats["failed"] += 1
+            _log.error(
+                "%s | telescope job failed: %s %s after attempt %d/%d — %s",
+                short_id(job.id),
+                url,
+                exc.error_class,
+                job.attempts,
+                job.max_attempts,
+                _first_line(str(exc)),
+            )
+        else:
+            _log.warning(
+                "%s | telescope job discarded: failed after it was cancelled or reaped (%s)",
+                short_id(job.id),
+                exc.error_class,
+            )
 
     async def _db_write(self, fn, **kwargs: Any) -> Any:
         """Result writes retry through short DB blips; after that the lease expires

@@ -301,6 +301,8 @@ class _TelescopeQueue:
         db = await self._get_db()
         deadline = float(TELESCOPE_CONFIG["job_deadline_seconds"])
         job_id = str(uuid.uuid4())
+        # job_id[:8] is the `job` field on the worker's log lines for this scrape.
+        _log.debug("Calling telescope job %s: %s", job_id, request)
         fut: asyncio.Future = asyncio.get_running_loop().create_future()
         self._waiters[job_id] = fut
         try:
@@ -338,7 +340,12 @@ class _TelescopeQueue:
                 row = await asyncio.wait_for(asyncio.shield(fut), timeout=deadline)
             except asyncio.TimeoutError:
                 await self._cancel(job_id)
-                _log.warning("telescope job %s deadline %ss exceeded", job_id, deadline)
+                _log.warning(
+                    "%s | telescope job cancelled: deadline %ss exceeded url=%s",
+                    job_id[:8],
+                    deadline,
+                    request.get("url"),
+                )
                 raise PlaywrightInfraError(
                     "telescope_timeout", f"job {job_id} exceeded {deadline}s"
                 ) from None
@@ -430,13 +437,8 @@ async def _post_telescope(
         body["id"] = id
     _log.debug("Calling _post_telescope: [body=%s]", body)
     data = await _pool.submit(body, priority=priority)
+    # Completion's info line is the worker's `<job> | telescope job done` — not repeated here.
     _log.debug("Response from _post_telescope: %s", data)
-    _log.info(
-        "telescope ok url=%s fields=%s final_url=%s",
-        url,
-        want,
-        data.get("final_url"),
-    )
     return data
 
 

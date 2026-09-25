@@ -18,13 +18,8 @@ from typing import AsyncIterator, Optional
 
 from playwright.async_api import Browser, BrowserContext, Page, async_playwright
 
-from logging_util import get_logger
-from scrape_debug import (
-    alloc_context_id,
-    alloc_firefox_instance_id,
-    bind_scrape_firefox,
-    scrape_debug_event,
-)
+from logging_util import get_logger, worker_label
+from joblog import alloc_firefox_id, bind_firefox
 from settings import settings
 
 _log = get_logger(__name__)
@@ -75,6 +70,11 @@ class Firefox:
             self._playwright_cm = None
             self._playwright = None
 
+    def status(self) -> tuple[str, int]:
+        """(current Firefox id, jobs it has served) — for the worker stats line."""
+        inst = self._current
+        return (inst.firefox_id, inst.served) if inst else ("-", 0)
+
     async def health_poke(self) -> bool:
         """True when a connected Firefox is ready (relaunching one if it died)."""
         inst = await self._ensure_current()
@@ -88,17 +88,24 @@ class Firefox:
             if inst is not None and not inst.retired and inst.connected():
                 return inst
             if inst is not None:
-                reason = "recycle" if inst.connected() else "disconnected"
-                _log.info(
-                    "telescope firefox %s retiring reason=%s served=%d active=%d",
-                    inst.firefox_id,
-                    reason,
-                    inst.served,
-                    inst.active,
-                )
-                scrape_debug_event(
-                    "firefox_recover", firefox=inst.firefox_id, reason=reason
-                )
+                if inst.connected():
+                    _log.info(
+                        "%s | telescope firefox %s retired: recycle served:%d still_running:%d",
+                        worker_label(),
+                        inst.firefox_id,
+                        inst.served,
+                        inst.active,
+                        extra={"firefox": inst.firefox_id},
+                    )
+                else:
+                    _log.warning(
+                        "%s | telescope firefox %s disconnected: relaunching served:%d in_flight_lost:%d",
+                        worker_label(),
+                        inst.firefox_id,
+                        inst.served,
+                        inst.active,
+                        extra={"firefox": inst.firefox_id},
+                    )
                 inst.retired = True
                 if inst.active:
                     self._draining.add(inst)
@@ -117,14 +124,19 @@ class Firefox:
                     timeout=settings.launch_timeout_ms,
                     firefox_user_prefs=settings.firefox_user_prefs,
                 )
-                ff_id = alloc_firefox_instance_id()
-                _log.info("telescope firefox %s launched attempt=%d", ff_id, attempt)
-                scrape_debug_event("firefox_launched", firefox=ff_id, attempt=attempt)
+                ff_id = alloc_firefox_id()
+                _log.info(
+                    "%s | telescope firefox %s launched%s",
+                    worker_label(),
+                    ff_id,
+                    f" (attempt {attempt})" if attempt > 1 else "",
+                    extra={"firefox": ff_id},
+                )
                 return _Instance(browser=browser, firefox_id=ff_id)
             except Exception as e:
                 last_err = e
                 _log.warning(
-                    "Firefox launch attempt %d/%d failed: %s: %s",
+                    "telescope firefox launch attempt %d/%d failed: %s: %s",
                     attempt,
                     settings.launch_max_attempts,
                     type(e).__name__,
@@ -133,7 +145,7 @@ class Firefox:
                 if attempt < settings.launch_max_attempts:
                     await asyncio.sleep(settings.launch_retry_delay_seconds)
         _log.error(
-            "telescope firefox launch failed after %d attempts\n  %s: %s",
+            "telescope firefox launch failed after %d attempts: %s: %s",
             settings.launch_max_attempts,
             type(last_err).__name__ if last_err else "?",
             last_err,
@@ -145,8 +157,13 @@ class Firefox:
             await inst.browser.close()
         except Exception:
             pass
-        scrape_debug_event("firefox_closed", firefox=inst.firefox_id)
-        _log.info("telescope firefox %s closed served=%d", inst.firefox_id, inst.served)
+        _log.info(
+            "%s | telescope firefox %s closed: served:%d",
+            worker_label(),
+            inst.firefox_id,
+            inst.served,
+            extra={"firefox": inst.firefox_id},
+        )
 
     # -- one job -------------------------------------------------------------
 
@@ -157,26 +174,20 @@ class Firefox:
         inst.served += 1
         if inst.served >= settings.recycle_after_n:
             inst.retired = True  # the next job launches a replacement
-        bind_scrape_firefox(inst.firefox_id)
-        ctx_id = alloc_context_id()
+        bind_firefox(inst.firefox_id)
         context: Optional[BrowserContext] = None
         try:
-            scrape_debug_event("request_serving", firefox=inst.firefox_id, context=ctx_id)
             context = await inst.browser.new_context(viewport=settings.viewport)
-            scrape_debug_event("context_created", firefox=inst.firefox_id, context=ctx_id)
             page = await context.new_page()
-            scrape_debug_event("page_created")
+            _log.debug("Context opened (%d active on this Firefox)", inst.active)
             yield page
         finally:
             if context is not None:
-                scrape_debug_event("context_closed")
                 try:
                     await context.close()
                 except Exception:
                     pass
-                scrape_debug_event(
-                    "context_recycled", context=ctx_id, firefox=inst.firefox_id
-                )
+                _log.debug("Context closed")
             inst.active -= 1
             if inst.retired and inst.active == 0 and inst is not self._current:
                 self._draining.discard(inst)
