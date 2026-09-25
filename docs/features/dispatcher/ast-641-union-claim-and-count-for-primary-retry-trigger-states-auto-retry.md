@@ -437,3 +437,19 @@ Optional live check: Admin Available / claim for a `prefilter` row with `trigger
 - `fetch_website` ownership / second-strike filter for `WEBSITE_FOUND_RETRY` vs homepage-ready WFR is untouched (AST-882 / AST-892 boundary).
 - Registry `retry_state` / `error_state` continue to drive failure routing writes; only claim grouping stops reading them.
 - No new company/job states required; do not seed `HOMEPAGE_READY_RETRY` as part of this bug unless a later ticket asks.
+
+
+## Fix-board Joan findings (AST-1798)
+
+**Triage notes**
+
+Read the AST-1798 `plan-fix` patch on `origin/sub/AST-1797/AST-1798-retry-suffix-claim` and skimmed overlapping roster directives (`patt.task.dispatch-retry`, `astral.dispatch.entity-state-bound`, `astral.batch.claim-process-release`, `patt.task.daisy-chain`).
+
+The proposed change restores suffix-only claim pairing in `dispatch_claim_states` and drops AST-882’s registry `retry_state` preference for claim grouping. That aligns with active canon rather than fighting it:
+
+- **`patt.task.dispatch-retry`** — Arc 1–3: retry is `{trigger}_RETRY`; claim expands to trigger + suffixed companion; suffix states need not exist in the registry. Cross-name pairing (`HOMEPAGE_READY` → `WEBSITE_FOUND_RETRY`, `VALID_TITLE` → `NEW_RETRY`) is what this bug introduced; the fix corrects it.
+- **`astral.dispatch.entity-state-bound`** — claim helpers should reflect what the row actually claims; suffix-only pairing makes `trigger_state` honest.
+- **`astral.batch.claim-process-release`** / **`patt.task.daisy-chain`** — unchanged claim→process→release shape; only the state-set membership changes.
+
+No statute or pattern update, carve-out, or Archie gate needed. Registry `retry_state` stays for failure routing (AST-882/702); only claim grouping stops reading it, which canon already expects. F3 `validate-plan` fix mode not triggered from this board pass.
+[AST-1797 | AST-1798] Joan/validate fix-board - complete 7b757bfd model=composer-2.5 - (52s) > OK
