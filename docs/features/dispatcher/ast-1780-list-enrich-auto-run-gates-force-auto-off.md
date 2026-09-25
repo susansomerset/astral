@@ -803,3 +803,12 @@ AST-1792 proved the fail-open return. AST-1794’s delta is log-only; Betty’s 
 - When prompts load and a blank candidate-scoped token is scored, `empty_render: true` / AUTO-Run 400 / force-off still pass (existing AST-1780 tests).
 - Blank/`candidate_id` miss and unexpected `Exception` remain fail-closed with their existing logs (product; this gap does not assert those).
 - No product `src/` edits on this tip; bible remains the manifest source; no invented integration tier.
+
+
+## Review-fix findings (AST-1795)
+
+**Overall: CLEAN / PROCEED** — `[bug-repro]` `test_evaluate_valueerror_soft_miss_no_warning` pins silence of `no prompts to validate` warning on ValueError soft-miss; return still `empty_render: false`. Closes AST-1794 board TESTS:REVISE. Advisory only: § AST-1792 bible row still labels the return test `[bug-repro]` (manifest already demoted); bible shasum placeholder.
+
+## Docs-Acceptance (AST-1795)
+
+Test/bible gap only — product silence on sibling AST-1794 / ftr.
