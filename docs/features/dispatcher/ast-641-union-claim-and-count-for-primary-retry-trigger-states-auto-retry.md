@@ -653,3 +653,72 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 | AST-1799 | sub/AST-1797/AST-1799-retry-suffix-claim-tests |
 
 **Epic worktree:** `astral-AST-1797/` — one active sub checked out at a time.
+
+---
+
+## Bug: AST-1802 — gap: claim-union absent-companion registry tests (AST-1801 board)
+
+Sibling test gap for AST-1801 (`[board-betty] TESTS: REVISE`). Product fix (drop multi-state registry gates on claim helpers) lands on AST-1801; this ticket is **test/bible only**. Scope gate: AST-1802 `## Scope` (Component + Technical). Same plan-doc home as union claim / AST-1798 / AST-1801 (`ast-641-…`).
+
+### As-is
+
+`tests/component/core/test_roster.py::TestBatchApi` covers single-state reject (`test_get_new_company_batch_rejects_unknown_state`) and happy-path claim with `states=None`, but has **no** case that `get_new_company_batch(..., states=["HOMEPAGE_READY","HOMEPAGE_READY_RETRY"])` completes without `ValueError` when `HOMEPAGE_READY_RETRY` ∉ `COMPANY_STATES` (the live prefilter_company repro). `docs/test-bible/core/roster.md` has no entry for that multi-state / absent-companion contract. Job/candidate batch suites similarly lack an absent-companion multi-state case (candidate already passes in-registry `REQUESTED_ARTIFACTS_RETRY`; tracker multi-state case uses legacy hop labels, not a missing `_RETRY` key).
+
+### To-be
+
+Roster (required) and job/candidate (mirrors — product changed all three on AST-1801) claim tests assert: when `states=` includes a companion absent from the entity registry, the wrapper does **not** raise the registry `ValueError` / `not in allowed list` and still forwards `states=` to the claim mock. Single-state unknown primary still raises. Bible `docs/test-bible/core/roster.md` names the new coverage (and points at tracker/candidate mirrors if landed).
+
+### Repro
+
+Against a tree with AST-1801 product **not** applied (multi-state registry loop still present) and this gap **not** applied — the new asserts below are red:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestBatchApi -k 'absent_companion or rejects_unknown' \
+  -q
+```
+
+Concrete contract (must fail pre-AST-1801, pass after):
+
+```python
+assert "HOMEPAGE_READY_RETRY" not in COMPANY_STATES
+# Pre-fix: ValueError("… got 'HOMEPAGE_READY_RETRY'")
+get_new_company_batch(
+    "HOMEPAGE_READY",
+    batch_id="ast-1802",
+    states=["HOMEPAGE_READY", "HOMEPAGE_READY_RETRY"],
+)
+```
+
+### Root cause
+
+AST-1801 removes the multi-state registry gate that caused the live hop failure. Betty’s board found **missing coverage** — no test/bible line that pins “companion need not ∈ registry when `states=` is provided” — so the gap owns the flip (same pattern as AST-1799 for AST-1798).
+
+### Proposed change
+
+1. **`tests/component/core/test_roster.py` — `TestBatchApi`** (required):
+   - Add a case (name e.g. `test_get_new_company_batch_states_allows_registry_absent_companion`) that monkeypatches `claim_company_batch` / `get_company_batch`, calls `get_new_company_batch("HOMEPAGE_READY", batch_id=…, states=["HOMEPAGE_READY","HOMEPAGE_READY_RETRY"])`, asserts **no** `ValueError`, and that `claim_company_batch` was invoked with `states=["HOMEPAGE_READY","HOMEPAGE_READY_RETRY"]`. Guard/assert `"HOMEPAGE_READY_RETRY" not in COMPANY_STATES` so the case stays honest if someone later seeds the key.
+   - Keep `test_get_new_company_batch_rejects_unknown_state` unchanged (single-state reject still raises when `states` is omitted).
+
+2. **`tests/component/core/test_tracker.py` — `TestBatchApi`** (mirror — in Scope “if needed”; land it):
+   - Add a multi-state case with a primary ∈ `JOB_STATES` whose `{primary}_RETRY` is **absent** (e.g. `INVALID_TITLE` + `INVALID_TITLE_RETRY`), monkeypatch claim/get, assert no registry `ValueError` / `not in allowed list`, `states=` forwarded. Do not weaken existing single-state / hop reject cases.
+
+3. **`tests/component/core/test_candidate.py` — `TestAst1259CandidateBatchApi`** (mirror — same):
+   - Add a multi-state case with a primary ∈ `CANDIDATE_STATES` whose `{primary}_RETRY` is absent (e.g. `ACTIVE_SEARCH` / `PROSPECT` + fabricated `{primary}_RETRY` if that suffix key is missing), monkeypatch claim/get, assert no registry raise, `states=` forwarded. Leave existing in-registry `REQUESTED_ARTIFACTS_RETRY` claim case as-is.
+
+4. **`docs/test-bible/core/roster.md`** — add an **AST-1802 · AST-1801** section: multi-state claim with registry-absent companion must not raise; single-state unknown primary still rejects; name the new roster test node id(s); briefly note tracker/candidate mirror node ids if present. No other bible pages unless a later board expands.
+
+5. **Out of scope:** no `src/` product edits (AST-1801); do not seed `HOMEPAGE_READY_RETRY` into registries; do not change `dispatch_claim_states` asserts (those are AST-1799).
+
+### Blast radius
+
+- New/revised component cases go **red** against pre-AST-1801 product (desired repro-first) and **green** once AST-1801 product is on the tree (or after merge into ftr).
+- Existing single-state reject and happy-path claim tests must stay green.
+- No product blast; bible is documentation of the AST-1801 contract only.
+
+### What must still hold
+
+- AST-1801 product contract: when `states=` is provided, claim helpers do not registry-validate list members; when `states` is None, primary `state` stays registry-bound.
+- AST-1798 suffix-always pairing unchanged; do not re-assert cross-name `retry_state` companions.
+- Single-state unknown primary still raises on roster / job / candidate claim helpers.
+- No synthetic `_RETRY` keys added to `COMPANY_STATES` / `JOB_STATES` / `CANDIDATE_STATES` as part of this gap.
