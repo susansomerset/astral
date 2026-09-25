@@ -1086,8 +1086,11 @@ class TestAst1277ScoreFloorHelpers:
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
 class TestAst641DispatchClaimStates:
     def test_primary_job_includes_companion_retry(self) -> None:
-        # AST-898: VALID_TITLE.retry_state → NEW_RETRY (VALID_TITLE_RETRY drain-only)
-        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
+        # AST-1799: claim companions are always {ts}_RETRY (routing retry_state unchanged)
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == [
+            "VALID_TITLE",
+            "VALID_TITLE_RETRY",
+        ]
         assert cfg.dispatch_claim_states("JD_READY", "job") == ["JD_READY", "JD_READY_RETRY"]
 
     def test_retry_only_job_single_state(self) -> None:
@@ -1100,10 +1103,13 @@ class TestAst641DispatchClaimStates:
             "WEBSITE_FOUND_RETRY",
         ]
 
-    def test_state_without_registry_companion_stays_single(self) -> None:
-        # NEW is no longer companion-less after AST-898 (see TestAst898 / TestAst797)
-        assert cfg.dispatch_claim_states("NEW", "company") == ["NEW"]
-        assert cfg.dispatch_claim_states("INVALID_TITLE", "job") == ["INVALID_TITLE"]
+    def test_primary_always_appends_suffix_companion(self) -> None:
+        # Suffix companion always, even when key absent from registry (AST-1798/1799)
+        assert cfg.dispatch_claim_states("NEW", "company") == ["NEW", "NEW_RETRY"]
+        assert cfg.dispatch_claim_states("INVALID_TITLE", "job") == [
+            "INVALID_TITLE",
+            "INVALID_TITLE_RETRY",
+        ]
 
     def test_guard_none_blank(self) -> None:
         assert cfg.dispatch_claim_states(None, "job") == []
@@ -1111,12 +1117,12 @@ class TestAst641DispatchClaimStates:
 
 
 class TestAst882DispatchClaimStates:
-    """AST-882: prefer registry retry_state (HOMEPAGE_READY → WEBSITE_FOUND_RETRY)."""
+    """AST-1799: suffix-always claim pairing (HOMEPAGE_READY → HOMEPAGE_READY_RETRY)."""
 
-    def test_homepage_ready_claims_website_found_retry(self) -> None:
+    def test_homepage_ready_claims_homepage_ready_retry(self) -> None:
         assert cfg.dispatch_claim_states("HOMEPAGE_READY", "company") == [
             "HOMEPAGE_READY",
-            "WEBSITE_FOUND_RETRY",
+            "HOMEPAGE_READY_RETRY",
         ]
 
     def test_website_found_companion_unchanged(self) -> None:
@@ -1125,8 +1131,11 @@ class TestAst882DispatchClaimStates:
             "WEBSITE_FOUND_RETRY",
         ]
 
-    def test_job_retry_state_still_unions(self) -> None:
-        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
+    def test_job_suffix_companion_unions(self) -> None:
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == [
+            "VALID_TITLE",
+            "VALID_TITLE_RETRY",
+        ]
 
 
 # LLM_PROVIDER_CONFIG brain tiers, Anthropic / DeepSeek tier maps, startup env parity (AST-492).
@@ -2244,9 +2253,13 @@ class TestAst1391DeepseekBigMaxTokensFloor:
 class TestAst898NewRetryQualifyHolding:
     """AST-898: NEW_RETRY qualify holding; retire VALID_TITLE_RETRY for new traffic."""
 
-    def test_new_and_valid_title_claim_new_retry(self) -> None:
+    def test_new_and_valid_title_claim_suffix_companions(self) -> None:
+        # Claim is suffix-always; VALID_TITLE.retry_state → NEW_RETRY remains routing-only
         assert cfg.dispatch_claim_states("NEW", "job") == ["NEW", "NEW_RETRY"]
-        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == ["VALID_TITLE", "NEW_RETRY"]
+        assert cfg.dispatch_claim_states("VALID_TITLE", "job") == [
+            "VALID_TITLE",
+            "VALID_TITLE_RETRY",
+        ]
         assert cfg.dispatch_claim_states("VALID_TITLE_RETRY", "job") == ["VALID_TITLE_RETRY"]
         assert cfg.dispatch_claim_states("NEW_RETRY", "job") == ["NEW_RETRY"]
 
@@ -2526,7 +2539,10 @@ class TestAst972CandidateStageDispatch:
             "REQUESTED_ARTIFACTS",
             "REQUESTED_ARTIFACTS_RETRY",
         ]
-        assert cfg.dispatch_claim_states("ACTIVE_SEARCH", "candidate") == ["ACTIVE_SEARCH"]
+        assert cfg.dispatch_claim_states("ACTIVE_SEARCH", "candidate") == [
+            "ACTIVE_SEARCH",
+            "ACTIVE_SEARCH_RETRY",
+        ]
 
     def test_trigger_and_entity_helpers(self) -> None:
         from src.utils.config import (
@@ -6434,10 +6450,16 @@ class TestAst1621MeteoriteEntityTypeRegistry:
             cfg.dispatch_entity_state_registry("not_a_type")
 
     def test_dispatch_claim_states_meteorite(self) -> None:
-        # No *_RETRY companions on METEORITE_STATES today — primary only.
-        assert cfg.dispatch_claim_states("NEW", "meteorite") == ["NEW"]
-        assert cfg.dispatch_claim_states("SCRAPE_LINK", "meteorite") == ["SCRAPE_LINK"]
-        assert cfg.dispatch_claim_states("BOT_BLOCKED", "meteorite") == ["BOT_BLOCKED"]
+        # Suffix companions always (need not exist in METEORITE_STATES registry)
+        assert cfg.dispatch_claim_states("NEW", "meteorite") == ["NEW", "NEW_RETRY"]
+        assert cfg.dispatch_claim_states("SCRAPE_LINK", "meteorite") == [
+            "SCRAPE_LINK",
+            "SCRAPE_LINK_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("BOT_BLOCKED", "meteorite") == [
+            "BOT_BLOCKED",
+            "BOT_BLOCKED_RETRY",
+        ]
 
     def test_dispatch_sort_by_meteorite(self) -> None:
         assert cfg._dispatch_sort_by_for("meteorite", "NEW") == "updated_at"
