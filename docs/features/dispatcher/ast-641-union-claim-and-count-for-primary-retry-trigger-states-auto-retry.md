@@ -860,3 +860,8 @@ AST-1801 removes the multi-state registry gate that caused the live hop failure.
 - AST-1798 suffix-always pairing unchanged; do not re-assert cross-name `retry_state` companions.
 - Single-state unknown primary still raises on roster / job / candidate claim helpers.
 - No synthetic `_RETRY` keys added to `COMPANY_STATES` / `JOB_STATES` / `CANDIDATE_STATES` as part of this gap.
+
+
+## Fix-board Joan findings (AST-1802)
+
+**Verdict: CANON: OK** — Test/bible-only gap locking absent-companion claim contract; no product or canon edits.
