@@ -433,3 +433,8 @@ All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.p
 1. Append this verdict to `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md`.
 2. Post slim upshot via `linear_proxy --as radia save-comment`.
 3. Do **not** block on AST-1792 test gap for this product fix.
+
+
+## Docs-Acceptance (AST-1791)
+
+Test-tree / [bug-repro] owned by sibling gap AST-1792 (fix-board TESTS: REVISE). No merge-tests on this tip.
