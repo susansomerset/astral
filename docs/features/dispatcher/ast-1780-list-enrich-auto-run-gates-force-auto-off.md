@@ -662,3 +662,75 @@ All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.p
 ## Fix-board Joan findings (AST-1794)
 
 **Verdict: CANON: OK** — ValueError soft-miss is a pass, not a failed item (`stat.logging.warning` Resolution #4). Silencing the warning aligns with statute; fail-closed branches keep warning/exception logging. No statute update needed.
+
+
+## Review-fix findings (AST-1794)
+
+## Fix-specific checks
+
+**[bug-repro] fix-now** — `[board-betty] TESTS: REVISE` is uncleared on this tip. `TestAst1791NoPromptValueErrorEmptyRender` asserts `{"empty_render": False, "empty_tokens": []}` (and list/run wiring) but **does not** assert absence of the `no prompts to validate, empty_render false` warning. No `[bug-repro]` node with `caplog` (or equivalent) pins To-be log silence; nothing in a qa-fix thread explains skip. Pre-fix ftr branch logged `logger.warning` on every ValueError soft-miss — a real repro would fail red there and green after this product commit. Betty’s board ask is the right bar for this bug; engineer plan correctly forbids `tests/` edits — **qa-fix** (or a gap child) must land the assertion before UT treats the REVISE as closed.
+
+**## What must still hold — OK** — all seven plan-fix items verified against diff:
+- ValueError soft-miss still `{"empty_render": False, "empty_tokens": []}`.
+- Successful prompt load still `empty_render_for_prompts(..., entity_contexts=None)`.
+- Blank `candidate_id` / missing candidate still `logger.warning` + `empty_render: true` (lines 1974–1988 untouched).
+- Unexpected `Exception` still `logger.exception` + fail-closed (1996–2004 untouched).
+- No replacement info/debug/error on soft-miss path; fail-closed paths keep warning/exception logging.
+- API-key gate / React / `config.py` untouched.
+- Product delta only in `api_admin.py` (+ plan-fix doc).
+
+## Findings
+
+### fix-now — [bug-repro] / board REVISE uncleared
+
+- **Severity:** fix-now (test bar — Betty lane, not product `resolve-child`)
+- **Location:** `tests/component/ui/api/test_api_admin.py` `TestAst1791NoPromptValueErrorEmptyRender`; `[board-betty] TESTS: REVISE` on AST-1794
+- **Finding:** Board flagged missing coverage for warning silence; tip reached Tests Passed with no qa-fix diff and no caplog assertion. Product fix is correct but the repro-first contract for a REVISE-flagged fix is not met.
+- **Recommendation:** Spawn **qa-fix** (extend `TestAst1791…` + bible row) or file a gap child; do not block on engineer `resolve-child` for `api_admin.py`.
+
+### discuss — Canon Scope gap (inherited; do not score)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs `api_admin.py`-only footprint
+- **Finding:** `astral.standards.in-scope-only` governs this slice but is absent from the scored four-id list (same gap Joan raised at AST-1780 / AST-1791).
+- **Recommendation:** Plan scope + diff honor it. Archie may amend Canon Scope; no product defect.
+
+### discuss — Board REVISE vs plan-fix Blast radius
+
+- **Severity:** discuss
+- **Location:** plan-fix `### Blast radius` vs `[board-betty] TESTS: REVISE`
+- **Finding:** Plan says log absence “unless Betty adds that later”; Betty added via board REVISE on this ticket, but no qa-fix landed before Tests Passed.
+- **Recommendation:** Lane hygiene — reconcile REVISE closure (qa-fix) with engineer no-test rule; not a product revert.
+
+### advisory — AST-1781 hook divergence (out of scope; inherited)
+
+- **Severity:** advisory
+- **Location:** plan-fix Blast radius / AST-1791 Radia carry-forward
+- **Finding:** `database.py` / `candidate.py` revalidation may still force AUTO off independently; unchanged by this logging-only delta.
+- **Recommendation:** Separate delta if UAT surfaces it.
+
+## What's solid
+
+- Diff isolates exactly plan-fix: remove ValueError-branch `logger.warning`, keep fail-open return, drop unused `exc`, add intentional soft-miss comment (AST-1794).
+- Fail-closed branches byte-for-byte preserved on ftr base.
+- No `logger.info` / `logger.debug` / `logger.error` substitute on soft-miss path.
+- Scope gate honored: product only `api_admin.py`; estimate **2** fits.
+- Joan fix-board `CANON: OK` aligns with `stat.logging.warning` Resolution #4.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (test bar fix-now; product clean) | Normal (AST-1793 In Progress; diff base `origin/ftr/AST-1793-no-agent-empty-render-warning`) | Append artifact → `docs(AST-1794): Radia review — findings` on publish ref → post slim upshot `--as radia` → **Review Posted** → route **qa-fix** / gap for caplog `[bug-repro]` (Betty lane) → re-test → second Radia pass or UT once REVISE closed. **Do not** use §3h clean-review shortcut until bug-repro bar clears. `resolve-child` on product not expected. |
+
+1. Append this verdict to `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md`.
+2. Post slim upshot via `linear_proxy --as radia save-comment`.
+3. Spawn qa-fix for Betty’s board item (warning silence in `TestAst1791NoPromptValueErrorEmptyRender`) before User Testing.
+
+**Chuckles note:** `[board-betty] TESTS: REVISE` owned by sibling gap AST-1795 (qa-fix landed `[bug-repro]`). Product tip docs-acceptance — no merge-tests on AST-1794.
+
+
+
+## Docs-Acceptance (AST-1794)
+
+Test-tree / [bug-repro] owned by sibling gap AST-1795 (fix-board TESTS: REVISE). No merge-tests on this tip.
