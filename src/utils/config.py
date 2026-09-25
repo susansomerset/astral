@@ -3556,10 +3556,12 @@ def dispatch_claim_uses_score_floor(trigger_state: Optional[str]) -> bool:
 
 
 def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> List[str]:
-    """States a dispatch row claims and counts (primary + companion *_RETRY when configured).
+    """States a dispatch row claims and counts: primary + literal ``{ts}_RETRY``.
 
-    Prefer registry ``retry_state`` on the primary state (e.g. HOMEPAGE_READY →
-    WEBSITE_FOUND_RETRY for prefilter) over the ``{ts}_RETRY`` name convention.
+    Always pairs non-``_RETRY`` triggers with the suffix companion whether or not
+    that key exists in the entity registry. Registry ``retry_state`` is for
+    failure routing only — not claim grouping. ``entity_type`` is unused here
+    (kept for call-site compatibility).
     """
     if trigger_state is None:
         return []
@@ -3568,21 +3570,7 @@ def dispatch_claim_states(trigger_state: Optional[str], entity_type: str) -> Lis
         return []
     if ts.endswith("_RETRY"):
         return [ts]
-    registry = JOB_STATES if entity_type == "job" else (
-        COMPANY_STATES if entity_type == "company" else (
-            CANDIDATE_STATES if entity_type == "candidate" else (
-                METEORITE_STATES if entity_type == "meteorite" else None
-            )
-        )
-    )
-    if registry is not None:
-        retry = (registry.get(ts) or {}).get("retry_state")
-        if isinstance(retry, str) and retry.strip() and retry.strip() in registry:
-            return [ts, retry.strip()]
-        companion = f"{ts}_RETRY"
-        if companion in registry:
-            return [ts, companion]
-    return [ts]
+    return [ts, f"{ts}_RETRY"]
 
 
 def fetch_website_prefilter_second_strike_filter() -> tuple[str, str]:
