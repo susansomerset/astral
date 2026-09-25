@@ -371,3 +371,65 @@ All edits in `src/ui/api/api_admin.py` only. Do **not** edit `src/utils/config.p
 ## Fix-board Joan findings (AST-1791)
 
 **Verdict: CANON: OK** — AST-1780 fail-closed-on-ValueError was a plan Decision, not an in-force statute. Fix restores AST-1766 intent inside `api_admin.py`; `empty_render_for_prompts` untouched. Note: AST-1781 hooks may still force-off on missing agent_task (out of scope).
+
+
+## Review-fix findings (AST-1791)
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — board REVISE (Betty) routed real-path coverage to sibling AST-1792; issue Notes state qa-fix skipped on this tip; no `[bug-repro]` in diff. Product fix is a two-line branch flip; AST-1780 tests monkeypatch eval and would not catch this path anyway (plan-fix Blast radius).
+
+**## What must still hold — OK** — all seven plan-fix items verified against diff:
+- Blank-token / gated AUTO-on / Run / force-off path untouched (successful load still calls `empty_render_for_prompts`).
+- `entity_contexts=None` unchanged.
+- Blank `candidate_id` / missing candidate still `empty_render: true`.
+- Unexpected `Exception` still `logger.exception` + fail-closed.
+- No new list field / no React / API-key gate unchanged.
+
+## Findings
+
+### discuss — Canon Scope gap (inherited; do not score)
+
+- **Severity:** discuss
+- **Location:** Ticket Citations vs `api_admin.py`-only fix footprint
+- **Finding:** `astral.standards.in-scope-only` plainly governs this slice but is absent from the scored four-id list (same gap Joan raised at AST-1780 plan).
+- **Recommendation:** Plan scope + diff honor it (`api_admin.py` only). Archie may amend Canon Scope; no product defect.
+
+### discuss — Test coverage deferred to AST-1792
+
+- **Severity:** discuss
+- **Location:** `[board-betty] TESTS: REVISE` / Notes for planning
+- **Finding:** Betty flagged missing real-path test for ValueError soft-miss → `empty_render: false`. No qa-fix / `[bug-repro]` on this tip; sibling AST-1792 owns the gap.
+- **Recommendation:** Not fix-now on this engineer patch; track AST-1792 for repro-first bar. UAT should still spot-check non-agent rows per plan-fix Repro step 4 contrast case.
+
+### discuss — AST-1781 hook divergence (out of scope; plan acknowledges)
+
+- **Severity:** discuss
+- **Location:** plan-fix Blast radius
+- **Finding:** `database.py` / `candidate.py` revalidation may still force AUTO off on missing `agent_task` independently of this api_admin fix.
+- **Recommendation:** Separate delta if UAT surfaces it; do not expand AST-1791 into `database.py`.
+
+### advisory — Operative token view (inherited from AST-1780 Radia)
+
+- **Severity:** advisory
+- **Location:** `_evaluate_dispatch_empty_render` successful path — `build_candidate_token_view` only
+- **Finding:** Unchanged by this fix; list vs AST-1781 hook mismatch on artifact-backed tokens remains an epic UAT awareness item.
+- **Recommendation:** None for resolve-child on AST-1791.
+
+## What's solid
+
+- Diff isolates exactly the plan-fix delta: `ValueError` from `_dispatch_empty_render_prompt_texts` now returns `{"empty_render": False, "empty_tokens": []}` with who/why `logger.warning`; all other branches untouched.
+- `_candidate_dispatch_empty_render_error` needs no edit — falsy eval correctly yields `None` for AUTO/Run on no-prompt rows.
+- Scope gate honored: product code only in `api_admin.py`; `config.py` / React untouched.
+- Estimate **3** fits a single-branch policy correction.
+- Logging: no new route `logger.info`; soft miss stays warning; unexpected throws stay `logger.exception`.
+
+## Recommended actions (Chuckles downstream — not Radia)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** | Normal (AST-1790 In Progress; diff base `origin/ftr/AST-1790-default-validation-no-prompts`) | Append artifact → `docs(AST-1791): Radia review — clean` on publish ref → post slim upshot `--as radia` → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped). |
+
+1. Append this verdict to `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md`.
+2. Post slim upshot via `linear_proxy --as radia save-comment`.
+3. Do **not** block on AST-1792 test gap for this product fix.
