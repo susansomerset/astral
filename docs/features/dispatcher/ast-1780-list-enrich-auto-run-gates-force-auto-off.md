@@ -566,3 +566,8 @@ List + Run companions (`test_list_valueerror_no_prompts_keeps_auto`, `test_run_v
 1. Append this verdict to `docs/features/dispatcher/ast-1780-list-enrich-auto-run-gates-force-auto-off.md`.
 2. Post slim upshot via `linear_proxy --as radia save-comment`.
 3. Note merge-tests AST-1786 spill for rollup attribution — does not block UT on gap coverage.
+
+
+## Docs-Acceptance (AST-1792)
+
+Test/bible gap only — no product `src/` delivery; product soft-miss fix lives on AST-1791 / ftr.
