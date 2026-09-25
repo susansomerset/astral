@@ -640,19 +640,19 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/5a3773ac45ef22d5543e2b022b1fbc98/3ed1ed8b-cfbb-4d08-939a-e00238cce690/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/1129750e-d200-47dd-b89a-3d15ae4d989d/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/5a3773ac45ef22d5543e2b022b1fbc98/2f036639-2d41-4513-bd5e-622fb417f1d8/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/1729fb7f1660826b57092e2b0cdfd0d3/5fe89fca-8a51-435c-823a-395a9759be3d/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/89fc47d7-20c5-4d32-8880-06494fac649c/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/1729fb7f1660826b57092e2b0cdfd0d3/5920a0a6-63a2-4a25-bcc3-d8e528a39b63/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1797 (parent) | ftr/AST-1797-retry-suffix-claim |
-| AST-1798 | sub/AST-1797/AST-1798-retry-suffix-claim |
-| AST-1799 | sub/AST-1797/AST-1799-retry-suffix-claim-tests |
+| AST-1800 (parent) | ftr/AST-1800-claim-union-no-registry-validate |
+| AST-1801 | sub/AST-1800/AST-1801-claim-union-no-registry-validate |
+| AST-1802 | sub/AST-1800/AST-1802-claim-union-no-registry-validate-tests |
 
-**Epic worktree:** `astral-AST-1797/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-1800/` — one active sub checked out at a time.
 
 ---
 
