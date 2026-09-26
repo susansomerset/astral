@@ -1304,7 +1304,9 @@ class TestAst721ParseJobListConfig:
     """AST-721: JOBLIST_IDENTIFIED parse_job_list dispatch; find_job_page monolith removed."""
 
     def test_parse_states_and_transitions(self) -> None:
-        assert "JOBLIST_IDENTIFIED_RETRY" in cfg.COMPANY_STATES
+        # AST-1808: retry is an implicit substate — valid via its base, never a registry key.
+        assert cfg.is_registered_state(cfg.COMPANY_STATES, "JOBLIST_IDENTIFIED_RETRY")
+        assert "JOBLIST_IDENTIFIED_RETRY" not in cfg.COMPANY_STATES
         assert "COULD_NOT_PARSE_JOBLIST" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("JOBLIST_IDENTIFIED", "JOBLIST_IDENTIFIED_RETRY") in transitions
@@ -1339,7 +1341,9 @@ class TestAst720SelectJobPageConfig:
 
     def test_selection_states_and_transitions(self) -> None:
         assert "JOBLIST_IDENTIFIED" in cfg.COMPANY_STATES
-        assert "PREFILTER_PASSED_RETRY" in cfg.COMPANY_STATES
+        # AST-1808: implicit retry substate.
+        assert cfg.is_registered_state(cfg.COMPANY_STATES, "PREFILTER_PASSED_RETRY")
+        assert "PREFILTER_PASSED_RETRY" not in cfg.COMPANY_STATES
         assert "NO_PJL_SELECTED" in cfg.COMPANY_STATES
         transitions = cfg.ASTRAL_CONFIG["company_state_transitions"]
         assert ("PJL_READY", "JOBLIST_IDENTIFIED") in transitions
@@ -1446,10 +1450,10 @@ class TestAst874FetchCulturePagesConfig:
         ]
         assert cfg.JOB_STATES["NEED_CULTURE_CONTENT"]["prior_states"] == ["PASSED_GET"]
         assert cfg.JOB_STATES["NO_CULTURE_LINKS"]["prior_states"] == ["PASSED_GET"]
-        # AST-1155: CULTURE_READY_RETRY is also a prior for LIKE outcomes.
-        assert cfg.JOB_STATES["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
-        assert cfg.JOB_STATES["FAILED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
-        assert cfg.JOB_STATES["FAILED_TECHNICAL_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
+        # AST-1155: CULTURE_READY_RETRY is also a prior for LIKE outcomes — derived, not declared (AST-1808).
+        for t in ("PASSED_LIKE", "FAILED_LIKE", "FAILED_TECHNICAL_LIKE"):
+            assert cfg.JOB_STATES[t]["prior_states"] == ["CULTURE_READY"], t
+            assert "CULTURE_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, t), t
         assert "CULTURE_READY" in cfg.JOB_STATES["NEED_WEBSITE_CONTENT"]["prior_states"]
 
     def test_gazer_and_dispatch_registry(self) -> None:
@@ -1525,7 +1529,9 @@ class TestAst507EncodedPrefilterConfig:
         assert "PREFILTER_PASSED" in cfg.COMPANY_STATES
         assert "PREFILTER_FAILED" in cfg.COMPANY_STATES
         assert "NO_PREFILTER_JOBLISTS" in cfg.COMPANY_STATES
-        assert "WEBSITE_FOUND_RETRY" in cfg.COMPANY_STATES
+        # AST-1808: implicit retry substate.
+        assert cfg.is_registered_state(cfg.COMPANY_STATES, "WEBSITE_FOUND_RETRY")
+        assert "WEBSITE_FOUND_RETRY" not in cfg.COMPANY_STATES
         assert cfg.ROSTER_CONFIG["prefilter"]["retry_state"] == "WEBSITE_FOUND_RETRY"
         assert cfg.ROSTER_CONFIG["prefilter"]["no_pjl_state"] == "NO_PREFILTER_JOBLISTS"
         assert cfg.ROSTER_CONFIG["prefilter"]["pjl_url_data_key"] == "possible_joblist_links"
@@ -2267,12 +2273,12 @@ class TestAst898NewRetryQualifyHolding:
     def test_registry_retry_pointers_and_drain(self) -> None:
         assert cfg.JOB_STATES["NEW"]["retry_state"] == "NEW_RETRY"
         assert cfg.JOB_STATES["VALID_TITLE"]["retry_state"] == "NEW_RETRY"
-        assert "retry_state" not in cfg.JOB_STATES["NEW_RETRY"]
-        assert "retry_state" not in cfg.JOB_STATES["VALID_TITLE_RETRY"]
-        assert "VALID_TITLE_RETRY" in cfg.JOB_STATES
-        assert cfg.JOB_STATES["NEW_RETRY"]["prior_states"] == ["NEW", "VALID_TITLE"]
-        assert "NEW_RETRY" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
-        assert "NEW_RETRY" in cfg.JOB_STATES["FAILED_JOBLIST"]["prior_states"]
+        # AST-1808: retries are implicit substates — no registry keys; priors derived.
+        assert "NEW_RETRY" not in cfg.JOB_STATES
+        assert "VALID_TITLE_RETRY" not in cfg.JOB_STATES
+        assert set(cfg.state_prior_states(cfg.JOB_STATES, "NEW_RETRY")) == {"NEW", "NEW_RETRY", "VALID_TITLE"}
+        assert "NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "PASSED_JOBLIST")
+        assert "NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "FAILED_JOBLIST")
 
     def test_ui_sections_and_grade_field(self) -> None:
         assert "NEW_RETRY" in cfg.IN_REVIEW_STATES
@@ -2307,8 +2313,12 @@ class TestAst1339MeteoriteNewRetryQualifyHolding:
 
     def test_registry_retry_pointer_no_nested(self) -> None:
         assert cfg.JOB_STATES["METEORITE_NEW"]["retry_state"] == "METEORITE_NEW_RETRY"
-        assert "retry_state" not in cfg.JOB_STATES["METEORITE_NEW_RETRY"]
-        assert cfg.JOB_STATES["METEORITE_NEW_RETRY"]["prior_states"] == ["METEORITE_NEW"]
+        # AST-1808: implicit substate — no key (so no nested retry_state); priors derived.
+        assert "METEORITE_NEW_RETRY" not in cfg.JOB_STATES
+        assert set(cfg.state_prior_states(cfg.JOB_STATES, "METEORITE_NEW_RETRY")) == {
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
+        }
 
     def test_ui_sections_label_no_grade_field(self) -> None:
         assert "METEORITE_NEW_RETRY" in cfg.IN_REVIEW_STATES
@@ -2603,7 +2613,8 @@ class TestAst1253GenerateRegenerateHandoffConfig:
     """AST-1253: REQUESTED_ARTIFACTS re-entry priors + unordered NAV path map (no hop list)."""
 
     def test_requested_artifacts_priors_include_regenerate_states(self) -> None:
-        priors = cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"] or []
+        # AST-1808: REQUESTED_ARTIFACTS_RETRY re-entry is derived, not declared.
+        priors = cfg.state_prior_states(cfg.CANDIDATE_STATES, "REQUESTED_ARTIFACTS") or []
         for state in (
             "RESUME_READY",
             "RESUME_READY_STALE",
@@ -2645,7 +2656,7 @@ class TestAst1375ArtifactGenerateInflightHideStates:
         hide = cand["artifact_generate_inflight_hide_states"]
         assert hide == ["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"]
         assert "REQUESTED_ARTIFACTS_ERROR" not in hide
-        assert all(s in cfg.CANDIDATE_STATES for s in hide)
+        assert all(cfg.is_registered_state(cfg.CANDIDATE_STATES, s) for s in hide)
         # Generate allowlist unchanged (escape hatch is Base Resume–local, not a global expand).
         assert cand["artifact_generate_states"] == [
             "RESUME_READY",
@@ -3063,53 +3074,45 @@ class TestAst1053MeteoriteGdlJobStates:
         assert js["METEORITE_NEW"]["prior_states"] is None
         # AST-1060: GDL entry is METEORITE_QUALIFIED (not unenriched METEORITE_NEW).
         # AST-1156: Skipped Retry from meteorite JD fail/error → METEORITE_QUALIFIED.
-        # AST-1339 / AST-1338: METEORITE_NEW_RETRY is also a leave-holding prior.
-        assert js["METEORITE_QUALIFIED"]["prior_states"] == [
-            "METEORITE_NEW",
-            "METEORITE_NEW_RETRY",
-            "METEORITE_FAILED_JD",
-            "METEORITE_ERROR_EVALUATE_JD",
-        ]
-        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == [
-            "METEORITE_NEW",
-            "METEORITE_NEW_RETRY",
-        ]
-        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == [
-            "METEORITE_NEW",
-            "METEORITE_NEW_RETRY",
-        ]
-        # AST-1155: graded-trigger *_RETRY holdings are also priors on hop outcomes.
-        assert js["METEORITE_PASSED_JD"]["prior_states"] == [
-            "METEORITE_QUALIFIED",
-            "METEORITE_QUALIFIED_RETRY",
-            "METEORITE_FAILED_DO",
-            "METEORITE_FAILED_TECHNICAL_DO",
-        ]
-        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
-        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
-        assert js["METEORITE_PASSED_DO"]["prior_states"] == [
-            "METEORITE_PASSED_JD",
-            "METEORITE_PASSED_JD_RETRY",
-            "METEORITE_FAILED_GET",
-            "METEORITE_FAILED_TECHNICAL_GET",
-        ]
-        assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
-        assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
-        assert js["METEORITE_PASSED_GET"]["prior_states"] == [
-            "METEORITE_PASSED_DO",
-            "METEORITE_PASSED_DO_RETRY",
-            "METEORITE_FAILED_LIKE",
-            "METEORITE_FAILED_TECHNICAL_LIKE",
-        ]
-        assert js["METEORITE_FAILED_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
-        assert js["METEORITE_FAILED_TECHNICAL_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
-        assert js["METEORITE_PASSED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
-        assert js["METEORITE_FAILED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
-        assert js["METEORITE_FAILED_TECHNICAL_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
-        assert js["METEORITE_PASSED_LIKE_RETRY"]["prior_states"] == ["METEORITE_PASSED_LIKE"]
+        # AST-1808: declared priors are base-only; each dropped *_RETRY holding is a derived prior
+        # (AST-1339 / AST-1338 METEORITE_NEW_RETRY leave-holding; AST-1155 graded-trigger holdings).
+        declared = {
+            "METEORITE_QUALIFIED": (["METEORITE_NEW", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "METEORITE_NEW_RETRY"),
+            "METEORITE_FAILED_QUALIFY": (["METEORITE_NEW"], "METEORITE_NEW_RETRY"),
+            "METEORITE_ERROR_QUALIFY": (["METEORITE_NEW"], "METEORITE_NEW_RETRY"),
+            "METEORITE_PASSED_JD": (
+                ["METEORITE_QUALIFIED", "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO"],
+                "METEORITE_QUALIFIED_RETRY",
+            ),
+            "METEORITE_FAILED_JD": (["METEORITE_QUALIFIED"], "METEORITE_QUALIFIED_RETRY"),
+            "METEORITE_ERROR_EVALUATE_JD": (["METEORITE_QUALIFIED"], "METEORITE_QUALIFIED_RETRY"),
+            "METEORITE_PASSED_DO": (
+                ["METEORITE_PASSED_JD", "METEORITE_FAILED_GET", "METEORITE_FAILED_TECHNICAL_GET"],
+                "METEORITE_PASSED_JD_RETRY",
+            ),
+            "METEORITE_FAILED_DO": (["METEORITE_PASSED_JD"], "METEORITE_PASSED_JD_RETRY"),
+            "METEORITE_FAILED_TECHNICAL_DO": (["METEORITE_PASSED_JD"], "METEORITE_PASSED_JD_RETRY"),
+            "METEORITE_PASSED_GET": (
+                ["METEORITE_PASSED_DO", "METEORITE_FAILED_LIKE", "METEORITE_FAILED_TECHNICAL_LIKE"],
+                "METEORITE_PASSED_DO_RETRY",
+            ),
+            "METEORITE_FAILED_GET": (["METEORITE_PASSED_DO"], "METEORITE_PASSED_DO_RETRY"),
+            "METEORITE_FAILED_TECHNICAL_GET": (["METEORITE_PASSED_DO"], "METEORITE_PASSED_DO_RETRY"),
+            "METEORITE_PASSED_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
+            "METEORITE_FAILED_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
+            "METEORITE_FAILED_TECHNICAL_LIKE": (["METEORITE_PASSED_GET"], "METEORITE_PASSED_GET_RETRY"),
+            "PASSED_LIKE": (["CULTURE_READY"], "CULTURE_READY_RETRY"),
+        }
+        for target, (raw, retry) in declared.items():
+            assert js[target]["prior_states"] == raw, target
+            assert retry in cfg.state_prior_states(js, target), target
+        assert "METEORITE_PASSED_LIKE_RETRY" not in js
+        assert set(cfg.state_prior_states(js, "METEORITE_PASSED_LIKE_RETRY")) == {
+            "METEORITE_PASSED_LIKE",
+            "METEORITE_PASSED_LIKE_RETRY",
+        }
         # No CULTURE_READY hop on meteorite LIKE; no extra meteorite culture/need keys.
         assert "METEORITE_CULTURE_READY" not in js
-        assert js["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
 
     def test_in_review_and_skipped_membership(self) -> None:
         for state in self._PASS:
@@ -3181,14 +3184,15 @@ class TestAst1053MeteoriteGdlJobStates:
             assert state not in cfg.PASSED_SCORE_GATED_STATES, state
         rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
         assert "PASSED_LIKE" in rec_priors
-        assert "PASSED_LIKE_RETRY" in rec_priors
+        # AST-1808: retry priors are derived, not declared.
+        assert "PASSED_LIKE_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "RECOMMENDED")
         # AST-1156: Skipped Retry from DO fail/technical → PASSED_JD.
         assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == [
             "JD_READY",
-            "JD_READY_RETRY",
             "FAILED_DO",
             "FAILED_TECHNICAL_DO",
         ]
+        assert "JD_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "PASSED_JD")
         # Non-meteorite qualify path untouched (AST-1060 AC7 smoke).
         # qualify_job_listings has no agent_task key — do not invent one.
         qjl = cfg.TASK_CONFIG["qualify_job_listings"]
@@ -3450,11 +3454,9 @@ class TestAst1195SchemaNullsAndBotBlocked:
 
         assert "BOT_BLOCKED" in cfg.JOB_STATES
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES
-        assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == [
-            "PASSED_JOBLIST",
-            "METEORITE_NEW",
-            "METEORITE_NEW_RETRY",
-        ]
+        assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == ["PASSED_JOBLIST", "METEORITE_NEW"]
+        # AST-1808: METEORITE_NEW_RETRY prior is derived (AST-1339), not declared.
+        assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "BOT_BLOCKED")
         assert "BOT_BLOCKED" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
         assert "BOT_BLOCKED" in cfg.SKIPPED_STATES
@@ -3479,7 +3481,7 @@ class TestAst1197QualifyMeteoriteApplyKnobs:
         assert tc["email_link_prefix"] == "email-"
         assert tc["bot_blocked_state"] == "BOT_BLOCKED"
         assert "METEORITE_NEW" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
-        assert "METEORITE_NEW_RETRY" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
+        assert "METEORITE_NEW_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "BOT_BLOCKED")
 
     def test_challenge_bot_signals_present(self) -> None:
         from src.utils import config as cfg
@@ -3659,7 +3661,8 @@ class TestAst1055MeteoriteLikeUpshotTasks:
         assert analysis["requires_company"] is True
 
     def test_recommended_priors_include_meteorite_like_states(self) -> None:
-        priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
+        # AST-1808: effective (derived) priors — retry holdings are implicit.
+        priors = cfg.state_prior_states(cfg.JOB_STATES, "RECOMMENDED") or []
         assert "METEORITE_PASSED_LIKE" in priors
         assert "METEORITE_PASSED_LIKE_RETRY" in priors
         assert "PASSED_LIKE" in priors
@@ -4763,8 +4766,9 @@ class TestAst1155GradedRetryHoldings:
     def test_retry_state_and_dispatch_claim_companions(self) -> None:
         for primary, holding in self._PAIRS:
             assert cfg.JOB_STATES[primary]["retry_state"] == holding, primary
-            assert holding in cfg.JOB_STATES
-            assert "retry_state" not in cfg.JOB_STATES[holding], holding
+            # AST-1808: holding is an implicit substate of its primary (no key → no nested retry_state).
+            assert holding not in cfg.JOB_STATES, holding
+            assert cfg.registered_base(cfg.JOB_STATES, holding) == primary, holding
             assert cfg.dispatch_claim_states(primary, "job") == [primary, holding], primary
             assert cfg.dispatch_claim_states(holding, "job") == [holding], holding
 
@@ -6942,3 +6946,110 @@ class TestAst1788ManageListAndProfileSlackChannelShapes:
         keys = [f["key"] for f in section["fields"]]
         assert keys.index("contact.slack_channel_id") == keys.index("contact.slack_username") + 1
         assert keys.index("contact.slack_channel_name") == keys.index("contact.slack_channel_id") + 1
+
+
+# AST-1807 · AST-1805: implicit {base}_RETRY substate helpers + derived-prior rule.
+# Probe states (PASSED_GET_RETRY, RESUME_READY_RETRY, …) are never registry keys, so these
+# stay green through AST-1806's purge of the explicit *_RETRY keys.
+class TestAst1807ImplicitRetryHelpers:
+    def test_retry_of(self) -> None:
+        assert cfg.retry_of("PASSED_GET") == "PASSED_GET_RETRY"
+
+    def test_retry_base(self) -> None:
+        assert cfg.retry_base("PASSED_GET_RETRY") == "PASSED_GET"
+        assert cfg.retry_base(" PASSED_GET_RETRY ") == "PASSED_GET"
+        assert cfg.retry_base("PASSED_GET") is None
+        # Bare suffix has no base.
+        assert cfg.retry_base("_RETRY") is None
+        assert cfg.retry_base(None) is None
+
+    def test_registered_base_and_is_registered_state(self) -> None:
+        js = cfg.JOB_STATES
+        assert cfg.registered_base(js, "PASSED_GET") == "PASSED_GET"
+        assert cfg.registered_base(js, "PASSED_GET_RETRY") == "PASSED_GET"
+        # Suffix alone never validates: the base must be registered.
+        assert cfg.registered_base(js, "NOPE_RETRY") is None
+        assert cfg.is_registered_state(js, "PASSED_GET") is True
+        assert cfg.is_registered_state(js, "PASSED_GET_RETRY") is True
+        assert cfg.is_registered_state(js, "NOPE_RETRY") is False
+
+    def test_state_prior_states_cross_base_feeders(self) -> None:
+        # VALID_TITLE.retry_state == NEW_RETRY; HOMEPAGE_READY.retry_state == WEBSITE_FOUND_RETRY.
+        assert cfg.state_prior_states(cfg.JOB_STATES, "NEW_RETRY") == ["NEW", "NEW_RETRY", "VALID_TITLE"]
+        assert cfg.state_prior_states(cfg.COMPANY_STATES, "WEBSITE_FOUND_RETRY") == [
+            "WEBSITE_FOUND",
+            "WEBSITE_FOUND_RETRY",
+            "HOMEPAGE_READY",
+        ]
+        assert cfg.state_prior_states(cfg.JOB_STATES, "PASSED_GET_RETRY") == ["PASSED_GET", "PASSED_GET_RETRY"]
+
+    def test_state_prior_states_self_drain_and_unrestricted(self) -> None:
+        assert "JD_READY_RETRY" in cfg.state_prior_states(cfg.JOB_STATES, "JD_READY")
+        assert "REQUESTED_RESUME_RETRY" in cfg.state_prior_states(cfg.CANDIDATE_STATES, "REQUESTED_RESUME")
+        # prior_states None stays None (unrestricted entry).
+        assert cfg.state_prior_states(cfg.JOB_STATES, "NEW") is None
+
+    def test_state_prior_states_rejects_unregistered(self) -> None:
+        for state in ("NOPE", "NOPE_RETRY"):
+            with pytest.raises(KeyError, match="unregistered state"):
+                cfg.state_prior_states(cfg.JOB_STATES, state)
+
+
+# AST-1807 · AST-1805: config validators resolve {base}_RETRY through the base.
+class TestAst1807ImplicitRetryConfigValidators:
+    def test_batch_claim_state_validators(self) -> None:
+        assert cfg.is_valid_job_batch_claim_state("PASSED_GET_RETRY") is True
+        assert cfg.is_valid_job_batch_claim_state("NOPE_RETRY") is False
+        assert cfg.is_valid_candidate_batch_claim_state("RESUME_READY_RETRY") is True
+        assert cfg.is_valid_candidate_batch_claim_state("NOPE_RETRY") is False
+
+    def test_dispatch_sort_by_for_job_retry(self) -> None:
+        assert cfg._dispatch_sort_by_for("job", "PASSED_JOBLIST_RETRY") == "updated_at"
+        with pytest.raises(KeyError, match="unknown job trigger_state"):
+            cfg._dispatch_sort_by_for("job", "NOPE_RETRY")
+
+    def test_dispatch_sort_by_for_company_retry_reads_base_criteria(self) -> None:
+        assert cfg._dispatch_sort_by_for("company", "TO_WATCH_RETRY") == "updated_at"
+
+
+# AST-1808 · AST-1806: explicit *_RETRY registry keys purged; behavior pinned to the pre-purge tree.
+class TestAst1808RetryRegistryPurge:
+    _REGISTRIES = ("JOB_STATES", "COMPANY_STATES", "CANDIDATE_STATES")
+
+    def test_no_explicit_retry_keys_in_entity_registries(self) -> None:
+        # [bug-repro] AST-1808: red pre-purge (18 keys), green once AST-1806 lands.
+        for name in self._REGISTRIES:
+            reg = getattr(cfg, name)
+            assert not [k for k in reg if k.endswith(cfg.RETRY_SUFFIX)], name
+            assert not [
+                (k, p) for k, v in reg.items() for p in (v.get("prior_states") or []) if p.endswith(cfg.RETRY_SUFFIX)
+            ], name
+
+    def test_prior_snapshot_pinned(self) -> None:
+        # Fixture = AST-1806 gate snapshot captured on pre-purge ftr 65e3ca6f (can't be recomputed after
+        # the purge). *_RETRY_RETRY priors only exist while legacy retry keys do, so both sides drop them.
+        from pathlib import Path
+
+        pinned = json.loads((Path(__file__).parent / "fixtures" / "ast1806_prior_snapshot.json").read_text())
+        for name in self._REGISTRIES:
+            reg = getattr(cfg, name)
+            targets = list(reg) + [cfg.retry_of(b) for b in reg]
+            assert set(targets) == set(pinned[name]), name
+            for t in targets:
+                derived = cfg.state_prior_states(reg, t)
+                want = pinned[name][t]
+                if want is None:
+                    assert derived is None, (name, t)
+                else:
+                    assert {p for p in derived if not p.endswith("_RETRY_RETRY")} == set(want), (name, t)
+
+    def test_consult_fail_dest_for_retry_job_states(self) -> None:
+        # AST-642 routing after the purge (Radia, AST-1806): primary → holding, holding → terminal.
+        from src.core import consult as consult_mod
+
+        err = "ERROR_EVALUATE_JD"
+        for primary, holding in TestAst1155GradedRetryHoldings._PAIRS:
+            assert consult_mod._consult_batch_fail_dest(primary, err) == holding, primary
+            assert consult_mod._consult_batch_fail_dest(holding, err) == err, holding
+        # analysis_upshot: error_state IS the retry holding → second failure is FAILED_TECHNICAL.
+        assert consult_mod._consult_batch_fail_dest("PASSED_LIKE_RETRY", "PASSED_LIKE_RETRY") == "FAILED_TECHNICAL"

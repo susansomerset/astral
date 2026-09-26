@@ -285,6 +285,30 @@ class TestTransitionJobState:
         assert kwargs["latest_score"] == 0.75
         assert kwargs["state_history"][-1]["score"] == 0.75
 
+    def test_ast1807_bug_repro_base_to_implicit_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # [bug-repro] AST-1807 / AST-1805: PASSED_GET_RETRY is not a registry key; it validates via its base.
+        # Pre-AST-1805 this raised "not in allowed list" (full retry string validated).
+        save = MagicMock()
+        monkeypatch.setattr(tracker_mod.database, "get_job", lambda job_id: {"state": "PASSED_GET", "state_history": []})
+        monkeypatch.setattr(tracker_mod.database, "save_job", save)
+
+        tracker_mod.transition_job_state(["job-1"], "PASSED_GET_RETRY")
+
+        _, kwargs = save.call_args
+        assert kwargs["state"] == "PASSED_GET_RETRY"
+        assert kwargs["state_history"][-1]["to_state"] == "PASSED_GET_RETRY"
+
+    def test_ast1807_derived_priors_still_gate_retry(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Derived priors for PASSED_GET_RETRY are [PASSED_GET, PASSED_GET_RETRY]; PASSED_DO is not one.
+        monkeypatch.setattr(tracker_mod.database, "get_job", lambda job_id: {"state": "PASSED_DO", "state_history": []})
+        with pytest.raises(ValueError, match="Invalid transition"):
+            tracker_mod.transition_job_state(["job-1"], "PASSED_GET_RETRY")
+
+    def test_ast1807_rejects_unregistered_base_retry(self) -> None:
+        # Suffix alone never validates; message text is preserved from validate_value.
+        with pytest.raises(ValueError, match="not in allowed list"):
+            tracker_mod.transition_job_state(["job-1"], "NOPE_RETRY")
+
 
 # Branches: generated batch_id vs provided; missing context/batch_id error.
 class TestBatchApi:

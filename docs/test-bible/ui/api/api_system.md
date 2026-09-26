@@ -202,3 +202,22 @@ Open `GET /api/auth_session_policy` returns non-secret session duration + extend
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1808 · AST-1806 (explicit _RETRY registry purge)
+
+**Parent:** [AST-1804](https://linear.app/astralcareermatch/issue/AST-1804). **Publish:** `origin/sub/AST-1804/AST-1808-purge-retry-tests`. Product: **AST-1806** (18 `*_RETRY` registry keys + declared retry priors deleted; retries are implicit substates, priors derived by `state_prior_states`). Green only once AST-1806 is on the tree (ftr `2a419fbf`+); pre-purge `65e3ca6f` is red.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_progress_rank(REQUESTED_*_RETRY)` == base (nav gating stays open); `NOPE_RETRY` → -1 | `src/ui/api/api_system.py` | **`TestAst1808ProgressRankRetry`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none — do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1808ProgressRankRetry \
+  -q
+```

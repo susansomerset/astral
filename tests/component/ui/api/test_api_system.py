@@ -169,6 +169,18 @@ class TestSystemAuthRoutes:
         assert resp.status_code == 200
 
 
+class TestAst1808ProgressRankRetry:
+    """AST-1808 / AST-1806: REQUESTED_*_RETRY ranks with its base, so nav gating does not close."""
+
+    @pytest.mark.parametrize("base", ["REQUESTED_RESUME", "REQUESTED_ARTIFACTS"])
+    def test_retry_ranks_with_base(self, base: str) -> None:
+        assert system_mod._progress_rank(f"{base}_RETRY") == system_mod._progress_rank(base)
+        assert system_mod._progress_rank(base) >= 0
+
+    def test_unregistered_retry_is_unranked(self) -> None:
+        assert system_mod._progress_rank("NOPE_RETRY") == -1
+
+
 class TestDeployStatus:
     def test_requires_bearer(self, system_client: FlaskClient) -> None:
         assert system_client.get("/api/deploy_status").status_code == 401
